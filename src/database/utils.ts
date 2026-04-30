@@ -1,0 +1,132 @@
+import type {
+  GroupListItem,
+  GroupListItemRow,
+  ImageAssetRecord,
+  ImageAssetRow,
+  ImageDetailRecord,
+  ImageDetailRow,
+  ImageListItem,
+  ImageListItemRow,
+  IpDetailRecord,
+  IpListItem,
+  IpListItemRow,
+  IpRecord,
+  IpRow,
+} from './types';
+
+export type SqlValue = number | string | null;
+
+export function createTimestamp(): string {
+  return new Date().toISOString();
+}
+
+export function normalizeOptionalText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function requireNonEmptyText(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    throw new Error(`${fieldName} cannot be empty.`);
+  }
+
+  return trimmed;
+}
+
+export function booleanToSqlite(value: boolean): number {
+  return value ? 1 : 0;
+}
+
+export function sqliteToBoolean(value: number): boolean {
+  return value === 1;
+}
+
+export function mapImageAssetRow(row: ImageAssetRow): ImageAssetRecord {
+  return {
+    ...row,
+    isFavorite: sqliteToBoolean(row.isFavorite),
+  };
+}
+
+export function mapImageListItemRow(row: ImageListItemRow): ImageListItem {
+  return {
+    ...mapImageAssetRow(row),
+    ipName: row.ipName,
+    groupName: row.groupName,
+    tagCount: row.tagCount ?? 0,
+  };
+}
+
+export function mapImageDetailRow(row: ImageDetailRow): ImageDetailRecord {
+  return {
+    ...mapImageAssetRow(row),
+    ipName: row.ipName,
+    groupName: row.groupName,
+    groupType: row.groupType,
+  };
+}
+
+export function mapIpRow(row: IpRow): IpRecord {
+  return {
+    ...row,
+    isFavorite: sqliteToBoolean(row.isFavorite),
+  };
+}
+
+export function mapIpListItemRow(row: IpListItemRow): IpListItem {
+  return {
+    ...mapIpRow(row),
+    imageCount: row.imageCount ?? 0,
+    groupCount: row.groupCount ?? 0,
+  };
+}
+
+export function mapIpDetailRow(
+  row: IpRow & {
+    imageCount: number;
+    groupCount: number;
+    tagCount: number;
+    recentUpdatedAt: string | null;
+  }
+): IpDetailRecord {
+  return {
+    ...mapIpRow(row),
+    imageCount: row.imageCount ?? 0,
+    groupCount: row.groupCount ?? 0,
+    tagCount: row.tagCount ?? 0,
+    recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
+  };
+}
+
+export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
+  return {
+    ...row,
+    description: row.description ?? null,
+    imageCount: row.imageCount ?? 0,
+    recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
+    coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+  };
+}
+
+export function buildUpdateStatement(
+  updates: Record<string, SqlValue | undefined>
+): { setClause: string; values: SqlValue[] } {
+  const entries = Object.entries(updates).filter(
+    (entry): entry is [string, SqlValue] => entry[1] !== undefined
+  );
+
+  return {
+    setClause: entries.map(([column]) => `${column} = ?`).join(', '),
+    values: entries.map(([, value]) => value),
+  };
+}
