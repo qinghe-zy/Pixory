@@ -8,9 +8,11 @@ import { PrimaryButton } from './src/components/PrimaryButton';
 import { colors, spacing, typography } from './src/design/tokens';
 import { initDatabase, type IpLibraryFilter } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
+import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
 import { CreateIpScreen } from './src/screens/CreateIpScreen';
 import { EditIpScreen } from './src/screens/EditIpScreen';
+import { EditImageScreen } from './src/screens/EditImageScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
@@ -18,6 +20,7 @@ import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
+import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import { isDevToolsEnabled } from './src/utils/dev';
@@ -27,12 +30,21 @@ type AppRoute =
   | { name: 'create-ip' }
   | { name: 'ip-detail'; ipId: number }
   | { name: 'edit-ip'; ipId: number }
+  | { name: 'edit-image'; imageId: number }
   | { name: 'group-overview'; ipId: number }
   | { name: 'create-group'; ipId: number }
   | { name: 'group-images'; ipId: number; groupId: number }
+  | {
+      name: 'batch-manage-images';
+      ipId: number;
+      source: 'ip-detail' | 'all-images' | 'group-images';
+      groupId?: number | null;
+      initialSelectedImageIds?: number[];
+    }
   | { name: 'import-images'; ipId: number; groupId?: number | null }
   | { name: 'all-images'; ipId: number }
   | { name: 'image-detail'; imageId: number }
+  | { name: 'move-image-group'; imageId: number }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -94,6 +106,10 @@ export default function App() {
     popRoute();
   }
 
+  function refreshLibrary() {
+    setLibraryRefreshToken((current) => current + 1);
+  }
+
   function resetHome(filter: IpLibraryFilter = 'all') {
     setRouteStack([{ name: 'home', initialFilter: filter }]);
   }
@@ -138,9 +154,9 @@ export default function App() {
         onOpenAllImages={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
         onOpenBatchManagement={() =>
           pushRoute({
-            name: 'placeholder',
-            title: '批量管理',
-            description: '批量管理会在下一轮补齐，这里先保留正式入口位。',
+            name: 'batch-manage-images',
+            ipId: currentRoute.ipId,
+            source: 'ip-detail',
           })
         }
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
@@ -150,6 +166,15 @@ export default function App() {
     );
   } else if (currentRoute.name === 'edit-ip') {
     content = <EditIpScreen ipId={currentRoute.ipId} onBack={popRoute} onSaved={popAndRefresh} />;
+  } else if (currentRoute.name === 'edit-image') {
+    content = (
+      <EditImageScreen
+        imageId={currentRoute.imageId}
+        onBack={popRoute}
+        onSaved={popAndRefresh}
+        refreshToken={libraryRefreshToken}
+      />
+    );
   } else if (currentRoute.name === 'group-overview') {
     content = (
       <GroupOverviewScreen
@@ -175,8 +200,37 @@ export default function App() {
             groupId: currentRoute.groupId,
           })
         }
+        onStartBatchManagement={(imageId) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId: currentRoute.ipId,
+            source: 'group-images',
+            groupId: currentRoute.groupId,
+            initialSelectedImageIds: [imageId],
+          })
+        }
         onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
         refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'batch-manage-images') {
+    content = (
+      <BatchManageImagesScreen
+        groupId={currentRoute.groupId ?? null}
+        initialSelectedImageIds={currentRoute.initialSelectedImageIds}
+        ipId={currentRoute.ipId}
+        onBack={popRoute}
+        onChanged={refreshLibrary}
+        onDeleted={popAndRefresh}
+        onImportImages={() =>
+          pushRoute({
+            name: 'import-images',
+            ipId: currentRoute.ipId,
+            groupId: currentRoute.groupId ?? null,
+          })
+        }
+        refreshToken={libraryRefreshToken}
+        source={currentRoute.source}
       />
     );
   } else if (currentRoute.name === 'import-images') {
@@ -194,6 +248,14 @@ export default function App() {
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId })}
+        onStartBatchManagement={(imageId) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId: currentRoute.ipId,
+            source: 'all-images',
+            initialSelectedImageIds: [imageId],
+          })
+        }
         onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
         refreshToken={libraryRefreshToken}
       />
@@ -203,14 +265,34 @@ export default function App() {
       <ImageDetailScreen
         imageId={currentRoute.imageId}
         onBack={popRoute}
+        onDeleted={popAndRefresh}
+        onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId })}
+        onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'move-image-group') {
+    content = (
+      <MoveImageGroupScreen
+        imageId={currentRoute.imageId}
+        onBack={popRoute}
+        onSaved={popAndRefresh}
         refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.name === 'placeholder') {
     content = <PlaceholderScreen description={currentRoute.description} onBack={popRoute} title={currentRoute.title} />;
   } else if (currentRoute.name === 'import-development') {
-    content = <ImportDevelopmentScreen onBack={popRoute} />;
+    content = isDevToolsEnabled ? (
+      <ImportDevelopmentScreen onBack={popRoute} />
+    ) : (
+      <PlaceholderScreen
+        description="这个入口仅用于开发回归，非开发环境下不会显示。"
+        onBack={popRoute}
+        title="开发入口不可用"
+      />
+    );
   } else {
     content = (
         <HomeLibraryScreen

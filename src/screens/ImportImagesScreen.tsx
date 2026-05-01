@@ -24,6 +24,7 @@ import {
   pickImagesForImport,
   type PickedImageAsset,
 } from '../services/imageImportService';
+import { mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 
 interface ImportImagesScreenProps {
@@ -31,19 +32,6 @@ interface ImportImagesScreenProps {
   defaultGroupId?: number | null;
   onBack: () => void;
   onImported: () => void;
-}
-
-function mergeDraftTag(existingTags: string[], rawValue: string): string[] {
-  const value = rawValue.trim();
-  if (!value) {
-    return existingTags;
-  }
-
-  if (existingTags.some((tag) => tag.toLowerCase() === value.toLowerCase())) {
-    return existingTags;
-  }
-
-  return [...existingTags, value];
 }
 
 export function ImportImagesScreen({
@@ -109,7 +97,7 @@ export function ImportImagesScreen({
   }
 
   function addTag(rawValue?: string) {
-    const nextTags = mergeDraftTag(tags, rawValue ?? tagInput);
+    const nextTags = mergeDraftTagNames(tags, rawValue ?? tagInput);
     if (nextTags.length === tags.length) {
       if ((rawValue ?? tagInput).trim()) {
         setTagInput('');
@@ -129,7 +117,7 @@ export function ImportImagesScreen({
 
   function handleImport() {
     void runSubmit(async () => {
-      const preparedTags = mergeDraftTag(tags, tagInput);
+      const preparedTags = mergeDraftTagNames(tags, tagInput);
       const preparedNote = note.trim();
 
       if (preparedTags.length !== tags.length) {
@@ -212,6 +200,7 @@ export function ImportImagesScreen({
           description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
           title="开发回归入口"
         >
+          {/* 仅用于开发回归，正式提测前可移除。 */}
           <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
         </DevOnlyCard>
 

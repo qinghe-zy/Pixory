@@ -7,12 +7,20 @@ import { colors, radius, spacing, typography } from '../design/tokens';
 interface ThumbnailTileProps {
   image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite'>;
   onPress?: (imageId: number) => void;
+  onLongPress?: (imageId: number) => void;
   aspectRatio?: number;
+  selected?: boolean;
 }
 
-export function ThumbnailTile({ image, onPress, aspectRatio = 1 }: ThumbnailTileProps) {
+export function ThumbnailTile({
+  image,
+  onPress,
+  onLongPress,
+  aspectRatio = 1,
+  selected = false,
+}: ThumbnailTileProps) {
   const content = (
-    <View style={[styles.tile, { aspectRatio }]}>
+    <View style={[styles.tile, selected ? styles.selectedTile : null, { aspectRatio }]}>
       {image.thumbnailFileUri ? (
         <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.image} />
       ) : (
@@ -28,15 +36,28 @@ export function ThumbnailTile({ image, onPress, aspectRatio = 1 }: ThumbnailTile
           <Ionicons color={colors.semantic.favorite} name="star" size={12} />
         </View>
       ) : null}
+      {selected ? (
+        <>
+          <View style={styles.selectionOverlay} />
+          <View style={styles.selectionBadge}>
+            <Ionicons color={colors.text.inverse} name="checkmark" size={12} />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 
-  if (!onPress) {
+  if (!onPress && !onLongPress) {
     return content;
   }
 
   return (
-    <Pressable onPress={() => onPress(image.id)} style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}>
+    <Pressable
+      delayLongPress={220}
+      onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
+      onPress={onPress ? () => onPress(image.id) : undefined}
+      style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
+    >
       {content}
     </Pressable>
   );
@@ -57,6 +78,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     width: '100%',
+  },
+  selectedTile: {
+    borderColor: colors.primary.default,
+    borderWidth: 1,
   },
   image: {
     height: '100%',
@@ -82,6 +107,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
     right: spacing[2],
+    top: spacing[2],
+    width: 22,
+  },
+  selectionOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(22, 119, 255, 0.12)',
+  },
+  selectionBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.sm,
+    height: 22,
+    justifyContent: 'center',
+    left: spacing[2],
+    position: 'absolute',
     top: spacing[2],
     width: 22,
   },

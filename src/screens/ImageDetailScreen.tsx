@@ -9,6 +9,8 @@ import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
 import { imageRepository, tagRepository, type ImageDetailRecord, type TagRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { getFileInfo } from '../services/fileStorageService';
+import { devLog } from '../utils/dev';
 import { formatDateTime, formatFileSize, formatImageDimensions } from '../utils/formatters';
 
 interface ImageDetailScreenProps {
@@ -16,9 +18,20 @@ interface ImageDetailScreenProps {
   refreshToken: number;
   onBack: () => void;
   onRefreshed: () => void;
+  onEdit: (imageId: number) => void;
+  onMoveGroup: (imageId: number) => void;
+  onDeleted: () => void;
 }
 
-export function ImageDetailScreen({ imageId, refreshToken, onBack, onRefreshed }: ImageDetailScreenProps) {
+export function ImageDetailScreen({
+  imageId,
+  refreshToken,
+  onBack,
+  onRefreshed,
+  onEdit,
+  onMoveGroup,
+  onDeleted,
+}: ImageDetailScreenProps) {
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,8 +55,21 @@ export function ImageDetailScreen({ imageId, refreshToken, onBack, onRefreshed }
           return;
         }
 
+        if (!detail) {
+          throw new Error('没有找到这张图片。');
+        }
+
         setImage(detail);
         setTags(tagItems);
+        devLog('Pixory image detail readback:', {
+          imageId: detail.id,
+          groupName: detail.groupName,
+          tagNames: tagItems.map((tag) => tag.name),
+          note: detail.note,
+          isFavorite: detail.isFavorite,
+          originalFileUri: detail.originalFileUri,
+          thumbnailFileUri: detail.thumbnailFileUri,
+        });
       } catch (error) {
         if (isMounted) {
           const message = error instanceof Error ? error.message : '未知错误';
@@ -89,9 +115,7 @@ export function ImageDetailScreen({ imageId, refreshToken, onBack, onRefreshed }
     setIsUpdatingFavorite(true);
 
     try {
-      const updated = await imageRepository.update(image.id, {
-        isFavorite: !image.isFavorite,
-      });
+      const updated = await imageRepository.updateFavorite(image.id, !image.isFavorite);
 
       if (updated) {
         setImage({
@@ -109,8 +133,72 @@ export function ImageDetailScreen({ imageId, refreshToken, onBack, onRefreshed }
     }
   }
 
-  function showPlaceholder(label: string) {
-    Alert.alert(label, '这个操作会在下一轮补成正式功能。');
+  function handleDelete() {
+    if (!image) {
+      return;
+    }
+
+    Alert.alert('确认删除到回收站', '删除后会进入回收站状态，原图和缩略图文件仍会保留在本地。', [
+      {
+        text: '取消',
+        style: 'cancel',
+      },
+      {
+        text: '确认删除',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              const deletedCount = await imageRepository.softDeleteMany([image.id]);
+              if (deletedCount === 0) {
+                throw new Error('没有可删除的图片。');
+              }
+
+              const [originalInfo, thumbnailInfo] = await Promise.all([
+                getFileInfo(image.originalFileUri),
+                image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
+              ]);
+
+              if (!originalInfo.exists || originalInfo.isDirectory) {
+                throw new Error('软删除后原图文件不存在。');
+              }
+
+              if (image.thumbnailFileUri && (!thumbnailInfo?.exists || thumbnailInfo.isDirectory)) {
+                throw new Error('软删除后缩略图文件不存在。');
+              }
+
+              if ((originalInfo.size ?? 0) <= 0) {
+                throw new Error('软删除后原图文件大小异常。');
+              }
+
+              if (image.thumbnailFileUri && (thumbnailInfo?.size ?? 0) <= 0) {
+                throw new Error('软删除后缩略图文件大小异常。');
+              }
+
+              const deletedImage = await imageRepository.findById(image.id, { includeDeleted: true });
+              devLog(
+                'Pixory single delete verification JSON:',
+                JSON.stringify({
+                  imageId: image.id,
+                  originalFileUri: image.originalFileUri,
+                  thumbnailFileUri: image.thumbnailFileUri,
+                  originalExists: originalInfo.exists && !originalInfo.isDirectory,
+                  thumbnailExists: image.thumbnailFileUri ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory) : true,
+                  originalSize: originalInfo.size,
+                  thumbnailSize: thumbnailInfo?.size ?? null,
+                  deletedAt: deletedImage?.deletedAt ?? null,
+                })
+              );
+
+              onDeleted();
+            } catch (error) {
+              const message = error instanceof Error ? error.message : '未知错误';
+              Alert.alert('删除失败', message);
+            }
+          })();
+        },
+      },
+    ]);
   }
 
   return (
@@ -179,9 +267,9 @@ export function ImageDetailScreen({ imageId, refreshToken, onBack, onRefreshed }
               label={image.isFavorite ? '取消收藏' : '收藏'}
               onPress={handleToggleFavorite}
             />
-            <PrimaryAction icon="create-outline" label="编辑" onPress={() => showPlaceholder('编辑')} />
-            <PrimaryAction icon="swap-horizontal-outline" label="移动分组" onPress={() => showPlaceholder('移动分组')} />
-            <PrimaryAction icon="ellipsis-horizontal" label="更多" onPress={() => showPlaceholder('更多')} />
+            <PrimaryAction icon="create-outline" label="编辑" onPress={() => onEdit(image.id)} />
+            <PrimaryAction icon="swap-horizontal-outline" label="移动分组" onPress={() => onMoveGroup(image.id)} />
+            <PrimaryAction icon="trash-outline" label="删除" onPress={handleDelete} />
           </View>
         </>
       ) : null}

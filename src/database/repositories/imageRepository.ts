@@ -21,10 +21,35 @@ import {
   normalizeOptionalText,
   requireNonEmptyText,
 } from '../utils';
+import type { SQLiteDatabase } from 'expo-sqlite';
 
 function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions): string {
   const column = columnPrefix ? `${columnPrefix}.deletedAt` : 'deletedAt';
   return options?.includeDeleted ? '' : `${column} IS NULL`;
+}
+
+function buildInClause(ids: number[]): { placeholders: string; values: number[] } {
+  const values = [...new Set(ids)];
+
+  if (values.length === 0) {
+    throw new Error('Expected at least one image id.');
+  }
+
+  return {
+    placeholders: values.map(() => '?').join(', '),
+    values,
+  };
+}
+
+async function loadImagesByIds(ids: number[]): Promise<ImageAssetRecord[]> {
+  const db = await getDatabase();
+  const inClause = buildInClause(ids);
+  const rows = await db.getAllAsync<ImageAssetRow>(
+    `SELECT * FROM image_assets WHERE id IN (${inClause.placeholders})`,
+    ...inClause.values
+  );
+
+  return rows.map(mapImageAssetRow);
 }
 
 async function touchParentRecords(ipId: number, groupId?: number | null): Promise<void> {
@@ -35,6 +60,50 @@ async function touchParentRecords(ipId: number, groupId?: number | null): Promis
 
   if (groupId != null) {
     await db.runAsync('UPDATE groups SET updatedAt = ? WHERE id = ?', now, groupId);
+  }
+}
+
+async function touchManyParentRecords(
+  db: SQLiteDatabase,
+  records: Array<Pick<ImageAssetRecord, 'ipId' | 'groupId'>>
+): Promise<void> {
+  if (records.length === 0) {
+    return;
+  }
+
+  const now = createTimestamp();
+  const ipIds = [...new Set(records.map((record) => record.ipId))];
+  const groupIds = [...new Set(records.map((record) => record.groupId).filter((groupId): groupId is number => groupId != null))];
+
+  if (ipIds.length > 0) {
+    const inClause = buildInClause(ipIds);
+    await db.runAsync(
+      `UPDATE ips SET updatedAt = ? WHERE id IN (${inClause.placeholders})`,
+      now,
+      ...inClause.values
+    );
+  }
+
+  if (groupIds.length > 0) {
+    const inClause = buildInClause(groupIds);
+    await db.runAsync(
+      `UPDATE groups SET updatedAt = ? WHERE id IN (${inClause.placeholders})`,
+      now,
+      ...inClause.values
+    );
+  }
+}
+
+async function ensureGroupBelongsToIp(groupId: number, ipId: number): Promise<void> {
+  const db = await getDatabase();
+  const group = await db.getFirstAsync<{ id: number; ipId: number }>('SELECT id, ipId FROM groups WHERE id = ?', groupId);
+
+  if (!group) {
+    throw new Error(`Group ${groupId} does not exist.`);
+  }
+
+  if (group.ipId !== ipId) {
+    throw new Error(`Group ${groupId} does not belong to IP ${ipId}.`);
   }
 }
 
@@ -249,9 +318,12 @@ export const imageRepository = {
   },
 
   async softDelete(id: number): Promise<ImageAssetRecord | null> {
-    return this.update(id, {
-      deletedAt: createTimestamp(),
-    });
+    const affectedCount = await this.softDeleteMany([id]);
+    if (affectedCount === 0) {
+      return null;
+    }
+
+    return this.findById(id, { includeDeleted: true });
   },
 
   async count(options?: ImageAssetQueryOptions): Promise<number> {
@@ -261,6 +333,215 @@ export const imageRepository = {
       `SELECT COUNT(*) AS count FROM image_assets${deletedFilter ? ` WHERE ${deletedFilter}` : ''}`
     );
     return row?.count ?? 0;
+  },
+
+  async updateMetadata(
+    id: number,
+    input: {
+      originalFilename?: string;
+      groupId?: number | null;
+      note?: string | null;
+      isFavorite?: boolean;
+    }
+  ): Promise<ImageAssetRecord | null> {
+    const current = await this.findById(id, { includeDeleted: true });
+    if (!current) {
+      return null;
+    }
+
+    if (input.groupId != null) {
+      await ensureGroupBelongsToIp(input.groupId, current.ipId);
+    }
+
+    try {
+      return this.update(id, {
+        originalFilename: input.originalFilename,
+        groupId: input.groupId,
+        note: input.note,
+        isFavorite: input.isFavorite,
+      });
+    } catch (error) {
+      console.error('Pixory imageRepository.updateMetadata failed.', {
+        imageId: id,
+        input,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async updateGroup(id: number, groupId: number | null): Promise<ImageAssetRecord | null> {
+    const current = await this.findById(id, { includeDeleted: true });
+    if (!current) {
+      return null;
+    }
+
+    if (groupId != null) {
+      await ensureGroupBelongsToIp(groupId, current.ipId);
+    }
+
+    try {
+      return this.update(id, {
+        groupId,
+      });
+    } catch (error) {
+      console.error('Pixory imageRepository.updateGroup failed.', {
+        imageId: id,
+        groupId,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async updateFavorite(id: number, isFavorite: boolean): Promise<ImageAssetRecord | null> {
+    try {
+      return this.update(id, {
+        isFavorite,
+      });
+    } catch (error) {
+      console.error('Pixory imageRepository.updateFavorite failed.', {
+        imageId: id,
+        isFavorite,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async updateManyGroup(imageIds: number[], groupId: number | null): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const ipIds = [...new Set(currentImages.map((image) => image.ipId))];
+    if (ipIds.length !== 1) {
+      throw new Error('Batch group move requires all images to belong to the same IP.');
+    }
+
+    if (groupId != null) {
+      await ensureGroupBelongsToIp(groupId, ipIds[0]);
+    }
+
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const updateResult = await db.runAsync(
+          `UPDATE image_assets
+           SET groupId = ?, updatedAt = ?
+           WHERE id IN (${inClause.placeholders})`,
+          groupId,
+          now,
+          ...inClause.values
+        );
+        changedCount = updateResult.changes;
+
+        const parentRecords = [
+          ...currentImages.map((image) => ({ ipId: image.ipId, groupId: image.groupId })),
+          ...currentImages.map((image) => ({ ipId: image.ipId, groupId })),
+        ];
+        await touchManyParentRecords(db, parentRecords);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.updateManyGroup failed.', {
+        imageIds: inClause.values,
+        groupId,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async updateManyFavorite(imageIds: number[], isFavorite: boolean): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const updateResult = await db.runAsync(
+          `UPDATE image_assets
+           SET isFavorite = ?, updatedAt = ?
+           WHERE id IN (${inClause.placeholders})`,
+          booleanToSqlite(isFavorite),
+          now,
+          ...inClause.values
+        );
+        changedCount = updateResult.changes;
+
+        await touchManyParentRecords(db, currentImages);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.updateManyFavorite failed.', {
+        imageIds: inClause.values,
+        isFavorite,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async softDeleteMany(imageIds: number[]): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const updateResult = await db.runAsync(
+          `UPDATE image_assets
+           SET deletedAt = ?, updatedAt = ?
+           WHERE id IN (${inClause.placeholders}) AND deletedAt IS NULL`,
+          now,
+          now,
+          ...inClause.values
+        );
+        changedCount = updateResult.changes;
+
+        await touchManyParentRecords(db, currentImages);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.softDeleteMany failed.', {
+        imageIds: inClause.values,
+        error,
+      });
+      throw error;
+    }
   },
 };
 

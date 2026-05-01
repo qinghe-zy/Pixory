@@ -13,6 +13,8 @@ import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../cons
 import { ipRepository, type IpLibraryFilter, type IpListItem } from '../database';
 import { colors, componentTokens, layout, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { createManageRegressionDataset, readLatestManageRegressionState } from '../services/manageRegressionDevelopmentService';
+import { devLog } from '../utils/dev';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部' },
@@ -69,6 +71,39 @@ export function HomeLibraryScreen({
     }
   }
 
+  async function handlePrepareManageRegressionData() {
+    try {
+      const result = await createManageRegressionDataset();
+      setSearchText('');
+      setActiveFilter('recent');
+      reload();
+      Alert.alert(
+        '回归数据已准备',
+        `已创建 ${result.ipName}，分组 ${result.groupAName} / ${result.groupBName}，并导入 ${result.imageIds.length} 张图片。`
+      );
+      onOpenIp(result.ipId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      Alert.alert('准备回归数据失败', message);
+    }
+  }
+
+  async function handleLogManageRegressionState() {
+    try {
+      const state = await readLatestManageRegressionState();
+      if (!state) {
+        Alert.alert('暂无回归数据', '还没有找到最新的 ManageRegressionIP 数据。');
+        return;
+      }
+
+      devLog('Pixory manage regression state JSON:', JSON.stringify(state));
+      Alert.alert('回归状态已输出', `${state.ipName} 当前共 ${state.imageSnapshots.length} 张图片，日志已输出到 Metro。`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      Alert.alert('输出回归状态失败', message);
+    }
+  }
+
   useEffect(() => {
     setActiveFilter(initialFilter);
   }, [initialFilter, refreshKey]);
@@ -111,6 +146,9 @@ export function HomeLibraryScreen({
           description="仅用于开发回归，必须保持与正式“新建IP”入口隔离，避免影响正式点击区域。"
           title="开发回归入口"
         >
+          {/* 仅用于开发回归，正式提测前可移除。 */}
+          <PrimaryButton label="准备管理回归数据" onPress={handlePrepareManageRegressionData} variant="outline" />
+          <PrimaryButton label="输出回归状态" onPress={handleLogManageRegressionState} variant="outline" />
           <PrimaryButton label="快速建测试IP" onPress={handleQuickCreateTestIp} variant="outline" />
           {onOpenImportDevelopment ? (
             <PrimaryButton label="导入检查" onPress={onOpenImportDevelopment} variant="outline" />

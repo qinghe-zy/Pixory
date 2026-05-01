@@ -14,6 +14,7 @@ interface AllImagesScreenProps {
   onBack: () => void;
   onImportImages: () => void;
   onOpenImage: (imageId: number) => void;
+  onStartBatchManagement: (imageId: number) => void;
 }
 
 export function AllImagesScreen({
@@ -22,6 +23,7 @@ export function AllImagesScreen({
   onBack,
   onImportImages,
   onOpenImage,
+  onStartBatchManagement,
 }: AllImagesScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; images: ImageListItem[] }>(
     async () => {
@@ -67,7 +69,12 @@ export function AllImagesScreen({
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLongPress={onStartBatchManagement}
+              onPress={onOpenImage}
+            />
           ))}
         </View>
       </PageStateBlock>

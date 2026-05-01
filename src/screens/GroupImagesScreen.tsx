@@ -16,6 +16,7 @@ interface GroupImagesScreenProps {
   onBack: () => void;
   onImportImages: () => void;
   onOpenImage: (imageId: number) => void;
+  onStartBatchManagement: (imageId: number) => void;
 }
 
 export function GroupImagesScreen({
@@ -25,6 +26,7 @@ export function GroupImagesScreen({
   onBack,
   onImportImages,
   onOpenImage,
+  onStartBatchManagement,
 }: GroupImagesScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
@@ -80,7 +82,12 @@ export function GroupImagesScreen({
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLongPress={onStartBatchManagement}
+              onPress={onOpenImage}
+            />
           ))}
         </View>
       </PageStateBlock>

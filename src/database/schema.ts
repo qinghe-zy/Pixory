@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS groups (
   name TEXT NOT NULL,
   type TEXT NOT NULL DEFAULT 'custom',
   sortOrder INTEGER NOT NULL DEFAULT 0,
-  description TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   FOREIGN KEY (ipId) REFERENCES ips(id) ON DELETE CASCADE
