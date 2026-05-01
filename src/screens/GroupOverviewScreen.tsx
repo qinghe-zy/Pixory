@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppScreen } from '../components/AppScreen';
 import { ContentCard } from '../components/ContentCard';
-import { EmptyState } from '../components/EmptyState';
-import { Header } from '../components/Header';
-import { groupRepository, ipRepository, type GroupListItem, type IpRecord } from '../database';
+import { PageStateBlock } from '../components/PageStateBlock';
+import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SectionHeader } from '../components/SectionHeader';
+import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
+import { groupRepository, ipRepository, type GroupListItem, type IpRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDate } from '../utils/formatters';
 
 interface GroupOverviewScreenProps {
@@ -26,48 +28,24 @@ export function GroupOverviewScreen({
   onCreateGroup,
   onOpenGroup,
 }: GroupOverviewScreenProps) {
-  const [ip, setIp] = useState<IpRecord | null>(null);
-  const [groups, setGroups] = useState<GroupListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
+    async () => {
+      const [ip, groups] = await Promise.all([
+        ipRepository.findById(ipId),
+        groupRepository.findOverviewByIpId(ipId),
+      ]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const [ipRecord, groupItems] = await Promise.all([
-          ipRepository.findById(ipId),
-          groupRepository.findOverviewByIpId(ipId),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setIp(ipRecord);
-        setGroups(groupItems);
-      } catch (error) {
-        if (isMounted) {
-          const message = error instanceof Error ? error.message : '未知错误';
-          setErrorMessage(`读取分组失败：${message}`);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+      return { ip, groups };
+    },
+    [ipId, refreshToken],
+    {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `读取分组失败：${message}`;
+      },
+      initialData: { groups: [], ip: null },
     }
-
-    load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [ipId, refreshToken]);
+  );
 
   const rightSlot = useMemo(
     () => (
@@ -78,68 +56,71 @@ export function GroupOverviewScreen({
     [onCreateGroup]
   );
 
+  const ip = data?.ip ?? null;
+  const groups = data?.groups ?? [];
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
     items: groups.filter((group) => group.type === option.value),
-  })).filter((section) => section.items.length > 0 || isLoading);
+  })).filter((section) => section.items.length > 0);
 
   return (
-    <AppScreen scrollable>
-      <Header onBack={onBack} rightSlot={rightSlot} title="分组" />
-
+    <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-      {!isLoading && groups.length === 0 ? (
-        <EmptyState
-          actionLabel="新建分组"
-          description="创建分组后，可以把季节限定、场景限定和用途素材整理得更清晰。"
-          iconName="folder-open-outline"
-          onAction={onCreateGroup}
-          title="还没有分组"
-        />
-      ) : null}
+      <PageStateBlock
+        emptyActionLabel={commonButtonCopy.createGroup}
+        emptyDescription="创建分组后，可以把季节限定、场景限定和用途素材整理得更清晰。"
+        emptyIconName="folder-open-outline"
+        emptyTitle={commonEmptyStateCopy.noGroupsTitle}
+        errorMessage={errorMessage}
+        isEmpty={!isLoading && groups.length === 0}
+        loading={isLoading}
+        loadingDescription="本地分组总览读取完成后，这里会展示当前 IP 下的全部分组。"
+        loadingTitle="正在读取分组"
+        onEmptyAction={onCreateGroup}
+        onRetry={reload}
+      >
+        <View style={styles.list}>
+          {groupedSections.map((section) => (
+            <View key={section.value} style={styles.sectionBlock}>
+              <SectionHeader title={section.label} />
+              {section.items.map((group) => (
+                <Pressable key={group.id} onPress={() => onOpenGroup(group.id)} style={({ pressed }) => [pressed && styles.pressed]}>
+                  <ContentCard style={styles.groupCard}>
+                    <View style={styles.coverWrap}>
+                      {group.coverThumbnailFileUri ? (
+                        <Image resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverImage} />
+                      ) : (
+                        <View style={styles.coverEmpty}>
+                          <Ionicons color={colors.primary.default} name="images-outline" size={26} />
+                          <Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text>
+                        </View>
+                      )}
+                    </View>
 
-      <View style={styles.list}>
-        {groupedSections.map((section) => (
-          <View key={section.value} style={styles.sectionBlock}>
-            <Text style={styles.sectionTitle}>{section.label}</Text>
-            {section.items.map((group) => (
-              <Pressable key={group.id} onPress={() => onOpenGroup(group.id)} style={({ pressed }) => [pressed && styles.pressed]}>
-                <ContentCard style={styles.groupCard}>
-                  <View style={styles.coverWrap}>
-                    {group.coverThumbnailFileUri ? (
-                      <Image resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverImage} />
-                    ) : (
-                      <View style={styles.coverEmpty}>
-                        <Ionicons color={colors.primary.default} name="images-outline" size={26} />
-                        <Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text>
+                    <View style={styles.groupBody}>
+                      <View style={styles.groupHeader}>
+                        <Text numberOfLines={1} style={styles.groupName}>
+                          {group.name}
+                        </Text>
+                        <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
                       </View>
-                    )}
-                  </View>
-
-                  <View style={styles.groupBody}>
-                    <View style={styles.groupHeader}>
-                      <Text numberOfLines={1} style={styles.groupName}>
-                        {group.name}
+                      <Text numberOfLines={2} style={styles.groupDescription}>
+                        {group.description || '还没有分组说明'}
                       </Text>
-                      <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
+                        <Text style={styles.metaText}>最近更新 {formatDate(group.recentUpdatedAt)}</Text>
+                      </View>
                     </View>
-                    <Text numberOfLines={2} style={styles.groupDescription}>
-                      {group.description || '还没有分组说明'}
-                    </Text>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
-                      <Text style={styles.metaText}>最近更新 {formatDate(group.recentUpdatedAt)}</Text>
-                    </View>
-                  </View>
-                </ContentCard>
-              </Pressable>
-            ))}
-          </View>
-        ))}
-      </View>
-    </AppScreen>
+                  </ContentCard>
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </View>
+      </PageStateBlock>
+    </ScreenScaffold>
   );
 }
 
@@ -162,18 +143,11 @@ const styles = StyleSheet.create({
     color: colors.text.body,
     marginTop: -spacing[4],
   },
-  errorText: {
-    ...typography.textStyles.caption,
-    color: colors.semantic.danger,
-  },
   list: {
     gap: spacing[4],
   },
   sectionBlock: {
     gap: spacing[3],
-  },
-  sectionTitle: {
-    ...typography.textStyles.sectionTitle,
   },
   groupCard: {
     gap: spacing[4],

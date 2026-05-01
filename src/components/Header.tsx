@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, componentTokens, layout, spacing, typography } from '../design/tokens';
 
@@ -12,8 +13,22 @@ interface HeaderProps {
 }
 
 export function Header({ title, onBack, rightSlot, sideWidth = componentTokens.iconButton.size }: HeaderProps) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight =
+    Platform.OS === 'android'
+      ? Math.max(StatusBar.currentHeight ?? 0, insets.top)
+      : insets.top;
+
   return (
-    <View style={[styles.container, { minHeight: layout.headerHeight }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          minHeight: layout.headerHeight,
+          paddingTop: statusBarHeight + layout.pageTopOffset,
+        },
+      ]}
+    >
       <View style={[styles.side, styles.leadingSide, { minWidth: sideWidth }]}>
         {onBack ? (
           <Pressable
@@ -43,10 +58,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
-    paddingTop:
-      Platform.OS === 'android'
-        ? (StatusBar.currentHeight ?? 0) + spacing[3]
-        : spacing[3],
   },
   side: {
     alignItems: 'center',

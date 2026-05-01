@@ -1,0 +1,43 @@
+import { StyleSheet, TextInput } from 'react-native';
+import type { TextInputProps } from 'react-native';
+
+import { colors, metrics, radius, spacing, typography } from '../design/tokens';
+import { ContentCard } from './ContentCard';
+import { FormField } from './FormField';
+
+interface TextFieldCardProps extends Omit<TextInputProps, 'multiline'> {
+  label: string;
+  hint?: string;
+  errorMessage?: string | null;
+}
+
+export function TextFieldCard({ label, hint, errorMessage, style, ...inputProps }: TextFieldCardProps) {
+  return (
+    <ContentCard>
+      <FormField hint={hint} label={label}>
+        <TextInput
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={[styles.input, errorMessage ? styles.errorInput : null, style]}
+          {...inputProps}
+        />
+      </FormField>
+    </ContentCard>
+  );
+}
+
+const styles = StyleSheet.create({
+  input: {
+    ...typography.textStyles.body,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    color: colors.text.title,
+    minHeight: metrics.minTouchSize,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  errorInput: {
+    borderColor: colors.semantic.danger,
+  },
+});

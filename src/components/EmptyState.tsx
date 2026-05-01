@@ -7,8 +7,8 @@ import { PrimaryButton } from './PrimaryButton';
 interface EmptyStateProps {
   title: string;
   description: string;
-  actionLabel: string;
-  onAction: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   iconName?: keyof typeof Ionicons.glyphMap;
 }
 
@@ -26,7 +26,7 @@ export function EmptyState({
       </View>
       <Text style={typography.textStyles.emptyTitle}>{title}</Text>
       <Text style={styles.description}>{description}</Text>
-      <PrimaryButton label={actionLabel} onPress={onAction} />
+      {actionLabel && onAction ? <PrimaryButton label={actionLabel} onPress={onAction} /> : null}
     </View>
   );
 }

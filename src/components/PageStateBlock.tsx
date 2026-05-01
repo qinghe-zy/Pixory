@@ -1,0 +1,94 @@
+import { Ionicons } from '@expo/vector-icons';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+
+import { commonButtonCopy, commonErrorCopy } from '../constants/copy';
+import { colors, typography } from '../design/tokens';
+import { ContentCard } from './ContentCard';
+import { EmptyState } from './EmptyState';
+import { PrimaryButton } from './PrimaryButton';
+
+interface PageStateBlockProps {
+  loading: boolean;
+  errorMessage?: string | null;
+  isEmpty: boolean;
+  emptyTitle: string;
+  emptyDescription: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
+  emptyIconName?: keyof typeof Ionicons.glyphMap;
+  children: ReactNode;
+  retryLabel?: string;
+  onRetry?: () => void;
+  loadingTitle?: string;
+  loadingDescription?: string;
+  errorTitle?: string;
+}
+
+export function PageStateBlock({
+  loading,
+  errorMessage,
+  isEmpty,
+  emptyTitle,
+  emptyDescription,
+  emptyActionLabel,
+  onEmptyAction,
+  emptyIconName,
+  children,
+  retryLabel = commonButtonCopy.retry,
+  onRetry,
+  loadingTitle = commonErrorCopy.genericLoadingTitle,
+  loadingDescription = '请稍候，这里的内容会在本地数据读取完成后展示。',
+  errorTitle = commonErrorCopy.pageUnavailableTitle,
+}: PageStateBlockProps) {
+  if (loading) {
+    return (
+      <ContentCard style={styles.feedbackCard}>
+        <ActivityIndicator color={colors.primary.default} size="small" />
+        <Text style={styles.feedbackTitle}>{loadingTitle}</Text>
+        <Text style={styles.feedbackText}>{loadingDescription}</Text>
+      </ContentCard>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <ContentCard style={styles.feedbackCard}>
+        <Text style={styles.feedbackTitle}>{errorTitle}</Text>
+        <Text style={styles.feedbackText}>{errorMessage}</Text>
+        {onRetry ? <PrimaryButton label={retryLabel} onPress={onRetry} variant="outline" /> : null}
+      </ContentCard>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <EmptyState
+        actionLabel={emptyActionLabel}
+        description={emptyDescription}
+        iconName={emptyIconName}
+        onAction={onEmptyAction}
+        title={emptyTitle}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
+const styles = StyleSheet.create({
+  feedbackCard: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    maxWidth: 320,
+    width: '100%',
+  },
+  feedbackTitle: {
+    ...typography.textStyles.emptyTitle,
+    textAlign: 'center',
+  },
+  feedbackText: {
+    ...typography.textStyles.emptyDescription,
+    textAlign: 'center',
+  },
+});

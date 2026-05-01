@@ -1,17 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
-import { ipRepository, type IpLibraryFilter, type IpListItem } from '../database';
-import { colors, componentTokens, layout, shadows, spacing, typography } from '../design/tokens';
-import { AppScreen } from '../components/AppScreen';
-import { ContentCard } from '../components/ContentCard';
-import { EmptyState } from '../components/EmptyState';
+import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FilterChip } from '../components/FilterChip';
-import { Header } from '../components/Header';
 import { IPCard } from '../components/IPCard';
+import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
+import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
+import { ipRepository, type IpLibraryFilter, type IpListItem } from '../database';
+import { colors, componentTokens, layout, spacing } from '../design/tokens';
+import { useScreenLoad } from '../hooks/useScreenLoad';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部' },
@@ -36,10 +37,21 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
-  const [items, setItems] = useState<IpListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  const { data: items = [], isLoading, errorMessage, reload } = useScreenLoad<IpListItem[]>(
+    () =>
+      ipRepository.findLibraryItems({
+        filter: activeFilter,
+        searchText,
+      }),
+    [activeFilter, refreshKey, searchText],
+    {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `读取 IP 资产失败：${message}`;
+      },
+      initialData: [],
+    }
+  );
 
   async function handleQuickCreateTestIp() {
     try {
@@ -49,52 +61,17 @@ export function HomeLibraryScreen({
       });
       setSearchText('');
       setActiveFilter('recent');
-      setReloadKey((current) => current + 1);
+      reload();
       onOpenIp(createdIp.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      setErrorMessage(`快速创建测试 IP 失败：${message}`);
+      Alert.alert('快速创建测试 IP 失败', message);
     }
   }
 
   useEffect(() => {
     setActiveFilter(initialFilter);
   }, [initialFilter, refreshKey]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadIps() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const records = await ipRepository.findLibraryItems({
-          filter: activeFilter,
-          searchText,
-        });
-
-        if (isMounted) {
-          setItems(records);
-        }
-      } catch (error) {
-        if (isMounted) {
-          const message = error instanceof Error ? error.message : '未知错误';
-          setErrorMessage(`读取 IP 资产失败：${message}`);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadIps();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeFilter, refreshKey, reloadKey, searchText]);
 
   const rightSlot = useMemo(
     () => (
@@ -114,9 +91,7 @@ export function HomeLibraryScreen({
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
   return (
-    <AppScreen scrollable>
-      <Header rightSlot={rightSlot} sideWidth={componentTokens.iconButton.size} title="IP资产库" />
-
+    <ScreenScaffold rightAction={rightSlot} scrollable title="IP资产库">
       <View style={styles.topArea}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索IP名称或关键词" value={searchText} />
         <View style={styles.filterRow}>
@@ -132,73 +107,64 @@ export function HomeLibraryScreen({
         <View style={styles.actionRow}>
           <PrimaryButton label="新建IP" onPress={onCreateIp} />
         </View>
-        {/* Dev-only regression helpers must stay out of the formal action area. */}
-        {__DEV__ ? (
-          <ContentCard style={styles.devToolsCard}>
-            <Text style={styles.devToolsTitle}>开发回归入口</Text>
-            <Text style={styles.devToolsHint}>
-              仅用于开发回归，必须保持与正式“新建IP”入口隔离，避免影响正式点击区域。
-            </Text>
-            <View style={styles.devToolsActions}>
-              <PrimaryButton label="快速建测试IP" onPress={handleQuickCreateTestIp} variant="outline" />
-              {onOpenImportDevelopment ? (
-                <PrimaryButton label="导入检查" onPress={onOpenImportDevelopment} variant="outline" />
-              ) : null}
-            </View>
-          </ContentCard>
-        ) : null}
+        <DevOnlyCard
+          description="仅用于开发回归，必须保持与正式“新建IP”入口隔离，避免影响正式点击区域。"
+          title="开发回归入口"
+        >
+          <PrimaryButton label="快速建测试IP" onPress={handleQuickCreateTestIp} variant="outline" />
+          {onOpenImportDevelopment ? (
+            <PrimaryButton label="导入检查" onPress={onOpenImportDevelopment} variant="outline" />
+          ) : null}
+        </DevOnlyCard>
       </View>
 
-      {errorMessage ? (
-        <View style={styles.feedbackCard}>
-          <Text style={styles.feedbackTitle}>列表暂时不可用</Text>
-          <Text style={styles.feedbackText}>{errorMessage}</Text>
-          <PrimaryButton label="重新加载" onPress={() => setReloadKey((current) => current + 1)} variant="outline" />
-        </View>
-      ) : null}
-
-      {isLoading ? (
-        <View style={styles.feedbackCard}>
-          <Text style={styles.feedbackTitle}>正在读取本地资产库</Text>
-          <Text style={styles.feedbackText}>SQLite 数据加载完成后，这里会展示真实的 IP 列表。</Text>
-        </View>
-      ) : null}
-
-      {isLibraryCompletelyEmpty ? (
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            actionLabel="创建第一个IP"
-            description="创建第一个IP，开始整理你的图片与形象素材"
-            onAction={onCreateIp}
-            title="还没有IP资产"
-          />
-        </View>
-      ) : null}
-
-      {isSearchOrFilterEmpty ? (
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            actionLabel={activeFilter === 'favorite' ? '新建IP' : '清空搜索'}
-            description={
-              activeFilter === 'favorite'
+      <View style={styles.emptyWrap}>
+        <PageStateBlock
+          emptyActionLabel={
+            isLibraryCompletelyEmpty
+              ? commonButtonCopy.createFirstIp
+              : activeFilter === 'favorite'
+                ? commonButtonCopy.createIp
+                : commonButtonCopy.clearSearch
+          }
+          emptyDescription={
+            isLibraryCompletelyEmpty
+              ? commonEmptyStateCopy.noIpsDescription
+              : activeFilter === 'favorite'
                 ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
                 : '试试更短的关键词，或者切换到其他筛选条件。'
-            }
-            iconName={activeFilter === 'favorite' ? 'star-outline' : 'search-outline'}
-            onAction={activeFilter === 'favorite' ? onCreateIp : () => setSearchText('')}
-            title={activeFilter === 'favorite' ? '还没有收藏的IP' : '没有找到匹配结果'}
-          />
-        </View>
-      ) : null}
-
-      {!isLoading && !errorMessage && items.length > 0 ? (
-        <View style={styles.grid}>
-          {items.map((item) => (
-            <IPCard ip={item} key={item.id} onPress={onOpenIp} />
-          ))}
-        </View>
-      ) : null}
-    </AppScreen>
+          }
+          emptyIconName={
+            activeFilter === 'favorite'
+              ? 'star-outline'
+              : isLibraryCompletelyEmpty
+                ? 'archive-outline'
+                : 'search-outline'
+          }
+          emptyTitle={
+            isLibraryCompletelyEmpty
+              ? commonEmptyStateCopy.noIpsTitle
+              : activeFilter === 'favorite'
+                ? commonEmptyStateCopy.noFavoritesTitle
+                : commonEmptyStateCopy.noSearchResultTitle
+          }
+          errorMessage={errorMessage}
+          errorTitle={commonErrorCopy.listUnavailableTitle}
+          isEmpty={isLibraryCompletelyEmpty || isSearchOrFilterEmpty}
+          loading={isLoading}
+          loadingDescription="SQLite 数据加载完成后，这里会展示真实的 IP 列表。"
+          loadingTitle="正在读取本地资产库"
+          onEmptyAction={activeFilter === 'favorite' || isLibraryCompletelyEmpty ? onCreateIp : () => setSearchText('')}
+          onRetry={reload}
+        >
+          <View style={styles.grid}>
+            {items.map((item) => (
+              <IPCard ip={item} key={item.id} onPress={onOpenIp} />
+            ))}
+          </View>
+        </PageStateBlock>
+      </View>
+    </ScreenScaffold>
   );
 }
 
@@ -212,12 +178,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
     borderRadius: componentTokens.iconButton.radius,
     borderWidth: StyleSheet.hairlineWidth,
+    elevation: 2,
     height: componentTokens.iconButton.size,
     justifyContent: 'center',
     minWidth: componentTokens.iconButton.size,
-    zIndex: 2,
-    elevation: 2,
     width: componentTokens.iconButton.size,
+    zIndex: 2,
   },
   topArea: {
     gap: spacing[3],
@@ -229,33 +195,6 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     gap: spacing[3],
-  },
-  devToolsCard: {
-    gap: spacing[3],
-  },
-  devToolsTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  devToolsHint: {
-    ...typography.textStyles.caption,
-  },
-  devToolsActions: {
-    gap: spacing[3],
-  },
-  feedbackCard: {
-    ...shadows.xs,
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
-    padding: spacing[5],
-  },
-  feedbackTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  feedbackText: {
-    ...typography.textStyles.body,
   },
   emptyWrap: {
     paddingTop: spacing[5],

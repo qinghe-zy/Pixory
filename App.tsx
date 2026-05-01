@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppScreen } from './src/components/AppScreen';
 import { PrimaryButton } from './src/components/PrimaryButton';
@@ -19,6 +20,7 @@ import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
 import { ensureAppDirectories } from './src/services/fileStorageService';
+import { isDevToolsEnabled } from './src/utils/dev';
 
 type AppRoute =
   | { name: 'home'; initialFilter?: IpLibraryFilter }
@@ -98,16 +100,18 @@ export default function App() {
 
   if (!isReady) {
     return (
-      <AppScreen contentStyle={styles.stateScreen}>
-        <View style={styles.stateCard}>
-          <Text style={styles.title}>Pixory</Text>
-          <Text style={styles.message}>{status}</Text>
-          {initializationError ? (
-            <PrimaryButton label="重新初始化" onPress={() => setInitializationKey((current) => current + 1)} variant="outline" />
-          ) : null}
-        </View>
-        <StatusBar style="dark" />
-      </AppScreen>
+      <SafeAreaProvider>
+        <AppScreen contentStyle={styles.stateScreen}>
+          <View style={styles.stateCard}>
+            <Text style={styles.title}>Pixory</Text>
+            <Text style={styles.message}>{status}</Text>
+            {initializationError ? (
+              <PrimaryButton label="重新初始化" onPress={() => setInitializationKey((current) => current + 1)} variant="outline" />
+            ) : null}
+          </View>
+          <StatusBar style="dark" />
+        </AppScreen>
+      </SafeAreaProvider>
     );
   }
 
@@ -209,21 +213,21 @@ export default function App() {
     content = <ImportDevelopmentScreen onBack={popRoute} />;
   } else {
     content = (
-      <HomeLibraryScreen
-        initialFilter={currentRoute.name === 'home' ? currentRoute.initialFilter : 'all'}
-        onCreateIp={() => pushRoute({ name: 'create-ip' })}
-        onOpenImportDevelopment={__DEV__ ? () => pushRoute({ name: 'import-development' }) : undefined}
-        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
-        refreshKey={libraryRefreshToken}
-      />
+        <HomeLibraryScreen
+          initialFilter={currentRoute.name === 'home' ? currentRoute.initialFilter : 'all'}
+          onCreateIp={() => pushRoute({ name: 'create-ip' })}
+          onOpenImportDevelopment={isDevToolsEnabled ? () => pushRoute({ name: 'import-development' }) : undefined}
+          onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
+          refreshKey={libraryRefreshToken}
+        />
     );
   }
 
   return (
-    <>
+    <SafeAreaProvider>
       {content}
       <StatusBar style="dark" />
-    </>
+    </SafeAreaProvider>
   );
 }
 

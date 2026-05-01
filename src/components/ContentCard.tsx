@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, radius, shadows, spacing } from '../design/tokens';
+import { colors, metrics, radius, shadows, spacing } from '../design/tokens';
 
 interface ContentCardProps {
   children: ReactNode;
@@ -20,6 +20,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[4],
-    padding: spacing[5],
+    padding: metrics.cardPadding,
   },
 });

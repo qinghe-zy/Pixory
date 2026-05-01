@@ -2,11 +2,12 @@ import { groupRepository } from './repositories/groupRepository';
 import { imageRepository } from './repositories/imageRepository';
 import { ipRepository } from './repositories/ipRepository';
 import { tagRepository } from './repositories/tagRepository';
+import { devLog } from '../utils/dev';
 
 export async function seedDevelopmentData(): Promise<void> {
   const existingIpCount = await ipRepository.count();
   if (existingIpCount > 0) {
-    console.log('Pixory seed skipped: database already contains IP records.');
+    devLog('Pixory seed skipped: database already contains IP records.');
     return;
   }
 
@@ -69,6 +70,5 @@ export async function seedDevelopmentData(): Promise<void> {
   await tagRepository.replaceImageTags(firstImage.id, [warmTag.id, keyVisualTag.id]);
   await tagRepository.replaceImageTags(secondImage.id, [keyVisualTag.id]);
 
-  console.log('Pixory seed data created successfully.');
+  devLog('Pixory seed data created successfully.');
 }
-

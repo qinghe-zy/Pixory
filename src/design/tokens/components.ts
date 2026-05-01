@@ -1,6 +1,8 @@
 import { radius } from './radius';
+import { metrics } from './metrics';
 
 export const componentTokens = {
+  common: metrics,
   searchBar: {
     height: 36,
     horizontalPadding: 14,
@@ -8,18 +10,18 @@ export const componentTokens = {
     radius: radius.pill,
   },
   filterChip: {
-    height: 32,
-    horizontalPadding: 14,
+    height: metrics.chipHeight,
+    horizontalPadding: metrics.chipPaddingHorizontal,
     gap: 6,
     radius: radius.pill,
   },
   primaryButton: {
-    height: 44,
+    height: metrics.bottomActionHeight,
     horizontalPadding: 24,
     radius: radius.md,
   },
   iconButton: {
-    size: 44,
+    size: metrics.iconButtonSize,
     iconSize: 22,
     radius: radius.md,
   },

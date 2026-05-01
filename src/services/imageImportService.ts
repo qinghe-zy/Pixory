@@ -12,6 +12,7 @@ import {
   getFileInfo,
 } from './fileStorageService';
 import { generateThumbnail } from './thumbnailService';
+import { devLog } from '../utils/dev';
 
 export type PickedImageAsset = ImagePicker.ImagePickerAsset;
 
@@ -346,7 +347,7 @@ async function performSingleImageImport(
     const persistedImageRecord = await imageRepository.findById(createdImage.id, { includeDeleted: true });
     const persistedImageTags = await tagRepository.findByImageId(createdImage.id);
 
-    console.log('Pixory import persisted image asset:', {
+    devLog('Pixory import persisted image asset:', {
       imageAssetId: createdImage.id,
       originalFileUri: createdImage.originalFileUri,
       thumbnailFileUri: createdImage.thumbnailFileUri,
@@ -523,7 +524,7 @@ export async function verifyImportedImageFiles(
         Boolean(databaseRecord),
     };
 
-    console.log('Pixory imported image verification:', verificationItem);
+    devLog('Pixory imported image verification:', verificationItem);
     items.push(verificationItem);
   }
 
@@ -570,7 +571,7 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
     };
   }
 
-  console.log('Pixory import development check picked images:', {
+  devLog('Pixory import development check picked images:', {
     pickedImageCount: pickResult.pickedAssets.length,
     pickedAssets: pickResult.pickedAssets.map((asset, index) => ({
       index,
@@ -590,7 +591,7 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
   });
   const verification = await verifyImportedImageFiles(result.importedImages);
 
-  console.log('Pixory import development check summary:', {
+  devLog('Pixory import development check summary:', {
     pickedImageCount: pickResult.pickedAssets.length,
     successCount: result.successCount,
     failedCount: result.failedCount,

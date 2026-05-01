@@ -1,22 +1,30 @@
-import { Alert, Image, Keyboard, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AppScreen } from '../components/AppScreen';
 import { ContentCard } from '../components/ContentCard';
+import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FilterChip } from '../components/FilterChip';
+import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { FormField } from '../components/FormField';
-import { Header } from '../components/Header';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { ReadonlyFieldCard } from '../components/ReadonlyFieldCard';
+import { SwitchFieldCard } from '../components/SwitchFieldCard';
 import { TagChip } from '../components/TagChip';
+import { MultilineFieldCard } from '../components/MultilineFieldCard';
+import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
+import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, ipRepository, type GroupRecord, type IpRecord } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, metrics, radius, spacing, typography } from '../design/tokens';
+import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useSubmitState } from '../hooks/useSubmitState';
 import {
   importImagesToIp,
   pickImagesForImport,
   type PickedImageAsset,
 } from '../services/imageImportService';
+import { devLog } from '../utils/dev';
 
 interface ImportImagesScreenProps {
   ipId: number;
@@ -44,8 +52,28 @@ export function ImportImagesScreen({
   onBack,
   onImported,
 }: ImportImagesScreenProps) {
-  const [ip, setIp] = useState<IpRecord | null>(null);
-  const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const {
+    data: screenData,
+    errorMessage: loadErrorMessage,
+    reload,
+  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[] }>(
+    async () => {
+      const [ip, groups] = await Promise.all([
+        ipRepository.findById(ipId),
+        groupRepository.findByIpId(ipId),
+      ]);
+
+      return { ip, groups };
+    },
+    [ipId],
+    {
+      initialData: { ip: null, groups: [] },
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `读取导入配置失败：${message}`;
+      },
+    }
+  );
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(defaultGroupId ?? null);
   const [pickedAssets, setPickedAssets] = useState<PickedImageAsset[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -53,45 +81,19 @@ export function ImportImagesScreen({
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      try {
-        const [ipRecord, groupItems] = await Promise.all([
-          ipRepository.findById(ipId),
-          groupRepository.findByIpId(ipId),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setIp(ipRecord);
-        setGroups(groupItems);
-      } catch (error) {
-        if (isMounted) {
-          const message = error instanceof Error ? error.message : '未知错误';
-          setErrorMessage(`读取导入配置失败：${message}`);
-        }
-      }
-    }
-
-    load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [ipId]);
-
-  const canImport = useMemo(() => pickedAssets.length > 0 && !isSubmitting, [pickedAssets.length, isSubmitting]);
+  const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
+  const canImport = useMemo(
+    () => pickedAssets.length > 0 && !isSubmitting,
+    [pickedAssets.length, isSubmitting]
+  );
+  const ip = screenData?.ip ?? null;
+  const groups = screenData?.groups ?? [];
 
   async function handlePickImages() {
     setIsPicking(true);
-    setErrorMessage(null);
+    if (submitError) {
+      clearSubmitError();
+    }
 
     try {
       const result = await pickImagesForImport();
@@ -100,7 +102,7 @@ export function ImportImagesScreen({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      setErrorMessage(`选择图片失败：${message}`);
+      Alert.alert('选择图片失败', message);
     } finally {
       setIsPicking(false);
     }
@@ -121,31 +123,21 @@ export function ImportImagesScreen({
 
   function applyRegressionPreset() {
     setTags(['tagA', 'tagB']);
-    setNote('Android regression smoke import');
+    setNote('android import note');
     setIsFavorite(true);
   }
 
-  async function handleImport() {
-    Keyboard.dismiss();
+  function handleImport() {
+    void runSubmit(async () => {
+      const preparedTags = mergeDraftTag(tags, tagInput);
+      const preparedNote = note.trim();
 
-    if (pickedAssets.length === 0) {
-      setErrorMessage('请先选择要导入的图片。');
-      return;
-    }
+      if (preparedTags.length !== tags.length) {
+        setTags(preparedTags);
+        setTagInput('');
+      }
 
-    const preparedTags = mergeDraftTag(tags, tagInput);
-    const preparedNote = note.trim();
-
-    if (preparedTags.length !== tags.length) {
-      setTags(preparedTags);
-      setTagInput('');
-    }
-
-    setIsSubmitting(true);
-    setErrorMessage(null);
-
-    try {
-      console.log('Pixory import request payload:', {
+      devLog('Pixory import request payload:', {
         ipId,
         groupId: selectedGroupId,
         tagNames: preparedTags,
@@ -163,7 +155,7 @@ export function ImportImagesScreen({
         pickedAssets,
       });
 
-      console.log('Pixory import result readback:', {
+      devLog('Pixory import result readback:', {
         successCount: result.successCount,
         failedCount: result.failedCount,
         importedImages: result.importedImages.map((item) => ({
@@ -181,44 +173,47 @@ export function ImportImagesScreen({
           onPress: onImported,
         },
       ]);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
-      setErrorMessage(`导入失败：${message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
+    }, {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `导入失败：${message}`;
+      },
+      validate: () => (pickedAssets.length === 0 ? '请先选择要导入的图片。' : null),
+    });
   }
 
   return (
-    <AppScreen
-      dismissKeyboardOnTouch
-      footer={
-        <View style={styles.actions}>
-          <PrimaryButton disabled={!canImport} label="开始导入" loading={isSubmitting} onPress={handleImport} />
-          <PrimaryButton disabled={isSubmitting} label="取消返回" onPress={onBack} variant="ghost" />
-        </View>
+    <FormScreenScaffold
+      errorMessage={submitError ?? loadErrorMessage}
+      footerExtra={
+        loadErrorMessage ? (
+          <Text style={styles.reloadLink} onPress={reload}>
+            {commonButtonCopy.retry}
+          </Text>
+        ) : null
       }
-      scrollable
+      onBack={onBack}
+      primaryAction={{ disabled: !canImport, label: '开始导入', loading: isSubmitting, onPress: handleImport }}
+      secondaryAction={{ disabled: isSubmitting, label: '取消返回', onPress: onBack }}
+      title="导入图片"
     >
-      <Header onBack={onBack} title="导入图片" />
-
       <View style={styles.formWrap}>
-        <ContentCard>
-          <Text style={styles.infoTitle}>当前 IP</Text>
-          <Text style={styles.infoValue}>{ip?.name ?? `IP #${ipId}`}</Text>
-          {selectedGroupId ? (
-            <Text style={styles.infoHint}>
-              默认分组：{groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}
-            </Text>
-          ) : null}
-          {/* Dev-only preset for regression smoke checks; formal import flow must not depend on it. */}
-          {__DEV__ ? (
-            <View style={styles.devHintWrap}>
-              <Text style={styles.devHint}>仅用于开发回归：快速填入导入预设，不参与正式流程。</Text>
-              <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
-            </View>
-          ) : null}
-        </ContentCard>
+        <ReadonlyFieldCard
+          hint={
+            selectedGroupId
+              ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
+              : '这次导入的图片会归入当前 IP。'
+          }
+          label="当前 IP"
+          value={ip?.name ?? `IP #${ipId}`}
+        />
+
+        <DevOnlyCard
+          description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
+          title="开发回归入口"
+        >
+          <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
+        </DevOnlyCard>
 
         <ContentCard>
           <FormField hint="支持多选，导入时会复制原图并生成独立缩略图。" label="选择图片">
@@ -262,10 +257,11 @@ export function ImportImagesScreen({
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!isSubmitting}
+                maxLength={TAG_NAME_MAX_LENGTH}
                 onChangeText={(value) => {
                   setTagInput(value);
-                  if (errorMessage) {
-                    setErrorMessage(null);
+                  if (submitError) {
+                    clearSubmitError();
                   }
                 }}
                 placeholder="例如：海边、KV、立绘"
@@ -296,67 +292,36 @@ export function ImportImagesScreen({
           </FormField>
         </ContentCard>
 
-        <ContentCard>
-          <FormField hint="可选，给这批图片补充统一备注。" label="备注">
-            <TextInput
-              editable={!isSubmitting}
-              maxLength={160}
-              multiline
-              onChangeText={(value) => {
-                setNote(value);
-                if (errorMessage) {
-                  setErrorMessage(null);
-                }
-              }}
-              placeholder="例如：活动预热图、角色展示图、待二次挑选。"
-              placeholderTextColor={colors.text.placeholder}
-              selectionColor={colors.primary.default}
-              style={styles.multilineInput}
-              textAlignVertical="top"
-              value={note}
-            />
-          </FormField>
-        </ContentCard>
+        <MultilineFieldCard
+          editable={!isSubmitting}
+          hint="可选，给这批图片补充统一备注。"
+          label="备注"
+          maxLength={NOTE_MAX_LENGTH}
+          onChangeText={(value) => {
+            setNote(value);
+            if (submitError) {
+              clearSubmitError();
+            }
+          }}
+          placeholder="例如：活动预热图、角色展示图、待二次挑选。"
+          value={note}
+        />
 
-        <ContentCard style={styles.favoriteCard}>
-          <View style={styles.favoriteCopy}>
-            <Text style={styles.infoTitle}>默认收藏</Text>
-            <Text style={styles.infoHint}>开启后，这次导入的图片会全部标记为收藏。</Text>
-          </View>
-          <Switch
-            disabled={isSubmitting}
-            onValueChange={setIsFavorite}
-            thumbColor={colors.background.surface}
-            trackColor={{ false: colors.border.strong, true: colors.primary.default }}
-            value={isFavorite}
-          />
-        </ContentCard>
-
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+        <SwitchFieldCard
+          disabled={isSubmitting}
+          hint="开启后，这次导入的图片会全部标记为收藏。"
+          label="默认收藏"
+          onValueChange={setIsFavorite}
+          value={isFavorite}
+        />
       </View>
-    </AppScreen>
+    </FormScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[4],
-  },
-  infoTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  infoValue: {
-    ...typography.textStyles.body,
-    color: colors.text.title,
-  },
-  infoHint: {
-    ...typography.textStyles.caption,
-  },
-  devHintWrap: {
-    gap: spacing[3],
-  },
-  devHint: {
-    ...typography.textStyles.caption,
+    gap: metrics.formFieldGap,
   },
   previewRow: {
     flexDirection: 'row',
@@ -392,7 +357,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     color: colors.text.title,
     flex: 1,
-    minHeight: 44,
+    minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
   },
@@ -402,7 +367,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary.hover,
     borderRadius: radius.md,
     borderWidth: 1,
-    height: 44,
+    height: componentTokens.common.minTouchSize,
     flexDirection: 'row',
     gap: spacing[1],
     justifyContent: 'center',
@@ -418,34 +383,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing[2],
   },
-  multilineInput: {
-    ...typography.textStyles.body,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    color: colors.text.title,
-    minHeight: 120,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
-  },
-  favoriteCard: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  favoriteCopy: {
-    flex: 1,
-    gap: spacing[1],
-  },
-  errorText: {
-    ...typography.textStyles.caption,
-    color: colors.semantic.danger,
-  },
-  actions: {
-    gap: spacing[3],
-    paddingTop: spacing[2],
-  },
   pressed: {
     opacity: 0.82,
+  },
+  reloadLink: {
+    ...typography.textStyles.caption,
+    color: colors.primary.default,
   },
 });

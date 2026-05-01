@@ -1,15 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppScreen } from '../components/AppScreen';
 import { ContentCard } from '../components/ContentCard';
-import { EmptyState } from '../components/EmptyState';
-import { Header } from '../components/Header';
+import { PageStateBlock } from '../components/PageStateBlock';
+import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SectionHeader } from '../components/SectionHeader';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
+import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
+import { GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { imageRepository, ipRepository, type ImageListItem, type IpDetailRecord } from '../database';
 import { colors, componentTokens, layout, radius, spacing, typography } from '../design/tokens';
+import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
 
 interface IpDetailScreenProps {
@@ -44,49 +46,30 @@ export function IpDetailScreen({
   onOpenBatchManagement,
   onOpenImage,
 }: IpDetailScreenProps) {
-  const [ip, setIp] = useState<IpDetailRecord | null>(null);
-  const [recentImages, setRecentImages] = useState<ImageListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{
+    ip: IpDetailRecord;
+    recentImages: ImageListItem[];
+  }>(
+    async () => {
+      const [ip, recentImages] = await Promise.all([
+        ipRepository.findDetailById(ipId),
+        imageRepository.findRecentByIpId(ipId, 6),
+      ]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadIp() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const [detail, images] = await Promise.all([
-          ipRepository.findDetailById(ipId),
-          imageRepository.findRecentByIpId(ipId, 6),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setIp(detail);
-        setRecentImages(images);
-        setErrorMessage(detail ? null : '没有找到这个 IP。');
-      } catch (error) {
-        if (isMounted) {
-          const message = error instanceof Error ? error.message : '未知错误';
-          setErrorMessage(`读取详情失败：${message}`);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      if (!ip) {
+        throw new Error('没有找到这个 IP。');
       }
+
+      return { ip, recentImages };
+    },
+    [ipId, refreshToken],
+    {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return message === '没有找到这个 IP。' ? message : `读取详情失败：${message}`;
+      },
     }
-
-    loadIp();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [ipId, refreshToken]);
+  );
 
   const rightSlot = useMemo(
     () => (
@@ -96,6 +79,9 @@ export function IpDetailScreen({
     ),
     [onEdit]
   );
+
+  const ip = data?.ip;
+  const recentImages = data?.recentImages ?? [];
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
     if (key === 'import') {
@@ -117,92 +103,85 @@ export function IpDetailScreen({
   }
 
   return (
-    <AppScreen scrollable>
-      <Header onBack={onBack} rightSlot={rightSlot} title="IP详情" />
-
-      {ip ? (
-        <>
-          <View style={styles.hero}>
-            <View style={styles.titleRow}>
-              <Text style={styles.title}>{ip.name}</Text>
-              {ip.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={18} /> : null}
+    <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
+      <PageStateBlock
+        emptyDescription=""
+        emptyTitle=""
+        errorMessage={errorMessage}
+        errorTitle="IP详情不可用"
+        isEmpty={false}
+        loading={isLoading}
+        loadingDescription="本地 IP 详情读取完成后，这里会展示图片、分组和标签概览。"
+        loadingTitle="正在读取 IP 详情"
+        onRetry={reload}
+      >
+        {ip ? (
+          <>
+            <View style={styles.hero}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>{ip.name}</Text>
+                {ip.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={18} /> : null}
+              </View>
+              <Text style={styles.description}>{ip.description || '还没有简介'}</Text>
             </View>
-            <Text style={styles.description}>{ip.description || '还没有简介'}</Text>
-          </View>
 
-          <ContentCard style={styles.statsCard}>
-            <StatBlock label="图片数量" value={String(ip.imageCount)} />
-            <StatBlock label="分组数量" value={String(ip.groupCount)} />
-            <StatBlock label="标签数量" value={String(ip.tagCount)} />
-            <StatBlock label="最近更新" value={formatDateTime(ip.recentUpdatedAt)} />
-          </ContentCard>
+            <ContentCard style={styles.statsCard}>
+              <StatBlock label="图片数量" value={String(ip.imageCount)} />
+              <StatBlock label="分组数量" value={String(ip.groupCount)} />
+              <StatBlock label="标签数量" value={String(ip.tagCount)} />
+              <StatBlock label="最近更新" value={formatDateTime(ip.recentUpdatedAt)} />
+            </ContentCard>
 
-          <View style={styles.quickGrid}>
-            {QUICK_ACTIONS.map((action) => (
-              <Pressable
-                key={action.key}
-                onPress={() => handleQuickAction(action.key)}
-                style={({ pressed }) => [styles.quickCard, pressed && styles.pressed]}
-              >
-                <Ionicons color={colors.primary.default} name={action.icon} size={26} />
-                <Text style={styles.quickLabel}>{action.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <ContentCard>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>分组入口</Text>
-              <Pressable onPress={onOpenGroups} style={({ pressed }) => [pressed && styles.pressed]}>
-                <Text style={styles.sectionLink}>查看全部</Text>
-              </Pressable>
-            </View>
-            <View style={styles.groupEntryList}>
-              {GROUP_TYPE_OPTIONS.map((groupType) => (
-                <Pressable key={groupType.value} onPress={onOpenGroups} style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}>
-                  <Text style={styles.groupEntryTitle}>{groupType.label}</Text>
-                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+            <SectionHeader title="快捷操作" />
+            <View style={styles.quickGrid}>
+              {QUICK_ACTIONS.map((action) => (
+                <Pressable
+                  key={action.key}
+                  onPress={() => handleQuickAction(action.key)}
+                  style={({ pressed }) => [styles.quickCard, pressed && styles.pressed]}
+                >
+                  <Ionicons color={colors.primary.default} name={action.icon} size={26} />
+                  <Text style={styles.quickLabel}>{action.label}</Text>
                 </Pressable>
               ))}
             </View>
-          </ContentCard>
 
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>最近图片</Text>
-            {recentImages.length > 0 ? (
-              <Pressable onPress={onOpenAllImages} style={({ pressed }) => [pressed && styles.pressed]}>
-                <Text style={styles.sectionLink}>全部图片</Text>
-              </Pressable>
-            ) : null}
-          </View>
+            <ContentCard>
+              <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={onOpenGroups} title="分组入口" />
+              <View style={styles.groupEntryList}>
+                {GROUP_TYPE_OPTIONS.map((groupType) => (
+                  <Pressable key={groupType.value} onPress={onOpenGroups} style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}>
+                    <Text style={styles.groupEntryTitle}>{groupType.label}</Text>
+                    <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                  </Pressable>
+                ))}
+              </View>
+            </ContentCard>
 
-          {recentImages.length > 0 ? (
-            <View style={styles.recentGrid}>
-              {recentImages.map((image) => (
-                <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
-              ))}
-            </View>
-          ) : null}
-
-          {!isLoading && recentImages.length === 0 ? (
-            <EmptyState
-              actionLabel="导入图片"
-              description="导入第一批素材后，这里会显示最近导入的图片。"
-              iconName="image-outline"
-              onAction={onImportImages}
-              title="还没有图片"
+            <SectionHeader
+              actionLabel={recentImages.length > 0 ? commonButtonCopy.allImages : undefined}
+              onActionPress={recentImages.length > 0 ? onOpenAllImages : undefined}
+              title="最近图片"
             />
-          ) : null}
-        </>
-      ) : null}
-
-      {errorMessage && !ip ? (
-        <ContentCard>
-          <Text style={styles.sectionTitle}>IP详情不可用</Text>
-          <Text style={styles.description}>{errorMessage}</Text>
-        </ContentCard>
-      ) : null}
-    </AppScreen>
+            <PageStateBlock
+              emptyActionLabel={commonButtonCopy.importImages}
+              emptyDescription="导入第一批素材后，这里会显示最近导入的图片。"
+              emptyIconName="image-outline"
+              emptyTitle={commonEmptyStateCopy.noImagesTitle}
+              isEmpty={recentImages.length === 0}
+              loading={false}
+              onEmptyAction={onImportImages}
+            >
+              <View style={styles.recentGrid}>
+                {recentImages.map((image) => (
+                  <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+                ))}
+              </View>
+            </PageStateBlock>
+          </>
+        ) : null}
+      </PageStateBlock>
+    </ScreenScaffold>
   );
 }
 
@@ -284,19 +263,6 @@ const styles = StyleSheet.create({
   quickLabel: {
     ...typography.textStyles.sectionTitle,
   },
-  sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  sectionLink: {
-    ...typography.textStyles.caption,
-    color: colors.primary.default,
-    fontWeight: '500',
-  },
   groupEntryList: {
     gap: spacing[2],
   },
@@ -306,7 +272,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 44,
+    minHeight: componentTokens.common.minTouchSize,
     paddingHorizontal: spacing[4],
   },
   groupEntryTitle: {

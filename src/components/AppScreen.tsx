@@ -3,7 +3,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   TouchableWithoutFeedback,
@@ -11,6 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, layout, spacing } from '../design/tokens';
 
@@ -33,18 +33,21 @@ export function AppScreen({
   footerStyle,
   dismissKeyboardOnTouch = false,
 }: AppScreenProps) {
+  const insets = useSafeAreaInsets();
+  const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset;
+
   const body = scrollable ? (
     <ScrollView
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={[styles.scrollContent, contentStyle]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
       style={styles.flex}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.content, contentStyle]}>{children}</View>
+    <View style={[styles.content, { paddingBottom: bodyBottomPadding }, contentStyle]}>{children}</View>
   );
 
   const screenContent = (
@@ -53,32 +56,44 @@ export function AppScreen({
       style={styles.flex}
     >
       {body}
-      {footer ? <View style={[styles.footer, footerStyle]}>{footer}</View> : null}
+      {footer ? (
+        <View
+          style={[
+            styles.footer,
+            {
+              paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
+            },
+            footerStyle,
+          ]}
+        >
+          {footer}
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 
   if (dismissKeyboardOnTouch) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor }]}>
+      <View style={[styles.safeArea, { backgroundColor }]}>
         <TouchableWithoutFeedback accessible={false} onPress={Keyboard.dismiss}>
           {screenContent}
         </TouchableWithoutFeedback>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (scrollable) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor }]}>
+      <View style={[styles.safeArea, { backgroundColor }]}>
         {screenContent}
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor }]}>
+    <View style={[styles.safeArea, { backgroundColor }]}>
       {screenContent}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -92,19 +107,16 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingBottom: layout.screenBottomPadding,
     gap: spacing[6],
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingBottom: layout.screenBottomPadding,
     gap: spacing[6],
   },
   footer: {
     backgroundColor: colors.background.page,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingBottom: layout.screenBottomPadding,
     paddingTop: spacing[3],
   },
 });
