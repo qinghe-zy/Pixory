@@ -179,13 +179,13 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
           title="开发回归入口"
         >
           <Pressable
-            accessibilityLabel="应用管理回归编辑预设"
+            accessibilityLabel="应用最终回归编辑预设"
             hitSlop={8}
             onPress={() => {
-              setOriginalFilename('edited_manage_image.png');
+              setOriginalFilename('final_edited_image.png');
               setTags(['editTagA', 'editTagB']);
               setTagInput('');
-              setNote('edited manage note');
+              setNote('final edited note');
               setIsFavorite(false);
               if (submitError) {
                 clearSubmitError();
@@ -193,7 +193,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
             }}
             style={({ pressed }) => [styles.devPresetButton, pressed && styles.pressed]}
           >
-            <Text style={styles.devPresetLabel}>应用管理回归编辑预设</Text>
+            <Text style={styles.devPresetLabel}>应用最终回归编辑预设</Text>
           </Pressable>
         </DevOnlyCard>
 

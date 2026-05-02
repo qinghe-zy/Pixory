@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppScreen } from './src/components/AppScreen';
+import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { colors, spacing, typography } from './src/design/tokens';
 import { initDatabase, type IpLibraryFilter } from './src/database';
@@ -13,6 +14,8 @@ import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
 import { CreateIpScreen } from './src/screens/CreateIpScreen';
 import { EditIpScreen } from './src/screens/EditIpScreen';
 import { EditImageScreen } from './src/screens/EditImageScreen';
+import { FavoritesScreen } from './src/screens/FavoritesScreen';
+import { GlobalGroupsScreen } from './src/screens/GlobalGroupsScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
@@ -20,13 +23,18 @@ import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
+import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
+import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
+import { TagResultScreen } from './src/screens/TagResultScreen';
+import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
+import { TrashScreen } from './src/screens/TrashScreen';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import { isDevToolsEnabled } from './src/utils/dev';
 
 type AppRoute =
-  | { name: 'home'; initialFilter?: IpLibraryFilter }
+  | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
   | { name: 'create-ip' }
   | { name: 'ip-detail'; ipId: number }
   | { name: 'edit-ip'; ipId: number }
@@ -45,10 +53,14 @@ type AppRoute =
   | { name: 'all-images'; ipId: number }
   | { name: 'image-detail'; imageId: number }
   | { name: 'move-image-group'; imageId: number }
+  | { name: 'tag-result'; tagId: number }
+  | { name: 'favorites' }
+  | { name: 'recent-viewed' }
+  | { name: 'trash' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
-const INITIAL_ROUTE: AppRoute = { name: 'home' };
+const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
 
 export default function App() {
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
@@ -111,7 +123,11 @@ export default function App() {
   }
 
   function resetHome(filter: IpLibraryFilter = 'all') {
-    setRouteStack([{ name: 'home', initialFilter: filter }]);
+    setRouteStack([{ name: 'root', tab: 'home', initialFilter: filter }]);
+  }
+
+  function switchRootTab(tab: RootTabKey) {
+    setRouteStack([{ name: 'root', tab }]);
   }
 
   if (!isReady) {
@@ -130,6 +146,11 @@ export default function App() {
       </SafeAreaProvider>
     );
   }
+
+  const rootFooter =
+    currentRoute.name === 'root' ? (
+      <BottomTabBar activeTab={currentRoute.tab} onSelectTab={switchRootTab} />
+    ) : undefined;
 
   let content;
 
@@ -281,6 +302,33 @@ export default function App() {
         refreshToken={libraryRefreshToken}
       />
     );
+  } else if (currentRoute.name === 'tag-result') {
+    content = (
+      <TagResultScreen
+        onBack={popRoute}
+        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        refreshToken={libraryRefreshToken}
+        tagId={currentRoute.tagId}
+      />
+    );
+  } else if (currentRoute.name === 'favorites') {
+    content = (
+      <FavoritesScreen
+        onBack={popRoute}
+        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'recent-viewed') {
+    content = (
+      <RecentViewedScreen
+        onBack={popRoute}
+        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'trash') {
+    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} />;
   } else if (currentRoute.name === 'placeholder') {
     content = <PlaceholderScreen description={currentRoute.description} onBack={popRoute} title={currentRoute.title} />;
   } else if (currentRoute.name === 'import-development') {
@@ -293,15 +341,41 @@ export default function App() {
         title="开发入口不可用"
       />
     );
+  } else if (currentRoute.tab === 'groups') {
+    content = (
+      <GlobalGroupsScreen
+        footer={rootFooter}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.tab === 'tags') {
+    content = (
+      <TagsOverviewScreen
+        footer={rootFooter}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.tab === 'me') {
+    content = (
+      <MeScreen
+        footer={rootFooter}
+        onOpenFavorites={() => pushRoute({ name: 'favorites' })}
+        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed' })}
+        onOpenTrash={() => pushRoute({ name: 'trash' })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
   } else {
     content = (
-        <HomeLibraryScreen
-          initialFilter={currentRoute.name === 'home' ? currentRoute.initialFilter : 'all'}
-          onCreateIp={() => pushRoute({ name: 'create-ip' })}
-          onOpenImportDevelopment={isDevToolsEnabled ? () => pushRoute({ name: 'import-development' }) : undefined}
-          onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
-          refreshKey={libraryRefreshToken}
-        />
+      <HomeLibraryScreen
+        footer={rootFooter}
+        initialFilter={currentRoute.initialFilter ?? 'all'}
+        onCreateIp={() => pushRoute({ name: 'create-ip' })}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
+        refreshKey={libraryRefreshToken}
+      />
     );
   }
 

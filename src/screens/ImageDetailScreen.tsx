@@ -61,6 +61,7 @@ export function ImageDetailScreen({
 
         setImage(detail);
         setTags(tagItems);
+        void imageRepository.touchLastViewedAt(imageId);
         devLog('Pixory image detail readback:', {
           imageId: detail.id,
           groupName: detail.groupName,

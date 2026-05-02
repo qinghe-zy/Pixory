@@ -1,4 +1,6 @@
 import type {
+  GlobalGroupListItem,
+  GlobalGroupListItemRow,
   GroupListItem,
   GroupListItemRow,
   ImageAssetRecord,
@@ -12,6 +14,8 @@ import type {
   IpListItemRow,
   IpRecord,
   IpRow,
+  TagUsageItem,
+  TagUsageItemRow,
 } from './types';
 
 export type SqlValue = number | string | null;
@@ -115,6 +119,24 @@ export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
     imageCount: row.imageCount ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+  };
+}
+
+export function mapGlobalGroupListItemRow(row: GlobalGroupListItemRow): GlobalGroupListItem {
+  return {
+    ...mapGroupListItemRow(row),
+    ipName: row.ipName,
+  };
+}
+
+export function mapTagUsageItemRow(row: TagUsageItemRow): TagUsageItem {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    imageCount: row.imageCount ?? 0,
+    lastUsedAt: row.lastUsedAt ?? null,
   };
 }
 

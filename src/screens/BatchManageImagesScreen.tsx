@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
+import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FilterChip } from '../components/FilterChip';
 import { FormField } from '../components/FormField';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -18,6 +19,7 @@ import { colors, componentTokens, layout, metrics, radius, spacing, typography }
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { getFileInfo } from '../services/fileStorageService';
+import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 
@@ -403,6 +405,25 @@ export function BatchManageImagesScreen({
         {mode === 'add-tags' ? (
           <ContentCard>
             <FormField hint="输入后点击添加，保存时会为选中的图片追加标签，不会覆盖原有标签。" label="标签">
+              {isDevToolsEnabled ? (
+                <DevOnlyCard
+                  description="仅用于开发回归，快速填入固定 batchTag，避免 adb 文本注入污染标签字段。"
+                  title="开发回归入口"
+                >
+                  {/* 仅用于开发回归，正式提测前移除。 */}
+                  <PrimaryButton
+                    label="写入 batchTag 预设"
+                    onPress={() => {
+                      setDraftTags(['batchTag']);
+                      setTagInput('');
+                      if (submitError) {
+                        clearSubmitError();
+                      }
+                    }}
+                    variant="outline"
+                  />
+                </DevOnlyCard>
+              ) : null}
               <View style={styles.tagInputRow}>
                 <TextInput
                   autoCapitalize="none"

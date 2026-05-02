@@ -1,5 +1,8 @@
 export const appRoutes = {
-  home: '/ips',
+  home: '/tabs/home',
+  groups: '/tabs/groups',
+  tags: '/tabs/tags',
+  me: '/tabs/me',
   createIp: '/ips/new',
   ipDetail: '/ips/:id',
   editIp: '/ips/:id/edit',
@@ -12,6 +15,10 @@ export const appRoutes = {
   allImages: '/ips/:id/images',
   imageDetail: '/images/:imageId',
   moveImageGroup: '/images/:imageId/group',
+  tagResult: '/tags/:tagId',
+  favorites: '/me/favorites',
+  recentViewed: '/me/recent-viewed',
+  trash: '/me/trash',
   placeholder: '/placeholder/:title',
   importDevelopment: '/dev/import-check',
 } as const;

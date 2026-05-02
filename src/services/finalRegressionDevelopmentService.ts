@@ -2,29 +2,29 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'react-native';
 
 import { groupRepository, imageRepository, ipRepository, tagRepository } from '../database';
-import { getFileInfo, getTempDir, ensureAppDirectories } from './fileStorageService';
+import { ensureAppDirectories, getFileInfo, getTempDir } from './fileStorageService';
 import { importImagesToIp, verifyImportedImageFiles, type PickedImageAsset } from './imageImportService';
 
 const REGRESSION_SOURCE_ASSETS = [
   {
     module: require('../../assets/icon.png'),
-    fileName: 'manage_regression_01_icon.png',
+    fileName: 'final_regression_01_icon.png',
   },
   {
     module: require('../../assets/adaptive-icon.png'),
-    fileName: 'manage_regression_02_adaptive.png',
+    fileName: 'final_regression_02_adaptive.png',
   },
   {
     module: require('../../assets/splash-icon.png'),
-    fileName: 'manage_regression_03_splash.png',
+    fileName: 'final_regression_03_splash.png',
   },
   {
     module: require('../../assets/favicon.png'),
-    fileName: 'manage_regression_04_favicon.png',
+    fileName: 'final_regression_04_favicon.png',
   },
 ] as const;
 
-export interface ManageRegressionDatasetResult {
+export interface FinalRegressionDatasetResult {
   timestamp: string;
   ipId: number;
   ipName: string;
@@ -36,7 +36,7 @@ export interface ManageRegressionDatasetResult {
   verification: Awaited<ReturnType<typeof verifyImportedImageFiles>>;
 }
 
-export interface ManageRegressionImageSnapshot {
+export interface FinalRegressionImageSnapshot {
   imageId: number;
   originalFilename: string;
   groupId: number | null;
@@ -53,11 +53,14 @@ export interface ManageRegressionImageSnapshot {
   deletedAt: string | null;
 }
 
-export interface ManageRegressionStateResult {
+export interface FinalRegressionStateResult {
   ipId: number;
   ipName: string;
   groupNames: string[];
-  imageSnapshots: ManageRegressionImageSnapshot[];
+  totalCount: number;
+  activeCount: number;
+  deletedCount: number;
+  imageSnapshots: FinalRegressionImageSnapshot[];
 }
 
 function buildTimestamp(): string {
@@ -78,10 +81,7 @@ function resolveBundledImageSource(moduleId: number): { uri: string; width: numb
   };
 }
 
-async function materializeRegressionSourceFile(
-  sourceUri: string,
-  destinationUri: string
-): Promise<void> {
+async function materializeRegressionSourceFile(sourceUri: string, destinationUri: string): Promise<void> {
   if (sourceUri.startsWith('http://') || sourceUri.startsWith('https://')) {
     await FileSystem.downloadAsync(sourceUri, destinationUri);
     return;
@@ -122,49 +122,49 @@ async function buildPickedRegressionAssets(timestamp: string): Promise<PickedIma
   return pickedAssets;
 }
 
-export async function createManageRegressionDataset(): Promise<ManageRegressionDatasetResult> {
+export async function createFinalRegressionDataset(): Promise<FinalRegressionDatasetResult> {
   const timestamp = buildTimestamp();
-  const ipName = `ManageRegressionIP_${timestamp}`;
-  const groupAName = `ManageGroupA_${timestamp}`;
-  const groupBName = `ManageGroupB_${timestamp}`;
+  const ipName = `FinalRegressionIP_${timestamp}`;
+  const groupAName = `FinalGroupA_${timestamp}`;
+  const groupBName = `FinalGroupB_${timestamp}`;
   const pickedAssets = await buildPickedRegressionAssets(timestamp);
 
   const ip = await ipRepository.create({
     name: ipName,
-    description: 'Dev-only image management regression dataset.',
+    description: 'Dev-only final regression dataset.',
   });
   const groupA = await groupRepository.create({
     ipId: ip.id,
     name: groupAName,
     type: 'custom',
-    description: 'Regression group A',
+    description: 'Final regression group A',
   });
   const groupB = await groupRepository.create({
     ipId: ip.id,
     name: groupBName,
     type: 'custom',
-    description: 'Regression group B',
+    description: 'Final regression group B',
   });
 
   const importResult = await importImagesToIp({
     ipId: ip.id,
     groupId: groupA.id,
     tagNames: ['tagA', 'tagB'],
-    note: 'manage regression note',
+    note: 'final regression note',
     isFavorite: true,
     pickedAssets,
   });
 
   if (importResult.failedCount > 0 || importResult.successCount < 4) {
     throw new Error(
-      `Regression dataset import is incomplete. success=${importResult.successCount}, failed=${importResult.failedCount}`
+      `Final regression dataset import is incomplete. success=${importResult.successCount}, failed=${importResult.failedCount}`
     );
   }
 
   const verification = await verifyImportedImageFiles(importResult.importedImages);
   const failedVerification = verification.items.find((item) => !item.allChecksPassed);
   if (failedVerification) {
-    throw new Error(`Regression dataset verification failed for image ${failedVerification.imageId}.`);
+    throw new Error(`Final regression dataset verification failed for image ${failedVerification.imageId}.`);
   }
 
   return {
@@ -180,8 +180,8 @@ export async function createManageRegressionDataset(): Promise<ManageRegressionD
   };
 }
 
-export async function readLatestManageRegressionState(): Promise<ManageRegressionStateResult | null> {
-  const regressionIp = (await ipRepository.findAll()).find((item) => item.name.startsWith('ManageRegressionIP_'));
+export async function readLatestFinalRegressionState(): Promise<FinalRegressionStateResult | null> {
+  const regressionIp = (await ipRepository.findAll()).find((item) => item.name.startsWith('FinalRegressionIP_'));
   if (!regressionIp) {
     return null;
   }
@@ -215,7 +215,7 @@ export async function readLatestManageRegressionState(): Promise<ManageRegressio
         originalSize: originalFile.size,
         thumbnailSize: thumbnailFile?.size ?? null,
         deletedAt: image.deletedAt,
-      } satisfies ManageRegressionImageSnapshot;
+      } satisfies FinalRegressionImageSnapshot;
     })
   );
 
@@ -223,6 +223,9 @@ export async function readLatestManageRegressionState(): Promise<ManageRegressio
     ipId: regressionIp.id,
     ipName: regressionIp.name,
     groupNames: groups.map((group) => group.name),
+    totalCount: imageSnapshots.length,
+    activeCount: imageSnapshots.filter((image) => image.deletedAt == null).length,
+    deletedCount: imageSnapshots.filter((image) => image.deletedAt != null).length,
     imageSnapshots,
   };
 }

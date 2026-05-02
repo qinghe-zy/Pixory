@@ -1,6 +1,6 @@
 import { getDatabase } from '../db';
-import type { CountRow, CreateTagInput, TagRecord, UpdateTagInput } from '../types';
-import { buildUpdateStatement, createTimestamp, requireNonEmptyText } from '../utils';
+import type { CountRow, CreateTagInput, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
+import { buildUpdateStatement, createTimestamp, mapTagUsageItemRow, requireNonEmptyText } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 function normalizeTagNames(tagNames: string[]): string[] {
@@ -198,6 +198,42 @@ export const tagRepository = {
       ipId
     );
     return row?.count ?? 0;
+  },
+
+  async findUsageOverview(): Promise<TagUsageItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt) END) AS lastUsedAt
+       FROM tags
+       LEFT JOIN image_tags ON image_tags.tagId = tags.id
+       LEFT JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       GROUP BY tags.id
+       ORDER BY tags.name COLLATE NOCASE ASC, tags.id ASC`
+    );
+
+    return rows.map(mapTagUsageItemRow);
+  },
+
+  async findUsageOverviewByIpId(ipId: number): Promise<TagUsageItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT image_assets.id) AS imageCount,
+         MAX(COALESCE(image_assets.lastViewedAt, image_assets.updatedAt)) AS lastUsedAt
+       FROM tags
+       INNER JOIN image_tags ON image_tags.tagId = tags.id
+       INNER JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL
+       GROUP BY tags.id
+       ORDER BY tags.name COLLATE NOCASE ASC, tags.id ASC`,
+      ipId
+    );
+
+    return rows.map(mapTagUsageItemRow);
   },
 
   async replaceImageTags(imageAssetId: number, tagIds: number[]): Promise<void> {

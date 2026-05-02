@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixory · Design Tokens</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Noto+Sans+SC:wght@300;400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* ── Brand Colors ── */
+    --color-gold-50:  #FBF6ED;
+    --color-gold-100: #F5E9CF;
+    --color-gold-200: #EDD49E;
+    --color-gold-300: #DEB96E;
+    --color-gold-400: #C8A150;   /* primary brand */
+    --color-gold-500: #B08A38;
+    --color-gold-600: #8B6D28;
+    --color-gold-700: #634D1A;
+    --color-gold-800: #3D2F0E;
+
+    /* ── Neutral / Warm Grays ── */
+    --color-warm-0:   #FEFCF9;   /* page bg */
+    --color-warm-50:  #FAF7F2;   /* surface bg */
+    --color-warm-100: #F3EFE8;   /* card / input bg */
+    --color-warm-200: #E8E2D8;   /* border light */
+    --color-warm-300: #D4CCC0;   /* border medium */
+    --color-warm-400: #B8AFA3;   /* text tertiary */
+    --color-warm-500: #8A837A;   /* text secondary */
+    --color-warm-600: #5E5850;   /* text muted */
+    --color-warm-700: #3A3530;   /* text primary */
+    --color-warm-800: #211E1A;   /* text heading */
+    --color-warm-900: #120F0C;   /* text display */
+
+    /* ── Semantic ── */
+    --color-star:     #F0C040;   /* favorite / star */
+    --color-danger:   #E85555;   /* delete / destructive */
+    --color-success:  #5BAD7A;
+    --color-info:     #5B8FC8;
+
+    /* ── Background ── */
+    --bg-page:        var(--color-warm-0);
+    --bg-surface:     var(--color-warm-50);
+    --bg-card:        #FFFFFF;
+    --bg-input:       var(--color-warm-100);
+    --bg-tag:         var(--color-warm-100);
+    --bg-tag-active:  var(--color-gold-400);
+    --bg-overlay:     rgba(0,0,0,0.04);
+
+    /* ── Text ── */
+    --text-display:   var(--color-warm-900);
+    --text-heading:   var(--color-warm-800);
+    --text-primary:   var(--color-warm-700);
+    --text-secondary: var(--color-warm-500);
+    --text-tertiary:  var(--color-warm-400);
+    --text-on-gold:   #FFFFFF;
+    --text-gold:      var(--color-gold-400);
+    --text-brand:     var(--color-gold-400);
+
+    /* ── Border ── */
+    --border-light:   var(--color-warm-200);
+    --border-medium:  var(--color-warm-300);
+    --border-input:   var(--color-warm-200);
+    --border-card:    rgba(0,0,0,0.06);
+
+    /* ── Radius ── */
+    --radius-xs:   4px;
+    --radius-sm:   8px;
+    --radius-md:   12px;
+    --radius-lg:   16px;
+    --radius-xl:   20px;
+    --radius-pill: 9999px;
+
+    /* ── Shadow ── */
+    --shadow-card:    0 2px 12px rgba(160,130,80,0.08), 0 0 0 0.5px rgba(160,130,80,0.10);
+    --shadow-float:   0 4px 20px rgba(140,110,60,0.14);
+    --shadow-banner:  0 8px 32px rgba(100,80,40,0.18);
+
+    /* ── Spacing ── */
+    --space-1:   4px;
+    --space-2:   8px;
+    --space-3:   12px;
+    --space-4:   16px;
+    --space-5:   20px;
+    --space-6:   24px;
+    --space-8:   32px;
+    --space-10:  40px;
+    --space-12:  48px;
+
+    /* ── Typography ── */
+    --font-display:  'DM Serif Display', 'Noto Serif SC', serif;
+    --font-ui:       'DM Sans', 'Noto Sans SC', sans-serif;
+    --font-body:     'Noto Sans SC', 'DM Sans', sans-serif;
+
+    --text-xs:   11px;
+    --text-sm:   12px;
+    --text-base: 14px;
+    --text-md:   16px;
+    --text-lg:   18px;
+    --text-xl:   20px;
+    --text-2xl:  24px;
+    --text-3xl:  28px;
+    --text-4xl:  36px;
+
+    /* ── Line height ── */
+    --lh-tight:  1.2;
+    --lh-snug:   1.4;
+    --lh-normal: 1.6;
+    --lh-loose:  1.8;
+
+    /* ── Z-index ── */
+    --z-base:    0;
+    --z-float:   10;
+    --z-nav:     100;
+    --z-modal:   1000;
+
+    /* ── Animation ── */
+    --ease-out:  cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur-fast:  120ms;
+    --dur-base:  200ms;
+    --dur-slow:  360ms;
+
+    /* ── Bottom Nav ── */
+    --nav-height: 56px;
+    --nav-icon-active: var(--color-gold-400);
+    --nav-icon-inactive: var(--color-warm-400);
+
+    /* ── Component: Bottom Sheet ── */
+    --bottom-sheet-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: #F0EBE2;
+    color: var(--text-primary);
+    line-height: var(--lh-normal);
+    font-size: var(--text-base);
+    min-height: 100vh;
+  }
+
+  /* ─── Layout ─── */
+  .page-header {
+    background: var(--bg-card);
+    border-bottom: 0.5px solid var(--border-light);
+    padding: 48px 64px 40px;
+    text-align: center;
+  }
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 42px;
+    color: var(--color-gold-400);
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }
+  .page-subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-top: 6px;
+    letter-spacing: 0.12em;
+  }
+  .page-desc {
+    font-size: var(--text-base);
+    color: var(--text-secondary);
+    margin-top: 16px;
+    max-width: 480px;
+    margin-inline: auto;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 40px;
+  }
+
+  .section {
+    margin-bottom: 56px;
+  }
+  .section-label {
+    font-family: var(--font-ui);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 0.5px;
+    background: var(--border-light);
+  }
+
+  /* ─── Color Swatches ─── */
+  .swatch-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .swatch-block {
+    height: 56px;
+    border-radius: var(--radius-sm);
+    border: 0.5px solid rgba(0,0,0,0.06);
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .swatch-block:hover { transform: scale(1.04); }
+  .swatch-name {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    line-height: 1.3;
+  }
+  .swatch-hex {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-family: monospace;
+  }
+
+  /* ─── Color rows ─── */
+  .color-ramp {
+    display: grid;
+    grid-template-columns: 100px repeat(9, 1fr);
+    gap: 0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 0.5px solid rgba(0,0,0,0.08);
+    margin-bottom: 8px;
+  }
+  .ramp-label {
+    background: var(--bg-card);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-right: 0.5px solid var(--border-light);
+  }
+  .ramp-swatch {
+    height: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 4px;
+  }
+  .ramp-swatch span {
+    font-size: 9px;
+    line-height: 1.2;
+    color: rgba(0,0,0,0.45);
+    font-family: monospace;
+  }
+  .ramp-swatch.dark span { color: rgba(255,255,255,0.55); }
+
+  /* ─── Typography Scale ─── */
+  .type-scale-row {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 0.5px solid var(--border-light);
+  }
+  .type-meta {
+    width: 160px;
+    flex-shrink: 0;
+  }
+  .type-role { font-size: 11px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.08em; }
+  .type-spec { font-size: 10px; color: var(--text-tertiary); font-family: monospace; margin-top: 2px; }
+  .type-sample { flex: 1; }
+
+  /* ─── Spacing Scale ─── */
+  .space-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 16px;
+  }
+  .space-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .space-bar-wrap {
+    height: 40px;
+    display: flex;
+    align-items: center;
+  }
+  .space-bar {
+    background: var(--color-gold-400);
+    height: 8px;
+    border-radius: 2px;
+    opacity: 0.7;
+  }
+  .space-meta { font-size: 11px; }
+  .space-name { font-weight: 500; color: var(--text-secondary); }
+  .space-val  { color: var(--text-tertiary); font-family: monospace; }
+
+  /* ─── Radius Scale ─── */
+  .radius-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+  }
+  .radius-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .radius-box {
+    width: 80px;
+    height: 80px;
+    background: var(--bg-card);
+    border: 1.5px solid var(--color-gold-400);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .radius-label { font-size: 11px; text-align: center; color: var(--text-secondary); }
+  .radius-val   { font-size: 10px; font-family: monospace; color: var(--text-tertiary); }
+
+  /* ─── Shadow Scale ─── */
+  .shadow-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+  }
+  .shadow-item {
+    background: var(--bg-card);
+    padding: 24px 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+  }
+  .shadow-name { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+  .shadow-val  { font-size: 10px; font-family: monospace; color: var(--text-tertiary); max-width: 220px; word-break: break-all; }
+
+  /* ─── Component Demos ─── */
+  .component-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+  }
+  .component-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--border-light);
+    padding: 20px;
+  }
+  .component-title {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+  }
+
+  /* Search Bar */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius-pill);
+    padding: 10px 16px;
+    border: 0.5px solid var(--border-input);
+  }
+  .search-icon { font-size: 14px; color: var(--text-tertiary); }
+  .search-placeholder { font-size: 13px; color: var(--text-tertiary); flex: 1; }
+
+  /* Pills / Tabs */
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 400;
+    padding: 6px 16px;
+    border-radius: var(--radius-pill);
+    border: 0.5px solid var(--border-light);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--dur-base) var(--ease-out);
+  }
+  .pill.active {
+    background: var(--color-gold-400);
+    color: var(--text-on-gold);
+    border-color: var(--color-gold-400);
+    font-weight: 500;
+  }
+
+  /* Tags */
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-tag);
+    color: var(--text-secondary);
+    border: 0.5px solid var(--border-light);
+  }
+  .tag.gold {
+    background: var(--color-gold-50);
+    color: var(--color-gold-600);
+    border-color: var(--color-gold-200);
+  }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--color-gold-400);
+    color: #fff;
+    border-color: var(--color-gold-400);
+  }
+  .btn-primary:hover { background: var(--color-gold-500); }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border-color: var(--border-medium);
+  }
+  .btn-secondary:hover { background: var(--bg-input); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: transparent;
+    padding: 10px 12px;
+  }
+  .btn-danger {
+    background: transparent;
+    color: var(--color-danger);
+    border-color: var(--color-danger);
+  }
+  .btn-sm { font-size: 12px; padding: 6px 16px; border-radius: 6px; }
+  .btn-pill { border-radius: var(--radius-pill); }
+
+  /* Input Fields */
+  .field-group { display: flex; flex-direction: column; gap: 10px; }
+  .field {
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 0.5px solid var(--border-input);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    outline: none;
+    width: 100%;
+    transition: border-color var(--dur-fast) var(--ease-out);
+  }
+  .field:focus { border-color: var(--color-gold-400); }
+  .field::placeholder { color: var(--text-tertiary); }
+  .field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+
+  /* Toggle */
+  .toggle-wrap { display: flex; align-items: center; gap: 10px; }
+  .toggle {
+    width: 44px; height: 26px;
+    border-radius: 13px;
+    background: var(--color-gold-400);
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur-base) var(--ease-out);
+    flex-shrink: 0;
+  }
+  .toggle.off { background: var(--color-warm-300); }
+  .toggle-knob {
+    position: absolute;
+    top: 3px; right: 3px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    transition: right var(--dur-base) var(--ease-spring);
+  }
+  .toggle.off .toggle-knob { right: auto; left: 3px; }
+  .toggle-label { font-size: 13px; color: var(--text-primary); }
+
+  /* Stat Block */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 14px 8px;
+    border-right: 0.5px solid var(--border-light);
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-num { font-size: 20px; font-weight: 700; color: var(--text-heading); }
+  .stat-lbl { font-size: 11px; color: var(--text-tertiary); }
+
+  /* Action button row */
+  .action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    border: 0.5px solid var(--border-light);
+    cursor: pointer;
+  }
+  .action-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-xs);
+    background: var(--bg-card);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .action-label { font-size: 11px; color: var(--text-secondary); text-align: center; }
+
+  /* Image card */
+  .img-card {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--color-warm-100);
+    position: relative;
+  }
+  .img-placeholder {
+    width: 100%;
+    aspect-ratio: 3/4;
+    background: linear-gradient(145deg, #C8D8E8 0%, #A8C0D8 50%, #90AABF 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+  }
+  .img-card-meta { padding: 8px 10px; }
+  .img-card-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+  .img-card-date { font-size: 10px; color: var(--text-tertiary); margin-top: 1px; }
+  .img-card-star {
+    position: absolute;
+    top: 8px; right: 8px;
+    font-size: 14px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+  }
+
+  /* Bottom nav */
+  .bottom-nav {
+    display: flex;
+    background: var(--bg-card);
+    border-top: 0.5px solid var(--border-light);
+    padding: 8px 0 2px;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 0;
+    cursor: pointer;
+  }
+  .nav-icon { font-size: 18px; color: var(--nav-icon-inactive); }
+  .nav-lbl  { font-size: 10px; color: var(--nav-icon-inactive); }
+  .nav-item.active .nav-icon { color: var(--nav-icon-active); }
+  .nav-item.active .nav-lbl  { color: var(--nav-icon-active); font-weight: 500; }
+
+  /* Metadata row */
+  .meta-table { width: 100%; }
+  .meta-table tr td { padding: 7px 0; border-bottom: 0.5px solid var(--border-light); font-size: 13px; }
+  .meta-table tr:last-child td { border-bottom: none; }
+  .meta-table .key { color: var(--text-tertiary); width: 80px; }
+  .meta-table .val { color: var(--text-primary); font-weight: 400; }
+
+  /* Divider */
+  .divider { height: 0.5px; background: var(--border-light); margin: 20px 0; }
+
+  /* Motion tokens demo */
+  .motion-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+  .motion-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 0.5px solid var(--border-light);
+    min-width: 140px;
+  }
+  .motion-dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--color-gold-400);
+    opacity: 0.8;
+  }
+  .motion-name { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+  .motion-spec { font-size: 10px; font-family: monospace; color: var(--text-tertiary); }
+
+  /* Chip for semantic color */
+  .semantic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .semantic-item {
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .semantic-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+  .semantic-hex   { font-size: 10px; font-family: monospace; opacity: 0.75; }
+  .semantic-use   { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+
+  /* App name display */
+  .app-name-demo {
+    font-family: var(--font-display);
+    font-size: 40px;
+    color: var(--color-gold-400);
+    letter-spacing: 0.03em;
+    line-height: 1;
+  }
+  .app-tagline {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.16em;
+    margin-top: 6px;
+  }
+
+  /* Token table */
+  .token-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .token-table th { text-align: left; padding: 8px 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); border-bottom: 0.5px solid var(--border-light); }
+  .token-table td { padding: 7px 12px; border-bottom: 0.5px solid var(--border-light); color: var(--text-primary); vertical-align: middle; }
+  .token-table tr:last-child td { border-bottom: none; }
+  .token-name { font-family: monospace; font-size: 11px; color: var(--color-gold-600); }
+  .token-preview { display: inline-block; width: 16px; height: 16px; border-radius: 3px; vertical-align: middle; border: 0.5px solid rgba(0,0,0,0.08); }
+
+  /* Full page bg for sections */
+  .section-bg {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    border: 0.5px solid var(--border-light);
+    margin-bottom: 32px;
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <div class="app-name-demo">Pixory</div>
+  <div class="app-tagline">珍藏每一份灵感</div>
+  <p class="page-desc">Design Token Reference · Visual System Redesign</p>
+</header>
+
+<div class="container">
+
+  <!-- ── COLOR SYSTEM ── -->
+  <div class="section">
+    <div class="section-label">Color System</div>
+
+    <div class="section-bg">
+      <p class="component-title" style="margin-bottom:20px;">Brand Gold Ramp</p>
+      <div class="color-ramp">
+        <div class="ramp-label">Gold</div>
+        <div class="ramp-swatch" style="background:#FBF6ED;"><span>50</span></div>
+        <div class="ramp-swatch" style="background:#F5E9CF;"><span>100</span></div>
+        <div class="ramp-swatch" style="background:#EDD49E;"><span>200</span></div>
+        <div class="ramp-swatch" style="background:#DEB96E;"><span>300</span></div>
+        <div class="ramp-swatch dark" style="background:#C8A150;"><span style="color:rgba(255,255,255,0.7)">400</span></div>
+        <div class="ramp-swatch dark" style="background:#B08A38;"><span style="color:rgba(255,255,255,0.7)">500</span></div>
+        <div class="ramp-swatch dark" style="background:#8B6D28;"><span style="color:rgba(255,255,255,0.7)">600</span></div>
+        <div class="ramp-swatch dark" style="background:#634D1A;"><span style="color:rgba(255,255,255,0.7)">700</span></div>
+        <div class="ramp-swatch dark" style="background:#3D2F0E;"><span style="color:rgba(255,255,255,0.7)">800</span></div>
+      </div>
+
+      <p class="component-title" style="margin: 20px 0 16px;">Warm Neutral Ramp</p>
+      <div class="color-ramp">
+        <div class="ramp-label">Warm</div>
+        <div class="ramp-swatch" style="background:#FEFCF9;"><span>0</span></div>
+        <div class="ramp-swatch" style="background:#FAF7F2;"><span>50</span></div>
+        <div class="ramp-swatch" style="background:#F3EFE8;"><span>100</span></div>
+        <div class="ramp-swatch" style="background:#E8E2D8;"><span>200</span></div>
+        <div class="ramp-swatch" style="background:#D4CCC0;"><span>300</span></div>
+        <div class="ramp-swatch dark" style="background:#B8AFA3;"><span style="color:rgba(255,255,255,0.7)">400</span></div>
+        <div class="ramp-swatch dark" style="background:#8A837A;"><span style="color:rgba(255,255,255,0.7)">500</span></div>
+        <div class="ramp-swatch dark" style="background:#5E5850;"><span style="color:rgba(255,255,255,0.7)">600</span></div>
+        <div class="ramp-swatch dark" style="background:#3A3530;"><span style="color:rgba(255,255,255,0.7)">700</span></div>
+      </div>
+
+      <p class="component-title" style="margin: 20px 0 16px;">Semantic Colors</p>
+      <div class="semantic-grid">
+        <div class="semantic-item" style="background:#FBF6ED; border: 0.5px solid #EDD49E;">
+          <span class="semantic-label" style="color:#8B6D28;">Brand Primary</span>
+          <span class="semantic-hex" style="color:#8B6D28;">#C8A150</span>
+          <span class="semantic-use" style="color:#8B6D28;">Active tab, CTA, logo, star active</span>
+        </div>
+        <div class="semantic-item" style="background:#FAF7F2; border: 0.5px solid #E8E2D8;">
+          <span class="semantic-label" style="color:#5E5850;">Page Background</span>
+          <span class="semantic-hex" style="color:#5E5850;">#FAF7F2</span>
+          <span class="semantic-use" style="color:#5E5850;">App screen background</span>
+        </div>
+        <div class="semantic-item" style="background:#FEECE8; border: 0.5px solid #F5B8AD;">
+          <span class="semantic-label" style="color:#C0392B;">Danger</span>
+          <span class="semantic-hex" style="color:#C0392B;">#E85555</span>
+          <span class="semantic-use" style="color:#C0392B;">Delete, destructive actions</span>
+        </div>
+        <div class="semantic-item" style="background:#EFF8F3; border: 0.5px solid #A8D8BE;">
+          <span class="semantic-label" style="color:#2E7D52;">Success</span>
+          <span class="semantic-hex" style="color:#2E7D52;">#5BAD7A</span>
+          <span class="semantic-use" style="color:#2E7D52;">Confirmation states</span>
+        </div>
+        <div class="semantic-item" style="background:#FFF8E1; border: 0.5px solid #FFD54F;">
+          <span class="semantic-label" style="color:#7A6000;">Star / Favorite</span>
+          <span class="semantic-hex" style="color:#7A6000;">#F0C040</span>
+          <span class="semantic-use" style="color:#7A6000;">Bookmark, favorite icon</span>
+        </div>
+        <div class="semantic-item" style="background:#EBF3FC; border: 0.5px solid #A8C8EE;">
+          <span class="semantic-label" style="color:#1565A8;">Info</span>
+          <span class="semantic-hex" style="color:#1565A8;">#5B8FC8</span>
+          <span class="semantic-use" style="color:#1565A8;">Informational states</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TYPOGRAPHY ── -->
+  <div class="section">
+    <div class="section-label">Typography</div>
+    <div class="section-bg">
+
+      <div class="type-scale-row" style="border-top: 0.5px solid var(--border-light);">
+        <div class="type-meta">
+          <div class="type-role">Display · App Name</div>
+          <div class="type-spec">DM Serif Display · 40px · normal</div>
+        </div>
+        <div class="type-sample app-name-demo" style="font-size:40px;">Pixory</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Heading 1 · IP Name</div>
+          <div class="type-spec">Noto Sans SC · 20px · 700</div>
+        </div>
+        <div class="type-sample" style="font-size:20px;font-weight:700;color:var(--text-heading);">小夏</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Heading 2 · Section</div>
+          <div class="type-spec">Noto Sans SC · 18px · 600</div>
+        </div>
+        <div class="type-sample" style="font-size:18px;font-weight:600;color:var(--text-heading);">最近图片</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Stat Number</div>
+          <div class="type-spec">DM Sans · 20px · 700</div>
+        </div>
+        <div class="type-sample" style="font-size:20px;font-weight:700;color:var(--text-heading);font-family:var(--font-ui);">268</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Body · Description</div>
+          <div class="type-spec">Noto Sans SC · 14px · 300</div>
+        </div>
+        <div class="type-sample" style="font-size:14px;font-weight:300;color:var(--text-secondary);">夏日海风与少女的故事，温柔、自由、治愈。</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Caption · Date / Label</div>
+          <div class="type-spec">DM Sans · 12px · 400</div>
+        </div>
+        <div class="type-sample" style="font-size:12px;color:var(--text-tertiary);font-family:var(--font-ui);">2024/05/24</div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Tag / Badge</div>
+          <div class="type-spec">Noto Sans SC · 12px · 400</div>
+        </div>
+        <div class="type-sample">
+          <span class="tag">海边</span>&nbsp;
+          <span class="tag">黄昏</span>&nbsp;
+          <span class="tag gold">季节限定</span>
+        </div>
+      </div>
+
+      <div class="type-scale-row">
+        <div class="type-meta">
+          <div class="type-role">Nav Label</div>
+          <div class="type-spec">Noto Sans SC · 10px · 400</div>
+        </div>
+        <div class="type-sample" style="font-size:10px;color:var(--nav-icon-active);font-weight:500;">首页</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPACING ── -->
+  <div class="section">
+    <div class="section-label">Spacing Scale</div>
+    <div class="section-bg">
+      <div class="space-grid">
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:4px;"></div></div><div class="space-meta"><div class="space-name">--space-1</div><div class="space-val">4px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:8px;"></div></div><div class="space-meta"><div class="space-name">--space-2</div><div class="space-val">8px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:12px;"></div></div><div class="space-meta"><div class="space-name">--space-3</div><div class="space-val">12px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:16px;"></div></div><div class="space-meta"><div class="space-name">--space-4</div><div class="space-val">16px · Page H Pad</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:20px;"></div></div><div class="space-meta"><div class="space-name">--space-5</div><div class="space-val">20px · Section Gap</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:24px;"></div></div><div class="space-meta"><div class="space-name">--space-6</div><div class="space-val">24px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:32px;"></div></div><div class="space-meta"><div class="space-name">--space-8</div><div class="space-val">32px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:40px;"></div></div><div class="space-meta"><div class="space-name">--space-10</div><div class="space-val">40px</div></div></div>
+        <div class="space-item"><div class="space-bar-wrap"><div class="space-bar" style="width:48px;"></div></div><div class="space-meta"><div class="space-name">--space-12</div><div class="space-val">48px</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BORDER RADIUS ── -->
+  <div class="section">
+    <div class="section-label">Border Radius</div>
+    <div class="section-bg">
+      <div class="radius-grid">
+        <div class="radius-item"><div class="radius-box" style="border-radius:4px;"></div><div class="radius-label">xs</div><div class="radius-val">4px · icon</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:8px;"></div><div class="radius-label">sm</div><div class="radius-val">8px · input, btn</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:12px;"></div><div class="radius-label">md</div><div class="radius-val">12px · card</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:16px;"></div><div class="radius-label">lg</div><div class="radius-val">16px · banner</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:20px;"></div><div class="radius-label">xl</div><div class="radius-val">20px · sheet</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:9999px; width:80px; height:36px;"></div><div class="radius-label">pill</div><div class="radius-val">9999px · tab, tag</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SHADOW ── -->
+  <div class="section">
+    <div class="section-label">Shadows</div>
+    <div class="section-bg" style="background: var(--bg-surface);">
+      <div class="shadow-grid">
+        <div class="shadow-item" style="box-shadow: var(--shadow-card);">
+          <div class="shadow-name">Card</div>
+          <div class="shadow-val">0 2px 12px rgba(160,130,80,0.08) + 0.5px border rgba(160,130,80,0.10)</div>
+        </div>
+        <div class="shadow-item" style="box-shadow: var(--shadow-float);">
+          <div class="shadow-name">Float</div>
+          <div class="shadow-val">0 4px 20px rgba(140,110,60,0.14)</div>
+        </div>
+        <div class="shadow-item" style="box-shadow: var(--shadow-banner);">
+          <div class="shadow-name">Banner</div>
+          <div class="shadow-val">0 8px 32px rgba(100,80,40,0.18)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── COMPONENTS ── -->
+  <div class="section">
+    <div class="section-label">Components</div>
+    <div class="component-grid">
+
+      <!-- Search Bar -->
+      <div class="component-card">
+        <div class="component-title">Search Bar</div>
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <span class="search-placeholder">搜索 IP / 图片 / 标签</span>
+        </div>
+      </div>
+
+      <!-- Filter Pills -->
+      <div class="component-card">
+        <div class="component-title">Filter Tabs · Pill</div>
+        <div class="pill-row">
+          <div class="pill active">全部</div>
+          <div class="pill">最近更新</div>
+          <div class="pill">已收藏</div>
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div class="component-card">
+        <div class="component-title">Tags</div>
+        <div class="tag-row">
+          <span class="tag">海边</span>
+          <span class="tag">黄昏</span>
+          <span class="tag">蓝色</span>
+          <span class="tag">头像</span>
+          <span class="tag gold">季节限定</span>
+          <span class="tag" style="border-style:dashed; color: var(--color-gold-500);">+ 添加</span>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="component-card">
+        <div class="component-title">Buttons</div>
+        <div class="btn-row">
+          <button class="btn btn-primary">保存</button>
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-danger btn-sm">删除</button>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="btn-row">
+            <button class="btn btn-primary btn-pill btn-sm">导入图片</button>
+            <button class="btn btn-secondary btn-pill btn-sm">新建分组</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toggle -->
+      <div class="component-card">
+        <div class="component-title">Toggle</div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="toggle-wrap">
+            <div class="toggle"><div class="toggle-knob"></div></div>
+            <span class="toggle-label">收藏状态 · 已收藏</span>
+          </div>
+          <div class="toggle-wrap">
+            <div class="toggle off"><div class="toggle-knob"></div></div>
+            <span class="toggle-label" style="color:var(--text-tertiary);">未收藏</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Form Fields -->
+      <div class="component-card">
+        <div class="component-title">Input Fields</div>
+        <div class="field-group">
+          <div>
+            <div class="field-label" style="margin-bottom:5px;">文件名</div>
+            <input class="field" type="text" value="xiaxia_beach_001.jpg">
+          </div>
+          <div>
+            <div class="field-label" style="margin-bottom:5px;">备注</div>
+            <textarea class="field" rows="2" style="resize:none;">傍晚的海风很好。</textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stat Grid -->
+      <div class="component-card">
+        <div class="component-title">Stats Row</div>
+        <div class="stat-grid">
+          <div class="stat-item"><div class="stat-num">268</div><div class="stat-lbl">图片</div></div>
+          <div class="stat-item"><div class="stat-num">12</div><div class="stat-lbl">分组</div></div>
+          <div class="stat-item"><div class="stat-num">24</div><div class="stat-lbl">标签</div></div>
+          <div class="stat-item"><div class="stat-num" style="font-size:13px;line-height:1.3;">2024/<br>05/24</div><div class="stat-lbl">最近更新</div></div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="component-card">
+        <div class="component-title">Action Grid</div>
+        <div class="action-grid">
+          <div class="action-btn"><div class="action-icon">⬆</div><div class="action-label">导入图片</div></div>
+          <div class="action-btn"><div class="action-icon">📁</div><div class="action-label">新建分组</div></div>
+          <div class="action-btn"><div class="action-icon">🖼</div><div class="action-label">全部图片</div></div>
+          <div class="action-btn"><div class="action-icon">⚙</div><div class="action-label">批量管理</div></div>
+        </div>
+      </div>
+
+      <!-- Image Card Grid -->
+      <div class="component-card">
+        <div class="component-title">Image Card</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="img-card">
+            <div class="img-placeholder" style="aspect-ratio:3/4;background:linear-gradient(145deg,#B8CCE0,#8BAFC8);font-size:22px;">🌊</div>
+            <div class="img-card-star">⭐</div>
+            <div class="img-card-meta"><div class="img-card-name">小夏_海边_001</div><div class="img-card-date">2024/05/24</div></div>
+          </div>
+          <div class="img-card">
+            <div class="img-placeholder" style="aspect-ratio:3/4;background:linear-gradient(145deg,#C8D0E0,#A0A8C0);font-size:22px;">🐰</div>
+            <div class="img-card-meta"><div class="img-card-name">白昼兔_草地_003</div><div class="img-card-date">2024/05/23</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Image Detail Meta -->
+      <div class="component-card">
+        <div class="component-title">Image Metadata</div>
+        <table class="meta-table">
+          <tr><td class="key">所属 IP</td><td class="val">小夏</td></tr>
+          <tr><td class="key">所在分组</td><td class="val">季节限定 › 夏日海边</td></tr>
+          <tr><td class="key">尺寸</td><td class="val">1080 × 1440</td></tr>
+          <tr><td class="key">格式</td><td class="val">JPG</td></tr>
+          <tr><td class="key">上传时间</td><td class="val">2024/05/24 18:32</td></tr>
+          <tr><td class="key">备注</td><td class="val" style="color:var(--text-secondary);">傍晚的海风很好。</td></tr>
+        </table>
+      </div>
+
+      <!-- Bottom Nav -->
+      <div class="component-card" style="padding:0; overflow:hidden;">
+        <div class="component-title" style="padding:16px 20px 0;">Bottom Navigation</div>
+        <div style="height:12px;"></div>
+        <div class="bottom-nav" style="border-radius:0;">
+          <div class="nav-item active"><div class="nav-icon">🏠</div><div class="nav-lbl">首页</div></div>
+          <div class="nav-item"><div class="nav-icon">📂</div><div class="nav-lbl">分组</div></div>
+          <div class="nav-item"><div class="nav-icon">🏷</div><div class="nav-lbl">标签</div></div>
+          <div class="nav-item"><div class="nav-icon">👤</div><div class="nav-lbl">我的</div></div>
+        </div>
+      </div>
+
+      <!-- Subgroup Entry Cards -->
+      <div class="component-card">
+        <div class="component-title">Subgroup Entry</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="padding:12px;border-radius:var(--radius-sm);background:var(--bg-input);border:0.5px solid var(--border-light);">
+            <div style="font-size:12px;font-weight:500;color:var(--text-primary);">季节限定</div>
+            <div style="font-size:20px;font-weight:700;color:var(--text-heading);margin-top:2px;">86</div>
+          </div>
+          <div style="padding:12px;border-radius:var(--radius-sm);background:var(--bg-input);border:0.5px solid var(--border-light);">
+            <div style="font-size:12px;font-weight:500;color:var(--text-primary);">场景限定</div>
+            <div style="font-size:20px;font-weight:700;color:var(--text-heading);margin-top:2px;">74</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── MOTION ── -->
+  <div class="section">
+    <div class="section-label">Motion & Animation</div>
+    <div class="section-bg">
+      <div class="motion-grid">
+        <div class="motion-item">
+          <div class="motion-dot" style="animation: pulse 1.2s var(--ease-out) infinite;"></div>
+          <div class="motion-name">Fast</div>
+          <div class="motion-spec">--dur-fast: 120ms</div>
+          <div class="motion-spec">micro-interactions</div>
+        </div>
+        <div class="motion-item">
+          <div class="motion-dot" style="animation: pulse 2s var(--ease-out) infinite;"></div>
+          <div class="motion-name">Base</div>
+          <div class="motion-spec">--dur-base: 200ms</div>
+          <div class="motion-spec">state transitions</div>
+        </div>
+        <div class="motion-item">
+          <div class="motion-dot" style="animation: pulse 3s var(--ease-out) infinite;"></div>
+          <div class="motion-name">Slow</div>
+          <div class="motion-spec">--dur-slow: 360ms</div>
+          <div class="motion-spec">page / modal enter</div>
+        </div>
+        <div class="motion-item">
+          <div class="motion-dot" style="animation: bounce 1.5s var(--ease-spring) infinite;"></div>
+          <div class="motion-name">Spring</div>
+          <div class="motion-spec">ease-spring</div>
+          <div class="motion-spec">toggle knob, FAB</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CSS VARIABLE REFERENCE ── -->
+  <div class="section">
+    <div class="section-label">CSS Token Reference</div>
+    <div class="section-bg" style="padding:0; overflow:hidden;">
+      <table class="token-table">
+        <thead>
+          <tr><th>Token</th><th>Value</th><th>Preview</th><th>Usage</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="token-name">--color-gold-400</td><td>#C8A150</td><td><span class="token-preview" style="background:#C8A150;"></span></td><td>Primary brand, active states</td></tr>
+          <tr><td class="token-name">--bg-page</td><td>#FAF7F2</td><td><span class="token-preview" style="background:#FAF7F2;"></span></td><td>App screen background</td></tr>
+          <tr><td class="token-name">--bg-card</td><td>#FFFFFF</td><td><span class="token-preview" style="background:#FFFFFF;"></span></td><td>Card / sheet surface</td></tr>
+          <tr><td class="token-name">--bg-input</td><td>#F3EFE8</td><td><span class="token-preview" style="background:#F3EFE8;"></span></td><td>Input, tag, action btn bg</td></tr>
+          <tr><td class="token-name">--text-heading</td><td>#211E1A</td><td><span class="token-preview" style="background:#211E1A;"></span></td><td>IP name, stat numbers</td></tr>
+          <tr><td class="token-name">--text-secondary</td><td>#8A837A</td><td><span class="token-preview" style="background:#8A837A;"></span></td><td>Descriptions, labels</td></tr>
+          <tr><td class="token-name">--text-tertiary</td><td>#B8AFA3</td><td><span class="token-preview" style="background:#B8AFA3;"></span></td><td>Dates, placeholders</td></tr>
+          <tr><td class="token-name">--border-light</td><td>#E8E2D8</td><td><span class="token-preview" style="background:#E8E2D8;"></span></td><td>Card borders, dividers</td></tr>
+          <tr><td class="token-name">--color-star</td><td>#F0C040</td><td><span class="token-preview" style="background:#F0C040;"></span></td><td>Favorite / starred icon</td></tr>
+          <tr><td class="token-name">--color-danger</td><td>#E85555</td><td><span class="token-preview" style="background:#E85555;"></span></td><td>Delete, destructive</td></tr>
+          <tr><td class="token-name">--radius-md</td><td>12px</td><td>—</td><td>Standard card radius</td></tr>
+          <tr><td class="token-name">--radius-pill</td><td>9999px</td><td>—</td><td>Filter tabs, search bar</td></tr>
+          <tr><td class="token-name">--shadow-card</td><td>see spec</td><td>—</td><td>Floating card shadow</td></tr>
+          <tr><td class="token-name">--nav-height</td><td>56px</td><td>—</td><td>Bottom navigation bar</td></tr>
+          <tr><td class="token-name">--font-display</td><td>DM Serif Display</td><td>—</td><td>App name only</td></tr>
+          <tr><td class="token-name">--font-ui</td><td>DM Sans</td><td>—</td><td>Numbers, labels, buttons</td></tr>
+          <tr><td class="token-name">--font-body</td><td>Noto Sans SC</td><td>—</td><td>All Chinese body text</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<style>
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+</style>
+
+</body>
+</html>

@@ -7,8 +7,10 @@ import type {
   ImageAssetRow,
   ImageDetailRecord,
   ImageDetailRow,
+  ImageListQueryOptions,
   ImageListItem,
   ImageListItemRow,
+  SumRow,
   UpdateImageAssetInput,
 } from '../types';
 import {
@@ -26,6 +28,53 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions): string {
   const column = columnPrefix ? `${columnPrefix}.deletedAt` : 'deletedAt';
   return options?.includeDeleted ? '' : `${column} IS NULL`;
+}
+
+function buildOrderByClause(orderBy?: ImageListQueryOptions['orderBy']): string {
+  if (orderBy === 'lastViewedAtDesc') {
+    return 'ORDER BY image_assets.lastViewedAt DESC, image_assets.id DESC';
+  }
+
+  if (orderBy === 'deletedAtDesc') {
+    return 'ORDER BY image_assets.deletedAt DESC, image_assets.id DESC';
+  }
+
+  return 'ORDER BY image_assets.createdAt DESC, image_assets.id DESC';
+}
+
+function buildImageListQueryParts(
+  baseClauses: string[],
+  baseValues: Array<number | string>,
+  options?: ImageListQueryOptions
+): { whereClause: string; values: Array<number | string>; orderByClause: string } {
+  const clauses = [...baseClauses];
+  const values = [...baseValues];
+  const deletedFilter = buildDeletedFilter('image_assets', options);
+
+  if (deletedFilter) {
+    clauses.push(deletedFilter);
+  }
+
+  if (options?.favoritesOnly) {
+    clauses.push('image_assets.isFavorite = 1');
+  }
+
+  if (options?.ungroupedOnly) {
+    clauses.push('image_assets.groupId IS NULL');
+  }
+
+  if (options?.tagId != null) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM image_tags AS filter_tags WHERE filter_tags.imageAssetId = image_assets.id AND filter_tags.tagId = ?)'
+    );
+    values.push(options.tagId);
+  }
+
+  return {
+    whereClause: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
+    values,
+    orderByClause: buildOrderByClause(options?.orderBy),
+  };
 }
 
 function buildInClause(ids: number[]): { placeholders: string; values: number[] } {
@@ -277,29 +326,89 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByIpId(ipId: number, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+  async findByIpId(ipId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const db = await getDatabase();
-    const deletedFilter = buildDeletedFilter('image_assets', options);
+    const queryParts = buildImageListQueryParts(['image_assets.ipId = ?'], [ipId], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.ipId = ?${deletedFilter ? ` AND ${deletedFilter}` : ''}
+       ${queryParts.whereClause}
        GROUP BY image_assets.id
-       ORDER BY image_assets.createdAt DESC, image_assets.id DESC`,
-      ipId
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
     );
 
     return rows.map(mapImageListItemRow);
   },
 
-  async findByGroupId(groupId: number, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+  async findByGroupId(groupId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const db = await getDatabase();
-    const deletedFilter = buildDeletedFilter('image_assets', options);
+    const queryParts = buildImageListQueryParts(['image_assets.groupId = ?'], [groupId], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.groupId = ?${deletedFilter ? ` AND ${deletedFilter}` : ''}
+       ${queryParts.whereClause}
        GROUP BY image_assets.id
-       ORDER BY image_assets.createdAt DESC, image_assets.id DESC`,
-      groupId
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findByTagId(tagId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const queryParts = buildImageListQueryParts([], [], {
+      ...options,
+      tagId,
+    });
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findFavorites(options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const queryParts = buildImageListQueryParts([], [], {
+      ...options,
+      favoritesOnly: true,
+    });
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findRecentViewed(limit = 60): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       WHERE image_assets.deletedAt IS NULL AND image_assets.lastViewedAt IS NOT NULL
+       GROUP BY image_assets.id
+       ORDER BY image_assets.lastViewedAt DESC, image_assets.id DESC
+       LIMIT ?`,
+      limit
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findDeleted(): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       WHERE image_assets.deletedAt IS NOT NULL
+       GROUP BY image_assets.id
+       ORDER BY image_assets.deletedAt DESC, image_assets.id DESC`
     );
 
     return rows.map(mapImageListItemRow);
@@ -407,6 +516,22 @@ export const imageRepository = {
       });
       throw error;
     }
+  },
+
+  async touchLastViewedAt(id: number): Promise<ImageAssetRecord | null> {
+    const db = await getDatabase();
+    const viewedAt = createTimestamp();
+    const result = await db.runAsync(
+      'UPDATE image_assets SET lastViewedAt = ? WHERE id = ? AND deletedAt IS NULL',
+      viewedAt,
+      id
+    );
+
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return this.findById(id);
   },
 
   async updateManyGroup(imageIds: number[], groupId: number | null): Promise<number> {
@@ -542,6 +667,105 @@ export const imageRepository = {
       });
       throw error;
     }
+  },
+
+  async restoreMany(imageIds: number[]): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const updateResult = await db.runAsync(
+          `UPDATE image_assets
+           SET deletedAt = NULL, updatedAt = ?
+           WHERE id IN (${inClause.placeholders}) AND deletedAt IS NOT NULL`,
+          now,
+          ...inClause.values
+        );
+        changedCount = updateResult.changes;
+
+        await touchManyParentRecords(db, currentImages);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.restoreMany failed.', {
+        imageIds: inClause.values,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async deletePermanentlyMany(imageIds: number[]): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const deleteResult = await db.runAsync(
+          `DELETE FROM image_assets WHERE id IN (${inClause.placeholders})`,
+          ...inClause.values
+        );
+        changedCount = deleteResult.changes;
+
+        await touchManyParentRecords(db, currentImages);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.deletePermanentlyMany failed.', {
+        imageIds: inClause.values,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async countFavorites(): Promise<number> {
+    const db = await getDatabase();
+    const row = await db.getFirstAsync<CountRow>(
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND isFavorite = 1'
+    );
+    return row?.count ?? 0;
+  },
+
+  async countDeleted(): Promise<number> {
+    const db = await getDatabase();
+    const row = await db.getFirstAsync<CountRow>(
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL'
+    );
+    return row?.count ?? 0;
+  },
+
+  async sumFileSize(options?: ImageAssetQueryOptions): Promise<number> {
+    const db = await getDatabase();
+    const deletedFilter = buildDeletedFilter('', options);
+    const row = await db.getFirstAsync<SumRow>(
+      `SELECT COALESCE(SUM(fileSize), 0) AS totalBytes FROM image_assets${deletedFilter ? ` WHERE ${deletedFilter}` : ''}`
+    );
+    return row?.totalBytes ?? 0;
   },
 };
 

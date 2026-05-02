@@ -110,6 +110,14 @@ export interface GroupListItemRow extends GroupRecord {
   coverThumbnailFileUri: string | null;
 }
 
+export interface GlobalGroupListItem extends GroupListItem {
+  ipName: string;
+}
+
+export interface GlobalGroupListItemRow extends GroupListItemRow {
+  ipName: string;
+}
+
 export interface ImageAssetRecord {
   id: number;
   ipId: number;
@@ -189,4 +197,27 @@ export interface ImageAssetRow extends Omit<ImageAssetRecord, 'isFavorite'> {
 
 export interface CountRow {
   count: number;
+}
+
+export interface SumRow {
+  totalBytes: number | null;
+}
+
+export type ImageSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'deletedAtDesc';
+
+export interface ImageListQueryOptions extends ImageAssetQueryOptions {
+  favoritesOnly?: boolean;
+  ungroupedOnly?: boolean;
+  tagId?: number;
+  orderBy?: ImageSortOrder;
+}
+
+export interface TagUsageItem extends TagRecord {
+  imageCount: number;
+  lastUsedAt: string | null;
+}
+
+export interface TagUsageItemRow extends TagRecord {
+  imageCount: number;
+  lastUsedAt: string | null;
 }

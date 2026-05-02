@@ -2,12 +2,21 @@ import { getDatabase } from '../db';
 import type {
   CountRow,
   CreateGroupInput,
+  GlobalGroupListItem,
+  GlobalGroupListItemRow,
   GroupListItem,
   GroupListItemRow,
   GroupRecord,
   UpdateGroupInput,
 } from '../types';
-import { buildUpdateStatement, createTimestamp, mapGroupListItemRow, normalizeOptionalText, requireNonEmptyText } from '../utils';
+import {
+  buildUpdateStatement,
+  createTimestamp,
+  mapGlobalGroupListItemRow,
+  mapGroupListItemRow,
+  normalizeOptionalText,
+  requireNonEmptyText,
+} from '../utils';
 
 async function touchIpUpdatedAt(ipId: number): Promise<void> {
   const db = await getDatabase();
@@ -18,6 +27,7 @@ const GROUP_OVERVIEW_SELECT = `
   SELECT
     groups.id,
     groups.ipId,
+    ips.name AS ipName,
     groups.name,
     groups.type,
     groups.sortOrder,
@@ -35,6 +45,7 @@ const GROUP_OVERVIEW_SELECT = `
       LIMIT 1
     ) AS coverThumbnailFileUri
   FROM groups
+  INNER JOIN ips ON ips.id = groups.ipId
   LEFT JOIN image_assets ON image_assets.groupId = groups.id
 `;
 
@@ -136,6 +147,14 @@ export const groupRepository = {
       ipId
     );
     return rows.map(mapGroupListItemRow);
+  },
+
+  async findOverview(): Promise<GlobalGroupListItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<GlobalGroupListItemRow>(
+      `${GROUP_OVERVIEW_SELECT} GROUP BY groups.id ORDER BY groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
+    );
+    return rows.map(mapGlobalGroupListItemRow);
   },
 
   async count(): Promise<number> {
