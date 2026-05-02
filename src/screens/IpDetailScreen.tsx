@@ -10,7 +10,7 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { imageRepository, ipRepository, type ImageListItem, type IpDetailRecord } from '../database';
-import { colors, componentTokens, layout, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
 
@@ -103,7 +103,7 @@ export function IpDetailScreen({
   }
 
   return (
-    <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
+    <ScreenScaffold decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
       <PageStateBlock
         emptyDescription=""
         emptyTitle=""
@@ -211,8 +211,13 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   hero: {
+    ...shadows.hero,
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
-    marginTop: -spacing[2],
+    padding: spacing[5],
   },
   titleRow: {
     alignItems: 'center',
@@ -231,12 +236,13 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing[4],
+    justifyContent: 'space-between',
+    paddingVertical: spacing[4],
   },
   statItem: {
+    alignItems: 'center',
     gap: spacing[1],
-    width: '50%',
+    width: '25%',
   },
   statValue: {
     ...typography.textStyles.statNumber,
@@ -251,12 +257,12 @@ const styles = StyleSheet.create({
   },
   quickCard: {
     alignItems: 'flex-start',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
-    minHeight: 112,
+    minHeight: 104,
     padding: spacing[4],
     width: '48.8%',
   },

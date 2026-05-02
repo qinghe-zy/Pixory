@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.default,
   },
   outline: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.primary.default,
     borderWidth: 1,
   },

@@ -8,6 +8,18 @@ const baseFontFamily = Platform.select({
   default: 'System',
 });
 
+const displayFontFamily = Platform.select({
+  ios: 'Songti SC',
+  android: 'serif',
+  default: 'serif',
+});
+
+const brandFontFamily = Platform.select({
+  ios: 'Georgia',
+  android: 'serif',
+  default: 'serif',
+});
+
 const statFontFamily = Platform.select({
   ios: 'SF Pro Display',
   android: 'sans-serif-medium',
@@ -21,11 +33,16 @@ const monoFontFamily = Platform.select({
 });
 
 type TextStyles = Record<
+  | 'brandLogo'
+  | 'brandSubtitle'
   | 'navTitle'
   | 'pageTitle'
+  | 'heroTitle'
+  | 'heroCaption'
   | 'sectionTitle'
   | 'cardTitle'
   | 'body'
+  | 'bodyStrong'
   | 'caption'
   | 'micro'
   | 'statNumber'
@@ -39,6 +56,8 @@ type TextStyles = Record<
 export const typography = {
   family: {
     base: baseFontFamily,
+    display: displayFontFamily,
+    brand: brandFontFamily,
     stat: statFontFamily,
     mono: monoFontFamily,
   },
@@ -48,50 +67,95 @@ export const typography = {
     semibold: '600',
   },
   size: {
-    navTitle: 17,
-    pageTitle: 16,
-    sectionTitle: 15,
-    cardTitle: 14,
-    body: 13,
+    brandLogo: 42,
+    navTitle: 18,
+    pageTitle: 26,
+    heroTitle: 28,
+    sectionTitle: 18,
+    cardTitle: 18,
+    body: 14,
     caption: 12,
     micro: 11,
-    navTab: 10,
+    navTab: 11,
     statNumber: 20,
   },
   textStyles: {
-    navTitle: {
+    brandLogo: {
+      fontFamily: brandFontFamily,
+      fontSize: 42,
+      lineHeight: 46,
+      fontWeight: '500',
+      letterSpacing: 0.2,
+      color: colors.text.heading,
+    },
+    brandSubtitle: {
       fontFamily: baseFontFamily,
-      fontSize: 17,
-      lineHeight: 22,
-      fontWeight: '600',
-      color: colors.text.title,
+      fontSize: 10,
+      lineHeight: 14,
+      fontWeight: '500',
+      letterSpacing: 1.8,
+      color: colors.text.secondary,
+    },
+    navTitle: {
+      fontFamily: displayFontFamily,
+      fontSize: 26,
+      lineHeight: 34,
+      fontWeight: '500',
+      letterSpacing: 0.2,
+      color: colors.text.heading,
     },
     pageTitle: {
+      fontFamily: displayFontFamily,
+      fontSize: 26,
+      lineHeight: 34,
+      fontWeight: '500',
+      letterSpacing: 0.2,
+      color: colors.text.heading,
+    },
+    heroTitle: {
+      fontFamily: displayFontFamily,
+      fontSize: 28,
+      lineHeight: 38,
+      fontWeight: '500',
+      letterSpacing: 1.2,
+      color: colors.text.primary,
+    },
+    heroCaption: {
       fontFamily: baseFontFamily,
-      fontSize: 16,
-      lineHeight: 21,
-      fontWeight: '600',
-      color: colors.text.title,
+      fontSize: 12,
+      lineHeight: 18,
+      fontWeight: '400',
+      letterSpacing: 0.2,
+      color: colors.text.secondary,
     },
     sectionTitle: {
-      fontFamily: baseFontFamily,
-      fontSize: 15,
-      lineHeight: 21,
+      fontFamily: displayFontFamily,
+      fontSize: 18,
+      lineHeight: 26,
       fontWeight: '500',
-      color: colors.text.title,
+      letterSpacing: 0.2,
+      color: colors.text.heading,
     },
     cardTitle: {
-      fontFamily: baseFontFamily,
-      fontSize: 14,
-      lineHeight: 20,
+      fontFamily: displayFontFamily,
+      fontSize: 18,
+      lineHeight: 24,
       fontWeight: '500',
-      color: colors.text.title,
+      letterSpacing: 0.2,
+      color: colors.text.heading,
     },
     body: {
       fontFamily: baseFontFamily,
-      fontSize: 13,
-      lineHeight: 21,
+      fontSize: 14,
+      lineHeight: 22,
       fontWeight: '400',
+      color: colors.text.body,
+    },
+    bodyStrong: {
+      fontFamily: baseFontFamily,
+      fontSize: 14,
+      lineHeight: 22,
+      fontWeight: '600',
       color: colors.text.body,
     },
     caption: {
@@ -138,9 +202,9 @@ export const typography = {
     },
     navTab: {
       fontFamily: baseFontFamily,
-      fontSize: 10,
-      lineHeight: 13,
-      fontWeight: '400',
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: '500',
       color: colors.text.secondary,
     },
   } satisfies TextStyles,

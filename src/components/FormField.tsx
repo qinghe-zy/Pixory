@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { spacing, typography } from '../design/tokens';
+import { colors, spacing, typography } from '../design/tokens';
 
 interface FormFieldProps {
   label: string;
@@ -29,7 +29,8 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   label: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
   },
   hint: {
     ...typography.textStyles.caption,

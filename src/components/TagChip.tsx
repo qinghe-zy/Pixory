@@ -26,17 +26,18 @@ const styles = StyleSheet.create({
   chip: {
     alignItems: 'center',
     backgroundColor: colors.background.tag,
-    borderColor: colors.primary.hover,
-    borderRadius: radius.sm,
-    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[1],
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    minHeight: 30,
+    paddingVertical: spacing[1],
   },
   label: {
     ...typography.textStyles.caption,
-    color: colors.primary.default,
+    color: colors.primary.active,
     fontWeight: '500',
   },
   remove: {

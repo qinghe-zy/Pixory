@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'groups' | 'tags' | 'me';
 
@@ -15,10 +15,10 @@ const TAB_ITEMS: Array<{
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
-  { key: 'home', label: '首页', icon: 'grid-outline' },
-  { key: 'groups', label: '分组', icon: 'albums-outline' },
-  { key: 'tags', label: '标签', icon: 'pricetags-outline' },
-  { key: 'me', label: '我的', icon: 'person-circle-outline' },
+  { key: 'home', label: '首页', icon: 'home-outline' },
+  { key: 'groups', label: '分组', icon: 'folder-open-outline' },
+  { key: 'tags', label: '标签', icon: 'pricetag-outline' },
+  { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
@@ -36,8 +36,8 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
           >
             <Ionicons
               color={isActive ? colors.primary.default : colors.text.secondary}
-              name={item.icon}
-              size={22}
+              name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
+              size={componentTokens.bottomTab.iconSize}
             />
             <Text style={[styles.label, isActive ? styles.activeLabel : null]}>{item.label}</Text>
           </Pressable>
@@ -49,21 +49,24 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    ...shadows.md,
+    ...shadows.floating,
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.xl,
+    borderColor: colors.border.default,
+    borderTopLeftRadius: componentTokens.bottomTab.radiusTop,
+    borderTopRightRadius: componentTokens.bottomTab.radiusTop,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    minHeight: 49,
+    minHeight: componentTokens.bottomTab.height,
     paddingHorizontal: spacing[2],
+    paddingTop: spacing[2],
   },
   item: {
     alignItems: 'center',
+    borderRadius: radius.lg,
     flex: 1,
     gap: spacing[1],
     justifyContent: 'center',
-    minHeight: 49,
+    minHeight: 54,
   },
   label: {
     ...typography.textStyles.navTab,
@@ -71,7 +74,7 @@ const styles = StyleSheet.create({
   },
   activeLabel: {
     color: colors.primary.default,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.8,

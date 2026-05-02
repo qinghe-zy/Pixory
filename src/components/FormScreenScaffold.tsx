@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     color: colors.semantic.danger,
   },
   actions: {
-    gap: spacing[3],
+    gap: spacing[2],
     minHeight: metrics.bottomActionHeight + layout.stickyFooterBottomOffset,
   },
 });

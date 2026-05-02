@@ -204,13 +204,24 @@ export function ImportImagesScreen({
           <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
         </DevOnlyCard>
 
-        <ContentCard>
+        <ContentCard style={styles.pickCard}>
           <FormField hint="支持多选，导入时会复制原图并生成独立缩略图。" label="选择图片">
-            <PrimaryButton
-              label={isPicking ? '正在打开相册…' : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张，重新选择` : '选择图片'}
-              loading={isPicking}
+            <Pressable
+              accessibilityRole="button"
+              disabled={isPicking}
               onPress={handlePickImages}
-            />
+              style={({ pressed }) => [styles.pickZone, pressed && styles.pressed]}
+            >
+              <View style={styles.pickIconWrap}>
+                <Ionicons color={colors.primary.default} name="images-outline" size={24} />
+              </View>
+              <View style={styles.pickCopy}>
+                <Text style={styles.pickTitle}>
+                  {isPicking ? '正在打开相册…' : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张` : '选择图片'}
+                </Text>
+                <Text style={styles.pickHint}>{pickedAssets.length > 0 ? '点击可重新选择' : '从系统相册批量选择原图'}</Text>
+              </View>
+            </Pressable>
             {pickedAssets.length > 0 ? (
               <View style={styles.previewRow}>
                 {pickedAssets.map((asset, index) => (
@@ -310,7 +321,40 @@ export function ImportImagesScreen({
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: spacing[4],
+  },
+  pickCard: {
+    backgroundColor: colors.background.elevated,
+  },
+  pickZone: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.lg,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing[3],
+    minHeight: 88,
+    padding: spacing[4],
+  },
+  pickIconWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.md,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  pickCopy: {
+    flex: 1,
+    gap: spacing[1],
+  },
+  pickTitle: {
+    ...typography.textStyles.sectionTitle,
+  },
+  pickHint: {
+    ...typography.textStyles.caption,
   },
   previewRow: {
     flexDirection: 'row',
@@ -323,11 +367,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    width: '30.8%',
+    aspectRatio: 1,
+    width: '31.5%',
   },
   previewImage: {
-    height: 96,
-    width: 96,
+    height: '100%',
+    width: '100%',
   },
   optionWrap: {
     flexDirection: 'row',
@@ -341,8 +386,9 @@ const styles = StyleSheet.create({
   },
   tagInput: {
     ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     color: colors.text.title,
     flex: 1,
@@ -354,7 +400,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     height: componentTokens.common.minTouchSize,
     flexDirection: 'row',

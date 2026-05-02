@@ -30,7 +30,15 @@ const IP_LIBRARY_SELECT = `
     ips.createdAt,
     ips.updatedAt,
     COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
-    COUNT(DISTINCT groups.id) AS groupCount
+    COUNT(DISTINCT groups.id) AS groupCount,
+    (
+      SELECT image_assets.thumbnailFileUri
+      FROM image_assets
+      WHERE image_assets.ipId = ips.id
+        AND image_assets.deletedAt IS NULL
+      ORDER BY image_assets.updatedAt DESC, image_assets.id DESC
+      LIMIT 1
+    ) AS coverThumbnailFileUri
   FROM ips
   LEFT JOIN image_assets ON image_assets.ipId = ips.id
   LEFT JOIN groups ON groups.ipId = ips.id

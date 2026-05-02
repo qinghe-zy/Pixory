@@ -25,7 +25,9 @@ export function ReadonlyFieldCard({ label, hint, value }: ReadonlyFieldCardProps
 const styles = StyleSheet.create({
   box: {
     backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
     minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[4],

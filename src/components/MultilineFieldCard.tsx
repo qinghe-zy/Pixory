@@ -39,7 +39,8 @@ export function MultilineFieldCard({
 const styles = StyleSheet.create({
   input: {
     ...typography.textStyles.body,
-    borderColor: colors.border.subtle,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: 1,
     color: colors.text.title,

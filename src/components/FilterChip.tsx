@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.default,
   },
   inactive: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -52,6 +52,6 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
   },
   inactiveText: {
-    color: colors.text.body,
+    color: colors.text.primary,
   },
 });

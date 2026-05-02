@@ -33,11 +33,13 @@ export interface IpLibraryQuery {
 export interface IpListItem extends IpRecord {
   imageCount: number;
   groupCount: number;
+  coverThumbnailFileUri: string | null;
 }
 
 export interface IpListItemRow extends IpRow {
   imageCount: number;
   groupCount: number;
+  coverThumbnailFileUri: string | null;
 }
 
 export interface GroupRecord {

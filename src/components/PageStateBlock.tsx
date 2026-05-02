@@ -80,6 +80,7 @@ const styles = StyleSheet.create({
   feedbackCard: {
     alignItems: 'center',
     alignSelf: 'center',
+    gap: 8,
     maxWidth: 320,
     width: '100%',
   },

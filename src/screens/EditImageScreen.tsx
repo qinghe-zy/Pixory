@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { DevOnlyCard } from '../components/DevOnlyCard';
@@ -151,6 +151,28 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
       title="编辑图片"
     >
       <View style={styles.formWrap}>
+        <ContentCard style={styles.previewCard}>
+          <View style={styles.previewFrame}>
+            {image?.thumbnailFileUri ?? image?.originalFileUri ? (
+              <Image
+                resizeMode="cover"
+                source={{ uri: image.thumbnailFileUri ?? image.originalFileUri }}
+                style={styles.previewImage}
+              />
+            ) : (
+              <View style={styles.previewFallback}>
+                <Ionicons color={colors.text.secondary} name="image-outline" size={28} />
+              </View>
+            )}
+          </View>
+          <View style={styles.previewMeta}>
+            <Text numberOfLines={1} style={styles.previewTitle}>
+              {image?.originalFilename ?? '当前图片'}
+            </Text>
+            <Text style={styles.previewCaption}>编辑仅更新元数据，不会改动原图文件。</Text>
+          </View>
+        </ContentCard>
+
         <ReadonlyFieldCard
           hint="这里只读展示所属 IP，图片编辑不会跨 IP 移动。"
           label="所属 IP"
@@ -290,7 +312,37 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: spacing[4],
+  },
+  previewCard: {
+    gap: spacing[3],
+    padding: spacing[3],
+  },
+  previewFrame: {
+    backgroundColor: colors.background.empty,
+    borderRadius: radius.lg,
+    height: 220,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  previewImage: {
+    height: '100%',
+    width: '100%',
+  },
+  previewFallback: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  previewMeta: {
+    gap: spacing[1],
+    paddingHorizontal: spacing[1],
+  },
+  previewTitle: {
+    ...typography.textStyles.sectionTitle,
+  },
+  previewCaption: {
+    ...typography.textStyles.caption,
   },
   optionWrap: {
     flexDirection: 'row',
@@ -304,8 +356,9 @@ const styles = StyleSheet.create({
   },
   tagInput: {
     ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     color: colors.text.title,
     flex: 1,
@@ -317,7 +370,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing[1],

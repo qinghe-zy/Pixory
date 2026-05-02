@@ -7,6 +7,9 @@ import { Header } from './Header';
 
 interface ScreenScaffoldProps {
   title: string;
+  subtitle?: string;
+  titleVariant?: 'page' | 'brand';
+  decorativeTitle?: string;
   onBack?: () => void;
   rightAction?: ReactNode;
   children: ReactNode;
@@ -19,6 +22,9 @@ interface ScreenScaffoldProps {
 
 export function ScreenScaffold({
   title,
+  subtitle,
+  titleVariant,
+  decorativeTitle,
   onBack,
   rightAction,
   children,
@@ -34,7 +40,14 @@ export function ScreenScaffold({
       footer={footer}
       scrollable={scrollable}
     >
-      <Header onBack={onBack} rightSlot={rightAction} title={title} />
+      <Header
+        decorativeTitle={decorativeTitle}
+        onBack={onBack}
+        rightSlot={rightAction}
+        subtitle={subtitle}
+        title={title}
+        titleVariant={titleVariant}
+      />
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       <View pointerEvents={loading ? 'none' : 'auto'} style={loading ? styles.loadingContent : undefined}>
         {children}

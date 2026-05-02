@@ -3,16 +3,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, componentTokens, layout, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, layout, shadows, spacing, typography } from '../design/tokens';
 
 interface HeaderProps {
   title: string;
+  subtitle?: string;
+  titleVariant?: 'page' | 'brand';
+  decorativeTitle?: string;
   onBack?: () => void;
   rightSlot?: ReactNode;
   sideWidth?: number;
 }
 
-export function Header({ title, onBack, rightSlot, sideWidth = componentTokens.iconButton.size }: HeaderProps) {
+const DECORATIVE_TITLE_BY_PAGE: Record<string, string> = {
+  标签: 'Tags',
+  分组: 'Groups',
+  回收站: 'Trash',
+  最近查看: 'Recent',
+  收藏图片: 'Favorites',
+  图片库: 'Gallery',
+  分部图片: 'Gallery',
+};
+
+export function Header({
+  title,
+  subtitle,
+  titleVariant = 'page',
+  decorativeTitle,
+  onBack,
+  rightSlot,
+  sideWidth = componentTokens.iconButton.size,
+}: HeaderProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight =
     Platform.OS === 'android'
@@ -29,7 +50,7 @@ export function Header({ title, onBack, rightSlot, sideWidth = componentTokens.i
         },
       ]}
     >
-      <View style={[styles.side, styles.leadingSide, { minWidth: sideWidth }]}>
+      <View style={[styles.side, styles.leadingSide, { minWidth: onBack ? sideWidth : 0 }]}>
         {onBack ? (
           <Pressable
             accessibilityLabel="返回"
@@ -43,10 +64,17 @@ export function Header({ title, onBack, rightSlot, sideWidth = componentTokens.i
       </View>
 
       <View style={styles.titleWrap}>
-        <Text numberOfLines={1} style={typography.textStyles.navTitle}>
+        <Text numberOfLines={1} style={titleVariant === 'brand' ? typography.textStyles.brandLogo : typography.textStyles.navTitle}>
           {title}
         </Text>
+        {subtitle ? <Text numberOfLines={1} style={typography.textStyles.brandSubtitle}>{subtitle}</Text> : null}
       </View>
+
+      {titleVariant === 'page' ? (
+        <Text pointerEvents="none" style={styles.decorativeTitle}>
+          {decorativeTitle ?? DECORATIVE_TITLE_BY_PAGE[title] ?? ''}
+        </Text>
+      ) : null}
 
       <View style={[styles.side, styles.trailingSide, { minWidth: sideWidth }]}>{rightSlot}</View>
     </View>
@@ -58,6 +86,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
+    position: 'relative',
   },
   side: {
     alignItems: 'center',
@@ -71,12 +100,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   titleWrap: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
   },
+  decorativeTitle: {
+    color: colors.primary.light,
+    fontFamily: typography.family.brand,
+    fontSize: 32,
+    fontStyle: 'italic',
+    fontWeight: '400',
+    opacity: 0.5,
+    position: 'absolute',
+    right: 52,
+    top: 28,
+  },
   iconButton: {
+    ...shadows.xs,
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.elevated,
     borderColor: colors.border.default,
     borderRadius: componentTokens.iconButton.radius,
     borderWidth: StyleSheet.hairlineWidth,

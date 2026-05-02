@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ImageListItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 
 interface ThumbnailTileProps {
   image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite'>;
@@ -16,7 +16,7 @@ export function ThumbnailTile({
   image,
   onPress,
   onLongPress,
-  aspectRatio = 1,
+  aspectRatio = componentTokens.thumbnail.aspectRatio,
   selected = false,
 }: ThumbnailTileProps) {
   const content = (
@@ -65,15 +65,15 @@ export function ThumbnailTile({
 
 const styles = StyleSheet.create({
   pressable: {
-    width: '31.8%',
+    width: '31.6%',
   },
   pressed: {
     opacity: 0.84,
   },
   tile: {
     backgroundColor: colors.background.empty,
-    borderColor: colors.border.default,
-    borderRadius: radius.md,
+    borderColor: colors.border.subtle,
+    borderRadius: componentTokens.thumbnail.radius,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     position: 'relative',
@@ -101,18 +101,18 @@ const styles = StyleSheet.create({
   },
   favoriteBadge: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: colors.overlay.softSurface,
     borderRadius: radius.sm,
-    height: 22,
+    height: componentTokens.thumbnail.favoriteBadgeSize,
     justifyContent: 'center',
     position: 'absolute',
     right: spacing[2],
     top: spacing[2],
-    width: 22,
+    width: componentTokens.thumbnail.favoriteBadgeSize,
   },
   selectionOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(22, 119, 255, 0.12)',
+    backgroundColor: colors.overlay.selectedGold,
   },
   selectionBadge: {
     alignItems: 'center',

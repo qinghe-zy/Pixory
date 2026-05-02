@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem } from '../database';
 import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
@@ -15,9 +15,13 @@ export function IPCard({ ip, onPress }: IPCardProps) {
   return (
     <Pressable onPress={() => onPress(ip.id)} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
       <View style={styles.preview}>
-        <View style={styles.initialsBadge}>
-          <Text style={styles.initialsText}>{getIpInitials(ip.name)}</Text>
-        </View>
+        {ip.coverThumbnailFileUri ? (
+          <Image resizeMode="cover" source={{ uri: ip.coverThumbnailFileUri }} style={styles.previewImage} />
+        ) : (
+          <View style={styles.emptyPreview}>
+            <Text style={styles.initialsText}>{getIpInitials(ip.name)}</Text>
+          </View>
+        )}
         {ip.isFavorite ? (
           <View style={styles.favoriteBadge}>
             <Ionicons color={colors.semantic.favorite} name="star" size={14} />
@@ -28,9 +32,6 @@ export function IPCard({ ip, onPress }: IPCardProps) {
       <View style={styles.body}>
         <Text numberOfLines={1} style={typography.textStyles.cardTitle}>
           {ip.name}
-        </Text>
-        <Text numberOfLines={2} style={styles.description}>
-          {ip.description || '还没有简介'}
         </Text>
         <MetaText numberOfLines={1}>{`${ip.imageCount} 张图片 · ${ip.groupCount} 个分组`}</MetaText>
         <MetaText numberOfLines={1} tone="placeholder">
@@ -45,52 +46,50 @@ const styles = StyleSheet.create({
   card: {
     ...shadows.sm,
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
+    borderColor: colors.border.subtle,
     borderRadius: componentTokens.ipCard.radius,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    width: '48.8%',
+    width: '48.2%',
   },
   cardPressed: {
     opacity: 0.84,
   },
   preview: {
-    alignItems: 'flex-start',
     aspectRatio: componentTokens.ipCard.previewAspectRatio,
     backgroundColor: colors.background.empty,
-    justifyContent: 'space-between',
-    padding: spacing[4],
+    position: 'relative',
   },
-  initialsBadge: {
+  previewImage: {
+    height: '100%',
+    width: '100%',
+  },
+  emptyPreview: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderRadius: radius.sm,
-    height: 34,
+    backgroundColor: colors.support.sky100,
+    flex: 1,
     justifyContent: 'center',
-    minWidth: 42,
-    paddingHorizontal: spacing[3],
   },
   initialsText: {
-    ...typography.textStyles.cardTitle,
-    color: colors.primary.default,
+    color: colors.text.inverse,
+    fontFamily: typography.family.brand,
+    fontSize: 34,
+    lineHeight: 38,
     letterSpacing: 0.2,
   },
   favoriteBadge: {
     alignItems: 'center',
-    alignSelf: 'flex-end',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.overlay.softSurface,
     borderRadius: componentTokens.ipCard.previewBadgeRadius,
     height: 28,
     justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[2],
+    top: spacing[2],
     width: 28,
   },
   body: {
     gap: spacing[1],
-    padding: spacing[4],
-  },
-  description: {
-    ...typography.textStyles.body,
-    color: colors.text.body,
-    minHeight: 42,
+    padding: componentTokens.ipCard.contentPadding,
   },
 });

@@ -94,13 +94,25 @@ export function MeScreen({
     onOpenTrash();
   }
 
+  const totalBytes = data?.totalOriginalBytes ?? 0;
+  const storageFillWidth = totalBytes > 0 ? '34%' : '8%';
+
   return (
-    <ScreenScaffold errorMessage={errorMessage} footer={footer} scrollable title="我的">
+    <ScreenScaffold decorativeTitle="Me" errorMessage={errorMessage} footer={footer} scrollable title="我的">
       <ContentCard style={styles.heroCard}>
-        <Text style={styles.heroTitle}>本地资产概览</Text>
-        <Text style={styles.heroDescription}>
-          Pixory 当前只管理本地数据，不依赖服务器、云同步或账号系统。
-        </Text>
+        <View style={styles.heroBackdrop} />
+        <View style={styles.profileRow}>
+          <View style={styles.avatar}>
+            <Ionicons color={colors.primary.active} name="person" size={34} />
+          </View>
+          <View style={styles.profileCopy}>
+            <View style={styles.nameRow}>
+              <Text style={styles.heroTitle}>本地空间</Text>
+              <Text style={styles.badge}>Local</Text>
+            </View>
+            <Text style={styles.heroDescription}>愿你被世界温柔以待。</Text>
+          </View>
+        </View>
       </ContentCard>
 
       <ContentCard style={styles.statsCard}>
@@ -111,9 +123,19 @@ export function MeScreen({
       </ContentCard>
 
       <ContentCard style={styles.storageCard}>
-        <Text style={styles.storageLabel}>本地存储</Text>
-        <Text style={styles.storageValue}>{formatFileSize(data?.totalOriginalBytes ?? 0)}</Text>
-        <Text style={styles.storageHint}>当前为原图粗略统计，缩略图占用未单独展开。</Text>
+        <View style={styles.storageHeader}>
+          <View>
+            <Text style={styles.storageLabel}>本地存储</Text>
+            <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
+          </View>
+          <View style={styles.storageBadge}>
+            <Text style={styles.storageBadgeText}>原图</Text>
+          </View>
+        </View>
+        <View style={styles.storageTrack}>
+          <View style={[styles.storageFill, { width: storageFillWidth }]} />
+        </View>
+        <Text style={styles.storageHint}>仅统计已导入原图，缩略图占用未单独展开。</Text>
       </ContentCard>
 
       <View style={styles.entryList}>
@@ -130,6 +152,13 @@ export function MeScreen({
               <Text style={styles.entryTitle}>{item.label}</Text>
               <Text style={styles.entryDescription}>{item.description}</Text>
             </View>
+            <Text style={styles.entryCount}>
+              {item.key === 'favorites'
+                ? data?.favoriteImageCount ?? 0
+                : item.key === 'recent'
+                  ? data?.activeImageCount ?? 0
+                  : data?.deletedImageCount ?? 0}
+            </Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
         ))}
@@ -158,11 +187,60 @@ function StatBlock({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   heroCard: {
-    gap: spacing[2],
+    backgroundColor: colors.background.surface,
+    gap: spacing[3],
+    minHeight: 118,
     padding: spacing[5],
+    overflow: 'hidden',
+  },
+  heroBackdrop: {
+    backgroundColor: colors.support.sky50,
+    borderBottomLeftRadius: 88,
+    height: 112,
+    opacity: 0.86,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '68%',
+  },
+  profileRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[4],
+    zIndex: 1,
+  },
+  avatar: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.background.surface,
+    borderRadius: 34,
+    borderWidth: 3,
+    height: 68,
+    justifyContent: 'center',
+    width: 68,
+  },
+  profileCopy: {
+    flex: 1,
+    gap: spacing[1],
+  },
+  nameRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  badge: {
+    ...typography.textStyles.micro,
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    color: colors.primary.active,
+    overflow: 'hidden',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
   heroTitle: {
     ...typography.textStyles.pageTitle,
+    fontSize: 20,
+    lineHeight: 28,
   },
   heroDescription: {
     ...typography.textStyles.body,
@@ -170,12 +248,13 @@ const styles = StyleSheet.create({
   },
   statsCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing[4],
+    justifyContent: 'space-between',
+    paddingVertical: spacing[4],
   },
   statItem: {
+    alignItems: 'center',
     gap: spacing[1],
-    width: '50%',
+    width: '25%',
   },
   statValue: {
     ...typography.textStyles.statNumber,
@@ -184,13 +263,44 @@ const styles = StyleSheet.create({
     ...typography.textStyles.statLabel,
   },
   storageCard: {
-    gap: spacing[1],
+    backgroundColor: colors.background.elevated,
+    gap: spacing[2],
+  },
+  storageHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   storageLabel: {
     ...typography.textStyles.caption,
+    color: colors.primary.active,
   },
   storageValue: {
     ...typography.textStyles.statNumber,
+  },
+  storageBadge: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  storageBadgeText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
+  storageTrack: {
+    backgroundColor: colors.background.sunken,
+    borderRadius: radius.pill,
+    height: 8,
+    overflow: 'hidden',
+  },
+  storageFill: {
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.pill,
+    height: '100%',
   },
   storageHint: {
     ...typography.textStyles.caption,
@@ -211,7 +321,7 @@ const styles = StyleSheet.create({
   },
   entryIconWrap: {
     alignItems: 'center',
-    backgroundColor: colors.background.empty,
+    backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
     height: 44,
     justifyContent: 'center',
@@ -227,6 +337,12 @@ const styles = StyleSheet.create({
   entryDescription: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+  },
+  entryCount: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    minWidth: 32,
+    textAlign: 'right',
   },
   pressed: {
     opacity: 0.82,

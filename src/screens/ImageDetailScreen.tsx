@@ -212,10 +212,29 @@ export function ImageDetailScreen({
       {image ? (
         <>
           <View style={styles.previewWrap}>
-            <Image resizeMode="contain" source={{ uri: image.originalFileUri }} style={styles.previewImage} />
+            <Image resizeMode="cover" source={{ uri: image.originalFileUri }} style={styles.previewImage} />
           </View>
 
-          <ContentCard>
+          <ContentCard style={styles.detailCard}>
+            <View style={styles.imageTitleBlock}>
+              <View style={styles.titleLine}>
+                <Text numberOfLines={1} style={styles.imageTitle}>
+                  {image.originalFilename.replace(/\.[^.]+$/, '')}
+                </Text>
+                <Ionicons color={image.isFavorite ? colors.semantic.favorite : colors.text.tertiary} name={image.isFavorite ? 'star' : 'star-outline'} size={18} />
+              </View>
+              <Text style={styles.imageSubtitle}>
+                IP：{image.ipName}　　分组：{image.groupName ?? '未分组'}
+              </Text>
+            </View>
+            <View style={styles.tagsWrap}>
+              {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
+            </View>
+            <View style={styles.noteBlock}>
+              <Text style={styles.infoLabel}>备注</Text>
+              <Text style={styles.infoValue}>{image.note || '暂无备注'}</Text>
+            </View>
+
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所属 IP</Text>
               <Text style={styles.infoValue}>{image.ipName}</Text>
@@ -229,12 +248,6 @@ export function ImageDetailScreen({
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>文件名</Text>
               <Text style={styles.infoValue}>{image.originalFilename}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>标签</Text>
-              <View style={styles.tagsWrap}>
-                {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
-              </View>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>尺寸</Text>
@@ -251,10 +264,6 @@ export function ImageDetailScreen({
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>上传时间</Text>
               <Text style={styles.infoValue}>{formatDateTime(image.createdAt)}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>备注</Text>
-              <Text style={styles.infoValue}>{image.note || '暂无备注'}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>收藏状态</Text>
@@ -333,16 +342,42 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.82,
   },
+  detailCard: {
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    marginTop: -spacing[4],
+  },
+  imageTitleBlock: {
+    gap: spacing[1],
+  },
+  titleLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  imageTitle: {
+    ...typography.textStyles.pageTitle,
+    flex: 1,
+    fontSize: 21,
+    lineHeight: 28,
+  },
+  imageSubtitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+  },
+  noteBlock: {
+    borderBottomColor: colors.border.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    paddingBottom: spacing[4],
+  },
   previewWrap: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.background.sunken,
+    borderRadius: radius.xl,
     overflow: 'hidden',
-    padding: spacing[3],
   },
   previewImage: {
-    aspectRatio: 4 / 3,
+    aspectRatio: 0.76,
     width: '100%',
   },
   errorText: {
@@ -353,7 +388,10 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
   },
   infoRow: {
-    gap: spacing[2],
+    borderBottomColor: colors.border.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: spacing[1],
+    paddingBottom: spacing[3],
   },
   infoLabel: {
     ...typography.textStyles.caption,

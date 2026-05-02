@@ -92,6 +92,7 @@ export function mapIpListItemRow(row: IpListItemRow): IpListItem {
     ...mapIpRow(row),
     imageCount: row.imageCount ?? 0,
     groupCount: row.groupCount ?? 0,
+    coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
   };
 }
 

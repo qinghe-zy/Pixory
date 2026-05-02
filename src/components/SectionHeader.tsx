@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     ...typography.textStyles.caption,
-    color: colors.primary.default,
+    color: colors.primary.active,
     fontWeight: '500',
   },
   pressed: {

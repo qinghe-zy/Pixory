@@ -7,7 +7,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
-import { spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 type AllImagesFilter =
@@ -96,11 +96,11 @@ export function AllImagesScreen({
   }, [activeFilter, groups, tags]);
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="图片库">
+    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分部图片">
       <View style={styles.summary}>
-        <Text style={styles.subtitle}>{ip?.name ?? '当前IP'}</Text>
+        <Text style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
         <Text style={styles.countText}>
-          {activeFilterLabel} · {images.length} 张图片
+          共 {images.length} 张图片
         </Text>
       </View>
 
@@ -187,22 +187,28 @@ export function AllImagesScreen({
 const styles = StyleSheet.create({
   summary: {
     gap: spacing[1],
-    marginTop: -spacing[4],
   },
   subtitle: {
     ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   countText: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   filterWrap: {
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
+    padding: spacing[3],
   },
   filterGroup: {
     gap: spacing[2],
   },
   filterLabel: {
     ...typography.textStyles.caption,
+    paddingHorizontal: spacing[2],
   },
   filterRow: {
     flexDirection: 'row',

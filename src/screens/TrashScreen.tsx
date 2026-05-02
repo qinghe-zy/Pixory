@@ -3,7 +3,6 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
@@ -94,10 +93,10 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     ) : undefined;
 
   return (
-    <ScreenScaffold onBack={onBack} rightAction={rightAction} scrollable title="回收站">
-      <View style={styles.summary}>
-        <Text style={styles.subtitle}>软删除图片会保留在本地，恢复后会重新回到正常列表</Text>
-        <Text style={styles.countText}>{images.length} 张图片</Text>
+    <ScreenScaffold decorativeTitle="Trash" onBack={onBack} rightAction={rightAction} scrollable title="回收站">
+      <View style={styles.notice}>
+        <Ionicons color={colors.primary.active} name="time-outline" size={16} />
+        <Text style={styles.subtitle}>文件在回收站中保留 30 天，之后将自动永久删除。</Text>
       </View>
 
       <PageStateBlock
@@ -112,7 +111,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
         loadingTitle="正在读取回收站"
         onRetry={reload}
       >
-        <View style={styles.list}>
+        <View style={styles.grid}>
           {images.map((image) => (
             <ContentCard key={image.id} style={styles.itemCard}>
               <View style={styles.previewWrap}>
@@ -123,16 +122,20 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                     <Ionicons color={colors.text.secondary} name="image-outline" size={22} />
                   </View>
                 )}
+                <View style={styles.remainingBadge}>
+                  <Text style={styles.remainingText}>{getTrashRemainingLabel(image.deletedAt)}</Text>
+                </View>
               </View>
               <View style={styles.itemBody}>
                 <Text numberOfLines={1} style={styles.itemTitle}>
                   {image.originalFilename}
                 </Text>
-                <Text style={styles.itemMeta}>{image.ipName}</Text>
                 <Text style={styles.itemMeta}>
-                  删除时间 {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
+                  {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
                 </Text>
-                <PrimaryButton label="恢复图片" onPress={() => handleRestore(image.id)} variant="outline" />
+                <Pressable onPress={() => handleRestore(image.id)} style={({ pressed }) => [styles.restoreChip, pressed && styles.pressed]}>
+                  <Text style={styles.restoreText}>恢复</Text>
+                </Pressable>
               </View>
             </ContentCard>
           ))}
@@ -142,31 +145,55 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   );
 }
 
+function getTrashRemainingLabel(deletedAt: string | null) {
+  if (!deletedAt) {
+    return '待清理';
+  }
+
+  const deletedTime = new Date(deletedAt).getTime();
+  if (Number.isNaN(deletedTime)) {
+    return '待清理';
+  }
+
+  const retentionDays = 30;
+  const elapsedDays = Math.floor((Date.now() - deletedTime) / (1000 * 60 * 60 * 24));
+  const remainingDays = Math.max(0, retentionDays - elapsedDays);
+  return `${remainingDays} 天后删除`;
+}
+
 const styles = StyleSheet.create({
-  summary: {
-    gap: spacing[1],
-    marginTop: -spacing[4],
+  notice: {
+    alignItems: 'center',
+    backgroundColor: colors.semantic.warningBackground,
+    borderColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
   },
   subtitle: {
     ...typography.textStyles.caption,
+    color: colors.primary.active,
   },
-  countText: {
-    ...typography.textStyles.sectionTitle,
-  },
-  list: {
-    gap: spacing[3],
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
   },
   itemCard: {
-    flexDirection: 'row',
-    gap: spacing[3],
-    padding: spacing[4],
+    backgroundColor: colors.background.surface,
+    gap: spacing[2],
+    padding: spacing[2],
+    width: '31.6%',
   },
   previewWrap: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.md,
-    height: 88,
+    aspectRatio: 1,
     overflow: 'hidden',
-    width: 88,
+    width: '100%',
   },
   previewImage: {
     height: '100%',
@@ -177,22 +204,37 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  remainingBadge: {
+    backgroundColor: colors.overlay.softSurface,
+    borderRadius: radius.sm,
+    bottom: spacing[1],
+    left: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: 2,
+    position: 'absolute',
+    right: spacing[1],
+  },
+  remainingText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   itemBody: {
-    flex: 1,
     gap: spacing[1],
-    justifyContent: 'space-between',
   },
   itemTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.micro,
+    color: colors.text.body,
   },
   itemMeta: {
-    ...typography.textStyles.caption,
+    ...typography.textStyles.micro,
     color: colors.text.body,
   },
   clearButton: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: '#FFD6D6',
+    backgroundColor: colors.semantic.dangerBackground,
+    borderColor: colors.semantic.danger,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: 44,
@@ -201,5 +243,19 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  restoreChip: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.pill,
+    marginTop: spacing[1],
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[2],
+  },
+  restoreText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '600',
   },
 });

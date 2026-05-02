@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, layout, spacing } from '../design/tokens';
+import { colors, layout, radius, shadows, spacing } from '../design/tokens';
 
 interface AppScreenProps {
   children: ReactNode;
@@ -107,16 +107,19 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: spacing[6],
+    gap: spacing[5],
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: spacing[6],
+    gap: spacing[5],
   },
   footer: {
     backgroundColor: colors.background.page,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    paddingTop: spacing[3],
+    paddingTop: spacing[2],
+    ...shadows.hairline,
   },
 });

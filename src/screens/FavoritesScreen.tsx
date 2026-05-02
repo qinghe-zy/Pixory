@@ -27,7 +27,7 @@ export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: Favorites
   );
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="收藏图片">
+    <ScreenScaffold decorativeTitle="Favorites" onBack={onBack} scrollable title="收藏">
       <View style={styles.summary}>
         <Text style={styles.subtitle}>默认排除回收站中的图片</Text>
         <Text style={styles.countText}>{images.length} 张图片</Text>
@@ -58,7 +58,6 @@ export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: Favorites
 const styles = StyleSheet.create({
   summary: {
     gap: spacing[1],
-    marginTop: -spacing[4],
   },
   subtitle: {
     ...typography.textStyles.caption,

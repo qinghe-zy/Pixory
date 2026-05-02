@@ -27,7 +27,7 @@ export function RecentViewedScreen({ refreshToken, onBack, onOpenImage }: Recent
   );
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title="最近查看">
+    <ScreenScaffold decorativeTitle="Recent" onBack={onBack} scrollable title="最近查看">
       <View style={styles.summary}>
         <Text style={styles.subtitle}>按最近打开时间倒序展示，默认排除回收站中的图片</Text>
         <Text style={styles.countText}>{images.length} 张图片</Text>
@@ -58,7 +58,6 @@ export function RecentViewedScreen({ refreshToken, onBack, onOpenImage }: Recent
 const styles = StyleSheet.create({
   summary: {
     gap: spacing[1],
-    marginTop: -spacing[4],
   },
   subtitle: {
     ...typography.textStyles.caption,

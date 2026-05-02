@@ -294,7 +294,10 @@ export function BatchManageImagesScreen({
 
   const footer = (
     <View style={styles.footerWrap}>
-      <Text style={styles.footerTitle}>已选择 {selectedCount} 张</Text>
+      <View style={styles.footerHeader}>
+        <Text style={styles.footerTitle}>已选择 {selectedCount} 张</Text>
+        <Text style={styles.footerMeta}>共 {images.length} 张</Text>
+      </View>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       {mode === 'move-group' ? (
         <View style={styles.footerActionList}>
@@ -356,12 +359,17 @@ export function BatchManageImagesScreen({
   return (
     <ScreenScaffold footer={footer} onBack={onBack} scrollable title="批量管理">
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
-        <Text style={styles.summaryMeta}>
-          {source === 'group-images'
-            ? `当前分组内共 ${images.length} 张，可长按来源列表快速带入选中项`
-            : `当前 IP 内共 ${images.length} 张，可在这里继续批量整理`}
-        </Text>
+        <View style={styles.summaryIcon}>
+          <Ionicons color={colors.primary.default} name="albums-outline" size={22} />
+        </View>
+        <View style={styles.summaryCopy}>
+          <Text style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
+          <Text style={styles.summaryMeta}>
+            {source === 'group-images'
+              ? `当前分组内共 ${images.length} 张，可长按来源列表快速带入选中项`
+              : `当前 IP 内共 ${images.length} 张，可在这里继续批量整理`}
+          </Text>
+        </View>
       </View>
 
       <PageStateBlock
@@ -520,14 +528,28 @@ function BatchActionButton({
 
 const styles = StyleSheet.create({
   summaryCard: {
-    ...typography.textStyles.body,
+    alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
     gap: spacing[1],
     marginTop: -spacing[4],
     padding: metrics.cardPadding,
+  },
+  summaryIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.md,
+    height: 46,
+    justifyContent: 'center',
+    marginRight: spacing[3],
+    width: 46,
+  },
+  summaryCopy: {
+    flex: 1,
+    gap: spacing[1],
   },
   summaryTitle: {
     ...typography.textStyles.sectionTitle,
@@ -539,8 +561,14 @@ const styles = StyleSheet.create({
   },
   topBar: {
     alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
   },
   selectionText: {
     ...typography.textStyles.sectionTitle,
@@ -565,8 +593,9 @@ const styles = StyleSheet.create({
   },
   tagInput: {
     ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     color: colors.text.title,
     flex: 1,
@@ -578,7 +607,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing[1],
@@ -607,7 +636,17 @@ const styles = StyleSheet.create({
     rowGap: layout.gridGap,
   },
   footerWrap: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
+    padding: spacing[3],
+  },
+  footerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   footerTitle: {
     ...typography.textStyles.sectionTitle,
@@ -635,8 +674,8 @@ const styles = StyleSheet.create({
     width: '48.6%',
   },
   batchActionDangerCard: {
-    backgroundColor: '#FFF5F5',
-    borderColor: '#FFD6D6',
+    backgroundColor: colors.semantic.dangerBackground,
+    borderColor: colors.semantic.danger,
   },
   batchActionDisabled: {
     opacity: 0.45,
@@ -648,6 +687,10 @@ const styles = StyleSheet.create({
   },
   batchActionDangerLabel: {
     color: colors.semantic.danger,
+  },
+  footerMeta: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   errorText: {
     ...typography.textStyles.caption,
