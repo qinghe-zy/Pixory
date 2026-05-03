@@ -102,8 +102,8 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
             <TextFieldCard
               autoCapitalize="none"
               editable={!isSubmitting}
-              hint="名称会用于首页卡片、详情页和导入关联。"
-              label="IP名称"
+              hint="用于首页、详情和导入关联。"
+              label="IP 名称"
               maxLength={IP_NAME_MAX_LENGTH}
               onChangeText={(value) => {
                 setName(value);
@@ -117,10 +117,10 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
 
             <MultilineFieldCard
               editable={!isSubmitting}
-              hint="简介会显示在 IP 详情页顶部。"
+              hint="显示在 IP 详情页顶部。"
               label="简介"
               maxLength={200}
-              minHeight={132}
+              minHeight={116}
               onChangeText={(value) => {
                 setDescription(value);
                 if (submitError) {
@@ -133,7 +133,7 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
 
             <SwitchFieldCard
               disabled={isSubmitting}
-              hint="收藏后会出现在首页的“收藏”筛选里。"
+              hint="用于首页收藏筛选。"
               label="收藏状态"
               onValueChange={setIsFavorite}
               value={isFavorite}

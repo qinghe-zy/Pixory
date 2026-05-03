@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, metrics, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, typography } from '../design/tokens';
 import { ContentCard } from './ContentCard';
 import { FormField } from './FormField';
 
@@ -15,7 +15,9 @@ export function ReadonlyFieldCard({ label, hint, value }: ReadonlyFieldCardProps
     <ContentCard>
       <FormField hint={hint} label={label}>
         <View style={styles.box}>
-          <Text style={styles.value}>{value}</Text>
+          <Text numberOfLines={2} style={styles.value}>
+            {value}
+          </Text>
         </View>
       </FormField>
     </ContentCard>
@@ -24,13 +26,13 @@ export function ReadonlyFieldCard({ label, hint, value }: ReadonlyFieldCardProps
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: 'transparent',
+    borderColor: colors.border.divider,
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     justifyContent: 'center',
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
+    minHeight: 24,
+    paddingHorizontal: 0,
   },
   value: {
     ...typography.textStyles.body,

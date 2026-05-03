@@ -15,7 +15,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
-import { colors, componentTokens, layout, metrics, radius, spacing, typography } from '../design/tokens';
+import { colors, layout, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { getFileInfo } from '../services/fileStorageService';
@@ -363,11 +363,11 @@ export function BatchManageImagesScreen({
           <Ionicons color={colors.primary.default} name="albums-outline" size={22} />
         </View>
         <View style={styles.summaryCopy}>
-          <Text style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
-          <Text style={styles.summaryMeta}>
+          <Text numberOfLines={1} style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
+          <Text numberOfLines={2} style={styles.summaryMeta}>
             {source === 'group-images'
-              ? `当前分组内共 ${images.length} 张，可长按来源列表快速带入选中项`
-              : `当前 IP 内共 ${images.length} 张，可在这里继续批量整理`}
+              ? `分组内 ${images.length} 张，可批量整理`
+              : `当前 IP 共 ${images.length} 张，可批量整理`}
           </Text>
         </View>
       </View>
@@ -529,49 +529,50 @@ function BatchActionButton({
 const styles = StyleSheet.create({
   summaryCard: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.lg,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: spacing[2],
     marginTop: -spacing[4],
-    padding: metrics.cardPadding,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   summaryIcon: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
-    borderRadius: radius.md,
-    height: 46,
+    borderRadius: radius.pill,
+    height: 34,
     justifyContent: 'center',
-    marginRight: spacing[3],
-    width: 46,
+    width: 34,
   },
   summaryCopy: {
     flex: 1,
     gap: spacing[1],
+    minWidth: 0,
   },
   summaryTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
   summaryMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   topBar: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: 'transparent',
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
+    borderWidth: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[1],
+    paddingVertical: spacing[1],
   },
   selectionText: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   linkButton: {
     paddingVertical: spacing[1],
@@ -596,22 +597,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
     flex: 1,
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    minHeight: 40,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   addTagButton: {
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[1],
-    height: componentTokens.common.minTouchSize,
+    height: 40,
     justifyContent: 'center',
     paddingHorizontal: spacing[4],
   },
@@ -636,12 +637,12 @@ const styles = StyleSheet.create({
     rowGap: layout.gridGap,
   },
   footerWrap: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.xl,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
-    padding: spacing[3],
+    gap: spacing[2],
+    padding: spacing[2],
   },
   footerHeader: {
     alignItems: 'center',
@@ -658,30 +659,30 @@ const styles = StyleSheet.create({
   batchActionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: spacing[1.5],
   },
   batchActionCard: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.md,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: spacing[1],
     justifyContent: 'center',
-    minHeight: componentTokens.common.minTouchSize,
-    paddingHorizontal: spacing[4],
-    width: '48.6%',
+    minHeight: 36,
+    paddingHorizontal: spacing[2],
+    width: '32%',
   },
   batchActionDangerCard: {
     backgroundColor: colors.semantic.dangerBackground,
-    borderColor: colors.semantic.danger,
+    borderColor: colors.border.subtle,
   },
   batchActionDisabled: {
     opacity: 0.45,
   },
   batchActionLabel: {
-    ...typography.textStyles.caption,
+    ...typography.textStyles.micro,
     color: colors.text.title,
     fontWeight: '500',
   },

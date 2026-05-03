@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: metrics.minTouchSize + spacing[4],
+    minHeight: metrics.minTouchSize + spacing[2],
   },
   copy: {
     flex: 1,
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     maxWidth: layout.maxReadableWidth,
   },
   label: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   hint: {
     ...typography.textStyles.caption,

@@ -4,7 +4,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, type ImageListItem } from '../database';
-import { spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface FavoritesScreenProps {
@@ -29,8 +29,12 @@ export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: Favorites
   return (
     <ScreenScaffold decorativeTitle="Favorites" onBack={onBack} scrollable title="收藏">
       <View style={styles.summary}>
-        <Text style={styles.subtitle}>默认排除回收站中的图片</Text>
-        <Text style={styles.countText}>{images.length} 张图片</Text>
+        <Text numberOfLines={1} style={styles.subtitle}>
+          已收藏
+        </Text>
+        <Text numberOfLines={1} style={styles.countText}>
+          {images.length} 张
+        </Text>
       </View>
 
       <PageStateBlock
@@ -57,13 +61,27 @@ export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: Favorites
 
 const styles = StyleSheet.create({
   summary: {
-    gap: spacing[1],
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    maxWidth: '100%',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
   },
   subtitle: {
-    ...typography.textStyles.caption,
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    flexShrink: 1,
   },
   countText: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '500',
   },
   grid: {
     flexDirection: 'row',

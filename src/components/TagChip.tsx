@@ -12,7 +12,7 @@ interface TagChipProps {
 export function TagChip({ label, removable = false, onRemove }: TagChipProps) {
   return (
     <View style={styles.chip}>
-      <Text style={styles.label}>{label}</Text>
+      <Text numberOfLines={1} style={styles.label}>{label}</Text>
       {removable && onRemove ? (
         <Pressable hitSlop={8} onPress={onRemove} style={({ pressed }) => [styles.remove, pressed && styles.pressed]}>
           <Ionicons color={colors.primary.default} name="close" size={14} />
@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.primary.active,
     fontWeight: '500',
+    maxWidth: 148,
   },
   remove: {
     alignItems: 'center',

@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   label: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
     fontWeight: '500',
   },
   solidLabel: {

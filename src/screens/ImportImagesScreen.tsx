@@ -16,7 +16,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, ipRepository, type GroupRecord, type IpRecord } from '../database';
-import { colors, componentTokens, metrics, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import {
@@ -186,26 +186,8 @@ export function ImportImagesScreen({
       title="导入图片"
     >
       <View style={styles.formWrap}>
-        <ReadonlyFieldCard
-          hint={
-            selectedGroupId
-              ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
-              : '这次导入的图片会归入当前 IP。'
-          }
-          label="当前 IP"
-          value={ip?.name ?? `IP #${ipId}`}
-        />
-
-        <DevOnlyCard
-          description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
-          title="开发回归入口"
-        >
-          {/* 仅用于开发回归，正式提测前可移除。 */}
-          <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
-        </DevOnlyCard>
-
         <ContentCard style={styles.pickCard}>
-          <FormField hint="支持多选，导入时会复制原图并生成独立缩略图。" label="选择图片">
+          <FormField hint="复制原图，缩略图单独生成。" label="选择图片">
             <Pressable
               accessibilityRole="button"
               disabled={isPicking}
@@ -216,10 +198,10 @@ export function ImportImagesScreen({
                 <Ionicons color={colors.primary.default} name="images-outline" size={24} />
               </View>
               <View style={styles.pickCopy}>
-                <Text style={styles.pickTitle}>
+                <Text numberOfLines={1} style={styles.pickTitle}>
                   {isPicking ? '正在打开相册…' : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张` : '选择图片'}
                 </Text>
-                <Text style={styles.pickHint}>{pickedAssets.length > 0 ? '点击可重新选择' : '从系统相册批量选择原图'}</Text>
+                <Text numberOfLines={1} style={styles.pickHint}>{pickedAssets.length > 0 ? '点击可重新选择' : '从系统相册批量选择原图'}</Text>
               </View>
             </Pressable>
             {pickedAssets.length > 0 ? (
@@ -234,8 +216,18 @@ export function ImportImagesScreen({
           </FormField>
         </ContentCard>
 
+        <ReadonlyFieldCard
+          hint={
+            selectedGroupId
+              ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
+              : '未选择分组时导入到当前 IP。'
+          }
+          label="当前 IP"
+          value={ip?.name ?? `IP #${ipId}`}
+        />
+
         <ContentCard>
-          <FormField hint="可为空，不选则先导入到当前 IP 的未分组图片里。" label="分组选择">
+          <FormField hint="可为空，不移动原图文件。" label="分组选择">
             <View style={styles.optionWrap}>
               <FilterChip active={selectedGroupId === null} label="暂不分组" onPress={() => setSelectedGroupId(null)} />
               {groups.map((group) => (
@@ -251,7 +243,7 @@ export function ImportImagesScreen({
         </ContentCard>
 
         <ContentCard>
-          <FormField hint="建议每次输入一个标签，再点“添加标签”生成标签胶囊。" label="标签">
+          <FormField hint="可选，保存时追加到导入图片。" label="标签">
             <View style={styles.tagInputRow}>
               <TextInput
                 autoCapitalize="none"
@@ -278,7 +270,7 @@ export function ImportImagesScreen({
                 style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
               >
                 <Ionicons color={colors.primary.default} name="add" size={18} />
-                <Text style={styles.addTagLabel}>添加标签</Text>
+                <Text style={styles.addTagLabel}>添加</Text>
               </Pressable>
             </View>
 
@@ -314,6 +306,14 @@ export function ImportImagesScreen({
           onValueChange={setIsFavorite}
           value={isFavorite}
         />
+
+        <DevOnlyCard
+          description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
+          title="开发回归入口"
+        >
+          {/* 仅用于开发回归，正式提测前可移除。 */}
+          <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
+        </DevOnlyCard>
       </View>
     </FormScreenScaffold>
   );
@@ -321,10 +321,10 @@ export function ImportImagesScreen({
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[4],
+    gap: spacing[3],
   },
   pickCard: {
-    backgroundColor: colors.background.elevated,
+    backgroundColor: colors.background.surface,
   },
   pickZone: {
     alignItems: 'center',
@@ -335,16 +335,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing[3],
-    minHeight: 88,
-    padding: spacing[4],
+    minHeight: 72,
+    padding: spacing[3],
   },
   pickIconWrap: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
-    height: 48,
+    height: 42,
     justifyContent: 'center',
-    width: 48,
+    width: 42,
   },
   pickCopy: {
     flex: 1,
@@ -352,6 +352,7 @@ const styles = StyleSheet.create({
   },
   pickTitle: {
     ...typography.textStyles.sectionTitle,
+    minWidth: 0,
   },
   pickHint: {
     ...typography.textStyles.caption,
@@ -359,7 +360,7 @@ const styles = StyleSheet.create({
   previewRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[3],
+    gap: spacing[2],
   },
   previewCard: {
     backgroundColor: colors.background.empty,
@@ -368,7 +369,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     aspectRatio: 1,
-    width: '31.5%',
+    width: '23.3%',
   },
   previewImage: {
     height: '100%',
@@ -389,24 +390,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
     flex: 1,
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    minHeight: 40,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   addTagButton: {
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
     borderRadius: radius.pill,
-    borderWidth: 1,
-    height: componentTokens.common.minTouchSize,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 40,
     flexDirection: 'row',
     gap: spacing[1],
     justifyContent: 'center',
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[3],
   },
   addTagLabel: {
     ...typography.textStyles.caption,

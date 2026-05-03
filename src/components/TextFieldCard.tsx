@@ -11,7 +11,13 @@ interface TextFieldCardProps extends Omit<TextInputProps, 'multiline'> {
   errorMessage?: string | null;
 }
 
-export function TextFieldCard({ label, hint, errorMessage, style, ...inputProps }: TextFieldCardProps) {
+export function TextFieldCard({
+  label,
+  hint,
+  errorMessage,
+  style,
+  ...inputProps
+}: TextFieldCardProps) {
   return (
     <ContentCard>
       <FormField hint={hint} label={label}>
@@ -32,11 +38,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   errorInput: {
     borderColor: colors.semantic.danger,

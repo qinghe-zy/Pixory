@@ -27,7 +27,7 @@ export function MultilineFieldCard({
           multiline
           placeholderTextColor={colors.text.placeholder}
           selectionColor={colors.primary.default}
-          style={[styles.input, { minHeight }, errorMessage ? styles.errorInput : null, style]}
+          style={[styles.input, { minHeight: Math.max(88, minHeight - 24) }, errorMessage ? styles.errorInput : null, style]}
           textAlignVertical="top"
           {...inputProps}
         />
@@ -42,11 +42,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
     minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
   },
   errorInput: {
     borderColor: colors.semantic.danger,

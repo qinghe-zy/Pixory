@@ -54,7 +54,7 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
           autoCapitalize="none"
           editable={!isSubmitting}
           enablesReturnKeyAutomatically
-          label="IP名称"
+          label="IP 名称"
           maxLength={IP_NAME_MAX_LENGTH}
           onChangeText={(value) => {
             setName(value);
@@ -70,10 +70,10 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
 
         <MultilineFieldCard
           editable={!isSubmitting}
-          hint="可选，用一句话说明这个 IP 的角色、主题或用途。"
+          hint="可选，显示在 IP 详情页。"
           label="简介"
           maxLength={DESCRIPTION_MAX_LENGTH}
-          minHeight={132}
+          minHeight={116}
           onChangeText={(value) => {
             setDescription(value);
             if (submitError) {
@@ -86,7 +86,7 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
 
         <SwitchFieldCard
           disabled={isSubmitting}
-          hint="收藏后会出现在首页的“收藏”筛选里。"
+          hint="用于首页收藏筛选。"
           label="是否收藏"
           onValueChange={setIsFavorite}
           value={isFavorite}

@@ -4,7 +4,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, tagRepository, type ImageListItem, type TagRecord } from '../database';
-import { spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface TagResultScreenProps {
@@ -48,8 +48,12 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage }: Ta
     <ScreenScaffold onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
       {tag ? (
         <View style={styles.summary}>
-          <Text style={styles.subtitle}>默认已排除回收站中的图片</Text>
-          <Text style={styles.countText}>{images.length} 张图片</Text>
+          <Text numberOfLines={1} style={styles.subtitle}>
+            已排除回收站
+          </Text>
+          <Text numberOfLines={1} style={styles.countText}>
+            {images.length} 张
+          </Text>
         </View>
       ) : null}
 
@@ -77,14 +81,28 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage }: Ta
 
 const styles = StyleSheet.create({
   summary: {
-    gap: spacing[1],
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
     marginTop: -spacing[4],
+    maxWidth: '100%',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
   },
   subtitle: {
-    ...typography.textStyles.caption,
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    flexShrink: 1,
   },
   countText: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '500',
   },
   grid: {
     flexDirection: 'row',

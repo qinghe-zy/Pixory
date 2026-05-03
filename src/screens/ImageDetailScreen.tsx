@@ -218,12 +218,12 @@ export function ImageDetailScreen({
           <ContentCard style={styles.detailCard}>
             <View style={styles.imageTitleBlock}>
               <View style={styles.titleLine}>
-                <Text numberOfLines={1} style={styles.imageTitle}>
+                <Text adjustsFontSizeToFit minimumFontScale={0.86} numberOfLines={2} style={styles.imageTitle}>
                   {image.originalFilename.replace(/\.[^.]+$/, '')}
                 </Text>
                 <Ionicons color={image.isFavorite ? colors.semantic.favorite : colors.text.tertiary} name={image.isFavorite ? 'star' : 'star-outline'} size={18} />
               </View>
-              <Text style={styles.imageSubtitle}>
+              <Text numberOfLines={2} style={styles.imageSubtitle}>
                 IP：{image.ipName}　　分组：{image.groupName ?? '未分组'}
               </Text>
             </View>
@@ -232,42 +232,42 @@ export function ImageDetailScreen({
             </View>
             <View style={styles.noteBlock}>
               <Text style={styles.infoLabel}>备注</Text>
-              <Text style={styles.infoValue}>{image.note || '暂无备注'}</Text>
+              <Text numberOfLines={4} style={styles.infoValue}>{image.note || '暂无备注'}</Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所属 IP</Text>
-              <Text style={styles.infoValue}>{image.ipName}</Text>
+              <Text numberOfLines={2} style={styles.infoValue}>{image.ipName}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所在分组</Text>
-              <Text style={styles.infoValue}>
+              <Text numberOfLines={2} style={styles.infoValue}>
                 {image.groupName ? `${image.groupName} · ${getGroupTypeLabel(image.groupType)}` : '未分组'}
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>文件名</Text>
-              <Text style={styles.infoValue}>{image.originalFilename}</Text>
+              <Text numberOfLines={2} style={styles.infoValue}>{image.originalFilename}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>尺寸</Text>
-              <Text style={styles.infoValue}>{formatImageDimensions(image.width, image.height)}</Text>
+              <Text numberOfLines={1} style={styles.infoValue}>{formatImageDimensions(image.width, image.height)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>大小</Text>
-              <Text style={styles.infoValue}>{formatFileSize(image.fileSize)}</Text>
+              <Text numberOfLines={1} style={styles.infoValue}>{formatFileSize(image.fileSize)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>格式</Text>
-              <Text style={styles.infoValue}>{image.mimeType}</Text>
+              <Text numberOfLines={1} style={styles.infoValue}>{image.mimeType}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>上传时间</Text>
-              <Text style={styles.infoValue}>{formatDateTime(image.createdAt)}</Text>
+              <Text numberOfLines={1} style={styles.infoValue}>{formatDateTime(image.createdAt)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>收藏状态</Text>
-              <Text style={styles.infoValue}>{image.isFavorite ? '已收藏' : '未收藏'}</Text>
+              <Text numberOfLines={1} style={styles.infoValue}>{image.isFavorite ? '已收藏' : '未收藏'}</Text>
             </View>
           </ContentCard>
 
@@ -307,16 +307,16 @@ function PrimaryAction({
 const actionStyles = StyleSheet.create({
   button: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.default,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    flex: 1,
-    gap: spacing[2],
-    minHeight: componentTokens.primaryButton.height,
+    flexDirection: 'row',
+    gap: spacing[1],
+    height: 42,
     justifyContent: 'center',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[3],
+    width: '48.6%',
+    paddingHorizontal: spacing[3],
   },
   pressed: {
     opacity: 0.82,
@@ -343,9 +343,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   detailCard: {
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    marginTop: -spacing[4],
+    marginTop: -spacing[2],
   },
   imageTitleBlock: {
     gap: spacing[1],
@@ -358,18 +356,20 @@ const styles = StyleSheet.create({
   imageTitle: {
     ...typography.textStyles.pageTitle,
     flex: 1,
-    fontSize: 21,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 27,
+    minWidth: 0,
   },
   imageSubtitle: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+    minWidth: 0,
   },
   noteBlock: {
     borderBottomColor: colors.border.divider,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    paddingBottom: spacing[4],
+    gap: spacing[1],
+    paddingBottom: spacing[3],
   },
   previewWrap: {
     backgroundColor: colors.background.sunken,
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   previewImage: {
-    aspectRatio: 0.76,
+    aspectRatio: 0.9,
     width: '100%',
   },
   errorText: {
@@ -388,17 +388,25 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
   },
   infoRow: {
+    alignItems: 'flex-start',
     borderBottomColor: colors.border.divider,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    flexDirection: 'row',
+    gap: spacing[3],
+    justifyContent: 'space-between',
     paddingBottom: spacing[3],
   },
   infoLabel: {
     ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    width: 74,
   },
   infoValue: {
     ...typography.textStyles.body,
     color: colors.text.title,
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'right',
   },
   tagsWrap: {
     flexDirection: 'row',
@@ -407,6 +415,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing[2],
   },
 });

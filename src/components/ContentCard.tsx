@@ -14,12 +14,12 @@ export function ContentCard({ children, style }: ContentCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    ...shadows.xs,
-    backgroundColor: colors.background.surface,
+    ...shadows.hairline,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
-    padding: metrics.cardPadding,
+    gap: spacing[2],
+    padding: Math.max(spacing[3], metrics.cardPadding - spacing[2]),
   },
 });

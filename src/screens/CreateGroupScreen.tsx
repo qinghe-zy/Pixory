@@ -83,8 +83,8 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
     >
       <View style={styles.formWrap}>
         <ReadonlyFieldCard
-          hint="当前新建的分组会直接归属这个 IP。"
-          label="所属IP"
+          hint="新分组会归属这个 IP。"
+          label="所属 IP"
           value={resolvedIpName ?? `IP #${ipId}`}
         />
 
@@ -103,7 +103,7 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
         />
 
         <ContentCard>
-          <FormField hint="按你后续最常用的整理方式来选。" label="分组类型">
+          <FormField hint="用于后续筛选和识别。" label="分组类型">
             <View style={styles.typeWrap}>
               {GROUP_TYPE_OPTIONS.map((option) => (
                 <FilterChip
@@ -119,9 +119,10 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
 
         <MultilineFieldCard
           editable={!isSubmitting}
-          hint="可选，帮助你区分该分组的使用场景。"
+          hint="可选，帮助区分使用场景。"
           label="分组描述"
           maxLength={DESCRIPTION_MAX_LENGTH}
+          minHeight={108}
           onChangeText={(value) => {
             setDescription(value);
             if (submitError) {

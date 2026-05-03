@@ -15,7 +15,7 @@ import { TextFieldCard } from '../components/TextFieldCard';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageDetailRecord, type TagRecord } from '../database';
-import { colors, componentTokens, metrics, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { mergeDraftTagNames, normalizeDraftTagNames } from '../utils/tagDrafts';
@@ -166,15 +166,15 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
             )}
           </View>
           <View style={styles.previewMeta}>
-            <Text numberOfLines={1} style={styles.previewTitle}>
+            <Text numberOfLines={2} style={styles.previewTitle}>
               {image?.originalFilename ?? '当前图片'}
             </Text>
-            <Text style={styles.previewCaption}>编辑仅更新元数据，不会改动原图文件。</Text>
+            <Text numberOfLines={2} style={styles.previewCaption}>仅更新元数据，不改动原图文件。</Text>
           </View>
         </ContentCard>
 
         <ReadonlyFieldCard
-          hint="这里只读展示所属 IP，图片编辑不会跨 IP 移动。"
+          hint="图片编辑不会跨 IP 移动。"
           label="所属 IP"
           value={image?.ipName ?? '当前IP'}
         />
@@ -220,7 +220,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
         </DevOnlyCard>
 
         <ContentCard>
-          <FormField hint="只显示当前 IP 下已有分组，也支持保留未分组。" label="所在分组">
+          <FormField hint="只显示当前 IP 下的分组。" label="所在分组">
             <View style={styles.optionWrap}>
               <FilterChip active={selectedGroupId === null} label="无分组" onPress={() => setSelectedGroupId(null)} />
               {groups.map((group) => (
@@ -236,7 +236,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
         </ContentCard>
 
         <ContentCard>
-          <FormField hint="支持新增和删除标签，保存后会同步更新 image_tags。" label="标签">
+          <FormField hint="保存后同步到图片标签。" label="标签">
             <View style={styles.tagInputRow}>
               <TextInput
                 autoCapitalize="none"
@@ -263,7 +263,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
                 style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
               >
                 <Ionicons color={colors.primary.default} name="add" size={18} />
-                <Text style={styles.addTagLabel}>添加标签</Text>
+                <Text style={styles.addTagLabel}>添加</Text>
               </Pressable>
             </View>
 
@@ -300,7 +300,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
 
         <SwitchFieldCard
           disabled={isSubmitting}
-          hint="这里只更新收藏状态，不会改动原图和缩略图文件。"
+          hint="不改动原图和缩略图。"
           label="收藏状态"
           onValueChange={setIsFavorite}
           value={isFavorite}
@@ -312,16 +312,17 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[4],
+    gap: spacing[3],
   },
   previewCard: {
     gap: spacing[3],
     padding: spacing[3],
+    backgroundColor: colors.background.surface,
   },
   previewFrame: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.lg,
-    height: 220,
+    height: 172,
     overflow: 'hidden',
     width: '100%',
   },
@@ -337,9 +338,10 @@ const styles = StyleSheet.create({
   previewMeta: {
     gap: spacing[1],
     paddingHorizontal: spacing[1],
+    minWidth: 0,
   },
   previewTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   previewCaption: {
     ...typography.textStyles.caption,
@@ -359,24 +361,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
     flex: 1,
-    minHeight: metrics.minTouchSize,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    minHeight: 40,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   addTagButton: {
     alignItems: 'center',
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[1],
-    height: componentTokens.common.minTouchSize,
+    height: 40,
     justifyContent: 'center',
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[3],
   },
   addTagLabel: {
     ...typography.textStyles.caption,
@@ -397,7 +399,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tag,
     borderColor: colors.primary.hover,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
     minHeight: componentTokens.common.minTouchSize,
     paddingHorizontal: spacing[4],

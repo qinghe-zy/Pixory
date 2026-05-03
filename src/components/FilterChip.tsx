@@ -19,7 +19,7 @@ export function FilterChip({ label, active, onPress }: FilterChipProps) {
         pressed && styles.pressed,
       ]}
     >
-      <Text style={[styles.text, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.text, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
     </Pressable>
   );
 }
@@ -30,6 +30,7 @@ const styles = StyleSheet.create({
     borderRadius: componentTokens.filterChip.radius,
     height: componentTokens.filterChip.height,
     justifyContent: 'center',
+    maxWidth: '100%',
     paddingHorizontal: componentTokens.filterChip.horizontalPadding,
   },
   active: {
@@ -49,6 +50,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     fontWeight: '500',
     lineHeight: 18,
+    maxWidth: 180,
   },
   activeText: {
     color: colors.primary.active,
