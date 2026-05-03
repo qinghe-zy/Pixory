@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
@@ -12,7 +11,7 @@ import { GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { imageRepository, ipRepository, type ImageListItem, type IpDetailRecord } from '../database';
 import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
-import { formatDateTime } from '../utils/formatters';
+import { formatDate, getIpInitials } from '../utils/formatters';
 
 interface IpDetailScreenProps {
   ipId: number;
@@ -117,20 +116,36 @@ export function IpDetailScreen({
       >
         {ip ? (
           <>
-            <View style={styles.hero}>
+            <View style={styles.cover}>
+              {recentImages[0]?.thumbnailFileUri ? (
+                <Image resizeMode="cover" source={{ uri: recentImages[0].thumbnailFileUri }} style={styles.coverImage} />
+              ) : (
+                <View style={styles.coverFallback}>
+                  <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
+                </View>
+              )}
+              {ip.isFavorite ? (
+                <View style={styles.favoriteBadge}>
+                  <Ionicons color={colors.semantic.favorite} name="star" size={14} />
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.identityBlock}>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>{ip.name}</Text>
-                {ip.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={18} /> : null}
+                <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.title}>
+                  {ip.name}
+                </Text>
               </View>
               <Text style={styles.description}>{ip.description || '还没有简介'}</Text>
             </View>
 
-            <ContentCard style={styles.statsCard}>
+            <View style={styles.statsStrip}>
               <StatBlock label="图片数量" value={String(ip.imageCount)} />
               <StatBlock label="分组数量" value={String(ip.groupCount)} />
               <StatBlock label="标签数量" value={String(ip.tagCount)} />
-              <StatBlock label="最近更新" value={formatDateTime(ip.recentUpdatedAt)} />
-            </ContentCard>
+              <StatBlock label="最近更新" value={formatDate(ip.recentUpdatedAt)} />
+            </View>
 
             <SectionHeader title="快捷操作" />
             <View style={styles.quickGrid}>
@@ -140,13 +155,15 @@ export function IpDetailScreen({
                   onPress={() => handleQuickAction(action.key)}
                   style={({ pressed }) => [styles.quickCard, pressed && styles.pressed]}
                 >
-                  <Ionicons color={colors.primary.default} name={action.icon} size={26} />
+                  <View style={styles.quickIcon}>
+                    <Ionicons color={colors.primary.active} name={action.icon} size={20} />
+                  </View>
                   <Text style={styles.quickLabel}>{action.label}</Text>
                 </Pressable>
               ))}
             </View>
 
-            <ContentCard>
+            <View style={styles.groupSection}>
               <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={onOpenGroups} title="分组入口" />
               <View style={styles.groupEntryList}>
                 {GROUP_TYPE_OPTIONS.map((groupType) => (
@@ -156,7 +173,7 @@ export function IpDetailScreen({
                   </Pressable>
                 ))}
               </View>
-            </ContentCard>
+            </View>
 
             <SectionHeader
               actionLabel={recentImages.length > 0 ? commonButtonCopy.allImages : undefined}
@@ -210,34 +227,69 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-  hero: {
-    ...shadows.hero,
-    backgroundColor: colors.background.elevated,
+  cover: {
+    ...shadows.xs,
+    aspectRatio: 1.55,
+    backgroundColor: colors.background.empty,
     borderColor: colors.border.subtle,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  coverImage: {
+    height: '100%',
+    width: '100%',
+  },
+  coverFallback: {
+    alignItems: 'center',
+    backgroundColor: colors.background.elevated,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  coverInitials: {
+    ...typography.textStyles.heroTitle,
+    color: colors.primary.active,
+  },
+  favoriteBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.overlay.softSurface,
+    borderRadius: radius.sm,
+    height: 28,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[3],
+    top: spacing[3],
+    width: 28,
+  },
+  identityBlock: {
     gap: spacing[2],
-    padding: spacing[5],
   },
   titleRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: spacing[2],
   },
   title: {
     ...typography.textStyles.pageTitle,
-    fontSize: 22,
-    lineHeight: 28,
+    flexShrink: 1,
+    fontSize: 20,
+    lineHeight: 26,
   },
   description: {
     ...typography.textStyles.body,
     color: colors.text.body,
     maxWidth: layout.maxReadableWidth,
   },
-  statsCard: {
+  statsStrip: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
   },
   statItem: {
     alignItems: 'center',
@@ -246,9 +298,11 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...typography.textStyles.statNumber,
+    textAlign: 'center',
   },
   statLabel: {
     ...typography.textStyles.statLabel,
+    textAlign: 'center',
   },
   quickGrid: {
     flexDirection: 'row',
@@ -256,30 +310,43 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   quickCard: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
-    borderRadius: radius.lg,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
-    minHeight: 104,
-    padding: spacing[4],
-    width: '48.8%',
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 64,
+    paddingHorizontal: spacing[3],
+    width: '48.3%',
+  },
+  quickIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.sm,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
   },
   quickLabel: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
+    flex: 1,
+  },
+  groupSection: {
+    gap: spacing[3],
   },
   groupEntryList: {
-    gap: spacing[2],
+    gap: spacing[1],
   },
   groupEntry: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderRadius: radius.md,
+    borderBottomColor: colors.border.divider,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: componentTokens.common.minTouchSize,
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[1],
   },
   groupEntryTitle: {
     ...typography.textStyles.body,

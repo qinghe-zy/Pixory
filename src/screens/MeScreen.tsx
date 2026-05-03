@@ -44,6 +44,12 @@ const ENTRY_ITEMS = [
     description: '恢复已软删除图片，或清空后物理删除',
     icon: 'trash-outline',
   },
+  {
+    key: 'settings',
+    label: '设置',
+    description: '本地偏好、备份与导出管理',
+    icon: 'settings-outline',
+  },
 ] as const;
 
 export function MeScreen({
@@ -91,7 +97,9 @@ export function MeScreen({
       return;
     }
 
-    onOpenTrash();
+    if (key === 'trash') {
+      onOpenTrash();
+    }
   }
 
   const totalBytes = data?.totalOriginalBytes ?? 0;
@@ -100,7 +108,6 @@ export function MeScreen({
   return (
     <ScreenScaffold decorativeTitle="Me" errorMessage={errorMessage} footer={footer} scrollable title="我的">
       <ContentCard style={styles.heroCard}>
-        <View style={styles.heroBackdrop} />
         <View style={styles.profileRow}>
           <View style={styles.avatar}>
             <Ionicons color={colors.primary.active} name="person" size={34} />
@@ -113,6 +120,21 @@ export function MeScreen({
             <Text style={styles.heroDescription}>愿你被世界温柔以待。</Text>
           </View>
         </View>
+        <View style={styles.storageBlock}>
+          <View style={styles.storageHeader}>
+            <View>
+              <Text style={styles.storageLabel}>本地原图存储</Text>
+              <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
+            </View>
+            <View style={styles.storageBadge}>
+              <Text style={styles.storageBadgeText}>Offline</Text>
+            </View>
+          </View>
+          <View style={styles.storageTrack}>
+            <View style={[styles.storageFill, { width: storageFillWidth }]} />
+          </View>
+          <Text style={styles.storageHint}>仅统计已导入原图，缩略图占用未单独展开。</Text>
+        </View>
       </ContentCard>
 
       <ContentCard style={styles.statsCard}>
@@ -122,46 +144,45 @@ export function MeScreen({
         <StatBlock label="回收站" value={String(data?.deletedImageCount ?? 0)} />
       </ContentCard>
 
-      <ContentCard style={styles.storageCard}>
-        <View style={styles.storageHeader}>
-          <View>
-            <Text style={styles.storageLabel}>本地存储</Text>
-            <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
-          </View>
-          <View style={styles.storageBadge}>
-            <Text style={styles.storageBadgeText}>原图</Text>
-          </View>
-        </View>
-        <View style={styles.storageTrack}>
-          <View style={[styles.storageFill, { width: storageFillWidth }]} />
-        </View>
-        <Text style={styles.storageHint}>仅统计已导入原图，缩略图占用未单独展开。</Text>
-      </ContentCard>
-
       <View style={styles.entryList}>
-        {ENTRY_ITEMS.map((item) => (
-          <Pressable key={item.key} onPress={() => handleEntryPress(item.key)} style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
-            <View style={styles.entryIconWrap}>
-              <Ionicons
-                color={item.key === 'trash' ? colors.semantic.danger : colors.primary.default}
-                name={item.icon}
-                size={22}
-              />
+        {ENTRY_ITEMS.map((item) => {
+          const isSettings = item.key === 'settings';
+          const entryContent = (
+            <>
+              <View style={[styles.entryIconWrap, item.key === 'trash' && styles.trashIconWrap]}>
+                <Ionicons
+                  color={item.key === 'trash' ? colors.semantic.danger : colors.primary.active}
+                  name={item.icon}
+                  size={21}
+                />
+              </View>
+              <View style={styles.entryCopy}>
+                <Text style={styles.entryTitle}>{item.label}</Text>
+                <Text style={styles.entryDescription}>{item.description}</Text>
+              </View>
+              {isSettings ? null : (
+                <Text style={styles.entryCount}>
+                  {item.key === 'favorites'
+                    ? data?.favoriteImageCount ?? 0
+                    : item.key === 'recent'
+                      ? data?.activeImageCount ?? 0
+                      : data?.deletedImageCount ?? 0}
+                </Text>
+              )}
+              {isSettings ? null : <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />}
+            </>
+          );
+
+          return isSettings ? (
+            <View key={item.key} style={[styles.entryCard, styles.disabledEntry]}>
+              {entryContent}
             </View>
-            <View style={styles.entryCopy}>
-              <Text style={styles.entryTitle}>{item.label}</Text>
-              <Text style={styles.entryDescription}>{item.description}</Text>
-            </View>
-            <Text style={styles.entryCount}>
-              {item.key === 'favorites'
-                ? data?.favoriteImageCount ?? 0
-                : item.key === 'recent'
-                  ? data?.activeImageCount ?? 0
-                  : data?.deletedImageCount ?? 0}
-            </Text>
-            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
-          </Pressable>
-        ))}
+          ) : (
+            <Pressable key={item.key} onPress={() => handleEntryPress(item.key)} style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
+              {entryContent}
+            </Pressable>
+          );
+        })}
       </View>
 
       {isLoading ? <Text style={styles.loadingText}>正在刷新本地统计…</Text> : null}
@@ -188,20 +209,10 @@ function StatBlock({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   heroCard: {
     backgroundColor: colors.background.surface,
-    gap: spacing[3],
-    minHeight: 118,
-    padding: spacing[5],
+    gap: spacing[5],
+    minHeight: 190,
+    padding: spacing[4],
     overflow: 'hidden',
-  },
-  heroBackdrop: {
-    backgroundColor: colors.support.sky50,
-    borderBottomLeftRadius: 88,
-    height: 112,
-    opacity: 0.86,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    width: '68%',
   },
   profileRow: {
     alignItems: 'center',
@@ -249,7 +260,8 @@ const styles = StyleSheet.create({
   statsCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
   },
   statItem: {
     alignItems: 'center',
@@ -262,8 +274,7 @@ const styles = StyleSheet.create({
   statLabel: {
     ...typography.textStyles.statLabel,
   },
-  storageCard: {
-    backgroundColor: colors.background.elevated,
+  storageBlock: {
     gap: spacing[2],
   },
   storageHeader: {
@@ -307,13 +318,13 @@ const styles = StyleSheet.create({
     color: colors.text.body,
   },
   entryList: {
-    gap: spacing[3],
+    gap: spacing[2],
   },
   entryCard: {
     alignItems: 'center',
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.lg,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[3],
@@ -323,16 +334,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
-    height: 44,
+    height: 42,
     justifyContent: 'center',
-    width: 44,
+    width: 42,
+  },
+  trashIconWrap: {
+    backgroundColor: colors.semantic.dangerBackground,
   },
   entryCopy: {
     flex: 1,
     gap: spacing[1],
   },
   entryTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   entryDescription: {
     ...typography.textStyles.caption,
@@ -346,6 +360,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  disabledEntry: {
+    opacity: 0.78,
   },
   loadingText: {
     ...typography.textStyles.caption,

@@ -6,7 +6,7 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
-import { spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface GroupImagesScreenProps {
@@ -57,13 +57,18 @@ export function GroupImagesScreen({
   const images = data?.images ?? [];
 
   return (
-    <ScreenScaffold onBack={onBack} scrollable title={group?.name ?? '分组图片'}>
+    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分组图片">
       {group ? (
         <View style={styles.summary}>
-          <Text style={styles.subtitle}>
-            {ip?.name ?? '所属IP'} / {getGroupTypeLabel(group.type)}
-          </Text>
-          <Text style={styles.countText}>{images.length} 张图片</Text>
+          <View style={styles.summaryCopy}>
+            <Text numberOfLines={1} style={styles.subtitle}>
+              {ip?.name ?? '所属 IP'} / {getGroupTypeLabel(group.type)}
+            </Text>
+            <Text adjustsFontSizeToFit minimumFontScale={0.86} numberOfLines={2} style={styles.groupName}>
+              {group.name}
+            </Text>
+          </View>
+          <Text style={styles.countPill}>{images.length} 张</Text>
         </View>
       ) : null}
 
@@ -97,14 +102,38 @@ export function GroupImagesScreen({
 
 const styles = StyleSheet.create({
   summary: {
+    alignItems: 'flex-start',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
+  },
+  summaryCopy: {
+    flex: 1,
     gap: spacing[1],
-    marginTop: -spacing[4],
+    minWidth: 0,
   },
   subtitle: {
     ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
-  countText: {
-    ...typography.textStyles.sectionTitle,
+  groupName: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  countPill: {
+    ...typography.textStyles.caption,
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    color: colors.primary.active,
+    overflow: 'hidden',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
   },
   grid: {
     flexDirection: 'row',

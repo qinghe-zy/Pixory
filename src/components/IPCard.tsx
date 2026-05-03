@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem } from '../database';
-import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { MetaText } from './MetaText';
 
@@ -33,7 +33,7 @@ export function IPCard({ ip, onPress }: IPCardProps) {
         <Text numberOfLines={1} style={typography.textStyles.cardTitle}>
           {ip.name}
         </Text>
-        <MetaText numberOfLines={1}>{`${ip.imageCount} 张图片 · ${ip.groupCount} 个分组`}</MetaText>
+        <MetaText numberOfLines={1}>{`${ip.imageCount} 张图片`}</MetaText>
         <MetaText numberOfLines={1} tone="placeholder">
           {formatUpdatedLabel(ip.updatedAt)}
         </MetaText>
@@ -44,7 +44,7 @@ export function IPCard({ ip, onPress }: IPCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    ...shadows.sm,
+    ...shadows.xs,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: componentTokens.ipCard.radius,
@@ -66,12 +66,12 @@ const styles = StyleSheet.create({
   },
   emptyPreview: {
     alignItems: 'center',
-    backgroundColor: colors.support.sky100,
+    backgroundColor: colors.background.elevated,
     flex: 1,
     justifyContent: 'center',
   },
   initialsText: {
-    color: colors.text.inverse,
+    color: colors.primary.active,
     fontFamily: typography.family.brand,
     fontSize: 34,
     lineHeight: 38,

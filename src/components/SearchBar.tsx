@@ -34,8 +34,8 @@ export function SearchBar({ value, onChangeText, placeholder }: SearchBarProps) 
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
     borderRadius: componentTokens.searchBar.radius,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',

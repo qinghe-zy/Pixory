@@ -7,7 +7,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 type AllImagesFilter =
@@ -98,10 +98,11 @@ export function AllImagesScreen({
   return (
     <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分部图片">
       <View style={styles.summary}>
-        <Text style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
-        <Text style={styles.countText}>
-          共 {images.length} 张图片
-        </Text>
+        <View>
+          <Text style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
+          <Text style={styles.countText}>{activeFilterLabel}</Text>
+        </View>
+        <Text style={styles.imageCount}>{images.length} 张</Text>
       </View>
 
       <View style={styles.filterWrap}>
@@ -186,7 +187,9 @@ export function AllImagesScreen({
 
 const styles = StyleSheet.create({
   summary: {
-    gap: spacing[1],
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   subtitle: {
     ...typography.textStyles.caption,
@@ -195,20 +198,19 @@ const styles = StyleSheet.create({
   countText: {
     ...typography.textStyles.bodyStrong,
   },
+  imageCount: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
   filterWrap: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.xl,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
-    padding: spacing[3],
   },
   filterGroup: {
     gap: spacing[2],
   },
   filterLabel: {
     ...typography.textStyles.caption,
-    paddingHorizontal: spacing[2],
+    color: colors.text.secondary,
   },
   filterRow: {
     flexDirection: 'row',

@@ -154,6 +154,19 @@ Avoid:
 - Fake placeholder text
 - Empty screens without designed empty states
 
+For future page creation or page polish work, follow the reusable visual method in:
+
+```text
+docs/UI_PAGE_OPTIMIZATION_RULES.md
+```
+
+Default expectation:
+
+- optimize one page around one primary visual focus
+- reduce visual weight before adding decoration
+- prefer token-level fixes before page-level one-offs
+- validate on Android screenshots with real data, not empty state only
+
 ## Empty States
 
 Empty states must be treated as real product screens.

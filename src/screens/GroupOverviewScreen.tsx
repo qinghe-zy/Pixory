@@ -105,12 +105,12 @@ export function GroupOverviewScreen({
                         </Text>
                         <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
                       </View>
-                      <Text numberOfLines={2} style={styles.groupDescription}>
+                      <Text numberOfLines={1} style={styles.groupDescription}>
                         {group.description || '还没有分组说明'}
                       </Text>
                       <View style={styles.metaRow}>
                         <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
-                        <Text style={styles.metaText}>最近更新 {formatDate(group.recentUpdatedAt)}</Text>
+                        <Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text>
                       </View>
                     </View>
                   </ContentCard>
@@ -150,31 +150,39 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   groupCard: {
-    gap: spacing[4],
-    padding: spacing[4],
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[3],
+    minHeight: 98,
+    padding: spacing[3],
   },
   coverWrap: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.md,
+    flexShrink: 0,
+    height: 78,
     overflow: 'hidden',
+    width: 112,
   },
   coverImage: {
-    aspectRatio: 3 / 2,
+    height: '100%',
     width: '100%',
   },
   coverEmpty: {
     alignItems: 'center',
-    aspectRatio: 3 / 2,
     gap: spacing[2],
+    height: '100%',
     justifyContent: 'center',
-    padding: spacing[4],
+    padding: spacing[3],
   },
   coverLabel: {
     ...typography.textStyles.caption,
     color: colors.text.body,
   },
   groupBody: {
+    flex: 1,
     gap: spacing[2],
+    minWidth: 0,
   },
   groupHeader: {
     alignItems: 'center',
@@ -183,7 +191,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   groupName: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
     flex: 1,
   },
   groupType: {
@@ -196,13 +204,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
   groupDescription: {
-    ...typography.textStyles.body,
-    color: colors.text.body,
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[3],
+    gap: spacing[2],
   },
   metaText: {
     ...typography.textStyles.caption,

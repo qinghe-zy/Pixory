@@ -10,7 +10,7 @@ export const componentTokens = {
     radius: radius.pill,
   },
   filterChip: {
-    height: 36,
+    height: metrics.chipHeight,
     horizontalPadding: metrics.chipPaddingHorizontal,
     gap: 8,
     radius: radius.pill,
@@ -30,7 +30,7 @@ export const componentTokens = {
     previewAspectRatio: 1.04,
     imageHeight: metrics.ipCardImageHeight,
     previewBadgeRadius: radius.sm,
-    contentPadding: 14,
+    contentPadding: 12,
   },
   emptyState: {
     illustrationSize: 76,

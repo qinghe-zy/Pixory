@@ -33,7 +33,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: componentTokens.filterChip.horizontalPadding,
   },
   active: {
-    backgroundColor: colors.primary.default,
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   inactive: {
     backgroundColor: colors.background.input,
@@ -44,12 +46,12 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   text: {
-    ...typography.textStyles.body,
+    ...typography.textStyles.caption,
     fontWeight: '500',
     lineHeight: 18,
   },
   activeText: {
-    color: colors.text.inverse,
+    color: colors.primary.active,
   },
   inactiveText: {
     color: colors.text.primary,

@@ -107,12 +107,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: spacing[5],
+    gap: layout.sectionGap,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: spacing[5],
+    gap: layout.sectionGap,
   },
   footer: {
     backgroundColor: colors.background.page,

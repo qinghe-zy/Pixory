@@ -7,7 +7,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { groupRepository, type GlobalGroupListItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDate } from '../utils/formatters';
 
@@ -34,6 +34,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
     ...option,
     items: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
+  const orderedGroups = groupedSections.flatMap((section) => section.items);
 
   return (
     <ScreenScaffold decorativeTitle="Groups" footer={footer} scrollable title="分组">
@@ -53,8 +54,12 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
           <View style={styles.typeRow}>
             <Text style={styles.typePill}>全部 IP</Text>
           </View>
-          {groupedSections.flatMap((section) => section.items).map((group) => (
-            <Pressable key={group.id} onPress={() => onOpenGroup(group.ipId, group.id)} style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}>
+          {orderedGroups.map((group) => (
+            <Pressable
+              key={group.id}
+              onPress={() => onOpenGroup(group.ipId, group.id)}
+              style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
+            >
               {group.coverThumbnailFileUri ? (
                 <ImageBackground imageStyle={styles.coverImage} resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverWrap}>
                   <View style={styles.groupOverlay}>
@@ -63,7 +68,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
                 </ImageBackground>
               ) : (
                 <View style={[styles.coverWrap, styles.coverEmpty]}>
-                  <Ionicons color={colors.primary.default} name="images-outline" size={26} />
+                  <Ionicons color={colors.primary.default} name="images-outline" size={22} />
                   <GroupCardCopy group={group} />
                 </View>
               )}
@@ -84,8 +89,11 @@ function GroupCardCopy({ group }: { group: GlobalGroupListItem }) {
         </Text>
         <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
       </View>
+      <Text numberOfLines={1} style={styles.metaText}>
+        {group.ipName}
+      </Text>
       <Text style={styles.metaText}>
-        {group.ipName} · {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
+        {group.imageCount} 张图片 · {formatDate(group.recentUpdatedAt)}
       </Text>
     </View>
   );
@@ -110,32 +118,37 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     overflow: 'hidden',
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    paddingVertical: spacing[1],
   },
   groupCard: {
+    ...shadows.xs,
     borderRadius: radius.lg,
-    minHeight: 96,
+    height: 112,
     overflow: 'hidden',
   },
   coverWrap: {
     backgroundColor: colors.background.empty,
-    minHeight: 96,
+    flex: 1,
+  },
+  coverEmpty: {
+    borderColor: colors.border.subtle,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    justifyContent: 'center',
+    padding: spacing[3],
   },
   coverImage: {
     borderRadius: radius.lg,
   },
-  coverEmpty: {
-    justifyContent: 'center',
-    padding: spacing[4],
-  },
   groupOverlay: {
-    backgroundColor: colors.overlay.heroSurface,
+    backgroundColor: colors.overlay.softSurface,
     flex: 1,
     justifyContent: 'center',
-    padding: spacing[4],
+    padding: spacing[3],
   },
   groupBody: {
     gap: spacing[2],
+    minWidth: 0,
   },
   groupHeader: {
     alignItems: 'center',
@@ -144,7 +157,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   groupName: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
     flex: 1,
   },
   groupType: {

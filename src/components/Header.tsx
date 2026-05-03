@@ -106,10 +106,9 @@ const styles = StyleSheet.create({
   decorativeTitle: {
     color: colors.primary.light,
     fontFamily: typography.family.brand,
-    fontSize: 32,
-    fontStyle: 'italic',
+    fontSize: 28,
     fontWeight: '400',
-    opacity: 0.5,
+    opacity: 0.22,
     position: 'absolute',
     right: 52,
     top: 28,

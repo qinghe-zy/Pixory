@@ -111,6 +111,7 @@ pnpm exec expo start --android -c
 ## 文档
 
 - [验收标准](./docs/ACCEPTANCE.md)
+- [页面视觉减压规则](./docs/UI_PAGE_OPTIMIZATION_RULES.md)
 - [测试报告](./docs/TEST_REPORT.md)
 - [架构说明](./docs/ARCHITECTURE.md)
 - [已知问题](./docs/KNOWN_ISSUES.md)

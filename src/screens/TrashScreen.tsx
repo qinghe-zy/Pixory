@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, type ImageListItem } from '../database';
@@ -111,9 +110,9 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
         loadingTitle="正在读取回收站"
         onRetry={reload}
       >
-        <View style={styles.grid}>
+        <View style={styles.list}>
           {images.map((image) => (
-            <ContentCard key={image.id} style={styles.itemCard}>
+            <View key={image.id} style={styles.itemCard}>
               <View style={styles.previewWrap}>
                 {image.thumbnailFileUri ? (
                   <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.previewImage} />
@@ -137,7 +136,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                   <Text style={styles.restoreText}>恢复</Text>
                 </Pressable>
               </View>
-            </ContentCard>
+            </View>
           ))}
         </View>
       </PageStateBlock>
@@ -164,36 +163,37 @@ function getTrashRemainingLabel(deletedAt: string | null) {
 const styles = StyleSheet.create({
   notice: {
     alignItems: 'center',
-    backgroundColor: colors.semantic.warningBackground,
-    borderColor: colors.primary.weak,
-    borderRadius: radius.pill,
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[2],
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
+    padding: spacing[3],
   },
   subtitle: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
+  list: {
+    gap: spacing[3],
   },
   itemCard: {
+    alignItems: 'center',
     backgroundColor: colors.background.surface,
-    gap: spacing[2],
-    padding: spacing[2],
-    width: '31.6%',
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    padding: spacing[3],
   },
   previewWrap: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.md,
     aspectRatio: 1,
     overflow: 'hidden',
-    width: '100%',
+    width: 78,
   },
   previewImage: {
     height: '100%',
@@ -221,10 +221,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   itemBody: {
+    flex: 1,
     gap: spacing[1],
   },
   itemTitle: {
-    ...typography.textStyles.micro,
+    ...typography.textStyles.bodyStrong,
     color: colors.text.body,
   },
   itemMeta: {
@@ -233,8 +234,8 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     alignItems: 'center',
-    backgroundColor: colors.semantic.dangerBackground,
-    borderColor: colors.semantic.danger,
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: 44,
@@ -246,8 +247,11 @@ const styles = StyleSheet.create({
   },
   restoreChip: {
     alignItems: 'center',
-    backgroundColor: colors.primary.default,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary.weak,
     borderRadius: radius.pill,
+    borderColor: colors.primary.light,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: spacing[1],
     minHeight: 30,
     justifyContent: 'center',
@@ -255,7 +259,7 @@ const styles = StyleSheet.create({
   },
   restoreText: {
     ...typography.textStyles.micro,
-    color: colors.text.inverse,
+    color: colors.primary.active,
     fontWeight: '600',
   },
 });

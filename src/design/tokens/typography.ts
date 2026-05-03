@@ -9,15 +9,15 @@ const baseFontFamily = Platform.select({
 });
 
 const displayFontFamily = Platform.select({
-  ios: 'Songti SC',
-  android: 'serif',
-  default: 'serif',
+  ios: 'PingFang SC',
+  android: 'sans-serif',
+  default: 'System',
 });
 
 const brandFontFamily = Platform.select({
-  ios: 'Georgia',
-  android: 'serif',
-  default: 'serif',
+  ios: 'PingFang SC',
+  android: 'sans-serif',
+  default: 'System',
 });
 
 const statFontFamily = Platform.select({

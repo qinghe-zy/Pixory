@@ -185,33 +185,34 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   topArea: {
-    gap: spacing[4],
+    gap: spacing[3],
   },
   filterRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     gap: componentTokens.filterChip.gap,
   },
   hero: {
-    ...shadows.hero,
+    ...shadows.xs,
     borderRadius: radius.xl,
-    height: 170,
+    height: 156,
     overflow: 'hidden',
   },
   heroImage: {
     borderRadius: radius.xl,
   },
   heroOverlay: {
-    backgroundColor: colors.overlay.heroSurface,
+    backgroundColor: colors.overlay.softSurface,
     flex: 1,
   },
   heroFallback: {
-    backgroundColor: colors.support.sky100,
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.subtle,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   heroContent: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: spacing[6],
+    paddingHorizontal: spacing[5],
   },
   heroTitle: {
     ...typography.textStyles.heroTitle,
@@ -221,7 +222,7 @@ const styles = StyleSheet.create({
     marginTop: spacing[2],
   },
   emptyWrap: {
-    paddingTop: spacing[1],
+    paddingTop: spacing[2],
   },
   grid: {
     columnGap: layout.gridGap,

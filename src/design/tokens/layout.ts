@@ -1,8 +1,8 @@
 import { metrics } from './metrics';
 
 export const layout = {
-  pagePaddingHorizontal: 16,
-  pageTopOffset: 18,
+  pagePaddingHorizontal: 20,
+  pageTopOffset: 22,
   pageBottomOffset: 18,
   stickyFooterBottomOffset: metrics.bottomActionInset,
   sectionGap: metrics.sectionGap,
