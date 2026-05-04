@@ -12,6 +12,7 @@ import { TagChip } from '../components/TagChip';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
+import { IMPORT_TEMPLATES, type ImportTemplate } from '../constants/importTemplates';
 import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
 import { colors, metrics, radius, spacing, typography } from '../design/tokens';
@@ -24,12 +25,13 @@ import { mergeDraftTagNames } from '../utils/tagDrafts';
 import { useToast } from '../components/AppToast';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
-type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
+type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'apply-template';
 
 interface BatchManageImagesScreenProps {
   ipId: number;
   source: BatchSource;
   groupId?: number | null;
+  importBatchId?: number | null;
   initialSelectedImageIds?: number[];
   refreshToken: number;
   onBack: () => void;
@@ -42,6 +44,7 @@ export function BatchManageImagesScreen({
   ipId,
   source,
   groupId = null,
+  importBatchId = null,
   initialSelectedImageIds = [],
   refreshToken,
   onBack,
@@ -59,12 +62,16 @@ export function BatchManageImagesScreen({
       const [ip, groups, images] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
-        groupId != null ? imageRepository.findByGroupId(groupId) : imageRepository.findByIpId(ipId),
+        importBatchId != null
+          ? imageRepository.findByImportBatchId(importBatchId)
+          : groupId != null
+            ? imageRepository.findByGroupId(groupId)
+            : imageRepository.findByIpId(ipId),
       ]);
 
       return { ip, groups, images };
     },
-    [groupId, ipId, refreshToken],
+    [groupId, importBatchId, ipId, refreshToken],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -112,6 +119,44 @@ export function BatchManageImagesScreen({
 
   function handleSelectAllToggle() {
     setSelectedImageIds(allSelected ? [] : visibleImageIds);
+  }
+
+  function selectByRule(rule: 'visible' | 'ungrouped' | 'untagged' | 'same-size' | 'same-prefix' | 'import-batch' | 'invert') {
+    if (rule === 'visible') {
+      setSelectedImageIds(visibleImageIds);
+      return;
+    }
+
+    if (rule === 'ungrouped') {
+      setSelectedImageIds(images.filter((image) => image.groupCount === 0).map((image) => image.id));
+      return;
+    }
+
+    if (rule === 'untagged') {
+      setSelectedImageIds(images.filter((image) => image.tagCount === 0).map((image) => image.id));
+      return;
+    }
+
+    if (rule === 'same-size') {
+      const baseImage = selectedImages[0] ?? images[0];
+      setSelectedImageIds(baseImage ? images.filter((image) => image.width === baseImage.width && image.height === baseImage.height).map((image) => image.id) : []);
+      return;
+    }
+
+    if (rule === 'same-prefix') {
+      const basePrefix = getFilenamePrefix((selectedImages[0] ?? images[0])?.originalFilename ?? '');
+      setSelectedImageIds(basePrefix ? images.filter((image) => getFilenamePrefix(image.originalFilename) === basePrefix).map((image) => image.id) : []);
+      return;
+    }
+
+    if (rule === 'import-batch') {
+      const batchId = importBatchId ?? selectedImages[0]?.importBatchId ?? null;
+      setSelectedImageIds(batchId != null ? images.filter((image) => image.importBatchId === batchId).map((image) => image.id) : visibleImageIds);
+      return;
+    }
+
+    const selectedSet = new Set(selectedImageIds);
+    setSelectedImageIds(visibleImageIds.filter((imageId) => !selectedSet.has(imageId)));
   }
 
   function resetInlineMode(nextMode: BatchMode = 'idle') {
@@ -241,6 +286,30 @@ export function BatchManageImagesScreen({
     );
   }
 
+  function handleApplyTemplate(template: ImportTemplate) {
+    void runSubmit(
+      async () => {
+        const existingGroup = await groupRepository.findByIpIdAndName(ipId, template.groupName);
+        const group = existingGroup ?? (await groupRepository.create({ ipId, name: template.groupName, type: 'custom' }));
+        const groupChangedCount = await imageRepository.updateManyGroup(selectedImageIds, group.id);
+        await tagRepository.addTagsToImages(selectedImageIds, template.tags);
+        await imageRepository.updateManyNote(selectedImageIds, template.note);
+        await imageRepository.updateManyFavorite(selectedImageIds, template.isFavorite);
+
+        resetInlineMode();
+        onChanged();
+        showToast(`已套用模板到 ${Math.max(groupChangedCount, selectedCount)} 张`);
+      },
+      {
+        formatError: (error) => {
+          const message = error instanceof Error ? error.message : '未知错误';
+          return `套用模板失败：${message}`;
+        },
+        validate: () => (selectedCount === 0 ? '请先选择至少一张图片。' : null),
+      }
+    );
+  }
+
   function handleSoftDelete() {
     if (selectedCount === 0) {
       return;
@@ -355,6 +424,20 @@ export function BatchManageImagesScreen({
             <Text style={styles.footerCancelText}>取消</Text>
           </Pressable>
         </View>
+      ) : mode === 'apply-template' ? (
+        <View style={styles.footerInlineActions}>
+          <View style={styles.footerPrimaryAction}>
+            <Text style={styles.footerMeta}>选择模板会覆盖分组、补充标签与备注，并同步收藏状态。</Text>
+          </View>
+          <Pressable
+            disabled={isSubmitting}
+            onPress={() => resetInlineMode()}
+            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+          >
+            <Ionicons color={colors.primary.default} name="close" size={17} />
+            <Text style={styles.footerCancelText}>取消</Text>
+          </Pressable>
+        </View>
       ) : (
         <View style={styles.batchActionGrid}>
           <BatchActionButton
@@ -392,6 +475,12 @@ export function BatchManageImagesScreen({
           />
           <BatchActionButton
             disabled={selectedCount === 0 || isSubmitting}
+            icon="color-wand-outline"
+            label="套用模板"
+            onPress={() => setMode('apply-template')}
+          />
+          <BatchActionButton
+            disabled={selectedCount === 0 || isSubmitting}
             icon="star-outline"
             label="批量收藏"
             onPress={() => handleFavoriteUpdate(true)}
@@ -424,8 +513,10 @@ export function BatchManageImagesScreen({
         <View style={styles.summaryCopy}>
           <Text numberOfLines={1} style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
           <Text numberOfLines={2} style={styles.summaryMeta}>
-            {source === 'group-images'
+          {source === 'group-images'
               ? `分组内 ${images.length} 张，可批量整理`
+              : importBatchId != null
+                ? `本次导入 ${images.length} 张，可批量整理`
               : `当前 IP 共 ${images.length} 张，可批量整理`}
           </Text>
         </View>
@@ -449,6 +540,16 @@ export function BatchManageImagesScreen({
           <Pressable onPress={handleSelectAllToggle} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
             <Text style={styles.linkText}>{allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.ruleWrap}>
+          <RuleChip label="当前筛选" onPress={() => selectByRule('visible')} />
+          <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} />
+          <RuleChip label="无标签" onPress={() => selectByRule('untagged')} />
+          <RuleChip label="同尺寸" onPress={() => selectByRule('same-size')} />
+          <RuleChip label="同前缀" onPress={() => selectByRule('same-prefix')} />
+          <RuleChip label="本次导入" onPress={() => selectByRule('import-batch')} />
+          <RuleChip label="反选" onPress={() => selectByRule('invert')} />
         </View>
 
         {isGroupMode(mode) ? (
@@ -535,6 +636,27 @@ export function BatchManageImagesScreen({
                   <Text style={styles.devPresetText}>回归预设 batchTag</Text>
                 </Pressable>
               ) : null}
+            </View>
+          </LightFormSection>
+        ) : null}
+
+        {mode === 'apply-template' ? (
+          <LightFormSection hint={`应用到已选 ${selectedCount} 张图片。`} title="导入模板">
+            <View style={styles.templateGrid}>
+              {IMPORT_TEMPLATES.map((template) => (
+                <Pressable
+                  disabled={isSubmitting}
+                  key={template.key}
+                  onPress={() => handleApplyTemplate(template)}
+                  style={({ pressed }) => [styles.templateChip, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+                >
+                  <Ionicons color={colors.primary.active} name="albums-outline" size={15} />
+                  <View style={styles.templateCopy}>
+                    <Text numberOfLines={1} style={styles.templateTitle}>{template.name}</Text>
+                    <Text numberOfLines={1} style={styles.templateMeta}>{template.tags.map((tag) => `#${tag}`).join(' ')}</Text>
+                  </View>
+                </Pressable>
+              ))}
             </View>
           </LightFormSection>
         ) : null}
@@ -638,6 +760,24 @@ function BatchActionButton({
   );
 }
 
+function RuleChip({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.ruleChip, pressed && styles.pressed]}>
+      <Text style={styles.ruleChipText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function getFilenamePrefix(filename: string): string | null {
+  const baseName = filename.replace(/\.[^.]+$/, '');
+  const [prefix] = baseName.split(/[_\-\s.]+/);
+  const normalized = prefix?.trim();
+  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized)) {
+    return baseName.slice(0, 6) || null;
+  }
+  return normalized;
+}
+
 const styles = StyleSheet.create({
   summaryCard: {
     alignItems: 'center',
@@ -684,6 +824,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[1],
     paddingVertical: spacing[1],
   },
+  ruleWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1.5],
+    marginBottom: spacing[3],
+  },
+  ruleChip: {
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[2],
+  },
+  ruleChipText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
   selectionText: {
     ...typography.textStyles.bodyStrong,
   },
@@ -703,6 +863,37 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     paddingBottom: spacing[3],
     paddingTop: spacing[1],
+  },
+  templateGrid: {
+    gap: spacing[2],
+    paddingBottom: spacing[3],
+    paddingTop: spacing[1],
+  },
+  templateChip: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 50,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  templateCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  templateTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+  },
+  templateMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   tagInputRow: {
     alignItems: 'center',

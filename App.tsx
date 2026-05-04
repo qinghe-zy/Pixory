@@ -26,8 +26,8 @@ import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
+import { ImportBatchReviewScreen } from './src/screens/ImportBatchReviewScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
-import { ImportResultScreen } from './src/screens/ImportResultScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
@@ -56,10 +56,11 @@ type AppRoute =
       ipId: number;
       source: 'ip-detail' | 'all-images' | 'group-images';
       groupId?: number | null;
+      importBatchId?: number | null;
       initialSelectedImageIds?: number[];
     }
   | { name: 'import-images'; ipId: number; groupId?: number | null }
-  | { name: 'import-result'; ipId: number; imageIds: number[] }
+  | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null }
   | { name: 'all-images'; ipId: number }
   | { name: 'image-viewer'; imageId: number; context: ImageViewerContext }
   | { name: 'image-detail'; imageId: number; context?: ImageViewerContext }
@@ -312,6 +313,7 @@ export default function App() {
       <BatchManageImagesScreen
         groupId={currentRoute.groupId ?? null}
         initialSelectedImageIds={currentRoute.initialSelectedImageIds}
+        importBatchId={currentRoute.importBatchId ?? null}
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onChanged={refreshLibrary}
@@ -333,21 +335,32 @@ export default function App() {
         defaultGroupId={currentRoute.groupId ?? null}
         ipId={currentRoute.ipId}
         onBack={popRoute}
-        onImported={(imageIds) => {
+        onImported={(imageIds, importBatchId) => {
           refreshLibrary();
-          replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds });
+          replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds, importBatchId });
         }}
       />
     );
   } else if (currentRoute.name === 'import-result') {
     content = (
-      <ImportResultScreen
+      <ImportBatchReviewScreen
         imageIds={currentRoute.imageIds}
+        importBatchId={currentRoute.importBatchId}
+        ipId={currentRoute.ipId}
         onBack={popRoute}
-        onContinueOrganize={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
+        onBatchOrganize={(imageIds) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId: currentRoute.ipId,
+            source: 'all-images',
+            importBatchId: currentRoute.importBatchId,
+            initialSelectedImageIds: imageIds,
+          })
+        }
         onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId })}
+        onQuickOrganize={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId })}
         onOpenImageDetail={openImageDetail}
-        onViewImport={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
+        refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.name === 'all-images') {

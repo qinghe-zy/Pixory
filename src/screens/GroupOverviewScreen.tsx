@@ -99,7 +99,7 @@ export function GroupOverviewScreen({
 
       <PageStateBlock
         emptyActionLabel={commonButtonCopy.createGroup}
-        emptyDescription="创建分组后，可以把季节限定、场景限定和用途素材整理得更清晰。"
+        emptyDescription="创建分组后，可以按季节/时段、场景/构图和用途/渠道整理素材。"
         emptyIconName="folder-open-outline"
         emptyTitle={commonEmptyStateCopy.noGroupsTitle}
         errorMessage={errorMessage}

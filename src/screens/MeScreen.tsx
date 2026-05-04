@@ -28,38 +28,32 @@ interface MeStats {
   deletedImageCount: number;
   profileAvatarUri: string | null;
   totalOriginalBytes: number;
-  lastBackupAt: string | null;
 }
 
 const ENTRY_ITEMS = [
   {
     key: 'favorites',
     label: '收藏图片',
-    description: '查看当前所有已收藏图片',
     icon: 'star-outline',
   },
   {
     key: 'recent',
     label: '最近查看',
-    description: '查看最近打开过的图片',
     icon: 'time-outline',
   },
   {
     key: 'trash',
     label: '回收站',
-    description: '恢复已软删除图片，或清空后物理删除',
     icon: 'trash-outline',
   },
   {
     key: 'backup',
     label: '备份导出',
-    description: '完整备份 SQLite、原图、缩略图和 manifest',
     icon: 'archive-outline',
   },
   {
     key: 'settings',
     label: '设置',
-    description: '本地偏好与应用信息',
     icon: 'settings-outline',
   },
 ] as const;
@@ -83,7 +77,6 @@ export function MeScreen({
         deletedImageCount,
         totalOriginalBytes,
         profileAvatarUri,
-        lastBackupAt,
       ] = await Promise.all([
         ipRepository.count(),
         imageRepository.count(),
@@ -91,7 +84,6 @@ export function MeScreen({
         imageRepository.countDeleted(),
         imageRepository.sumFileSize({ includeDeleted: true }),
         settingsRepository.getProfileAvatarUri(),
-        settingsRepository.getLastBackupAt(),
       ]);
 
       return {
@@ -101,7 +93,6 @@ export function MeScreen({
         deletedImageCount,
         profileAvatarUri,
         totalOriginalBytes,
-        lastBackupAt,
       };
     },
     [refreshToken],
@@ -190,9 +181,7 @@ export function MeScreen({
           <View style={styles.profileCopy}>
             <View style={styles.nameRow}>
               <Text style={styles.heroTitle}>本地空间</Text>
-              <Text style={styles.badge}>Local</Text>
             </View>
-            <Text style={styles.heroDescription}>所有资产仅保存在本机。</Text>
           </View>
         </View>
         <View style={styles.storageBlock}>
@@ -201,23 +190,12 @@ export function MeScreen({
               <Text style={styles.storageLabel}>本地原图存储</Text>
               <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
             </View>
-            <View style={styles.storageBadge}>
-              <Text style={styles.storageBadgeText}>Offline</Text>
-            </View>
           </View>
           <View style={styles.storageTrack}>
             <View style={[styles.storageFill, { width: storageFillWidth }]} />
           </View>
-          <Text style={styles.storageHint}>本地整理，原图保留；头像仅是本机偏好，不代表账号体系。</Text>
         </View>
       </ContentCard>
-
-      <View style={styles.backupNotice}>
-        <Ionicons color={colors.primary.active} name="archive-outline" size={17} />
-        <Text style={styles.backupNoticeText}>
-          {data?.lastBackupAt ? `上次备份：${data.lastBackupAt.slice(5, 10)}，你的 IP 资产库离线可用。` : '尚未备份。建议导出完整备份，便于迁移或恢复。'}
-        </Text>
-      </View>
 
       <ContentCard style={styles.statsCard}>
         <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
@@ -240,7 +218,6 @@ export function MeScreen({
               </View>
               <View style={styles.entryCopy}>
                 <Text style={styles.entryTitle}>{item.label}</Text>
-                <Text style={styles.entryDescription}>{item.description}</Text>
               </View>
               {isSettings ? null : (
                 <Text style={styles.entryCount}>
@@ -345,23 +322,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
   },
-  badge: {
-    ...typography.textStyles.micro,
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    color: colors.primary.active,
-    overflow: 'hidden',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
   heroTitle: {
     ...typography.textStyles.pageTitle,
     fontSize: 20,
     lineHeight: 28,
-  },
-  heroDescription: {
-    ...typography.textStyles.body,
-    color: colors.text.body,
   },
   statsCard: {
     flexDirection: 'row',
@@ -396,19 +360,6 @@ const styles = StyleSheet.create({
   storageValue: {
     ...typography.textStyles.statNumber,
   },
-  storageBadge: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
-  },
-  storageBadgeText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
-    fontWeight: '600',
-  },
   storageTrack: {
     backgroundColor: colors.background.sunken,
     borderRadius: radius.pill,
@@ -419,27 +370,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.default,
     borderRadius: radius.pill,
     height: '100%',
-  },
-  storageHint: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-  },
-  backupNotice: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[2],
-    minHeight: 42,
-    paddingHorizontal: spacing[3],
-  },
-  backupNoticeText: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-    flex: 1,
-    minWidth: 0,
   },
   entryList: {
     gap: spacing[3],
@@ -471,10 +401,6 @@ const styles = StyleSheet.create({
   },
   entryTitle: {
     ...typography.textStyles.bodyStrong,
-  },
-  entryDescription: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
   },
   entryCount: {
     ...typography.textStyles.caption,

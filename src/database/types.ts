@@ -134,6 +134,7 @@ export interface GlobalGroupListItemRow extends GroupListItemRow {
 export interface ImageAssetRecord {
   id: number;
   ipId: number;
+  importBatchId: number | null;
   groupId: number | null;
   originalFileUri: string;
   thumbnailFileUri: string | null;
@@ -153,6 +154,7 @@ export interface ImageAssetRecord {
 
 export interface CreateImageAssetInput {
   ipId: number;
+  importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   originalFileUri: string;
@@ -171,6 +173,7 @@ export interface CreateImageAssetInput {
 
 export interface UpdateImageAssetInput {
   ipId?: number;
+  importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   originalFileUri?: string;
@@ -232,6 +235,7 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   untaggedOnly?: boolean;
   recentlyViewedOnly?: boolean;
   ipId?: number;
+  importBatchId?: number;
   groupId?: number;
   tagId?: number;
   mimeType?: string;
@@ -256,4 +260,64 @@ export interface TagUsageItem extends TagRecord {
 export interface TagUsageItemRow extends TagRecord {
   imageCount: number;
   lastUsedAt: string | null;
+}
+
+export interface ImportBatchRecord {
+  id: number;
+  ipId: number;
+  name: string;
+  templateKey: string | null;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface ImportBatchRow extends ImportBatchRecord {}
+
+export interface CreateImportBatchInput {
+  ipId: number;
+  name?: string;
+  templateKey?: string | null;
+  totalCount?: number;
+}
+
+export interface UpdateImportBatchInput {
+  name?: string;
+  templateKey?: string | null;
+  totalCount?: number;
+  successCount?: number;
+  failedCount?: number;
+  completedAt?: string | null;
+}
+
+export interface ImportBatchSummary extends ImportBatchRecord {
+  ipName: string;
+  activeCount: number;
+  organizedCount: number;
+  ungroupedCount: number;
+  untaggedCount: number;
+  noNoteCount: number;
+  suspectedDuplicateCount: number;
+}
+
+export interface ImportBatchSummaryRow extends ImportBatchRow {
+  ipName: string;
+  activeCount: number;
+  organizedCount: number;
+  ungroupedCount: number;
+  untaggedCount: number;
+  noNoteCount: number;
+  suspectedDuplicateCount: number;
+}
+
+export interface IpOrganizationProgress {
+  totalCount: number;
+  organizedCount: number;
+  organizationPercent: number;
+  ungroupedCount: number;
+  untaggedCount: number;
+  recentImportUnorganizedCount: number;
 }

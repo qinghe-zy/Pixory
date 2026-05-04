@@ -32,7 +32,7 @@ interface ImportImagesScreenProps {
   ipId: number;
   defaultGroupId?: number | null;
   onBack: () => void;
-  onImported: (imageIds: number[]) => void;
+  onImported: (imageIds: number[], importBatchId: number | null) => void;
 }
 
 export function ImportImagesScreen({
@@ -72,6 +72,7 @@ export function ImportImagesScreen({
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string | null>(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [isOptionalOpen, setIsOptionalOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
@@ -160,6 +161,7 @@ export function ImportImagesScreen({
     try {
       const group = await createGroupAndSelect(template.groupName);
       setSelectedGroupIds([group.id]);
+      setSelectedTemplateKey(template.key);
       setTags((current) => template.tags.reduce((items, tag) => mergeDraftTagNames(items, tag), current));
       setNote(template.note);
       setIsFavorite(template.isFavorite);
@@ -191,6 +193,7 @@ export function ImportImagesScreen({
         tagNames: preparedTags,
         note: preparedNote || null,
         isFavorite,
+        templateKey: selectedTemplateKey,
         pickedAssetsCount: pickedAssets.length,
       });
 
@@ -200,6 +203,7 @@ export function ImportImagesScreen({
         tagNames: preparedTags,
         note: preparedNote,
         isFavorite,
+        templateKey: selectedTemplateKey,
         pickedAssets,
       });
 
@@ -221,7 +225,7 @@ export function ImportImagesScreen({
 
       await settingsRepository.rememberImportGroupIds(selectedGroupIds);
       showToast(`成功导入 ${result.successCount} 张`);
-      onImported(result.importedImages.map((item) => item.image.id));
+      onImported(result.importedImages.map((item) => item.image.id), result.importBatch?.id ?? null);
     }, {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

@@ -1,8 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 
-import { getDatabase, groupRepository, imageRepository, ipRepository, tagRepository } from '../database';
-import type { ImageAssetRecord, TagRecord } from '../database';
+import { getDatabase, groupRepository, imageRepository, importBatchRepository, ipRepository, tagRepository } from '../database';
+import type { ImageAssetRecord, ImportBatchRecord, TagRecord } from '../database';
 import { normalizeOptionalText } from '../database/utils';
 import {
   copyOriginalToAppStorage,
@@ -28,11 +28,13 @@ export interface ImportImagesToIpParams {
   tagNames?: string[];
   note?: string | null;
   isFavorite?: boolean;
+  templateKey?: string | null;
   pickedAssets: PickedImageAsset[];
 }
 
 export interface BuildImageAssetFromPickedFileParams {
   ipId: number;
+  importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   note?: string | null;
@@ -52,6 +54,7 @@ export interface ImportSingleImageParams {
 
 export interface PendingImageAssetImport {
   ipId: number;
+  importBatchId: number | null;
   groupId: number | null;
   groupIds: number[];
   sourceUri: string;
@@ -100,6 +103,7 @@ export interface ImageImportError {
 export interface ImportImagesToIpResult {
   successCount: number;
   failedCount: number;
+  importBatch: ImportBatchRecord | null;
   importedImages: ImportedImageResult[];
   errors: ImageImportError[];
 }
@@ -335,6 +339,7 @@ async function performSingleImageImport(
 
     const createdImage = await imageRepository.create({
       ipId: pendingImageAsset.ipId,
+      importBatchId: pendingImageAsset.importBatchId,
       groupId: pendingImageAsset.groupId,
       groupIds: pendingImageAsset.groupIds,
       originalFileUri,
@@ -427,6 +432,7 @@ export async function buildImageAssetFromPickedFile(
 
   return {
     ipId,
+    importBatchId: params.importBatchId ?? null,
     groupId: normalizedGroupIds[0] ?? null,
     groupIds: normalizedGroupIds,
     sourceUri: pickedAsset.uri,
@@ -473,11 +479,18 @@ export async function importImagesToIp(
     return {
       successCount: 0,
       failedCount: 0,
+      importBatch: null,
       importedImages: [],
       errors: [],
     };
   }
 
+  const importBatch = await importBatchRepository.create({
+    ipId: params.ipId,
+    name: `${new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}导入`,
+    templateKey: params.templateKey,
+    totalCount: params.pickedAssets.length,
+  });
   const resolvedTags = await resolveTags(params.tagNames);
   const importedImages: ImportedImageResult[] = [];
   const errors: ImageImportError[] = [];
@@ -486,6 +499,7 @@ export async function importImagesToIp(
     try {
       const pendingImageAsset = await buildImageAssetFromPickedFile({
         ipId: params.ipId,
+        importBatchId: importBatch.id,
         groupId: params.groupId,
         groupIds,
         note: params.note,
@@ -498,9 +512,12 @@ export async function importImagesToIp(
     }
   }
 
+  const completedBatch = await importBatchRepository.complete(importBatch.id, importedImages.length, errors.length);
+
   return {
     successCount: importedImages.length,
     failedCount: errors.length,
+    importBatch: completedBatch ?? importBatch,
     importedImages,
     errors,
   };
@@ -577,6 +594,7 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
       result: {
         successCount: 0,
         failedCount: 0,
+        importBatch: null,
         importedImages: [],
         errors: [],
       },

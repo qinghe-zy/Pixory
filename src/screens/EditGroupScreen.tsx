@@ -172,7 +172,7 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
                 disabled={isSubmitting || !group}
                 key={option.value}
                 label={option.label}
-                meta="用于筛选和识别"
+                meta={option.description}
                 onPress={() => setType(option.value)}
                 selected={type === option.value}
               />

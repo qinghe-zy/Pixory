@@ -12,6 +12,7 @@ import type {
   ImageListItemRow,
   GroupRecord,
   GroupRow,
+  IpOrganizationProgress,
   SumRow,
   UpdateImageAssetInput,
 } from '../types';
@@ -79,6 +80,11 @@ function buildImageListQueryParts(
   if (options?.ipId != null) {
     clauses.push('image_assets.ipId = ?');
     values.push(options.ipId);
+  }
+
+  if (options?.importBatchId != null) {
+    clauses.push('image_assets.importBatchId = ?');
+    values.push(options.importBatchId);
   }
 
   if (options?.groupId != null) {
@@ -354,6 +360,7 @@ export const imageRepository = {
     const result = await db.runAsync(
       `INSERT INTO image_assets (
         ipId,
+        importBatchId,
         groupId,
         originalFileUri,
         thumbnailFileUri,
@@ -369,8 +376,9 @@ export const imageRepository = {
         createdAt,
         updatedAt,
         lastViewedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.ipId,
+      input.importBatchId ?? null,
       primaryGroupId,
       requireNonEmptyText(input.originalFileUri, 'Original file URI'),
       normalizeOptionalText(input.thumbnailFileUri) ?? null,
@@ -433,6 +441,7 @@ export const imageRepository = {
 
     const updates = buildUpdateStatement({
       ipId: input.ipId,
+      importBatchId: input.importBatchId,
       groupId: nextPrimaryGroupId,
       originalFileUri:
         input.originalFileUri !== undefined
@@ -534,6 +543,20 @@ export const imageRepository = {
   async findByIpId(ipId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const db = await getDatabase();
     const queryParts = buildImageListQueryParts(['image_assets.ipId = ?'], [ipId], options);
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findByImportBatchId(importBatchId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const queryParts = buildImageListQueryParts(['image_assets.importBatchId = ?'], [importBatchId], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        ${queryParts.whereClause}
@@ -715,6 +738,56 @@ export const imageRepository = {
       ...values
     );
     return row?.count ?? 0;
+  },
+
+  async getOrganizationProgress(ipId: number): Promise<IpOrganizationProgress> {
+    const db = await getDatabase();
+    const row = await db.getFirstAsync<{
+      totalCount: number;
+      organizedCount: number;
+      ungroupedCount: number;
+      untaggedCount: number;
+      recentImportUnorganizedCount: number;
+    }>(
+      `SELECT
+        COUNT(*) AS totalCount,
+        SUM(CASE
+          WHEN EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
+           AND EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+          THEN 1 ELSE 0 END
+        ) AS organizedCount,
+        SUM(CASE
+          WHEN NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
+          THEN 1 ELSE 0 END
+        ) AS ungroupedCount,
+        SUM(CASE
+          WHEN NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+          THEN 1 ELSE 0 END
+        ) AS untaggedCount,
+        SUM(CASE
+          WHEN image_assets.importBatchId IS NOT NULL
+           AND image_assets.createdAt >= datetime('now', '-14 days')
+           AND (
+             NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
+             OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+           )
+          THEN 1 ELSE 0 END
+        ) AS recentImportUnorganizedCount
+       FROM image_assets
+       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL`,
+      ipId
+    );
+    const totalCount = row?.totalCount ?? 0;
+    const organizedCount = row?.organizedCount ?? 0;
+
+    return {
+      totalCount,
+      organizedCount,
+      organizationPercent: totalCount > 0 ? Math.round((organizedCount / totalCount) * 100) : 100,
+      ungroupedCount: row?.ungroupedCount ?? 0,
+      untaggedCount: row?.untaggedCount ?? 0,
+      recentImportUnorganizedCount: row?.recentImportUnorganizedCount ?? 0,
+    };
   },
 
   async findNeedsOrganizing(ipId?: number): Promise<ImageListItem[]> {
@@ -1081,6 +1154,46 @@ export const imageRepository = {
       console.error('Pixory imageRepository.updateManyFavorite failed.', {
         imageIds: inClause.values,
         isFavorite,
+        error,
+      });
+      throw error;
+    }
+  },
+
+  async updateManyNote(imageIds: number[], note: string | null): Promise<number> {
+    if (imageIds.length === 0) {
+      return 0;
+    }
+
+    const currentImages = await loadImagesByIds(imageIds);
+    if (currentImages.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const inClause = buildInClause(currentImages.map((image) => image.id));
+
+    try {
+      let changedCount = 0;
+      await db.withTransactionAsync(async () => {
+        const updateResult = await db.runAsync(
+          `UPDATE image_assets
+           SET note = ?, updatedAt = ?
+           WHERE id IN (${inClause.placeholders})`,
+          normalizeOptionalText(note) ?? null,
+          now,
+          ...inClause.values
+        );
+        changedCount = updateResult.changes;
+
+        await touchManyParentRecords(db, currentImages);
+      });
+
+      return changedCount;
+    } catch (error) {
+      console.error('Pixory imageRepository.updateManyNote failed.', {
+        imageIds: inClause.values,
         error,
       });
       throw error;

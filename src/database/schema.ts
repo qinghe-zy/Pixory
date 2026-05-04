@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -106,4 +106,26 @@ CREATE INDEX IF NOT EXISTS idx_image_groups_group_id ON image_groups(groupId);
 export const MIGRATION_STATEMENTS_V6 = `
 ALTER TABLE groups ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_groups_is_pinned ON groups(isPinned);
+`;
+
+export const MIGRATION_STATEMENTS_V7 = `
+CREATE TABLE IF NOT EXISTS import_batches (
+  id INTEGER PRIMARY KEY NOT NULL,
+  ipId INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  templateKey TEXT,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  successCount INTEGER NOT NULL DEFAULT 0,
+  failedCount INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT,
+  FOREIGN KEY (ipId) REFERENCES ips(id) ON DELETE CASCADE
+);
+
+ALTER TABLE image_assets ADD COLUMN importBatchId INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_import_batches_ip_id ON import_batches(ipId);
+CREATE INDEX IF NOT EXISTS idx_import_batches_created_at ON import_batches(createdAt);
+CREATE INDEX IF NOT EXISTS idx_image_assets_import_batch_id ON image_assets(importBatchId);
 `;

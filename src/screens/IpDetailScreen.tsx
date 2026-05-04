@@ -66,20 +66,22 @@ export function IpDetailScreen({
     groups: GroupListItem[];
     recentImages: ImageListItem[];
     needsOrganizingCount: number;
+    organizationProgress: Awaited<ReturnType<typeof imageRepository.getOrganizationProgress>>;
   }>(
     async () => {
-      const [ip, groups, recentImages, needsOrganizingCount] = await Promise.all([
+      const [ip, groups, recentImages, needsOrganizingCount, organizationProgress] = await Promise.all([
         ipRepository.findDetailById(ipId),
         groupRepository.findOverviewByIpId(ipId),
         imageRepository.findRecentByIpId(ipId, 6),
         imageRepository.countNeedsOrganizing(ipId),
+        imageRepository.getOrganizationProgress(ipId),
       ]);
 
       if (!ip) {
         throw new Error('没有找到这个 IP。');
       }
 
-      return { groups, ip, needsOrganizingCount, recentImages };
+      return { groups, ip, needsOrganizingCount, organizationProgress, recentImages };
     },
     [ipId, refreshToken],
     {
@@ -103,6 +105,7 @@ export function IpDetailScreen({
   const groups = data?.groups ?? [];
   const recentImages = data?.recentImages ?? [];
   const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
+  const organizationProgress = data?.organizationProgress;
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
     if (key === 'import') {
@@ -189,7 +192,7 @@ export function IpDetailScreen({
                   {ip.name}
                 </Text>
               </View>
-              <Text style={styles.description}>{ip.description || '还没有简介'}</Text>
+              {ip.description ? <Text style={styles.description}>{ip.description}</Text> : null}
             </View>
 
             <View style={styles.statsStrip}>
@@ -203,9 +206,25 @@ export function IpDetailScreen({
               <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
                 <View style={styles.needsCopy}>
                   <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
-                  <Text style={styles.needsMeta}>未分组、无标签、无备注</Text>
                 </View>
                 <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+              </Pressable>
+            ) : null}
+
+            {organizationProgress ? (
+              <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
+                  <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
+                </View>
+                <View style={styles.progressFacts}>
+                  <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
+                  <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
+                  <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
+                </View>
               </Pressable>
             ) : null}
 
@@ -436,9 +455,51 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
-  needsMeta: {
-    ...typography.textStyles.micro,
+  progressPanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    padding: spacing[3],
+  },
+  progressHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  progressTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+    flex: 1,
+  },
+  progressMeta: {
+    ...typography.textStyles.caption,
     color: colors.text.secondary,
+  },
+  progressTrack: {
+    backgroundColor: colors.background.input,
+    borderRadius: radius.pill,
+    height: 7,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.pill,
+    height: '100%',
+  },
+  progressFacts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  progressFact: {
+    ...typography.textStyles.micro,
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
+    color: colors.text.secondary,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
   statItem: {
     alignItems: 'center',
@@ -456,7 +517,8 @@ const styles = StyleSheet.create({
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[3],
+    justifyContent: 'space-between',
+    rowGap: spacing[3],
   },
   quickCard: {
     alignItems: 'center',
@@ -468,7 +530,7 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     minHeight: 64,
     paddingHorizontal: spacing[3],
-    width: '48.3%',
+    width: '48%',
   },
   quickIcon: {
     alignItems: 'center',

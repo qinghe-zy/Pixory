@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
@@ -21,6 +20,11 @@ interface QuickOrganizeScreenProps {
   onBack: () => void;
   onChanged: () => void;
 }
+
+type LastOrganizeAction =
+  | { type: 'group'; groupId: number; label: string }
+  | { type: 'tags'; tags: string[]; label: string }
+  | { type: 'favorite'; label: string };
 
 export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: QuickOrganizeScreenProps) {
   const { showToast } = useToast();
@@ -44,12 +48,48 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const current = images[0] ?? null;
+  const currentGroups = current ? groups.filter((group) => group.ipId === current.ipId).slice(0, 8) : [];
+  const upcomingImages = images.slice(1, 6);
   const [tagInput, setTagInput] = useState('');
   const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [lastAction, setLastAction] = useState<LastOrganizeAction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageListItem | null>(null);
+  const previewPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 28 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
+        onPanResponderRelease: (_, gesture) => {
+          if (!current || Math.abs(gesture.dx) < 70) {
+            return;
+          }
+
+          if (gesture.dx > 0) {
+            advanceCurrent();
+            return;
+          }
+
+          setDeleteTarget(current);
+        },
+      }),
+    [current]
+  );
 
   function advanceCurrent() {
     setData((currentData) => currentData ? { ...currentData, images: currentData.images.slice(1) } : currentData);
+  }
+
+  async function applyActionToImage(image: ImageListItem, action: LastOrganizeAction) {
+    if (action.type === 'group') {
+      await imageRepository.setImageGroups(image.id, [action.groupId]);
+      return;
+    }
+
+    if (action.type === 'tags') {
+      await tagRepository.addTagsToImages([image.id], action.tags);
+      return;
+    }
+
+    await imageRepository.updateFavorite(image.id, true);
   }
 
   async function handleSetGroup(groupId: number) {
@@ -58,6 +98,8 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
     }
 
     await imageRepository.setImageGroups(current.id, [groupId]);
+    const group = groups.find((item) => item.id === groupId);
+    setLastAction({ type: 'group', groupId, label: group ? `分组：${group.name}` : '分组操作' });
     showToast('已加入分组');
     onChanged();
     advanceCurrent();
@@ -75,6 +117,7 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
     }
 
     await tagRepository.addTagsToImages([current.id], tags);
+    setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
     setDraftTags([]);
     setTagInput('');
     showToast('已添加标签');
@@ -88,9 +131,38 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
     }
 
     await imageRepository.updateFavorite(current.id, true);
+    setLastAction({ type: 'favorite', label: '收藏' });
     showToast('已收藏');
     onChanged();
     advanceCurrent();
+  }
+
+  async function handleRepeatLastAction() {
+    if (!current || !lastAction) {
+      return;
+    }
+
+    await applyActionToImage(current, lastAction);
+    showToast(`已沿用上一操作：${lastAction.label}`);
+    onChanged();
+    advanceCurrent();
+  }
+
+  async function handleApplyTagsToNext20() {
+    const tags = lastAction?.type === 'tags' ? lastAction.tags : mergeDelimitedDraftTagNames(draftTags, tagInput);
+    if (tags.length === 0 || images.length === 0) {
+      showToast('请先输入或沿用一组标签');
+      return;
+    }
+
+    const targets = images.slice(0, 20);
+    await tagRepository.addTagsToImages(targets.map((image) => image.id), tags);
+    setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
+    setDraftTags([]);
+    setTagInput('');
+    setData((currentData) => currentData ? { ...currentData, images: currentData.images.slice(targets.length) } : currentData);
+    showToast(`已给 ${targets.length} 张添加同样标签`);
+    onChanged();
   }
 
   async function confirmDelete() {
@@ -134,10 +206,14 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
         >
           {current ? (
             <View style={styles.queue}>
-              <View style={styles.counter}>
-                <Text style={styles.counterText}>剩余 {images.length} 张</Text>
+              <View style={styles.queueHeader}>
+                <View style={styles.counter}>
+                  <Text style={styles.counterText}>剩余 {images.length} 张</Text>
+                </View>
+                <Text numberOfLines={1} style={styles.headerFilename}>{current.originalFilename}</Text>
               </View>
-              <View style={styles.previewWrap}>
+
+              <View style={styles.previewWrap} {...previewPanResponder.panHandlers}>
                 {current.thumbnailFileUri ? (
                   <Image resizeMode="cover" source={{ uri: current.thumbnailFileUri }} style={styles.previewImage} />
                 ) : (
@@ -146,21 +222,55 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
                   </View>
                 )}
               </View>
-              <Text numberOfLines={2} style={styles.filename}>{current.originalFilename}</Text>
+              <View style={styles.gestureHintRow}>
+                <Text style={styles.gestureHint}>右滑跳过</Text>
+                <Text style={styles.gestureHint}>左滑回收站</Text>
+              </View>
+
+              {upcomingImages.length > 0 ? (
+                <View style={styles.upcomingStrip}>
+                  {upcomingImages.map((image) => (
+                    <View key={image.id} style={styles.upcomingTile}>
+                      {image.thumbnailFileUri ? (
+                        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.upcomingImage} />
+                      ) : (
+                        <View style={styles.upcomingFallback}>
+                          <Ionicons color={colors.text.tertiary} name="image-outline" size={14} />
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.continuityPanel}>
+                <QueueActionButton
+                  disabled={!lastAction}
+                  icon="repeat-outline"
+                  label={lastAction ? `沿用 ${lastAction.label}` : '沿用上一张'}
+                  onPress={handleRepeatLastAction}
+                />
+                <QueueActionButton
+                  icon="copy-outline"
+                  label="同标签给20张"
+                  onPress={handleApplyTagsToNext20}
+                />
+              </View>
 
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>加分组</Text>
-                <View style={styles.groupGrid}>
-                  {groups
-                    .filter((group) => group.ipId === current.ipId)
-                    .slice(0, 8)
-                    .map((group) => (
+                {currentGroups.length > 0 ? (
+                  <View style={styles.groupGrid}>
+                    {currentGroups.map((group) => (
                       <Pressable key={group.id} onPress={() => void handleSetGroup(group.id)} style={({ pressed }) => [styles.groupChip, pressed && styles.pressed]}>
                         <Text numberOfLines={1} style={styles.groupName}>{group.name}</Text>
                         <Text style={styles.groupMeta}>{getGroupTypeLabel(group.type)}</Text>
                       </Pressable>
                     ))}
-                </View>
+                  </View>
+                ) : (
+                  <Text style={styles.emptyHint}>这个 IP 还没有分组，可先加标签、收藏或跳过。</Text>
+                )}
               </View>
 
               <View style={styles.section}>
@@ -184,7 +294,10 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
                     style={styles.tagInput}
                     value={tagInput}
                   />
-                  <PrimaryButton label="添加" onPress={handleAddTags} />
+                  <Pressable onPress={() => void handleAddTags()} style={({ pressed }) => [styles.tagAddButton, pressed && styles.pressed]}>
+                    <Ionicons color={colors.text.inverse} name="add" size={18} />
+                    <Text style={styles.tagAddText}>添加</Text>
+                  </Pressable>
                 </View>
                 {draftTags.length > 0 ? (
                   <View style={styles.tagsWrap}>
@@ -194,9 +307,9 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
               </View>
 
               <View style={styles.actions}>
-                <PrimaryButton label="收藏" onPress={handleFavorite} variant="outline" />
-                <PrimaryButton label="跳过" onPress={advanceCurrent} variant="ghost" />
-                <PrimaryButton label="删除到回收站" onPress={() => setDeleteTarget(current)} variant="ghost" />
+                <QueueActionButton icon="star-outline" label="收藏" onPress={handleFavorite} />
+                <QueueActionButton icon="arrow-forward-outline" label="跳过" onPress={advanceCurrent} />
+                <QueueActionButton danger icon="trash-outline" label="回收站" onPress={() => setDeleteTarget(current)} />
               </View>
             </View>
           ) : null}
@@ -215,12 +328,37 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
   );
 }
 
+function QueueActionButton({
+  danger,
+  disabled,
+  icon,
+  label,
+  onPress,
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.actionCard, danger && styles.dangerActionCard, disabled && styles.disabledAction, pressed && !disabled && styles.pressed]}>
+      <Ionicons color={danger ? colors.semantic.danger : colors.primary.active} name={icon} size={18} />
+      <Text style={[styles.actionText, danger && styles.dangerActionText]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   queue: {
-    gap: spacing[4],
+    gap: spacing[3],
+  },
+  queueHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
   },
   counter: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
@@ -233,10 +371,17 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '600',
   },
+  headerFilename: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    flex: 1,
+    minWidth: 0,
+  },
   previewWrap: {
-    aspectRatio: 1,
+    aspectRatio: 1.08,
     backgroundColor: colors.background.empty,
     borderRadius: radius.xl,
+    maxHeight: 332,
     overflow: 'hidden',
   },
   previewImage: {
@@ -248,9 +393,42 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  filename: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+  gestureHintRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: -spacing[2],
+    paddingHorizontal: spacing[1],
+  },
+  gestureHint: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+  },
+  upcomingStrip: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  upcomingTile: {
+    aspectRatio: 1,
+    backgroundColor: colors.background.empty,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    maxWidth: 58,
+    overflow: 'hidden',
+  },
+  upcomingImage: {
+    height: '100%',
+    width: '100%',
+  },
+  upcomingFallback: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  continuityPanel: {
+    flexDirection: 'row',
+    gap: spacing[2],
   },
   section: {
     gap: spacing[2],
@@ -299,13 +477,61 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: spacing[3],
   },
+  tagAddButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing[1],
+    height: 42,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[4],
+  },
+  tagAddText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
+    fontWeight: '500',
+  },
   tagsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
   },
   actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing[2],
+  },
+  actionCard: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
     gap: spacing[2],
+    justifyContent: 'center',
+    minHeight: 46,
+    width: '48%',
+  },
+  dangerActionCard: {
+    backgroundColor: colors.semantic.dangerBackground,
+  },
+  actionText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
+  dangerActionText: {
+    color: colors.semantic.danger,
+  },
+  disabledAction: {
+    opacity: 0.45,
+  },
+  emptyHint: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   pressed: {
     opacity: 0.78,

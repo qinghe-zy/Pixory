@@ -107,7 +107,7 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
               <OptionSelectRow
                 key={option.value}
                 label={option.label}
-                meta="用于筛选和识别"
+                meta={option.description}
                 onPress={() => setType(option.value)}
                 selected={type === option.value}
               />
