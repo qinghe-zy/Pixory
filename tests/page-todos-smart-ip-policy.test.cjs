@@ -94,6 +94,7 @@ test('page TODOs are reflected in concrete UI behavior', () => {
   assert.match(ipDetailSource, /managementSummary/);
   assert.match(ipDetailSource, /管理摘要/);
   assert.doesNotMatch(ipDetailSource, /ip\.description/);
+  assert.match(ipDetailSource, /marginTop:\s*spacing\[4\]/);
   assert.match(tagsSource, /createTagValue/);
   assert.match(tagsSource, /tagRepository\.create/);
   assert.match(tagsSource, /新增标签/);

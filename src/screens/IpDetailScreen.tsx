@@ -459,7 +459,7 @@ const styles = StyleSheet.create({
   statsStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingBottom: spacing[2],
+    paddingBottom: spacing[4],
   },
   needsPanel: {
     alignItems: 'center',
@@ -536,8 +536,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    padding: spacing[3],
+    gap: spacing[3],
+    marginTop: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[4],
   },
   batchList: {
     gap: spacing[2],
