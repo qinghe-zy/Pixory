@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
@@ -10,7 +10,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
 import { ipRepository, type IpLibraryFilter, type IpListItem } from '../database';
-import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, shadows, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
@@ -94,7 +94,6 @@ export function HomeLibraryScreen({
             />
           ))}
         </View>
-        <HeroBanner coverUri={items[0]?.coverThumbnailFileUri ?? null} />
       </View>
 
       <View style={styles.emptyWrap}>
@@ -147,25 +146,6 @@ export function HomeLibraryScreen({
   );
 }
 
-function HeroBanner({ coverUri }: { coverUri: string | null }) {
-  const content = (
-    <View style={styles.heroContent}>
-      <Text style={styles.heroTitle}>灵感有序{'\n'}美好长存</Text>
-      <Text style={styles.heroCaption}>让每一个 IP 都被妥善管理</Text>
-    </View>
-  );
-
-  if (coverUri) {
-    return (
-      <ImageBackground imageStyle={styles.heroImage} resizeMode="cover" source={{ uri: coverUri }} style={styles.hero}>
-        <View style={styles.heroOverlay}>{content}</View>
-      </ImageBackground>
-    );
-  }
-
-  return <View style={[styles.hero, styles.heroFallback]}>{content}</View>;
-}
-
 const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
@@ -191,43 +171,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: componentTokens.filterChip.gap,
   },
-  hero: {
-    ...shadows.xs,
-    borderRadius: radius.xl,
-    height: 156,
-    overflow: 'hidden',
-  },
-  heroImage: {
-    borderRadius: radius.xl,
-  },
-  heroOverlay: {
-    backgroundColor: colors.overlay.softSurface,
-    flex: 1,
-  },
-  heroFallback: {
-    backgroundColor: colors.background.elevated,
-    borderColor: colors.border.subtle,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  heroContent: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[5],
-  },
-  heroTitle: {
-    ...typography.textStyles.heroTitle,
-  },
-  heroCaption: {
-    ...typography.textStyles.heroCaption,
-    marginTop: spacing[2],
-  },
   emptyWrap: {
-    paddingTop: spacing[2],
+    paddingTop: spacing[3],
   },
   grid: {
-    columnGap: layout.gridGap,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: layout.gridGap,
+    gap: spacing[4],
   },
 });

@@ -1,10 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
-import { MetaText } from './MetaText';
 
 interface IPCardProps {
   ip: IpListItem;
@@ -12,84 +11,143 @@ interface IPCardProps {
 }
 
 export function IPCard({ ip, onPress }: IPCardProps) {
-  return (
-    <Pressable onPress={() => onPress(ip.id)} style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
-      <View style={styles.preview}>
-        {ip.coverThumbnailFileUri ? (
-          <Image resizeMode="cover" source={{ uri: ip.coverThumbnailFileUri }} style={styles.previewImage} />
-        ) : (
-          <View style={styles.emptyPreview}>
-            <Text style={styles.initialsText}>{getIpInitials(ip.name)}</Text>
-          </View>
-        )}
-        {ip.isFavorite ? (
-          <View style={styles.favoriteBadge}>
-            <Ionicons color={colors.semantic.favorite} name="star" size={14} />
-          </View>
-        ) : null}
-      </View>
+  const content = <CardCaption ip={ip} />;
 
-      <View style={styles.body}>
-        <Text numberOfLines={1} style={typography.textStyles.cardTitle}>
+  return (
+    <Pressable
+      accessibilityLabel={`打开 ${ip.name}`}
+      accessibilityRole="button"
+      onPress={() => onPress(ip.id)}
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+    >
+      {ip.coverThumbnailFileUri ? (
+        <ImageBackground
+          imageStyle={styles.coverImage}
+          resizeMode="cover"
+          source={{ uri: ip.coverThumbnailFileUri }}
+          style={styles.cover}
+        >
+          {content}
+        </ImageBackground>
+      ) : (
+        <View style={[styles.cover, styles.fallbackCover]}>
+          <Text numberOfLines={1} style={styles.initialsText}>
+            {getIpInitials(ip.name)}
+          </Text>
+          <View style={styles.fallbackMark} />
+          {content}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function CardCaption({ ip }: { ip: IpListItem }) {
+  return (
+    <View style={styles.captionBlock}>
+      <View style={styles.captionText}>
+        <Text numberOfLines={1} style={styles.title}>
           {ip.name}
         </Text>
-        <MetaText numberOfLines={1}>{`${ip.imageCount} 张图片`}</MetaText>
-        <MetaText numberOfLines={1} tone="placeholder">
-          {formatUpdatedLabel(ip.updatedAt)}
-        </MetaText>
+        <Text numberOfLines={1} style={styles.metaText}>{`${ip.imageCount} 张图片 · ${formatUpdatedLabel(ip.updatedAt)}`}</Text>
       </View>
-    </Pressable>
+      {ip.isFavorite ? (
+        <View style={styles.favoriteBadge}>
+          <Ionicons color={colors.semantic.favorite} name="star" size={14} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     ...shadows.xs,
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: componentTokens.ipCard.radius,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    width: '48.2%',
-  },
-  cardPressed: {
-    opacity: 0.84,
-  },
-  preview: {
-    aspectRatio: componentTokens.ipCard.previewAspectRatio,
+    aspectRatio: 2.08,
     backgroundColor: colors.background.empty,
-    position: 'relative',
-  },
-  previewImage: {
-    height: '100%',
+    borderRadius: componentTokens.ipCard.radius,
+    overflow: 'hidden',
     width: '100%',
   },
-  emptyPreview: {
-    alignItems: 'center',
-    backgroundColor: colors.background.elevated,
+  cardPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
+  },
+  cover: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    padding: spacing[4],
+    position: 'relative',
+  },
+  coverImage: {
+    borderRadius: componentTokens.ipCard.radius,
+  },
+  fallbackCover: {
+    backgroundColor: colors.support.sky100,
+    borderColor: colors.border.default,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  fallbackMark: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    height: 92,
+    position: 'absolute',
+    right: -30,
+    top: -26,
+    width: 92,
   },
   initialsText: {
     color: colors.primary.active,
     fontFamily: typography.family.brand,
-    fontSize: 34,
-    lineHeight: 38,
-    letterSpacing: 0.2,
+    fontSize: 44,
+    fontWeight: '500',
+    left: spacing[5],
+    lineHeight: 50,
+    opacity: 0.22,
+    position: 'absolute',
+    top: spacing[5],
+  },
+  captionBlock: {
+    alignItems: 'flex-end',
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    gap: spacing[3],
+    justifyContent: 'flex-end',
+    width: '74%',
+  },
+  captionText: {
+    flex: 1,
+    minWidth: 0,
   },
   favoriteBadge: {
     alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderRadius: componentTokens.ipCard.previewBadgeRadius,
-    height: 28,
+    backgroundColor: 'rgba(255, 252, 247, 0.88)',
+    borderColor: 'rgba(255, 255, 255, 0.66)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 30,
     justifyContent: 'center',
-    position: 'absolute',
-    right: spacing[2],
-    top: spacing[2],
-    width: 28,
+    width: 30,
   },
-  body: {
-    gap: spacing[1],
-    padding: componentTokens.ipCard.contentPadding,
+  title: {
+    ...typography.textStyles.cardTitle,
+    color: colors.text.inverse,
+    fontSize: 17,
+    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: 'right',
+    textShadowColor: 'rgba(23, 33, 43, 0.92)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 12,
+  },
+  metaText: {
+    ...typography.textStyles.caption,
+    color: 'rgba(255, 255, 255, 0.94)',
+    fontWeight: '500',
+    lineHeight: 17,
+    textAlign: 'right',
+    textShadowColor: 'rgba(23, 33, 43, 0.92)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 12,
   },
 });
