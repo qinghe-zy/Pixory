@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
@@ -6,12 +7,14 @@ import { PrimaryButton } from './PrimaryButton';
 interface AppDialogProps {
   visible: boolean;
   title: string;
-  message: string;
+  message?: string;
   primaryLabel: string;
   onPrimary: () => void;
   onClose: () => void;
   secondaryLabel?: string;
   danger?: boolean;
+  children?: ReactNode;
+  primaryDisabled?: boolean;
 }
 
 export function AppDialog({
@@ -23,6 +26,8 @@ export function AppDialog({
   onClose,
   secondaryLabel = '取消',
   danger = false,
+  children,
+  primaryDisabled = false,
 }: AppDialogProps) {
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
@@ -31,10 +36,11 @@ export function AppDialog({
         <View style={styles.panel}>
           <View style={styles.copy}>
             <Text style={[styles.title, danger ? styles.dangerTitle : null]}>{title}</Text>
-            <Text style={styles.message}>{message}</Text>
+            {message ? <Text style={styles.message}>{message}</Text> : null}
           </View>
+          {children ? <View style={styles.body}>{children}</View> : null}
           <View style={styles.actions}>
-            <PrimaryButton label={primaryLabel} onPress={onPrimary} />
+            <PrimaryButton disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} />
             <PrimaryButton label={secondaryLabel} onPress={onClose} variant="ghost" />
           </View>
         </View>
@@ -79,5 +85,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing[2],
+  },
+  body: {
+    gap: spacing[3],
   },
 });

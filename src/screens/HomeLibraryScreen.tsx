@@ -185,6 +185,7 @@ export function HomeLibraryScreen({
                 ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
                 : '切换到其他筛选条件，或创建新的 IP。'
           }
+          emptyContainerStyle={styles.emptyGuideOffset}
           emptyIconName={
             activeFilter === 'favorite'
               ? 'star-outline'
@@ -312,6 +313,9 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     paddingTop: spacing[3],
+  },
+  emptyGuideOffset: {
+    paddingTop: spacing[8],
   },
   grid: {
     gap: spacing[4],

@@ -473,6 +473,7 @@ async function loadDetailContextImages(context: ImageViewerContext): Promise<Ima
     if (filter.type === 'untagged') return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
     if (filter.type === 'recent-viewed') return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
     if (filter.type === 'mime') return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
+    if (filter.type === 'aspect') return imageRepository.findByIpId(context.ipId, { aspectRatio: filter.aspectRatio });
     if (filter.type === 'size') return imageRepository.findByIpId(context.ipId, { minFileSize: filter.minFileSize, maxFileSize: filter.maxFileSize });
     if (filter.type === 'group') return imageRepository.findByGroupId(filter.groupId);
     if (filter.type === 'tag') return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });

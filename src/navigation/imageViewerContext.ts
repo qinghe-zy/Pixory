@@ -5,6 +5,7 @@ export type ImageViewerIpAllFilter =
   | { type: 'untagged' }
   | { type: 'recent-viewed' }
   | { type: 'mime'; mimeType: string; label: string }
+  | { type: 'aspect'; aspectRatio: 'landscape' | 'portrait' | 'square' | 'panorama'; label: string }
   | { type: 'size'; label: string; minFileSize?: number; maxFileSize?: number }
   | { type: 'group'; groupId: number }
   | { type: 'tag'; tagId: number };

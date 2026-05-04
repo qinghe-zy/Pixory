@@ -229,6 +229,7 @@ export interface AppSettingRecord {
 }
 
 export type ImageSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'deletedAtDesc';
+export type ImageAspectRatioFilter = 'landscape' | 'portrait' | 'square' | 'panorama';
 
 export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   favoritesOnly?: boolean;
@@ -240,6 +241,7 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   groupId?: number;
   tagId?: number;
   mimeType?: string;
+  aspectRatio?: ImageAspectRatioFilter;
   minFileSize?: number;
   maxFileSize?: number;
   searchText?: string;

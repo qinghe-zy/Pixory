@@ -196,26 +196,24 @@ export function IpDetailScreen({
                   <Ionicons color={colors.semantic.favorite} name="star" size={14} />
                 </View>
               ) : null}
-            </View>
-
-            <View style={styles.identityBlock}>
-              <View style={styles.titleRow}>
-                <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.title}>
+              <View style={styles.coverCaption}>
+                <Text adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={2} style={styles.coverTitle}>
                   {ip.name}
                 </Text>
               </View>
-              {ip.description ? <Text style={styles.description}>{ip.description}</Text> : null}
             </View>
 
-            <View style={styles.statsStrip}>
-              <StatBlock label="图片数量" value={String(ip.imageCount)} />
-              <StatBlock label="分组数量" value={String(ip.groupCount)} />
-              <StatBlock label="标签数量" value={String(ip.tagCount)} />
-              <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
-            </View>
+            {ip.description ? <Text style={styles.description}>{ip.description}</Text> : null}
 
-            {managementSummary ? (
-              <View style={styles.managementSummary}>
+            <View style={styles.managementSummary}>
+              <View style={styles.statsStrip}>
+                <StatBlock label="图片数量" value={String(ip.imageCount)} />
+                <StatBlock label="分组数量" value={String(ip.groupCount)} />
+                <StatBlock label="标签数量" value={String(ip.tagCount)} />
+                <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
+              </View>
+              {managementSummary ? (
+                <>
                 <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? onOpenImportBatches : undefined} title="管理摘要" />
                 {needsOrganizingCount > 0 ? (
                   <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
@@ -261,8 +259,9 @@ export function IpDetailScreen({
                     })}
                   </View>
                 ) : null}
-              </View>
-            ) : null}
+                </>
+              ) : null}
+            </View>
 
             <SectionHeader title="快捷操作" />
             <View style={styles.quickGrid}>
@@ -441,19 +440,23 @@ const styles = StyleSheet.create({
     top: spacing[3],
     width: 28,
   },
-  identityBlock: {
-    gap: spacing[2],
+  coverCaption: {
+    alignItems: 'flex-end',
+    bottom: spacing[4],
+    maxWidth: '74%',
+    position: 'absolute',
+    right: spacing[4],
   },
-  titleRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing[2],
-  },
-  title: {
-    ...typography.textStyles.pageTitle,
-    flexShrink: 1,
-    fontSize: 20,
-    lineHeight: 26,
+  coverTitle: {
+    ...typography.textStyles.cardTitle,
+    color: colors.text.inverse,
+    fontSize: 19,
+    fontWeight: '600',
+    lineHeight: 24,
+    textAlign: 'right',
+    textShadowColor: 'rgba(23, 33, 43, 0.92)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 12,
   },
   description: {
     ...typography.textStyles.body,
@@ -461,14 +464,9 @@ const styles = StyleSheet.create({
     maxWidth: layout.maxReadableWidth,
   },
   statsStrip: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
+    paddingBottom: spacing[2],
   },
   needsPanel: {
     alignItems: 'center',

@@ -332,6 +332,7 @@ export default function App() {
             groupId: currentRoute.groupId ?? null,
           })
         }
+        onOpenImage={openImageViewer}
         refreshToken={libraryRefreshToken}
         source={currentRoute.source}
       />

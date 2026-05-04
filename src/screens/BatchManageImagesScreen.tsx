@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
-import { AppActionSheet } from '../components/AppActionSheet';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -12,9 +11,9 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { TagChip } from '../components/TagChip';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy } from '../constants/copy';
-import { getGroupTypeLabel } from '../constants/groups';
+import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { IMPORT_TEMPLATES, type ImportTemplate } from '../constants/importTemplates';
-import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
+import { GROUP_NAME_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
 import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -25,12 +24,13 @@ import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 import {
-  applySelectionRule,
+  applySelectionRules,
   BATCH_SELECTION_RULE_OPTIONS,
   type BatchSelectionRuleKey,
-  type BatchSelectionRuleResult,
+  type BatchSelectionRulesResult,
 } from '../utils/batchSelectionRules';
 import { useToast } from '../components/AppToast';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
 type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'apply-template';
@@ -46,6 +46,7 @@ interface BatchManageImagesScreenProps {
   refreshToken: number;
   onBack: () => void;
   onImportImages: () => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
   onChanged: () => void;
   onDeleted: () => void;
 }
@@ -60,6 +61,7 @@ export function BatchManageImagesScreen({
   refreshToken,
   onBack,
   onImportImages,
+  onOpenImage,
   onChanged,
   onDeleted,
 }: BatchManageImagesScreenProps) {
@@ -98,8 +100,12 @@ export function BatchManageImagesScreen({
   const [tagInput, setTagInput] = useState('');
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
-  const [isSelectionSheetVisible, setIsSelectionSheetVisible] = useState(false);
-  const [activeRule, setActiveRule] = useState<BatchSelectionRuleResult | null>(null);
+  const [isRuleMode, setIsRuleMode] = useState(false);
+  const [activeRuleKeys, setActiveRuleKeys] = useState<BatchSelectionRuleKey[]>([]);
+  const [activeRule, setActiveRule] = useState<BatchSelectionRulesResult | null>(null);
+  const [isCreateGroupDialogVisible, setIsCreateGroupDialogVisible] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
@@ -125,48 +131,121 @@ export function BatchManageImagesScreen({
   }, [clearSubmitError, selectedCount, submitError]);
 
   function toggleImageSelection(imageId: number) {
+    setActiveRuleKeys([]);
+    setActiveRule(null);
     setSelectedImageIds((current) =>
       current.includes(imageId) ? current.filter((item) => item !== imageId) : [...current, imageId]
     );
   }
 
+  function enterImageSelection(imageId: number) {
+    setActiveRuleKeys([]);
+    setActiveRule(null);
+    setSelectedImageIds([imageId]);
+  }
+
+  function handleOpenImage(imageId: number) {
+    if (selectedCount > 0) {
+      toggleImageSelection(imageId);
+      return;
+    }
+
+    onOpenImage(imageId, getImageViewerContext());
+  }
+
+  function getImageViewerContext(): ImageViewerContext {
+    if (importBatchId != null) {
+      return { type: 'import-batch', ipId, importBatchId };
+    }
+
+    if (groupId != null) {
+      return { type: 'group', ipId, groupId };
+    }
+
+    return { type: 'ip-all', ipId, filter: { type: 'all' } };
+  }
+
   function handleSelectAllToggle() {
+    setActiveRuleKeys([]);
+    setActiveRule(null);
     setSelectedImageIds(allSelected ? [] : visibleImageIds);
   }
 
   function selectByRule(rule: 'visible' | 'invert' | BatchSelectionRuleKey) {
     if (rule === 'visible') {
+      setActiveRuleKeys([]);
       setActiveRule(null);
       setSelectedImageIds(visibleImageIds);
       return;
     }
 
     if (rule === 'invert') {
+      setActiveRuleKeys([]);
       setActiveRule(null);
       const selectedSet = new Set(selectedImageIds);
       setSelectedImageIds(visibleImageIds.filter((imageId) => !selectedSet.has(imageId)));
       return;
     }
 
-    if (activeRule?.key === rule) {
+    const nextRuleKeys = activeRuleKeys.includes(rule)
+      ? activeRuleKeys.filter((item) => item !== rule)
+      : [...activeRuleKeys, rule];
+
+    if (nextRuleKeys.length === 0) {
+      setActiveRuleKeys([]);
       setActiveRule(null);
       setSelectedImageIds([]);
       return;
     }
 
     try {
-      const result = applySelectionRule({
+      const result = applySelectionRules({
         images,
         selectedImageIds,
         rule,
+        rules: nextRuleKeys,
         importBatchId,
       });
+      setActiveRuleKeys(nextRuleKeys);
       setActiveRule(result);
       setSelectedImageIds(result.imageIds);
     } catch (error) {
       const message = error instanceof Error ? error.message : '请选择基准图片。';
       showToast(message);
     }
+  }
+
+  function cancelRuleSelection() {
+    setActiveRuleKeys([]);
+    setActiveRule(null);
+    setSelectedImageIds([]);
+  }
+
+  function handleCreateGroup() {
+    const trimmedName = newGroupName.trim();
+    if (!trimmedName) {
+      showToast('请输入分组名称');
+      return;
+    }
+    if (!newGroupType) {
+      showToast('请选择分组类型');
+      return;
+    }
+
+    void (async () => {
+      try {
+        const group = await groupRepository.create({ ipId, name: trimmedName, type: newGroupType });
+        setSelectedGroupId(group.id);
+        setNewGroupName('');
+        setNewGroupType(null);
+        setIsCreateGroupDialogVisible(false);
+        reload();
+        onChanged();
+        showToast('已新建分组');
+      } catch (error) {
+        showToast(error instanceof Error ? `新建分组失败：${error.message}` : '新建分组失败');
+      }
+    })();
   }
 
   function resetInlineMode(nextMode: BatchMode = 'idle') {
@@ -563,21 +642,27 @@ export function BatchManageImagesScreen({
 
         <View style={styles.ruleWrap}>
           <RuleChip label="当前筛选" onPress={() => selectByRule('visible')} />
-          <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} />
-          <RuleChip label="无标签" onPress={() => selectByRule('untagged')} />
+          <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} selected={activeRuleKeys.includes('ungrouped')} />
+          <RuleChip label="无标签" onPress={() => selectByRule('untagged')} selected={activeRuleKeys.includes('untagged')} />
           <RuleChip label="反选" onPress={() => selectByRule('invert')} />
-          <RuleChip label="更多选择" onPress={() => setIsSelectionSheetVisible(true)} />
+          <RuleChip label="更多选择" onPress={() => setIsRuleMode((current) => !current)} selected={isRuleMode} />
         </View>
+        {isRuleMode ? (
+          <View style={styles.ruleModePanel}>
+            {BATCH_SELECTION_RULE_OPTIONS.map((option) => (
+              <RuleChip
+                key={option.key}
+                label={option.key === 'filename-prefix' ? '文件名前缀' : option.label}
+                onPress={() => selectByRule(option.key)}
+                selected={activeRuleKeys.includes(option.key)}
+              />
+            ))}
+          </View>
+        ) : null}
         {activeRule ? (
           <View style={styles.activeRulePanel}>
             <Text numberOfLines={2} style={styles.activeRuleText}>{activeRule.label} · {activeRule.description}</Text>
-            <Pressable
-              onPress={() => {
-                setActiveRule(null);
-                setSelectedImageIds([]);
-              }}
-              style={({ pressed }) => [styles.cancelRuleButton, pressed && styles.pressed]}
-            >
+            <Pressable onPress={cancelRuleSelection} style={({ pressed }) => [styles.cancelRuleButton, pressed && styles.pressed]}>
               <Text style={styles.cancelRuleText}>取消该规则</Text>
             </Pressable>
           </View>
@@ -603,6 +688,15 @@ export function BatchManageImagesScreen({
                   selected={selectedGroupId === group.id}
                 />
               ))}
+              {mode !== 'remove-group' ? (
+                <Pressable onPress={() => setIsCreateGroupDialogVisible(true)} style={({ pressed }) => [styles.createGroupRow, pressed && styles.pressed]}>
+                  <Ionicons color={colors.primary.default} name="add" size={18} />
+                  <View style={styles.createGroupCopy}>
+                    <Text style={styles.createGroupTitle}>新建分组</Text>
+                    <Text style={styles.createGroupMeta}>创建后自动选为目标分组</Text>
+                  </View>
+                </Pressable>
+              ) : null}
             </View>
           </LightFormSection>
         ) : null}
@@ -697,7 +791,8 @@ export function BatchManageImagesScreen({
             <ThumbnailTile
               image={image}
               key={image.id}
-              onPress={() => toggleImageSelection(image.id)}
+              onLongPress={() => enterImageSelection(image.id)}
+              onPress={handleOpenImage}
               selected={selectedImageIds.includes(image.id)}
             />
           ))}
@@ -713,19 +808,37 @@ export function BatchManageImagesScreen({
       title="确认删除"
       visible={isDeleteDialogVisible}
     />
-    <AppActionSheet
-      items={BATCH_SELECTION_RULE_OPTIONS.map((option) => ({
-        key: option.key,
-        label: option.key === 'filename-prefix' ? '选择同文件名前缀' : `选择${option.label}`,
-        icon: option.key === 'import-batch' ? 'file-tray-stacked-outline' : option.key === 'same-size' ? 'resize-outline' : option.key === 'filename-prefix' ? 'text-outline' : 'sparkles-outline',
-        meta: activeRule?.key === option.key ? '再次点击取消' : '只改变当前选择',
-        onPress: () => selectByRule(option.key),
-      }))}
-      message="高级选择只改变当前选择范围，不会直接写入图片数据。"
-      onClose={() => setIsSelectionSheetVisible(false)}
-      title="更多选择"
-      visible={isSelectionSheetVisible}
-    />
+    <AppDialog
+      onClose={() => setIsCreateGroupDialogVisible(false)}
+      onPrimary={handleCreateGroup}
+      primaryDisabled={!newGroupName.trim() || !newGroupType}
+      primaryLabel="创建分组"
+      title="新建分组"
+      visible={isCreateGroupDialogVisible}
+    >
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={GROUP_NAME_MAX_LENGTH}
+        onChangeText={setNewGroupName}
+        placeholder="输入分组名称"
+        placeholderTextColor={colors.text.placeholder}
+        selectionColor={colors.primary.default}
+        style={styles.dialogInput}
+        value={newGroupName}
+      />
+      <View style={styles.dialogTypeList}>
+        {GROUP_TYPE_OPTIONS.map((option) => (
+          <OptionSelectRow
+            key={option.value}
+            label={option.label}
+            meta={option.description}
+            onPress={() => setNewGroupType(option.value)}
+            selected={newGroupType === option.value}
+          />
+        ))}
+      </View>
+    </AppDialog>
     </>
   );
 }
@@ -804,10 +917,10 @@ function BatchActionButton({
   );
 }
 
-function RuleChip({ label, onPress }: { label: string; onPress: () => void }) {
+function RuleChip({ label, onPress, selected = false }: { label: string; onPress: () => void; selected?: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.ruleChip, pressed && styles.pressed]}>
-      <Text style={styles.ruleChipText}>{label}</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.ruleChip, selected ? styles.ruleChipSelected : null, pressed && styles.pressed]}>
+      <Text style={[styles.ruleChipText, selected ? styles.ruleChipSelectedText : null]}>{label}</Text>
     </Pressable>
   );
 }
@@ -876,6 +989,17 @@ const styles = StyleSheet.create({
     gap: spacing[1.5],
     marginBottom: spacing[3],
   },
+  ruleModePanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1.5],
+    marginBottom: spacing[3],
+    padding: spacing[2],
+  },
   ruleChip: {
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
@@ -885,10 +1009,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing[2],
   },
+  ruleChipSelected: {
+    backgroundColor: colors.primary.default,
+    borderColor: colors.primary.default,
+  },
   ruleChipText: {
     ...typography.textStyles.micro,
     color: colors.primary.active,
     fontWeight: '600',
+  },
+  ruleChipSelectedText: {
+    color: colors.text.inverse,
   },
   activeRulePanel: {
     alignItems: 'center',
@@ -930,6 +1061,32 @@ const styles = StyleSheet.create({
   optionList: {
     gap: spacing[1],
     paddingVertical: spacing[2],
+  },
+  createGroupRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 48,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
+  },
+  createGroupCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  createGroupTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.primary.active,
+  },
+  createGroupMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   tagPanel: {
     gap: spacing[2],
@@ -983,6 +1140,19 @@ const styles = StyleSheet.create({
     minHeight: 38,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1.5],
+  },
+  dialogInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  dialogTypeList: {
+    gap: spacing[1],
   },
   addTagButton: {
     alignItems: 'center',

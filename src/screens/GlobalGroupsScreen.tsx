@@ -69,6 +69,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onEditGroup, onOpenGr
       <PageStateBlock
         emptyActionLabel={undefined}
         emptyDescription="创建分组后，这里会展示全部 IP 下的真实分组数据。"
+        emptyContainerStyle={styles.emptyGuideOffset}
         emptyIconName="folder-open-outline"
         emptyTitle={commonEmptyStateCopy.noGroupsTitle}
         errorMessage={errorMessage}
@@ -171,6 +172,9 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing[4],
+  },
+  emptyGuideOffset: {
+    paddingTop: spacing[8],
   },
   scopePill: {
     ...typography.textStyles.caption,

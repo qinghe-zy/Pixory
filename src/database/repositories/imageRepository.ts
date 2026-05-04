@@ -109,6 +109,22 @@ function buildImageListQueryParts(
     values.push(options.mimeType);
   }
 
+  if (options?.aspectRatio === 'landscape') {
+    clauses.push('image_assets.width > image_assets.height AND image_assets.width * 1.0 / image_assets.height < 2.2');
+  }
+
+  if (options?.aspectRatio === 'portrait') {
+    clauses.push('image_assets.height > image_assets.width AND image_assets.height * 1.0 / image_assets.width < 2.2');
+  }
+
+  if (options?.aspectRatio === 'square') {
+    clauses.push('ABS(image_assets.width - image_assets.height) <= MAX(image_assets.width, image_assets.height) * 0.08');
+  }
+
+  if (options?.aspectRatio === 'panorama') {
+    clauses.push('MAX(image_assets.width * 1.0 / image_assets.height, image_assets.height * 1.0 / image_assets.width) >= 2.2');
+  }
+
   if (options?.minFileSize != null) {
     clauses.push('image_assets.fileSize >= ?');
     values.push(options.minFileSize);

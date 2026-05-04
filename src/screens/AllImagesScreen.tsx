@@ -61,6 +61,8 @@ export function AllImagesScreen({
                 ? await imageRepository.findByIpId(ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' })
                 : activeFilter.type === 'mime'
                   ? await imageRepository.findByIpId(ipId, { mimeType: activeFilter.mimeType })
+                  : activeFilter.type === 'aspect'
+                    ? await imageRepository.findByIpId(ipId, { aspectRatio: activeFilter.aspectRatio })
                   : activeFilter.type === 'size'
                     ? await imageRepository.findByIpId(ipId, { minFileSize: activeFilter.minFileSize, maxFileSize: activeFilter.maxFileSize })
                     : activeFilter.type === 'group'
@@ -103,6 +105,10 @@ export function AllImagesScreen({
     }
 
     if (activeFilter.type === 'mime') {
+      return activeFilter.label;
+    }
+
+    if (activeFilter.type === 'aspect') {
       return activeFilter.label;
     }
 
@@ -169,6 +175,10 @@ export function AllImagesScreen({
       { key: 'recent-viewed', label: '最近查看', icon: 'time-outline', onPress: () => setActiveFilter({ type: 'recent-viewed' }) },
       { key: 'jpeg', label: 'JPEG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/jpeg', label: 'JPEG' }) },
       { key: 'png', label: 'PNG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/png', label: 'PNG' }) },
+      { key: 'landscape', label: '横图', icon: 'tablet-landscape-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'landscape', label: '横图' }) },
+      { key: 'portrait', label: '竖图', icon: 'phone-portrait-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'portrait', label: '竖图' }) },
+      { key: 'square', label: '方图', icon: 'crop-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'square', label: '方图' }) },
+      { key: 'panorama', label: '长图', icon: 'resize-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'panorama', label: '长图' }) },
       { key: 'small-size', label: '小于 500 KB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '< 500 KB', maxFileSize: 500 * 1024 }) },
       { key: 'large-size', label: '大于 2 MB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '> 2 MB', minFileSize: 2 * 1024 * 1024 }) },
     ];
@@ -238,7 +248,16 @@ export function AllImagesScreen({
       >
         <View style={styles.galleryHeading}>
           <Text style={styles.galleryTitle}>图片</Text>
-          <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
+          <View style={styles.galleryActions}>
+            <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
+            <Pressable
+              disabled={images.length === 0}
+              onPress={multiSelect.toggleSelectAll}
+              style={({ pressed }) => [styles.selectAllButton, images.length === 0 ? styles.disabled : null, pressed && images.length > 0 ? styles.pressed : null]}
+            >
+              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+            </Pressable>
+          </View>
         </View>
         <View style={styles.grid}>
           {images.map((image) => (
@@ -413,6 +432,26 @@ const styles = StyleSheet.create({
   galleryCount: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+  },
+  galleryActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  selectAllButton: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  selectAllText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  disabled: {
+    opacity: 0.45,
   },
   grid: {
     flexDirection: 'row',

@@ -54,7 +54,7 @@ export function ImportResultScreen({
         <PrimaryButton label="查看本次导入" onPress={onViewImport} />
         <View style={styles.secondaryActions}>
           <View style={styles.secondaryAction}>
-            <PrimaryButton label="继续整理" onPress={onContinueOrganize} variant="outline" />
+            <PrimaryButton label="继续整理" onPress={onContinueOrganize} variant="ghost" />
           </View>
           <View style={styles.secondaryAction}>
             <PrimaryButton label="再导入一批" onPress={onImportAgain} variant="ghost" />

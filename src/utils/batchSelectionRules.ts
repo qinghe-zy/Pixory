@@ -28,6 +28,13 @@ export interface BatchSelectionRuleResult {
   description: string;
 }
 
+export interface BatchSelectionRulesResult {
+  keys: BatchSelectionRuleKey[];
+  label: string;
+  imageIds: number[];
+  description: string;
+}
+
 interface ApplySelectionRuleInput {
   images: ImageListItem[];
   selectedImageIds: number[];
@@ -83,6 +90,48 @@ export function applySelectionRule({
     label,
     imageIds: matchedImages.map((image) => image.id),
     description,
+  };
+}
+
+export function applySelectionRules({
+  images,
+  selectedImageIds,
+  rules,
+  importBatchId = null,
+}: ApplySelectionRuleInput & { rules: BatchSelectionRuleKey[] }): BatchSelectionRulesResult {
+  const uniqueRules = [...new Set(rules)];
+  if (uniqueRules.length === 0) {
+    return {
+      keys: [],
+      label: '规则模式',
+      imageIds: [],
+      description: '未选择规则。',
+    };
+  }
+
+  const ruleResults = uniqueRules.map((rule) =>
+    applySelectionRule({
+      images,
+      selectedImageIds,
+      rule,
+      importBatchId,
+    })
+  );
+  const [firstResult, ...restResults] = ruleResults;
+  const intersectionIds = restResults.reduce(
+    (currentIds, result) => {
+      const nextSet = new Set(result.imageIds);
+      return currentIds.filter((imageId) => nextSet.has(imageId));
+    },
+    firstResult.imageIds
+  );
+  const labels = ruleResults.map((result) => result.label);
+
+  return {
+    keys: uniqueRules,
+    label: labels.join(' + '),
+    imageIds: intersectionIds,
+    description: `交集规则：${labels.join('、')}，结果 ${intersectionIds.length} 张。`,
   };
 }
 

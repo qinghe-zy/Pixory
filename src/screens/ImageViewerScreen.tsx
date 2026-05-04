@@ -278,6 +278,10 @@ async function loadImagesForContext(context: ImageViewerContext): Promise<ImageL
       return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
     }
 
+    if (filter.type === 'aspect') {
+      return imageRepository.findByIpId(context.ipId, { aspectRatio: filter.aspectRatio });
+    }
+
     if (filter.type === 'size') {
       return imageRepository.findByIpId(context.ipId, {
         minFileSize: filter.minFileSize,

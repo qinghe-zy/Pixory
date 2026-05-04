@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { commonButtonCopy, commonErrorCopy } from '../constants/copy';
 import { colors, typography } from '../design/tokens';
@@ -23,6 +23,7 @@ interface PageStateBlockProps {
   loadingTitle?: string;
   loadingDescription?: string;
   errorTitle?: string;
+  emptyContainerStyle?: StyleProp<ViewStyle>;
 }
 
 export function PageStateBlock({
@@ -40,6 +41,7 @@ export function PageStateBlock({
   loadingTitle = commonErrorCopy.genericLoadingTitle,
   loadingDescription = '请稍候，这里的内容会在本地数据读取完成后展示。',
   errorTitle = commonErrorCopy.pageUnavailableTitle,
+  emptyContainerStyle,
 }: PageStateBlockProps) {
   if (loading) {
     return (
@@ -63,13 +65,15 @@ export function PageStateBlock({
 
   if (isEmpty) {
     return (
-      <EmptyState
-        actionLabel={emptyActionLabel}
-        description={emptyDescription}
-        iconName={emptyIconName}
-        onAction={onEmptyAction}
-        title={emptyTitle}
-      />
+      <View style={[styles.emptyWrap, emptyContainerStyle]}>
+        <EmptyState
+          actionLabel={emptyActionLabel}
+          description={emptyDescription}
+          iconName={emptyIconName}
+          onAction={onEmptyAction}
+          title={emptyTitle}
+        />
+      </View>
     );
   }
 
@@ -91,5 +95,8 @@ const styles = StyleSheet.create({
   feedbackText: {
     ...typography.textStyles.emptyDescription,
     textAlign: 'center',
+  },
+  emptyWrap: {
+    alignSelf: 'stretch',
   },
 });

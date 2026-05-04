@@ -100,3 +100,42 @@ test('page TODOs are reflected in concrete UI behavior', () => {
   assert.doesNotMatch(meSource, /storageTrack/);
   assert.match(meSource, /libraryStatsRow/);
 });
+
+test('gallery exposes aspect filters and select all entry', () => {
+  const contextSource = readProjectFile('src/navigation/imageViewerContext.ts');
+  const imageRepositoryTypes = readProjectFile('src/database/types.ts');
+  const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
+  const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
+  const viewerSource = readProjectFile('src/screens/ImageViewerScreen.tsx');
+  const detailSource = readProjectFile('src/screens/ImageDetailScreen.tsx');
+
+  assert.match(contextSource, /type:\s*'aspect'/);
+  assert.match(imageRepositoryTypes, /aspectRatio\?:/);
+  for (const label of ['横图', '竖图', '方图', '长图']) {
+    assert.match(allImagesSource, new RegExp(label));
+  }
+  assert.match(allImagesSource, /toggleSelectAll/);
+  assert.match(imageRepositorySource, /image_assets\.width/);
+  assert.match(viewerSource, /filter\.type === 'aspect'/);
+  assert.match(detailSource, /filter\.type === 'aspect'/);
+});
+
+test('tag creation uses a header plus dialog instead of an inline long row', () => {
+  const tagsSource = readProjectFile('src/screens/TagsOverviewScreen.tsx');
+
+  assert.match(tagsSource, /rightAction=\{rightAction\}/);
+  assert.match(tagsSource, /isCreateDialogVisible/);
+  assert.match(tagsSource, /name="add"/);
+  assert.match(tagsSource, /新增标签/);
+  assert.doesNotMatch(tagsSource, /<View style=\{styles\.createPanel\}>/);
+});
+
+test('empty guide cards can sit lower on home groups and tags pages', () => {
+  const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
+  const groupsSource = readProjectFile('src/screens/GlobalGroupsScreen.tsx');
+  const tagsSource = readProjectFile('src/screens/TagsOverviewScreen.tsx');
+
+  assert.match(homeSource, /emptyGuideOffset/);
+  assert.match(groupsSource, /emptyGuideOffset/);
+  assert.match(tagsSource, /emptyGuideOffset/);
+});

@@ -75,6 +75,30 @@ test('batch operations capture undo snapshots for composite metadata changes', (
   assert.match(batchSource, /套用模板/);
 });
 
+test('batch manage opens images on tap and enters selection from long press', () => {
+  const appSource = readProjectFile('App.tsx');
+  const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
+
+  assert.match(appSource, /onOpenImage=\{openImageViewer\}/);
+  assert.match(batchSource, /onOpenImage:\s*\(imageId: number, context: ImageViewerContext\) => void/);
+  assert.match(batchSource, /function handleOpenImage\(imageId: number\)/);
+  assert.match(batchSource, /selectedCount > 0/);
+  assert.match(batchSource, /onLongPress=\{\(\) => enterImageSelection\(image\.id\)\}/);
+});
+
+test('batch rule selection supports multi-rule intersection with selected chips', () => {
+  const rulesSource = readProjectFile('src/utils/batchSelectionRules.ts');
+  const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
+  const panelSource = readProjectFile('src/components/BatchImageOrganizePanel.tsx');
+
+  assert.match(rulesSource, /applySelectionRules/);
+  assert.match(rulesSource, /intersection/i);
+  assert.match(batchSource, /activeRuleKeys/);
+  assert.match(batchSource, /selected=\{activeRuleKeys\.includes/);
+  assert.match(panelSource, /activeRuleKeys/);
+  assert.match(panelSource, /按交集加入规则/);
+});
+
 test('import batches expose history and current-batch duplicate review without full-library scanning', () => {
   const appSource = readProjectFile('App.tsx');
   const importBatchRepositorySource = readProjectFile('src/database/repositories/importBatchRepository.ts');

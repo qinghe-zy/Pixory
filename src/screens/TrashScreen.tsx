@@ -131,12 +131,6 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   return (
     <>
     <ScreenScaffold decorativeTitle="Trash" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="回收站">
-      <View style={styles.notice}>
-        <Ionicons color={colors.primary.active} name="shield-checkmark-outline" size={16} />
-        <Text numberOfLines={3} style={styles.subtitle}>
-          图片进入回收站后，原图和缩略图仍保留在本地；只有确认清空回收站，才会永久删除文件和数据库记录。
-        </Text>
-      </View>
       <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />

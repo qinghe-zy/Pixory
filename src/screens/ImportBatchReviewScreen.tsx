@@ -148,7 +148,7 @@ export function ImportBatchReviewScreen({
           <PrimaryButton label="进入批量整理" onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} />
           <View style={styles.secondaryActions}>
             <View style={styles.secondaryAction}>
-              <PrimaryButton label="连续整理" onPress={() => onQuickOrganize(importBatchId)} variant="outline" />
+              <PrimaryButton label="连续整理" onPress={() => onQuickOrganize(importBatchId)} variant="ghost" />
             </View>
             <View style={styles.secondaryAction}>
               <PrimaryButton label="再导入一批" onPress={onImportAgain} variant="ghost" />

@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { getGroupTypeLabel } from '../constants/groups';
-import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
+import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
+import { GROUP_NAME_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 import {
-  applySelectionRule,
+  applySelectionRules,
   BATCH_SELECTION_RULE_OPTIONS,
   type BatchSelectionRuleKey,
-  type BatchSelectionRuleResult,
+  type BatchSelectionRulesResult,
 } from '../utils/batchSelectionRules';
 import { AppActionSheet } from './AppActionSheet';
 import { AppDialog } from './AppDialog';
@@ -55,7 +55,11 @@ export function BatchImageOrganizePanel({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
-  const [activeRule, setActiveRule] = useState<BatchSelectionRuleResult | null>(null);
+  const [activeRuleKeys, setActiveRuleKeys] = useState<BatchSelectionRuleKey[]>([]);
+  const [activeRule, setActiveRule] = useState<BatchSelectionRulesResult | null>(null);
+  const [isCreateGroupDialogVisible, setIsCreateGroupDialogVisible] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
   const ruleImages = allImages ?? selectedImages;
   const selectedCount = selectedImages.length;
@@ -113,6 +117,36 @@ export function BatchImageOrganizePanel({
     const nextTags = mergeDraftTagNames(draftTags, rawValue ?? tagInput);
     setDraftTags(nextTags);
     setTagInput('');
+  }
+
+  async function handleCreateGroup() {
+    if (singleIpId == null) {
+      showToast('跨 IP 选择时不能新建分组');
+      return;
+    }
+
+    const trimmedName = newGroupName.trim();
+    if (!trimmedName) {
+      showToast('请输入分组名称');
+      return;
+    }
+    if (!newGroupType) {
+      showToast('请选择分组类型');
+      return;
+    }
+
+    try {
+      const group = await groupRepository.create({ ipId: singleIpId, name: trimmedName, type: newGroupType });
+      setGroups((current) => [group, ...current]);
+      setSelectedGroupId(group.id);
+      setNewGroupName('');
+      setNewGroupType(null);
+      setIsCreateGroupDialogVisible(false);
+      onChanged();
+      showToast('已新建分组');
+    } catch (error) {
+      showToast(error instanceof Error ? `新建分组失败：${error.message}` : '新建分组失败');
+    }
   }
 
   async function runAction(action: () => Promise<string>, after?: () => void) {
@@ -211,19 +245,26 @@ export function BatchImageOrganizePanel({
       return;
     }
 
-    if (activeRule?.key === rule) {
+    const nextRuleKeys = activeRuleKeys.includes(rule)
+      ? activeRuleKeys.filter((item) => item !== rule)
+      : [...activeRuleKeys, rule];
+
+    if (nextRuleKeys.length === 0) {
+      setActiveRuleKeys([]);
       setActiveRule(null);
       onApplyRuleSelection([]);
       return;
     }
 
     try {
-      const result = applySelectionRule({
+      const result = applySelectionRules({
         images: ruleImages,
         selectedImageIds,
         rule,
+        rules: nextRuleKeys,
         importBatchId,
       });
+      setActiveRuleKeys(nextRuleKeys);
       setActiveRule(result);
       setErrorMessage(null);
       onApplyRuleSelection(result.imageIds);
@@ -288,10 +329,12 @@ export function BatchImageOrganizePanel({
 
         {onApplyRuleSelection ? (
           <SmartSelectionRuleBar
+            activeRuleKeys={activeRuleKeys}
             activeRule={activeRule}
             disabled={isSubmitting}
             onApplyRule={handleApplyRule}
             onCancelRule={() => {
+              setActiveRuleKeys([]);
               setActiveRule(null);
               onApplyRuleSelection([]);
             }}
@@ -317,6 +360,15 @@ export function BatchImageOrganizePanel({
                       selected={selectedGroupId === group.id}
                     />
                   ))}
+                  {mode !== 'remove-group' ? (
+                    <Pressable onPress={() => setIsCreateGroupDialogVisible(true)} style={({ pressed }) => [styles.createGroupRow, pressed && styles.pressed]}>
+                      <Ionicons color={colors.primary.default} name="add" size={18} />
+                      <View style={styles.createGroupCopy}>
+                        <Text style={styles.createGroupTitle}>新建分组</Text>
+                        <Text style={styles.createGroupMeta}>创建后自动选为目标分组</Text>
+                      </View>
+                    </Pressable>
+                  ) : null}
                 </View>
               )}
             </LightFormSection>
@@ -393,17 +445,50 @@ export function BatchImageOrganizePanel({
         title="确认删除"
         visible={isDeleteDialogVisible}
       />
+      <AppDialog
+        onClose={() => setIsCreateGroupDialogVisible(false)}
+        onPrimary={() => void handleCreateGroup()}
+        primaryDisabled={!newGroupName.trim() || !newGroupType}
+        primaryLabel="创建分组"
+        title="新建分组"
+        visible={isCreateGroupDialogVisible}
+      >
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={GROUP_NAME_MAX_LENGTH}
+          onChangeText={setNewGroupName}
+          placeholder="输入分组名称"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.dialogInput}
+          value={newGroupName}
+        />
+        <View style={styles.dialogTypeList}>
+          {GROUP_TYPE_OPTIONS.map((option) => (
+            <OptionSelectRow
+              key={option.value}
+              label={option.label}
+              meta={option.description}
+              onPress={() => setNewGroupType(option.value)}
+              selected={newGroupType === option.value}
+            />
+          ))}
+        </View>
+      </AppDialog>
     </>
   );
 }
 
 function SmartSelectionRuleBar({
+  activeRuleKeys,
   activeRule,
   disabled,
   onApplyRule,
   onCancelRule,
 }: {
-  activeRule: BatchSelectionRuleResult | null;
+  activeRuleKeys: BatchSelectionRuleKey[];
+  activeRule: BatchSelectionRulesResult | null;
   disabled: boolean;
   onApplyRule: (rule: BatchSelectionRuleKey) => void;
   onCancelRule: () => void;
@@ -435,10 +520,10 @@ function SmartSelectionRuleBar({
           key: option.key,
           label: option.label,
           icon: option.key === 'suspected-duplicate' ? 'copy-outline' : option.key === 'import-batch' ? 'file-tray-stacked-outline' : 'sparkles-outline',
-          meta: activeRule?.key === option.key ? '再次点击取消' : '只改变当前选择',
+          meta: activeRuleKeys.includes(option.key) ? '已选，点击取消' : '按交集加入规则',
           onPress: () => onApplyRule(option.key),
         }))}
-        message="智能分堆只改变当前选择集，不会直接写入 SQLite 或移动图片。"
+        message="智能分堆按多条规则的交集改变当前选择集，不会直接写入 SQLite 或移动图片。"
         onClose={() => setIsSheetVisible(false)}
         title="智能分堆"
         visible={isSheetVisible}
@@ -635,6 +720,32 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingTop: spacing[2],
   },
+  createGroupRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 46,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
+  },
+  createGroupCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  createGroupTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.primary.active,
+  },
+  createGroupMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
   tagInputRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -651,6 +762,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     paddingHorizontal: spacing[3],
+  },
+  dialogInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  dialogTypeList: {
+    gap: spacing[1],
   },
   addTagButton: {
     alignItems: 'center',

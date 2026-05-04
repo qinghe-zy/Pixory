@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -27,6 +28,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   const [renameTag, setRenameTag] = useState<TagUsageItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [createTagValue, setCreateTagValue] = useState('');
+  const [isCreateDialogVisible, setIsCreateDialogVisible] = useState(false);
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
     () => tagRepository.findUsageOverview(),
     [refreshToken],
@@ -118,6 +120,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
       try {
         await tagRepository.create({ name });
         setCreateTagValue('');
+        setIsCreateDialogVisible(false);
         showToast('已新增标签');
         reload();
       } catch (error) {
@@ -126,28 +129,17 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     })();
   }
 
+  const rightAction = (
+    <Pressable accessibilityLabel="新增标签" onPress={() => setIsCreateDialogVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
+      <Ionicons color={colors.primary.default} name="add" size={20} />
+    </Pressable>
+  );
+
   return (
     <>
-    <ScreenScaffold decorativeTitle="Tags" footer={footer} scrollable title="标签">
+    <ScreenScaffold decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签">
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
-      </View>
-      <View style={styles.createPanel}>
-        <Text style={styles.resultLabel}>新增标签</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          onChangeText={setCreateTagValue}
-          onSubmitEditing={submitCreateTag}
-          placeholder="输入标签名称"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={styles.renameInput}
-          value={createTagValue}
-        />
-        <Pressable onPress={submitCreateTag} style={({ pressed }) => [styles.resultAction, pressed && styles.pressed]}>
-          <Text style={styles.resultActionText}>新增</Text>
-        </Pressable>
       </View>
       {renameTag ? (
         <View style={styles.renamePanel}>
@@ -168,6 +160,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
       <PageStateBlock
         emptyActionLabel={undefined}
         emptyDescription="给图片添加标签后，这里会展示标签名称、使用次数和结果入口。"
+        emptyContainerStyle={styles.emptyGuideOffset}
         emptyIconName="pricetags-outline"
         emptyTitle="还没有标签"
         errorMessage={errorMessage}
@@ -252,6 +245,29 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
       visible={Boolean(actionTag)}
     />
     <AppDialog
+      onClose={() => {
+        setIsCreateDialogVisible(false);
+        setCreateTagValue('');
+      }}
+      onPrimary={submitCreateTag}
+      primaryDisabled={!createTagValue.trim()}
+      primaryLabel="新增标签"
+      title="新增标签"
+      visible={isCreateDialogVisible}
+    >
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        onChangeText={setCreateTagValue}
+        onSubmitEditing={submitCreateTag}
+        placeholder="输入标签名称"
+        placeholderTextColor={colors.text.placeholder}
+        selectionColor={colors.primary.default}
+        style={styles.dialogInput}
+        value={createTagValue}
+      />
+    </AppDialog>
+    <AppDialog
       danger
       message={deleteTag ? `删除 #${deleteTag.name} 只会移除标签和图片关联，不会删除图片。` : ''}
       onClose={() => setDeleteTag(null)}
@@ -265,8 +281,21 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 }
 
 const styles = StyleSheet.create({
+  headerAction: {
+    alignItems: 'center',
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   searchBlock: {
     marginBottom: spacing[1],
+  },
+  emptyGuideOffset: {
+    paddingTop: spacing[8],
   },
   content: {
     gap: spacing[5],
@@ -349,6 +378,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 36,
     minWidth: 0,
+  },
+  dialogInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
   },
   popularTag: {
     alignItems: 'center',
