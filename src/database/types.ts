@@ -245,6 +245,11 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   orderBy?: ImageSortOrder;
 }
 
+export interface NeedsOrganizingScope {
+  ipId?: number;
+  importBatchId?: number | null;
+}
+
 export interface GlobalSearchResult {
   ips: IpListItem[];
   groups: GlobalGroupListItem[];
@@ -311,6 +316,14 @@ export interface ImportBatchSummaryRow extends ImportBatchRow {
   untaggedCount: number;
   noNoteCount: number;
   suspectedDuplicateCount: number;
+}
+
+export interface SuspectedDuplicateGroup {
+  key: string;
+  width: number;
+  height: number;
+  fileSize: number;
+  images: ImageListItem[];
 }
 
 export interface IpOrganizationProgress {

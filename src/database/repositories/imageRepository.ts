@@ -13,6 +13,8 @@ import type {
   GroupRecord,
   GroupRow,
   IpOrganizationProgress,
+  NeedsOrganizingScope,
+  SuspectedDuplicateGroup,
   SumRow,
   UpdateImageAssetInput,
 } from '../types';
@@ -718,19 +720,25 @@ export const imageRepository = {
     return rows.map(mapGroupRow);
   },
 
-  async countNeedsOrganizing(ipId?: number): Promise<number> {
+  async countNeedsOrganizing(scope?: number | NeedsOrganizingScope): Promise<number> {
+    const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const db = await getDatabase();
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      'image_assets.note IS NULL',
-      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
-      'NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)',
+      `(NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
+        OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+        OR image_assets.note IS NULL)`,
     ];
     const values: number[] = [];
 
-    if (ipId != null) {
+    if (normalizedScope?.ipId != null) {
       clauses.push('image_assets.ipId = ?');
-      values.push(ipId);
+      values.push(normalizedScope.ipId);
+    }
+
+    if (normalizedScope?.importBatchId != null) {
+      clauses.push('image_assets.importBatchId = ?');
+      values.push(normalizedScope.importBatchId);
     }
 
     const row = await db.getFirstAsync<CountRow>(
@@ -790,18 +798,24 @@ export const imageRepository = {
     };
   },
 
-  async findNeedsOrganizing(ipId?: number): Promise<ImageListItem[]> {
+  async findNeedsOrganizing(scope?: NeedsOrganizingScope | number): Promise<ImageListItem[]> {
+    const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      'image_assets.note IS NULL',
-      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
-      'NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)',
+      `(NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
+        OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+        OR image_assets.note IS NULL)`,
     ];
     const values: number[] = [];
 
-    if (ipId != null) {
+    if (normalizedScope?.ipId != null) {
       clauses.push('image_assets.ipId = ?');
-      values.push(ipId);
+      values.push(normalizedScope.ipId);
+    }
+
+    if (normalizedScope?.importBatchId != null) {
+      clauses.push('image_assets.importBatchId = ?');
+      values.push(normalizedScope.importBatchId);
     }
 
     const db = await getDatabase();
@@ -814,6 +828,27 @@ export const imageRepository = {
     );
 
     return rows.map(mapImageListItemRow);
+  },
+
+  async findSuspectedDuplicateGroupsByImportBatchId(importBatchId: number): Promise<SuspectedDuplicateGroup[]> {
+    const images = await this.findByImportBatchId(importBatchId);
+    const groups = new Map<string, ImageListItem[]>();
+
+    for (const image of images) {
+      const key = `${image.width}x${image.height}:${image.fileSize}`;
+      groups.set(key, [...(groups.get(key) ?? []), image]);
+    }
+
+    return [...groups.entries()]
+      .map(([key, duplicateImages]) => ({
+        key,
+        width: duplicateImages[0]?.width ?? 0,
+        height: duplicateImages[0]?.height ?? 0,
+        fileSize: duplicateImages[0]?.fileSize ?? 0,
+        images: duplicateImages,
+      }))
+      .filter((group) => group.images.length > 1)
+      .sort((left, right) => right.images.length - left.images.length || right.fileSize - left.fileSize);
   },
 
   async softDelete(id: number): Promise<ImageAssetRecord | null> {

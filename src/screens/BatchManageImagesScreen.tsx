@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
+import { AppActionSheet } from '../components/AppActionSheet';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -19,6 +20,7 @@ import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { getFileInfo } from '../services/fileStorageService';
+import { captureBatchUndoSnapshot, restoreBatchUndoSnapshot } from '../services/batchUndoService';
 import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
@@ -26,6 +28,7 @@ import { useToast } from '../components/AppToast';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
 type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'apply-template';
+type InitialBatchMode = 'idle' | 'replace-group' | 'add-tags' | 'apply-template';
 
 interface BatchManageImagesScreenProps {
   ipId: number;
@@ -33,6 +36,7 @@ interface BatchManageImagesScreenProps {
   groupId?: number | null;
   importBatchId?: number | null;
   initialSelectedImageIds?: number[];
+  initialMode?: InitialBatchMode;
   refreshToken: number;
   onBack: () => void;
   onImportImages: () => void;
@@ -46,6 +50,7 @@ export function BatchManageImagesScreen({
   groupId = null,
   importBatchId = null,
   initialSelectedImageIds = [],
+  initialMode = 'idle',
   refreshToken,
   onBack,
   onImportImages,
@@ -82,11 +87,12 @@ export function BatchManageImagesScreen({
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>(() => [...new Set(initialSelectedImageIds)]);
-  const [mode, setMode] = useState<BatchMode>('idle');
+  const [mode, setMode] = useState<BatchMode>(initialMode);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(groupId ?? null);
   const [tagInput, setTagInput] = useState('');
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [isSelectionSheetVisible, setIsSelectionSheetVisible] = useState(false);
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
@@ -186,9 +192,28 @@ export function BatchManageImagesScreen({
     }
   }
 
+  function showUndoToast(message: string, undoSnapshot: Awaited<ReturnType<typeof captureBatchUndoSnapshot>>) {
+    showToast({
+      message,
+      actionLabel: '撤销',
+      durationMs: 5200,
+      onAction: () => {
+        void (async () => {
+          const restoredCount = await restoreBatchUndoSnapshot(undoSnapshot);
+          if (restoredCount > 0) {
+            onChanged();
+            reload();
+            showToast(`已撤销 ${restoredCount} 张`);
+          }
+        })();
+      },
+    });
+  }
+
   function handleGroupUpdate() {
     void runSubmit(
       async () => {
+        const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
         let changedCount = 0;
 
         if (mode === 'replace-group') {
@@ -205,7 +230,7 @@ export function BatchManageImagesScreen({
 
         resetInlineMode();
         onChanged();
-        showToast(`已处理 ${changedCount} 张`);
+        showUndoToast(`已处理 ${changedCount} 张`, undoSnapshot);
       },
       {
         formatError: (error) => {
@@ -230,6 +255,7 @@ export function BatchManageImagesScreen({
   function handleAddTags() {
     void runSubmit(
       async () => {
+        const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
         const preparedTags = mergeDraftTagNames(draftTags, tagInput);
         if (preparedTags.length !== draftTags.length) {
           setDraftTags(preparedTags);
@@ -243,7 +269,7 @@ export function BatchManageImagesScreen({
 
         resetInlineMode();
         onChanged();
-        showToast(`已为 ${selectedCount} 张添加标签`);
+        showUndoToast(`已为 ${selectedCount} 张添加标签`, undoSnapshot);
       },
       {
         formatError: (error) => {
@@ -268,13 +294,14 @@ export function BatchManageImagesScreen({
   function handleFavoriteUpdate(isFavorite: boolean) {
     void runSubmit(
       async () => {
+        const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
         const changedCount = await imageRepository.updateManyFavorite(selectedImageIds, isFavorite);
         if (changedCount === 0) {
           throw new Error('没有可更新的图片。');
         }
 
         onChanged();
-        showToast(isFavorite ? `已收藏 ${changedCount} 张` : `已取消收藏 ${changedCount} 张`);
+        showUndoToast(isFavorite ? `已收藏 ${changedCount} 张` : `已取消收藏 ${changedCount} 张`, undoSnapshot);
       },
       {
         formatError: (error) => {
@@ -289,6 +316,7 @@ export function BatchManageImagesScreen({
   function handleApplyTemplate(template: ImportTemplate) {
     void runSubmit(
       async () => {
+        const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
         const existingGroup = await groupRepository.findByIpIdAndName(ipId, template.groupName);
         const group = existingGroup ?? (await groupRepository.create({ ipId, name: template.groupName, type: 'custom' }));
         const groupChangedCount = await imageRepository.updateManyGroup(selectedImageIds, group.id);
@@ -298,7 +326,7 @@ export function BatchManageImagesScreen({
 
         resetInlineMode();
         onChanged();
-        showToast(`已套用模板到 ${Math.max(groupChangedCount, selectedCount)} 张`);
+        showUndoToast(`已套用模板到 ${Math.max(groupChangedCount, selectedCount)} 张`, undoSnapshot);
       },
       {
         formatError: (error) => {
@@ -322,8 +350,8 @@ export function BatchManageImagesScreen({
     setIsDeleteDialogVisible(false);
     void runSubmit(
       async () => {
+        const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
         const imageCopies = [...selectedImages];
-        const idsToDelete = [...selectedImageIds];
         const deletedCount = await imageRepository.softDeleteMany(selectedImageIds);
         if (deletedCount === 0) {
           throw new Error('没有可删除的图片。');
@@ -364,20 +392,7 @@ export function BatchManageImagesScreen({
           throw new Error('软删除后发现文件缺失，请检查本地存储状态。');
         }
 
-        showToast({
-          message: `已移入回收站 ${deletedCount} 张`,
-          actionLabel: '撤销',
-          durationMs: 5200,
-          onAction: () => {
-            void (async () => {
-              const restoredCount = await imageRepository.restoreMany(idsToDelete);
-              if (restoredCount > 0) {
-                onChanged();
-                showToast(`已恢复 ${restoredCount} 张`);
-              }
-            })();
-          },
-        });
+        showUndoToast(`已移入回收站 ${deletedCount} 张`, undoSnapshot);
         onDeleted();
       },
       {
@@ -546,10 +561,8 @@ export function BatchManageImagesScreen({
           <RuleChip label="当前筛选" onPress={() => selectByRule('visible')} />
           <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} />
           <RuleChip label="无标签" onPress={() => selectByRule('untagged')} />
-          <RuleChip label="同尺寸" onPress={() => selectByRule('same-size')} />
-          <RuleChip label="同前缀" onPress={() => selectByRule('same-prefix')} />
-          <RuleChip label="本次导入" onPress={() => selectByRule('import-batch')} />
           <RuleChip label="反选" onPress={() => selectByRule('invert')} />
+          <RuleChip label="更多选择" onPress={() => setIsSelectionSheetVisible(true)} />
         </View>
 
         {isGroupMode(mode) ? (
@@ -681,6 +694,17 @@ export function BatchManageImagesScreen({
       primaryLabel="删除到回收站"
       title="确认删除"
       visible={isDeleteDialogVisible}
+    />
+    <AppActionSheet
+      items={[
+        { key: 'same-size', label: '选择同尺寸', icon: 'resize-outline', onPress: () => selectByRule('same-size') },
+        { key: 'same-prefix', label: '选择同文件名前缀', icon: 'text-outline', onPress: () => selectByRule('same-prefix') },
+        { key: 'import-batch', label: '选择本次导入', icon: 'file-tray-stacked-outline', onPress: () => selectByRule('import-batch') },
+      ]}
+      message="高级选择只改变当前选择范围，不会直接写入图片数据。"
+      onClose={() => setIsSelectionSheetVisible(false)}
+      title="更多选择"
+      visible={isSelectionSheetVisible}
     />
     </>
   );

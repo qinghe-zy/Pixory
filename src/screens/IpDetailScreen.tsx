@@ -10,12 +10,12 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, ipRepository, type GroupListItem, type ImageListItem, type IpDetailRecord } from '../database';
+import { groupRepository, imageRepository, importBatchRepository, ipRepository, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord } from '../database';
 import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
-import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 
 interface IpDetailScreenProps {
   ipId: number;
@@ -29,6 +29,7 @@ interface IpDetailScreenProps {
   onOpenGroup: (groupId: number) => void;
   onOpenAllImages: () => void;
   onOpenBatchManagement: (imageId?: number) => void;
+  onOpenImportBatches: () => void;
   onOpenNeedsOrganizing: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
   onOpenImageDetail: (imageId: number) => void;
@@ -53,6 +54,7 @@ export function IpDetailScreen({
   onOpenGroup,
   onOpenAllImages,
   onOpenBatchManagement,
+  onOpenImportBatches,
   onOpenNeedsOrganizing,
   onOpenImage,
   onOpenImageDetail,
@@ -65,14 +67,16 @@ export function IpDetailScreen({
     ip: IpDetailRecord;
     groups: GroupListItem[];
     recentImages: ImageListItem[];
+    recentImportBatches: ImportBatchSummary[];
     needsOrganizingCount: number;
     organizationProgress: Awaited<ReturnType<typeof imageRepository.getOrganizationProgress>>;
   }>(
     async () => {
-      const [ip, groups, recentImages, needsOrganizingCount, organizationProgress] = await Promise.all([
+      const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await Promise.all([
         ipRepository.findDetailById(ipId),
         groupRepository.findOverviewByIpId(ipId),
         imageRepository.findRecentByIpId(ipId, 6),
+        importBatchRepository.findByIpId(ipId, 3),
         imageRepository.countNeedsOrganizing(ipId),
         imageRepository.getOrganizationProgress(ipId),
       ]);
@@ -81,7 +85,7 @@ export function IpDetailScreen({
         throw new Error('没有找到这个 IP。');
       }
 
-      return { groups, ip, needsOrganizingCount, organizationProgress, recentImages };
+      return { groups, ip, needsOrganizingCount, organizationProgress, recentImages, recentImportBatches };
     },
     [ipId, refreshToken],
     {
@@ -104,6 +108,7 @@ export function IpDetailScreen({
   const ip = data?.ip;
   const groups = data?.groups ?? [];
   const recentImages = data?.recentImages ?? [];
+  const recentImportBatches = data?.recentImportBatches ?? [];
   const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
   const organizationProgress = data?.organizationProgress;
 
@@ -226,6 +231,28 @@ export function IpDetailScreen({
                   <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
                 </View>
               </Pressable>
+            ) : null}
+
+            {recentImportBatches.length > 0 ? (
+              <View style={styles.batchSection}>
+                <SectionHeader actionLabel="全部批次" onActionPress={onOpenImportBatches} title="最近导入批次" />
+                <View style={styles.batchList}>
+                  {recentImportBatches.slice(0, 2).map((batch) => {
+                    const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
+                    return (
+                      <Pressable key={batch.id} onPress={onOpenImportBatches} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
+                        <View style={styles.batchCopy}>
+                          <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
+                          <Text numberOfLines={1} style={styles.batchMeta}>
+                            {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
+                          </Text>
+                        </View>
+                        <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
             ) : null}
 
             <SectionHeader title="快捷操作" />
@@ -500,6 +527,37 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
+  },
+  batchSection: {
+    gap: spacing[2],
+  },
+  batchList: {
+    gap: spacing[2],
+  },
+  batchRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  batchCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  batchTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+  },
+  batchMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   statItem: {
     alignItems: 'center',

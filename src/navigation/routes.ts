@@ -12,6 +12,8 @@ export const appRoutes = {
   groupImages: '/ips/:id/groups/:groupId',
   batchManageImages: '/ips/:id/images/batch',
   importImages: '/ips/:id/import',
+  importBatchHistory: '/ips/:id/import-batches',
+  duplicateReview: '/ips/:id/import-batches/:importBatchId/duplicates',
   allImages: '/ips/:id/images',
   imageViewer: '/images/:imageId/viewer',
   imageDetail: '/images/:imageId',

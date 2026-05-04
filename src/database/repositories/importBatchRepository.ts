@@ -170,6 +170,10 @@ export const importBatchRepository = {
 
     return rows.map(mapImportBatchSummaryRow);
   },
+
+  async findByIpId(ipId: number, limit = 20): Promise<ImportBatchSummary[]> {
+    return this.findRecentByIpId(ipId, limit);
+  },
 };
 
 export default importBatchRepository;

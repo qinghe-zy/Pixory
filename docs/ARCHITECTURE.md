@@ -16,6 +16,7 @@ Pixory 当前采用本地优先架构：
 - `ips`
 - `groups`
 - `image_assets`
+- `import_batches`
 - `tags`
 - `image_tags`
 
@@ -30,8 +31,13 @@ Pixory 当前采用本地优先架构：
 - `image_assets.note`
 - `image_assets.deletedAt`
 - `image_assets.lastViewedAt`
+- `image_assets.importBatchId`
+- `import_batches.name`
+- `import_batches.templateKey`
+- `import_batches.successCount`
+- `import_batches.completedAt`
 
-当前数据库版本：`3`
+当前数据库版本：`7`
 
 ## 本地文件系统
 
@@ -80,7 +86,34 @@ Pixory 明确区分：
 6. 生成缩略图
 7. 写入 `image_assets`
 8. 写入 `image_tags`
-9. 执行导入后校验
+9. 写入并完成 `import_batches`
+10. 执行导入后校验
+
+## 导入批次整理
+
+`import_batches` 是新导入图片的追溯入口。新导入图片会写入 `image_assets.importBatchId`，用户可以从 IP 详情进入最近导入批次，也可以回到任意新批次继续整理。
+
+旧图片不会被强行补批次；`importBatchId` 为空的图片仍按普通图库、全部图片、分组、标签等入口整理。
+
+批次整理台会显示：
+
+- 本批整理度
+- 未分组数量
+- 无标签数量
+- 无备注数量
+- 疑似重复数量
+- 自动分堆与真实缩略图预览
+
+自动分堆只影响视图和选择范围，不会静默改写图片数据。
+
+## 疑似重复
+
+当前疑似重复仅在当前导入批次内检查，规则为：
+
+- 同尺寸
+- 同文件大小
+
+疑似重复页只展示对比，不自动删除、合并、替换、收藏或移动到回收站。
 
 ## 软删除 / 回收站流程
 
