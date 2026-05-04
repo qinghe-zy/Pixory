@@ -1,9 +1,8 @@
-import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import { DevOnlyCard } from '../components/DevOnlyCard';
-import { AppDialog } from '../components/AppDialog';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
@@ -14,8 +13,9 @@ import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
+import { IMPORT_TEMPLATES, type ImportTemplate } from '../constants/importTemplates';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, ipRepository, type GroupRecord, type IpRecord } from '../database';
+import { groupRepository, ipRepository, settingsRepository, tagRepository, type GroupRecord, type IpRecord, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -24,14 +24,15 @@ import {
   pickImagesForImport,
   type PickedImageAsset,
 } from '../services/imageImportService';
-import { mergeDraftTagNames } from '../utils/tagDrafts';
+import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
+import { useToast } from '../components/AppToast';
 
 interface ImportImagesScreenProps {
   ipId: number;
   defaultGroupId?: number | null;
   onBack: () => void;
-  onImported: () => void;
+  onImported: (imageIds: number[]) => void;
 }
 
 export function ImportImagesScreen({
@@ -40,22 +41,25 @@ export function ImportImagesScreen({
   onBack,
   onImported,
 }: ImportImagesScreenProps) {
+  const { showToast } = useToast();
   const {
     data: screenData,
     errorMessage: loadErrorMessage,
     reload,
-  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[] }>(
+  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
     async () => {
-      const [ip, groups] = await Promise.all([
+      const [ip, groups, recentGroupIds, recentTags] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
+        settingsRepository.getRecentImportGroupIds(),
+        tagRepository.findRecentlyUsed(8),
       ]);
 
-      return { ip, groups };
+      return { ip, groups, recentGroupIds, recentTags };
     },
     [ipId],
     {
-      initialData: { ip: null, groups: [] },
+      initialData: { ip: null, groups: [], recentGroupIds: [], recentTags: [] },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取导入配置失败：${message}`;
@@ -68,8 +72,9 @@ export function ImportImagesScreen({
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
-  const [importSummary, setImportSummary] = useState<{ successCount: number; failedCount: number } | null>(null);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const canImport = useMemo(
     () => pickedAssets.length > 0 && !isSubmitting,
@@ -77,6 +82,16 @@ export function ImportImagesScreen({
   );
   const ip = screenData?.ip ?? null;
   const groups = screenData?.groups ?? [];
+  const recentGroupIds = screenData?.recentGroupIds ?? [];
+  const recentTags = screenData?.recentTags ?? [];
+  const recentGroups = useMemo(() => {
+    const idSet = new Set(recentGroupIds);
+    return groups.filter((group) => idSet.has(group.id)).slice(0, 5);
+  }, [groups, recentGroupIds]);
+  const remainingGroups = useMemo(() => {
+    const idSet = new Set(recentGroups.map((group) => group.id));
+    return groups.filter((group) => !idSet.has(group.id));
+  }, [groups, recentGroups]);
 
   async function handlePickImages() {
     setIsPicking(true);
@@ -91,14 +106,14 @@ export function ImportImagesScreen({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      Alert.alert('选择图片失败', message);
+      showToast(`选择图片失败：${message}`);
     } finally {
       setIsPicking(false);
     }
   }
 
   function addTag(rawValue?: string) {
-    const nextTags = mergeDraftTagNames(tags, rawValue ?? tagInput);
+    const nextTags = mergeDelimitedDraftTagNames(tags, rawValue ?? tagInput);
     if (nextTags.length === tags.length) {
       if ((rawValue ?? tagInput).trim()) {
         setTagInput('');
@@ -108,6 +123,49 @@ export function ImportImagesScreen({
 
     setTags(nextTags);
     setTagInput('');
+  }
+
+  async function createGroupAndSelect(name: string): Promise<GroupRecord> {
+    const preparedName = name.trim();
+    if (!preparedName) {
+      throw new Error('请输入分组名称。');
+    }
+
+    const existing = await groupRepository.findByIpIdAndName(ipId, preparedName);
+    const group = existing ?? (await groupRepository.create({ ipId, name: preparedName, type: 'custom' }));
+    setSelectedGroupIds((current) => (current.includes(group.id) ? current : [...current, group.id]));
+    await reload();
+    return group;
+  }
+
+  async function handleCreateGroup() {
+    if (isCreatingGroup) {
+      return;
+    }
+
+    setIsCreatingGroup(true);
+    try {
+      const group = await createGroupAndSelect(newGroupName);
+      setNewGroupName('');
+      showToast(`已新建分组：${group.name}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '新建分组失败');
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  }
+
+  async function applyTemplate(template: ImportTemplate) {
+    try {
+      const group = await createGroupAndSelect(template.groupName);
+      setSelectedGroupIds([group.id]);
+      setTags((current) => template.tags.reduce((items, tag) => mergeDraftTagNames(items, tag), current));
+      setNote(template.note);
+      setIsFavorite(template.isFavorite);
+      showToast(`已应用模板：${template.name}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '应用模板失败');
+    }
   }
 
   function applyRegressionPreset() {
@@ -156,7 +214,13 @@ export function ImportImagesScreen({
         })),
       });
 
-      setImportSummary({ successCount: result.successCount, failedCount: result.failedCount });
+      if (result.successCount === 0) {
+        throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张。`);
+      }
+
+      await settingsRepository.rememberImportGroupIds(selectedGroupIds);
+      showToast(`成功导入 ${result.successCount} 张`);
+      onImported(result.importedImages.map((item) => item.image.id));
     }, {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -167,7 +231,6 @@ export function ImportImagesScreen({
   }
 
   return (
-    <>
     <FormScreenScaffold
       errorMessage={submitError ?? loadErrorMessage}
       footerExtra={
@@ -234,7 +297,24 @@ export function ImportImagesScreen({
               onPress={() => setSelectedGroupIds([])}
               selected={selectedGroupIds.length === 0}
             />
-            {groups.map((group) => (
+            {recentGroups.length > 0 ? <Text style={styles.inlineLabel}>最近使用分组</Text> : null}
+            {recentGroups.map((group) => (
+              <OptionSelectRow
+                key={group.id}
+                label={group.name}
+                meta={getGroupTypeLabel(group.type)}
+                onPress={() =>
+                  setSelectedGroupIds((current) =>
+                    current.includes(group.id)
+                      ? current.filter((groupId) => groupId !== group.id)
+                      : [...current, group.id]
+                  )
+                }
+                selected={selectedGroupIds.includes(group.id)}
+              />
+            ))}
+            {recentGroups.length > 0 && remainingGroups.length > 0 ? <Text style={styles.inlineLabel}>全部分组</Text> : null}
+            {remainingGroups.map((group) => (
               <OptionSelectRow
                 key={group.id}
                 label={group.name}
@@ -250,9 +330,58 @@ export function ImportImagesScreen({
               />
             ))}
           </View>
+          <View style={styles.createGroupRow}>
+            <TextInput
+              editable={!isCreatingGroup && !isSubmitting}
+              onChangeText={setNewGroupName}
+              placeholder="在导入页新建分组"
+              placeholderTextColor={colors.text.placeholder}
+              selectionColor={colors.primary.default}
+              style={styles.createGroupInput}
+              value={newGroupName}
+            />
+            <Pressable
+              disabled={isCreatingGroup || !newGroupName.trim()}
+              onPress={handleCreateGroup}
+              style={({ pressed }) => [styles.createGroupButton, (isCreatingGroup || !newGroupName.trim()) ? styles.disabled : null, pressed && styles.pressed]}
+            >
+              <Ionicons color={colors.primary.default} name="add" size={18} />
+              <Text style={styles.createGroupText}>新建</Text>
+            </Pressable>
+          </View>
+        </LightFormSection>
+
+        <LightFormSection hint="一键套用常见导入归属和初始整理信息。" title="导入模板">
+          <View style={styles.templateGrid}>
+            {IMPORT_TEMPLATES.map((template) => (
+              <Pressable
+                key={template.key}
+                onPress={() => void applyTemplate(template)}
+                style={({ pressed }) => [styles.templateChip, pressed && styles.pressed]}
+              >
+                <Text numberOfLines={1} style={styles.templateText}>{template.name}</Text>
+              </Pressable>
+            ))}
+          </View>
         </LightFormSection>
 
         <LightFormSection hint="这些内容会应用到本次导入的全部图片。" title="可选设置">
+          {recentTags.length > 0 ? (
+            <View style={styles.quickTags}>
+              <Text style={styles.inlineLabel}>常用标签</Text>
+              <View style={styles.tagsWrap}>
+                {recentTags.map((tag) => (
+                  <Pressable
+                    key={tag.id}
+                    onPress={() => setTags((current) => mergeDraftTagNames(current, tag.name))}
+                    style={({ pressed }) => [styles.quickTagChip, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.quickTagText}>#{tag.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
           <View style={styles.tagRow}>
             <View style={styles.tagInputRow}>
               <TextInput
@@ -261,11 +390,17 @@ export function ImportImagesScreen({
                 editable={!isSubmitting}
                 maxLength={TAG_NAME_MAX_LENGTH}
                 onChangeText={(value) => {
+                  if (/[,\uFF0C\s]/.test(value)) {
+                    setTags((current) => mergeDelimitedDraftTagNames(current, value));
+                    setTagInput('');
+                    return;
+                  }
                   setTagInput(value);
                   if (submitError) {
                     clearSubmitError();
                   }
                 }}
+                onSubmitEditing={() => addTag()}
                 placeholder="例如：海边、KV、立绘"
                 placeholderTextColor={colors.text.placeholder}
                 returnKeyType="done"
@@ -278,7 +413,7 @@ export function ImportImagesScreen({
                 hitSlop={8}
                 onPress={() => addTag()}
                 style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
-              >
+    >
                 <Ionicons color={colors.primary.default} name="add" size={18} />
                 <Text style={styles.addTagLabel}>添加</Text>
               </Pressable>
@@ -327,19 +462,6 @@ export function ImportImagesScreen({
         </DevOnlyCard>
       </View>
     </FormScreenScaffold>
-    <AppDialog
-      message={
-        importSummary
-          ? `成功导入 ${importSummary.successCount} 张，失败 ${importSummary.failedCount} 张。原图已复制到 Pixory 本地私有存储。`
-          : ''
-      }
-      onClose={onImported}
-      onPrimary={onImported}
-      primaryLabel="完成"
-      title="导入完成"
-      visible={Boolean(importSummary)}
-    />
-    </>
   );
 }
 
@@ -403,6 +525,87 @@ const styles = StyleSheet.create({
   optionList: {
     gap: spacing[1],
     paddingVertical: spacing[2],
+  },
+  inlineLabel: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    paddingHorizontal: spacing[1],
+    paddingTop: spacing[1],
+  },
+  createGroupRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  createGroupInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: spacing[3],
+  },
+  createGroupButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.tag,
+    borderColor: colors.primary.hover,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    height: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  createGroupText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.default,
+    fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  templateGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+    paddingVertical: spacing[2],
+  },
+  templateChip: {
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  templateText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    fontWeight: '600',
+  },
+  quickTags: {
+    gap: spacing[2],
+    paddingTop: spacing[2],
+  },
+  quickTagChip: {
+    backgroundColor: colors.background.tag,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[2],
+  },
+  quickTagText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '600',
   },
   tagRow: {
     gap: spacing[2],

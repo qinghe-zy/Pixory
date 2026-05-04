@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { FormTextareaRow } from '../components/FormTextareaRow';
@@ -26,6 +27,7 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
   const [name, setName] = useState('');
   const [type, setType] = useState<GroupTypeValue | null>(null);
   const [description, setDescription] = useState('');
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const { data, errorMessage } = useScreenLoad<{ ip: IpRecord | null; group: GroupRecord | null }>(
     async () => {
@@ -102,32 +104,28 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
       return;
     }
 
-    Alert.alert(
-      '删除分组',
-      `删除「${group.name}」后，分组内图片会保留并移动到未分组。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认删除',
-          style: 'destructive',
-          onPress: () => {
-            void runSubmit(async () => {
-              const deletedCount = await groupRepository.deleteById(group.id);
-              if (deletedCount === 0) {
-                throw new Error('没有找到这个分组。');
-              }
+    setIsDeleteDialogVisible(true);
+  }
 
-              onDeleted();
-            }, {
-              formatError: (error) => {
-                const message = error instanceof Error ? error.message : '未知错误';
-                return `删除失败：${message}`;
-              },
-            });
-          },
-        },
-      ]
-    );
+  function confirmDelete() {
+    if (!group) {
+      return;
+    }
+
+    setIsDeleteDialogVisible(false);
+    void runSubmit(async () => {
+      const deletedCount = await groupRepository.deleteById(group.id);
+      if (deletedCount === 0) {
+        throw new Error('没有找到这个分组。');
+      }
+
+      onDeleted();
+    }, {
+      formatError: (error) => {
+        const message = error instanceof Error ? error.message : '未知错误';
+        return `删除失败：${message}`;
+      },
+    });
   }
 
   const footerExtra = group ? (
@@ -137,6 +135,7 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
   ) : null;
 
   return (
+    <>
     <FormScreenScaffold
       errorMessage={submitError ?? errorMessage}
       footerExtra={footerExtra}
@@ -198,6 +197,16 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
         </LightFormSection>
       </View>
     </FormScreenScaffold>
+    <AppDialog
+      danger
+      message={group ? `删除「${group.name}」后，分组内图片会保留并移动到未分组。` : ''}
+      onClose={() => setIsDeleteDialogVisible(false)}
+      onPrimary={confirmDelete}
+      primaryLabel="确认删除"
+      title="删除分组"
+      visible={isDeleteDialogVisible}
+    />
+    </>
   );
 }
 

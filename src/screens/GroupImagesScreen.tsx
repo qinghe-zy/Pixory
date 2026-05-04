@@ -1,5 +1,7 @@
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
@@ -8,6 +10,7 @@ import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface GroupImagesScreenProps {
@@ -58,21 +61,38 @@ export function GroupImagesScreen({
   const ip = data?.ip ?? null;
   const group = data?.group ?? null;
   const images = data?.images ?? [];
+  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectedImages = useMemo(
+    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [images, multiSelect.selectedImageIds]
+  );
 
   function handleOpenImage(imageId: number) {
+    if (multiSelect.isSelectionMode) {
+      multiSelect.toggleSelection(imageId);
+      return;
+    }
+
     onOpenImage(imageId, { type: 'group', ipId, groupId });
   }
 
   function handleImageLongPress(imageId: number) {
-    Alert.alert('图片操作', '选择对这张图片的操作。', [
-      { text: '查看详情', onPress: () => onOpenImageDetail(imageId) },
-      { text: '批量管理', onPress: () => onStartBatchManagement(imageId) },
-      { text: '取消', style: 'cancel' },
-    ]);
+    multiSelect.enterSelection(imageId);
   }
 
+  const footer = multiSelect.isSelectionMode ? (
+    <BatchImageOrganizePanel
+      currentGroupId={groupId}
+      onChanged={reload}
+      onClearSelection={multiSelect.clearSelection}
+      onDeleted={reload}
+      selectedImages={selectedImages}
+      totalCount={images.length}
+    />
+  ) : undefined;
+
   return (
-    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分组图片">
+    <ScreenScaffold decorativeTitle="Gallery" footer={footer} onBack={onBack} scrollable title="分组图片">
       {group ? (
         <View style={styles.summary}>
           <View style={styles.summaryCopy}>
@@ -107,6 +127,7 @@ export function GroupImagesScreen({
               key={image.id}
               onLongPress={handleImageLongPress}
               onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
             />
           ))}
         </View>

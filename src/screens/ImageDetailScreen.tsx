@@ -1,44 +1,57 @@
-import { Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppActionSheet } from '../components/AppActionSheet';
+import { AppDialog } from '../components/AppDialog';
 import { AppScreen } from '../components/AppScreen';
 import { ContentCard } from '../components/ContentCard';
 import { Header } from '../components/Header';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
-import { imageRepository, tagRepository, type ImageDetailRecord, type TagRecord } from '../database';
+import { imageRepository, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type TagRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { getFileInfo } from '../services/fileStorageService';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { devLog } from '../utils/dev';
 import { formatDateTime, formatFileSize, formatImageDimensions } from '../utils/formatters';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
+import { useToast } from '../components/AppToast';
 
 interface ImageDetailScreenProps {
   imageId: number;
+  context?: ImageViewerContext;
   refreshToken: number;
   onBack: () => void;
   onRefreshed: () => void;
   onEdit: (imageId: number) => void;
   onMoveGroup: (imageId: number) => void;
+  onNavigateImage: (imageId: number, context?: ImageViewerContext) => void;
   onDeleted: () => void;
 }
 
 export function ImageDetailScreen({
   imageId,
+  context,
   refreshToken,
   onBack,
   onRefreshed,
   onEdit,
   onMoveGroup,
+  onNavigateImage,
   onDeleted,
 }: ImageDetailScreenProps) {
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
+  const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const [contextImages, setContextImages] = useState<ImageListItem[]>([]);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [isMoreSheetVisible, setIsMoreSheetVisible] = useState(false);
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
@@ -65,8 +78,15 @@ export function ImageDetailScreen({
           throw new Error('没有找到这张图片。');
         }
 
+        const [groupItems, contextItems] = await Promise.all([
+          imageRepository.findGroupsByImageId(imageId),
+          context ? loadDetailContextImages(context) : Promise.resolve([]),
+        ]);
+
         setImage(detail);
         setTags(tagItems);
+        setGroups(groupItems);
+        setContextImages(contextItems);
         void imageRepository.touchLastViewedAt(imageId);
         devLog('Pixory image detail readback:', {
           imageId: detail.id,
@@ -94,7 +114,11 @@ export function ImageDetailScreen({
     return () => {
       isMounted = false;
     };
-  }, [imageId, refreshToken]);
+  }, [context, imageId, refreshToken]);
+
+  const contextIndex = contextImages.findIndex((item) => item.id === imageId);
+  const previousImage = contextIndex > 0 ? contextImages[contextIndex - 1] : null;
+  const nextImage = contextIndex >= 0 && contextIndex < contextImages.length - 1 ? contextImages[contextIndex + 1] : null;
 
   const rightSlot = useMemo(
     () =>
@@ -134,7 +158,7 @@ export function ImageDetailScreen({
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      Alert.alert('收藏状态更新失败', message);
+      showToast(`收藏状态更新失败：${message}`);
     } finally {
       setIsUpdatingFavorite(false);
     }
@@ -145,67 +169,66 @@ export function ImageDetailScreen({
       return;
     }
 
-    Alert.alert('确认删除到回收站', '删除后会进入回收站状态，原图和缩略图文件仍会保留在本地。', [
-      {
-        text: '取消',
-        style: 'cancel',
-      },
-      {
-        text: '确认删除',
-        style: 'destructive',
-        onPress: () => {
+    setIsDeleteDialogVisible(true);
+  }
+
+  async function confirmDelete() {
+    if (!image) {
+      return;
+    }
+
+    setIsDeleteDialogVisible(false);
+    try {
+      const deletedCount = await imageRepository.softDeleteMany([image.id]);
+      if (deletedCount === 0) {
+        throw new Error('没有可删除的图片。');
+      }
+
+      const [originalInfo, thumbnailInfo] = await Promise.all([
+        getFileInfo(image.originalFileUri),
+        image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
+      ]);
+
+      if (!originalInfo.exists || originalInfo.isDirectory) {
+        throw new Error('软删除后原图文件不存在。');
+      }
+
+      if (image.thumbnailFileUri && (!thumbnailInfo?.exists || thumbnailInfo.isDirectory)) {
+        throw new Error('软删除后缩略图文件不存在。');
+      }
+
+      const deletedImage = await imageRepository.findById(image.id, { includeDeleted: true });
+      devLog(
+        'Pixory single delete verification JSON:',
+        JSON.stringify({
+          imageId: image.id,
+          originalFileUri: image.originalFileUri,
+          thumbnailFileUri: image.thumbnailFileUri,
+          originalExists: originalInfo.exists && !originalInfo.isDirectory,
+          thumbnailExists: image.thumbnailFileUri ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory) : true,
+          originalSize: originalInfo.size,
+          thumbnailSize: thumbnailInfo?.size ?? null,
+          deletedAt: deletedImage?.deletedAt ?? null,
+        })
+      );
+
+      showToast({
+        message: '已移入回收站',
+        actionLabel: '撤销',
+        durationMs: 5200,
+        onAction: () => {
           void (async () => {
-            try {
-              const deletedCount = await imageRepository.softDeleteMany([image.id]);
-              if (deletedCount === 0) {
-                throw new Error('没有可删除的图片。');
-              }
-
-              const [originalInfo, thumbnailInfo] = await Promise.all([
-                getFileInfo(image.originalFileUri),
-                image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
-              ]);
-
-              if (!originalInfo.exists || originalInfo.isDirectory) {
-                throw new Error('软删除后原图文件不存在。');
-              }
-
-              if (image.thumbnailFileUri && (!thumbnailInfo?.exists || thumbnailInfo.isDirectory)) {
-                throw new Error('软删除后缩略图文件不存在。');
-              }
-
-              if ((originalInfo.size ?? 0) <= 0) {
-                throw new Error('软删除后原图文件大小异常。');
-              }
-
-              if (image.thumbnailFileUri && (thumbnailInfo?.size ?? 0) <= 0) {
-                throw new Error('软删除后缩略图文件大小异常。');
-              }
-
-              const deletedImage = await imageRepository.findById(image.id, { includeDeleted: true });
-              devLog(
-                'Pixory single delete verification JSON:',
-                JSON.stringify({
-                  imageId: image.id,
-                  originalFileUri: image.originalFileUri,
-                  thumbnailFileUri: image.thumbnailFileUri,
-                  originalExists: originalInfo.exists && !originalInfo.isDirectory,
-                  thumbnailExists: image.thumbnailFileUri ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory) : true,
-                  originalSize: originalInfo.size,
-                  thumbnailSize: thumbnailInfo?.size ?? null,
-                  deletedAt: deletedImage?.deletedAt ?? null,
-                })
-              );
-
-              onDeleted();
-            } catch (error) {
-              const message = error instanceof Error ? error.message : '未知错误';
-              Alert.alert('删除失败', message);
-            }
+            await imageRepository.restoreMany([image.id]);
+            onRefreshed();
+            showToast('已恢复');
           })();
         },
-      },
-    ]);
+      });
+      onDeleted();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`删除失败：${message}`);
+    }
   }
 
   async function handleSaveToAlbum() {
@@ -217,10 +240,10 @@ export function ImageDetailScreen({
 
     try {
       await saveImageToSystemAlbum(image.originalFileUri);
-      Alert.alert('已保存到相册', '已将原图保存到系统相册。');
+      showToast('已保存到相册');
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      Alert.alert('保存相册失败', message);
+      showToast(`保存相册失败：${message}`);
     } finally {
       setIsSavingToAlbum(false);
     }
@@ -261,7 +284,12 @@ export function ImageDetailScreen({
               </Text>
             </View>
             <View style={styles.tagsWrap}>
+              {groups.length > 0 ? groups.map((group) => <TagChip key={`group-${group.id}`} label={group.name} />) : <TagChip label="未分组" />}
               {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
+            </View>
+            <View style={styles.safetyPanel}>
+              <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={16} />
+              <Text style={styles.safetyText}>原图已保存到 Pixory 本地私有存储；缩略图是独立预览文件，不压缩、不重编码。</Text>
             </View>
             <View style={styles.noteBlock}>
               <Text style={styles.infoLabel}>备注</Text>
@@ -315,14 +343,24 @@ export function ImageDetailScreen({
               onPress={handleToggleFavorite}
             />
             <PrimaryAction
-              icon="download-outline"
-              label={isSavingToAlbum ? '保存中' : '保存相册'}
-              onPress={handleSaveToAlbum}
+              icon="swap-horizontal-outline"
+              label="整理"
+              onPress={() => onMoveGroup(image.id)}
             />
-            <PrimaryAction icon="create-outline" label="编辑" onPress={() => onEdit(image.id)} />
-            <PrimaryAction icon="swap-horizontal-outline" label="调整分组" onPress={() => onMoveGroup(image.id)} />
-            <PrimaryAction icon="trash-outline" label="删除" onPress={handleDelete} />
+            <PrimaryAction icon="ellipsis-horizontal" label="更多" onPress={() => setIsMoreSheetVisible(true)} />
           </View>
+
+          {contextImages.length > 1 ? (
+            <View style={styles.navActions}>
+              <Pressable disabled={!previousImage} onPress={() => previousImage ? onNavigateImage(previousImage.id, context) : undefined} style={[styles.navButton, !previousImage ? styles.disabled : null]}>
+                <Text style={styles.navText}>上一张</Text>
+              </Pressable>
+              <Text style={styles.navCounter}>{contextIndex + 1} / {contextImages.length}</Text>
+              <Pressable disabled={!nextImage} onPress={() => nextImage ? onNavigateImage(nextImage.id, context) : undefined} style={[styles.navButton, !nextImage ? styles.disabled : null]}>
+                <Text style={styles.navText}>下一张</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <Modal
             animationType="fade"
@@ -356,8 +394,49 @@ export function ImageDetailScreen({
           </Modal>
         </>
       ) : null}
+      <AppActionSheet
+        items={[
+          { key: 'edit', label: '编辑信息', icon: 'create-outline', onPress: () => image && onEdit(image.id) },
+          { key: 'save', label: isSavingToAlbum ? '保存中' : '保存到相册', icon: 'download-outline', disabled: isSavingToAlbum, onPress: handleSaveToAlbum },
+          { key: 'info', label: '查看文件信息', icon: 'information-circle-outline', meta: image ? `${formatImageDimensions(image.width, image.height)} · ${formatFileSize(image.fileSize)}` : undefined, onPress: () => showToast('文件信息已在详情页展示') },
+          { key: 'delete', label: '删除到回收站', icon: 'trash-outline', danger: true, onPress: handleDelete },
+        ]}
+        onClose={() => setIsMoreSheetVisible(false)}
+        title="更多操作"
+        visible={isMoreSheetVisible}
+      />
+      <AppDialog
+        danger
+        message="删除后会进入回收站状态，原图和缩略图文件仍会保留在本地。"
+        onClose={() => setIsDeleteDialogVisible(false)}
+        onPrimary={confirmDelete}
+        primaryLabel="确认删除"
+        title="确认删除到回收站"
+        visible={isDeleteDialogVisible}
+      />
     </AppScreen>
   );
+}
+
+async function loadDetailContextImages(context: ImageViewerContext): Promise<ImageListItem[]> {
+  if (context.type === 'ip-recent') {
+    return imageRepository.findRecentByIpId(context.ipId, context.limit);
+  }
+  if (context.type === 'ip-all') {
+    const filter = context.filter;
+    if (filter.type === 'favorite') return imageRepository.findByIpId(context.ipId, { favoritesOnly: true });
+    if (filter.type === 'ungrouped') return imageRepository.findByIpId(context.ipId, { ungroupedOnly: true });
+    if (filter.type === 'untagged') return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
+    if (filter.type === 'recent-viewed') return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
+    if (filter.type === 'mime') return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
+    if (filter.type === 'group') return imageRepository.findByGroupId(filter.groupId);
+    if (filter.type === 'tag') return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });
+    return imageRepository.findByIpId(context.ipId);
+  }
+  if (context.type === 'group') return imageRepository.findByGroupId(context.groupId);
+  if (context.type === 'tag') return imageRepository.findByTagId(context.tagId);
+  if (context.type === 'favorites') return imageRepository.findFavorites();
+  return imageRepository.findRecentViewed();
 }
 
 function PrimaryAction({
@@ -556,9 +635,53 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing[2],
   },
+  safetyPanel: {
+    alignItems: 'center',
+    backgroundColor: colors.semantic.successBackground,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    padding: spacing[2],
+  },
+  safetyText: {
+    ...typography.textStyles.micro,
+    color: colors.text.body,
+    flex: 1,
+    minWidth: 0,
+  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
+  },
+  navActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
+  navButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[4],
+  },
+  navText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  navCounter: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  disabled: {
+    opacity: 0.42,
   },
 });

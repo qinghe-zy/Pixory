@@ -1,13 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppActionSheet } from '../components/AppActionSheet';
+import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, type ImageListItem } from '../database';
+import { imageRepository, ipRepository, type ImageListItem, type IpRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { clearTrash } from '../services/trashService';
 import { formatDateTime } from '../utils/formatters';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useToast } from '../components/AppToast';
 
 interface TrashScreenProps {
   refreshToken: number;
@@ -16,16 +22,33 @@ interface TrashScreenProps {
 }
 
 export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProps) {
-  const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => imageRepository.findDeleted(),
-    [refreshToken],
+  const { showToast } = useToast();
+  const [activeIpId, setActiveIpId] = useState<number | null>(null);
+  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
+  const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
+    async () => {
+      const [images, ips] = await Promise.all([
+        activeIpId == null ? imageRepository.findDeleted() : imageRepository.findDeletedByIpId(activeIpId),
+        ipRepository.findAll(),
+      ]);
+      return { images, ips };
+    },
+    [activeIpId, refreshToken],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取回收站失败：${message}`;
       },
-      initialData: [],
+      initialData: { images: [], ips: [] },
     }
+  );
+  const images = data?.images ?? [];
+  const ips = data?.ips ?? [];
+  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectedImages = useMemo(
+    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [images, multiSelect.selectedImageIds]
   );
 
   function handleRestore(imageId: number) {
@@ -38,67 +61,80 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
 
         onChanged();
         reload();
+        showToast('已恢复');
       } catch (error) {
         const message = error instanceof Error ? error.message : '未知错误';
-        Alert.alert('恢复失败', message);
+        showToast(`恢复失败：${message}`);
       }
     })();
   }
 
-  function handleClearTrash() {
-    Alert.alert(
-      '确认清空回收站',
-      '清空后会永久删除回收站中的原图、缩略图和数据库记录，这个操作不可撤销。',
-      [
-        {
-          text: '取消',
-          style: 'cancel',
-        },
-        {
-          text: '确认清空',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                const result = await clearTrash();
-                onChanged();
-                reload();
+  function handleRestoreSelected() {
+    const ids = [...multiSelect.selectedImageIds];
+    void (async () => {
+      try {
+        const restoredCount = await imageRepository.restoreMany(ids);
+        if (restoredCount === 0) {
+          throw new Error('没有可恢复的图片。');
+        }
+        multiSelect.clearSelection();
+        onChanged();
+        reload();
+        showToast(`已恢复 ${restoredCount} 张`);
+      } catch (error) {
+        showToast(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败');
+      }
+    })();
+  }
 
-                if (result.failures.length > 0) {
-                  Alert.alert(
-                    '回收站部分清空',
-                    `已清空 ${result.clearedCount} 张，仍有 ${result.remainingCount} 张保留。首个失败项：${result.failures[0]?.originalFilename ?? '未知图片'}。`
-                  );
-                  return;
-                }
+  function confirmClearTrash() {
+    setIsClearDialogVisible(false);
+    void (async () => {
+      try {
+        const result = await clearTrash();
+        onChanged();
+        reload();
 
-                Alert.alert('回收站已清空', `已永久删除 ${result.clearedCount} 张图片的原图、缩略图和数据库记录。`);
-              } catch (error) {
-                const message = error instanceof Error ? error.message : '未知错误';
-                Alert.alert('清空回收站失败', message);
-              }
-            })();
-          },
-        },
-      ]
-    );
+        if (result.failures.length > 0) {
+          showToast(`已清空 ${result.clearedCount} 张，仍有 ${result.remainingCount} 张保留`);
+          return;
+        }
+
+        showToast(`已永久删除 ${result.clearedCount} 张`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        showToast(`清空回收站失败：${message}`);
+      }
+    })();
   }
 
   const rightAction =
     images.length > 0 ? (
-      <Pressable onPress={handleClearTrash} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
+      <Pressable onPress={() => setIsClearDialogVisible(true)} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
         <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
       </Pressable>
     ) : undefined;
+  const footer = multiSelect.isSelectionMode ? (
+    <View style={styles.footerPanel}>
+      <Text style={styles.footerTitle}>已选择 {selectedImages.length} 张</Text>
+      <PrimaryButton label="批量恢复" onPress={handleRestoreSelected} />
+      <PrimaryButton label="取消选择" onPress={multiSelect.clearSelection} variant="ghost" />
+    </View>
+  ) : undefined;
 
   return (
-    <ScreenScaffold decorativeTitle="Trash" onBack={onBack} rightAction={rightAction} scrollable title="回收站">
+    <>
+    <ScreenScaffold decorativeTitle="Trash" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="回收站">
       <View style={styles.notice}>
         <Ionicons color={colors.primary.active} name="shield-checkmark-outline" size={16} />
         <Text numberOfLines={3} style={styles.subtitle}>
           图片进入回收站后，原图和缩略图仍保留在本地；只有确认清空回收站，才会永久删除文件和数据库记录。
         </Text>
       </View>
+      <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
+        <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
+        <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
+      </Pressable>
 
       <PageStateBlock
         emptyActionLabel={undefined}
@@ -114,7 +150,12 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
       >
         <View style={styles.list}>
           {images.map((image) => (
-            <View key={image.id} style={styles.itemCard}>
+            <Pressable
+              key={image.id}
+              onLongPress={() => multiSelect.enterSelection(image.id)}
+              onPress={() => multiSelect.isSelectionMode ? multiSelect.toggleSelection(image.id) : undefined}
+              style={({ pressed }) => [styles.itemCard, multiSelect.selectedImageIds.includes(image.id) ? styles.selectedItem : null, pressed && styles.pressed]}
+            >
               <View style={styles.previewWrap}>
                 {image.thumbnailFileUri ? (
                   <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.previewImage} />
@@ -138,11 +179,30 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                   <Text style={styles.restoreText}>恢复</Text>
                 </Pressable>
               </View>
-            </View>
+            </Pressable>
           ))}
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    <AppActionSheet
+      items={[
+        { key: 'all', label: '全部 IP', icon: 'albums-outline', onPress: () => setActiveIpId(null) },
+        ...ips.map((ip) => ({ key: String(ip.id), label: ip.name, icon: 'archive-outline' as const, onPress: () => setActiveIpId(ip.id) })),
+      ]}
+      onClose={() => setIsFilterSheetVisible(false)}
+      title="按 IP 筛选"
+      visible={isFilterSheetVisible}
+    />
+    <AppDialog
+      danger
+      message="清空后会永久删除回收站中的原图、缩略图和数据库记录，这个操作不可撤销。"
+      onClose={() => setIsClearDialogVisible(false)}
+      onPrimary={confirmClearTrash}
+      primaryLabel="永久删除"
+      title="确认清空回收站"
+      visible={isClearDialogVisible}
+    />
+    </>
   );
 }
 
@@ -180,6 +240,23 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing[2],
   },
+  filterButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+  },
+  filterText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    fontWeight: '600',
+  },
   itemCard: {
     alignItems: 'center',
     backgroundColor: colors.background.surface,
@@ -189,6 +266,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     padding: spacing[2],
+  },
+  selectedItem: {
+    borderColor: colors.primary.default,
+    backgroundColor: colors.primary.weak,
   },
   previewWrap: {
     backgroundColor: colors.background.empty,
@@ -261,5 +342,12 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.primary.active,
     fontWeight: '600',
+  },
+  footerPanel: {
+    gap: spacing[2],
+  },
+  footerTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
   },
 });

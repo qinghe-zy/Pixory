@@ -248,6 +248,30 @@ export async function deleteLocalFile(fileUri: string): Promise<void> {
   await FileSystem.deleteAsync(fileUri, { idempotent: true });
 }
 
+export async function ensureLocalDirectory(directoryUri: string): Promise<void> {
+  await ensureDirectoryExists(directoryUri);
+}
+
+export function joinStoragePath(baseDir: string, childName: string): string {
+  return joinPath(baseDir, childName);
+}
+
+export async function writeTextFile(fileUri: string, contents: string): Promise<void> {
+  await FileSystem.writeAsStringAsync(fileUri, contents, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+}
+
+export async function writeBase64File(fileUri: string, contents: string): Promise<void> {
+  await FileSystem.writeAsStringAsync(fileUri, contents, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}
+
+export async function copyLocalFile(sourceUri: string, destinationUri: string): Promise<void> {
+  await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
+}
+
 export async function runFileStorageDevelopmentCheck(): Promise<FileStorageDevelopmentCheckResult> {
   await ensureAppDirectories();
 

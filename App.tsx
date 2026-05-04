@@ -4,6 +4,8 @@ import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppScreen } from './src/components/AppScreen';
+import { AppToastProvider } from './src/components/AppToast';
+import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { colors, spacing, typography } from './src/design/tokens';
@@ -17,6 +19,7 @@ import { EditIpScreen } from './src/screens/EditIpScreen';
 import { EditImageScreen } from './src/screens/EditImageScreen';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { GlobalGroupsScreen } from './src/screens/GlobalGroupsScreen';
+import { GlobalSearchScreen } from './src/screens/GlobalSearchScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
@@ -24,10 +27,12 @@ import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
+import { ImportResultScreen } from './src/screens/ImportResultScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
+import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
 import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
@@ -54,14 +59,18 @@ type AppRoute =
       initialSelectedImageIds?: number[];
     }
   | { name: 'import-images'; ipId: number; groupId?: number | null }
+  | { name: 'import-result'; ipId: number; imageIds: number[] }
   | { name: 'all-images'; ipId: number }
   | { name: 'image-viewer'; imageId: number; context: ImageViewerContext }
-  | { name: 'image-detail'; imageId: number }
+  | { name: 'image-detail'; imageId: number; context?: ImageViewerContext }
   | { name: 'move-image-group'; imageId: number }
   | { name: 'tag-result'; tagId: number }
   | { name: 'favorites' }
   | { name: 'recent-viewed' }
+  | { name: 'quick-organize'; ipId?: number }
+  | { name: 'global-search'; query?: string }
   | { name: 'trash' }
+  | { name: 'backup' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -74,6 +83,7 @@ export default function App() {
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [initializationKey, setInitializationKey] = useState(0);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
 
@@ -168,8 +178,12 @@ export default function App() {
     pushRoute({ name: 'image-viewer', imageId, context });
   }
 
-  function openImageDetail(imageId: number) {
-    pushRoute({ name: 'image-detail', imageId });
+  function openImageDetail(imageId: number, context?: ImageViewerContext) {
+    pushRoute({ name: 'image-detail', imageId, context });
+  }
+
+  function replaceCurrentRoute(route: AppRoute) {
+    setRouteStack((current) => [...current.slice(0, -1), route]);
   }
 
   if (!isReady) {
@@ -224,6 +238,7 @@ export default function App() {
             initialSelectedImageIds: imageId ? [imageId] : undefined,
           })
         }
+        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId })}
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
         onOpenImage={openImageViewer}
@@ -318,7 +333,21 @@ export default function App() {
         defaultGroupId={currentRoute.groupId ?? null}
         ipId={currentRoute.ipId}
         onBack={popRoute}
-        onImported={popAndRefresh}
+        onImported={(imageIds) => {
+          refreshLibrary();
+          replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds });
+        }}
+      />
+    );
+  } else if (currentRoute.name === 'import-result') {
+    content = (
+      <ImportResultScreen
+        imageIds={currentRoute.imageIds}
+        onBack={popRoute}
+        onContinueOrganize={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
+        onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId })}
+        onOpenImageDetail={openImageDetail}
+        onViewImport={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
       />
     );
   } else if (currentRoute.name === 'all-images') {
@@ -346,7 +375,7 @@ export default function App() {
         context={currentRoute.context}
         imageId={currentRoute.imageId}
         onBack={popRoute}
-        onOpenDetail={openImageDetail}
+        onOpenDetail={(imageId) => openImageDetail(imageId, currentRoute.context)}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -354,10 +383,12 @@ export default function App() {
     content = (
       <ImageDetailScreen
         imageId={currentRoute.imageId}
+        context={currentRoute.context}
         onBack={popRoute}
         onDeleted={popAndRefresh}
         onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId })}
         onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId })}
+        onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, context })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
       />
@@ -423,8 +454,31 @@ export default function App() {
         refreshToken={libraryRefreshToken}
       />
     );
+  } else if (currentRoute.name === 'quick-organize') {
+    content = (
+      <QuickOrganizeScreen
+        ipId={currentRoute.ipId}
+        onBack={popRoute}
+        onChanged={refreshLibrary}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'global-search') {
+    content = (
+      <GlobalSearchScreen
+        onBack={popRoute}
+        onChangeQuery={setGlobalSearchQuery}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId })}
+        onOpenImageDetail={openImageDetail}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId })}
+        query={globalSearchQuery}
+      />
+    );
   } else if (currentRoute.name === 'trash') {
     content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} />;
+  } else if (currentRoute.name === 'backup') {
+    content = <BackupScreen onBack={popRoute} refreshToken={libraryRefreshToken} />;
   } else if (currentRoute.name === 'placeholder') {
     content = <PlaceholderScreen description={currentRoute.description} onBack={popRoute} title={currentRoute.title} />;
   } else if (currentRoute.name === 'import-development') {
@@ -459,6 +513,7 @@ export default function App() {
       <MeScreen
         footer={rootFooter}
         onOpenFavorites={() => pushRoute({ name: 'favorites' })}
+        onOpenBackup={() => pushRoute({ name: 'backup' })}
         onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed' })}
         onOpenTrash={() => pushRoute({ name: 'trash' })}
         refreshToken={libraryRefreshToken}
@@ -470,6 +525,11 @@ export default function App() {
         footer={rootFooter}
         initialFilter={currentRoute.initialFilter ?? 'all'}
         onCreateIp={() => pushRoute({ name: 'create-ip' })}
+        onOpenGlobalSearch={() => {
+          setGlobalSearchQuery('');
+          pushRoute({ name: 'global-search' });
+        }}
+        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize' })}
         onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
         refreshKey={libraryRefreshToken}
       />
@@ -478,8 +538,10 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {content}
-      <StatusBar style="dark" />
+      <AppToastProvider>
+        {content}
+        <StatusBar style="dark" />
+      </AppToastProvider>
     </SafeAreaProvider>
   );
 }

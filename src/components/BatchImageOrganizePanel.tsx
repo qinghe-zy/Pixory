@@ -1,0 +1,511 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { getGroupTypeLabel } from '../constants/groups';
+import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
+import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
+import { colors, radius, spacing, typography } from '../design/tokens';
+import { mergeDraftTagNames } from '../utils/tagDrafts';
+import { AppDialog } from './AppDialog';
+import { LightFormSection } from './LightFormSection';
+import { OptionSelectRow } from './OptionSelectRow';
+import { PrimaryButton } from './PrimaryButton';
+import { TagChip } from './TagChip';
+import { useToast } from './AppToast';
+
+type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
+
+interface BatchImageOrganizePanelProps {
+  selectedImages: ImageListItem[];
+  totalCount: number;
+  currentGroupId?: number | null;
+  onClearSelection: () => void;
+  onChanged: () => void;
+  onDeleted: () => void;
+}
+
+export function BatchImageOrganizePanel({
+  selectedImages,
+  totalCount,
+  currentGroupId = null,
+  onClearSelection,
+  onChanged,
+  onDeleted,
+}: BatchImageOrganizePanelProps) {
+  const { showToast } = useToast();
+  const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const [mode, setMode] = useState<OrganizeMode>('idle');
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(currentGroupId);
+  const [tagInput, setTagInput] = useState('');
+  const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
+  const selectedCount = selectedImages.length;
+  const selectedIpIds = useMemo(() => [...new Set(selectedImages.map((image) => image.ipId))], [selectedImages]);
+  const singleIpId = selectedIpIds.length === 1 ? selectedIpIds[0] : null;
+  const canUseGroupActions = singleIpId != null;
+  const allFavorite = selectedCount > 0 && selectedImages.every((image) => image.isFavorite);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadGroups() {
+      if (singleIpId == null) {
+        setGroups([]);
+        return;
+      }
+
+      try {
+        const nextGroups = await groupRepository.findByIpId(singleIpId);
+        if (isMounted) {
+          setGroups(nextGroups);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(error instanceof Error ? error.message : '读取分组失败');
+        }
+      }
+    }
+
+    loadGroups();
+    return () => {
+      isMounted = false;
+    };
+  }, [singleIpId]);
+
+  useEffect(() => {
+    if (selectedCount === 0) {
+      resetMode();
+    }
+  }, [selectedCount]);
+
+  function resetMode(nextMode: OrganizeMode = 'idle') {
+    setMode(nextMode);
+    setErrorMessage(null);
+    if (nextMode !== 'add-tags') {
+      setTagInput('');
+      setDraftTags([]);
+    }
+    if (!isGroupMode(nextMode)) {
+      setSelectedGroupId(currentGroupId);
+    }
+  }
+
+  function addDraftTag(rawValue?: string) {
+    const nextTags = mergeDraftTagNames(draftTags, rawValue ?? tagInput);
+    setDraftTags(nextTags);
+    setTagInput('');
+  }
+
+  async function runAction(action: () => Promise<string>, after?: () => void) {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const message = await action();
+      resetMode();
+      after?.();
+      onChanged();
+      if (message) {
+        showToast(message);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '操作失败');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function handleGroupUpdate() {
+    void runAction(async () => {
+      if (selectedCount === 0) {
+        throw new Error('请先选择至少一张图片。');
+      }
+
+      if (!canUseGroupActions) {
+        throw new Error('跨 IP 选择时不能调整分组。');
+      }
+
+      let changedCount = 0;
+      if (mode === 'replace-group') {
+        changedCount = await imageRepository.updateManyGroup(selectedImageIds, selectedGroupId);
+      } else if (selectedGroupId != null && mode === 'add-group') {
+        changedCount = await imageRepository.addManyToGroup(selectedImageIds, selectedGroupId);
+      } else if (selectedGroupId != null && mode === 'remove-group') {
+        changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, selectedGroupId);
+      }
+
+      if (changedCount === 0) {
+        throw new Error('没有需要更新的图片。');
+      }
+
+      if (mode === 'add-group') {
+        return '已加入分组';
+      }
+      if (mode === 'remove-group') {
+        return '已移出分组';
+      }
+      return '已替换分组';
+    });
+  }
+
+  function handleAddTags() {
+    void runAction(async () => {
+      const preparedTags = mergeDraftTagNames(draftTags, tagInput);
+      if (selectedCount === 0) {
+        throw new Error('请先选择至少一张图片。');
+      }
+      if (preparedTags.length === 0) {
+        throw new Error('请至少输入一个标签。');
+      }
+
+      const addedTags = await tagRepository.addTagsToImages(selectedImageIds, preparedTags);
+      if (addedTags.length === 0) {
+        throw new Error('没有可添加的标签。');
+      }
+
+      return '已添加标签';
+    });
+  }
+
+  function handleFavoriteUpdate(isFavorite: boolean) {
+    void runAction(async () => {
+      if (selectedCount === 0) {
+        throw new Error('请先选择至少一张图片。');
+      }
+
+      const changedCount = await imageRepository.updateManyFavorite(selectedImageIds, isFavorite);
+      if (changedCount === 0) {
+        throw new Error('没有可更新的图片。');
+      }
+
+      return isFavorite ? '已收藏' : '已取消收藏';
+    });
+  }
+
+  function confirmSoftDelete() {
+    const idsToDelete = [...selectedImageIds];
+    setIsDeleteDialogVisible(false);
+
+    void runAction(
+      async () => {
+        const deletedCount = await imageRepository.softDeleteMany(idsToDelete);
+        if (deletedCount === 0) {
+          throw new Error('没有可删除的图片。');
+        }
+        return '';
+      },
+      () => {
+        onClearSelection();
+        onDeleted();
+        showToast({
+          message: '已移入回收站',
+          actionLabel: '撤销',
+          durationMs: 5200,
+          onAction: () => {
+            void (async () => {
+              const restoredCount = await imageRepository.restoreMany(idsToDelete);
+              if (restoredCount > 0) {
+                onChanged();
+                showToast('已恢复');
+              }
+            })();
+          },
+        });
+      }
+    );
+  }
+
+  if (selectedCount === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <View style={styles.panel}>
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>已选择 {selectedCount} 张</Text>
+            <Text style={styles.meta}>共 {totalCount} 张{canUseGroupActions ? '' : ' · 跨 IP 仅支持标签、收藏、删除'}</Text>
+          </View>
+          <Pressable onPress={onClearSelection} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+            <Ionicons color={colors.text.secondary} name="close" size={18} />
+          </Pressable>
+        </View>
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+        {isGroupMode(mode) ? (
+          <View style={styles.inlinePanel}>
+            <LightFormSection title={getGroupModeTitle(mode)} hint={getGroupModeHint(mode)}>
+              <View style={styles.optionList}>
+                {mode === 'replace-group' ? (
+                  <OptionSelectRow label="无分组" meta="保留在当前 IP" onPress={() => setSelectedGroupId(null)} selected={selectedGroupId == null} />
+                ) : null}
+                {groups.map((group) => (
+                  <OptionSelectRow
+                    key={group.id}
+                    label={group.name}
+                    meta={`${group.isPinned ? '已置顶 · ' : ''}${getGroupTypeLabel(group.type)}`}
+                    onPress={() => setSelectedGroupId(group.id)}
+                    selected={selectedGroupId === group.id}
+                  />
+                ))}
+              </View>
+            </LightFormSection>
+            <View style={styles.inlineActions}>
+              <View style={styles.primaryGrow}>
+                <PrimaryButton disabled={isSubmitting} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
+              </View>
+              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+            </View>
+          </View>
+        ) : mode === 'add-tags' ? (
+          <View style={styles.inlinePanel}>
+            <LightFormSection title="添加标签" hint="追加到已选图片，不覆盖原有标签。">
+              <View style={styles.tagInputRow}>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={TAG_NAME_MAX_LENGTH}
+                  onChangeText={setTagInput}
+                  onSubmitEditing={() => addDraftTag()}
+                  placeholder="输入标签后回车"
+                  placeholderTextColor={colors.text.placeholder}
+                  returnKeyType="done"
+                  selectionColor={colors.primary.default}
+                  style={styles.tagInput}
+                  value={tagInput}
+                />
+                <Pressable onPress={() => addDraftTag()} style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.primary.default} name="add" size={17} />
+                </Pressable>
+              </View>
+              {draftTags.length > 0 ? (
+                <View style={styles.tagsWrap}>
+                  {draftTags.map((tag) => (
+                    <TagChip
+                      key={tag}
+                      label={tag}
+                      onRemove={() => setDraftTags((current) => current.filter((item) => item.toLowerCase() !== tag.toLowerCase()))}
+                      removable
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </LightFormSection>
+            <View style={styles.inlineActions}>
+              <View style={styles.primaryGrow}>
+                <PrimaryButton disabled={isSubmitting} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
+              </View>
+              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.actions}>
+            <PanelAction disabled={!canUseGroupActions || isSubmitting} icon="folder-open-outline" label="加入分组" onPress={() => resetMode('add-group')} />
+            <PanelAction disabled={!canUseGroupActions || isSubmitting} icon="remove-circle-outline" label="移出分组" onPress={() => resetMode('remove-group')} />
+            <PanelAction disabled={!canUseGroupActions || isSubmitting} icon="swap-horizontal-outline" label="替换分组" onPress={() => resetMode('replace-group')} />
+            <PanelAction disabled={isSubmitting} icon="pricetags-outline" label="添加标签" onPress={() => resetMode('add-tags')} />
+            <PanelAction
+              disabled={isSubmitting}
+              icon={allFavorite ? 'star-half-outline' : 'star-outline'}
+              label={allFavorite ? '取消收藏' : '收藏'}
+              onPress={() => handleFavoriteUpdate(!allFavorite)}
+            />
+            <PanelAction danger disabled={isSubmitting} icon="trash-outline" label="删除到回收站" onPress={() => setIsDeleteDialogVisible(true)} />
+          </View>
+        )}
+      </View>
+      <AppDialog
+        danger
+        message={`选中的 ${selectedCount} 张图片会进入回收站，原图和缩略图仍保留在本地。清空回收站前都可以恢复。`}
+        onClose={() => setIsDeleteDialogVisible(false)}
+        onPrimary={confirmSoftDelete}
+        primaryLabel="删除到回收站"
+        title="确认删除"
+        visible={isDeleteDialogVisible}
+      />
+    </>
+  );
+}
+
+function PanelAction({
+  danger,
+  disabled,
+  icon,
+  label,
+  onPress,
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.actionButton, disabled ? styles.disabled : null, pressed && !disabled ? styles.pressed : null]}
+    >
+      <Ionicons color={danger ? colors.semantic.danger : colors.primary.default} name={icon} size={18} />
+      <Text numberOfLines={1} style={[styles.actionLabel, danger ? styles.dangerText : null]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function isGroupMode(mode: OrganizeMode): mode is 'replace-group' | 'add-group' | 'remove-group' {
+  return mode === 'replace-group' || mode === 'add-group' || mode === 'remove-group';
+}
+
+function getGroupActionLabel(mode: OrganizeMode): string {
+  if (mode === 'add-group') {
+    return '确认加入分组';
+  }
+  if (mode === 'remove-group') {
+    return '确认移出分组';
+  }
+  return '确认替换分组';
+}
+
+function getGroupModeTitle(mode: OrganizeMode): string {
+  if (mode === 'add-group') {
+    return '加入分组';
+  }
+  if (mode === 'remove-group') {
+    return '移出分组';
+  }
+  return '替换分组';
+}
+
+function getGroupModeHint(mode: OrganizeMode): string {
+  if (mode === 'add-group') {
+    return '给已选图片追加一个分组，保留原有分组。';
+  }
+  if (mode === 'remove-group') {
+    return '从已选图片中移除指定分组。';
+  }
+  return '用选中的分组替换已选图片当前分组。';
+}
+
+const styles = StyleSheet.create({
+  panel: {
+    gap: spacing[3],
+  },
+  header: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
+  headerCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  title: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  meta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
+  closeButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  actionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[2],
+    width: '31.6%',
+  },
+  actionLabel: {
+    ...typography.textStyles.micro,
+    color: colors.primary.default,
+    fontWeight: '600',
+    minWidth: 0,
+  },
+  dangerText: {
+    color: colors.semantic.danger,
+  },
+  disabled: {
+    opacity: 0.42,
+  },
+  errorText: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
+  },
+  inlinePanel: {
+    gap: spacing[3],
+  },
+  inlineActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  primaryGrow: {
+    flex: 1,
+  },
+  optionList: {
+    gap: spacing[1],
+    paddingTop: spacing[2],
+  },
+  tagInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingTop: spacing[2],
+  },
+  tagInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    flex: 1,
+    minHeight: 40,
+    paddingHorizontal: spacing[3],
+  },
+  addTagButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  tagsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+    paddingTop: spacing[2],
+  },
+  pressed: {
+    opacity: 0.78,
+  },
+});

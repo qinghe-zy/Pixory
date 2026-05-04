@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -38,12 +37,14 @@ export function ImageViewerScreen({
 }: ImageViewerScreenProps) {
   const listRef = useRef<FlatList<ImageListItem>>(null);
   const insets = useSafeAreaInsets();
+  const { showToast } = useToast();
   const { width, height } = useWindowDimensions();
   const [images, setImages] = useState<ImageListItem[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -130,11 +131,7 @@ export function ImageViewerScreen({
   }
 
   function handleImageLongPress(image: ImageListItem) {
-    Alert.alert(image.originalFilename, '选择对这张图片的操作。', [
-      { text: '查看详情', onPress: () => onOpenDetail(image.id) },
-      { text: isSavingToAlbum ? '保存中' : '保存到相册', onPress: () => void handleSaveToAlbum(image) },
-      { text: '取消', style: 'cancel' },
-    ]);
+    setActionImage(image);
   }
 
   async function handleSaveToAlbum(image: ImageListItem) {
@@ -146,10 +143,10 @@ export function ImageViewerScreen({
 
     try {
       await saveImageToSystemAlbum(image.originalFileUri);
-      Alert.alert('已保存到相册', '已将原图保存到系统相册。');
+      showToast('已保存到相册');
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      Alert.alert('保存相册失败', message);
+      showToast(`保存相册失败：${message}`);
     } finally {
       setIsSavingToAlbum(false);
     }
@@ -237,6 +234,15 @@ export function ImageViewerScreen({
           </View>
         </View>
       ) : null}
+      <AppActionSheet
+        items={actionImage ? [
+          { key: 'detail', label: '查看详情', icon: 'information-circle-outline', onPress: () => onOpenDetail(actionImage.id) },
+          { key: 'save', label: isSavingToAlbum ? '保存中' : '保存到相册', icon: 'download-outline', disabled: isSavingToAlbum, onPress: () => void handleSaveToAlbum(actionImage) },
+        ] : []}
+        onClose={() => setActionImage(null)}
+        title={actionImage?.originalFilename ?? '图片操作'}
+        visible={Boolean(actionImage)}
+      />
     </View>
   );
 }
@@ -254,6 +260,18 @@ async function loadImagesForContext(context: ImageViewerContext): Promise<ImageL
 
     if (filter.type === 'ungrouped') {
       return imageRepository.findByIpId(context.ipId, { ungroupedOnly: true });
+    }
+
+    if (filter.type === 'untagged') {
+      return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
+    }
+
+    if (filter.type === 'recent-viewed') {
+      return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
+    }
+
+    if (filter.type === 'mime') {
+      return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
     }
 
     if (filter.type === 'group') {
@@ -382,3 +400,5 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+import { AppActionSheet } from '../components/AppActionSheet';
+import { useToast } from '../components/AppToast';

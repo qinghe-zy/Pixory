@@ -1,11 +1,14 @@
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface RecentViewedScreenProps {
@@ -34,21 +37,37 @@ export function RecentViewedScreen({
       initialData: [],
     }
   );
+  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectedImages = useMemo(
+    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [images, multiSelect.selectedImageIds]
+  );
 
   function handleOpenImage(imageId: number) {
+    if (multiSelect.isSelectionMode) {
+      multiSelect.toggleSelection(imageId);
+      return;
+    }
+
     onOpenImage(imageId, { type: 'recent-viewed' });
   }
 
   function handleImageLongPress(image: ImageListItem) {
-    Alert.alert('图片操作', '选择对这张图片的操作。', [
-      { text: '查看详情', onPress: () => onOpenImageDetail(image.id) },
-      { text: '批量管理', onPress: () => onStartBatchManagement(image.ipId, image.id) },
-      { text: '取消', style: 'cancel' },
-    ]);
+    multiSelect.enterSelection(image.id);
   }
 
+  const footer = multiSelect.isSelectionMode ? (
+    <BatchImageOrganizePanel
+      onChanged={reload}
+      onClearSelection={multiSelect.clearSelection}
+      onDeleted={reload}
+      selectedImages={selectedImages}
+      totalCount={images.length}
+    />
+  ) : undefined;
+
   return (
-    <ScreenScaffold decorativeTitle="Recent" onBack={onBack} scrollable title="最近查看">
+    <ScreenScaffold decorativeTitle="Recent" footer={footer} onBack={onBack} scrollable title="最近查看">
       <View style={styles.summary}>
         <Text numberOfLines={1} style={styles.subtitle}>
           最近打开
@@ -77,6 +96,7 @@ export function RecentViewedScreen({
               key={image.id}
               onLongPress={() => handleImageLongPress(image)}
               onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
             />
           ))}
         </View>
