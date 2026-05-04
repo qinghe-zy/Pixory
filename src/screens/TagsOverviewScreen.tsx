@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { SearchBar } from '../components/SearchBar';
@@ -41,6 +41,38 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   const selectedTag = tags.find((tag) => tag.id === selectedTagId) ?? null;
   const shouldShowPopular = !searchText.trim() && popularTags.length > 0;
 
+  function handleDeleteTag(tag: TagUsageItem) {
+    Alert.alert(
+      '删除标签',
+      `删除 #${tag.name} 只会移除标签和图片关联，不会删除图片。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                const deletedCount = await tagRepository.deleteById(tag.id);
+                if (deletedCount === 0) {
+                  throw new Error('没有找到这个标签。');
+                }
+
+                if (selectedTagId === tag.id) {
+                  setSelectedTagId(null);
+                }
+                reload();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                Alert.alert('删除标签失败', message);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold decorativeTitle="Tags" footer={footer} scrollable title="标签">
       <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
@@ -75,6 +107,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
                 {popularTags.map((tag) => (
                   <Pressable
                     key={tag.id}
+                    onLongPress={() => handleDeleteTag(tag)}
                     onPress={() => setSelectedTagId(tag.id)}
                     style={({ pressed }) => [
                       styles.popularTag,
@@ -96,6 +129,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
               {visibleTags.map((tag) => (
                 <Pressable
                   key={tag.id}
+                  onLongPress={() => handleDeleteTag(tag)}
                   onPress={() => setSelectedTagId(tag.id)}
                   style={({ pressed }) => [
                     styles.tagPill,

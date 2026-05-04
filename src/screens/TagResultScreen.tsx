@@ -12,9 +12,10 @@ interface TagResultScreenProps {
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number) => void;
+  onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
-export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage }: TagResultScreenProps) {
+export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage, onStartBatchManagement }: TagResultScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     tag: TagRecord | null;
     images: ImageListItem[];
@@ -71,7 +72,12 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage }: Ta
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLongPress={() => onStartBatchManagement(image.ipId, image.id)}
+              onPress={onOpenImage}
+            />
           ))}
         </View>
       </PageStateBlock>

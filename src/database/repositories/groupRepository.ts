@@ -162,6 +162,26 @@ export const groupRepository = {
     const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM groups');
     return row?.count ?? 0;
   },
+
+  async deleteById(id: number): Promise<number> {
+    const db = await getDatabase();
+    const current = await this.findById(id);
+    if (!current) {
+      return 0;
+    }
+
+    const now = createTimestamp();
+    let changedCount = 0;
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('UPDATE image_assets SET groupId = NULL, updatedAt = ? WHERE groupId = ?', now, id);
+      const result = await db.runAsync('DELETE FROM groups WHERE id = ?', id);
+      changedCount = result.changes;
+      await db.runAsync('UPDATE ips SET updatedAt = ? WHERE id = ?', now, current.ipId);
+    });
+
+    return changedCount;
+  },
 };
 
 export default groupRepository;

@@ -7,16 +7,18 @@ import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 
 interface IPCardProps {
   ip: IpListItem;
+  onLongPress?: (ip: IpListItem) => void;
   onPress: (ipId: number) => void;
 }
 
-export function IPCard({ ip, onPress }: IPCardProps) {
+export function IPCard({ ip, onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
 
   return (
     <Pressable
       accessibilityLabel={`打开 ${ip.name}`}
       accessibilityRole="button"
+      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
       onPress={() => onPress(ip.id)}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >

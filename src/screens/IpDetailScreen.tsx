@@ -22,7 +22,7 @@ interface IpDetailScreenProps {
   onCreateGroup: () => void;
   onOpenGroups: () => void;
   onOpenAllImages: () => void;
-  onOpenBatchManagement: () => void;
+  onOpenBatchManagement: (imageId?: number) => void;
   onOpenImage: (imageId: number) => void;
 }
 
@@ -191,7 +191,12 @@ export function IpDetailScreen({
             >
               <View style={styles.recentGrid}>
                 {recentImages.map((image) => (
-                  <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+                  <ThumbnailTile
+                    image={image}
+                    key={image.id}
+                    onLongPress={onOpenBatchManagement}
+                    onPress={onOpenImage}
+                  />
                 ))}
               </View>
             </PageStateBlock>

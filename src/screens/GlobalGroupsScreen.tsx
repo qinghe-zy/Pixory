@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -36,6 +36,35 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
   })).filter((section) => section.items.length > 0);
   const orderedGroups = groupedSections.flatMap((section) => section.items);
 
+  function handleDeleteGroup(group: GlobalGroupListItem) {
+    Alert.alert(
+      '删除分组',
+      `删除「${group.name}」后，分组内图片会保留并移动到未分组。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                const deletedCount = await groupRepository.deleteById(group.id);
+                if (deletedCount === 0) {
+                  throw new Error('没有找到这个分组。');
+                }
+
+                reload();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                Alert.alert('删除分组失败', message);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold decorativeTitle="Groups" footer={footer} scrollable title="分组">
       <PageStateBlock
@@ -57,6 +86,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
           {orderedGroups.map((group) => (
             <Pressable
               key={group.id}
+              onLongPress={() => handleDeleteGroup(group)}
               onPress={() => onOpenGroup(group.ipId, group.id)}
               style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
             >

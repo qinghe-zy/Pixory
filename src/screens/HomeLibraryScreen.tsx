@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
@@ -73,6 +73,35 @@ export function HomeLibraryScreen({
   const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && !searchText && activeFilter === 'all';
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
+  function handleDeleteIp(ip: IpListItem) {
+    Alert.alert(
+      '删除 IP',
+      `将删除「${ip.name}」及其空分组信息。包含图片记录的 IP 需要先删除图片并清空回收站。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                const deletedCount = await ipRepository.deleteById(ip.id);
+                if (deletedCount === 0) {
+                  throw new Error('没有找到这个 IP。');
+                }
+
+                reload();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                Alert.alert('删除 IP 失败', message);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold
       footer={footer}
@@ -137,7 +166,7 @@ export function HomeLibraryScreen({
         >
           <View style={styles.grid}>
             {items.map((item) => (
-              <IPCard ip={item} key={item.id} onPress={onOpenIp} />
+              <IPCard ip={item} key={item.id} onLongPress={handleDeleteIp} onPress={onOpenIp} />
             ))}
           </View>
         </PageStateBlock>

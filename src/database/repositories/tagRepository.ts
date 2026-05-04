@@ -336,6 +336,25 @@ export const tagRepository = {
       imageAssetId
     );
   },
+
+  async deleteById(id: number): Promise<number> {
+    const db = await getDatabase();
+    const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
+      'SELECT imageAssetId FROM image_tags WHERE tagId = ?',
+      id
+    );
+    const affectedImageIds = affectedImages.map((image) => image.imageAssetId);
+    let changedCount = 0;
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM image_tags WHERE tagId = ?', id);
+      const result = await db.runAsync('DELETE FROM tags WHERE id = ?', id);
+      changedCount = result.changes;
+      await touchImagesAfterTagChange(db, affectedImageIds);
+    });
+
+    return changedCount;
+  },
 };
 
 export default tagRepository;

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -63,6 +63,35 @@ export function GroupOverviewScreen({
     items: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
 
+  function handleDeleteGroup(group: GroupListItem) {
+    Alert.alert(
+      '删除分组',
+      `删除「${group.name}」后，分组内图片会保留并移动到未分组。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                const deletedCount = await groupRepository.deleteById(group.id);
+                if (deletedCount === 0) {
+                  throw new Error('没有找到这个分组。');
+                }
+
+                reload();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                Alert.alert('删除分组失败', message);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
@@ -85,7 +114,12 @@ export function GroupOverviewScreen({
             <View key={section.value} style={styles.sectionBlock}>
               <SectionHeader title={section.label} />
               {section.items.map((group) => (
-                <Pressable key={group.id} onPress={() => onOpenGroup(group.id)} style={({ pressed }) => [pressed && styles.pressed]}>
+                <Pressable
+                  key={group.id}
+                  onLongPress={() => handleDeleteGroup(group)}
+                  onPress={() => onOpenGroup(group.id)}
+                  style={({ pressed }) => [pressed && styles.pressed]}
+                >
                   <ContentCard style={styles.groupCard}>
                     <View style={styles.coverWrap}>
                       {group.coverThumbnailFileUri ? (

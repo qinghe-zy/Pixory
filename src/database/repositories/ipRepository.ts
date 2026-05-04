@@ -194,6 +194,21 @@ export const ipRepository = {
     const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM ips');
     return row?.count ?? 0;
   },
+
+  async deleteById(id: number): Promise<number> {
+    const db = await getDatabase();
+    const imageCountRow = await db.getFirstAsync<CountRow>(
+      'SELECT COUNT(*) AS count FROM image_assets WHERE ipId = ?',
+      id
+    );
+
+    if ((imageCountRow?.count ?? 0) > 0) {
+      throw new Error('此 IP 下仍有图片记录，请先将图片移入回收站并清空回收站后再删除 IP。');
+    }
+
+    const result = await db.runAsync('DELETE FROM ips WHERE id = ?', id);
+    return result.changes;
+  },
 };
 
 export default ipRepository;

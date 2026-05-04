@@ -173,11 +173,12 @@ export default function App() {
         onEdit={() => pushRoute({ name: 'edit-ip', ipId: currentRoute.ipId })}
         onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId })}
         onOpenAllImages={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
-        onOpenBatchManagement={() =>
+        onOpenBatchManagement={(imageId) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
             source: 'ip-detail',
+            initialSelectedImageIds: imageId ? [imageId] : undefined,
           })
         }
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
@@ -307,6 +308,14 @@ export default function App() {
       <TagResultScreen
         onBack={popRoute}
         onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onStartBatchManagement={(ipId, imageId) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId,
+            source: 'all-images',
+            initialSelectedImageIds: [imageId],
+          })
+        }
         refreshToken={libraryRefreshToken}
         tagId={currentRoute.tagId}
       />
@@ -316,6 +325,14 @@ export default function App() {
       <FavoritesScreen
         onBack={popRoute}
         onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onStartBatchManagement={(ipId, imageId) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId,
+            source: 'all-images',
+            initialSelectedImageIds: [imageId],
+          })
+        }
         refreshToken={libraryRefreshToken}
       />
     );
@@ -324,6 +341,14 @@ export default function App() {
       <RecentViewedScreen
         onBack={popRoute}
         onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onStartBatchManagement={(ipId, imageId) =>
+          pushRoute({
+            name: 'batch-manage-images',
+            ipId,
+            source: 'all-images',
+            initialSelectedImageIds: [imageId],
+          })
+        }
         refreshToken={libraryRefreshToken}
       />
     );

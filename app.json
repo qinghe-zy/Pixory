@@ -27,7 +27,17 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Pixory 需要访问相册以便保存原图。",
+          "savePhotosPermission": "Pixory 需要写入相册以便保存原图。",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
+      ]
     ]
   }
 }

@@ -11,9 +11,10 @@ interface FavoritesScreenProps {
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number) => void;
+  onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
-export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: FavoritesScreenProps) {
+export function FavoritesScreen({ refreshToken, onBack, onOpenImage, onStartBatchManagement }: FavoritesScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
     () => imageRepository.findFavorites(),
     [refreshToken],
@@ -51,7 +52,12 @@ export function FavoritesScreen({ refreshToken, onBack, onOpenImage }: Favorites
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLongPress={() => onStartBatchManagement(image.ipId, image.id)}
+              onPress={onOpenImage}
+            />
           ))}
         </View>
       </PageStateBlock>

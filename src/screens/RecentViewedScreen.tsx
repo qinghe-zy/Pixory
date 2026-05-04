@@ -11,9 +11,10 @@ interface RecentViewedScreenProps {
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number) => void;
+  onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
-export function RecentViewedScreen({ refreshToken, onBack, onOpenImage }: RecentViewedScreenProps) {
+export function RecentViewedScreen({ refreshToken, onBack, onOpenImage, onStartBatchManagement }: RecentViewedScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
     () => imageRepository.findRecentViewed(),
     [refreshToken],
@@ -51,7 +52,12 @@ export function RecentViewedScreen({ refreshToken, onBack, onOpenImage }: Recent
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImage} />
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLongPress={() => onStartBatchManagement(image.ipId, image.id)}
+              onPress={onOpenImage}
+            />
           ))}
         </View>
       </PageStateBlock>

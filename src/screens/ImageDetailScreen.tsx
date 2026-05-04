@@ -10,6 +10,7 @@ import { getGroupTypeLabel } from '../constants/groups';
 import { imageRepository, tagRepository, type ImageDetailRecord, type TagRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { getFileInfo } from '../services/fileStorageService';
+import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { devLog } from '../utils/dev';
 import { formatDateTime, formatFileSize, formatImageDimensions } from '../utils/formatters';
 
@@ -35,6 +36,7 @@ export function ImageDetailScreen({
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -202,6 +204,24 @@ export function ImageDetailScreen({
     ]);
   }
 
+  async function handleSaveToAlbum() {
+    if (!image || isSavingToAlbum) {
+      return;
+    }
+
+    setIsSavingToAlbum(true);
+
+    try {
+      await saveImageToSystemAlbum(image.originalFileUri);
+      Alert.alert('已保存到相册', '已将原图保存到系统相册。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      Alert.alert('保存相册失败', message);
+    } finally {
+      setIsSavingToAlbum(false);
+    }
+  }
+
   return (
     <AppScreen scrollable>
       <Header onBack={onBack} rightSlot={rightSlot} title="图片详情" />
@@ -276,6 +296,11 @@ export function ImageDetailScreen({
               icon={image.isFavorite ? 'star' : 'star-outline'}
               label={image.isFavorite ? '取消收藏' : '收藏'}
               onPress={handleToggleFavorite}
+            />
+            <PrimaryAction
+              icon="download-outline"
+              label={isSavingToAlbum ? '保存中' : '保存相册'}
+              onPress={handleSaveToAlbum}
             />
             <PrimaryAction icon="create-outline" label="编辑" onPress={() => onEdit(image.id)} />
             <PrimaryAction icon="swap-horizontal-outline" label="移动分组" onPress={() => onMoveGroup(image.id)} />
