@@ -2,16 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
 import { DevOnlyCard } from '../components/DevOnlyCard';
-import { FilterChip } from '../components/FilterChip';
-import { FormField } from '../components/FormField';
+import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
-import { MultilineFieldCard } from '../components/MultilineFieldCard';
-import { ReadonlyFieldCard } from '../components/ReadonlyFieldCard';
-import { SwitchFieldCard } from '../components/SwitchFieldCard';
+import { FormTextareaRow } from '../components/FormTextareaRow';
+import { LightFormSection } from '../components/LightFormSection';
+import { OptionSelectRow } from '../components/OptionSelectRow';
+import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
+import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
-import { TextFieldCard } from '../components/TextFieldCard';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageDetailRecord, type TagRecord } from '../database';
@@ -151,7 +150,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
       title="编辑图片"
     >
       <View style={styles.formWrap}>
-        <ContentCard style={styles.previewCard}>
+        <View style={styles.previewPanel}>
           <View style={styles.previewFrame}>
             {image?.thumbnailFileUri ?? image?.originalFileUri ? (
               <Image
@@ -171,72 +170,56 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
             </Text>
             <Text numberOfLines={2} style={styles.previewCaption}>仅更新元数据，不改动原图文件。</Text>
           </View>
-        </ContentCard>
+        </View>
 
-        <ReadonlyFieldCard
-          hint="图片编辑不会跨 IP 移动。"
-          label="所属 IP"
-          value={image?.ipName ?? '当前IP'}
-        />
+        <LightFormSection title="元数据">
+          <ReadonlyInfoRow
+            hint="图片编辑不会跨 IP 移动。"
+            label="所属 IP"
+            value={image?.ipName ?? '当前IP'}
+          />
 
-        <TextFieldCard
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!isSubmitting}
-          errorMessage={submitError}
-          label="文件名"
-          maxLength={80}
-          onChangeText={(value) => {
-            setOriginalFilename(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="输入图片文件名"
-          value={originalFilename}
-        />
-
-        <DevOnlyCard
-          description="仅用于开发回归，快速填入图片管理编辑用例，避免自动化输入污染正式字段。"
-          title="开发回归入口"
-        >
-          <Pressable
-            accessibilityLabel="应用最终回归编辑预设"
-            hitSlop={8}
-            onPress={() => {
-              setOriginalFilename('final_edited_image.png');
-              setTags(['editTagA', 'editTagB']);
-              setTagInput('');
-              setNote('final edited note');
-              setIsFavorite(false);
+          <FormInputRow
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isSubmitting}
+            errorMessage={submitError}
+            label="文件名"
+            maxLength={80}
+            onChangeText={(value) => {
+              setOriginalFilename(value);
               if (submitError) {
                 clearSubmitError();
               }
             }}
-            style={({ pressed }) => [styles.devPresetButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.devPresetLabel}>应用最终回归编辑预设</Text>
-          </Pressable>
-        </DevOnlyCard>
+            placeholder="输入图片文件名"
+            value={originalFilename}
+          />
 
-        <ContentCard>
-          <FormField hint="只显示当前 IP 下的分组。" label="所在分组">
-            <View style={styles.optionWrap}>
-              <FilterChip active={selectedGroupId === null} label="无分组" onPress={() => setSelectedGroupId(null)} />
-              {groups.map((group) => (
-                <FilterChip
-                  active={selectedGroupId === group.id}
-                  key={group.id}
-                  label={`${group.name} · ${getGroupTypeLabel(group.type)}`}
-                  onPress={() => setSelectedGroupId(group.id)}
-                />
-              ))}
+          <View style={styles.optionList}>
+            <Text style={styles.inlineLabel}>所在分组</Text>
+            <OptionSelectRow
+              label="无分组"
+              meta="保留在当前 IP"
+              onPress={() => setSelectedGroupId(null)}
+              selected={selectedGroupId === null}
+            />
+            {groups.map((group) => (
+              <OptionSelectRow
+                key={group.id}
+                label={group.name}
+                meta={getGroupTypeLabel(group.type)}
+                onPress={() => setSelectedGroupId(group.id)}
+                selected={selectedGroupId === group.id}
+              />
+            ))}
+          </View>
+
+          <View style={styles.tagRow}>
+            <View style={styles.inlineCopy}>
+              <Text style={styles.inlineLabel}>标签</Text>
+              <Text numberOfLines={2} style={styles.inlineHint}>保存后同步到图片标签。</Text>
             </View>
-          </FormField>
-        </ContentCard>
-
-        <ContentCard>
-          <FormField hint="保存后同步到图片标签。" label="标签">
             <View style={styles.tagInputRow}>
               <TextInput
                 autoCapitalize="none"
@@ -281,30 +264,54 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
             ) : (
               <Text style={styles.helperText}>暂时还没有标签。</Text>
             )}
-          </FormField>
-        </ContentCard>
+          </View>
 
-        <MultilineFieldCard
-          editable={!isSubmitting}
-          label="备注"
-          maxLength={NOTE_MAX_LENGTH}
-          onChangeText={(value) => {
-            setNote(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="给这张图片补充说明，例如：导入说明、用途备注、筛选结论。"
-          value={note}
-        />
+          <FormTextareaRow
+            editable={!isSubmitting}
+            label="备注"
+            maxLength={NOTE_MAX_LENGTH}
+            minHeight={84}
+            onChangeText={(value) => {
+              setNote(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            placeholder="例如：导入说明、用途备注、筛选结论。"
+            value={note}
+          />
 
-        <SwitchFieldCard
-          disabled={isSubmitting}
-          hint="不改动原图和缩略图。"
-          label="收藏状态"
-          onValueChange={setIsFavorite}
-          value={isFavorite}
-        />
+          <SwitchSettingRow
+            disabled={isSubmitting}
+            hint="不改动原图和缩略图。"
+            label="收藏状态"
+            onValueChange={setIsFavorite}
+            value={isFavorite}
+          />
+        </LightFormSection>
+
+        <DevOnlyCard
+          description="仅用于开发回归，快速填入图片管理编辑用例，避免自动化输入污染正式字段。"
+          title="开发回归入口"
+        >
+          <Pressable
+            accessibilityLabel="应用最终回归编辑预设"
+            hitSlop={8}
+            onPress={() => {
+              setOriginalFilename('final_edited_image.png');
+              setTags(['editTagA', 'editTagB']);
+              setTagInput('');
+              setNote('final edited note');
+              setIsFavorite(false);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            style={({ pressed }) => [styles.devPresetButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.devPresetLabel}>应用最终回归编辑预设</Text>
+          </Pressable>
+        </DevOnlyCard>
       </View>
     </FormScreenScaffold>
   );
@@ -314,15 +321,18 @@ const styles = StyleSheet.create({
   formWrap: {
     gap: spacing[3],
   },
-  previewCard: {
+  previewPanel: {
     gap: spacing[3],
     padding: spacing[3],
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   previewFrame: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.lg,
-    height: 172,
+    height: 132,
     overflow: 'hidden',
     width: '100%',
   },
@@ -346,10 +356,24 @@ const styles = StyleSheet.create({
   previewCaption: {
     ...typography.textStyles.caption,
   },
-  optionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  optionList: {
+    gap: spacing[1],
+    paddingVertical: spacing[3],
+  },
+  inlineCopy: {
+    gap: spacing[1],
+  },
+  inlineLabel: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
+  },
+  inlineHint: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  tagRow: {
     gap: spacing[2],
+    paddingVertical: spacing[3],
   },
   tagInputRow: {
     alignItems: 'center',

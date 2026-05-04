@@ -1,10 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 
-import { ContentCard } from '../components/ContentCard';
-import { FilterChip } from '../components/FilterChip';
-import { FormField } from '../components/FormField';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
+import { LightFormSection } from '../components/LightFormSection';
+import { OptionSelectRow } from '../components/OptionSelectRow';
+import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, type GroupRecord, type ImageDetailRecord } from '../database';
 import { colors, metrics, spacing, typography } from '../design/tokens';
@@ -89,7 +89,7 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
       title="移动分组"
     >
       <View style={styles.formWrap}>
-        <ContentCard style={styles.contextCard}>
+        <View style={styles.contextPanel}>
           <View style={styles.contextRow}>
             <Text style={styles.contextLabel}>所属 IP</Text>
             <Text numberOfLines={1} style={styles.contextValue}>{image?.ipName ?? '当前IP'}</Text>
@@ -98,23 +98,31 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
             <Text style={styles.contextLabel}>图片文件名</Text>
             <Text numberOfLines={2} style={styles.contextValue}>{image?.originalFilename ?? '当前图片'}</Text>
           </View>
-        </ContentCard>
+        </View>
 
-        <ContentCard>
-          <FormField hint="只更新分组记录，不移动本地文件。" label="目标分组">
-            <View style={styles.optionWrap}>
-              <FilterChip active={selectedGroupId === null} label="无分组" onPress={() => setSelectedGroupId(null)} />
-              {groups.map((group) => (
-                <FilterChip
-                  active={selectedGroupId === group.id}
-                  key={group.id}
-                  label={`${group.name} · ${getGroupTypeLabel(group.type)}`}
-                  onPress={() => setSelectedGroupId(group.id)}
-                />
-              ))}
-            </View>
-          </FormField>
-        </ContentCard>
+        <LightFormSection hint="只更新分组记录，不移动本地文件。" title="目标分组">
+          <ReadonlyInfoRow
+            label="当前选择"
+            value={selectedGroupId === null ? '无分组' : groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}
+          />
+          <View style={styles.optionList}>
+            <OptionSelectRow
+              label="无分组"
+              meta="保留在当前 IP"
+              onPress={() => setSelectedGroupId(null)}
+              selected={selectedGroupId === null}
+            />
+            {groups.map((group) => (
+              <OptionSelectRow
+                key={group.id}
+                label={group.name}
+                meta={getGroupTypeLabel(group.type)}
+                onPress={() => setSelectedGroupId(group.id)}
+                selected={selectedGroupId === group.id}
+              />
+            ))}
+          </View>
+        </LightFormSection>
       </View>
     </FormScreenScaffold>
   );
@@ -124,8 +132,13 @@ const styles = StyleSheet.create({
   formWrap: {
     gap: metrics.formFieldGap,
   },
-  contextCard: {
+  contextPanel: {
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
+    padding: spacing[3],
   },
   contextRow: {
     alignItems: 'flex-start',
@@ -145,9 +158,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
     textAlign: 'right',
   },
-  optionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
+  optionList: {
+    gap: spacing[1],
+    paddingVertical: spacing[2],
   },
 });

@@ -73,7 +73,7 @@ export function FormScreenScaffold({
 
   return (
     <ScreenScaffold
-      contentContainerStyle={scrollContentStyle}
+      contentContainerStyle={[styles.scrollContent, scrollContentStyle]}
       footer={footer}
       onBack={onBack}
       scrollable
@@ -96,5 +96,8 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing[2],
     minHeight: metrics.bottomActionHeight + layout.stickyFooterBottomOffset,
+  },
+  scrollContent: {
+    paddingBottom: layout.pageBottomOffset + metrics.bottomActionHeight * 3,
   },
 });

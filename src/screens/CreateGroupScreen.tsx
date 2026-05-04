@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
-import { FilterChip } from '../components/FilterChip';
-import { FormField } from '../components/FormField';
+import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
-import { MultilineFieldCard } from '../components/MultilineFieldCard';
-import { ReadonlyFieldCard } from '../components/ReadonlyFieldCard';
-import { TextFieldCard } from '../components/TextFieldCard';
+import { FormTextareaRow } from '../components/FormTextareaRow';
+import { LightFormSection } from '../components/LightFormSection';
+import { OptionSelectRow } from '../components/OptionSelectRow';
+import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { GROUP_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from '../constants/limits';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
-import { metrics, spacing } from '../design/tokens';
+import { spacing } from '../design/tokens';
 import { groupRepository, ipRepository } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -82,56 +81,55 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
       title="新建分组"
     >
       <View style={styles.formWrap}>
-        <ReadonlyFieldCard
-          hint="新分组会归属这个 IP。"
-          label="所属 IP"
-          value={resolvedIpName ?? `IP #${ipId}`}
-        />
+        <LightFormSection title="分组信息">
+          <ReadonlyInfoRow
+            hint="新分组会归属这个 IP。"
+            label="所属 IP"
+            value={resolvedIpName ?? `IP #${ipId}`}
+          />
 
-        <TextFieldCard
-          editable={!isSubmitting}
-          label="分组名称"
-          maxLength={GROUP_NAME_MAX_LENGTH}
-          onChangeText={(value) => {
-            setName(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="例如：2026 夏季、夜景场景、海报KV"
-          value={name}
-        />
+          <FormInputRow
+            editable={!isSubmitting}
+            label="分组名称"
+            maxLength={GROUP_NAME_MAX_LENGTH}
+            onChangeText={(value) => {
+              setName(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            placeholder="例如：2026 夏季、夜景场景、海报KV"
+            value={name}
+          />
 
-        <ContentCard>
-          <FormField hint="用于后续筛选和识别。" label="分组类型">
-            <View style={styles.typeWrap}>
-              {GROUP_TYPE_OPTIONS.map((option) => (
-                <FilterChip
-                  active={type === option.value}
-                  key={option.value}
-                  label={option.label}
-                  onPress={() => setType(option.value)}
-                />
-              ))}
-            </View>
-          </FormField>
-        </ContentCard>
+          <View style={styles.optionList}>
+            {GROUP_TYPE_OPTIONS.map((option) => (
+              <OptionSelectRow
+                key={option.value}
+                label={option.label}
+                meta="用于后续筛选和识别"
+                onPress={() => setType(option.value)}
+                selected={type === option.value}
+              />
+            ))}
+          </View>
 
-        <MultilineFieldCard
-          editable={!isSubmitting}
-          hint="可选，帮助区分使用场景。"
-          label="分组描述"
-          maxLength={DESCRIPTION_MAX_LENGTH}
-          minHeight={108}
-          onChangeText={(value) => {
-            setDescription(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="例如：适合活动主视觉、角色立绘、社媒图等。"
-          value={description}
-        />
+          <FormTextareaRow
+            editable={!isSubmitting}
+            hint="可选，帮助区分使用场景。"
+            label="分组描述"
+            maxLength={DESCRIPTION_MAX_LENGTH}
+            minHeight={88}
+            onChangeText={(value) => {
+              setDescription(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            placeholder="例如：活动主视觉、角色立绘、社媒图。"
+            value={description}
+          />
+        </LightFormSection>
       </View>
     </FormScreenScaffold>
   );
@@ -139,11 +137,10 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: spacing[3],
   },
-  typeWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
+  optionList: {
+    gap: spacing[1],
+    paddingVertical: spacing[2],
   },
 });

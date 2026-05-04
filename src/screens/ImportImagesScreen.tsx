@@ -2,16 +2,15 @@ import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'reac
 import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
-import { ContentCard } from '../components/ContentCard';
 import { DevOnlyCard } from '../components/DevOnlyCard';
-import { FilterChip } from '../components/FilterChip';
+import { FormTextareaRow } from '../components/FormTextareaRow';
+import { LightFormSection } from '../components/LightFormSection';
+import { OptionSelectRow } from '../components/OptionSelectRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
-import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { ReadonlyFieldCard } from '../components/ReadonlyFieldCard';
-import { SwitchFieldCard } from '../components/SwitchFieldCard';
+import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
+import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
-import { MultilineFieldCard } from '../components/MultilineFieldCard';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
@@ -186,8 +185,8 @@ export function ImportImagesScreen({
       title="导入图片"
     >
       <View style={styles.formWrap}>
-        <ContentCard style={styles.pickCard}>
-          <FormField hint="复制原图，缩略图单独生成。" label="选择图片">
+        <LightFormSection hint="复制原图，缩略图单独生成。" title="选择图片">
+          <View style={styles.pickRow}>
             <Pressable
               accessibilityRole="button"
               disabled={isPicking}
@@ -195,7 +194,7 @@ export function ImportImagesScreen({
               style={({ pressed }) => [styles.pickZone, pressed && styles.pressed]}
             >
               <View style={styles.pickIconWrap}>
-                <Ionicons color={colors.primary.default} name="images-outline" size={24} />
+                <Ionicons color={colors.primary.default} name="images-outline" size={22} />
               </View>
               <View style={styles.pickCopy}>
                 <Text numberOfLines={1} style={styles.pickTitle}>
@@ -213,37 +212,41 @@ export function ImportImagesScreen({
                 ))}
               </View>
             ) : null}
-          </FormField>
-        </ContentCard>
+          </View>
+        </LightFormSection>
 
-        <ReadonlyFieldCard
-          hint={
-            selectedGroupId
-              ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
-              : '未选择分组时导入到当前 IP。'
-          }
-          label="当前 IP"
-          value={ip?.name ?? `IP #${ipId}`}
-        />
+        <LightFormSection title="目标归属">
+          <ReadonlyInfoRow
+            hint={
+              selectedGroupId
+                ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
+                : '未选择分组时导入到当前 IP。'
+            }
+            label="当前 IP"
+            value={ip?.name ?? `IP #${ipId}`}
+          />
 
-        <ContentCard>
-          <FormField hint="可为空，不移动原图文件。" label="分组选择">
-            <View style={styles.optionWrap}>
-              <FilterChip active={selectedGroupId === null} label="暂不分组" onPress={() => setSelectedGroupId(null)} />
-              {groups.map((group) => (
-                <FilterChip
-                  active={selectedGroupId === group.id}
-                  key={group.id}
-                  label={`${group.name} · ${getGroupTypeLabel(group.type)}`}
-                  onPress={() => setSelectedGroupId(group.id)}
-                />
-              ))}
-            </View>
-          </FormField>
-        </ContentCard>
+          <View style={styles.optionList}>
+            <OptionSelectRow
+              label="暂不分组"
+              meta="导入到当前 IP"
+              onPress={() => setSelectedGroupId(null)}
+              selected={selectedGroupId === null}
+            />
+            {groups.map((group) => (
+              <OptionSelectRow
+                key={group.id}
+                label={group.name}
+                meta={getGroupTypeLabel(group.type)}
+                onPress={() => setSelectedGroupId(group.id)}
+                selected={selectedGroupId === group.id}
+              />
+            ))}
+          </View>
+        </LightFormSection>
 
-        <ContentCard>
-          <FormField hint="可选，保存时追加到导入图片。" label="标签">
+        <LightFormSection hint="这些内容会应用到本次导入的全部图片。" title="可选设置">
+          <View style={styles.tagRow}>
             <View style={styles.tagInputRow}>
               <TextInput
                 autoCapitalize="none"
@@ -281,31 +284,32 @@ export function ImportImagesScreen({
                 ))}
               </View>
             ) : null}
-          </FormField>
-        </ContentCard>
+          </View>
 
-        <MultilineFieldCard
-          editable={!isSubmitting}
-          hint="可选，给这批图片补充统一备注。"
-          label="备注"
-          maxLength={NOTE_MAX_LENGTH}
-          onChangeText={(value) => {
-            setNote(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="例如：活动预热图、角色展示图、待二次挑选。"
-          value={note}
-        />
+          <FormTextareaRow
+            editable={!isSubmitting}
+            hint="给这批图片补充统一备注。"
+            label="备注"
+            maxLength={NOTE_MAX_LENGTH}
+            minHeight={84}
+            onChangeText={(value) => {
+              setNote(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            placeholder="例如：活动预热图、角色展示图。"
+            value={note}
+          />
 
-        <SwitchFieldCard
-          disabled={isSubmitting}
-          hint="开启后，这次导入的图片会全部标记为收藏。"
-          label="默认收藏"
-          onValueChange={setIsFavorite}
-          value={isFavorite}
-        />
+          <SwitchSettingRow
+            disabled={isSubmitting}
+            hint="导入后全部标记为收藏。"
+            label="默认收藏"
+            onValueChange={setIsFavorite}
+            value={isFavorite}
+          />
+        </LightFormSection>
 
         <DevOnlyCard
           description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
@@ -323,8 +327,9 @@ const styles = StyleSheet.create({
   formWrap: {
     gap: spacing[3],
   },
-  pickCard: {
-    backgroundColor: colors.background.surface,
+  pickRow: {
+    gap: spacing[3],
+    paddingVertical: spacing[3],
   },
   pickZone: {
     alignItems: 'center',
@@ -335,7 +340,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing[3],
-    minHeight: 72,
+    minHeight: 64,
     padding: spacing[3],
   },
   pickIconWrap: {
@@ -351,7 +356,7 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   pickTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
     minWidth: 0,
   },
   pickHint: {
@@ -375,10 +380,13 @@ const styles = StyleSheet.create({
     height: '100%',
     width: '100%',
   },
-  optionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  optionList: {
+    gap: spacing[1],
+    paddingVertical: spacing[2],
+  },
+  tagRow: {
     gap: spacing[2],
+    paddingVertical: spacing[3],
   },
   tagInputRow: {
     alignItems: 'center',

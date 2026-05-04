@@ -3,11 +3,12 @@ import { StyleSheet, View } from 'react-native';
 
 import { DESCRIPTION_MAX_LENGTH, IP_NAME_MAX_LENGTH } from '../constants/limits';
 import { ipRepository } from '../database';
-import { metrics } from '../design/tokens';
+import { spacing } from '../design/tokens';
+import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
-import { MultilineFieldCard } from '../components/MultilineFieldCard';
-import { SwitchFieldCard } from '../components/SwitchFieldCard';
-import { TextFieldCard } from '../components/TextFieldCard';
+import { FormTextareaRow } from '../components/FormTextareaRow';
+import { LightFormSection } from '../components/LightFormSection';
+import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { useSubmitState } from '../hooks/useSubmitState';
 
 interface CreateIpScreenProps {
@@ -50,47 +51,49 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
       title="新建IP"
     >
       <View style={styles.formWrap}>
-        <TextFieldCard
-          autoCapitalize="none"
-          editable={!isSubmitting}
-          enablesReturnKeyAutomatically
-          label="IP 名称"
-          maxLength={IP_NAME_MAX_LENGTH}
-          onChangeText={(value) => {
-            setName(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          onSubmitEditing={handleCreate}
-          placeholder="例如：小夏、海边系列、品牌KV"
-          returnKeyType="done"
-          value={name}
-        />
+        <LightFormSection title="基础信息">
+          <FormInputRow
+            autoCapitalize="none"
+            editable={!isSubmitting}
+            enablesReturnKeyAutomatically
+            label="IP 名称"
+            maxLength={IP_NAME_MAX_LENGTH}
+            onChangeText={(value) => {
+              setName(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            onSubmitEditing={handleCreate}
+            placeholder="例如：小夏、海边系列、品牌KV"
+            returnKeyType="done"
+            value={name}
+          />
 
-        <MultilineFieldCard
-          editable={!isSubmitting}
-          hint="可选，显示在 IP 详情页。"
-          label="简介"
-          maxLength={DESCRIPTION_MAX_LENGTH}
-          minHeight={116}
-          onChangeText={(value) => {
-            setDescription(value);
-            if (submitError) {
-              clearSubmitError();
-            }
-          }}
-          placeholder="可选，用一句话说明这个 IP 的角色、主题或用途。"
-          value={description}
-        />
+          <FormTextareaRow
+            editable={!isSubmitting}
+            hint="显示在详情页。"
+            label="简介"
+            maxLength={DESCRIPTION_MAX_LENGTH}
+            minHeight={92}
+            onChangeText={(value) => {
+              setDescription(value);
+              if (submitError) {
+                clearSubmitError();
+              }
+            }}
+            placeholder="一句话说明角色、主题或用途。"
+            value={description}
+          />
 
-        <SwitchFieldCard
-          disabled={isSubmitting}
-          hint="用于首页收藏筛选。"
-          label="是否收藏"
-          onValueChange={setIsFavorite}
-          value={isFavorite}
-        />
+          <SwitchSettingRow
+            disabled={isSubmitting}
+            hint="用于首页收藏筛选。"
+            label="是否收藏"
+            onValueChange={setIsFavorite}
+            value={isFavorite}
+          />
+        </LightFormSection>
       </View>
     </FormScreenScaffold>
   );
@@ -98,6 +101,6 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: spacing[3],
   },
 });

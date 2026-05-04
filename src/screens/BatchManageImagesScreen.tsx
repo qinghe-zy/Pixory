@@ -2,10 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
 import { DevOnlyCard } from '../components/DevOnlyCard';
-import { FilterChip } from '../components/FilterChip';
-import { FormField } from '../components/FormField';
+import { LightFormSection } from '../components/LightFormSection';
+import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -393,26 +392,30 @@ export function BatchManageImagesScreen({
         </View>
 
         {mode === 'move-group' ? (
-          <ContentCard>
-            <FormField hint="这里只更新 image_assets.groupId，不会移动原图或缩略图文件。" label="选择目标分组">
-              <View style={styles.optionWrap}>
-                <FilterChip active={selectedGroupId === null} label="无分组" onPress={() => setSelectedGroupId(null)} />
-                {groups.map((group) => (
-                  <FilterChip
-                    active={selectedGroupId === group.id}
-                    key={group.id}
-                    label={`${group.name} · ${getGroupTypeLabel(group.type)}`}
-                    onPress={() => setSelectedGroupId(group.id)}
-                  />
-                ))}
-              </View>
-            </FormField>
-          </ContentCard>
+          <LightFormSection hint="只更新分组记录，不移动原图或缩略图文件。" title="选择目标分组">
+            <View style={styles.optionList}>
+              <OptionSelectRow
+                label="无分组"
+                meta="保留在当前 IP"
+                onPress={() => setSelectedGroupId(null)}
+                selected={selectedGroupId === null}
+              />
+              {groups.map((group) => (
+                <OptionSelectRow
+                  key={group.id}
+                  label={group.name}
+                  meta={getGroupTypeLabel(group.type)}
+                  onPress={() => setSelectedGroupId(group.id)}
+                  selected={selectedGroupId === group.id}
+                />
+              ))}
+            </View>
+          </LightFormSection>
         ) : null}
 
         {mode === 'add-tags' ? (
-          <ContentCard>
-            <FormField hint="输入后点击添加，保存时会为选中的图片追加标签，不会覆盖原有标签。" label="标签">
+          <LightFormSection hint="保存时追加到选中的图片，不覆盖原有标签。" title="标签">
+            <View style={styles.tagPanel}>
               {isDevToolsEnabled ? (
                 <DevOnlyCard
                   description="仅用于开发回归，快速填入固定 batchTag，避免 adb 文本注入污染标签字段。"
@@ -473,8 +476,8 @@ export function BatchManageImagesScreen({
               ) : (
                 <Text style={styles.helperText}>暂时还没有待添加标签。</Text>
               )}
-            </FormField>
-          </ContentCard>
+            </View>
+          </LightFormSection>
         ) : null}
 
         <View style={styles.grid}>
@@ -582,10 +585,13 @@ const styles = StyleSheet.create({
     color: colors.primary.default,
     fontWeight: '500',
   },
-  optionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  optionList: {
+    gap: spacing[1],
+    paddingVertical: spacing[2],
+  },
+  tagPanel: {
     gap: spacing[2],
+    paddingVertical: spacing[3],
   },
   tagInputRow: {
     alignItems: 'center',
@@ -639,10 +645,11 @@ const styles = StyleSheet.create({
   footerWrap: {
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    padding: spacing[2],
+    gap: spacing[1.5],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1.5],
   },
   footerHeader: {
     alignItems: 'center',
@@ -650,7 +657,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   footerTitle: {
-    ...typography.textStyles.sectionTitle,
+    ...typography.textStyles.bodyStrong,
   },
   footerActionList: {
     gap: spacing[2],
@@ -670,7 +677,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[1],
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: 32,
     paddingHorizontal: spacing[2],
     width: '32%',
   },

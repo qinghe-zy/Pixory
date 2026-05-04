@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
+import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
-import { MultilineFieldCard } from '../components/MultilineFieldCard';
-import { SwitchFieldCard } from '../components/SwitchFieldCard';
-import { TextFieldCard } from '../components/TextFieldCard';
+import { FormTextareaRow } from '../components/FormTextareaRow';
+import { LightFormSection } from '../components/LightFormSection';
+import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { IP_NAME_MAX_LENGTH } from '../constants/limits';
-import { colors, metrics, spacing, typography } from '../design/tokens';
+import { colors, spacing, typography } from '../design/tokens';
 import { ipRepository, type IpRecord } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -98,8 +99,8 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
         ) : null}
 
         {ip ? (
-          <>
-            <TextFieldCard
+          <LightFormSection title="基础信息">
+            <FormInputRow
               autoCapitalize="none"
               editable={!isSubmitting}
               hint="用于首页、详情和导入关联。"
@@ -115,12 +116,12 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
               value={name}
             />
 
-            <MultilineFieldCard
+            <FormTextareaRow
               editable={!isSubmitting}
-              hint="显示在 IP 详情页顶部。"
+              hint="显示在详情页顶部。"
               label="简介"
               maxLength={200}
-              minHeight={116}
+              minHeight={92}
               onChangeText={(value) => {
                 setDescription(value);
                 if (submitError) {
@@ -131,14 +132,14 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
               value={description}
             />
 
-            <SwitchFieldCard
+            <SwitchSettingRow
               disabled={isSubmitting}
               hint="用于首页收藏筛选。"
               label="收藏状态"
               onValueChange={setIsFavorite}
               value={isFavorite}
             />
-          </>
+          </LightFormSection>
         ) : null}
       </View>
     </FormScreenScaffold>
@@ -147,7 +148,7 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: spacing[3],
   },
   hint: {
     ...typography.textStyles.body,
