@@ -1,5 +1,48 @@
 # Pixory Android 测试报告
 
+## v1.0.5 Release 验收
+
+测试时间：2026-05-05
+
+### 测试环境
+
+- 工作目录：`D:\Project\Pixory\pixory`
+- Node 包管理：`pnpm`
+- 构建方式：Android release APK
+- 安装包：`output/builds/Pixory-v1.0.5.apk`
+- 包名：`com.pixory.app`
+- 版本：`versionName 1.0.5` / `versionCode 105`
+- APK SHA256：`5E57CFCE02E5CD2F153B1DC8A805E13B19E893BE2013190CAE3753617F7B26C2`
+
+### 验证命令
+
+- `pnpm typecheck`
+- `pnpm test`
+- `gradlew assembleRelease`
+- `apksigner verify --print-certs output/builds/Pixory-v1.0.5.apk`
+- `adb install -r output/builds/Pixory-v1.0.5.apk`
+- `adb shell dumpsys package com.pixory.app`
+
+结果：通过。测试共 16 项，全部通过；release APK 构建、签名校验、安装与包版本读取均通过。
+
+### 视觉验收范围
+
+- 首页空状态下移与回收站入口
+- 批量管理：点击打开查看器、长按进入选择、规则模式、多选规则 chip、横图/竖图/方图/长图规则
+- 图片库：横图/竖图/方图/长图筛选、全选/取消全选、底部批量整理面板
+- 标签页：右上角新增标签入口与新增标签弹窗
+- 加入分组：底部面板内新建分组入口
+- IP 详情页：封面右下角标题覆盖层、管理摘要整合、封面与摘要卡间距
+- 本次导入页：连续整理按钮无边框样式
+- 我的页：本地原图存储容量同行显示，收藏图片与本地空间卡片间距统一
+- 回收站：移除顶部说明文字
+
+结果：通过。最终 IP 详情页冷启动截图确认封面下方不再保留独立标题/描述行，管理摘要与封面之间留有独立间距。
+
+### 体积说明
+
+当前 APK 约 68.5 MB，主要原因是 universal APK 同时包含四套 ABI 的 React Native / Hermes / Expo native 库。业务 JS bundle 约 1.9 MB，不是体积主因。
+
 测试时间：2026-05-02
 
 ## 测试环境

@@ -49,16 +49,27 @@ Pixory 是一个 Android-first、local-only 的 IP 图片资产管理应用。
 
 ## 当前 MVP 状态
 
-截至 2026-05-02：
+截至 2026-05-05：
 
 - 首页 / 分组 / 标签 / 我的四个 Tab 已可用
 - 标签页、标签结果页、收藏页、最近查看页、回收站页已接真实 SQLite
 - 图片导入、图片详情、图片编辑、移动分组、批量管理、软删除已完成主要开发
 - 回收站恢复和清空链路已实现
-- 提测前文档已补齐
-- Android 真机/模拟器完整长链路仍需一轮更稳定的最终人工复核
+- 已提供 Android release APK：`v1.0.5` / `versionCode 105`
+- 批量管理、图片库筛选、标签创建、IP 详情摘要、我的页本地空间展示已完成本轮视觉与交互收口
+- Android 模拟器已完成一轮 v1.0.5 视觉验收与安装包校验
 
 本轮真实 Android 回归结果见 [docs/TEST_REPORT.md](./docs/TEST_REPORT.md)。
+
+## 最新 APK
+
+- GitHub Release：`v1.0.5`
+- 本地构建产物：`output/builds/Pixory-v1.0.5.apk`
+- 包名：`com.pixory.app`
+- 版本：`versionName 1.0.5` / `versionCode 105`
+- SHA256：`5E57CFCE02E5CD2F153B1DC8A805E13B19E893BE2013190CAE3753617F7B26C2`
+
+当前发布的是 universal APK，会同时包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` 四套 native 库，以兼容真机和模拟器。因此 APK 体积约 68.5 MB。若只面向现代 Android 真机，可后续单独产出 `arm64-v8a` APK 或 AAB 以显著降低用户实际下载体积。
 
 ## 运行方式
 
@@ -114,10 +125,10 @@ pnpm exec expo start --android -c
 
 ## 已知限制
 
-- 当前仍运行在 Expo Go / 开发环境，不是独立 APK
-- Android 模拟器输入法会干扰自动化文本注入，影响长链路回归效率
+- 当前 release APK 是本地签名包，不是应用商店分发包
+- universal APK 同时包含四套 ABI，包体积比单架构 APK 大
+- Android 模拟器输入法仍可能干扰自动化文本注入，影响长链路回归效率
 - 回收站清空后的物理删除，本轮已做到代码与链路级验证，但独立外部核验仍建议再补一轮
-- `dev-only` 回归辅助卡片仍存在于开发环境中，正式提测前可移除
 - 当前不包含搜索增强、高级筛选、云服务、账号系统、AI 标签、AI 生图、Web 后台
 
 ## 文档

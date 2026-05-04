@@ -43,6 +43,40 @@ pnpm run doctor
 pnpm run acceptance:android
 ```
 
+## 构建 Android Release APK
+
+Windows 本机推荐使用已配置的 JDK 与 Android SDK：
+
+```powershell
+$env:JAVA_HOME='D:\Develop\jdk21'
+$env:ANDROID_HOME='D:\Develop\Android\Sdk'
+$env:ANDROID_SDK_ROOT='D:\Develop\Android\Sdk'
+cd android
+.\gradlew.bat assembleRelease
+```
+
+默认产物：
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+当前 v1.0.5 交付文件会复制到：
+
+```text
+output/builds/Pixory-v1.0.5.apk
+```
+
+校验命令：
+
+```powershell
+D:\Develop\Android\Sdk\build-tools\36.0.0\apksigner.bat verify --print-certs output\builds\Pixory-v1.0.5.apk
+D:\Develop\Android\Sdk\platform-tools\adb.exe install -r output\builds\Pixory-v1.0.5.apk
+D:\Develop\Android\Sdk\platform-tools\adb.exe shell dumpsys package com.pixory.app
+```
+
+注意：当前 release APK 是 universal APK，会包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` 四套 native 库，方便覆盖模拟器和不同设备。若需要更小的真机包，后续可按 ABI 拆分或发布 AAB。
+
 ## Android P0 长链路验收
 
 必须在真实 Android 设备或稳定模拟器上执行，不能只看 Web 或旧截图。
