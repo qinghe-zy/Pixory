@@ -40,7 +40,7 @@ export function ThumbnailTile({
         <>
           <View style={styles.selectionOverlay} />
           <View style={styles.selectionBadge}>
-            <Ionicons color={colors.text.inverse} name="checkmark" size={12} />
+            <Ionicons color={colors.text.inverse} name="checkmark" size={10} />
           </View>
         </>
       ) : null}
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   },
   selectedTile: {
     borderColor: colors.primary.default,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   image: {
     height: '100%',
@@ -117,12 +117,14 @@ const styles = StyleSheet.create({
   selectionBadge: {
     alignItems: 'center',
     backgroundColor: colors.primary.default,
-    borderRadius: radius.sm,
-    height: 22,
+    borderColor: colors.overlay.softSurface,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 18,
     justifyContent: 'center',
     left: spacing[2],
     position: 'absolute',
     top: spacing[2],
-    width: 22,
+    width: 18,
   },
 });

@@ -53,7 +53,7 @@ export const colors = {
     image: 'rgba(38, 49, 59, 0.18)',
     softSurface: 'rgba(255, 252, 247, 0.82)',
     heroSurface: 'rgba(255, 252, 247, 0.62)',
-    selectedGold: 'rgba(185, 144, 85, 0.20)',
+    selectedGold: 'rgba(185, 144, 85, 0.11)',
   },
   support: {
     sky50: '#EEF8FB',

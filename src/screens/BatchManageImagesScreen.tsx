@@ -361,12 +361,6 @@ export function BatchManageImagesScreen({
             label="删除"
             onPress={handleSoftDelete}
           />
-          <BatchActionButton
-            disabled={isSubmitting}
-            icon={allSelected ? 'remove-circle-outline' : 'checkmark-done-outline'}
-            label={allSelected ? '取消全选' : '全选'}
-            onPress={handleSelectAllToggle}
-          />
         </View>
       )}
     </View>
@@ -679,9 +673,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1.5],
+    gap: spacing[1],
     paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1.5],
+    paddingVertical: spacing[1],
   },
   footerHeader: {
     alignItems: 'center',
@@ -722,19 +716,19 @@ const styles = StyleSheet.create({
   },
   batchActionCard: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
+    backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[1],
     justifyContent: 'center',
-    minHeight: 32,
+    minHeight: 30,
     paddingHorizontal: spacing[2],
     width: '32%',
   },
   batchActionDangerCard: {
-    backgroundColor: colors.semantic.dangerBackground,
+    backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
   },
   batchActionDisabled: {

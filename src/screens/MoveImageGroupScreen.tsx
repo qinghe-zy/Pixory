@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
@@ -7,7 +7,7 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, type GroupRecord, type ImageDetailRecord } from '../database';
-import { colors, metrics, spacing, typography } from '../design/tokens';
+import { metrics, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
@@ -89,16 +89,10 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
       title="移动分组"
     >
       <View style={styles.formWrap}>
-        <View style={styles.contextPanel}>
-          <View style={styles.contextRow}>
-            <Text style={styles.contextLabel}>所属 IP</Text>
-            <Text numberOfLines={1} style={styles.contextValue}>{image?.ipName ?? '当前IP'}</Text>
-          </View>
-          <View style={styles.contextRow}>
-            <Text style={styles.contextLabel}>图片文件名</Text>
-            <Text numberOfLines={2} style={styles.contextValue}>{image?.originalFilename ?? '当前图片'}</Text>
-          </View>
-        </View>
+        <LightFormSection title="当前图片">
+          <ReadonlyInfoRow label="所属 IP" value={image?.ipName ?? '当前IP'} valueNumberOfLines={1} />
+          <ReadonlyInfoRow label="图片文件名" value={image?.originalFilename ?? '当前图片'} valueNumberOfLines={2} />
+        </LightFormSection>
 
         <LightFormSection hint="只更新分组记录，不移动本地文件。" title="目标分组">
           <ReadonlyInfoRow
@@ -131,32 +125,6 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
 const styles = StyleSheet.create({
   formWrap: {
     gap: metrics.formFieldGap,
-  },
-  contextPanel: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    padding: spacing[3],
-  },
-  contextRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing[3],
-    justifyContent: 'space-between',
-  },
-  contextLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    width: 72,
-  },
-  contextValue: {
-    ...typography.textStyles.body,
-    color: colors.text.title,
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
   },
   optionList: {
     gap: spacing[1],

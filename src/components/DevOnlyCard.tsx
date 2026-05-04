@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, spacing, typography } from '../design/tokens';
 import { isDevToolsEnabled } from '../utils/dev';
 import { ContentCard } from './ContentCard';
 
@@ -48,17 +48,15 @@ const styles = StyleSheet.create({
   toggleButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.pill,
     justifyContent: 'center',
-    minHeight: componentTokens.common.minTouchSize,
-    paddingHorizontal: spacing[4],
+    minHeight: 28,
+    paddingHorizontal: spacing[1],
+    paddingVertical: spacing[1],
   },
   toggleLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
     fontWeight: '500',
   },
   card: {

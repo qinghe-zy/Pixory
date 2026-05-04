@@ -95,7 +95,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     <ScreenScaffold decorativeTitle="Trash" onBack={onBack} rightAction={rightAction} scrollable title="回收站">
       <View style={styles.notice}>
         <Ionicons color={colors.primary.active} name="time-outline" size={16} />
-        <Text style={styles.subtitle}>文件在回收站中保留 30 天，之后将自动永久删除。</Text>
+        <Text numberOfLines={2} style={styles.subtitle}>文件在回收站中保留 30 天，之后将自动永久删除。</Text>
       </View>
 
       <PageStateBlock
@@ -126,7 +126,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                 </View>
               </View>
               <View style={styles.itemBody}>
-                <Text numberOfLines={1} style={styles.itemTitle}>
+                <Text numberOfLines={2} style={styles.itemTitle}>
                   {image.originalFilename}
                 </Text>
                 <Text style={styles.itemMeta}>
@@ -163,37 +163,40 @@ function getTrashRemainingLabel(deletedAt: string | null) {
 const styles = StyleSheet.create({
   notice: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[2],
-    padding: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   subtitle: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+    flex: 1,
+    minWidth: 0,
   },
   list: {
-    gap: spacing[3],
+    gap: spacing[2],
   },
   itemCard: {
     alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
-    padding: spacing[3],
+    gap: spacing[2],
+    padding: spacing[2],
   },
   previewWrap: {
     backgroundColor: colors.background.empty,
     borderRadius: radius.md,
     aspectRatio: 1,
     overflow: 'hidden',
-    width: 78,
+    width: 72,
   },
   previewImage: {
     height: '100%',
@@ -223,6 +226,7 @@ const styles = StyleSheet.create({
   itemBody: {
     flex: 1,
     gap: spacing[1],
+    minWidth: 0,
   },
   itemTitle: {
     ...typography.textStyles.bodyStrong,
@@ -230,7 +234,7 @@ const styles = StyleSheet.create({
   },
   itemMeta: {
     ...typography.textStyles.micro,
-    color: colors.text.body,
+    color: colors.text.secondary,
   },
   clearButton: {
     alignItems: 'center',
@@ -248,14 +252,11 @@ const styles = StyleSheet.create({
   restoreChip: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.primary.weak,
     borderRadius: radius.pill,
-    borderColor: colors.primary.light,
-    borderWidth: StyleSheet.hairlineWidth,
     marginTop: spacing[1],
-    minHeight: 30,
+    minHeight: 28,
     justifyContent: 'center',
-    paddingHorizontal: spacing[2],
+    paddingHorizontal: spacing[1],
   },
   restoreText: {
     ...typography.textStyles.micro,

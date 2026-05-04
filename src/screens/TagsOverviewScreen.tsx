@@ -129,16 +129,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: spacing[2],
     justifyContent: 'space-between',
-    padding: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   resultCopy: {
     flex: 1,
     gap: spacing[1],
+    minWidth: 0,
   },
   resultTitle: {
     ...typography.textStyles.bodyStrong,
@@ -148,10 +150,9 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   resultAction: {
-    backgroundColor: colors.primary.weak,
     borderRadius: radius.pill,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
   resultActionText: {
     ...typography.textStyles.caption,
@@ -161,18 +162,19 @@ const styles = StyleSheet.create({
   popularGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[3],
+    gap: spacing[2],
   },
   popularTag: {
-    alignItems: 'flex-start',
-    backgroundColor: colors.background.surface,
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    flexDirection: 'row',
+    gap: spacing[2],
     justifyContent: 'space-between',
-    minHeight: 58,
-    padding: spacing[3],
+    minHeight: 38,
+    paddingHorizontal: spacing[3],
     width: '48.3%',
   },
   selectedTag: {
@@ -181,6 +183,8 @@ const styles = StyleSheet.create({
   },
   popularName: {
     ...typography.textStyles.bodyStrong,
+    flex: 1,
+    minWidth: 0,
   },
   allTags: {
     flexDirection: 'row',
@@ -205,6 +209,7 @@ const styles = StyleSheet.create({
   tagName: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+    maxWidth: 168,
   },
   countBadge: {
     ...typography.textStyles.caption,
