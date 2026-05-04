@@ -39,14 +39,16 @@ const GROUP_OVERVIEW_SELECT = `
     (
       SELECT image_assets.thumbnailFileUri
       FROM image_assets
-      WHERE image_assets.groupId = groups.id
+      INNER JOIN image_groups ON image_groups.imageAssetId = image_assets.id
+      WHERE image_groups.groupId = groups.id
         AND image_assets.deletedAt IS NULL
       ORDER BY image_assets.createdAt DESC, image_assets.id DESC
       LIMIT 1
     ) AS coverThumbnailFileUri
   FROM groups
   INNER JOIN ips ON ips.id = groups.ipId
-  LEFT JOIN image_assets ON image_assets.groupId = groups.id
+  LEFT JOIN image_groups ON image_groups.groupId = groups.id
+  LEFT JOIN image_assets ON image_assets.id = image_groups.imageAssetId
 `;
 
 export const groupRepository = {
@@ -174,7 +176,23 @@ export const groupRepository = {
     let changedCount = 0;
 
     await db.withTransactionAsync(async () => {
-      await db.runAsync('UPDATE image_assets SET groupId = NULL, updatedAt = ? WHERE groupId = ?', now, id);
+      await db.runAsync(
+        `UPDATE image_assets
+         SET groupId = (
+           SELECT image_groups.groupId
+           FROM image_groups
+           WHERE image_groups.imageAssetId = image_assets.id
+             AND image_groups.groupId != ?
+           ORDER BY image_groups.createdAt ASC, image_groups.groupId ASC
+           LIMIT 1
+         ),
+         updatedAt = ?
+         WHERE groupId = ?`,
+        id,
+        now,
+        id
+      );
+      await db.runAsync('DELETE FROM image_groups WHERE groupId = ?', id);
       const result = await db.runAsync('DELETE FROM groups WHERE id = ?', id);
       changedCount = result.changes;
       await db.runAsync('UPDATE ips SET updatedAt = ? WHERE id = ?', now, current.ipId);

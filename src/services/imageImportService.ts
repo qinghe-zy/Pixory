@@ -24,6 +24,7 @@ export interface PickImagesForImportResult {
 export interface ImportImagesToIpParams {
   ipId: number;
   groupId?: number | null;
+  groupIds?: number[];
   tagNames?: string[];
   note?: string | null;
   isFavorite?: boolean;
@@ -33,6 +34,7 @@ export interface ImportImagesToIpParams {
 export interface BuildImageAssetFromPickedFileParams {
   ipId: number;
   groupId?: number | null;
+  groupIds?: number[];
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedImageAsset;
@@ -41,6 +43,7 @@ export interface BuildImageAssetFromPickedFileParams {
 export interface ImportSingleImageParams {
   ipId: number;
   groupId?: number | null;
+  groupIds?: number[];
   tagNames?: string[];
   note?: string | null;
   isFavorite?: boolean;
@@ -50,6 +53,7 @@ export interface ImportSingleImageParams {
 export interface PendingImageAssetImport {
   ipId: number;
   groupId: number | null;
+  groupIds: number[];
   sourceUri: string;
   originalFilename: string;
   internalFilename: string;
@@ -177,23 +181,29 @@ function normalizeTagNames(tagNames?: string[]): string[] {
   return [...dedupedNames.values()];
 }
 
-async function ensureImportTargetExists(ipId: number, groupId?: number | null): Promise<void> {
+function normalizeGroupIds(groupIds?: number[]): number[] {
+  if (!groupIds?.length) {
+    return [];
+  }
+
+  return [...new Set(groupIds.filter((groupId) => Number.isInteger(groupId) && groupId > 0))];
+}
+
+async function ensureImportTargetExists(ipId: number, groupIds?: number[]): Promise<void> {
   const ipRecord = await ipRepository.findById(ipId);
   if (!ipRecord) {
     throw new Error(`Target IP ${ipId} does not exist.`);
   }
 
-  if (groupId == null) {
-    return;
-  }
+  for (const groupId of normalizeGroupIds(groupIds)) {
+    const groupRecord = await groupRepository.findById(groupId);
+    if (!groupRecord) {
+      throw new Error(`Target group ${groupId} does not exist.`);
+    }
 
-  const groupRecord = await groupRepository.findById(groupId);
-  if (!groupRecord) {
-    throw new Error(`Target group ${groupId} does not exist.`);
-  }
-
-  if (groupRecord.ipId !== ipId) {
-    throw new Error(`Group ${groupId} does not belong to IP ${ipId}.`);
+    if (groupRecord.ipId !== ipId) {
+      throw new Error(`Group ${groupId} does not belong to IP ${ipId}.`);
+    }
   }
 }
 
@@ -326,6 +336,7 @@ async function performSingleImageImport(
     const createdImage = await imageRepository.create({
       ipId: pendingImageAsset.ipId,
       groupId: pendingImageAsset.groupId,
+      groupIds: pendingImageAsset.groupIds,
       originalFileUri,
       thumbnailFileUri,
       originalFilename: pendingImageAsset.originalFilename,
@@ -399,7 +410,8 @@ export async function pickImagesForImport(): Promise<PickImagesForImportResult> 
 export async function buildImageAssetFromPickedFile(
   params: BuildImageAssetFromPickedFileParams
 ): Promise<PendingImageAssetImport> {
-  const { groupId, ipId, isFavorite, note, pickedAsset } = params;
+  const { groupId, groupIds, ipId, isFavorite, note, pickedAsset } = params;
+  const normalizedGroupIds = normalizeGroupIds(groupIds ?? (groupId != null ? [groupId] : []));
 
   if (!pickedAsset.uri?.trim()) {
     throw new Error('Picked image URI is missing.');
@@ -415,7 +427,8 @@ export async function buildImageAssetFromPickedFile(
 
   return {
     ipId,
-    groupId: groupId ?? null,
+    groupId: normalizedGroupIds[0] ?? null,
+    groupIds: normalizedGroupIds,
     sourceUri: pickedAsset.uri,
     originalFilename,
     internalFilename: generateInternalFilename(originalFilename),
@@ -432,13 +445,15 @@ export async function importSingleImage(
   params: ImportSingleImageParams
 ): Promise<ImportedImageResult> {
   const { groupId, ipId, pickedAsset } = params;
-  await ensureImportTargetExists(ipId, groupId);
+  const groupIds = normalizeGroupIds(params.groupIds ?? (groupId != null ? [groupId] : []));
+  await ensureImportTargetExists(ipId, groupIds);
   await ensureAppDirectories();
 
   const resolvedTags = await resolveTags(params.tagNames);
   const pendingImageAsset = await buildImageAssetFromPickedFile({
     ipId,
     groupId,
+    groupIds,
     note: params.note,
     isFavorite: params.isFavorite,
     pickedAsset,
@@ -450,7 +465,8 @@ export async function importSingleImage(
 export async function importImagesToIp(
   params: ImportImagesToIpParams
 ): Promise<ImportImagesToIpResult> {
-  await ensureImportTargetExists(params.ipId, params.groupId);
+  const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
+  await ensureImportTargetExists(params.ipId, groupIds);
   await ensureAppDirectories();
 
   if (params.pickedAssets.length === 0) {
@@ -471,6 +487,7 @@ export async function importImagesToIp(
       const pendingImageAsset = await buildImageAssetFromPickedFile({
         ipId: params.ipId,
         groupId: params.groupId,
+        groupIds,
         note: params.note,
         isFavorite: params.isFavorite,
         pickedAsset,

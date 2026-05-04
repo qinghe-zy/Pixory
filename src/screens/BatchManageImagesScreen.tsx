@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -22,7 +23,7 @@ import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
-type BatchMode = 'idle' | 'move-group' | 'add-tags';
+type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
 
 interface BatchManageImagesScreenProps {
   ipId: number;
@@ -76,6 +77,7 @@ export function BatchManageImagesScreen({
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(groupId ?? null);
   const [tagInput, setTagInput] = useState('');
   const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
@@ -116,7 +118,7 @@ export function BatchManageImagesScreen({
       setTagInput('');
       setDraftTags([]);
     }
-    if (nextMode !== 'move-group') {
+    if (!isGroupMode(nextMode)) {
       setSelectedGroupId(groupId ?? null);
     }
   }
@@ -137,12 +139,21 @@ export function BatchManageImagesScreen({
     }
   }
 
-  function handleMoveGroup() {
+  function handleGroupUpdate() {
     void runSubmit(
       async () => {
-        const changedCount = await imageRepository.updateManyGroup(selectedImageIds, selectedGroupId);
+        let changedCount = 0;
+
+        if (mode === 'replace-group') {
+          changedCount = await imageRepository.updateManyGroup(selectedImageIds, selectedGroupId);
+        } else if (selectedGroupId != null && mode === 'add-group') {
+          changedCount = await imageRepository.addManyToGroup(selectedImageIds, selectedGroupId);
+        } else if (selectedGroupId != null && mode === 'remove-group') {
+          changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, selectedGroupId);
+        }
+
         if (changedCount === 0) {
-          throw new Error('没有可移动的图片。');
+          throw new Error('没有需要更新的图片。');
         }
 
         resetInlineMode();
@@ -151,9 +162,19 @@ export function BatchManageImagesScreen({
       {
         formatError: (error) => {
           const message = error instanceof Error ? error.message : '未知错误';
-          return `批量移动分组失败：${message}`;
+          return `批量调整分组失败：${message}`;
         },
-        validate: () => (selectedCount === 0 ? '请先选择至少一张图片。' : null),
+        validate: () => {
+          if (selectedCount === 0) {
+            return '请先选择至少一张图片。';
+          }
+
+          if ((mode === 'add-group' || mode === 'remove-group') && selectedGroupId == null) {
+            return '请选择一个分组。';
+          }
+
+          return null;
+        },
       }
     );
   }
@@ -220,73 +241,62 @@ export function BatchManageImagesScreen({
       return;
     }
 
-    Alert.alert(
-      '确认删除到回收站',
-      `选中的 ${selectedCount} 张图片会进入回收站，但原图和缩略图文件仍会保留在本地。`,
-      [
-        {
-          text: '取消',
-          style: 'cancel',
+    setIsDeleteDialogVisible(true);
+  }
+
+  function confirmSoftDelete() {
+    setIsDeleteDialogVisible(false);
+    void runSubmit(
+      async () => {
+        const imageCopies = [...selectedImages];
+        const deletedCount = await imageRepository.softDeleteMany(selectedImageIds);
+        if (deletedCount === 0) {
+          throw new Error('没有可删除的图片。');
+        }
+
+        const verification = await Promise.all(
+          imageCopies.map(async (image) => {
+            const [originalInfo, thumbnailInfo] = await Promise.all([
+              getFileInfo(image.originalFileUri),
+              image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
+            ]);
+
+            return {
+              imageId: image.id,
+              originalFileUri: image.originalFileUri,
+              thumbnailFileUri: image.thumbnailFileUri,
+              originalExists: originalInfo.exists && !originalInfo.isDirectory,
+              thumbnailExists: image.thumbnailFileUri
+                ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory)
+                : true,
+              originalSize: originalInfo.size,
+              thumbnailSize: thumbnailInfo?.size ?? null,
+              deletedAt: (await imageRepository.findById(image.id, { includeDeleted: true }))?.deletedAt ?? null,
+            };
+          })
+        );
+
+        devLog('Pixory batch delete verification JSON:', JSON.stringify(verification));
+
+        const missingFiles = verification.filter(
+          (item) =>
+            !item.originalExists ||
+            !item.thumbnailExists ||
+            (item.originalSize ?? 0) <= 0 ||
+            (item.thumbnailSize ?? 0) <= 0
+        );
+        if (missingFiles.length > 0) {
+          throw new Error('软删除后发现文件缺失，请检查本地存储状态。');
+        }
+
+        onDeleted();
+      },
+      {
+        formatError: (error) => {
+          const message = error instanceof Error ? error.message : '未知错误';
+          return `批量删除失败：${message}`;
         },
-        {
-          text: '确认删除',
-          style: 'destructive',
-          onPress: () => {
-            void runSubmit(
-              async () => {
-                const imageCopies = [...selectedImages];
-                const deletedCount = await imageRepository.softDeleteMany(selectedImageIds);
-                if (deletedCount === 0) {
-                  throw new Error('没有可删除的图片。');
-                }
-
-                const verification = await Promise.all(
-                  imageCopies.map(async (image) => {
-                    const [originalInfo, thumbnailInfo] = await Promise.all([
-                      getFileInfo(image.originalFileUri),
-                      image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
-                    ]);
-
-                    return {
-                      imageId: image.id,
-                      originalFileUri: image.originalFileUri,
-                      thumbnailFileUri: image.thumbnailFileUri,
-                      originalExists: originalInfo.exists && !originalInfo.isDirectory,
-                      thumbnailExists: image.thumbnailFileUri
-                        ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory)
-                        : true,
-                      originalSize: originalInfo.size,
-                      thumbnailSize: thumbnailInfo?.size ?? null,
-                      deletedAt: (await imageRepository.findById(image.id, { includeDeleted: true }))?.deletedAt ?? null,
-                    };
-                  })
-                );
-
-                devLog('Pixory batch delete verification JSON:', JSON.stringify(verification));
-
-                const missingFiles = verification.filter(
-                  (item) =>
-                    !item.originalExists ||
-                    !item.thumbnailExists ||
-                    (item.originalSize ?? 0) <= 0 ||
-                    (item.thumbnailSize ?? 0) <= 0
-                );
-                if (missingFiles.length > 0) {
-                  throw new Error('软删除后发现文件缺失，请检查本地存储状态。');
-                }
-
-                onDeleted();
-              },
-              {
-                formatError: (error) => {
-                  const message = error instanceof Error ? error.message : '未知错误';
-                  return `批量删除失败：${message}`;
-                },
-              }
-            );
-          },
-        },
-      ]
+      }
     );
   }
 
@@ -297,10 +307,10 @@ export function BatchManageImagesScreen({
         <Text style={styles.footerMeta}>共 {images.length} 张</Text>
       </View>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-      {mode === 'move-group' ? (
+      {isGroupMode(mode) ? (
         <View style={styles.footerInlineActions}>
           <View style={styles.footerPrimaryAction}>
-            <PrimaryButton disabled={selectedCount === 0} label="确认移动分组" loading={isSubmitting} onPress={handleMoveGroup} />
+            <PrimaryButton disabled={selectedCount === 0} label={getGroupActionLabel(mode)} loading={isSubmitting} onPress={handleGroupUpdate} />
           </View>
           <Pressable
             disabled={isSubmitting}
@@ -330,10 +340,28 @@ export function BatchManageImagesScreen({
           <BatchActionButton
             disabled={selectedCount === 0 || isSubmitting}
             icon="swap-horizontal-outline"
-            label="移动分组"
+            label="替换分组"
             onPress={() => {
               setSelectedGroupId(groupId ?? null);
-              setMode('move-group');
+              setMode('replace-group');
+            }}
+          />
+          <BatchActionButton
+            disabled={selectedCount === 0 || isSubmitting}
+            icon="folder-open-outline"
+            label="加入分组"
+            onPress={() => {
+              setSelectedGroupId(groupId ?? null);
+              setMode('add-group');
+            }}
+          />
+          <BatchActionButton
+            disabled={selectedCount === 0 || isSubmitting}
+            icon="remove-circle-outline"
+            label="移出分组"
+            onPress={() => {
+              setSelectedGroupId(groupId ?? null);
+              setMode('remove-group');
             }}
           />
           <BatchActionButton
@@ -367,6 +395,7 @@ export function BatchManageImagesScreen({
   );
 
   return (
+    <>
     <ScreenScaffold footer={footer} onBack={onBack} scrollable title="批量管理">
       <View style={styles.summaryCard}>
         <View style={styles.summaryIcon}>
@@ -402,15 +431,17 @@ export function BatchManageImagesScreen({
           </Pressable>
         </View>
 
-        {mode === 'move-group' ? (
-          <LightFormSection hint="只更新分组记录，不移动原图或缩略图文件。" title="选择目标分组">
+        {isGroupMode(mode) ? (
+          <LightFormSection hint={getGroupModeHint(mode, selectedCount)} title={getGroupModeTitle(mode)}>
             <View style={styles.optionList}>
-              <OptionSelectRow
-                label="无分组"
-                meta="保留在当前 IP"
-                onPress={() => setSelectedGroupId(null)}
-                selected={selectedGroupId === null}
-              />
+              {mode === 'replace-group' ? (
+                <OptionSelectRow
+                  label="无分组"
+                  meta="保留在当前 IP"
+                  onPress={() => setSelectedGroupId(null)}
+                  selected={selectedGroupId === null}
+                />
+              ) : null}
               {groups.map((group) => (
                 <OptionSelectRow
                   key={group.id}
@@ -500,7 +531,57 @@ export function BatchManageImagesScreen({
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    <AppDialog
+      danger
+      message={`选中的 ${selectedCount} 张图片会进入回收站，原图和缩略图仍保留在本地。清空回收站前都可以恢复。`}
+      onClose={() => setIsDeleteDialogVisible(false)}
+      onPrimary={confirmSoftDelete}
+      primaryLabel="删除到回收站"
+      title="确认删除"
+      visible={isDeleteDialogVisible}
+    />
+    </>
   );
+}
+
+function isGroupMode(mode: BatchMode): mode is 'replace-group' | 'add-group' | 'remove-group' {
+  return mode === 'replace-group' || mode === 'add-group' || mode === 'remove-group';
+}
+
+function getGroupActionLabel(mode: BatchMode): string {
+  if (mode === 'add-group') {
+    return '确认加入分组';
+  }
+
+  if (mode === 'remove-group') {
+    return '确认移出分组';
+  }
+
+  return '确认替换分组';
+}
+
+function getGroupModeTitle(mode: BatchMode): string {
+  if (mode === 'add-group') {
+    return '加入分组';
+  }
+
+  if (mode === 'remove-group') {
+    return '移出分组';
+  }
+
+  return '替换分组';
+}
+
+function getGroupModeHint(mode: BatchMode, selectedCount: number): string {
+  if (mode === 'add-group') {
+    return `追加到已选 ${selectedCount} 张图片，不清除现有分组。`;
+  }
+
+  if (mode === 'remove-group') {
+    return `从已选 ${selectedCount} 张图片中剔除该分组，不删除图片。`;
+  }
+
+  return '把已选图片替换为一个目标分组，也可以改为无分组。';
 }
 
 function BatchActionButton({

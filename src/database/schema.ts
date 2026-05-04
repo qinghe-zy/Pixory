@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -83,4 +83,22 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT,
   updatedAt TEXT NOT NULL
 );
+`;
+
+export const MIGRATION_STATEMENTS_V5 = `
+CREATE TABLE IF NOT EXISTS image_groups (
+  imageAssetId INTEGER NOT NULL,
+  groupId INTEGER NOT NULL,
+  createdAt TEXT NOT NULL,
+  PRIMARY KEY (imageAssetId, groupId),
+  FOREIGN KEY (imageAssetId) REFERENCES image_assets(id) ON DELETE CASCADE,
+  FOREIGN KEY (groupId) REFERENCES groups(id) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO image_groups (imageAssetId, groupId, createdAt)
+SELECT id, groupId, createdAt
+FROM image_assets
+WHERE groupId IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_image_groups_group_id ON image_groups(groupId);
 `;

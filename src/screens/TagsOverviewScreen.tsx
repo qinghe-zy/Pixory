@@ -154,13 +154,13 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 
 const styles = StyleSheet.create({
   searchBlock: {
-    marginBottom: -spacing[1],
+    marginBottom: spacing[1],
   },
   content: {
-    gap: spacing[7],
+    gap: spacing[5],
   },
   section: {
-    gap: spacing[4],
+    gap: spacing[3],
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
@@ -208,8 +208,8 @@ const styles = StyleSheet.create({
   popularGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing[3],
-    rowGap: spacing[3],
+    columnGap: spacing[2],
+    rowGap: spacing[2],
   },
   popularTag: {
     alignItems: 'center',
@@ -218,11 +218,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: spacing[1.5],
     justifyContent: 'space-between',
-    minHeight: 40,
+    minHeight: 36,
     paddingHorizontal: spacing[3],
-    width: '47.6%',
+    width: '48.4%',
   },
   selectedTag: {
     backgroundColor: colors.primary.weak,
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     columnGap: spacing[2],
-    rowGap: spacing[3],
+    rowGap: spacing[2],
   },
   tagPill: {
     alignItems: 'center',
@@ -246,9 +246,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
-    minHeight: 32,
-    paddingHorizontal: spacing[3],
+    gap: spacing[1.5],
+    minHeight: 30,
+    paddingHorizontal: spacing[2],
   },
   selectedPill: {
     backgroundColor: colors.primary.weak,
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   tagName: {
     ...typography.textStyles.caption,
     color: colors.text.body,
-    maxWidth: 168,
+    maxWidth: 136,
   },
   countBadge: {
     ...typography.textStyles.caption,

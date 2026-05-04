@@ -20,7 +20,7 @@ interface MoveImageGroupScreenProps {
 
 export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }: MoveImageGroupScreenProps) {
   const { data, errorMessage: loadErrorMessage } = useScreenLoad<{
-    image: ImageDetailRecord | null;
+    image: (ImageDetailRecord & { loadedGroupIds?: number[] }) | null;
     groups: GroupRecord[];
   }>(
     async () => {
@@ -29,8 +29,11 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
         throw new Error('没有找到这张图片。');
       }
 
-      const groups = await groupRepository.findByIpId(detail.ipId);
-      return { image: detail, groups };
+      const [groups, groupIds] = await Promise.all([
+        groupRepository.findByIpId(detail.ipId),
+        imageRepository.findGroupIdsByImageId(imageId),
+      ]);
+      return { image: { ...detail, loadedGroupIds: groupIds }, groups };
     },
     [imageId, refreshToken],
     {
@@ -42,13 +45,13 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
     }
   );
   const { isSubmitting, submitError, runSubmit } = useSubmitState();
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
   const image = data?.image ?? null;
   const groups = data?.groups ?? [];
 
   useEffect(() => {
     if (image) {
-      setSelectedGroupId(image.groupId);
+      setSelectedGroupIds(image.loadedGroupIds ?? (image.groupId != null ? [image.groupId] : []));
     }
   }, [image]);
 
@@ -64,9 +67,9 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
 
     void runSubmit(
       async () => {
-        const updated = await imageRepository.updateGroup(image.id, selectedGroupId);
+        const updated = await imageRepository.setImageGroups(image.id, selectedGroupIds);
         if (!updated) {
-          throw new Error('移动分组时没有找到这张图片。');
+          throw new Error('调整分组时没有找到这张图片。');
         }
 
         onSaved();
@@ -74,7 +77,7 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
       {
         formatError: (error) => {
           const message = error instanceof Error ? error.message : '未知错误';
-          return `移动分组失败：${message}`;
+          return `调整分组失败：${message}`;
         },
       }
     );
@@ -84,9 +87,9 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
     <FormScreenScaffold
       errorMessage={submitError ?? loadErrorMessage}
       onBack={onBack}
-      primaryAction={{ disabled: !canSubmit, label: '确认移动', loading: isSubmitting, onPress: handleSave }}
+      primaryAction={{ disabled: !canSubmit, label: '保存分组', loading: isSubmitting, onPress: handleSave }}
       secondaryAction={{ disabled: isSubmitting, label: '取消返回', onPress: onBack }}
-      title="移动分组"
+      title="调整分组"
     >
       <View style={styles.formWrap}>
         <LightFormSection title="当前图片">
@@ -94,25 +97,38 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
           <ReadonlyInfoRow label="图片文件名" value={image?.originalFilename ?? '当前图片'} valueNumberOfLines={2} />
         </LightFormSection>
 
-        <LightFormSection hint="只更新分组记录，不移动本地文件。" title="目标分组">
+        <LightFormSection hint="可同时属于多个分组，只更新数据库记录，不移动本地文件。" title="目标分组">
           <ReadonlyInfoRow
             label="当前选择"
-            value={selectedGroupId === null ? '无分组' : groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}
+            value={
+              selectedGroupIds.length === 0
+                ? '无分组'
+                : selectedGroupIds
+                    .map((groupId) => groups.find((group) => group.id === groupId)?.name)
+                    .filter(Boolean)
+                    .join('、')
+            }
           />
           <View style={styles.optionList}>
             <OptionSelectRow
               label="无分组"
               meta="保留在当前 IP"
-              onPress={() => setSelectedGroupId(null)}
-              selected={selectedGroupId === null}
+              onPress={() => setSelectedGroupIds([])}
+              selected={selectedGroupIds.length === 0}
             />
             {groups.map((group) => (
               <OptionSelectRow
                 key={group.id}
                 label={group.name}
                 meta={getGroupTypeLabel(group.type)}
-                onPress={() => setSelectedGroupId(group.id)}
-                selected={selectedGroupId === group.id}
+                onPress={() =>
+                  setSelectedGroupIds((current) =>
+                    current.includes(group.id)
+                      ? current.filter((groupId) => groupId !== group.id)
+                      : [...current, group.id]
+                  )
+                }
+                selected={selectedGroupIds.includes(group.id)}
               />
             ))}
           </View>

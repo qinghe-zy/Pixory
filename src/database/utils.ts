@@ -67,6 +67,7 @@ export function mapImageListItemRow(row: ImageListItemRow): ImageListItem {
     ...mapImageAssetRow(row),
     ipName: row.ipName,
     groupName: row.groupName,
+    groupCount: row.groupCount ?? 0,
     tagCount: row.tagCount ?? 0,
   };
 }
@@ -77,6 +78,7 @@ export function mapImageDetailRow(row: ImageDetailRow): ImageDetailRecord {
     ipName: row.ipName,
     groupName: row.groupName,
     groupType: row.groupType,
+    groupCount: row.groupCount ?? 0,
   };
 }
 

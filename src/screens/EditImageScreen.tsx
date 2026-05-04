@@ -28,7 +28,7 @@ interface EditImageScreenProps {
 
 export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: EditImageScreenProps) {
   const { data, errorMessage: loadErrorMessage } = useScreenLoad<{
-    image: ImageDetailRecord | null;
+    image: (ImageDetailRecord & { loadedGroupIds?: number[] }) | null;
     groups: GroupRecord[];
     tags: TagRecord[];
   }>(
@@ -38,12 +38,13 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
         throw new Error('没有找到这张图片。');
       }
 
-      const [groups, tags] = await Promise.all([
+      const [groups, tags, groupIds] = await Promise.all([
         groupRepository.findByIpId(detail.ipId),
         tagRepository.findByImageId(imageId),
+        imageRepository.findGroupIdsByImageId(imageId),
       ]);
 
-      return { image: detail, groups, tags };
+      return { image: { ...detail, loadedGroupIds: groupIds }, groups, tags };
     },
     [imageId, refreshToken],
     {
@@ -56,7 +57,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const [originalFilename, setOriginalFilename] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -70,7 +71,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
     }
 
     setOriginalFilename(image.originalFilename);
-    setSelectedGroupId(image.groupId);
+    setSelectedGroupIds(image.loadedGroupIds ?? (image.groupId != null ? [image.groupId] : []));
     setTags(normalizeDraftTagNames((data?.tags ?? []).map((tag) => tag.name)));
     setTagInput('');
     setNote(image.note ?? '');
@@ -113,7 +114,7 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
 
         const updatedImage = await imageRepository.updateMetadata(image.id, {
           originalFilename,
-          groupId: selectedGroupId,
+          groupIds: selectedGroupIds,
           note,
           isFavorite,
         });
@@ -201,16 +202,22 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
             <OptionSelectRow
               label="无分组"
               meta="保留在当前 IP"
-              onPress={() => setSelectedGroupId(null)}
-              selected={selectedGroupId === null}
+              onPress={() => setSelectedGroupIds([])}
+              selected={selectedGroupIds.length === 0}
             />
             {groups.map((group) => (
               <OptionSelectRow
                 key={group.id}
                 label={group.name}
                 meta={getGroupTypeLabel(group.type)}
-                onPress={() => setSelectedGroupId(group.id)}
-                selected={selectedGroupId === group.id}
+                onPress={() =>
+                  setSelectedGroupIds((current) =>
+                    current.includes(group.id)
+                      ? current.filter((groupId) => groupId !== group.id)
+                      : [...current, group.id]
+                  )
+                }
+                selected={selectedGroupIds.includes(group.id)}
               />
             ))}
           </View>

@@ -91,9 +91,10 @@ async function touchImagesAfterTagChange(db: SQLiteDatabase, imageIds: number[])
   );
 
   const parents = await db.getAllAsync<{ ipId: number; groupId: number | null }>(
-    `SELECT DISTINCT ipId, groupId
+    `SELECT DISTINCT image_assets.ipId, image_groups.groupId
      FROM image_assets
-     WHERE id IN (${imageInClause.placeholders})`,
+     LEFT JOIN image_groups ON image_groups.imageAssetId = image_assets.id
+     WHERE image_assets.id IN (${imageInClause.placeholders})`,
     ...imageInClause.values
   );
 

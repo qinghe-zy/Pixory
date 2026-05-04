@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppScreen } from './src/components/AppScreen';
@@ -117,6 +117,35 @@ export default function App() {
   function popRoute() {
     setRouteStack((current) => (current.length > 1 ? current.slice(0, -1) : current));
   }
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      let handled = false;
+
+      setRouteStack((current) => {
+        if (current.length > 1) {
+          handled = true;
+          return current.slice(0, -1);
+        }
+
+        const [rootRoute] = current;
+        if (rootRoute?.name === 'root' && rootRoute.tab !== 'home') {
+          handled = true;
+          return [INITIAL_ROUTE];
+        }
+
+        return current;
+      });
+
+      return handled;
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   function popAndRefresh() {
     setLibraryRefreshToken((current) => current + 1);

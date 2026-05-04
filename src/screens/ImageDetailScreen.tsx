@@ -275,7 +275,11 @@ export function ImageDetailScreen({
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所在分组</Text>
               <Text style={[styles.infoValue, styles.infoValueLong]}>
-                {image.groupName ? `${image.groupName} · ${getGroupTypeLabel(image.groupType)}` : '未分组'}
+                {image.groupName
+                  ? image.groupCount > 1
+                    ? image.groupName
+                    : `${image.groupName} · ${getGroupTypeLabel(image.groupType)}`
+                  : '未分组'}
               </Text>
             </View>
             <View style={styles.infoRow}>
@@ -316,7 +320,7 @@ export function ImageDetailScreen({
               onPress={handleSaveToAlbum}
             />
             <PrimaryAction icon="create-outline" label="编辑" onPress={() => onEdit(image.id)} />
-            <PrimaryAction icon="swap-horizontal-outline" label="移动分组" onPress={() => onMoveGroup(image.id)} />
+            <PrimaryAction icon="swap-horizontal-outline" label="调整分组" onPress={() => onMoveGroup(image.id)} />
             <PrimaryAction icon="trash-outline" label="删除" onPress={handleDelete} />
           </View>
 

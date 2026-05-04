@@ -79,12 +79,14 @@ export interface IpDetailRecord extends IpRecord {
 export interface ImageListItem extends ImageAssetRecord {
   ipName: string;
   groupName: string | null;
+  groupCount: number;
   tagCount: number;
 }
 
 export interface ImageListItemRow extends ImageAssetRow {
   ipName: string;
   groupName: string | null;
+  groupCount: number;
   tagCount: number;
 }
 
@@ -92,12 +94,14 @@ export interface ImageDetailRecord extends ImageAssetRecord {
   ipName: string;
   groupName: string | null;
   groupType: string | null;
+  groupCount: number;
 }
 
 export interface ImageDetailRow extends ImageAssetRow {
   ipName: string;
   groupName: string | null;
   groupType: string | null;
+  groupCount: number;
 }
 
 export interface GroupListItem extends GroupRecord {
@@ -143,6 +147,7 @@ export interface ImageAssetRecord {
 export interface CreateImageAssetInput {
   ipId: number;
   groupId?: number | null;
+  groupIds?: number[];
   originalFileUri: string;
   thumbnailFileUri?: string | null;
   originalFilename: string;
@@ -160,6 +165,7 @@ export interface CreateImageAssetInput {
 export interface UpdateImageAssetInput {
   ipId?: number;
   groupId?: number | null;
+  groupIds?: number[];
   originalFileUri?: string;
   thumbnailFileUri?: string | null;
   originalFilename?: string;

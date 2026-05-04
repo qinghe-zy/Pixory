@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import { DevOnlyCard } from '../components/DevOnlyCard';
+import { AppDialog } from '../components/AppDialog';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
@@ -61,13 +62,14 @@ export function ImportImagesScreen({
       },
     }
   );
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(defaultGroupId ?? null);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>(defaultGroupId != null ? [defaultGroupId] : []);
   const [pickedAssets, setPickedAssets] = useState<PickedImageAsset[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
+  const [importSummary, setImportSummary] = useState<{ successCount: number; failedCount: number } | null>(null);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const canImport = useMemo(
     () => pickedAssets.length > 0 && !isSubmitting,
@@ -126,7 +128,7 @@ export function ImportImagesScreen({
 
       devLog('Pixory import request payload:', {
         ipId,
-        groupId: selectedGroupId,
+        groupIds: selectedGroupIds,
         tagNames: preparedTags,
         note: preparedNote || null,
         isFavorite,
@@ -135,7 +137,7 @@ export function ImportImagesScreen({
 
       const result = await importImagesToIp({
         ipId,
-        groupId: selectedGroupId,
+        groupIds: selectedGroupIds,
         tagNames: preparedTags,
         note: preparedNote,
         isFavorite,
@@ -154,12 +156,7 @@ export function ImportImagesScreen({
         })),
       });
 
-      Alert.alert('导入完成', `成功导入 ${result.successCount} 张，失败 ${result.failedCount} 张。`, [
-        {
-          text: '知道了',
-          onPress: onImported,
-        },
-      ]);
+      setImportSummary({ successCount: result.successCount, failedCount: result.failedCount });
     }, {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -170,6 +167,7 @@ export function ImportImagesScreen({
   }
 
   return (
+    <>
     <FormScreenScaffold
       errorMessage={submitError ?? loadErrorMessage}
       footerExtra={
@@ -218,8 +216,11 @@ export function ImportImagesScreen({
         <LightFormSection title="目标归属">
           <ReadonlyInfoRow
             hint={
-              selectedGroupId
-                ? `默认分组：${groups.find((group) => group.id === selectedGroupId)?.name ?? '当前分组'}`
+              selectedGroupIds.length > 0
+                ? `已选分组：${selectedGroupIds
+                    .map((groupId) => groups.find((group) => group.id === groupId)?.name)
+                    .filter(Boolean)
+                    .join('、')}`
                 : '未选择分组时导入到当前 IP。'
             }
             label="当前 IP"
@@ -230,16 +231,22 @@ export function ImportImagesScreen({
             <OptionSelectRow
               label="暂不分组"
               meta="导入到当前 IP"
-              onPress={() => setSelectedGroupId(null)}
-              selected={selectedGroupId === null}
+              onPress={() => setSelectedGroupIds([])}
+              selected={selectedGroupIds.length === 0}
             />
             {groups.map((group) => (
               <OptionSelectRow
                 key={group.id}
                 label={group.name}
                 meta={getGroupTypeLabel(group.type)}
-                onPress={() => setSelectedGroupId(group.id)}
-                selected={selectedGroupId === group.id}
+                onPress={() =>
+                  setSelectedGroupIds((current) =>
+                    current.includes(group.id)
+                      ? current.filter((groupId) => groupId !== group.id)
+                      : [...current, group.id]
+                  )
+                }
+                selected={selectedGroupIds.includes(group.id)}
               />
             ))}
           </View>
@@ -320,6 +327,19 @@ export function ImportImagesScreen({
         </DevOnlyCard>
       </View>
     </FormScreenScaffold>
+    <AppDialog
+      message={
+        importSummary
+          ? `成功导入 ${importSummary.successCount} 张，失败 ${importSummary.failedCount} 张。原图已复制到 Pixory 本地私有存储。`
+          : ''
+      }
+      onClose={onImported}
+      onPrimary={onImported}
+      primaryLabel="完成"
+      title="导入完成"
+      visible={Boolean(importSummary)}
+    />
+    </>
   );
 }
 
