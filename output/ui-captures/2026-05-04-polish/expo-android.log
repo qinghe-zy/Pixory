@@ -1,0 +1,19 @@
+Starting project at D:\Project\Pixory\pixory
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+› Opening exp://192.168.2.64:8081 on Pixory_API_35
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ░░░░░░░░░░░░░░░░  1.0% (1/1)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 10/126)
+Android .\index.ts ▓░░░░░░░░░░░░░░░ 11.0% ( 91/274)
+Android .\index.ts ▓▓▓▓░░░░░░░░░░░░ 29.9% (235/430)
+Android .\index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 51.2% (395/552)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 70.9% (561/668)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 88.6% (734/780)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (872/872)
+Android Bundled 34135ms index.ts (872 modules)
+ LOG  Pixory image detail readback: {"groupName": "FinalGroupB_1777645434487", "imageId": 4, "isFavorite": false, "note": "final edited note", "originalFileUri": "file:///data/user/0/host.exp.exponent/files/pixory/originals/ip_1/final_regression_04_favicon_20260501142354799_lla4k7.png", "tagNames": ["batchTag", "editTagA", "editTagB"], "thumbnailFileUri": "file:///data/user/0/host.exp.exponent/files/pixory/thumbnails/ip_1/final_regression_04_favicon_20260501142354799_lla4k7_thumb.png"}
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android Bundled 41ms index.ts (1 module)

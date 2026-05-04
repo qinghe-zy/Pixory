@@ -96,7 +96,7 @@ export function AllImagesScreen({
   }, [activeFilter, groups, tags]);
 
   return (
-    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分部图片">
+    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="图片库">
       <View style={styles.summary}>
         <View>
           <Text style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
@@ -107,14 +107,16 @@ export function AllImagesScreen({
 
       <View style={styles.filterWrap}>
         <View style={styles.filterRow}>
-          <FilterChip active={activeFilter.type === 'all'} label="全部" onPress={() => setActiveFilter({ type: 'all' })} />
+          <FilterChip active={activeFilter.type === 'all'} dense label="全部" onPress={() => setActiveFilter({ type: 'all' })} />
           <FilterChip
             active={activeFilter.type === 'favorite'}
+            dense
             label="已收藏"
             onPress={() => setActiveFilter({ type: 'favorite' })}
           />
           <FilterChip
             active={activeFilter.type === 'ungrouped'}
+            dense
             label="未分组"
             onPress={() => setActiveFilter({ type: 'ungrouped' })}
           />
@@ -123,10 +125,11 @@ export function AllImagesScreen({
         {groups.length > 0 ? (
           <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>按分组</Text>
-            <View style={styles.filterRow}>
+            <View style={styles.filterOptions}>
               {groups.map((group) => (
                 <FilterChip
                   active={activeFilter.type === 'group' && activeFilter.groupId === group.id}
+                  dense
                   key={group.id}
                   label={group.name}
                   onPress={() => setActiveFilter({ type: 'group', groupId: group.id })}
@@ -139,10 +142,11 @@ export function AllImagesScreen({
         {tags.length > 0 ? (
           <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>按标签</Text>
-            <View style={styles.filterRow}>
+            <View style={styles.filterOptions}>
               {tags.map((tag) => (
                 <FilterChip
                   active={activeFilter.type === 'tag' && activeFilter.tagId === tag.id}
+                  dense
                   key={tag.id}
                   label={`#${tag.name}`}
                   onPress={() => setActiveFilter({ type: 'tag', tagId: tag.id })}
@@ -203,19 +207,31 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   filterWrap: {
-    gap: spacing[3],
+    gap: spacing[2],
+    marginTop: -spacing[2],
   },
   filterGroup: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
     gap: spacing[2],
   },
   filterLabel: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+    lineHeight: 28,
+    width: 44,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: spacing[1.5],
+  },
+  filterOptions: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1.5],
+    minWidth: 0,
   },
   grid: {
     flexDirection: 'row',

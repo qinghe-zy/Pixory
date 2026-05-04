@@ -103,15 +103,15 @@ export function GroupImagesScreen({
 const styles = StyleSheet.create({
   summary: {
     alignItems: 'flex-start',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: spacing[2],
     justifyContent: 'space-between',
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
+    paddingVertical: spacing[2],
   },
   summaryCopy: {
     flex: 1,
@@ -127,12 +127,12 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   countPill: {
-    ...typography.textStyles.caption,
+    ...typography.textStyles.micro,
     backgroundColor: colors.primary.weak,
     borderRadius: radius.pill,
     color: colors.primary.active,
     overflow: 'hidden',
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
   grid: {

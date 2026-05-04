@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { DevOnlyCard } from '../components/DevOnlyCard';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -14,7 +13,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
-import { colors, layout, metrics, radius, spacing, typography } from '../design/tokens';
+import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { getFileInfo } from '../services/fileStorageService';
@@ -299,14 +298,32 @@ export function BatchManageImagesScreen({
       </View>
       {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       {mode === 'move-group' ? (
-        <View style={styles.footerActionList}>
-          <PrimaryButton disabled={selectedCount === 0} label="确认移动分组" loading={isSubmitting} onPress={handleMoveGroup} />
-          <PrimaryButton disabled={isSubmitting} label="取消" onPress={() => resetInlineMode()} variant="ghost" />
+        <View style={styles.footerInlineActions}>
+          <View style={styles.footerPrimaryAction}>
+            <PrimaryButton disabled={selectedCount === 0} label="确认移动分组" loading={isSubmitting} onPress={handleMoveGroup} />
+          </View>
+          <Pressable
+            disabled={isSubmitting}
+            onPress={() => resetInlineMode()}
+            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+          >
+            <Ionicons color={colors.primary.default} name="close" size={17} />
+            <Text style={styles.footerCancelText}>取消</Text>
+          </Pressable>
         </View>
       ) : mode === 'add-tags' ? (
-        <View style={styles.footerActionList}>
-          <PrimaryButton disabled={selectedCount === 0} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
-          <PrimaryButton disabled={isSubmitting} label="取消" onPress={() => resetInlineMode()} variant="ghost" />
+        <View style={styles.footerInlineActions}>
+          <View style={styles.footerPrimaryAction}>
+            <PrimaryButton disabled={selectedCount === 0} label="确认添加标签" loading={isSubmitting} onPress={handleAddTags} />
+          </View>
+          <Pressable
+            disabled={isSubmitting}
+            onPress={() => resetInlineMode()}
+            style={({ pressed }) => [styles.footerCancelButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+          >
+            <Ionicons color={colors.primary.default} name="close" size={17} />
+            <Text style={styles.footerCancelText}>取消</Text>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.batchActionGrid}>
@@ -414,27 +431,8 @@ export function BatchManageImagesScreen({
         ) : null}
 
         {mode === 'add-tags' ? (
-          <LightFormSection hint="保存时追加到选中的图片，不覆盖原有标签。" title="标签">
+          <LightFormSection hint={`追加到已选 ${selectedCount} 张图片，不覆盖原有标签。`} title="添加标签">
             <View style={styles.tagPanel}>
-              {isDevToolsEnabled ? (
-                <DevOnlyCard
-                  description="仅用于开发回归，快速填入固定 batchTag，避免 adb 文本注入污染标签字段。"
-                  title="开发回归入口"
-                >
-                  {/* 仅用于开发回归，正式提测前移除。 */}
-                  <PrimaryButton
-                    label="写入 batchTag 预设"
-                    onPress={() => {
-                      setDraftTags(['batchTag']);
-                      setTagInput('');
-                      if (submitError) {
-                        clearSubmitError();
-                      }
-                    }}
-                    variant="outline"
-                  />
-                </DevOnlyCard>
-              ) : null}
               <View style={styles.tagInputRow}>
                 <TextInput
                   autoCapitalize="none"
@@ -476,11 +474,27 @@ export function BatchManageImagesScreen({
               ) : (
                 <Text style={styles.helperText}>暂时还没有待添加标签。</Text>
               )}
+              {isDevToolsEnabled ? (
+                <Pressable
+                  disabled={isSubmitting}
+                  onPress={() => {
+                    setDraftTags(['batchTag']);
+                    setTagInput('');
+                    if (submitError) {
+                      clearSubmitError();
+                    }
+                  }}
+                  style={({ pressed }) => [styles.devPresetButton, isSubmitting ? styles.batchActionDisabled : null, pressed && !isSubmitting ? styles.pressed : null]}
+                >
+                  <Ionicons color={colors.text.tertiary} name="code-working-outline" size={14} />
+                  <Text style={styles.devPresetText}>回归预设 batchTag</Text>
+                </Pressable>
+              ) : null}
             </View>
           </LightFormSection>
         ) : null}
 
-        <View style={styles.grid}>
+        <View style={[styles.grid, mode !== 'idle' ? styles.gridAfterPanel : null]}>
           {images.map((image) => (
             <ThumbnailTile
               image={image}
@@ -571,6 +585,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: spacing[3],
     paddingHorizontal: spacing[1],
     paddingVertical: spacing[1],
   },
@@ -591,7 +606,8 @@ const styles = StyleSheet.create({
   },
   tagPanel: {
     gap: spacing[2],
-    paddingVertical: spacing[3],
+    paddingBottom: spacing[3],
+    paddingTop: spacing[1],
   },
   tagInputRow: {
     alignItems: 'center',
@@ -606,9 +622,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
     flex: 1,
-    minHeight: 40,
+    minHeight: 38,
     paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    paddingVertical: spacing[1.5],
   },
   addTagButton: {
     alignItems: 'center',
@@ -618,9 +634,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[1],
-    height: 40,
+    height: 38,
     justifyContent: 'center',
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[3],
   },
   addTagLabel: {
     ...typography.textStyles.caption,
@@ -636,11 +652,27 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.secondary,
   },
+  devPresetButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 28,
+    paddingRight: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  devPresetText: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+  },
   grid: {
-    columnGap: layout.gridGap,
+    columnGap: spacing[2],
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: layout.gridGap,
+    rowGap: spacing[2],
+  },
+  gridAfterPanel: {
+    marginTop: spacing[3],
   },
   footerWrap: {
     backgroundColor: colors.background.input,
@@ -659,9 +691,29 @@ const styles = StyleSheet.create({
   footerTitle: {
     ...typography.textStyles.bodyStrong,
   },
-  footerActionList: {
+  footerInlineActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing[2],
     minHeight: metrics.bottomActionHeight,
+  },
+  footerPrimaryAction: {
+    flex: 1,
+    minWidth: 0,
+  },
+  footerCancelButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing[1],
+    height: metrics.bottomActionHeight,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  footerCancelText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.default,
+    fontWeight: '500',
   },
   batchActionGrid: {
     flexDirection: 'row',

@@ -6,20 +6,22 @@ interface FilterChipProps {
   label: string;
   active: boolean;
   onPress: () => void;
+  dense?: boolean;
 }
 
-export function FilterChip({ label, active, onPress }: FilterChipProps) {
+export function FilterChip({ label, active, onPress, dense = false }: FilterChipProps) {
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        dense ? styles.dense : null,
         active ? styles.active : styles.inactive,
         pressed && styles.pressed,
       ]}
     >
-      <Text numberOfLines={1} style={[styles.text, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.text, dense ? styles.denseText : null, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
     </Pressable>
   );
 }
@@ -32,6 +34,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     maxWidth: '100%',
     paddingHorizontal: componentTokens.filterChip.horizontalPadding,
+  },
+  dense: {
+    height: 28,
+    paddingHorizontal: spacing[2],
   },
   active: {
     backgroundColor: colors.primary.weak,
@@ -51,6 +57,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 18,
     maxWidth: 180,
+  },
+  denseText: {
+    ...typography.textStyles.micro,
+    lineHeight: 16,
+    maxWidth: 148,
   },
   activeText: {
     color: colors.primary.active,

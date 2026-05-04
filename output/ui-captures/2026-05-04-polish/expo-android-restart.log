@@ -1,0 +1,14 @@
+Starting project at D:\Project\Pixory\pixory
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+› Opening exp://192.168.2.64:8081 on Pixory_API_35
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ░░░░░░░░░░░░░░░░  1.0% (1/1)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.0% (  6/105)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.9% ( 85/270)
+Android .\index.ts ▓▓▓▓░░░░░░░░░░░░ 28.4% (215/418)
+Android .\index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 44.9% (359/536)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (871/872)
+Android Bundled 31485ms index.ts (872 modules)

@@ -232,22 +232,22 @@ export function ImageDetailScreen({
             </View>
             <View style={styles.noteBlock}>
               <Text style={styles.infoLabel}>备注</Text>
-              <Text numberOfLines={4} style={styles.infoValue}>{image.note || '暂无备注'}</Text>
+              <Text numberOfLines={6} style={[styles.infoValue, styles.noteValue]}>{image.note || '暂无备注'}</Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所属 IP</Text>
-              <Text numberOfLines={2} style={styles.infoValue}>{image.ipName}</Text>
+              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.ipName}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>所在分组</Text>
-              <Text numberOfLines={2} style={styles.infoValue}>
+              <Text style={[styles.infoValue, styles.infoValueLong]}>
                 {image.groupName ? `${image.groupName} · ${getGroupTypeLabel(image.groupType)}` : '未分组'}
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>文件名</Text>
-              <Text numberOfLines={2} style={styles.infoValue}>{image.originalFilename}</Text>
+              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.originalFilename}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>尺寸</Text>
@@ -259,7 +259,7 @@ export function ImageDetailScreen({
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>格式</Text>
-              <Text numberOfLines={1} style={styles.infoValue}>{image.mimeType}</Text>
+              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.mimeType}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>上传时间</Text>
@@ -405,8 +405,15 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     color: colors.text.title,
     flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     textAlign: 'right',
+  },
+  infoValueLong: {
+    textAlign: 'left',
+  },
+  noteValue: {
+    textAlign: 'left',
   },
   tagsWrap: {
     flexDirection: 'row',
