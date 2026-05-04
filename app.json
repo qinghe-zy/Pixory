@@ -4,7 +4,7 @@
     "slug": "pixory",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/pixory-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -16,8 +16,9 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.pixory.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/pixory-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -33,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/pixory-favicon.png"
     },
     "plugins": [
       [
@@ -54,6 +55,12 @@
           ]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f9528887-4f8b-451d-a851-aa1a45e9abae"
+      }
+    },
+    "owner": "qinghe.zy"
   }
 }
