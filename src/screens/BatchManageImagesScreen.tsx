@@ -645,7 +645,7 @@ export function BatchManageImagesScreen({
           <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} selected={activeRuleKeys.includes('ungrouped')} />
           <RuleChip label="无标签" onPress={() => selectByRule('untagged')} selected={activeRuleKeys.includes('untagged')} />
           <RuleChip label="反选" onPress={() => selectByRule('invert')} />
-          <RuleChip label="更多选择" onPress={() => setIsRuleMode((current) => !current)} selected={isRuleMode} />
+          <RuleChip label="规则模式" onPress={() => setIsRuleMode((current) => !current)} selected={isRuleMode} />
         </View>
         {isRuleMode ? (
           <View style={styles.ruleModePanel}>

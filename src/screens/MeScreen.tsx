@@ -6,7 +6,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, ipRepository, settingsRepository } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
@@ -185,9 +185,9 @@ export function MeScreen({
         </View>
         <View style={styles.storageBlock}>
           <View style={styles.storageHeader}>
-            <View>
-              <Text style={styles.storageLabel}>本地原图存储</Text>
-              <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
+            <View style={styles.storageInlineRow}>
+              <Text numberOfLines={1} style={styles.storageLabel}>本地原图存储</Text>
+              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
             </View>
           </View>
           <View style={styles.libraryStatsRow}>
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     minHeight: 202,
     padding: spacing[4],
     overflow: 'hidden',
-    marginBottom: spacing[1],
+    marginBottom: layout.sectionGap,
   },
   profileRow: {
     alignItems: 'center',
@@ -349,6 +349,11 @@ const styles = StyleSheet.create({
   storageLabel: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+  },
+  storageInlineRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: spacing[2],
   },
   storageValue: {
     ...typography.textStyles.statNumber,

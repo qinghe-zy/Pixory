@@ -11,7 +11,7 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, importBatchRepository, ipRepository, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord } from '../database';
-import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
@@ -202,8 +202,6 @@ export function IpDetailScreen({
                 </Text>
               </View>
             </View>
-
-            {ip.description ? <Text style={styles.description}>{ip.description}</Text> : null}
 
             <View style={styles.managementSummary}>
               <View style={styles.statsStrip}>
@@ -457,11 +455,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(23, 33, 43, 0.92)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 12,
-  },
-  description: {
-    ...typography.textStyles.body,
-    color: colors.text.body,
-    maxWidth: layout.maxReadableWidth,
   },
   statsStrip: {
     flexDirection: 'row',

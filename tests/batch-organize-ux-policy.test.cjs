@@ -95,6 +95,8 @@ test('batch rule selection supports multi-rule intersection with selected chips'
   assert.match(rulesSource, /intersection/i);
   assert.match(batchSource, /activeRuleKeys/);
   assert.match(batchSource, /selected=\{activeRuleKeys\.includes/);
+  assert.match(batchSource, /规则模式/);
+  assert.doesNotMatch(batchSource, /更多选择/);
   assert.match(panelSource, /activeRuleKeys/);
   assert.match(panelSource, /按交集加入规则/);
 });
