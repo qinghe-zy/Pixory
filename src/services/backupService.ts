@@ -19,6 +19,12 @@ export interface BackupResult {
   originalCount: number;
   thumbnailCount: number;
   createdAt: string;
+  totalBytes: number;
+}
+
+export interface BackupSystemExportResult {
+  exportedDirUri: string;
+  copiedFileCount: number;
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -53,6 +59,80 @@ async function copyFileIfExists(sourceUri: string, destinationUri: string): Prom
 
   await copyLocalFile(sourceUri, destinationUri);
   return true;
+}
+
+function getFileName(fileUri: string): string {
+  return fileUri.replace(/\/$/, '').split('/').pop() ?? 'backup-file';
+}
+
+function getFileStem(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+}
+
+function getMimeType(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.sqlite')) return 'application/octet-stream';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'application/octet-stream';
+}
+
+async function calculateDirectorySize(directoryUri: string): Promise<number> {
+  const entries = await FileSystem.readDirectoryAsync(directoryUri);
+  let totalBytes = 0;
+
+  for (const entry of entries) {
+    const entryUri = `${directoryUri}${entry}`;
+    const info = await FileSystem.getInfoAsync(entryUri);
+    if (!info.exists) {
+      continue;
+    }
+
+    if (info.isDirectory) {
+      totalBytes += await calculateDirectorySize(`${entryUri}/`);
+    } else {
+      totalBytes += info.size ?? 0;
+    }
+  }
+
+  return totalBytes;
+}
+
+async function copyBackupDirectoryToSaf(sourceDirUri: string, destinationDirUri: string): Promise<number> {
+  const entries = await FileSystem.readDirectoryAsync(sourceDirUri);
+  let copiedFileCount = 0;
+
+  for (const entry of entries) {
+    const sourceUri = `${sourceDirUri}${entry}`;
+    const info = await FileSystem.getInfoAsync(sourceUri);
+    if (!info.exists) {
+      continue;
+    }
+
+    if (info.isDirectory) {
+      const childDestinationDir = await FileSystem.StorageAccessFramework.makeDirectoryAsync(destinationDirUri, entry);
+      copiedFileCount += await copyBackupDirectoryToSaf(`${sourceUri}/`, childDestinationDir);
+      continue;
+    }
+
+    const destinationFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      destinationDirUri,
+      getFileStem(entry),
+      getMimeType(entry)
+    );
+    const base64Contents = await FileSystem.readAsStringAsync(sourceUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    await FileSystem.StorageAccessFramework.writeAsStringAsync(destinationFileUri, base64Contents, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    copiedFileCount += 1;
+  }
+
+  return copiedFileCount;
 }
 
 async function createBackupShell(prefix: string) {
@@ -121,7 +201,7 @@ export async function createFullBackup(): Promise<BackupResult> {
   );
   await settingsRepository.setLastBackupAt(createdAt);
 
-  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount };
+  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
 }
 
 export async function createIpBackup(ipId: number): Promise<BackupResult> {
@@ -172,5 +252,24 @@ export async function createIpBackup(ipId: number): Promise<BackupResult> {
     )
   );
 
-  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount };
+  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+}
+
+export async function exportBackupToSystemDirectory(backupDir: string): Promise<BackupSystemExportResult> {
+  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permissions.granted) {
+    throw new Error('未选择系统导出目录。');
+  }
+
+  const backupFolderName = getFileName(backupDir);
+  const exportedDirUri = await FileSystem.StorageAccessFramework.makeDirectoryAsync(
+    permissions.directoryUri,
+    backupFolderName
+  );
+  const copiedFileCount = await copyBackupDirectoryToSaf(backupDir.endsWith('/') ? backupDir : `${backupDir}/`, exportedDirUri);
+
+  return {
+    exportedDirUri,
+    copiedFileCount,
+  };
 }

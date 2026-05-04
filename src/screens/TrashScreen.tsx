@@ -92,15 +92,21 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     void (async () => {
       try {
         const result = await clearTrash();
+        multiSelect.clearSelection();
         onChanged();
         reload();
 
-        if (result.failures.length > 0) {
-          showToast(`已清空 ${result.clearedCount} 张，仍有 ${result.remainingCount} 张保留`);
+        if (result.databaseDeletedCount !== result.requestedCount) {
+          showToast(`数据库已删除 ${result.databaseDeletedCount}/${result.requestedCount} 张，本地文件已保留待核验`);
           return;
         }
 
-        showToast(`已永久删除 ${result.clearedCount} 张`);
+        if (result.fileFailures.length > 0) {
+          showToast(`数据库已清空 ${result.databaseDeletedCount} 张，${result.fileFailures.length} 个文件需手动核验`);
+          return;
+        }
+
+        showToast(`已永久删除 ${result.databaseDeletedCount} 张，清理 ${result.fileDeletedCount} 个文件`);
       } catch (error) {
         const message = error instanceof Error ? error.message : '未知错误';
         showToast(`清空回收站失败：${message}`);

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'groups' | 'tags' | 'me';
 
@@ -49,16 +49,13 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    ...shadows.floating,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
-    borderTopLeftRadius: componentTokens.bottomTab.radiusTop,
-    borderTopRightRadius: componentTokens.bottomTab.radiusTop,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    minHeight: componentTokens.bottomTab.height,
+    minHeight: Math.max(58, componentTokens.bottomTab.height - 10),
     paddingHorizontal: spacing[2],
-    paddingTop: spacing[2],
+    paddingTop: spacing[1],
   },
   item: {
     alignItems: 'center',
@@ -66,7 +63,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing[1],
     justifyContent: 'center',
-    minHeight: 54,
+    minHeight: 46,
   },
   label: {
     ...typography.textStyles.navTab,

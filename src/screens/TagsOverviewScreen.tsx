@@ -45,7 +45,16 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     () => [...tags].sort((left, right) => right.imageCount - left.imageCount).slice(0, 6),
     [tags]
   );
+  const recentTags = useMemo(
+    () =>
+      [...tags]
+        .filter((tag) => tag.lastUsedAt)
+        .sort((left, right) => new Date(right.lastUsedAt ?? '').getTime() - new Date(left.lastUsedAt ?? '').getTime())
+        .slice(0, 6),
+    [tags]
+  );
   const shouldShowPopular = !searchText.trim() && popularTags.length > 0;
+  const shouldShowRecent = !searchText.trim() && recentTags.length > 0;
 
   function confirmDeleteTag() {
     if (!deleteTag) {
@@ -132,6 +141,25 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
         onRetry={reload}
       >
         <View style={styles.content}>
+          {shouldShowRecent ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>最近使用</Text>
+              <View style={styles.allTags}>
+                {recentTags.map((tag) => (
+                  <Pressable
+                    key={tag.id}
+                    onLongPress={() => setActionTag(tag)}
+                    onPress={() => onOpenTag(tag.id)}
+                    style={({ pressed }) => [styles.recentTagPill, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
+                    <Text style={styles.pillCount}>{tag.imageCount}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {shouldShowPopular ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>热门标签</Text>
@@ -312,6 +340,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[1.5],
     minHeight: 30,
+    paddingHorizontal: spacing[2],
+  },
+  recentTagPill: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1.5],
+    minHeight: 32,
     paddingHorizontal: spacing[2],
   },
   selectedPill: {

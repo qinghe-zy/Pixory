@@ -73,6 +73,7 @@ export function ImportImagesScreen({
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [isOptionalOpen, setIsOptionalOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
@@ -351,107 +352,122 @@ export function ImportImagesScreen({
           </View>
         </LightFormSection>
 
-        <LightFormSection hint="一键套用常见导入归属和初始整理信息。" title="导入模板">
-          <View style={styles.templateGrid}>
-            {IMPORT_TEMPLATES.map((template) => (
-              <Pressable
-                key={template.key}
-                onPress={() => void applyTemplate(template)}
-                style={({ pressed }) => [styles.templateChip, pressed && styles.pressed]}
-              >
-                <Text numberOfLines={1} style={styles.templateText}>{template.name}</Text>
-              </Pressable>
-            ))}
+        <Pressable onPress={() => setIsOptionalOpen((current) => !current)} style={({ pressed }) => [styles.optionalToggle, pressed && styles.pressed]}>
+          <View style={styles.optionalIcon}>
+            <Ionicons color={colors.primary.active} name="options-outline" size={17} />
           </View>
-        </LightFormSection>
+          <View style={styles.optionalCopy}>
+            <Text style={styles.optionalTitle}>可选整理信息</Text>
+            <Text numberOfLines={1} style={styles.optionalHint}>标签、备注、默认收藏和导入模板</Text>
+          </View>
+          <Ionicons color={colors.text.secondary} name={isOptionalOpen ? 'chevron-up' : 'chevron-down'} size={17} />
+        </Pressable>
 
-        <LightFormSection hint="这些内容会应用到本次导入的全部图片。" title="可选设置">
-          {recentTags.length > 0 ? (
-            <View style={styles.quickTags}>
-              <Text style={styles.inlineLabel}>常用标签</Text>
-              <View style={styles.tagsWrap}>
-                {recentTags.map((tag) => (
+        {isOptionalOpen ? (
+          <>
+            <LightFormSection hint="一键套用常见导入归属和初始整理信息。" title="导入模板">
+              <View style={styles.templateGrid}>
+                {IMPORT_TEMPLATES.map((template) => (
                   <Pressable
-                    key={tag.id}
-                    onPress={() => setTags((current) => mergeDraftTagNames(current, tag.name))}
-                    style={({ pressed }) => [styles.quickTagChip, pressed && styles.pressed]}
+                    key={template.key}
+                    onPress={() => void applyTemplate(template)}
+                    style={({ pressed }) => [styles.templateChip, pressed && styles.pressed]}
                   >
-                    <Text style={styles.quickTagText}>#{tag.name}</Text>
+                    <Text numberOfLines={1} style={styles.templateText}>{template.name}</Text>
                   </Pressable>
                 ))}
               </View>
-            </View>
-          ) : null}
-          <View style={styles.tagRow}>
-            <View style={styles.tagInputRow}>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
+            </LightFormSection>
+
+            <LightFormSection hint="这些内容会应用到本次导入的全部图片。" title="标签与备注">
+              {recentTags.length > 0 ? (
+                <View style={styles.quickTags}>
+                  <Text style={styles.inlineLabel}>常用标签</Text>
+                  <View style={styles.tagsWrap}>
+                    {recentTags.map((tag) => (
+                      <Pressable
+                        key={tag.id}
+                        onPress={() => setTags((current) => mergeDraftTagNames(current, tag.name))}
+                        style={({ pressed }) => [styles.quickTagChip, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.quickTagText}>#{tag.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+              <View style={styles.tagRow}>
+                <View style={styles.tagInputRow}>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!isSubmitting}
+                    maxLength={TAG_NAME_MAX_LENGTH}
+                    onChangeText={(value) => {
+                      if (/[,\uFF0C\s]/.test(value)) {
+                        setTags((current) => mergeDelimitedDraftTagNames(current, value));
+                        setTagInput('');
+                        return;
+                      }
+                      setTagInput(value);
+                      if (submitError) {
+                        clearSubmitError();
+                      }
+                    }}
+                    onSubmitEditing={() => addTag()}
+                    placeholder="例如：海边、KV、立绘"
+                    placeholderTextColor={colors.text.placeholder}
+                    returnKeyType="done"
+                    selectionColor={colors.primary.default}
+                    style={styles.tagInput}
+                    value={tagInput}
+                  />
+                  <Pressable
+                    accessibilityLabel="添加标签"
+                    hitSlop={8}
+                    onPress={() => addTag()}
+                    style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons color={colors.primary.default} name="add" size={18} />
+                    <Text style={styles.addTagLabel}>添加</Text>
+                  </Pressable>
+                </View>
+
+                {tags.length > 0 ? (
+                  <View style={styles.tagsWrap}>
+                    {tags.map((tag) => (
+                      <TagChip key={tag} label={tag} onRemove={() => setTags((current) => current.filter((item) => item !== tag))} removable />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+
+              <FormTextareaRow
                 editable={!isSubmitting}
-                maxLength={TAG_NAME_MAX_LENGTH}
+                hint="给这批图片补充统一备注。"
+                label="备注"
+                maxLength={NOTE_MAX_LENGTH}
+                minHeight={84}
                 onChangeText={(value) => {
-                  if (/[,\uFF0C\s]/.test(value)) {
-                    setTags((current) => mergeDelimitedDraftTagNames(current, value));
-                    setTagInput('');
-                    return;
-                  }
-                  setTagInput(value);
+                  setNote(value);
                   if (submitError) {
                     clearSubmitError();
                   }
                 }}
-                onSubmitEditing={() => addTag()}
-                placeholder="例如：海边、KV、立绘"
-                placeholderTextColor={colors.text.placeholder}
-                returnKeyType="done"
-                selectionColor={colors.primary.default}
-                style={styles.tagInput}
-                value={tagInput}
+                placeholder="例如：活动预热图、角色展示图。"
+                value={note}
               />
-              <Pressable
-                accessibilityLabel="添加标签"
-                hitSlop={8}
-                onPress={() => addTag()}
-                style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
-    >
-                <Ionicons color={colors.primary.default} name="add" size={18} />
-                <Text style={styles.addTagLabel}>添加</Text>
-              </Pressable>
-            </View>
 
-            {tags.length > 0 ? (
-              <View style={styles.tagsWrap}>
-                {tags.map((tag) => (
-                  <TagChip key={tag} label={tag} onRemove={() => setTags((current) => current.filter((item) => item !== tag))} removable />
-                ))}
-              </View>
-            ) : null}
-          </View>
-
-          <FormTextareaRow
-            editable={!isSubmitting}
-            hint="给这批图片补充统一备注。"
-            label="备注"
-            maxLength={NOTE_MAX_LENGTH}
-            minHeight={84}
-            onChangeText={(value) => {
-              setNote(value);
-              if (submitError) {
-                clearSubmitError();
-              }
-            }}
-            placeholder="例如：活动预热图、角色展示图。"
-            value={note}
-          />
-
-          <SwitchSettingRow
-            disabled={isSubmitting}
-            hint="导入后全部标记为收藏。"
-            label="默认收藏"
-            onValueChange={setIsFavorite}
-            value={isFavorite}
-          />
-        </LightFormSection>
+              <SwitchSettingRow
+                disabled={isSubmitting}
+                hint="导入后全部标记为收藏。"
+                label="默认收藏"
+                onValueChange={setIsFavorite}
+                value={isFavorite}
+              />
+            </LightFormSection>
+          </>
+        ) : null}
 
         <DevOnlyCard
           description="仅用于开发回归，必须保持与正式导入流程隔离，避免影响正式点击区域。"
@@ -537,6 +553,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     paddingBottom: spacing[2],
+  },
+  optionalToggle: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 54,
+    paddingHorizontal: spacing[3],
+  },
+  optionalIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.sm,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  optionalCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  optionalTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  optionalHint: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   createGroupInput: {
     ...typography.textStyles.body,

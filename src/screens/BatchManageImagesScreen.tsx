@@ -21,6 +21,7 @@ import { getFileInfo } from '../services/fileStorageService';
 import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
+import { useToast } from '../components/AppToast';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
 type BatchMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
@@ -48,6 +49,7 @@ export function BatchManageImagesScreen({
   onChanged,
   onDeleted,
 }: BatchManageImagesScreenProps) {
+  const { showToast } = useToast();
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
@@ -158,6 +160,7 @@ export function BatchManageImagesScreen({
 
         resetInlineMode();
         onChanged();
+        showToast(`已处理 ${changedCount} 张`);
       },
       {
         formatError: (error) => {
@@ -195,6 +198,7 @@ export function BatchManageImagesScreen({
 
         resetInlineMode();
         onChanged();
+        showToast(`已为 ${selectedCount} 张添加标签`);
       },
       {
         formatError: (error) => {
@@ -225,6 +229,7 @@ export function BatchManageImagesScreen({
         }
 
         onChanged();
+        showToast(isFavorite ? `已收藏 ${changedCount} 张` : `已取消收藏 ${changedCount} 张`);
       },
       {
         formatError: (error) => {
@@ -249,6 +254,7 @@ export function BatchManageImagesScreen({
     void runSubmit(
       async () => {
         const imageCopies = [...selectedImages];
+        const idsToDelete = [...selectedImageIds];
         const deletedCount = await imageRepository.softDeleteMany(selectedImageIds);
         if (deletedCount === 0) {
           throw new Error('没有可删除的图片。');
@@ -289,6 +295,20 @@ export function BatchManageImagesScreen({
           throw new Error('软删除后发现文件缺失，请检查本地存储状态。');
         }
 
+        showToast({
+          message: `已移入回收站 ${deletedCount} 张`,
+          actionLabel: '撤销',
+          durationMs: 5200,
+          onAction: () => {
+            void (async () => {
+              const restoredCount = await imageRepository.restoreMany(idsToDelete);
+              if (restoredCount > 0) {
+                onChanged();
+                showToast(`已恢复 ${restoredCount} 张`);
+              }
+            })();
+          },
+        });
         onDeleted();
       },
       {

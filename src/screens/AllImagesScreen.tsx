@@ -61,11 +61,13 @@ export function AllImagesScreen({
                 ? await imageRepository.findByIpId(ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' })
                 : activeFilter.type === 'mime'
                   ? await imageRepository.findByIpId(ipId, { mimeType: activeFilter.mimeType })
-                  : activeFilter.type === 'group'
-                    ? await imageRepository.findByGroupId(activeFilter.groupId)
-                    : activeFilter.type === 'tag'
-                      ? await imageRepository.findByIpId(ipId, { tagId: activeFilter.tagId })
-                      : await imageRepository.findByIpId(ipId);
+                  : activeFilter.type === 'size'
+                    ? await imageRepository.findByIpId(ipId, { minFileSize: activeFilter.minFileSize, maxFileSize: activeFilter.maxFileSize })
+                    : activeFilter.type === 'group'
+                      ? await imageRepository.findByGroupId(activeFilter.groupId)
+                      : activeFilter.type === 'tag'
+                        ? await imageRepository.findByIpId(ipId, { tagId: activeFilter.tagId })
+                        : await imageRepository.findByIpId(ipId);
 
       return { ip, images, groups, tags };
     },
@@ -101,6 +103,10 @@ export function AllImagesScreen({
     }
 
     if (activeFilter.type === 'mime') {
+      return activeFilter.label;
+    }
+
+    if (activeFilter.type === 'size') {
       return activeFilter.label;
     }
 
@@ -161,6 +167,8 @@ export function AllImagesScreen({
       { key: 'recent-viewed', label: '最近查看', icon: 'time-outline', onPress: () => setActiveFilter({ type: 'recent-viewed' }) },
       { key: 'jpeg', label: 'JPEG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/jpeg', label: 'JPEG' }) },
       { key: 'png', label: 'PNG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/png', label: 'PNG' }) },
+      { key: 'small-size', label: '小于 500 KB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '< 500 KB', maxFileSize: 500 * 1024 }) },
+      { key: 'large-size', label: '大于 2 MB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '> 2 MB', minFileSize: 2 * 1024 * 1024 }) },
     ];
 
     return [

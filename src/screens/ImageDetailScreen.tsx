@@ -1,6 +1,7 @@
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -52,6 +53,8 @@ export function ImageDetailScreen({
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isMoreSheetVisible, setIsMoreSheetVisible] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [previewResizeMode, setPreviewResizeMode] = useState<'contain' | 'cover'>('contain');
+  const [fileAvailability, setFileAvailability] = useState<{ originalExists: boolean; thumbnailExists: boolean } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
@@ -78,15 +81,21 @@ export function ImageDetailScreen({
           throw new Error('没有找到这张图片。');
         }
 
-        const [groupItems, contextItems] = await Promise.all([
+        const [groupItems, contextItems, originalInfo, thumbnailInfo] = await Promise.all([
           imageRepository.findGroupsByImageId(imageId),
           context ? loadDetailContextImages(context) : Promise.resolve([]),
+          getFileInfo(detail.originalFileUri),
+          detail.thumbnailFileUri ? getFileInfo(detail.thumbnailFileUri) : Promise.resolve(null),
         ]);
 
         setImage(detail);
         setTags(tagItems);
         setGroups(groupItems);
         setContextImages(contextItems);
+        setFileAvailability({
+          originalExists: originalInfo.exists && !originalInfo.isDirectory,
+          thumbnailExists: detail.thumbnailFileUri ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory) : true,
+        });
         void imageRepository.touchLastViewedAt(imageId);
         devLog('Pixory image detail readback:', {
           imageId: detail.id,
@@ -249,6 +258,26 @@ export function ImageDetailScreen({
     }
   }
 
+  async function handleCopyFileInfo() {
+    if (!image) {
+      return;
+    }
+
+    await Clipboard.setStringAsync(
+      [
+        `文件名：${image.originalFilename}`,
+        `尺寸：${formatImageDimensions(image.width, image.height)}`,
+        `大小：${formatFileSize(image.fileSize)}`,
+        `MIME：${image.mimeType}`,
+        `所属 IP：${image.ipName}`,
+        `分组：${image.groupName ?? '未分组'}`,
+        `原图路径：${image.originalFileUri}`,
+        `缩略图路径：${image.thumbnailFileUri ?? '无'}`,
+      ].join('\n')
+    );
+    showToast('文件信息已复制');
+  }
+
   return (
     <AppScreen scrollable>
       <Header onBack={onBack} rightSlot={rightSlot} title="图片详情" />
@@ -264,12 +293,16 @@ export function ImageDetailScreen({
             onPress={() => setIsFullScreenOpen(true)}
             style={({ pressed }) => [styles.previewWrap, pressed && styles.previewPressed]}
           >
-            <Image resizeMode="cover" source={{ uri: image.originalFileUri }} style={styles.previewImage} />
+            <Image resizeMode={previewResizeMode} source={{ uri: image.originalFileUri }} style={styles.previewImage} />
             <View style={styles.previewAction}>
               <Ionicons color={colors.text.inverse} name="expand-outline" size={15} />
               <Text style={styles.previewActionText}>查看原图</Text>
             </View>
           </Pressable>
+          <View style={styles.previewModeRow}>
+            <PreviewModeButton active={previewResizeMode === 'contain'} label="适应" onPress={() => setPreviewResizeMode('contain')} />
+            <PreviewModeButton active={previewResizeMode === 'cover'} label="填充" onPress={() => setPreviewResizeMode('cover')} />
+          </View>
 
           <ContentCard style={styles.detailCard}>
             <View style={styles.imageTitleBlock}>
@@ -288,8 +321,16 @@ export function ImageDetailScreen({
               {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
             </View>
             <View style={styles.safetyPanel}>
-              <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={16} />
-              <Text style={styles.safetyText}>原图已保存到 Pixory 本地私有存储；缩略图是独立预览文件，不压缩、不重编码。</Text>
+              <Ionicons
+                color={fileAvailability?.originalExists === false ? colors.semantic.danger : colors.semantic.success}
+                name={fileAvailability?.originalExists === false ? 'warning-outline' : 'shield-checkmark-outline'}
+                size={16}
+              />
+              <Text style={styles.safetyText}>
+                {fileAvailability?.originalExists === false
+                  ? '原图文件当前不可用，请检查本机存储或备份状态。'
+                  : '原图已保存到 Pixory 本地私有存储；缩略图是独立预览文件，不压缩、不重编码。'}
+              </Text>
             </View>
             <View style={styles.noteBlock}>
               <Text style={styles.infoLabel}>备注</Text>
@@ -398,7 +439,7 @@ export function ImageDetailScreen({
         items={[
           { key: 'edit', label: '编辑信息', icon: 'create-outline', onPress: () => image && onEdit(image.id) },
           { key: 'save', label: isSavingToAlbum ? '保存中' : '保存到相册', icon: 'download-outline', disabled: isSavingToAlbum, onPress: handleSaveToAlbum },
-          { key: 'info', label: '查看文件信息', icon: 'information-circle-outline', meta: image ? `${formatImageDimensions(image.width, image.height)} · ${formatFileSize(image.fileSize)}` : undefined, onPress: () => showToast('文件信息已在详情页展示') },
+          { key: 'copy-info', label: '复制文件信息', icon: 'copy-outline', meta: image ? `${formatImageDimensions(image.width, image.height)} · ${formatFileSize(image.fileSize)}` : undefined, onPress: () => void handleCopyFileInfo() },
           { key: 'delete', label: '删除到回收站', icon: 'trash-outline', danger: true, onPress: handleDelete },
         ]}
         onClose={() => setIsMoreSheetVisible(false)}
@@ -429,6 +470,7 @@ async function loadDetailContextImages(context: ImageViewerContext): Promise<Ima
     if (filter.type === 'untagged') return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
     if (filter.type === 'recent-viewed') return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
     if (filter.type === 'mime') return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
+    if (filter.type === 'size') return imageRepository.findByIpId(context.ipId, { minFileSize: filter.minFileSize, maxFileSize: filter.maxFileSize });
     if (filter.type === 'group') return imageRepository.findByGroupId(filter.groupId);
     if (filter.type === 'tag') return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });
     return imageRepository.findByIpId(context.ipId);
@@ -452,6 +494,14 @@ function PrimaryAction({
     <Pressable onPress={onPress} style={({ pressed }) => [actionStyles.button, pressed && actionStyles.pressed]}>
       <Ionicons color={colors.primary.default} name={icon} size={20} />
       <Text style={actionStyles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function PreviewModeButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.previewModeButton, active ? styles.previewModeButtonActive : null, pressed && styles.pressed]}>
+      <Text style={[styles.previewModeText, active ? styles.previewModeTextActive : null]}>{label}</Text>
     </Pressable>
   );
 }
@@ -495,7 +545,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   detailCard: {
-    marginTop: -spacing[2],
+    marginTop: 0,
   },
   imageTitleBlock: {
     gap: spacing[1],
@@ -535,6 +585,33 @@ const styles = StyleSheet.create({
   previewImage: {
     aspectRatio: 0.9,
     width: '100%',
+  },
+  previewModeRow: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    padding: spacing[1],
+  },
+  previewModeButton: {
+    borderRadius: radius.pill,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  previewModeButtonActive: {
+    backgroundColor: colors.background.surface,
+  },
+  previewModeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  previewModeTextActive: {
+    color: colors.primary.active,
   },
   previewAction: {
     alignItems: 'center',

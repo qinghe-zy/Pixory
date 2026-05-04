@@ -15,7 +15,7 @@ export function formatUpdatedLabel(isoTimestamp: string): string {
     now.getDate() === date.getDate();
 
   if (isSameDay) {
-    return `今天 ${pad(date.getHours())}:${pad(date.getMinutes())} 更新`;
+    return '今天更新';
   }
 
   return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} 更新`;

@@ -28,6 +28,7 @@ interface MeStats {
   deletedImageCount: number;
   profileAvatarUri: string | null;
   totalOriginalBytes: number;
+  lastBackupAt: string | null;
 }
 
 const ENTRY_ITEMS = [
@@ -82,6 +83,7 @@ export function MeScreen({
         deletedImageCount,
         totalOriginalBytes,
         profileAvatarUri,
+        lastBackupAt,
       ] = await Promise.all([
         ipRepository.count(),
         imageRepository.count(),
@@ -89,6 +91,7 @@ export function MeScreen({
         imageRepository.countDeleted(),
         imageRepository.sumFileSize({ includeDeleted: true }),
         settingsRepository.getProfileAvatarUri(),
+        settingsRepository.getLastBackupAt(),
       ]);
 
       return {
@@ -98,6 +101,7 @@ export function MeScreen({
         deletedImageCount,
         profileAvatarUri,
         totalOriginalBytes,
+        lastBackupAt,
       };
     },
     [refreshToken],
@@ -188,7 +192,7 @@ export function MeScreen({
               <Text style={styles.heroTitle}>本地空间</Text>
               <Text style={styles.badge}>Local</Text>
             </View>
-            <Text style={styles.heroDescription}>愿你被世界温柔以待。</Text>
+            <Text style={styles.heroDescription}>所有资产仅保存在本机。</Text>
           </View>
         </View>
         <View style={styles.storageBlock}>
@@ -204,9 +208,16 @@ export function MeScreen({
           <View style={styles.storageTrack}>
             <View style={[styles.storageFill, { width: storageFillWidth }]} />
           </View>
-          <Text style={styles.storageHint}>仅统计已导入原图，缩略图占用未单独展开。</Text>
+          <Text style={styles.storageHint}>本地整理，原图保留；头像仅是本机偏好，不代表账号体系。</Text>
         </View>
       </ContentCard>
+
+      <View style={styles.backupNotice}>
+        <Ionicons color={colors.primary.active} name="archive-outline" size={17} />
+        <Text style={styles.backupNoticeText}>
+          {data?.lastBackupAt ? `上次备份：${data.lastBackupAt.slice(5, 10)}，你的 IP 资产库离线可用。` : '尚未备份。建议导出完整备份，便于迁移或恢复。'}
+        </Text>
+      </View>
 
       <ContentCard style={styles.statsCard}>
         <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
@@ -412,6 +423,23 @@ const styles = StyleSheet.create({
   storageHint: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+  },
+  backupNotice: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+  },
+  backupNoticeText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    flex: 1,
+    minWidth: 0,
   },
   entryList: {
     gap: spacing[3],

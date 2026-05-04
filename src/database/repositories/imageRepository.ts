@@ -100,6 +100,16 @@ function buildImageListQueryParts(
     values.push(options.mimeType);
   }
 
+  if (options?.minFileSize != null) {
+    clauses.push('image_assets.fileSize >= ?');
+    values.push(options.minFileSize);
+  }
+
+  if (options?.maxFileSize != null) {
+    clauses.push('image_assets.fileSize <= ?');
+    values.push(options.maxFileSize);
+  }
+
   const searchText = options?.searchText?.trim();
   if (searchText) {
     clauses.push(

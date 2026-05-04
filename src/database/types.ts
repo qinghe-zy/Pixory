@@ -235,6 +235,8 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   groupId?: number;
   tagId?: number;
   mimeType?: string;
+  minFileSize?: number;
+  maxFileSize?: number;
   searchText?: string;
   orderBy?: ImageSortOrder;
 }

@@ -41,7 +41,6 @@ export function HomeLibraryScreen({
   onOpenNeedsOrganizing,
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
-  const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
   const [deleteIp, setDeleteIp] = useState<IpListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
@@ -49,13 +48,12 @@ export function HomeLibraryScreen({
       const [items, needsOrganizingCount] = await Promise.all([
         ipRepository.findLibraryItems({
           filter: activeFilter,
-          searchText,
         }),
         imageRepository.countNeedsOrganizing(),
       ]);
       return { items, needsOrganizingCount };
     },
-    [activeFilter, refreshKey, searchText],
+    [activeFilter, refreshKey],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -85,7 +83,7 @@ export function HomeLibraryScreen({
     [onCreateIp]
   );
 
-  const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && !searchText && activeFilter === 'all';
+  const isLibraryCompletelyEmpty = !isLoading && !errorMessage && items.length === 0 && activeFilter === 'all';
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
   function handleDeleteIp(ip: IpListItem) {
@@ -125,11 +123,7 @@ export function HomeLibraryScreen({
       titleVariant="brand"
     >
       <View style={styles.topArea}>
-        <SearchBar onChangeText={setSearchText} placeholder="搜索 IP / 关键词 / 标签" value={searchText} />
-        <Pressable onPress={onOpenGlobalSearch} style={({ pressed }) => [styles.globalSearch, pressed && styles.pressed]}>
-          <Ionicons color={colors.primary.default} name="search-outline" size={16} />
-          <Text style={styles.globalSearchText}>全局搜索 IP、分组、标签、文件名和备注</Text>
-        </Pressable>
+        <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
         {needsOrganizingCount > 0 ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
             <View style={styles.needsIcon}>
@@ -158,14 +152,14 @@ export function HomeLibraryScreen({
               ? commonButtonCopy.createFirstIp
               : activeFilter === 'favorite'
                 ? commonButtonCopy.createIp
-                : commonButtonCopy.clearSearch
+                : commonButtonCopy.createIp
           }
           emptyDescription={
             isLibraryCompletelyEmpty
               ? commonEmptyStateCopy.noIpsDescription
               : activeFilter === 'favorite'
                 ? '你还没有收藏的 IP，可以先创建一个并标记收藏。'
-                : '试试更短的关键词，或者切换到其他筛选条件。'
+                : '切换到其他筛选条件，或创建新的 IP。'
           }
           emptyIconName={
             activeFilter === 'favorite'
@@ -179,7 +173,7 @@ export function HomeLibraryScreen({
               ? commonEmptyStateCopy.noIpsTitle
               : activeFilter === 'favorite'
                 ? commonEmptyStateCopy.noFavoritesTitle
-                : commonEmptyStateCopy.noSearchResultTitle
+                : '当前筛选下没有 IP'
           }
           errorMessage={errorMessage}
           errorTitle={commonErrorCopy.listUnavailableTitle}
@@ -187,7 +181,7 @@ export function HomeLibraryScreen({
           loading={isLoading}
           loadingDescription="SQLite 数据加载完成后，这里会展示真实的 IP 列表。"
           loadingTitle="正在读取本地资产库"
-          onEmptyAction={activeFilter === 'favorite' || isLibraryCompletelyEmpty ? onCreateIp : () => setSearchText('')}
+          onEmptyAction={onCreateIp}
           onRetry={reload}
         >
           <View style={styles.grid}>
@@ -235,19 +229,6 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     gap: componentTokens.filterChip.gap,
-  },
-  globalSearch: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: 30,
-    paddingHorizontal: spacing[1],
-  },
-  globalSearchText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.default,
-    fontWeight: '600',
   },
   needsPanel: {
     alignItems: 'center',

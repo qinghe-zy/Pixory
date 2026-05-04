@@ -15,7 +15,7 @@ import { colors, componentTokens, layout, radius, shadows, spacing, typography }
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
-import { formatDate, getIpInitials } from '../utils/formatters';
+import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 
 interface IpDetailScreenProps {
   ipId: number;
@@ -196,7 +196,7 @@ export function IpDetailScreen({
               <StatBlock label="图片数量" value={String(ip.imageCount)} />
               <StatBlock label="分组数量" value={String(ip.groupCount)} />
               <StatBlock label="标签数量" value={String(ip.tagCount)} />
-              <StatBlock label="最近更新" value={formatDate(ip.recentUpdatedAt)} />
+              <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
             </View>
 
             {needsOrganizingCount > 0 ? (

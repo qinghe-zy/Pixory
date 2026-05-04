@@ -274,6 +274,13 @@ async function loadImagesForContext(context: ImageViewerContext): Promise<ImageL
       return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
     }
 
+    if (filter.type === 'size') {
+      return imageRepository.findByIpId(context.ipId, {
+        minFileSize: filter.minFileSize,
+        maxFileSize: filter.maxFileSize,
+      });
+    }
+
     if (filter.type === 'group') {
       return imageRepository.findByGroupId(filter.groupId);
     }

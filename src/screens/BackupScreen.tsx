@@ -8,8 +8,8 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ipRepository, settingsRepository, type IpRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
-import { createFullBackup, createIpBackup, type BackupResult } from '../services/backupService';
-import { formatDateTime } from '../utils/formatters';
+import { createFullBackup, createIpBackup, exportBackupToSystemDirectory, type BackupResult } from '../services/backupService';
+import { formatDateTime, formatFileSize } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
 
 interface BackupScreenProps {
@@ -20,7 +20,9 @@ interface BackupScreenProps {
 export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
   const { showToast } = useToast();
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [lastResult, setLastResult] = useState<BackupResult | null>(null);
+  const [lastExportUri, setLastExportUri] = useState<string | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ips: IpRecord[]; lastBackupAt: string | null }>(
     async () => {
       const [ips, lastBackupAt] = await Promise.all([ipRepository.findAll(), settingsRepository.getLastBackupAt()]);
@@ -46,12 +48,30 @@ export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
     try {
       const result = await task();
       setLastResult(result);
+      setLastExportUri(null);
       showToast(successMessage);
       reload();
     } catch (error) {
       showToast(error instanceof Error ? `备份失败：${error.message}` : '备份失败');
     } finally {
       setIsBackingUp(false);
+    }
+  }
+
+  async function handleExportToSystemDirectory() {
+    if (!lastResult || isExporting) {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const exportResult = await exportBackupToSystemDirectory(lastResult.backupDir);
+      setLastExportUri(exportResult.exportedDirUri);
+      showToast(`已导出 ${exportResult.copiedFileCount} 个文件到系统目录`);
+    } catch (error) {
+      showToast(error instanceof Error ? `导出失败：${error.message}` : '导出失败');
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -79,9 +99,20 @@ export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
 
       {lastResult ? (
         <View style={styles.resultPanel}>
-          <Text style={styles.resultTitle}>最近导出目录</Text>
+          <Text style={styles.resultTitle}>最近备份包</Text>
           <Text selectable style={styles.resultPath}>{lastResult.backupDir}</Text>
-          <Text style={styles.resultMeta}>原图 {lastResult.originalCount} · 缩略图 {lastResult.thumbnailCount}</Text>
+          <Text style={styles.resultMeta}>
+            SQLite + manifest + 原图 {lastResult.originalCount} · 缩略图 {lastResult.thumbnailCount} · {formatFileSize(lastResult.totalBytes)}
+          </Text>
+          <Text style={styles.resultHint}>这是完整本地备份，可用于迁移或后续恢复；当前版本暂不支持一键恢复。</Text>
+          <PrimaryButton
+            disabled={isExporting}
+            label={isExporting ? '正在导出' : '导出到系统文件夹'}
+            loading={isExporting}
+            onPress={handleExportToSystemDirectory}
+            variant="outline"
+          />
+          {lastExportUri ? <Text selectable style={styles.resultPath}>系统目录：{lastExportUri}</Text> : null}
         </View>
       ) : null}
 
@@ -176,6 +207,10 @@ const styles = StyleSheet.create({
   resultMeta: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+  },
+  resultHint: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   ipList: {
     gap: spacing[2],
