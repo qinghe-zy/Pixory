@@ -6,15 +6,17 @@ import { colors, componentTokens, spacing, typography } from '../design/tokens';
 interface SearchBarProps {
   value: string;
   onChangeText: (value: string) => void;
+  onPress?: () => void;
   placeholder: string;
 }
 
-export function SearchBar({ value, onChangeText, placeholder }: SearchBarProps) {
-  return (
-    <View style={styles.container}>
+export function SearchBar({ value, onChangeText, onPress, placeholder }: SearchBarProps) {
+  const content = (
+    <>
       <Ionicons color={colors.overlay.iconMuted} name="search-outline" size={componentTokens.searchBar.iconSize} />
       <TextInput
         accessibilityLabel={placeholder}
+        editable={!onPress}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.text.placeholder}
@@ -22,11 +24,30 @@ export function SearchBar({ value, onChangeText, placeholder }: SearchBarProps) 
         style={styles.input}
         value={value}
       />
-      {value ? (
+      {value && !onPress ? (
         <Pressable accessibilityLabel="清空搜索内容" hitSlop={8} onPress={() => onChangeText('')}>
           <Ionicons color={colors.text.placeholder} name="close-circle" size={16} />
         </Pressable>
       ) : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityLabel={placeholder}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {content}
     </View>
   );
 }
@@ -48,5 +69,8 @@ const styles = StyleSheet.create({
     color: colors.text.body,
     flex: 1,
     paddingVertical: 0,
+  },
+  pressed: {
+    opacity: 0.82,
   },
 });

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppActionSheet } from '../components/AppActionSheet';
+import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { SearchBar } from '../components/SearchBar';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -9,6 +11,7 @@ import { commonEmptyStateCopy } from '../constants/copy';
 import { tagRepository, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useToast } from '../components/AppToast';
 
 interface TagsOverviewScreenProps {
   refreshToken: number;
@@ -17,8 +20,12 @@ interface TagsOverviewScreenProps {
 }
 
 export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOverviewScreenProps) {
+  const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
-  const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
+  const [actionTag, setActionTag] = useState<TagUsageItem | null>(null);
+  const [deleteTag, setDeleteTag] = useState<TagUsageItem | null>(null);
+  const [renameTag, setRenameTag] = useState<TagUsageItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
     () => tagRepository.findUsageOverview(),
     [refreshToken],
@@ -38,55 +45,86 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     () => [...tags].sort((left, right) => right.imageCount - left.imageCount).slice(0, 6),
     [tags]
   );
-  const selectedTag = tags.find((tag) => tag.id === selectedTagId) ?? null;
+  const recentTags = useMemo(
+    () =>
+      [...tags]
+        .filter((tag) => tag.lastUsedAt)
+        .sort((left, right) => new Date(right.lastUsedAt ?? '').getTime() - new Date(left.lastUsedAt ?? '').getTime())
+        .slice(0, 6),
+    [tags]
+  );
   const shouldShowPopular = !searchText.trim() && popularTags.length > 0;
+  const shouldShowRecent = !searchText.trim() && recentTags.length > 0;
 
-  function handleDeleteTag(tag: TagUsageItem) {
-    Alert.alert(
-      '删除标签',
-      `删除 #${tag.name} 只会移除标签和图片关联，不会删除图片。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认删除',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                const deletedCount = await tagRepository.deleteById(tag.id);
-                if (deletedCount === 0) {
-                  throw new Error('没有找到这个标签。');
-                }
+  function confirmDeleteTag() {
+    if (!deleteTag) {
+      return;
+    }
 
-                if (selectedTagId === tag.id) {
-                  setSelectedTagId(null);
-                }
-                reload();
-              } catch (error) {
-                const message = error instanceof Error ? error.message : '未知错误';
-                Alert.alert('删除标签失败', message);
-              }
-            })();
-          },
-        },
-      ]
-    );
+    const tag = deleteTag;
+    setDeleteTag(null);
+    void (async () => {
+      try {
+        const deletedCount = await tagRepository.deleteById(tag.id);
+        if (deletedCount === 0) {
+          throw new Error('没有找到这个标签。');
+        }
+        showToast('已删除标签');
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `删除标签失败：${error.message}` : '删除标签失败');
+      }
+    })();
+  }
+
+  function startRename(tag: TagUsageItem) {
+    setRenameTag(tag);
+    setRenameValue(tag.name);
+  }
+
+  function submitRename() {
+    if (!renameTag) {
+      return;
+    }
+
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      showToast('请输入标签名称');
+      return;
+    }
+
+    void (async () => {
+      try {
+        await tagRepository.update(renameTag.id, { name: nextName });
+        showToast('已重命名标签');
+        setRenameTag(null);
+        setRenameValue('');
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `重命名失败：${error.message}` : '重命名失败');
+      }
+    })();
   }
 
   return (
+    <>
     <ScreenScaffold decorativeTitle="Tags" footer={footer} scrollable title="标签">
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
       </View>
-      {selectedTag ? (
-        <View style={styles.resultPanel}>
-          <Text style={styles.resultLabel}>当前标签</Text>
-          <View style={styles.resultCopy}>
-            <Text numberOfLines={1} style={styles.resultTitle}>#{selectedTag.name}</Text>
-            <Text style={styles.resultMeta}>{selectedTag.imageCount} 张图片</Text>
-          </View>
-          <Pressable onPress={() => onOpenTag(selectedTag.id)} style={({ pressed }) => [styles.resultAction, pressed && styles.pressed]}>
-            <Text style={styles.resultActionText}>查看结果</Text>
+      {renameTag ? (
+        <View style={styles.renamePanel}>
+          <Text style={styles.resultLabel}>重命名</Text>
+          <TextInput
+            onChangeText={setRenameValue}
+            placeholder="标签名称"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.renameInput}
+            value={renameValue}
+          />
+          <Pressable onPress={submitRename} style={({ pressed }) => [styles.resultAction, pressed && styles.pressed]}>
+            <Text style={styles.resultActionText}>保存</Text>
           </Pressable>
         </View>
       ) : null}
@@ -103,6 +141,25 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
         onRetry={reload}
       >
         <View style={styles.content}>
+          {shouldShowRecent ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>最近使用</Text>
+              <View style={styles.allTags}>
+                {recentTags.map((tag) => (
+                  <Pressable
+                    key={tag.id}
+                    onLongPress={() => setActionTag(tag)}
+                    onPress={() => onOpenTag(tag.id)}
+                    style={({ pressed }) => [styles.recentTagPill, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
+                    <Text style={styles.pillCount}>{tag.imageCount}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {shouldShowPopular ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>热门标签</Text>
@@ -110,11 +167,10 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
                 {popularTags.map((tag) => (
                   <Pressable
                     key={tag.id}
-                    onLongPress={() => handleDeleteTag(tag)}
-                    onPress={() => setSelectedTagId(tag.id)}
+                    onLongPress={() => setActionTag(tag)}
+                    onPress={() => onOpenTag(tag.id)}
                     style={({ pressed }) => [
                       styles.popularTag,
-                      selectedTagId === tag.id && styles.selectedTag,
                       pressed && styles.pressed,
                     ]}
                   >
@@ -132,11 +188,10 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
               {visibleTags.map((tag) => (
                 <Pressable
                   key={tag.id}
-                  onLongPress={() => handleDeleteTag(tag)}
-                  onPress={() => setSelectedTagId(tag.id)}
+                  onLongPress={() => setActionTag(tag)}
+                  onPress={() => onOpenTag(tag.id)}
                   style={({ pressed }) => [
                     styles.tagPill,
-                    selectedTagId === tag.id && styles.selectedPill,
                     pressed && styles.pressed,
                   ]}
                 >
@@ -149,6 +204,26 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    <AppActionSheet
+      items={actionTag ? [
+        { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenTag(actionTag.id) },
+        { key: 'rename', label: '重命名', icon: 'create-outline', onPress: () => startRename(actionTag) },
+        { key: 'delete', label: '删除标签', icon: 'trash-outline', danger: true, onPress: () => setDeleteTag(actionTag) },
+      ] : []}
+      onClose={() => setActionTag(null)}
+      title={actionTag ? `#${actionTag.name}` : '标签操作'}
+      visible={Boolean(actionTag)}
+    />
+    <AppDialog
+      danger
+      message={deleteTag ? `删除 #${deleteTag.name} 只会移除标签和图片关联，不会删除图片。` : ''}
+      onClose={() => setDeleteTag(null)}
+      onPrimary={confirmDeleteTag}
+      primaryLabel="确认删除"
+      title="删除标签"
+      visible={Boolean(deleteTag)}
+    />
+    </>
   );
 }
 
@@ -211,6 +286,23 @@ const styles = StyleSheet.create({
     columnGap: spacing[2],
     rowGap: spacing[2],
   },
+  renamePanel: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    padding: spacing[2],
+  },
+  renameInput: {
+    ...typography.textStyles.body,
+    color: colors.text.title,
+    flex: 1,
+    minHeight: 36,
+    minWidth: 0,
+  },
   popularTag: {
     alignItems: 'center',
     backgroundColor: colors.background.input,
@@ -248,6 +340,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[1.5],
     minHeight: 30,
+    paddingHorizontal: spacing[2],
+  },
+  recentTagPill: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1.5],
+    minHeight: 32,
     paddingHorizontal: spacing[2],
   },
   selectedPill: {

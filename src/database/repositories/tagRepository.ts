@@ -237,6 +237,26 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
+  async findRecentlyUsed(limit = 8): Promise<TagUsageItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.updatedAt, image_assets.createdAt) END) AS lastUsedAt
+       FROM tags
+       INNER JOIN image_tags ON image_tags.tagId = tags.id
+       INNER JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       WHERE image_assets.deletedAt IS NULL
+       GROUP BY tags.id
+       ORDER BY lastUsedAt DESC, imageCount DESC, tags.name COLLATE NOCASE ASC
+       LIMIT ?`,
+      limit
+    );
+
+    return rows.map(mapTagUsageItemRow);
+  },
+
   async replaceImageTags(imageAssetId: number, tagIds: number[]): Promise<void> {
     const db = await getDatabase();
     const uniqueTagIds = [...new Set(tagIds)];

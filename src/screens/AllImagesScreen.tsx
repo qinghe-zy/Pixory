@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { FilterChip } from '../components/FilterChip';
+import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
+import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
@@ -10,6 +11,7 @@ import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext, ImageViewerIpAllFilter } from '../navigation/imageViewerContext';
 
 type AllImagesFilter = ImageViewerIpAllFilter;
@@ -34,7 +36,7 @@ export function AllImagesScreen({
   onStartBatchManagement,
 }: AllImagesScreenProps) {
   const [activeFilter, setActiveFilter] = useState<AllImagesFilter>({ type: 'all' });
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     images: ImageListItem[];
@@ -53,11 +55,19 @@ export function AllImagesScreen({
           ? await imageRepository.findByIpId(ipId, { favoritesOnly: true })
           : activeFilter.type === 'ungrouped'
             ? await imageRepository.findByIpId(ipId, { ungroupedOnly: true })
-            : activeFilter.type === 'group'
-              ? await imageRepository.findByGroupId(activeFilter.groupId)
-              : activeFilter.type === 'tag'
-                ? await imageRepository.findByIpId(ipId, { tagId: activeFilter.tagId })
-                : await imageRepository.findByIpId(ipId);
+            : activeFilter.type === 'untagged'
+              ? await imageRepository.findByIpId(ipId, { untaggedOnly: true })
+              : activeFilter.type === 'recent-viewed'
+                ? await imageRepository.findByIpId(ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' })
+                : activeFilter.type === 'mime'
+                  ? await imageRepository.findByIpId(ipId, { mimeType: activeFilter.mimeType })
+                  : activeFilter.type === 'size'
+                    ? await imageRepository.findByIpId(ipId, { minFileSize: activeFilter.minFileSize, maxFileSize: activeFilter.maxFileSize })
+                    : activeFilter.type === 'group'
+                      ? await imageRepository.findByGroupId(activeFilter.groupId)
+                      : activeFilter.type === 'tag'
+                        ? await imageRepository.findByIpId(ipId, { tagId: activeFilter.tagId })
+                        : await imageRepository.findByIpId(ipId);
 
       return { ip, images, groups, tags };
     },
@@ -75,8 +85,6 @@ export function AllImagesScreen({
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
-  const hasAdvancedFilters = groups.length > 0 || tags.length > 0;
-  const shouldShowAdvancedFilters = showAdvancedFilters || activeFilter.type === 'group' || activeFilter.type === 'tag';
   const activeFilterLabel = useMemo(() => {
     if (activeFilter.type === 'favorite') {
       return '已收藏';
@@ -84,6 +92,22 @@ export function AllImagesScreen({
 
     if (activeFilter.type === 'ungrouped') {
       return '未分组';
+    }
+
+    if (activeFilter.type === 'untagged') {
+      return '无标签';
+    }
+
+    if (activeFilter.type === 'recent-viewed') {
+      return '最近查看';
+    }
+
+    if (activeFilter.type === 'mime') {
+      return activeFilter.label;
+    }
+
+    if (activeFilter.type === 'size') {
+      return activeFilter.label;
     }
 
     if (activeFilter.type === 'group') {
@@ -96,6 +120,11 @@ export function AllImagesScreen({
 
     return '全部';
   }, [activeFilter, groups, tags]);
+  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectedImages = useMemo(
+    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [images, multiSelect.selectedImageIds]
+  );
 
   const rightAction = (
     <Pressable
@@ -108,19 +137,62 @@ export function AllImagesScreen({
   );
 
   function handleOpenImage(imageId: number) {
+    if (multiSelect.isSelectionMode) {
+      multiSelect.toggleSelection(imageId);
+      return;
+    }
+
     onOpenImage(imageId, { type: 'ip-all', ipId, filter: activeFilter });
   }
 
   function handleImageLongPress(imageId: number) {
-    Alert.alert('图片操作', '选择对这张图片的操作。', [
-      { text: '查看详情', onPress: () => onOpenImageDetail(imageId) },
-      { text: '批量管理', onPress: () => onStartBatchManagement(imageId) },
-      { text: '取消', style: 'cancel' },
-    ]);
+    multiSelect.enterSelection(imageId);
   }
 
+  const footer = multiSelect.isSelectionMode ? (
+    <BatchImageOrganizePanel
+      onChanged={reload}
+      onClearSelection={multiSelect.clearSelection}
+      onDeleted={reload}
+      selectedImages={selectedImages}
+      totalCount={images.length}
+    />
+  ) : undefined;
+  const filterItems = useMemo<AppActionSheetItem[]>(() => {
+    const baseItems: AppActionSheetItem[] = [
+      { key: 'all', label: '全部图片', icon: 'images-outline', onPress: () => setActiveFilter({ type: 'all' }) },
+      { key: 'favorite', label: '收藏', icon: 'star-outline', onPress: () => setActiveFilter({ type: 'favorite' }) },
+      { key: 'ungrouped', label: '未分组', icon: 'folder-open-outline', onPress: () => setActiveFilter({ type: 'ungrouped' }) },
+      { key: 'untagged', label: '无标签', icon: 'pricetags-outline', onPress: () => setActiveFilter({ type: 'untagged' }) },
+      { key: 'recent-viewed', label: '最近查看', icon: 'time-outline', onPress: () => setActiveFilter({ type: 'recent-viewed' }) },
+      { key: 'jpeg', label: 'JPEG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/jpeg', label: 'JPEG' }) },
+      { key: 'png', label: 'PNG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/png', label: 'PNG' }) },
+      { key: 'small-size', label: '小于 500 KB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '< 500 KB', maxFileSize: 500 * 1024 }) },
+      { key: 'large-size', label: '大于 2 MB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '> 2 MB', minFileSize: 2 * 1024 * 1024 }) },
+    ];
+
+    return [
+      ...baseItems,
+      ...groups.map((group) => ({
+        key: `group-${group.id}`,
+        label: group.name,
+        icon: 'folder-outline' as const,
+        meta: '分组',
+        onPress: () => setActiveFilter({ type: 'group', groupId: group.id }),
+      })),
+      ...tags.map((tag) => ({
+        key: `tag-${tag.id}`,
+        label: `#${tag.name}`,
+        icon: 'pricetag-outline' as const,
+        meta: '标签',
+        onPress: () => setActiveFilter({ type: 'tag', tagId: tag.id }),
+      })),
+    ];
+  }, [groups, tags]);
+
   return (
-    <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} rightAction={rightAction} scrollable title="图片库">
+    <>
+    <ScreenScaffold decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="图片库">
       <View style={styles.summaryPanel}>
         <View style={styles.summaryTopLine}>
           <Text numberOfLines={1} style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
@@ -137,80 +209,13 @@ export function AllImagesScreen({
         </View>
       </View>
 
-      <View style={styles.filterPanel}>
-        <View style={styles.filterPanelHeader}>
-          <View style={styles.filterTitleWrap}>
-            <Ionicons color={colors.text.secondary} name="options-outline" size={16} />
-            <Text style={styles.filterSectionLabel}>筛选</Text>
-          </View>
-          {hasAdvancedFilters ? (
-            <Pressable
-              accessibilityLabel={shouldShowAdvancedFilters ? '收起细分筛选' : '展开细分筛选'}
-              accessibilityRole="button"
-              onPress={() => setShowAdvancedFilters((current) => !current)}
-              style={({ pressed }) => [styles.filterToggle, pressed && styles.pressed]}
-            >
-              <Text style={styles.filterStatus}>{shouldShowAdvancedFilters ? '收起' : '细分'}</Text>
-              <Ionicons
-                color={colors.text.tertiary}
-                name={shouldShowAdvancedFilters ? 'chevron-up' : 'chevron-down'}
-                size={14}
-              />
-            </Pressable>
-          ) : (
-            <Text style={styles.filterStatus}>{activeFilterLabel}</Text>
-          )}
+      <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterSummary, pressed && styles.pressed]}>
+        <View style={styles.filterTitleWrap}>
+          <Ionicons color={colors.text.secondary} name="options-outline" size={16} />
+          <Text style={styles.filterSectionLabel}>当前筛选：{activeFilterLabel}</Text>
         </View>
-        <View style={styles.filterRow}>
-          <FilterChip active={activeFilter.type === 'all'} dense label="全部" onPress={() => setActiveFilter({ type: 'all' })} />
-          <FilterChip
-            active={activeFilter.type === 'favorite'}
-            dense
-            label="已收藏"
-            onPress={() => setActiveFilter({ type: 'favorite' })}
-          />
-          <FilterChip
-            active={activeFilter.type === 'ungrouped'}
-            dense
-            label="未分组"
-            onPress={() => setActiveFilter({ type: 'ungrouped' })}
-          />
-        </View>
-
-        {shouldShowAdvancedFilters && groups.length > 0 ? (
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>按分组</Text>
-            <View style={styles.filterOptions}>
-              {groups.map((group) => (
-                <FilterChip
-                  active={activeFilter.type === 'group' && activeFilter.groupId === group.id}
-                  dense
-                  key={group.id}
-                  label={group.name}
-                  onPress={() => setActiveFilter({ type: 'group', groupId: group.id })}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {shouldShowAdvancedFilters && tags.length > 0 ? (
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>按标签</Text>
-            <View style={styles.filterOptions}>
-              {tags.map((tag) => (
-                <FilterChip
-                  active={activeFilter.type === 'tag' && activeFilter.tagId === tag.id}
-                  dense
-                  key={tag.id}
-                  label={`#${tag.name}`}
-                  onPress={() => setActiveFilter({ type: 'tag', tagId: tag.id })}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-      </View>
+        <Text style={styles.filterStatus}>筛选</Text>
+      </Pressable>
 
       <PageStateBlock
         emptyActionLabel={commonButtonCopy.importImages}
@@ -241,11 +246,20 @@ export function AllImagesScreen({
               key={image.id}
               onLongPress={handleImageLongPress}
               onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
             />
           ))}
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    <AppActionSheet
+      items={filterItems}
+      message="选择一个筛选条件。分组和标签会基于当前 IP 的真实数据展示。"
+      onClose={() => setIsFilterSheetVisible(false)}
+      title="筛选图片"
+      visible={isFilterSheetVisible}
+    />
+    </>
   );
 }
 
@@ -320,11 +334,14 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '600',
   },
-  filterPanel: {
+  filterSummary: {
+    alignItems: 'center',
     backgroundColor: colors.background.soft,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: spacing[2],
     padding: spacing[3],
   },

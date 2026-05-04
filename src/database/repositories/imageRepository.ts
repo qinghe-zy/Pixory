@@ -10,6 +10,8 @@ import type {
   ImageListQueryOptions,
   ImageListItem,
   ImageListItemRow,
+  GroupRecord,
+  GroupRow,
   SumRow,
   UpdateImageAssetInput,
 } from '../types';
@@ -18,6 +20,7 @@ import {
   buildUpdateStatement,
   createTimestamp,
   mapImageAssetRow,
+  mapGroupRow,
   mapImageDetailRow,
   mapImageListItemRow,
   normalizeOptionalText,
@@ -65,11 +68,67 @@ function buildImageListQueryParts(
     );
   }
 
+  if (options?.untaggedOnly) {
+    clauses.push('NOT EXISTS (SELECT 1 FROM image_tags AS untagged_tags WHERE untagged_tags.imageAssetId = image_assets.id)');
+  }
+
+  if (options?.recentlyViewedOnly) {
+    clauses.push('image_assets.lastViewedAt IS NOT NULL');
+  }
+
+  if (options?.ipId != null) {
+    clauses.push('image_assets.ipId = ?');
+    values.push(options.ipId);
+  }
+
+  if (options?.groupId != null) {
+    clauses.push(
+      'EXISTS (SELECT 1 FROM image_groups AS filter_groups WHERE filter_groups.imageAssetId = image_assets.id AND filter_groups.groupId = ?)'
+    );
+    values.push(options.groupId);
+  }
+
   if (options?.tagId != null) {
     clauses.push(
       'EXISTS (SELECT 1 FROM image_tags AS filter_tags WHERE filter_tags.imageAssetId = image_assets.id AND filter_tags.tagId = ?)'
     );
     values.push(options.tagId);
+  }
+
+  if (options?.mimeType) {
+    clauses.push('image_assets.mimeType = ?');
+    values.push(options.mimeType);
+  }
+
+  if (options?.minFileSize != null) {
+    clauses.push('image_assets.fileSize >= ?');
+    values.push(options.minFileSize);
+  }
+
+  if (options?.maxFileSize != null) {
+    clauses.push('image_assets.fileSize <= ?');
+    values.push(options.maxFileSize);
+  }
+
+  const searchText = options?.searchText?.trim();
+  if (searchText) {
+    clauses.push(
+      `(image_assets.originalFilename LIKE ? OR image_assets.note LIKE ? OR ips.name LIKE ? OR EXISTS (
+        SELECT 1
+        FROM image_tags AS search_image_tags
+        INNER JOIN tags AS search_tags ON search_tags.id = search_image_tags.tagId
+        WHERE search_image_tags.imageAssetId = image_assets.id
+          AND search_tags.name LIKE ?
+      ) OR EXISTS (
+        SELECT 1
+        FROM image_groups AS search_image_groups
+        INNER JOIN groups AS search_groups ON search_groups.id = search_image_groups.groupId
+        WHERE search_image_groups.imageAssetId = image_assets.id
+          AND search_groups.name LIKE ?
+      ))`
+    );
+    const likeValue = `%${searchText}%`;
+    values.push(likeValue, likeValue, likeValue, likeValue, likeValue);
   }
 
   return {
@@ -486,6 +545,39 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
+  async findFiltered(options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const queryParts = buildImageListQueryParts([], [], options);
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findByIds(ids: number[], options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const db = await getDatabase();
+    const inClause = buildInClause(ids);
+    const deletedFilter = buildDeletedFilter('image_assets', options);
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       WHERE image_assets.id IN (${inClause.placeholders})${deletedFilter ? ` AND ${deletedFilter}` : ''}
+       GROUP BY image_assets.id
+       ORDER BY image_assets.createdAt DESC, image_assets.id DESC`,
+      ...inClause.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
   async findByGroupId(groupId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const db = await getDatabase();
     const queryParts = buildImageListQueryParts(
@@ -564,6 +656,19 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
+  async findDeletedByIpId(ipId: number): Promise<ImageListItem[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       WHERE image_assets.deletedAt IS NOT NULL AND image_assets.ipId = ?
+       GROUP BY image_assets.id
+       ORDER BY image_assets.deletedAt DESC, image_assets.id DESC`,
+      ipId
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
   async findDetailById(id: number, options?: ImageAssetQueryOptions): Promise<ImageDetailRecord | null> {
     const db = await getDatabase();
     const deletedFilter = buildDeletedFilter('image_assets', options);
@@ -574,6 +679,68 @@ export const imageRepository = {
     );
 
     return row ? mapImageDetailRow(row) : null;
+  },
+
+  async findGroupsByImageId(imageId: number): Promise<GroupRecord[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<GroupRow>(
+      `SELECT groups.*
+       FROM groups
+       INNER JOIN image_groups ON image_groups.groupId = groups.id
+       WHERE image_groups.imageAssetId = ?
+       ORDER BY groups.isPinned DESC, groups.type ASC, groups.sortOrder ASC, image_groups.createdAt ASC, groups.id ASC`,
+      imageId
+    );
+
+    return rows.map(mapGroupRow);
+  },
+
+  async countNeedsOrganizing(ipId?: number): Promise<number> {
+    const db = await getDatabase();
+    const clauses = [
+      'image_assets.deletedAt IS NULL',
+      'image_assets.note IS NULL',
+      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
+      'NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)',
+    ];
+    const values: number[] = [];
+
+    if (ipId != null) {
+      clauses.push('image_assets.ipId = ?');
+      values.push(ipId);
+    }
+
+    const row = await db.getFirstAsync<CountRow>(
+      `SELECT COUNT(*) AS count FROM image_assets WHERE ${clauses.join(' AND ')}`,
+      ...values
+    );
+    return row?.count ?? 0;
+  },
+
+  async findNeedsOrganizing(ipId?: number): Promise<ImageListItem[]> {
+    const clauses = [
+      'image_assets.deletedAt IS NULL',
+      'image_assets.note IS NULL',
+      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
+      'NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)',
+    ];
+    const values: number[] = [];
+
+    if (ipId != null) {
+      clauses.push('image_assets.ipId = ?');
+      values.push(ipId);
+    }
+
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       WHERE ${clauses.join(' AND ')}
+       GROUP BY image_assets.id
+       ORDER BY image_assets.createdAt ASC, image_assets.id ASC`,
+      ...values
+    );
+
+    return rows.map(mapImageListItemRow);
   },
 
   async softDelete(id: number): Promise<ImageAssetRecord | null> {

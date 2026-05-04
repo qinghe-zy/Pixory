@@ -48,9 +48,14 @@ export interface GroupRecord {
   name: string;
   type: string;
   sortOrder: number;
+  isPinned: boolean;
   description?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GroupRow extends Omit<GroupRecord, 'isPinned'> {
+  isPinned: number;
 }
 
 export interface CreateGroupInput {
@@ -58,6 +63,7 @@ export interface CreateGroupInput {
   name: string;
   type?: string;
   sortOrder?: number;
+  isPinned?: boolean;
   description?: string | null;
 }
 
@@ -66,6 +72,7 @@ export interface UpdateGroupInput {
   name?: string;
   type?: string;
   sortOrder?: number;
+  isPinned?: boolean;
   description?: string | null;
 }
 
@@ -110,7 +117,7 @@ export interface GroupListItem extends GroupRecord {
   coverThumbnailFileUri: string | null;
 }
 
-export interface GroupListItemRow extends GroupRecord {
+export interface GroupListItemRow extends GroupRow {
   imageCount: number;
   recentUpdatedAt: string | null;
   coverThumbnailFileUri: string | null;
@@ -222,8 +229,23 @@ export type ImageSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'deletedAtDe
 export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   favoritesOnly?: boolean;
   ungroupedOnly?: boolean;
+  untaggedOnly?: boolean;
+  recentlyViewedOnly?: boolean;
+  ipId?: number;
+  groupId?: number;
   tagId?: number;
+  mimeType?: string;
+  minFileSize?: number;
+  maxFileSize?: number;
+  searchText?: string;
   orderBy?: ImageSortOrder;
+}
+
+export interface GlobalSearchResult {
+  ips: IpListItem[];
+  groups: GlobalGroupListItem[];
+  tags: TagUsageItem[];
+  images: ImageListItem[];
 }
 
 export interface TagUsageItem extends TagRecord {

@@ -1,6 +1,8 @@
 import type {
   GlobalGroupListItem,
   GlobalGroupListItemRow,
+  GroupRecord,
+  GroupRow,
   GroupListItem,
   GroupListItemRow,
   ImageAssetRecord,
@@ -115,10 +117,18 @@ export function mapIpDetailRow(
   };
 }
 
-export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
+export function mapGroupRow(row: GroupRow): GroupRecord {
   return {
     ...row,
+    isPinned: sqliteToBoolean(row.isPinned),
     description: row.description ?? null,
+  };
+}
+
+export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
+  const group = mapGroupRow(row);
+  return {
+    ...group,
     imageCount: row.imageCount ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,

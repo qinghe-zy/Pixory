@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -101,4 +101,9 @@ FROM image_assets
 WHERE groupId IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_image_groups_group_id ON image_groups(groupId);
+`;
+
+export const MIGRATION_STATEMENTS_V6 = `
+ALTER TABLE groups ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_groups_is_pinned ON groups(isPinned);
 `;

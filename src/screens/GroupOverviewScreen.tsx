@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppActionSheet } from '../components/AppActionSheet';
+import { AppDialog } from '../components/AppDialog';
 import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -11,6 +13,7 @@ import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { groupRepository, ipRepository, type GroupListItem, type IpRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
 
 interface GroupOverviewScreenProps {
@@ -30,6 +33,9 @@ export function GroupOverviewScreen({
   onEditGroup,
   onOpenGroup,
 }: GroupOverviewScreenProps) {
+  const { showToast } = useToast();
+  const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
+  const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
     async () => {
       const [ip, groups] = await Promise.all([
@@ -65,49 +71,29 @@ export function GroupOverviewScreen({
     items: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
 
-  function handleDeleteGroup(group: GroupListItem) {
-    Alert.alert(
-      '删除分组',
-      `删除「${group.name}」后，分组内图片会保留并移动到未分组。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '确认删除',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                const deletedCount = await groupRepository.deleteById(group.id);
-                if (deletedCount === 0) {
-                  throw new Error('没有找到这个分组。');
-                }
+  function confirmDeleteGroup() {
+    if (!deleteGroup) {
+      return;
+    }
 
-                reload();
-              } catch (error) {
-                const message = error instanceof Error ? error.message : '未知错误';
-                Alert.alert('删除分组失败', message);
-              }
-            })();
-          },
-        },
-      ]
-    );
-  }
-
-  function handleManageGroup(group: GroupListItem) {
-    Alert.alert(
-      group.name,
-      '管理这个分组。删除分组不会删除图片，图片会保留在当前 IP 的未分组中。',
-      [
-        { text: '查看图片', onPress: () => onOpenGroup(group.id) },
-        { text: '编辑分组', onPress: () => onEditGroup(group.id) },
-        { text: '删除分组', style: 'destructive', onPress: () => handleDeleteGroup(group) },
-        { text: '取消', style: 'cancel' },
-      ]
-    );
+    const group = deleteGroup;
+    setDeleteGroup(null);
+    void (async () => {
+      try {
+        const deletedCount = await groupRepository.deleteById(group.id);
+        if (deletedCount === 0) {
+          throw new Error('没有找到这个分组。');
+        }
+        showToast('已删除分组');
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `删除分组失败：${error.message}` : '删除分组失败');
+      }
+    })();
   }
 
   return (
+    <>
     <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
 
@@ -131,7 +117,7 @@ export function GroupOverviewScreen({
               {section.items.map((group) => (
                 <Pressable
                   key={group.id}
-                  onLongPress={() => handleManageGroup(group)}
+                  onLongPress={() => setActionGroup(group)}
                   onPress={() => onOpenGroup(group.id)}
                   style={({ pressed }) => [pressed && styles.pressed]}
                 >
@@ -170,6 +156,39 @@ export function GroupOverviewScreen({
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    <AppActionSheet
+      items={actionGroup ? [
+        { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
+        {
+          key: 'pin',
+          label: actionGroup.isPinned ? '取消置顶' : '置顶分组',
+          icon: 'pin-outline',
+          onPress: () => {
+            void (async () => {
+              await groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned);
+              showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
+              reload();
+            })();
+          },
+        },
+        { key: 'delete', label: '删除分组', icon: 'trash-outline', danger: true, onPress: () => setDeleteGroup(actionGroup) },
+      ] : []}
+      message="删除分组不会删除图片，图片会保留在当前 IP 中。"
+      onClose={() => setActionGroup(null)}
+      title={actionGroup?.name ?? '分组操作'}
+      visible={Boolean(actionGroup)}
+    />
+    <AppDialog
+      danger
+      message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内图片会保留并移动到未分组。` : ''}
+      onClose={() => setDeleteGroup(null)}
+      onPrimary={confirmDeleteGroup}
+      primaryLabel="确认删除"
+      title="删除分组"
+      visible={Boolean(deleteGroup)}
+    />
+    </>
   );
 }
 

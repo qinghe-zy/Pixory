@@ -83,7 +83,19 @@ pnpm exec expo start --android -c
 TypeScript 检查：
 
 ```bash
-pnpm exec tsc --noEmit
+pnpm run typecheck
+```
+
+轻量回归测试：
+
+```bash
+pnpm test
+```
+
+依赖检查：
+
+```bash
+pnpm run doctor
 ```
 
 更完整的运行说明见 [docs/RUNBOOK.md](./docs/RUNBOOK.md)。

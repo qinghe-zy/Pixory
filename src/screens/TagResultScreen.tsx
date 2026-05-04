@@ -1,11 +1,14 @@
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, tagRepository, type ImageListItem, type TagRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface TagResultScreenProps {
@@ -53,21 +56,37 @@ export function TagResultScreen({
 
   const tag = data?.tag ?? null;
   const images = data?.images ?? [];
+  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectedImages = useMemo(
+    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [images, multiSelect.selectedImageIds]
+  );
 
   function handleOpenImage(imageId: number) {
+    if (multiSelect.isSelectionMode) {
+      multiSelect.toggleSelection(imageId);
+      return;
+    }
+
     onOpenImage(imageId, { type: 'tag', tagId });
   }
 
   function handleImageLongPress(image: ImageListItem) {
-    Alert.alert('图片操作', '选择对这张图片的操作。', [
-      { text: '查看详情', onPress: () => onOpenImageDetail(image.id) },
-      { text: '批量管理', onPress: () => onStartBatchManagement(image.ipId, image.id) },
-      { text: '取消', style: 'cancel' },
-    ]);
+    multiSelect.enterSelection(image.id);
   }
 
+  const footer = multiSelect.isSelectionMode ? (
+    <BatchImageOrganizePanel
+      onChanged={reload}
+      onClearSelection={multiSelect.clearSelection}
+      onDeleted={reload}
+      selectedImages={selectedImages}
+      totalCount={images.length}
+    />
+  ) : undefined;
+
   return (
-    <ScreenScaffold onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
+    <ScreenScaffold footer={footer} onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
       {tag ? (
         <View style={styles.summary}>
           <View style={styles.summaryCopy}>
@@ -97,6 +116,7 @@ export function TagResultScreen({
               key={image.id}
               onLongPress={() => handleImageLongPress(image)}
               onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
             />
           ))}
         </View>

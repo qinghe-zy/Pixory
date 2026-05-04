@@ -93,7 +93,7 @@ AppData/
 ├─ database/
 │  └─ pixory.sqlite
 ├─ assets/
-│  └─ original/
+│  └─ originals/
 │     └─ ip_{ipId}/
 ├─ thumbnails/
 │  └─ ip_{ipId}/

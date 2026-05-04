@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, ipRepository, settingsRepository } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
 
@@ -17,6 +18,7 @@ interface MeScreenProps {
   onOpenFavorites: () => void;
   onOpenRecentViewed: () => void;
   onOpenTrash: () => void;
+  onOpenBackup: () => void;
 }
 
 interface MeStats {
@@ -26,6 +28,7 @@ interface MeStats {
   deletedImageCount: number;
   profileAvatarUri: string | null;
   totalOriginalBytes: number;
+  lastBackupAt: string | null;
 }
 
 const ENTRY_ITEMS = [
@@ -48,6 +51,12 @@ const ENTRY_ITEMS = [
     icon: 'trash-outline',
   },
   {
+    key: 'backup',
+    label: '备份导出',
+    description: '完整备份 SQLite、原图、缩略图和 manifest',
+    icon: 'archive-outline',
+  },
+  {
     key: 'settings',
     label: '设置',
     description: '本地偏好与应用信息',
@@ -61,7 +70,9 @@ export function MeScreen({
   onOpenFavorites,
   onOpenRecentViewed,
   onOpenTrash,
+  onOpenBackup,
 }: MeScreenProps) {
+  const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
@@ -72,6 +83,7 @@ export function MeScreen({
         deletedImageCount,
         totalOriginalBytes,
         profileAvatarUri,
+        lastBackupAt,
       ] = await Promise.all([
         ipRepository.count(),
         imageRepository.count(),
@@ -79,6 +91,7 @@ export function MeScreen({
         imageRepository.countDeleted(),
         imageRepository.sumFileSize({ includeDeleted: true }),
         settingsRepository.getProfileAvatarUri(),
+        settingsRepository.getLastBackupAt(),
       ]);
 
       return {
@@ -88,6 +101,7 @@ export function MeScreen({
         deletedImageCount,
         profileAvatarUri,
         totalOriginalBytes,
+        lastBackupAt,
       };
     },
     [refreshToken],
@@ -112,6 +126,11 @@ export function MeScreen({
 
     if (key === 'trash') {
       onOpenTrash();
+      return;
+    }
+
+    if (key === 'backup') {
+      onOpenBackup();
     }
   }
 
@@ -119,7 +138,7 @@ export function MeScreen({
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('无法更换头像', 'Pixory 需要访问相册来选择本地头像。');
+        showToast('Pixory 需要访问相册来选择本地头像');
         return;
       }
 
@@ -144,7 +163,7 @@ export function MeScreen({
       reload();
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
-      Alert.alert('更换头像失败', message);
+      showToast(`更换头像失败：${message}`);
     }
   }
 
@@ -173,7 +192,7 @@ export function MeScreen({
               <Text style={styles.heroTitle}>本地空间</Text>
               <Text style={styles.badge}>Local</Text>
             </View>
-            <Text style={styles.heroDescription}>愿你被世界温柔以待。</Text>
+            <Text style={styles.heroDescription}>所有资产仅保存在本机。</Text>
           </View>
         </View>
         <View style={styles.storageBlock}>
@@ -189,9 +208,16 @@ export function MeScreen({
           <View style={styles.storageTrack}>
             <View style={[styles.storageFill, { width: storageFillWidth }]} />
           </View>
-          <Text style={styles.storageHint}>仅统计已导入原图，缩略图占用未单独展开。</Text>
+          <Text style={styles.storageHint}>本地整理，原图保留；头像仅是本机偏好，不代表账号体系。</Text>
         </View>
       </ContentCard>
+
+      <View style={styles.backupNotice}>
+        <Ionicons color={colors.primary.active} name="archive-outline" size={17} />
+        <Text style={styles.backupNoticeText}>
+          {data?.lastBackupAt ? `上次备份：${data.lastBackupAt.slice(5, 10)}，你的 IP 资产库离线可用。` : '尚未备份。建议导出完整备份，便于迁移或恢复。'}
+        </Text>
+      </View>
 
       <ContentCard style={styles.statsCard}>
         <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
@@ -222,7 +248,9 @@ export function MeScreen({
                     ? data?.favoriteImageCount ?? 0
                     : item.key === 'recent'
                       ? data?.activeImageCount ?? 0
-                      : data?.deletedImageCount ?? 0}
+                      : item.key === 'trash'
+                        ? data?.deletedImageCount ?? 0
+                        : data?.ipCount ?? 0}
                 </Text>
               )}
               {isSettings ? null : <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />}
@@ -395,6 +423,23 @@ const styles = StyleSheet.create({
   storageHint: {
     ...typography.textStyles.caption,
     color: colors.text.body,
+  },
+  backupNotice: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+  },
+  backupNoticeText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    flex: 1,
+    minWidth: 0,
   },
   entryList: {
     gap: spacing[3],
