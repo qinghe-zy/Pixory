@@ -463,6 +463,9 @@ async function loadDetailContextImages(context: ImageViewerContext): Promise<Ima
   if (context.type === 'ip-recent') {
     return imageRepository.findRecentByIpId(context.ipId, context.limit);
   }
+  if (context.type === 'import-batch') {
+    return imageRepository.findByImportBatchId(context.importBatchId);
+  }
   if (context.type === 'ip-all') {
     const filter = context.filter;
     if (filter.type === 'favorite') return imageRepository.findByIpId(context.ipId, { favoritesOnly: true });

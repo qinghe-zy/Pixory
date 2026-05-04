@@ -10,6 +10,7 @@ import {
   MIGRATION_STATEMENTS_V5,
   MIGRATION_STATEMENTS_V6,
   MIGRATION_STATEMENTS_V7,
+  MIGRATION_STATEMENTS_V8,
 } from './schema';
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
@@ -61,6 +62,10 @@ export async function runMigrations(db?: SQLiteDatabase): Promise<void> {
 
     if (currentVersion < 7) {
       await database.execAsync(MIGRATION_STATEMENTS_V7);
+    }
+
+    if (currentVersion < 8) {
+      await database.execAsync(MIGRATION_STATEMENTS_V8);
     }
 
     if (currentVersion !== DATABASE_VERSION) {

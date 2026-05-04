@@ -7,6 +7,13 @@ import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
+import {
+  applySelectionRule,
+  BATCH_SELECTION_RULE_OPTIONS,
+  type BatchSelectionRuleKey,
+  type BatchSelectionRuleResult,
+} from '../utils/batchSelectionRules';
+import { AppActionSheet } from './AppActionSheet';
 import { AppDialog } from './AppDialog';
 import { LightFormSection } from './LightFormSection';
 import { OptionSelectRow } from './OptionSelectRow';
@@ -17,18 +24,24 @@ import { useToast } from './AppToast';
 type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
 
 interface BatchImageOrganizePanelProps {
+  allImages?: ImageListItem[];
   selectedImages: ImageListItem[];
   totalCount: number;
   currentGroupId?: number | null;
+  importBatchId?: number | null;
+  onApplyRuleSelection?: (imageIds: number[]) => void;
   onClearSelection: () => void;
   onChanged: () => void;
   onDeleted: () => void;
 }
 
 export function BatchImageOrganizePanel({
+  allImages,
   selectedImages,
   totalCount,
   currentGroupId = null,
+  importBatchId = null,
+  onApplyRuleSelection,
   onClearSelection,
   onChanged,
   onDeleted,
@@ -42,7 +55,9 @@ export function BatchImageOrganizePanel({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
+  const [activeRule, setActiveRule] = useState<BatchSelectionRuleResult | null>(null);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
+  const ruleImages = allImages ?? selectedImages;
   const selectedCount = selectedImages.length;
   const selectedIpIds = useMemo(() => [...new Set(selectedImages.map((image) => image.ipId))], [selectedImages]);
   const singleIpId = selectedIpIds.length === 1 ? selectedIpIds[0] : null;
@@ -137,6 +152,8 @@ export function BatchImageOrganizePanel({
         changedCount = await imageRepository.updateManyGroup(selectedImageIds, selectedGroupId);
       } else if (selectedGroupId != null && mode === 'add-group') {
         changedCount = await imageRepository.addManyToGroup(selectedImageIds, selectedGroupId);
+      } else if (currentGroupId != null && mode === 'remove-group') {
+        changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, currentGroupId);
       } else if (selectedGroupId != null && mode === 'remove-group') {
         changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, selectedGroupId);
       }
@@ -187,6 +204,34 @@ export function BatchImageOrganizePanel({
 
       return isFavorite ? '已收藏' : '已取消收藏';
     });
+  }
+
+  function handleApplyRule(rule: BatchSelectionRuleKey) {
+    if (!onApplyRuleSelection) {
+      return;
+    }
+
+    if (activeRule?.key === rule) {
+      setActiveRule(null);
+      onApplyRuleSelection([]);
+      return;
+    }
+
+    try {
+      const result = applySelectionRule({
+        images: ruleImages,
+        selectedImageIds,
+        rule,
+        importBatchId,
+      });
+      setActiveRule(result);
+      setErrorMessage(null);
+      onApplyRuleSelection(result.imageIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '请选择基准图片。';
+      setErrorMessage(message);
+      showToast(message);
+    }
   }
 
   function confirmSoftDelete() {
@@ -241,23 +286,39 @@ export function BatchImageOrganizePanel({
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
+        {onApplyRuleSelection ? (
+          <SmartSelectionRuleBar
+            activeRule={activeRule}
+            disabled={isSubmitting}
+            onApplyRule={handleApplyRule}
+            onCancelRule={() => {
+              setActiveRule(null);
+              onApplyRuleSelection([]);
+            }}
+          />
+        ) : null}
+
         {isGroupMode(mode) ? (
           <View style={styles.inlinePanel}>
             <LightFormSection title={getGroupModeTitle(mode)} hint={getGroupModeHint(mode)}>
-              <View style={styles.optionList}>
-                {mode === 'replace-group' ? (
+              {currentGroupId != null && mode === 'remove-group' ? (
+                <Text style={styles.helperText}>直接从当前分组移出，不需要再次选择分组。</Text>
+              ) : (
+                <View style={styles.optionList}>
+                  {mode === 'replace-group' ? (
                   <OptionSelectRow label="无分组" meta="保留在当前 IP" onPress={() => setSelectedGroupId(null)} selected={selectedGroupId == null} />
-                ) : null}
-                {groups.map((group) => (
-                  <OptionSelectRow
-                    key={group.id}
-                    label={group.name}
-                    meta={`${group.isPinned ? '已置顶 · ' : ''}${getGroupTypeLabel(group.type)}`}
-                    onPress={() => setSelectedGroupId(group.id)}
-                    selected={selectedGroupId === group.id}
-                  />
-                ))}
-              </View>
+                  ) : null}
+                  {groups.map((group) => (
+                    <OptionSelectRow
+                      key={group.id}
+                      label={group.name}
+                      meta={`${group.isPinned ? '已置顶 · ' : ''}${getGroupTypeLabel(group.type)}`}
+                      onPress={() => setSelectedGroupId(group.id)}
+                      selected={selectedGroupId === group.id}
+                    />
+                  ))}
+                </View>
+              )}
             </LightFormSection>
             <View style={styles.inlineActions}>
               <View style={styles.primaryGrow}>
@@ -336,6 +397,56 @@ export function BatchImageOrganizePanel({
   );
 }
 
+function SmartSelectionRuleBar({
+  activeRule,
+  disabled,
+  onApplyRule,
+  onCancelRule,
+}: {
+  activeRule: BatchSelectionRuleResult | null;
+  disabled: boolean;
+  onApplyRule: (rule: BatchSelectionRuleKey) => void;
+  onCancelRule: () => void;
+}) {
+  const [isSheetVisible, setIsSheetVisible] = useState(false);
+
+  return (
+    <View style={styles.rulePanel}>
+      <Pressable
+        disabled={disabled}
+        onPress={() => setIsSheetVisible(true)}
+        style={({ pressed }) => [styles.ruleButton, disabled ? styles.disabled : null, pressed && !disabled ? styles.pressed : null]}
+      >
+        <Ionicons color={colors.primary.default} name="sparkles-outline" size={16} />
+        <Text style={styles.ruleButtonText}>智能分堆</Text>
+      </Pressable>
+      {activeRule ? (
+        <View style={styles.activeRuleRow}>
+          <Text numberOfLines={2} style={styles.activeRuleText}>
+            {activeRule.label} · {activeRule.description}
+          </Text>
+          <Pressable onPress={onCancelRule} style={({ pressed }) => [styles.cancelRuleButton, pressed && styles.pressed]}>
+            <Text style={styles.cancelRuleText}>取消该规则</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      <AppActionSheet
+        items={BATCH_SELECTION_RULE_OPTIONS.map((option) => ({
+          key: option.key,
+          label: option.label,
+          icon: option.key === 'suspected-duplicate' ? 'copy-outline' : option.key === 'import-batch' ? 'file-tray-stacked-outline' : 'sparkles-outline',
+          meta: activeRule?.key === option.key ? '再次点击取消' : '只改变当前选择',
+          onPress: () => onApplyRule(option.key),
+        }))}
+        message="智能分堆只改变当前选择集，不会直接写入 SQLite 或移动图片。"
+        onClose={() => setIsSheetVisible(false)}
+        title="智能分堆"
+        visible={isSheetVisible}
+      />
+    </View>
+  );
+}
+
 function PanelAction({
   danger,
   disabled,
@@ -390,7 +501,7 @@ function getGroupModeHint(mode: OrganizeMode): string {
     return '给已选图片追加一个分组，保留原有分组。';
   }
   if (mode === 'remove-group') {
-    return '从已选图片中移除指定分组。';
+    return '直接从当前分组移出，或从已选图片中移除指定分组。';
   }
   return '用选中的分组替换已选图片当前分组。';
 }
@@ -458,6 +569,56 @@ const styles = StyleSheet.create({
   errorText: {
     ...typography.textStyles.caption,
     color: colors.semantic.danger,
+  },
+  helperText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    paddingTop: spacing[2],
+  },
+  rulePanel: {
+    gap: spacing[2],
+  },
+  ruleButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+  },
+  ruleButtonText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  activeRuleRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    padding: spacing[2],
+  },
+  activeRuleText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  cancelRuleButton: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  cancelRuleText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.default,
+    fontWeight: '700',
   },
   inlinePanel: {
     gap: spacing[3],

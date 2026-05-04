@@ -3,6 +3,7 @@ export interface IpRecord {
   name: string;
   description: string | null;
   isFavorite: boolean;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -82,7 +82,9 @@ export function GroupImagesScreen({
 
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
+      allImages={images}
       currentGroupId={groupId}
+      onApplyRuleSelection={multiSelect.applyRuleSelection}
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}

@@ -160,7 +160,6 @@ export function MeScreen({
 
   const totalBytes = data?.totalOriginalBytes ?? 0;
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
-  const storageFillWidth = totalBytes > 0 ? '34%' : '8%';
 
   return (
     <ScreenScaffold decorativeTitle="Me" errorMessage={errorMessage} footer={footer} scrollable title="我的">
@@ -191,17 +190,13 @@ export function MeScreen({
               <Text style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
             </View>
           </View>
-          <View style={styles.storageTrack}>
-            <View style={[styles.storageFill, { width: storageFillWidth }]} />
+          <View style={styles.libraryStatsRow}>
+            <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
+            <StatBlock label="图片总数" value={String(data?.activeImageCount ?? 0)} />
+            <StatBlock label="收藏数" value={String(data?.favoriteImageCount ?? 0)} />
+            <StatBlock label="回收站" value={String(data?.deletedImageCount ?? 0)} />
           </View>
         </View>
-      </ContentCard>
-
-      <ContentCard style={styles.statsCard}>
-        <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
-        <StatBlock label="图片总数" value={String(data?.activeImageCount ?? 0)} />
-        <StatBlock label="收藏数" value={String(data?.favoriteImageCount ?? 0)} />
-        <StatBlock label="回收站" value={String(data?.deletedImageCount ?? 0)} />
       </ContentCard>
 
       <View style={styles.entryList}>
@@ -327,12 +322,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 28,
   },
-  statsCard: {
+  libraryStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing[2],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
+    paddingTop: spacing[2],
   },
   statItem: {
     alignItems: 'center',
@@ -359,17 +352,6 @@ const styles = StyleSheet.create({
   },
   storageValue: {
     ...typography.textStyles.statNumber,
-  },
-  storageTrack: {
-    backgroundColor: colors.background.sunken,
-    borderRadius: radius.pill,
-    height: 8,
-    overflow: 'hidden',
-  },
-  storageFill: {
-    backgroundColor: colors.primary.default,
-    borderRadius: radius.pill,
-    height: '100%',
   },
   entryList: {
     gap: spacing[3],

@@ -58,6 +58,8 @@ export function RecentViewedScreen({
 
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
+      allImages={images}
+      onApplyRuleSelection={multiSelect.applyRuleSelection}
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
