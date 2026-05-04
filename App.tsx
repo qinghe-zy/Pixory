@@ -26,7 +26,9 @@ import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
-import { ImportBatchReviewScreen } from './src/screens/ImportBatchReviewScreen';
+import { DuplicateReviewScreen } from './src/screens/DuplicateReviewScreen';
+import { ImportBatchHistoryScreen } from './src/screens/ImportBatchHistoryScreen';
+import { ImportBatchReviewScreen, type BatchInitialMode } from './src/screens/ImportBatchReviewScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
@@ -58,9 +60,12 @@ type AppRoute =
       groupId?: number | null;
       importBatchId?: number | null;
       initialSelectedImageIds?: number[];
+      initialMode?: BatchInitialMode;
     }
   | { name: 'import-images'; ipId: number; groupId?: number | null }
   | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null }
+  | { name: 'import-batch-history'; ipId: number }
+  | { name: 'duplicate-review'; ipId: number; importBatchId: number }
   | { name: 'all-images'; ipId: number }
   | { name: 'image-viewer'; imageId: number; context: ImageViewerContext }
   | { name: 'image-detail'; imageId: number; context?: ImageViewerContext }
@@ -68,7 +73,7 @@ type AppRoute =
   | { name: 'tag-result'; tagId: number }
   | { name: 'favorites' }
   | { name: 'recent-viewed' }
-  | { name: 'quick-organize'; ipId?: number }
+  | { name: 'quick-organize'; ipId?: number; importBatchId?: number | null }
   | { name: 'global-search'; query?: string }
   | { name: 'trash' }
   | { name: 'backup' }
@@ -239,6 +244,7 @@ export default function App() {
             initialSelectedImageIds: imageId ? [imageId] : undefined,
           })
         }
+        onOpenImportBatches={() => pushRoute({ name: 'import-batch-history', ipId: currentRoute.ipId })}
         onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId })}
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
@@ -314,6 +320,7 @@ export default function App() {
         groupId={currentRoute.groupId ?? null}
         initialSelectedImageIds={currentRoute.initialSelectedImageIds}
         importBatchId={currentRoute.importBatchId ?? null}
+        initialMode={currentRoute.initialMode}
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onChanged={refreshLibrary}
@@ -348,18 +355,44 @@ export default function App() {
         importBatchId={currentRoute.importBatchId}
         ipId={currentRoute.ipId}
         onBack={popRoute}
-        onBatchOrganize={(imageIds) =>
+        onBatchOrganize={(imageIds, initialMode) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
             source: 'all-images',
             importBatchId: currentRoute.importBatchId,
             initialSelectedImageIds: imageIds,
+            initialMode,
           })
         }
+        onOpenDuplicateReview={(importBatchId) => pushRoute({ name: 'duplicate-review', ipId: currentRoute.ipId, importBatchId })}
         onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId })}
-        onQuickOrganize={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId })}
+        onQuickOrganize={(importBatchId) => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, importBatchId })}
         onOpenImageDetail={openImageDetail}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'import-batch-history') {
+    content = (
+      <ImportBatchHistoryScreen
+        ipId={currentRoute.ipId}
+        onBack={popRoute}
+        onOpenBatch={(batch) =>
+          pushRoute({
+            name: 'import-result',
+            ipId: currentRoute.ipId,
+            imageIds: [],
+            importBatchId: batch.id,
+          })
+        }
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'duplicate-review') {
+    content = (
+      <DuplicateReviewScreen
+        importBatchId={currentRoute.importBatchId}
+        onBack={popRoute}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -470,6 +503,7 @@ export default function App() {
   } else if (currentRoute.name === 'quick-organize') {
     content = (
       <QuickOrganizeScreen
+        importBatchId={currentRoute.importBatchId ?? null}
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onChanged={refreshLibrary}

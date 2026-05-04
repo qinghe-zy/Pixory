@@ -16,6 +16,7 @@ import { mergeDelimitedDraftTagNames } from '../utils/tagDrafts';
 
 interface QuickOrganizeScreenProps {
   ipId?: number;
+  importBatchId?: number | null;
   refreshToken: number;
   onBack: () => void;
   onChanged: () => void;
@@ -26,17 +27,17 @@ type LastOrganizeAction =
   | { type: 'tags'; tags: string[]; label: string }
   | { type: 'favorite'; label: string };
 
-export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: QuickOrganizeScreenProps) {
+export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, onBack, onChanged }: QuickOrganizeScreenProps) {
   const { showToast } = useToast();
   const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[] }>(
     async () => {
       const [images, groups] = await Promise.all([
-        imageRepository.findNeedsOrganizing(ipId),
+        imageRepository.findNeedsOrganizing({ ipId, importBatchId }),
         ipId != null ? groupRepository.findByIpId(ipId) : groupRepository.findAll(),
       ]);
       return { images, groups };
     },
-    [ipId, refreshToken],
+    [importBatchId, ipId, refreshToken],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -161,7 +162,7 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
     setDraftTags([]);
     setTagInput('');
     setData((currentData) => currentData ? { ...currentData, images: currentData.images.slice(targets.length) } : currentData);
-    showToast(`已给 ${targets.length} 张添加同样标签`);
+    showToast(`已把 #${tags.join(' #')} 加到接下来 ${targets.length} 张`);
     onChanged();
   }
 
@@ -252,7 +253,7 @@ export function QuickOrganizeScreen({ ipId, refreshToken, onBack, onChanged }: Q
                 />
                 <QueueActionButton
                   icon="copy-outline"
-                  label="同标签给20张"
+                  label="同标签给接下来20张"
                   onPress={handleApplyTagsToNext20}
                 />
               </View>

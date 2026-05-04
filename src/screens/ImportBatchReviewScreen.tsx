@@ -2,16 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import {
-  imageRepository,
-  importBatchRepository,
-  type ImageListItem,
-  type ImportBatchSummary,
-} from '../database';
+import { imageRepository, importBatchRepository, type ImageListItem, type ImportBatchSummary } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
@@ -27,7 +23,12 @@ type BatchPileKey =
   | 'panorama'
   | 'large'
   | 'small'
-  | 'large-file';
+  | 'large-file'
+  | 'same-size'
+  | 'filename-prefix'
+  | 'suspected-duplicate';
+
+export type BatchInitialMode = 'idle' | 'replace-group' | 'add-tags' | 'apply-template';
 
 interface ImportBatchReviewScreenProps {
   ipId: number;
@@ -36,8 +37,9 @@ interface ImportBatchReviewScreenProps {
   refreshToken: number;
   onBack: () => void;
   onImportAgain: () => void;
-  onQuickOrganize: () => void;
-  onBatchOrganize: (imageIds: number[]) => void;
+  onQuickOrganize: (importBatchId?: number | null) => void;
+  onBatchOrganize: (imageIds: number[], initialMode?: BatchInitialMode) => void;
+  onOpenDuplicateReview: (importBatchId: number) => void;
   onOpenImageDetail: (imageId: number) => void;
 }
 
@@ -50,10 +52,12 @@ export function ImportBatchReviewScreen({
   onImportAgain,
   onQuickOrganize,
   onBatchOrganize,
+  onOpenDuplicateReview,
   onOpenImageDetail,
 }: ImportBatchReviewScreenProps) {
   const [activePile, setActivePile] = useState<BatchPileKey>('all');
   const [activePrefix, setActivePrefix] = useState<string | null>(null);
+  const [actionPile, setActionPile] = useState<{ key: BatchPileKey; label: string; imageIds: number[] } | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     summary: ImportBatchSummary | null;
     images: ImageListItem[];
@@ -86,123 +90,188 @@ export function ImportBatchReviewScreen({
     return activePrefix ? pileImages.filter((image) => getFilenamePrefix(image.originalFilename) === activePrefix) : pileImages;
   }, [activePile, activePrefix, images]);
   const organizationPercent = stats.totalCount > 0 ? Math.round((stats.organizedCount / stats.totalCount) * 100) : 100;
+  const suggestions = useMemo(() => buildSuggestionCards(stats, importBatchId), [importBatchId, stats]);
+  const actionSheetItems: AppActionSheetItem[] = actionPile
+    ? [
+        {
+          key: 'tags',
+          label: `给这 ${actionPile.imageIds.length} 张加标签`,
+          icon: 'pricetags-outline',
+          onPress: () => onBatchOrganize(actionPile.imageIds, 'add-tags'),
+        },
+        {
+          key: 'template',
+          label: `套用模板到这 ${actionPile.imageIds.length} 张`,
+          icon: 'albums-outline',
+          onPress: () => onBatchOrganize(actionPile.imageIds, 'apply-template'),
+        },
+        ...(actionPile.key === 'suspected-duplicate' && importBatchId != null
+          ? [{
+              key: 'duplicate',
+              label: '查看疑似重复',
+              icon: 'copy-outline' as const,
+              onPress: () => onOpenDuplicateReview(importBatchId),
+            }]
+          : []),
+      ]
+    : [];
 
   return (
-    <ScreenScaffold decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
-      <View style={styles.heroPanel}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroIcon}>
-            <Ionicons color={colors.primary.active} name="file-tray-stacked-outline" size={21} />
+    <>
+      <ScreenScaffold decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
+        <View style={styles.heroPanel}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons color={colors.primary.active} name="file-tray-stacked-outline" size={21} />
+            </View>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 张</Text>
+              <Text numberOfLines={1} style={styles.heroMeta}>
+                {summary ? `${summary.ipName} · ${formatDateTime(summary.createdAt)}` : '导入结果整理台'}
+              </Text>
+            </View>
+            <Text style={styles.percentText}>{organizationPercent}%</Text>
           </View>
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 张</Text>
-            <Text numberOfLines={1} style={styles.heroMeta}>
-              {summary ? `${summary.ipName} · ${formatDateTime(summary.createdAt)}` : '导入结果整理台'}
-            </Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${organizationPercent}%` }]} />
           </View>
-          <Text style={styles.percentText}>{organizationPercent}%</Text>
+          <View style={styles.metricGrid}>
+            <Metric label="已整理" value={stats.organizedCount} />
+            <Metric label="未分组" value={stats.ungroupedCount} />
+            <Metric label="无标签" value={stats.untaggedCount} />
+            <Metric label="无备注" value={stats.noNoteCount} />
+            <Metric label="疑似重复" value={stats.suspectedDuplicateCount} />
+          </View>
         </View>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${organizationPercent}%` }]} />
-        </View>
-        <View style={styles.metricGrid}>
-          <Metric label="已整理" value={stats.organizedCount} />
-          <Metric label="未分组" value={stats.ungroupedCount} />
-          <Metric label="无标签" value={stats.untaggedCount} />
-          <Metric label="疑似重复" value={stats.suspectedDuplicateCount} />
-        </View>
-      </View>
 
-      <View style={styles.actions}>
-        <PrimaryButton label="进入批量整理" onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} />
-        <View style={styles.secondaryActions}>
-          <View style={styles.secondaryAction}>
-            <PrimaryButton label="连续整理" onPress={onQuickOrganize} variant="outline" />
-          </View>
-          <View style={styles.secondaryAction}>
-            <PrimaryButton label="再导入一批" onPress={onImportAgain} variant="ghost" />
+        <View style={styles.actions}>
+          <PrimaryButton label="进入批量整理" onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} />
+          <View style={styles.secondaryActions}>
+            <View style={styles.secondaryAction}>
+              <PrimaryButton label="连续整理" onPress={() => onQuickOrganize(importBatchId)} variant="outline" />
+            </View>
+            <View style={styles.secondaryAction}>
+              <PrimaryButton label="再导入一批" onPress={onImportAgain} variant="ghost" />
+            </View>
           </View>
         </View>
-      </View>
 
-      <PageStateBlock
-        emptyDescription="导入批次里没有可展示图片，可能已经被移动到回收站。"
-        emptyIconName="images-outline"
-        emptyTitle="暂无导入图片"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && images.length === 0}
-        loading={isLoading}
-        loadingDescription="正在读取本地 SQLite 中的导入批次和图片。"
-        loadingTitle="读取本次导入"
-        onRetry={reload}
-      >
-        <View style={styles.filterBlock}>
-          <Text style={styles.sectionTitle}>自动分堆</Text>
-          <View style={styles.pileOverview}>
-            {piles
-              .filter((pile) => pile.key !== 'all' && pile.count > 0)
-              .slice(0, 6)
-              .map((pile) => (
-                <PilePreviewRow
-                  active={activePile === pile.key && activePrefix == null}
-                  images={filterImagesByPile(images, pile.key).slice(0, 4)}
+        <PageStateBlock
+          emptyDescription="导入批次里没有可展示图片，可能已经被移动到回收站。"
+          emptyIconName="images-outline"
+          emptyTitle="暂无导入图片"
+          errorMessage={errorMessage}
+          isEmpty={!isLoading && images.length === 0}
+          loading={isLoading}
+          loadingDescription="正在读取本地 SQLite 中的导入批次和图片。"
+          loadingTitle="读取本次导入"
+          onRetry={reload}
+        >
+          {suggestions.length > 0 ? (
+            <View style={styles.suggestionBlock}>
+              {suggestions.map((suggestion) => (
+                <Pressable
+                  key={suggestion.key}
+                  onPress={() => {
+                    if (suggestion.key === 'duplicate' && importBatchId != null) {
+                      onOpenDuplicateReview(importBatchId);
+                      return;
+                    }
+                    setActivePile(suggestion.pile);
+                    setActivePrefix(null);
+                  }}
+                  style={({ pressed }) => [styles.suggestionCard, pressed && styles.pressed]}
+                >
+                  <View style={styles.suggestionCopy}>
+                    <Text style={styles.suggestionTitle}>{suggestion.title}</Text>
+                    <Text style={styles.suggestionMeta}>{suggestion.meta}</Text>
+                  </View>
+                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          <View style={styles.filterBlock}>
+            <Text style={styles.sectionTitle}>自动分堆</Text>
+            <View style={styles.pileOverview}>
+              {piles
+                .filter((pile) => pile.key !== 'all' && pile.count > 0)
+                .slice(0, 8)
+                .map((pile) => {
+                  const pileImages = filterImagesByPile(images, pile.key);
+                  return (
+                    <PilePreviewRow
+                      active={activePile === pile.key && activePrefix == null}
+                      count={pile.count}
+                      images={pileImages.slice(0, 4)}
+                      key={pile.key}
+                      label={pile.label}
+                      onMore={() => setActionPile({ key: pile.key, label: pile.label, imageIds: pileImages.map((image) => image.id) })}
+                      onOrganize={() => onBatchOrganize(pileImages.map((image) => image.id))}
+                      onPress={() => {
+                        setActivePile(pile.key);
+                        setActivePrefix(null);
+                      }}
+                    />
+                  );
+                })}
+            </View>
+            <View style={styles.pileWrap}>
+              {piles.map((pile) => (
+                <PileChip
+                  active={activePile === pile.key}
+                  count={pile.count}
                   key={pile.key}
                   label={pile.label}
-                  count={pile.count}
                   onPress={() => {
                     setActivePile(pile.key);
                     setActivePrefix(null);
                   }}
                 />
               ))}
+            </View>
+            {prefixPiles.length > 0 ? (
+              <View style={styles.prefixPanel}>
+                <Text style={styles.prefixTitle}>文件名前缀低优先级辅助</Text>
+                <View style={styles.prefixWrap}>
+                  {prefixPiles.map((pile) => (
+                    <Pressable
+                      key={pile.prefix}
+                      onPress={() => setActivePrefix((current) => current === pile.prefix ? null : pile.prefix)}
+                      style={({ pressed }) => [styles.prefixChip, activePrefix === pile.prefix ? styles.prefixChipActive : null, pressed && styles.pressed]}
+                    >
+                      <Text numberOfLines={1} style={[styles.prefixChipText, activePrefix === pile.prefix ? styles.prefixChipTextActive : null]}>
+                        {pile.prefix} · {pile.count}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </View>
-          <View style={styles.pileWrap}>
-            {piles.map((pile) => (
-              <PileChip
-                active={activePile === pile.key}
-                count={pile.count}
-                key={pile.key}
-                label={pile.label}
-                onPress={() => {
-                  setActivePile(pile.key);
-                  setActivePrefix(null);
-                }}
-              />
+
+          <View style={styles.gridHeader}>
+            <Text style={styles.sectionTitle}>{activePrefix ?? getPileLabel(activePile)} {filteredImages.length} 张</Text>
+            <Pressable onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
+              <Text style={styles.textButtonLabel}>整理这堆</Text>
+            </Pressable>
+          </View>
+          <View style={styles.grid}>
+            {filteredImages.map((image) => (
+              <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} />
             ))}
           </View>
-          {prefixPiles.length > 0 ? (
-            <View style={styles.prefixPanel}>
-              <Text style={styles.prefixTitle}>文件名前缀</Text>
-              <View style={styles.prefixWrap}>
-                {prefixPiles.map((pile) => (
-                  <Pressable
-                    key={pile.prefix}
-                    onPress={() => setActivePrefix((current) => current === pile.prefix ? null : pile.prefix)}
-                    style={({ pressed }) => [styles.prefixChip, activePrefix === pile.prefix ? styles.prefixChipActive : null, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={[styles.prefixChipText, activePrefix === pile.prefix ? styles.prefixChipTextActive : null]}>
-                      {pile.prefix} · {pile.count}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.gridHeader}>
-          <Text style={styles.sectionTitle}>{activePrefix ?? getPileLabel(activePile)} {filteredImages.length} 张</Text>
-          <Pressable onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
-            <Text style={styles.textButtonLabel}>整理这些</Text>
-          </Pressable>
-        </View>
-        <View style={styles.grid}>
-          {filteredImages.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} />
-          ))}
-        </View>
-      </PageStateBlock>
-    </ScreenScaffold>
+        </PageStateBlock>
+      </ScreenScaffold>
+      <AppActionSheet
+        items={actionSheetItems}
+        message={actionPile ? `${actionPile.label} · ${actionPile.imageIds.length} 张。更多动作需要你确认后才会写入。` : undefined}
+        onClose={() => setActionPile(null)}
+        title="分堆操作"
+        visible={Boolean(actionPile)}
+      />
+    </>
   );
 }
 
@@ -211,12 +280,16 @@ function PilePreviewRow({
   count,
   images,
   label,
+  onMore,
+  onOrganize,
   onPress,
 }: {
   active: boolean;
   count: number;
   images: ImageListItem[];
   label: string;
+  onMore: () => void;
+  onOrganize: () => void;
   onPress: () => void;
 }) {
   return (
@@ -238,7 +311,12 @@ function PilePreviewRow({
           </View>
         ))}
       </View>
-      <Ionicons color={colors.text.secondary} name="chevron-forward" size={15} />
+      <Pressable onPress={onOrganize} style={({ pressed }) => [styles.organizeButton, pressed && styles.pressed]}>
+        <Text style={styles.organizeButtonText}>整理这堆</Text>
+      </Pressable>
+      <Pressable hitSlop={8} onPress={onMore} style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
+        <Ionicons color={colors.text.secondary} name="ellipsis-horizontal" size={17} />
+      </Pressable>
     </Pressable>
   );
 }
@@ -252,17 +330,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function PileChip({
-  active,
-  count,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  count: number;
-  label: string;
-  onPress: () => void;
-}) {
+function PileChip({ active, count, label, onPress }: { active: boolean; count: number; label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.pileChip, active ? styles.pileChipActive : null, pressed && styles.pressed]}>
       <Text style={[styles.pileLabel, active ? styles.pileLabelActive : null]}>{label}</Text>
@@ -279,8 +347,7 @@ function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | 
 
   return {
     totalCount,
-    organizedCount:
-      summary?.organizedCount ?? images.filter((image) => image.groupCount > 0 && image.tagCount > 0).length,
+    organizedCount: summary?.organizedCount ?? images.filter((image) => image.groupCount > 0 && image.tagCount > 0 && image.note).length,
     ungroupedCount,
     untaggedCount,
     noNoteCount,
@@ -301,51 +368,50 @@ function buildPileOptions(images: ImageListItem[], stats: ReturnType<typeof buil
     { key: 'large' as const, label: '大图', count: filterImagesByPile(images, 'large').length },
     { key: 'small' as const, label: '小图', count: filterImagesByPile(images, 'small').length },
     { key: 'large-file' as const, label: '大文件', count: filterImagesByPile(images, 'large-file').length },
+    { key: 'same-size' as const, label: '同尺寸', count: filterImagesByPile(images, 'same-size').length },
+    { key: 'filename-prefix' as const, label: '文件名前缀', count: filterImagesByPile(images, 'filename-prefix').length },
+    { key: 'suspected-duplicate' as const, label: '疑似重复', count: stats.suspectedDuplicateCount },
   ];
 }
 
 function filterImagesByPile(images: ImageListItem[], pile: BatchPileKey): ImageListItem[] {
-  if (pile === 'ungrouped') {
-    return images.filter((image) => image.groupCount === 0);
+  if (pile === 'ungrouped') return images.filter((image) => image.groupCount === 0);
+  if (pile === 'untagged') return images.filter((image) => image.tagCount === 0);
+  if (pile === 'no-note') return images.filter((image) => !image.note);
+  if (pile === 'landscape') return images.filter((image) => image.width > image.height && image.width / image.height < 2.2);
+  if (pile === 'portrait') return images.filter((image) => image.height > image.width && image.height / image.width < 2.2);
+  if (pile === 'square') return images.filter((image) => Math.abs(image.width - image.height) <= Math.max(image.width, image.height) * 0.08);
+  if (pile === 'panorama') return images.filter((image) => Math.max(image.width / image.height, image.height / image.width) >= 2.2);
+  if (pile === 'large') return images.filter((image) => image.width >= 2400 || image.height >= 2400);
+  if (pile === 'small') return images.filter((image) => image.width <= 900 && image.height <= 900);
+  if (pile === 'large-file') return images.filter((image) => image.fileSize >= 5 * 1024 * 1024);
+  if (pile === 'same-size') {
+    const counts = countBy(images, (image) => `${image.width}x${image.height}`);
+    return images.filter((image) => (counts.get(`${image.width}x${image.height}`) ?? 0) > 1);
   }
-  if (pile === 'untagged') {
-    return images.filter((image) => image.tagCount === 0);
+  if (pile === 'filename-prefix') {
+    const counts = countBy(images, (image) => getFilenamePrefix(image.originalFilename) ?? '');
+    return images.filter((image) => {
+      const prefix = getFilenamePrefix(image.originalFilename);
+      return prefix ? (counts.get(prefix) ?? 0) > 1 : false;
+    });
   }
-  if (pile === 'no-note') {
-    return images.filter((image) => !image.note);
-  }
-  if (pile === 'landscape') {
-    return images.filter((image) => image.width > image.height && image.width / image.height < 2.2);
-  }
-  if (pile === 'portrait') {
-    return images.filter((image) => image.height > image.width && image.height / image.width < 2.2);
-  }
-  if (pile === 'square') {
-    return images.filter((image) => Math.abs(image.width - image.height) <= Math.max(image.width, image.height) * 0.08);
-  }
-  if (pile === 'panorama') {
-    return images.filter((image) => Math.max(image.width / image.height, image.height / image.width) >= 2.2);
-  }
-  if (pile === 'large') {
-    return images.filter((image) => image.width >= 2400 || image.height >= 2400);
-  }
-  if (pile === 'small') {
-    return images.filter((image) => image.width <= 900 && image.height <= 900);
-  }
-  if (pile === 'large-file') {
-    return images.filter((image) => image.fileSize >= 5 * 1024 * 1024);
+  if (pile === 'suspected-duplicate') {
+    const counts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
+    return images.filter((image) => (counts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) > 1);
   }
   return images;
 }
+
+const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);
 
 function buildPrefixPiles(images: ImageListItem[]): Array<{ prefix: string; count: number }> {
   const counts = new Map<string, number>();
   for (const image of images) {
     const prefix = getFilenamePrefix(image.originalFilename);
-    if (!prefix) {
-      continue;
+    if (prefix) {
+      counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
     }
-    counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
   }
 
   return [...counts.entries()]
@@ -359,19 +425,25 @@ function getFilenamePrefix(filename: string): string | null {
   const baseName = filename.replace(/\.[^.]+$/, '');
   const [prefix] = baseName.split(/[_\-\s.]+/);
   const normalized = prefix?.trim();
-  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized)) {
-    return baseName.slice(0, 6) || null;
+  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized) || WEAK_FILENAME_PREFIXES.has(normalized.toLowerCase())) {
+    return null;
   }
   return normalized;
 }
 
-function countSuspectedDuplicates(images: ImageListItem[]): number {
+function countBy<T>(items: T[], getKey: (item: T) => string): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const image of images) {
-    const key = `${image.width}x${image.height}:${image.fileSize}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+  for (const item of items) {
+    const key = getKey(item);
+    if (key) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
   }
+  return counts;
+}
 
+function countSuspectedDuplicates(images: ImageListItem[]): number {
+  const counts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
   return [...counts.values()].filter((count) => count > 1).reduce((total, count) => total + count, 0);
 }
 
@@ -388,8 +460,27 @@ function getPileLabel(pile: BatchPileKey): string {
     large: '大图',
     small: '小图',
     'large-file': '大文件',
+    'same-size': '同尺寸',
+    'filename-prefix': '文件名前缀',
+    'suspected-duplicate': '疑似重复',
   };
   return labels[pile];
+}
+
+function buildSuggestionCards(stats: ReturnType<typeof buildBatchStats>, importBatchId: number | null) {
+  const suggestions: Array<{ key: string; pile: BatchPileKey; title: string; meta: string }> = [];
+
+  if (stats.ungroupedCount > 0) {
+    suggestions.push({ key: 'ungrouped', pile: 'ungrouped', title: `还有 ${stats.ungroupedCount} 张未分组`, meta: '建议先整理这堆，确认一次再批量写入。' });
+  }
+  if (stats.untaggedCount > 0) {
+    suggestions.push({ key: 'untagged', pile: 'untagged', title: `还有 ${stats.untaggedCount} 张无标签`, meta: '可以进入这堆后统一加标签或套模板。' });
+  }
+  if (stats.suspectedDuplicateCount > 0 && importBatchId != null) {
+    suggestions.push({ key: 'duplicate', pile: 'suspected-duplicate', title: `疑似重复 ${stats.suspectedDuplicateCount} 张`, meta: '依据同尺寸和同文件大小，仅提示不自动删除。' });
+  }
+
+  return suggestions.slice(0, 3);
 }
 
 const styles = StyleSheet.create({
@@ -448,7 +539,7 @@ const styles = StyleSheet.create({
   },
   metric: {
     gap: spacing[1],
-    width: '24%',
+    width: '19%',
   },
   metricValue: {
     ...typography.textStyles.bodyStrong,
@@ -469,6 +560,34 @@ const styles = StyleSheet.create({
   },
   secondaryAction: {
     flex: 1,
+  },
+  suggestionBlock: {
+    gap: spacing[2],
+    marginBottom: spacing[3],
+  },
+  suggestionCard: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    padding: spacing[3],
+  },
+  suggestionCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  suggestionTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+  },
+  suggestionMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   filterBlock: {
     gap: spacing[2],
@@ -522,9 +641,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: 38,
+    maxWidth: 34,
     overflow: 'hidden',
-    width: '22%',
+    width: '21%',
   },
   pilePreviewImage: {
     height: '100%',
@@ -534,6 +653,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
+  },
+  organizeButton: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  organizeButtonText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  moreButton: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
