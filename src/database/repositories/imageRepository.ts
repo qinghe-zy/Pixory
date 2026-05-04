@@ -1,4 +1,5 @@
 import { getDatabase } from '../db';
+import { ipRepository } from './ipRepository';
 import type {
   CountRow,
   CreateImageAssetInput,
@@ -1305,6 +1306,10 @@ export const imageRepository = {
 
         await touchManyParentRecords(db, currentImages);
       });
+
+      for (const ipId of [...new Set(currentImages.map((image) => image.ipId))]) {
+        await ipRepository.restoreById(ipId);
+      }
 
       return changedCount;
     } catch (error) {

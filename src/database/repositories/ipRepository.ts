@@ -27,6 +27,7 @@ const IP_LIBRARY_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
     COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
@@ -50,6 +51,7 @@ const IP_DETAIL_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
     COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
@@ -70,7 +72,7 @@ const IP_DETAIL_SELECT = `
 
 function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array<number | string> } {
   const values: Array<number | string> = [];
-  const whereClauses: string[] = [];
+  const whereClauses: string[] = ['ips.deletedAt IS NULL'];
   const normalizedSearchText = query?.searchText?.trim();
   const filter = query?.filter ?? 'all';
 
@@ -150,13 +152,19 @@ export const ipRepository = {
 
   async findById(id: number): Promise<IpRecord | null> {
     const db = await getDatabase();
-    const row = await db.getFirstAsync<IpRow>('SELECT * FROM ips WHERE id = ?', id);
+    const row = await db.getFirstAsync<IpRow>('SELECT * FROM ips WHERE id = ? AND deletedAt IS NULL', id);
     return row ? mapIpRow(row) : null;
   },
 
   async findAll(): Promise<IpRecord[]> {
     const db = await getDatabase();
-    const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips ORDER BY updatedAt DESC, id DESC');
+    const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips WHERE deletedAt IS NULL ORDER BY updatedAt DESC, id DESC');
+    return rows.map(mapIpRow);
+  },
+
+  async findAllIncludingDeleted(): Promise<IpRecord[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips ORDER BY deletedAt IS NULL DESC, updatedAt DESC, id DESC');
     return rows.map(mapIpRow);
   },
 
@@ -170,7 +178,7 @@ export const ipRepository = {
   async findLibraryItemById(id: number): Promise<IpListItem | null> {
     const db = await getDatabase();
     const row = await db.getFirstAsync<IpListItemRow>(
-      `${IP_LIBRARY_SELECT} WHERE ips.id = ? GROUP BY ips.id`,
+      `${IP_LIBRARY_SELECT} WHERE ips.id = ? AND ips.deletedAt IS NULL GROUP BY ips.id`,
       id
     );
     return row ? mapIpListItemRow(row) : null;
@@ -185,14 +193,75 @@ export const ipRepository = {
         tagCount: number;
         recentUpdatedAt: string | null;
       }
-    >(`${IP_DETAIL_SELECT} WHERE ips.id = ? GROUP BY ips.id`, id);
+    >(`${IP_DETAIL_SELECT} WHERE ips.id = ? AND ips.deletedAt IS NULL GROUP BY ips.id`, id);
     return row ? mapIpDetailRow(row) : null;
   },
 
   async count(): Promise<number> {
     const db = await getDatabase();
-    const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM ips');
+    const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM ips WHERE deletedAt IS NULL');
     return row?.count ?? 0;
+  },
+
+  async softDeleteById(id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number }> {
+    const db = await getDatabase();
+    const now = createTimestamp();
+    let ipDeletedCount = 0;
+    let imageDeletedCount = 0;
+
+    await db.withTransactionAsync(async () => {
+      const ipResult = await db.runAsync(
+        'UPDATE ips SET deletedAt = ?, updatedAt = ? WHERE id = ? AND deletedAt IS NULL',
+        now,
+        now,
+        id
+      );
+      ipDeletedCount = ipResult.changes;
+
+      const imageResult = await db.runAsync(
+        'UPDATE image_assets SET deletedAt = ?, updatedAt = ? WHERE ipId = ? AND deletedAt IS NULL',
+        now,
+        now,
+        id
+      );
+      imageDeletedCount = imageResult.changes;
+    });
+
+    return { ipDeletedCount, imageDeletedCount };
+  },
+
+  async restoreById(id: number): Promise<number> {
+    const db = await getDatabase();
+    const result = await db.runAsync(
+      'UPDATE ips SET deletedAt = NULL, updatedAt = ? WHERE id = ? AND deletedAt IS NOT NULL',
+      createTimestamp(),
+      id
+    );
+    return result.changes;
+  },
+
+  async deletePermanentlyById(id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number; groupDeletedCount: number; importBatchDeletedCount: number }> {
+    const db = await getDatabase();
+    let ipDeletedCount = 0;
+    let imageDeletedCount = 0;
+    let groupDeletedCount = 0;
+    let importBatchDeletedCount = 0;
+
+    await db.withTransactionAsync(async () => {
+      const imageResult = await db.runAsync('DELETE FROM image_assets WHERE ipId = ?', id);
+      imageDeletedCount = imageResult.changes;
+
+      const groupResult = await db.runAsync('DELETE FROM groups WHERE ipId = ?', id);
+      groupDeletedCount = groupResult.changes;
+
+      const importBatchResult = await db.runAsync('DELETE FROM import_batches WHERE ipId = ?', id);
+      importBatchDeletedCount = importBatchResult.changes;
+
+      const ipResult = await db.runAsync('DELETE FROM ips WHERE id = ?', id);
+      ipDeletedCount = ipResult.changes;
+    });
+
+    return { ipDeletedCount, imageDeletedCount, groupDeletedCount, importBatchDeletedCount };
   },
 
   async deleteById(id: number): Promise<number> {

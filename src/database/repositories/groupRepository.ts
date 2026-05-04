@@ -171,7 +171,7 @@ export const groupRepository = {
   async findOverview(): Promise<GlobalGroupListItem[]> {
     const db = await getDatabase();
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
-      `${GROUP_OVERVIEW_SELECT} GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
+      `${GROUP_OVERVIEW_SELECT} WHERE ips.deletedAt IS NULL GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
     );
     return rows.map(mapGlobalGroupListItemRow);
   },

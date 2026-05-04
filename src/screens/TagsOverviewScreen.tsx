@@ -26,6 +26,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   const [deleteTag, setDeleteTag] = useState<TagUsageItem | null>(null);
   const [renameTag, setRenameTag] = useState<TagUsageItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [createTagValue, setCreateTagValue] = useState('');
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
     () => tagRepository.findUsageOverview(),
     [refreshToken],
@@ -106,11 +107,47 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     })();
   }
 
+  function submitCreateTag() {
+    const name = createTagValue.trim();
+    if (!name) {
+      showToast('请输入标签名称');
+      return;
+    }
+
+    void (async () => {
+      try {
+        await tagRepository.create({ name });
+        setCreateTagValue('');
+        showToast('已新增标签');
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `新增标签失败：${error.message}` : '新增标签失败');
+      }
+    })();
+  }
+
   return (
     <>
     <ScreenScaffold decorativeTitle="Tags" footer={footer} scrollable title="标签">
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
+      </View>
+      <View style={styles.createPanel}>
+        <Text style={styles.resultLabel}>新增标签</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setCreateTagValue}
+          onSubmitEditing={submitCreateTag}
+          placeholder="输入标签名称"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.renameInput}
+          value={createTagValue}
+        />
+        <Pressable onPress={submitCreateTag} style={({ pressed }) => [styles.resultAction, pressed && styles.pressed]}>
+          <Text style={styles.resultActionText}>新增</Text>
+        </Pressable>
       </View>
       {renameTag ? (
         <View style={styles.renamePanel}>
@@ -287,6 +324,16 @@ const styles = StyleSheet.create({
     rowGap: spacing[2],
   },
   renamePanel: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    padding: spacing[2],
+  },
+  createPanel: {
     alignItems: 'center',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,

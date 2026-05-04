@@ -252,6 +252,10 @@ async function loadImagesForContext(context: ImageViewerContext): Promise<ImageL
     return imageRepository.findRecentByIpId(context.ipId, context.limit);
   }
 
+  if (context.type === 'import-batch') {
+    return imageRepository.findByImportBatchId(context.importBatchId);
+  }
+
   if (context.type === 'ip-all') {
     const { filter } = context;
     if (filter.type === 'favorite') {

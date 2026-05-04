@@ -111,6 +111,7 @@ export function IpDetailScreen({
   const recentImportBatches = data?.recentImportBatches ?? [];
   const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
   const organizationProgress = data?.organizationProgress;
+  const managementSummary = needsOrganizingCount > 0 || Boolean(organizationProgress) || recentImportBatches.length > 0;
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
     if (key === 'import') {
@@ -153,7 +154,13 @@ export function IpDetailScreen({
   }
 
   function handleOpenRecentImage(imageId: number) {
-    onOpenImage(imageId, { type: 'ip-recent', ipId, limit: 6 });
+    const image = recentImages.find((item) => item.id === imageId);
+    if (image?.importBatchId != null) {
+      onOpenImage(imageId, { type: 'import-batch', ipId, importBatchId: image.importBatchId });
+      return;
+    }
+
+    onOpenImage(imageId, { type: 'ip-all', ipId, filter: { type: 'all' } });
   }
 
   function handleImageLongPress(image: ImageListItem) {
@@ -207,51 +214,53 @@ export function IpDetailScreen({
               <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
             </View>
 
-            {needsOrganizingCount > 0 ? (
-              <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
-                <View style={styles.needsCopy}>
-                  <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
-                </View>
-                <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-              </Pressable>
-            ) : null}
+            {managementSummary ? (
+              <View style={styles.managementSummary}>
+                <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? onOpenImportBatches : undefined} title="管理摘要" />
+                {needsOrganizingCount > 0 ? (
+                  <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
+                    <View style={styles.needsCopy}>
+                      <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
+                    </View>
+                    <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                  </Pressable>
+                ) : null}
 
-            {organizationProgress ? (
-              <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
-                  <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
-                </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
-                </View>
-                <View style={styles.progressFacts}>
-                  <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
-                  <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
-                  <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
-                </View>
-              </Pressable>
-            ) : null}
+                {organizationProgress ? (
+                  <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
+                      <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
+                    </View>
+                    <View style={styles.progressFacts}>
+                      <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
+                      <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
+                      <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
+                    </View>
+                  </Pressable>
+                ) : null}
 
-            {recentImportBatches.length > 0 ? (
-              <View style={styles.batchSection}>
-                <SectionHeader actionLabel="全部批次" onActionPress={onOpenImportBatches} title="最近导入批次" />
-                <View style={styles.batchList}>
-                  {recentImportBatches.slice(0, 2).map((batch) => {
-                    const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
-                    return (
-                      <Pressable key={batch.id} onPress={onOpenImportBatches} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
-                        <View style={styles.batchCopy}>
-                          <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
-                          <Text numberOfLines={1} style={styles.batchMeta}>
-                            {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
-                          </Text>
-                        </View>
-                        <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                {recentImportBatches.length > 0 ? (
+                  <View style={styles.batchList}>
+                    {recentImportBatches.slice(0, 2).map((batch) => {
+                      const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
+                      return (
+                        <Pressable key={batch.id} onPress={onOpenImportBatches} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
+                          <View style={styles.batchCopy}>
+                            <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
+                            <Text numberOfLines={1} style={styles.batchMeta}>
+                              {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
+                            </Text>
+                          </View>
+                          <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </View>
             ) : null}
 
@@ -530,6 +539,14 @@ const styles = StyleSheet.create({
   },
   batchSection: {
     gap: spacing[2],
+  },
+  managementSummary: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    padding: spacing[3],
   },
   batchList: {
     gap: spacing[2],

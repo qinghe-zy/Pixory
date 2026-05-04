@@ -30,7 +30,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     async () => {
       const [images, ips] = await Promise.all([
         activeIpId == null ? imageRepository.findDeleted() : imageRepository.findDeletedByIpId(activeIpId),
-        ipRepository.findAll(),
+        ipRepository.findAllIncludingDeleted(),
       ]);
       return { images, ips };
     },

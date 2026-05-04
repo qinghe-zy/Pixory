@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
@@ -14,6 +15,7 @@ import { imageRepository, ipRepository, type IpLibraryFilter, type IpListItem } 
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
+import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部' },
@@ -42,7 +44,9 @@ export function HomeLibraryScreen({
 }: HomeLibraryScreenProps) {
   const { showToast } = useToast();
   const [activeFilter, setActiveFilter] = useState<IpLibraryFilter>(initialFilter);
-  const [deleteIp, setDeleteIp] = useState<IpListItem | null>(null);
+  const [actionIp, setActionIp] = useState<IpListItem | null>(null);
+  const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
+  const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
     async () => {
       const [items, needsOrganizingCount] = await Promise.all([
@@ -87,27 +91,47 @@ export function HomeLibraryScreen({
   const isSearchOrFilterEmpty = !isLoading && !errorMessage && items.length === 0 && !isLibraryCompletelyEmpty;
 
   function handleDeleteIp(ip: IpListItem) {
-    setDeleteIp(ip);
+    setActionIp(ip);
   }
 
-  function confirmDeleteIp() {
-    if (!deleteIp) {
+  function confirmMoveIpToTrash() {
+    if (!trashIp) {
       return;
     }
 
-    const ip = deleteIp;
-    setDeleteIp(null);
+    const ip = trashIp;
+    setTrashIp(null);
     void (async () => {
       try {
-        const deletedCount = await ipRepository.deleteById(ip.id);
-        if (deletedCount === 0) {
+        const result = await softDeleteIpToTrash(ip.id);
+        if (result.ipDeletedCount === 0) {
           throw new Error('没有找到这个 IP。');
         }
-        showToast('已删除 IP');
+        showToast(`已移入回收站，包含 ${result.imageDeletedCount} 张图片`);
         reload();
       } catch (error) {
-        const message = error instanceof Error ? error.message : '未知错误';
-        showToast(`删除 IP 失败：${message}`);
+        showToast(error instanceof Error ? `移入回收站失败：${error.message}` : '移入回收站失败');
+      }
+    })();
+  }
+
+  function confirmPermanentDeleteIp() {
+    if (!permanentDeleteIp) {
+      return;
+    }
+
+    const ip = permanentDeleteIp;
+    setPermanentDeleteIp(null);
+    void (async () => {
+      try {
+        const result = await permanentlyDeleteIp(ip.id);
+        if (result.ipDeletedCount === 0) {
+          throw new Error('没有找到这个 IP。');
+        }
+        showToast(`已永久删除 ${result.imageDeletedCount} 张图片，文件失败 ${result.fileFailures.length} 个`);
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `永久删除失败：${error.message}` : '永久删除失败');
       }
     })();
   }
@@ -194,12 +218,44 @@ export function HomeLibraryScreen({
     </ScreenScaffold>
     <AppDialog
       danger
-      message={deleteIp ? `将删除「${deleteIp.name}」及其空分组信息。包含图片记录的 IP 需要先删除图片并清空回收站。` : ''}
-      onClose={() => setDeleteIp(null)}
-      onPrimary={confirmDeleteIp}
-      primaryLabel="确认删除"
-      title="删除 IP"
-      visible={Boolean(deleteIp)}
+      message={trashIp ? `将「${trashIp.name}」移入回收站，并软删除该 IP 下全部图片。原图和缩略图仍保留在 Pixory 本地私有存储。` : ''}
+      onClose={() => setTrashIp(null)}
+      onPrimary={confirmMoveIpToTrash}
+      primaryLabel="移入回收站"
+      title="移入回收站"
+      visible={Boolean(trashIp)}
+    />
+    <AppDialog
+      danger
+      message={permanentDeleteIp ? `将永久删除「${permanentDeleteIp.name}」及其图片记录、分组、导入批次，并删除 Pixory 私有存储中的原图和缩略图。此操作不可恢复。` : ''}
+      onClose={() => setPermanentDeleteIp(null)}
+      onPrimary={confirmPermanentDeleteIp}
+      primaryLabel="永久删除"
+      title="永久删除 IP"
+      visible={Boolean(permanentDeleteIp)}
+    />
+    <AppActionSheet
+      items={actionIp ? [
+        {
+          key: 'trash',
+          label: '移入回收站',
+          icon: 'archive-outline',
+          meta: '推荐，保留本地文件',
+          onPress: () => setTrashIp(actionIp),
+        },
+        {
+          key: 'permanent',
+          label: '永久删除',
+          icon: 'trash-outline',
+          danger: true,
+          meta: '删除数据库记录、原图和缩略图',
+          onPress: () => setPermanentDeleteIp(actionIp),
+        },
+      ] : []}
+      message="移入回收站更安全；永久删除会清理 Pixory 私有存储中的文件。"
+      onClose={() => setActionIp(null)}
+      title={actionIp?.name ?? 'IP 操作'}
+      visible={Boolean(actionIp)}
     />
     </>
   );

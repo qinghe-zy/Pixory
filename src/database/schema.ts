@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 7;
+export const DATABASE_VERSION = 8;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -128,4 +128,9 @@ ALTER TABLE image_assets ADD COLUMN importBatchId INTEGER;
 CREATE INDEX IF NOT EXISTS idx_import_batches_ip_id ON import_batches(ipId);
 CREATE INDEX IF NOT EXISTS idx_import_batches_created_at ON import_batches(createdAt);
 CREATE INDEX IF NOT EXISTS idx_image_assets_import_batch_id ON image_assets(importBatchId);
+`;
+
+export const MIGRATION_STATEMENTS_V8 = `
+ALTER TABLE ips ADD COLUMN deletedAt TEXT;
+CREATE INDEX IF NOT EXISTS idx_ips_deleted_at ON ips(deletedAt);
 `;

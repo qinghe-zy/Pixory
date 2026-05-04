@@ -24,6 +24,12 @@ import { captureBatchUndoSnapshot, restoreBatchUndoSnapshot } from '../services/
 import { isDevToolsEnabled } from '../utils/dev';
 import { devLog } from '../utils/dev';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
+import {
+  applySelectionRule,
+  BATCH_SELECTION_RULE_OPTIONS,
+  type BatchSelectionRuleKey,
+  type BatchSelectionRuleResult,
+} from '../utils/batchSelectionRules';
 import { useToast } from '../components/AppToast';
 
 type BatchSource = 'ip-detail' | 'all-images' | 'group-images';
@@ -93,6 +99,7 @@ export function BatchManageImagesScreen({
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const [isSelectionSheetVisible, setIsSelectionSheetVisible] = useState(false);
+  const [activeRule, setActiveRule] = useState<BatchSelectionRuleResult | null>(null);
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
@@ -127,42 +134,39 @@ export function BatchManageImagesScreen({
     setSelectedImageIds(allSelected ? [] : visibleImageIds);
   }
 
-  function selectByRule(rule: 'visible' | 'ungrouped' | 'untagged' | 'same-size' | 'same-prefix' | 'import-batch' | 'invert') {
+  function selectByRule(rule: 'visible' | 'invert' | BatchSelectionRuleKey) {
     if (rule === 'visible') {
+      setActiveRule(null);
       setSelectedImageIds(visibleImageIds);
       return;
     }
 
-    if (rule === 'ungrouped') {
-      setSelectedImageIds(images.filter((image) => image.groupCount === 0).map((image) => image.id));
+    if (rule === 'invert') {
+      setActiveRule(null);
+      const selectedSet = new Set(selectedImageIds);
+      setSelectedImageIds(visibleImageIds.filter((imageId) => !selectedSet.has(imageId)));
       return;
     }
 
-    if (rule === 'untagged') {
-      setSelectedImageIds(images.filter((image) => image.tagCount === 0).map((image) => image.id));
+    if (activeRule?.key === rule) {
+      setActiveRule(null);
+      setSelectedImageIds([]);
       return;
     }
 
-    if (rule === 'same-size') {
-      const baseImage = selectedImages[0] ?? images[0];
-      setSelectedImageIds(baseImage ? images.filter((image) => image.width === baseImage.width && image.height === baseImage.height).map((image) => image.id) : []);
-      return;
+    try {
+      const result = applySelectionRule({
+        images,
+        selectedImageIds,
+        rule,
+        importBatchId,
+      });
+      setActiveRule(result);
+      setSelectedImageIds(result.imageIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '请选择基准图片。';
+      showToast(message);
     }
-
-    if (rule === 'same-prefix') {
-      const basePrefix = getFilenamePrefix((selectedImages[0] ?? images[0])?.originalFilename ?? '');
-      setSelectedImageIds(basePrefix ? images.filter((image) => getFilenamePrefix(image.originalFilename) === basePrefix).map((image) => image.id) : []);
-      return;
-    }
-
-    if (rule === 'import-batch') {
-      const batchId = importBatchId ?? selectedImages[0]?.importBatchId ?? null;
-      setSelectedImageIds(batchId != null ? images.filter((image) => image.importBatchId === batchId).map((image) => image.id) : visibleImageIds);
-      return;
-    }
-
-    const selectedSet = new Set(selectedImageIds);
-    setSelectedImageIds(visibleImageIds.filter((imageId) => !selectedSet.has(imageId)));
   }
 
   function resetInlineMode(nextMode: BatchMode = 'idle') {
@@ -564,6 +568,20 @@ export function BatchManageImagesScreen({
           <RuleChip label="反选" onPress={() => selectByRule('invert')} />
           <RuleChip label="更多选择" onPress={() => setIsSelectionSheetVisible(true)} />
         </View>
+        {activeRule ? (
+          <View style={styles.activeRulePanel}>
+            <Text numberOfLines={2} style={styles.activeRuleText}>{activeRule.label} · {activeRule.description}</Text>
+            <Pressable
+              onPress={() => {
+                setActiveRule(null);
+                setSelectedImageIds([]);
+              }}
+              style={({ pressed }) => [styles.cancelRuleButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.cancelRuleText}>取消该规则</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {isGroupMode(mode) ? (
           <LightFormSection hint={getGroupModeHint(mode, selectedCount)} title={getGroupModeTitle(mode)}>
@@ -696,11 +714,13 @@ export function BatchManageImagesScreen({
       visible={isDeleteDialogVisible}
     />
     <AppActionSheet
-      items={[
-        { key: 'same-size', label: '选择同尺寸', icon: 'resize-outline', onPress: () => selectByRule('same-size') },
-        { key: 'same-prefix', label: '选择同文件名前缀', icon: 'text-outline', onPress: () => selectByRule('same-prefix') },
-        { key: 'import-batch', label: '选择本次导入', icon: 'file-tray-stacked-outline', onPress: () => selectByRule('import-batch') },
-      ]}
+      items={BATCH_SELECTION_RULE_OPTIONS.map((option) => ({
+        key: option.key,
+        label: option.key === 'filename-prefix' ? '选择同文件名前缀' : `选择${option.label}`,
+        icon: option.key === 'import-batch' ? 'file-tray-stacked-outline' : option.key === 'same-size' ? 'resize-outline' : option.key === 'filename-prefix' ? 'text-outline' : 'sparkles-outline',
+        meta: activeRule?.key === option.key ? '再次点击取消' : '只改变当前选择',
+        onPress: () => selectByRule(option.key),
+      }))}
       message="高级选择只改变当前选择范围，不会直接写入图片数据。"
       onClose={() => setIsSelectionSheetVisible(false)}
       title="更多选择"
@@ -869,6 +889,32 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.primary.active,
     fontWeight: '600',
+  },
+  activeRulePanel: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginBottom: spacing[3],
+    padding: spacing[2],
+  },
+  activeRuleText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  cancelRuleButton: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  cancelRuleText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.default,
+    fontWeight: '700',
   },
   selectionText: {
     ...typography.textStyles.bodyStrong,

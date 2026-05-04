@@ -39,11 +39,17 @@ export function useImageMultiSelect(visibleImageIds: number[]) {
     setSelectedImageIds(allSelected ? [] : visibleImageIds);
   }
 
+  function applyRuleSelection(imageIds: number[]) {
+    const nextIds = imageIds.filter((imageId) => visibleIdSet.has(imageId));
+    setSelectedImageIds([...new Set(nextIds)]);
+  }
+
   function clearSelection() {
     setSelectedImageIds([]);
   }
 
   return {
+    applyRuleSelection,
     allSelected,
     clearSelection,
     enterSelection,
