@@ -18,6 +18,7 @@ interface GroupOverviewScreenProps {
   refreshToken: number;
   onBack: () => void;
   onCreateGroup: () => void;
+  onEditGroup: (groupId: number) => void;
   onOpenGroup: (groupId: number) => void;
 }
 
@@ -26,6 +27,7 @@ export function GroupOverviewScreen({
   refreshToken,
   onBack,
   onCreateGroup,
+  onEditGroup,
   onOpenGroup,
 }: GroupOverviewScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
@@ -92,6 +94,19 @@ export function GroupOverviewScreen({
     );
   }
 
+  function handleManageGroup(group: GroupListItem) {
+    Alert.alert(
+      group.name,
+      '管理这个分组。删除分组不会删除图片，图片会保留在当前 IP 的未分组中。',
+      [
+        { text: '查看图片', onPress: () => onOpenGroup(group.id) },
+        { text: '编辑分组', onPress: () => onEditGroup(group.id) },
+        { text: '删除分组', style: 'destructive', onPress: () => handleDeleteGroup(group) },
+        { text: '取消', style: 'cancel' },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold onBack={onBack} rightAction={rightSlot} scrollable title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
@@ -116,7 +131,7 @@ export function GroupOverviewScreen({
               {section.items.map((group) => (
                 <Pressable
                   key={group.id}
-                  onLongPress={() => handleDeleteGroup(group)}
+                  onLongPress={() => handleManageGroup(group)}
                   onPress={() => onOpenGroup(group.id)}
                   style={({ pressed }) => [pressed && styles.pressed]}
                 >

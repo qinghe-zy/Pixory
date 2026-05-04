@@ -1,5 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -75,4 +75,12 @@ CREATE INDEX IF NOT EXISTS idx_ips_is_favorite ON ips(isFavorite);
 
 export const MIGRATION_STATEMENTS_V3 = `
 ALTER TABLE groups ADD COLUMN description TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V4 = `
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT,
+  updatedAt TEXT NOT NULL
+);
 `;

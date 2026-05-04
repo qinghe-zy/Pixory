@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -14,10 +14,11 @@ import { formatDate } from '../utils/formatters';
 interface GlobalGroupsScreenProps {
   refreshToken: number;
   footer?: ReactNode;
+  onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
 }
 
-export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: GlobalGroupsScreenProps) {
+export function GlobalGroupsScreen({ refreshToken, footer, onEditGroup, onOpenGroup }: GlobalGroupsScreenProps) {
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
     () => groupRepository.findOverview(),
     [refreshToken],
@@ -34,8 +35,6 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
     ...option,
     items: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
-  const orderedGroups = groupedSections.flatMap((section) => section.items);
-
   function handleDeleteGroup(group: GlobalGroupListItem) {
     Alert.alert(
       '删除分组',
@@ -65,6 +64,19 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
     );
   }
 
+  function handleManageGroup(group: GlobalGroupListItem) {
+    Alert.alert(
+      group.name,
+      '管理这个分组。删除分组不会删除图片，图片会保留在所属 IP 的未分组中。',
+      [
+        { text: '查看图片', onPress: () => onOpenGroup(group.ipId, group.id) },
+        { text: '编辑分组', onPress: () => onEditGroup(group.ipId, group.id) },
+        { text: '删除分组', style: 'destructive', onPress: () => handleDeleteGroup(group) },
+        { text: '取消', style: 'cancel' },
+      ]
+    );
+  }
+
   return (
     <ScreenScaffold decorativeTitle="Groups" footer={footer} scrollable title="分组">
       <PageStateBlock
@@ -80,29 +92,33 @@ export function GlobalGroupsScreen({ refreshToken, footer, onOpenGroup }: Global
         onRetry={reload}
       >
         <View style={styles.list}>
-          <View style={styles.typeRow}>
-            <Text style={styles.typePill}>全部 IP</Text>
-          </View>
-          {orderedGroups.map((group) => (
-            <Pressable
-              key={group.id}
-              onLongPress={() => handleDeleteGroup(group)}
-              onPress={() => onOpenGroup(group.ipId, group.id)}
-              style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
-            >
-              {group.coverThumbnailFileUri ? (
-                <ImageBackground imageStyle={styles.coverImage} resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverWrap}>
-                  <View style={styles.groupOverlay}>
-                    <GroupCardCopy group={group} />
+          <Text style={styles.scopePill}>全部 IP</Text>
+          {groupedSections.map((section) => (
+            <View key={section.value} style={styles.sectionBlock}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{section.label}</Text>
+                <Text style={styles.sectionCount}>{section.items.length}</Text>
+              </View>
+              {section.items.map((group) => (
+                <Pressable
+                  key={group.id}
+                  onLongPress={() => handleManageGroup(group)}
+                  onPress={() => onOpenGroup(group.ipId, group.id)}
+                  style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
+                >
+                  <View style={styles.coverWrap}>
+                    {group.coverThumbnailFileUri ? (
+                      <Image resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverImage} />
+                    ) : (
+                      <View style={styles.coverEmpty}>
+                        <Ionicons color={colors.primary.default} name="images-outline" size={22} />
+                      </View>
+                    )}
                   </View>
-                </ImageBackground>
-              ) : (
-                <View style={[styles.coverWrap, styles.coverEmpty]}>
-                  <Ionicons color={colors.primary.default} name="images-outline" size={22} />
                   <GroupCardCopy group={group} />
-                </View>
-              )}
-            </Pressable>
+                </Pressable>
+              ))}
+            </View>
           ))}
         </View>
       </PageStateBlock>
@@ -134,13 +150,11 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   list: {
-    gap: spacing[3],
+    gap: spacing[4],
   },
-  typeRow: {
-    flexDirection: 'row',
-  },
-  typePill: {
+  scopePill: {
     ...typography.textStyles.caption,
+    alignSelf: 'flex-start',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
@@ -150,33 +164,54 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
   },
+  sectionBlock: {
+    gap: spacing[2],
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[1],
+  },
+  sectionTitle: {
+    ...typography.textStyles.sectionTitle,
+  },
+  sectionCount: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
   groupCard: {
     ...shadows.xs,
-    borderRadius: radius.lg,
-    height: 112,
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    minHeight: 104,
     overflow: 'hidden',
+    padding: spacing[3],
   },
   coverWrap: {
     backgroundColor: colors.background.empty,
-    flex: 1,
+    borderRadius: radius.md,
+    flexShrink: 0,
+    height: 74,
+    overflow: 'hidden',
+    width: 92,
   },
   coverEmpty: {
-    borderColor: colors.border.subtle,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    justifyContent: 'center',
-    padding: spacing[3],
-  },
-  coverImage: {
-    borderRadius: radius.lg,
-  },
-  groupOverlay: {
-    backgroundColor: colors.overlay.softSurface,
+    alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    padding: spacing[3],
+  },
+  coverImage: {
+    height: '100%',
+    width: '100%',
   },
   groupBody: {
+    flex: 1,
     gap: spacing[2],
     minWidth: 0,
   },

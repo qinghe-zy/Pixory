@@ -107,7 +107,7 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
               <OptionSelectRow
                 key={option.value}
                 label={option.label}
-                meta="用于后续筛选和识别"
+                meta="用于筛选和识别"
                 onPress={() => setType(option.value)}
                 selected={type === option.value}
               />
@@ -119,7 +119,7 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
             hint="可选，帮助区分使用场景。"
             label="分组描述"
             maxLength={DESCRIPTION_MAX_LENGTH}
-            minHeight={88}
+            minHeight={84}
             onChangeText={(value) => {
               setDescription(value);
               if (submitError) {
@@ -141,6 +141,6 @@ const styles = StyleSheet.create({
   },
   optionList: {
     gap: spacing[1],
-    paddingVertical: spacing[2],
+    paddingVertical: spacing[1],
   },
 });

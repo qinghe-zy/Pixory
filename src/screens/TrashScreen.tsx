@@ -48,7 +48,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   function handleClearTrash() {
     Alert.alert(
       '确认清空回收站',
-      '清空后会物理删除回收站中的原图和缩略图文件，这个操作不可撤销。',
+      '清空后会永久删除回收站中的原图、缩略图和数据库记录，这个操作不可撤销。',
       [
         {
           text: '取消',
@@ -72,7 +72,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                   return;
                 }
 
-                Alert.alert('回收站已清空', `已物理删除 ${result.clearedCount} 张图片的原图和缩略图。`);
+                Alert.alert('回收站已清空', `已永久删除 ${result.clearedCount} 张图片的原图、缩略图和数据库记录。`);
               } catch (error) {
                 const message = error instanceof Error ? error.message : '未知错误';
                 Alert.alert('清空回收站失败', message);
@@ -94,8 +94,10 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   return (
     <ScreenScaffold decorativeTitle="Trash" onBack={onBack} rightAction={rightAction} scrollable title="回收站">
       <View style={styles.notice}>
-        <Ionicons color={colors.primary.active} name="time-outline" size={16} />
-        <Text numberOfLines={2} style={styles.subtitle}>文件在回收站中保留 30 天，之后将自动永久删除。</Text>
+        <Ionicons color={colors.primary.active} name="shield-checkmark-outline" size={16} />
+        <Text numberOfLines={3} style={styles.subtitle}>
+          图片进入回收站后，原图和缩略图仍保留在本地；只有确认清空回收站，才会永久删除文件和数据库记录。
+        </Text>
       </View>
 
       <PageStateBlock
@@ -122,7 +124,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
                   </View>
                 )}
                 <View style={styles.remainingBadge}>
-                  <Text style={styles.remainingText}>{getTrashRemainingLabel(image.deletedAt)}</Text>
+                  <Text style={styles.remainingText}>{getTrashStatusLabel(image.deletedAt)}</Text>
                 </View>
               </View>
               <View style={styles.itemBody}>
@@ -144,20 +146,17 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   );
 }
 
-function getTrashRemainingLabel(deletedAt: string | null) {
+function getTrashStatusLabel(deletedAt: string | null) {
   if (!deletedAt) {
-    return '待清理';
+    return '文件保留';
   }
 
   const deletedTime = new Date(deletedAt).getTime();
   if (Number.isNaN(deletedTime)) {
-    return '待清理';
+    return '文件保留';
   }
 
-  const retentionDays = 30;
-  const elapsedDays = Math.floor((Date.now() - deletedTime) / (1000 * 60 * 60 * 24));
-  const remainingDays = Math.max(0, retentionDays - elapsedDays);
-  return `${remainingDays} 天后删除`;
+  return '待清空';
 }
 
 const styles = StyleSheet.create({

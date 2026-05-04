@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -6,16 +6,25 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, tagRepository, type ImageListItem, type TagRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface TagResultScreenProps {
   tagId: number;
   refreshToken: number;
   onBack: () => void;
-  onOpenImage: (imageId: number) => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
   onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
-export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage, onStartBatchManagement }: TagResultScreenProps) {
+export function TagResultScreen({
+  tagId,
+  refreshToken,
+  onBack,
+  onOpenImage,
+  onOpenImageDetail,
+  onStartBatchManagement,
+}: TagResultScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     tag: TagRecord | null;
     images: ImageListItem[];
@@ -45,16 +54,27 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage, onSt
   const tag = data?.tag ?? null;
   const images = data?.images ?? [];
 
+  function handleOpenImage(imageId: number) {
+    onOpenImage(imageId, { type: 'tag', tagId });
+  }
+
+  function handleImageLongPress(image: ImageListItem) {
+    Alert.alert('图片操作', '选择对这张图片的操作。', [
+      { text: '查看详情', onPress: () => onOpenImageDetail(image.id) },
+      { text: '批量管理', onPress: () => onStartBatchManagement(image.ipId, image.id) },
+      { text: '取消', style: 'cancel' },
+    ]);
+  }
+
   return (
     <ScreenScaffold onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
       {tag ? (
         <View style={styles.summary}>
-          <Text numberOfLines={1} style={styles.subtitle}>
-            已排除回收站
-          </Text>
-          <Text numberOfLines={1} style={styles.countText}>
-            {images.length} 张
-          </Text>
+          <View style={styles.summaryCopy}>
+            <Text numberOfLines={1} style={styles.subtitle}>已排除回收站</Text>
+            <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
+          </View>
+          <Text numberOfLines={1} style={styles.countText}>{images.length} 张</Text>
         </View>
       ) : null}
 
@@ -75,8 +95,8 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage, onSt
             <ThumbnailTile
               image={image}
               key={image.id}
-              onLongPress={() => onStartBatchManagement(image.ipId, image.id)}
-              onPress={onOpenImage}
+              onLongPress={() => handleImageLongPress(image)}
+              onPress={handleOpenImage}
             />
           ))}
         </View>
@@ -88,22 +108,30 @@ export function TagResultScreen({ tagId, refreshToken, onBack, onOpenImage, onSt
 const styles = StyleSheet.create({
   summary: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
-    marginTop: -spacing[4],
+    gap: spacing[3],
+    justifyContent: 'space-between',
+    marginBottom: spacing[1],
     maxWidth: '100%',
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  summaryCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
   },
   subtitle: {
     ...typography.textStyles.micro,
     color: colors.text.secondary,
-    flexShrink: 1,
+  },
+  tagName: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
   },
   countText: {
     ...typography.textStyles.caption,
@@ -114,5 +142,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
+    marginTop: spacing[1],
   },
 });

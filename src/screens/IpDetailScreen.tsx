@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
-import { GROUP_TYPE_OPTIONS } from '../constants/groups';
-import { imageRepository, ipRepository, type ImageListItem, type IpDetailRecord } from '../database';
+import { getGroupTypeLabel } from '../constants/groups';
+import { groupRepository, imageRepository, ipRepository, type GroupListItem, type ImageListItem, type IpDetailRecord } from '../database';
 import { colors, componentTokens, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { formatDate, getIpInitials } from '../utils/formatters';
 
 interface IpDetailScreenProps {
@@ -18,12 +19,15 @@ interface IpDetailScreenProps {
   refreshToken: number;
   onBack: () => void;
   onEdit: () => void;
+  onEditGroup: (groupId: number) => void;
   onImportImages: () => void;
   onCreateGroup: () => void;
   onOpenGroups: () => void;
+  onOpenGroup: (groupId: number) => void;
   onOpenAllImages: () => void;
   onOpenBatchManagement: (imageId?: number) => void;
-  onOpenImage: (imageId: number) => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
 }
 
 const QUICK_ACTIONS = [
@@ -38,20 +42,25 @@ export function IpDetailScreen({
   refreshToken,
   onBack,
   onEdit,
+  onEditGroup,
   onImportImages,
   onCreateGroup,
   onOpenGroups,
+  onOpenGroup,
   onOpenAllImages,
   onOpenBatchManagement,
   onOpenImage,
+  onOpenImageDetail,
 }: IpDetailScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpDetailRecord;
+    groups: GroupListItem[];
     recentImages: ImageListItem[];
   }>(
     async () => {
-      const [ip, recentImages] = await Promise.all([
+      const [ip, groups, recentImages] = await Promise.all([
         ipRepository.findDetailById(ipId),
+        groupRepository.findOverviewByIpId(ipId),
         imageRepository.findRecentByIpId(ipId, 6),
       ]);
 
@@ -59,7 +68,7 @@ export function IpDetailScreen({
         throw new Error('没有找到这个 IP。');
       }
 
-      return { ip, recentImages };
+      return { groups, ip, recentImages };
     },
     [ipId, refreshToken],
     {
@@ -80,6 +89,7 @@ export function IpDetailScreen({
   );
 
   const ip = data?.ip;
+  const groups = data?.groups ?? [];
   const recentImages = data?.recentImages ?? [];
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
@@ -99,6 +109,60 @@ export function IpDetailScreen({
     }
 
     onOpenBatchManagement();
+  }
+
+  function handleDeleteGroup(group: GroupListItem) {
+    Alert.alert(
+      '删除分组',
+      `删除「${group.name}」后，分组内图片会保留并移动到未分组。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                const deletedCount = await groupRepository.deleteById(group.id);
+                if (deletedCount === 0) {
+                  throw new Error('没有找到这个分组。');
+                }
+
+                reload();
+              } catch (error) {
+                const message = error instanceof Error ? error.message : '未知错误';
+                Alert.alert('删除分组失败', message);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function handleManageGroup(group: GroupListItem) {
+    Alert.alert(
+      group.name,
+      '管理这个分组。删除分组不会删除图片，图片会保留在未分组中。',
+      [
+        { text: '查看图片', onPress: () => onOpenGroup(group.id) },
+        { text: '编辑分组', onPress: () => onEditGroup(group.id) },
+        { text: '删除分组', style: 'destructive', onPress: () => handleDeleteGroup(group) },
+        { text: '取消', style: 'cancel' },
+      ]
+    );
+  }
+
+  function handleOpenRecentImage(imageId: number) {
+    onOpenImage(imageId, { type: 'ip-recent', ipId, limit: 6 });
+  }
+
+  function handleImageLongPress(imageId: number) {
+    Alert.alert('图片操作', '选择对这张图片的操作。', [
+      { text: '查看详情', onPress: () => onOpenImageDetail(imageId) },
+      { text: '批量管理', onPress: () => onOpenBatchManagement(imageId) },
+      { text: '取消', style: 'cancel' },
+    ]);
   }
 
   return (
@@ -165,14 +229,29 @@ export function IpDetailScreen({
 
             <View style={styles.groupSection}>
               <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={onOpenGroups} title="分组入口" />
-              <View style={styles.groupEntryList}>
-                {GROUP_TYPE_OPTIONS.map((groupType) => (
-                  <Pressable key={groupType.value} onPress={onOpenGroups} style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}>
-                    <Text style={styles.groupEntryTitle}>{groupType.label}</Text>
-                    <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-                  </Pressable>
-                ))}
-              </View>
+              {groups.length > 0 ? (
+                <View style={styles.groupEntryList}>
+                  {groups.slice(0, 4).map((group) => (
+                    <Pressable
+                      key={group.id}
+                      onLongPress={() => handleManageGroup(group)}
+                      onPress={() => onOpenGroup(group.id)}
+                      style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}
+                    >
+                      <View style={styles.groupEntryCopy}>
+                        <Text numberOfLines={1} style={styles.groupEntryTitle}>{group.name}</Text>
+                        <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)} · {group.imageCount} 张</Text>
+                      </View>
+                      <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Pressable onPress={onCreateGroup} style={({ pressed }) => [styles.emptyGroupEntry, pressed && styles.pressed]}>
+                  <Ionicons color={colors.primary.default} name="folder-open-outline" size={18} />
+                  <Text style={styles.emptyGroupText}>还没有分组，点击新建</Text>
+                </Pressable>
+              )}
             </View>
 
             <SectionHeader
@@ -194,8 +273,8 @@ export function IpDetailScreen({
                   <ThumbnailTile
                     image={image}
                     key={image.id}
-                    onLongPress={onOpenBatchManagement}
-                    onPress={onOpenImage}
+                    onLongPress={handleImageLongPress}
+                    onPress={handleOpenRecentImage}
                   />
                 ))}
               </View>
@@ -342,20 +421,49 @@ const styles = StyleSheet.create({
     gap: spacing[3],
   },
   groupEntryList: {
-    gap: spacing[1],
+    gap: spacing[2],
   },
   groupEntry: {
     alignItems: 'center',
-    borderBottomColor: colors.border.divider,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    gap: spacing[2],
     justifyContent: 'space-between',
-    minHeight: componentTokens.common.minTouchSize,
-    paddingHorizontal: spacing[1],
+    minHeight: 54,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  groupEntryCopy: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
   },
   groupEntryTitle: {
-    ...typography.textStyles.body,
+    ...typography.textStyles.bodyStrong,
     color: colors.text.title,
+  },
+  groupEntryMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
+  emptyGroupEntry: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 52,
+    paddingHorizontal: spacing[3],
+  },
+  emptyGroupText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
   },
   recentGrid: {
     flexDirection: 'row',

@@ -75,9 +75,12 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 
   return (
     <ScreenScaffold decorativeTitle="Tags" footer={footer} scrollable title="标签">
-      <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
+      <View style={styles.searchBlock}>
+        <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
+      </View>
       {selectedTag ? (
         <View style={styles.resultPanel}>
+          <Text style={styles.resultLabel}>当前标签</Text>
           <View style={styles.resultCopy}>
             <Text numberOfLines={1} style={styles.resultTitle}>#{selectedTag.name}</Text>
             <Text style={styles.resultMeta}>{selectedTag.imageCount} 张图片</Text>
@@ -150,26 +153,34 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 }
 
 const styles = StyleSheet.create({
+  searchBlock: {
+    marginBottom: -spacing[1],
+  },
   content: {
-    gap: spacing[6],
+    gap: spacing[7],
   },
   section: {
-    gap: spacing[3],
+    gap: spacing[4],
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
   },
   resultPanel: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: spacing[3],
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[3],
+    paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
+  },
+  resultLabel: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    width: 48,
   },
   resultCopy: {
     flex: 1,
@@ -185,7 +196,8 @@ const styles = StyleSheet.create({
   },
   resultAction: {
     borderRadius: radius.pill,
-    paddingHorizontal: spacing[2],
+    backgroundColor: colors.primary.weak,
+    paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
   },
   resultActionText: {
@@ -196,7 +208,8 @@ const styles = StyleSheet.create({
   popularGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    columnGap: spacing[3],
+    rowGap: spacing[3],
   },
   popularTag: {
     alignItems: 'center',
@@ -207,9 +220,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     justifyContent: 'space-between',
-    minHeight: 38,
+    minHeight: 40,
     paddingHorizontal: spacing[3],
-    width: '48.3%',
+    width: '47.6%',
   },
   selectedTag: {
     backgroundColor: colors.primary.weak,
@@ -223,7 +236,8 @@ const styles = StyleSheet.create({
   allTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    columnGap: spacing[2],
+    rowGap: spacing[3],
   },
   tagPill: {
     alignItems: 'center',
