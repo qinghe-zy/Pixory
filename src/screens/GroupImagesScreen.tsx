@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -8,6 +8,7 @@ import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface GroupImagesScreenProps {
   ipId: number;
@@ -15,7 +16,8 @@ interface GroupImagesScreenProps {
   refreshToken: number;
   onBack: () => void;
   onImportImages: () => void;
-  onOpenImage: (imageId: number) => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
   onStartBatchManagement: (imageId: number) => void;
 }
 
@@ -26,6 +28,7 @@ export function GroupImagesScreen({
   onBack,
   onImportImages,
   onOpenImage,
+  onOpenImageDetail,
   onStartBatchManagement,
 }: GroupImagesScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -55,6 +58,18 @@ export function GroupImagesScreen({
   const ip = data?.ip ?? null;
   const group = data?.group ?? null;
   const images = data?.images ?? [];
+
+  function handleOpenImage(imageId: number) {
+    onOpenImage(imageId, { type: 'group', ipId, groupId });
+  }
+
+  function handleImageLongPress(imageId: number) {
+    Alert.alert('图片操作', '选择对这张图片的操作。', [
+      { text: '查看详情', onPress: () => onOpenImageDetail(imageId) },
+      { text: '批量管理', onPress: () => onStartBatchManagement(imageId) },
+      { text: '取消', style: 'cancel' },
+    ]);
+  }
 
   return (
     <ScreenScaffold decorativeTitle="Gallery" onBack={onBack} scrollable title="分组图片">
@@ -90,8 +105,8 @@ export function GroupImagesScreen({
             <ThumbnailTile
               image={image}
               key={image.id}
-              onLongPress={onStartBatchManagement}
-              onPress={onOpenImage}
+              onLongPress={handleImageLongPress}
+              onPress={handleOpenImage}
             />
           ))}
         </View>
@@ -102,15 +117,16 @@ export function GroupImagesScreen({
 
 const styles = StyleSheet.create({
   summary: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: spacing[3],
     justifyContent: 'space-between',
-    paddingHorizontal: spacing[3],
+    marginBottom: spacing[1],
+    paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
   },
   summaryCopy: {
@@ -139,5 +155,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
+    marginTop: spacing[1],
   },
 });

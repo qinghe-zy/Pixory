@@ -13,6 +13,7 @@ export const appRoutes = {
   batchManageImages: '/ips/:id/images/batch',
   importImages: '/ips/:id/import',
   allImages: '/ips/:id/images',
+  imageViewer: '/images/:imageId/viewer',
   imageDetail: '/images/:imageId',
   moveImageGroup: '/images/:imageId/group',
   tagResult: '/tags/:tagId',

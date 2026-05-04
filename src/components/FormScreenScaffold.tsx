@@ -98,6 +98,6 @@ const styles = StyleSheet.create({
     minHeight: metrics.bottomActionHeight + layout.stickyFooterBottomOffset,
   },
   scrollContent: {
-    paddingBottom: layout.pageBottomOffset + metrics.bottomActionHeight * 3,
+    paddingBottom: layout.pageBottomOffset + metrics.bottomActionHeight * 2,
   },
 });

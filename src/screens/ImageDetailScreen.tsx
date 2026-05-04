@@ -1,6 +1,8 @@
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen } from '../components/AppScreen';
 import { ContentCard } from '../components/ContentCard';
@@ -33,8 +35,10 @@ export function ImageDetailScreen({
   onMoveGroup,
   onDeleted,
 }: ImageDetailScreenProps) {
+  const insets = useSafeAreaInsets();
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
+  const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const [isUpdatingFavorite, setIsUpdatingFavorite] = useState(false);
@@ -231,9 +235,18 @@ export function ImageDetailScreen({
 
       {image ? (
         <>
-          <View style={styles.previewWrap}>
+          <Pressable
+            accessibilityLabel="全屏查看原图"
+            accessibilityRole="imagebutton"
+            onPress={() => setIsFullScreenOpen(true)}
+            style={({ pressed }) => [styles.previewWrap, pressed && styles.previewPressed]}
+          >
             <Image resizeMode="cover" source={{ uri: image.originalFileUri }} style={styles.previewImage} />
-          </View>
+            <View style={styles.previewAction}>
+              <Ionicons color={colors.text.inverse} name="expand-outline" size={15} />
+              <Text style={styles.previewActionText}>查看原图</Text>
+            </View>
+          </Pressable>
 
           <ContentCard style={styles.detailCard}>
             <View style={styles.imageTitleBlock}>
@@ -306,6 +319,37 @@ export function ImageDetailScreen({
             <PrimaryAction icon="swap-horizontal-outline" label="移动分组" onPress={() => onMoveGroup(image.id)} />
             <PrimaryAction icon="trash-outline" label="删除" onPress={handleDelete} />
           </View>
+
+          <Modal
+            animationType="fade"
+            onRequestClose={() => setIsFullScreenOpen(false)}
+            statusBarTranslucent
+            transparent
+            visible={isFullScreenOpen}
+          >
+            <View style={styles.fullscreenShell}>
+              <ExpoStatusBar backgroundColor="#05070A" style="light" translucent />
+              <Image resizeMode="contain" source={{ uri: image.originalFileUri }} style={styles.fullscreenImage} />
+              <View style={[styles.fullscreenTopBar, { paddingTop: insets.top + spacing[3] }]}>
+                <View style={styles.fullscreenTitleBlock}>
+                  <Text numberOfLines={1} style={styles.fullscreenTitle}>
+                    {image.originalFilename}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.fullscreenMeta}>
+                    {formatImageDimensions(image.width, image.height)} · {formatFileSize(image.fileSize)}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="关闭全屏预览"
+                  hitSlop={10}
+                  onPress={() => setIsFullScreenOpen(false)}
+                  style={({ pressed }) => [styles.fullscreenClose, pressed && styles.fullscreenPressed]}
+                >
+                  <Ionicons color={colors.text.inverse} name="close" size={22} />
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
         </>
       ) : null}
     </AppScreen>
@@ -400,10 +444,73 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.sunken,
     borderRadius: radius.xl,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  previewPressed: {
+    opacity: 0.92,
   },
   previewImage: {
     aspectRatio: 0.9,
     width: '100%',
+  },
+  previewAction: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(23, 33, 43, 0.58)',
+    borderRadius: radius.pill,
+    bottom: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+    position: 'absolute',
+    right: spacing[3],
+  },
+  previewActionText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '500',
+  },
+  fullscreenShell: {
+    backgroundColor: '#05070A',
+    flex: 1,
+  },
+  fullscreenImage: {
+    height: '100%',
+    width: '100%',
+  },
+  fullscreenTopBar: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[3],
+    left: 0,
+    paddingBottom: spacing[4],
+    paddingHorizontal: spacing[4],
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  fullscreenTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fullscreenTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
+  },
+  fullscreenMeta: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255, 255, 255, 0.68)',
+  },
+  fullscreenClose: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: radius.pill,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  fullscreenPressed: {
+    opacity: 0.78,
   },
   errorText: {
     ...typography.textStyles.caption,

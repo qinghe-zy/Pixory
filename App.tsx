@@ -12,6 +12,7 @@ import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
 import { CreateIpScreen } from './src/screens/CreateIpScreen';
+import { EditGroupScreen } from './src/screens/EditGroupScreen';
 import { EditIpScreen } from './src/screens/EditIpScreen';
 import { EditImageScreen } from './src/screens/EditImageScreen';
 import { FavoritesScreen } from './src/screens/FavoritesScreen';
@@ -20,6 +21,7 @@ import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
+import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
@@ -30,6 +32,7 @@ import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
 import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
 import { TrashScreen } from './src/screens/TrashScreen';
+import type { ImageViewerContext } from './src/navigation/imageViewerContext';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import { isDevToolsEnabled } from './src/utils/dev';
 
@@ -38,6 +41,7 @@ type AppRoute =
   | { name: 'create-ip' }
   | { name: 'ip-detail'; ipId: number }
   | { name: 'edit-ip'; ipId: number }
+  | { name: 'edit-group'; ipId: number; groupId: number }
   | { name: 'edit-image'; imageId: number }
   | { name: 'group-overview'; ipId: number }
   | { name: 'create-group'; ipId: number }
@@ -51,6 +55,7 @@ type AppRoute =
     }
   | { name: 'import-images'; ipId: number; groupId?: number | null }
   | { name: 'all-images'; ipId: number }
+  | { name: 'image-viewer'; imageId: number; context: ImageViewerContext }
   | { name: 'image-detail'; imageId: number }
   | { name: 'move-image-group'; imageId: number }
   | { name: 'tag-result'; tagId: number }
@@ -130,6 +135,14 @@ export default function App() {
     setRouteStack([{ name: 'root', tab }]);
   }
 
+  function openImageViewer(imageId: number, context: ImageViewerContext) {
+    pushRoute({ name: 'image-viewer', imageId, context });
+  }
+
+  function openImageDetail(imageId: number) {
+    pushRoute({ name: 'image-detail', imageId });
+  }
+
   if (!isReady) {
     return (
       <SafeAreaProvider>
@@ -171,6 +184,7 @@ export default function App() {
         onBack={popRoute}
         onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId })}
         onEdit={() => pushRoute({ name: 'edit-ip', ipId: currentRoute.ipId })}
+        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId })}
         onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId })}
         onOpenAllImages={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
         onOpenBatchManagement={(imageId) =>
@@ -182,12 +196,24 @@ export default function App() {
           })
         }
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.name === 'edit-ip') {
     content = <EditIpScreen ipId={currentRoute.ipId} onBack={popRoute} onSaved={popAndRefresh} />;
+  } else if (currentRoute.name === 'edit-group') {
+    content = (
+      <EditGroupScreen
+        groupId={currentRoute.groupId}
+        ipId={currentRoute.ipId}
+        onBack={popRoute}
+        onDeleted={popAndRefresh}
+        onSaved={popAndRefresh}
+      />
+    );
   } else if (currentRoute.name === 'edit-image') {
     content = (
       <EditImageScreen
@@ -203,6 +229,7 @@ export default function App() {
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId })}
+        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
         refreshToken={libraryRefreshToken}
       />
@@ -231,7 +258,8 @@ export default function App() {
             initialSelectedImageIds: [imageId],
           })
         }
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -278,7 +306,18 @@ export default function App() {
             initialSelectedImageIds: [imageId],
           })
         }
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'image-viewer') {
+    content = (
+      <ImageViewerScreen
+        context={currentRoute.context}
+        imageId={currentRoute.imageId}
+        onBack={popRoute}
+        onOpenDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -307,7 +346,8 @@ export default function App() {
     content = (
       <TagResultScreen
         onBack={popRoute}
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         onStartBatchManagement={(ipId, imageId) =>
           pushRoute({
             name: 'batch-manage-images',
@@ -324,7 +364,8 @@ export default function App() {
     content = (
       <FavoritesScreen
         onBack={popRoute}
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         onStartBatchManagement={(ipId, imageId) =>
           pushRoute({
             name: 'batch-manage-images',
@@ -340,7 +381,8 @@ export default function App() {
     content = (
       <RecentViewedScreen
         onBack={popRoute}
-        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId })}
+        onOpenImage={openImageViewer}
+        onOpenImageDetail={openImageDetail}
         onStartBatchManagement={(ipId, imageId) =>
           pushRoute({
             name: 'batch-manage-images',
@@ -370,6 +412,7 @@ export default function App() {
     content = (
       <GlobalGroupsScreen
         footer={rootFooter}
+        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId })}
         refreshToken={libraryRefreshToken}
       />

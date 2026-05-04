@@ -5,6 +5,7 @@ const ORIGINALS_DIR_NAME = 'originals';
 const THUMBNAILS_DIR_NAME = 'thumbnails';
 const EXPORTS_DIR_NAME = 'exports';
 const TEMP_DIR_NAME = 'temp';
+const PROFILE_DIR_NAME = 'profile';
 
 export interface ManagedFileInfo {
   uri: string;
@@ -123,6 +124,7 @@ export async function ensureAppDirectories(): Promise<void> {
     getThumbnailsDir(),
     getExportsDir(),
     getTempDir(),
+    getProfileDir(),
   ];
 
   for (const directoryUri of directories) {
@@ -144,6 +146,10 @@ export function getExportsDir(): string {
 
 export function getTempDir(): string {
   return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), TEMP_DIR_NAME));
+}
+
+export function getProfileDir(): string {
+  return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), PROFILE_DIR_NAME));
 }
 
 export function generateInternalFilename(originalFilename: string): string {
@@ -178,6 +184,39 @@ export async function copyOriginalToAppStorage(
     }
 
     console.warn('Pixory original copyAsync failed for content URI, retrying with base64 fallback.', {
+      sourceUri,
+      destinationUri,
+      error,
+    });
+
+    await copyContentUriWithBase64Fallback(sourceUri, destinationUri);
+  }
+
+  return destinationUri;
+}
+
+export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<string> {
+  await ensureAppDirectories();
+  await ensureSourceFileExists(sourceUri);
+
+  const profileDir = getProfileDir();
+  await ensureDirectoryExists(profileDir);
+
+  const extension = getSafeExtension(getFileNameFromUri(sourceUri));
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
+  const destinationUri = joinPath(profileDir, `profile_avatar_${timestamp}${extension}`);
+
+  try {
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destinationUri,
+    });
+  } catch (error) {
+    if (!isAndroidContentUri(sourceUri)) {
+      throw error;
+    }
+
+    console.warn('Pixory avatar copyAsync failed for content URI, retrying with base64 fallback.', {
       sourceUri,
       destinationUri,
       error,

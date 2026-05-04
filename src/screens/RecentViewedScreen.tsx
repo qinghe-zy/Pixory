@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -6,15 +6,23 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface RecentViewedScreenProps {
   refreshToken: number;
   onBack: () => void;
-  onOpenImage: (imageId: number) => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
+  onOpenImageDetail: (imageId: number) => void;
   onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
-export function RecentViewedScreen({ refreshToken, onBack, onOpenImage, onStartBatchManagement }: RecentViewedScreenProps) {
+export function RecentViewedScreen({
+  refreshToken,
+  onBack,
+  onOpenImage,
+  onOpenImageDetail,
+  onStartBatchManagement,
+}: RecentViewedScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
     () => imageRepository.findRecentViewed(),
     [refreshToken],
@@ -26,6 +34,18 @@ export function RecentViewedScreen({ refreshToken, onBack, onOpenImage, onStartB
       initialData: [],
     }
   );
+
+  function handleOpenImage(imageId: number) {
+    onOpenImage(imageId, { type: 'recent-viewed' });
+  }
+
+  function handleImageLongPress(image: ImageListItem) {
+    Alert.alert('图片操作', '选择对这张图片的操作。', [
+      { text: '查看详情', onPress: () => onOpenImageDetail(image.id) },
+      { text: '批量管理', onPress: () => onStartBatchManagement(image.ipId, image.id) },
+      { text: '取消', style: 'cancel' },
+    ]);
+  }
 
   return (
     <ScreenScaffold decorativeTitle="Recent" onBack={onBack} scrollable title="最近查看">
@@ -55,8 +75,8 @@ export function RecentViewedScreen({ refreshToken, onBack, onOpenImage, onStartB
             <ThumbnailTile
               image={image}
               key={image.id}
-              onLongPress={() => onStartBatchManagement(image.ipId, image.id)}
-              onPress={onOpenImage}
+              onLongPress={() => handleImageLongPress(image)}
+              onPress={handleOpenImage}
             />
           ))}
         </View>

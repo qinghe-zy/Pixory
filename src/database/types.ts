@@ -205,6 +205,12 @@ export interface SumRow {
   totalBytes: number | null;
 }
 
+export interface AppSettingRecord {
+  key: string;
+  value: string | null;
+  updatedAt: string;
+}
+
 export type ImageSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'deletedAtDesc';
 
 export interface ImageListQueryOptions extends ImageAssetQueryOptions {
