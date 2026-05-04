@@ -38,13 +38,27 @@ test('batch review keeps the full safe pile set and filters weak filename prefix
 
 test('quick organize treats any missing organization field as needing work and supports import batch scope', () => {
   const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
+  const importBatchRepositorySource = readProjectFile('src/database/repositories/importBatchRepository.ts');
+  const importBatchReviewSource = readProjectFile('src/screens/ImportBatchReviewScreen.tsx');
   const quickOrganizeSource = readProjectFile('src/screens/QuickOrganizeScreen.tsx');
 
   assert.match(imageRepositorySource, /findNeedsOrganizing\(scope\?:\s*NeedsOrganizingScope/);
   assert.match(imageRepositorySource, /OR NOT EXISTS \(SELECT 1 FROM image_tags/);
   assert.match(imageRepositorySource, /OR image_assets\.note IS NULL/);
+  assert.match(imageRepositorySource, /AND image_assets\.note IS NOT NULL/);
+  assert.match(importBatchRepositorySource, /AND image_assets\.note IS NOT NULL/);
+  assert.match(importBatchReviewSource, /image\.groupCount > 0 && image\.tagCount > 0 && image\.note/);
   assert.match(quickOrganizeSource, /importBatchId\?: number \| null/);
   assert.match(quickOrganizeSource, /findNeedsOrganizing\(\{\s*ipId,\s*importBatchId/);
+});
+
+test('batch manage same-prefix selection ignores weak filename prefixes', () => {
+  const source = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
+
+  assert.match(source, /WEAK_FILENAME_PREFIXES/);
+  assert.match(source, /screenshot/i);
+  assert.match(source, /\/\^\\d\+\$\/\.test/);
+  assert.doesNotMatch(source, /baseName\.slice\(0,\s*6\)/);
 });
 
 test('batch operations capture undo snapshots for composite metadata changes', () => {

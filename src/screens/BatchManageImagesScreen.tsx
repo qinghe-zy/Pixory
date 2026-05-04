@@ -792,12 +792,14 @@ function RuleChip({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
+const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);
+
 function getFilenamePrefix(filename: string): string | null {
   const baseName = filename.replace(/\.[^.]+$/, '');
   const [prefix] = baseName.split(/[_\-\s.]+/);
   const normalized = prefix?.trim();
-  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized)) {
-    return baseName.slice(0, 6) || null;
+  if (!normalized || normalized.length < 2 || /^\d+$/.test(normalized) || WEAK_FILENAME_PREFIXES.has(normalized.toLowerCase())) {
+    return null;
   }
   return normalized;
 }

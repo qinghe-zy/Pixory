@@ -347,7 +347,7 @@ function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | 
 
   return {
     totalCount,
-    organizedCount: summary?.organizedCount ?? images.filter((image) => image.groupCount > 0 && image.tagCount > 0).length,
+    organizedCount: summary?.organizedCount ?? images.filter((image) => image.groupCount > 0 && image.tagCount > 0 && image.note).length,
     ungroupedCount,
     untaggedCount,
     noNoteCount,

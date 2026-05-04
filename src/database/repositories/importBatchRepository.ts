@@ -38,6 +38,7 @@ const IMPORT_BATCH_SUMMARY_SELECT = `
     SUM(CASE
       WHEN EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
        AND EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
+       AND image_assets.note IS NOT NULL
       THEN 1 ELSE 0 END
     ) AS organizedCount,
     SUM(CASE
