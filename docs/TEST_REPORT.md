@@ -1,5 +1,39 @@
 # Pixory Android 测试报告
 
+## v1.0.6 Release 打包校验
+
+测试时间：2026-05-05
+
+### 测试环境
+
+- 工作目录：`D:\Project\Pixory\pixory`
+- Node 包管理：`pnpm`
+- 构建方式：Android release APK
+- 安装包：`output/builds/Pixory-v1.0.6-release.apk`
+- 包名：`com.pixory.app`
+- 版本：`versionName 1.0.6` / `versionCode 106`
+- APK SHA256：`0445C4F0FA692DD5843D1232EA946EAC1F5AAAE3AC7B8F44264B73F12A7443D7`
+
+### 验证命令
+
+- `pnpm typecheck`
+- `pnpm test`
+- `.\gradlew.bat :app:assembleRelease --no-daemon`
+- `aapt dump badging android\app\build\outputs\apk\release\app-release.apk`
+- `apksigner verify --print-certs android\app\build\outputs\apk\release\app-release.apk`
+
+结果：通过。TypeScript 检查通过；Node 测试 59 项全部通过；release APK 构建成功；`aapt` 确认包名、`versionName 1.0.6` 和 `versionCode 106`；`apksigner` 签名校验通过。
+
+### 未覆盖范围
+
+- 本轮未执行 `adb install -r` 真机或模拟器安装。
+- 本轮未补做完整 Android 人工视觉回归。
+- v1.0.5 的视觉验收记录仍保留在下方作为最近一次完整 Android UI 验收参考。
+
+### 体积说明
+
+v1.0.6 APK 为 75,541,614 bytes，约 72.0 MiB。体积主要来自 universal APK 同时包含四套 ABI 的 React Native / Hermes / Expo native 库。
+
 ## v1.0.5 Release 验收
 
 测试时间：2026-05-05

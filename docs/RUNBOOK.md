@@ -61,17 +61,17 @@ cd android
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
-当前 v1.0.5 交付文件会复制到：
+当前 v1.0.6 交付文件会复制到：
 
 ```text
-output/builds/Pixory-v1.0.5.apk
+output/builds/Pixory-v1.0.6-release.apk
 ```
 
 校验命令：
 
 ```powershell
-D:\Develop\Android\Sdk\build-tools\36.0.0\apksigner.bat verify --print-certs output\builds\Pixory-v1.0.5.apk
-D:\Develop\Android\Sdk\platform-tools\adb.exe install -r output\builds\Pixory-v1.0.5.apk
+D:\Develop\Android\Sdk\build-tools\36.0.0\apksigner.bat verify --print-certs output\builds\Pixory-v1.0.6-release.apk
+D:\Develop\Android\Sdk\platform-tools\adb.exe install -r output\builds\Pixory-v1.0.6-release.apk
 D:\Develop\Android\Sdk\platform-tools\adb.exe shell dumpsys package com.pixory.app
 ```
 

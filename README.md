@@ -55,21 +55,21 @@ Pixory 是一个 Android-first、local-only 的 IP 图片资产管理应用。
 - 标签页、标签结果页、收藏页、最近查看页、回收站页已接真实 SQLite
 - 图片导入、图片详情、图片编辑、移动分组、批量管理、软删除已完成主要开发
 - 回收站恢复和清空链路已实现
-- 已提供 Android release APK：`v1.0.5` / `versionCode 105`
+- 已提供 Android release APK：`v1.0.6` / `versionCode 106`
 - 批量管理、图片库筛选、标签创建、IP 详情摘要、我的页本地空间展示已完成本轮视觉与交互收口
-- Android 模拟器已完成一轮 v1.0.5 视觉验收与安装包校验
+- Android 模拟器已完成一轮 v1.0.5 视觉验收；v1.0.6 已完成 release APK 构建、签名和版本校验
 
 本轮真实 Android 回归结果见 [docs/TEST_REPORT.md](./docs/TEST_REPORT.md)。
 
 ## 最新 APK
 
-- GitHub Release：`v1.0.5`
-- 本地构建产物：`output/builds/Pixory-v1.0.5.apk`
+- GitHub Release：`v1.0.6`
+- 本地构建产物：`output/builds/Pixory-v1.0.6-release.apk`
 - 包名：`com.pixory.app`
-- 版本：`versionName 1.0.5` / `versionCode 105`
-- SHA256：`5E57CFCE02E5CD2F153B1DC8A805E13B19E893BE2013190CAE3753617F7B26C2`
+- 版本：`versionName 1.0.6` / `versionCode 106`
+- SHA256：`0445C4F0FA692DD5843D1232EA946EAC1F5AAAE3AC7B8F44264B73F12A7443D7`
 
-当前发布的是 universal APK，会同时包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` 四套 native 库，以兼容真机和模拟器。因此 APK 体积约 68.5 MB。若只面向现代 Android 真机，可后续单独产出 `arm64-v8a` APK 或 AAB 以显著降低用户实际下载体积。
+当前发布的是 universal APK，会同时包含 `armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64` 四套 native 库，以兼容真机和模拟器。因此 v1.0.6 APK 体积约 72.0 MiB。若只面向现代 Android 真机，可后续单独产出 `arm64-v8a` APK 或 AAB 以显著降低用户实际下载体积。
 
 ## 运行方式
 
