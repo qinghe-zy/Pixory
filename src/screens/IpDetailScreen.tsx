@@ -10,7 +10,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, importBatchRepository, ipRepository, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord } from '../database';
+import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -19,6 +19,7 @@ import { formatDateTime, formatUpdatedLabel, getIpInitials } from '../utils/form
 
 interface IpDetailScreenProps {
   ipId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onEdit: () => void;
@@ -44,6 +45,7 @@ const QUICK_ACTIONS = [
 
 export function IpDetailScreen({
   ipId,
+  space = 'normal',
   refreshToken,
   onBack,
   onEdit,
@@ -72,14 +74,14 @@ export function IpDetailScreen({
     organizationProgress: Awaited<ReturnType<typeof imageRepository.getOrganizationProgress>>;
   }>(
     async () => {
-      const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await Promise.all([
+      const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, () => Promise.all([
         ipRepository.findDetailById(ipId),
         groupRepository.findOverviewByIpId(ipId),
         imageRepository.findRecentByIpId(ipId, 6),
         importBatchRepository.findByIpId(ipId, 3),
         imageRepository.countNeedsOrganizing(ipId),
         imageRepository.getOrganizationProgress(ipId),
-      ]);
+      ]));
 
       if (!ip) {
         throw new Error('没有找到这个 IP。');
@@ -87,7 +89,7 @@ export function IpDetailScreen({
 
       return { groups, ip, needsOrganizingCount, organizationProgress, recentImages, recentImportBatches };
     },
-    [ipId, refreshToken],
+    [ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -141,7 +143,7 @@ export function IpDetailScreen({
     setDeleteGroup(null);
     void (async () => {
       try {
-        const deletedCount = await groupRepository.deleteById(group.id);
+        const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个分组。');
         }
@@ -156,11 +158,11 @@ export function IpDetailScreen({
   function handleOpenRecentImage(imageId: number) {
     const image = recentImages.find((item) => item.id === imageId);
     if (image?.importBatchId != null) {
-      onOpenImage(imageId, { type: 'import-batch', ipId, importBatchId: image.importBatchId });
+      onOpenImage(imageId, { type: 'import-batch', ipId, importBatchId: image.importBatchId, space });
       return;
     }
 
-    onOpenImage(imageId, { type: 'ip-all', ipId, filter: { type: 'all' } });
+    onOpenImage(imageId, { type: 'ip-all', ipId, filter: { type: 'all' }, space });
   }
 
   function handleImageLongPress(image: ImageListItem) {

@@ -10,7 +10,7 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
 import { DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, ipRepository, type GroupRecord, type IpRecord } from '../database';
+import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupRecord, type IpRecord, type PixorySpace } from '../database';
 import { colors, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -18,12 +18,13 @@ import { useSubmitState } from '../hooks/useSubmitState';
 interface EditGroupScreenProps {
   ipId: number;
   groupId: number;
+  space?: PixorySpace;
   onBack: () => void;
   onDeleted: () => void;
   onSaved: () => void;
 }
 
-export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: EditGroupScreenProps) {
+export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDeleted, onSaved }: EditGroupScreenProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<GroupTypeValue | null>(null);
   const [description, setDescription] = useState('');
@@ -31,10 +32,10 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const { data, errorMessage } = useScreenLoad<{ ip: IpRecord | null; group: GroupRecord | null }>(
     async () => {
-      const [ip, group] = await Promise.all([
+      const [ip, group] = await runWithDatabaseSpace(space, () => Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findById(groupId),
-      ]);
+      ]));
 
       if (!group) {
         throw new Error('没有找到这个分组。');
@@ -42,7 +43,7 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
 
       return { group, ip };
     },
-    [groupId, ipId],
+    [groupId, ipId, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -69,11 +70,11 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
     const selectedType = type;
 
     void runSubmit(async () => {
-      const updated = await groupRepository.update(groupId, {
+      const updated = await runWithDatabaseSpace(space, () => groupRepository.update(groupId, {
         description,
         name: trimmedName,
         type: selectedType as GroupTypeValue,
-      });
+      }));
 
       if (!updated) {
         throw new Error('没有找到这个分组。');
@@ -114,7 +115,7 @@ export function EditGroupScreen({ ipId, groupId, onBack, onDeleted, onSaved }: E
 
     setIsDeleteDialogVisible(false);
     void runSubmit(async () => {
-      const deletedCount = await groupRepository.deleteById(group.id);
+      const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
       if (deletedCount === 0) {
         throw new Error('没有找到这个分组。');
       }

@@ -3,22 +3,23 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { importBatchRepository, type ImportBatchSummary } from '../database';
+import { importBatchRepository, runWithDatabaseSpace, type ImportBatchSummary, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
 
 interface ImportBatchHistoryScreenProps {
   ipId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onOpenBatch: (batch: ImportBatchSummary) => void;
 }
 
-export function ImportBatchHistoryScreen({ ipId, refreshToken, onBack, onOpenBatch }: ImportBatchHistoryScreenProps) {
+export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken, onBack, onOpenBatch }: ImportBatchHistoryScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad(
-    () => importBatchRepository.findByIpId(ipId, 30),
-    [ipId, refreshToken],
+    () => runWithDatabaseSpace(space, () => importBatchRepository.findByIpId(ipId, 30)),
+    [ipId, refreshToken, space],
     {
       initialData: [],
       formatError: (error) => {

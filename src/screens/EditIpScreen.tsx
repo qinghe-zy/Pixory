@@ -9,27 +9,28 @@ import { LightFormSection } from '../components/LightFormSection';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { IP_NAME_MAX_LENGTH } from '../constants/limits';
 import { colors, spacing, typography } from '../design/tokens';
-import { ipRepository, type IpRecord } from '../database';
+import { ipRepository, runWithDatabaseSpace, type IpRecord, type PixorySpace } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
 interface EditIpScreenProps {
   ipId: number;
+  space?: PixorySpace;
   onBack: () => void;
   onSaved: () => void;
 }
 
-export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
+export function EditIpScreen({ ipId, space = 'normal', onBack, onSaved }: EditIpScreenProps) {
   const { data: ip, isLoading, errorMessage, reload } = useScreenLoad<IpRecord>(
     async () => {
-      const record = await ipRepository.findById(ipId);
+      const record = await runWithDatabaseSpace(space, () => ipRepository.findById(ipId));
       if (!record) {
         throw new Error('没有找到这个 IP。');
       }
 
       return record;
     },
-    [ipId],
+    [ipId, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -54,11 +55,11 @@ export function EditIpScreen({ ipId, onBack, onSaved }: EditIpScreenProps) {
 
   function handleSave() {
     void runSubmit(async () => {
-      const updated = await ipRepository.update(ipId, {
+      const updated = await runWithDatabaseSpace(space, () => ipRepository.update(ipId, {
         name: trimmedName,
         description,
         isFavorite,
-      });
+      }));
 
       if (!updated) {
         throw new Error('保存失败，当前 IP 不存在。');

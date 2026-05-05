@@ -6,7 +6,7 @@ import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type TagRecord } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
@@ -14,6 +14,7 @@ import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface TagResultScreenProps {
   tagId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
@@ -45,6 +46,7 @@ type TagResultFilterDropdown = 'status' | 'ip' | 'group' | 'size';
 
 export function TagResultScreen({
   tagId,
+  space = 'normal',
   refreshToken,
   onBack,
   onOpenImage,
@@ -60,7 +62,7 @@ export function TagResultScreen({
     groups: GroupRecord[];
   }>(
     async () => {
-      const [tag, images, ips, groups] = await Promise.all([
+      const [tag, images, ips, groups] = await runWithDatabaseSpace(space, () => Promise.all([
         tagRepository.findById(tagId),
         imageRepository.findByTagId(tagId, {
           aspectRatio: activeFilters.aspectRatio ?? undefined,
@@ -72,7 +74,7 @@ export function TagResultScreen({
         }),
         ipRepository.findAll(),
         groupRepository.findAll(),
-      ]);
+      ]));
 
       if (!tag) {
         throw new Error('没有找到这个标签。');
@@ -80,7 +82,7 @@ export function TagResultScreen({
 
       return { tag, images, ips, groups };
     },
-    [activeFilters, tagId, refreshToken],
+    [activeFilters, tagId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -120,8 +122,8 @@ export function TagResultScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}` }
-        : { type: 'tag', tagId }
+        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
+        : { type: 'tag', tagId, space }
     );
   }
 

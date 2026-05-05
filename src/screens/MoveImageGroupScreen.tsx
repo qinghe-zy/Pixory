@@ -6,36 +6,37 @@ import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, type GroupRecord, type ImageDetailRecord } from '../database';
+import { groupRepository, imageRepository, runWithDatabaseSpace, type GroupRecord, type ImageDetailRecord, type PixorySpace } from '../database';
 import { metrics, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
 interface MoveImageGroupScreenProps {
   imageId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onSaved: () => void;
 }
 
-export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }: MoveImageGroupScreenProps) {
+export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, onBack, onSaved }: MoveImageGroupScreenProps) {
   const { data, errorMessage: loadErrorMessage } = useScreenLoad<{
     image: (ImageDetailRecord & { loadedGroupIds?: number[] }) | null;
     groups: GroupRecord[];
   }>(
     async () => {
-      const detail = await imageRepository.findDetailById(imageId, { includeDeleted: true });
+      const detail = await runWithDatabaseSpace(space, () => imageRepository.findDetailById(imageId, { includeDeleted: true }));
       if (!detail) {
         throw new Error('没有找到这张图片。');
       }
 
-      const [groups, groupIds] = await Promise.all([
+      const [groups, groupIds] = await runWithDatabaseSpace(space, () => Promise.all([
         groupRepository.findByIpId(detail.ipId),
         imageRepository.findGroupIdsByImageId(imageId),
-      ]);
+      ]));
       return { image: { ...detail, loadedGroupIds: groupIds }, groups };
     },
-    [imageId, refreshToken],
+    [imageId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -67,7 +68,7 @@ export function MoveImageGroupScreen({ imageId, refreshToken, onBack, onSaved }:
 
     void runSubmit(
       async () => {
-        const updated = await imageRepository.setImageGroups(image.id, selectedGroupIds);
+        const updated = await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(image.id, selectedGroupIds));
         if (!updated) {
           throw new Error('调整分组时没有找到这张图片。');
         }

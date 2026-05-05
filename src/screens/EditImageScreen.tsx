@@ -13,7 +13,7 @@ import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageDetailRecord, type TagRecord } from '../database';
+import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type PixorySpace, type TagRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -21,32 +21,33 @@ import { mergeDraftTagNames, normalizeDraftTagNames } from '../utils/tagDrafts';
 
 interface EditImageScreenProps {
   imageId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onSaved: () => void;
 }
 
-export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: EditImageScreenProps) {
+export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBack, onSaved }: EditImageScreenProps) {
   const { data, errorMessage: loadErrorMessage } = useScreenLoad<{
     image: (ImageDetailRecord & { loadedGroupIds?: number[] }) | null;
     groups: GroupRecord[];
     tags: TagRecord[];
   }>(
     async () => {
-      const detail = await imageRepository.findDetailById(imageId, { includeDeleted: true });
+      const detail = await runWithDatabaseSpace(space, () => imageRepository.findDetailById(imageId, { includeDeleted: true }));
       if (!detail) {
         throw new Error('没有找到这张图片。');
       }
 
-      const [groups, tags, groupIds] = await Promise.all([
+      const [groups, tags, groupIds] = await runWithDatabaseSpace(space, () => Promise.all([
         groupRepository.findByIpId(detail.ipId),
         tagRepository.findByImageId(imageId),
         imageRepository.findGroupIdsByImageId(imageId),
-      ]);
+      ]));
 
       return { image: { ...detail, loadedGroupIds: groupIds }, groups, tags };
     },
-    [imageId, refreshToken],
+    [imageId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -112,18 +113,18 @@ export function EditImageScreen({ imageId, refreshToken, onBack, onSaved }: Edit
           setTagInput('');
         }
 
-        const updatedImage = await imageRepository.updateMetadata(image.id, {
+        const updatedImage = await runWithDatabaseSpace(space, () => imageRepository.updateMetadata(image.id, {
           originalFilename,
           groupIds: selectedGroupIds,
           note,
           isFavorite,
-        });
+        }));
 
         if (!updatedImage) {
           throw new Error('保存时没有找到这张图片。');
         }
 
-        await tagRepository.setImageTags(image.id, preparedTags);
+        await runWithDatabaseSpace(space, () => tagRepository.setImageTags(image.id, preparedTags));
         onSaved();
       },
       {

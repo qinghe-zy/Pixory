@@ -7,7 +7,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -18,6 +18,7 @@ import type { ImageViewerContext } from '../navigation/imageViewerContext';
 interface QuickOrganizeScreenProps {
   ipId?: number;
   importBatchId?: number | null;
+  space?: PixorySpace;
   onBack: () => void;
   onChanged: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
@@ -28,18 +29,18 @@ type LastOrganizeAction =
   | { type: 'tags'; tags: string[]; label: string }
   | { type: 'favorite'; label: string };
 
-export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChanged, onOpenImage }: QuickOrganizeScreenProps) {
+export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'normal', onBack, onChanged, onOpenImage }: QuickOrganizeScreenProps) {
   const { showToast } = useToast();
   const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[]; tags: TagUsageItem[] }>(
     async () => {
-      const [images, groups, tags] = await Promise.all([
+      const [images, groups, tags] = await runWithDatabaseSpace(space, () => Promise.all([
         imageRepository.findNeedsOrganizing({ ipId, importBatchId }),
         ipId != null ? groupRepository.findByIpId(ipId) : groupRepository.findAll(),
         ipId != null ? tagRepository.findUsageOverviewByIpId(ipId) : tagRepository.findUsageOverview(),
-      ]);
+      ]));
       return { images, groups, tags };
     },
-    [importBatchId, ipId],
+    [importBatchId, ipId, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -122,24 +123,24 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
 
   function getViewerContext(image: ImageListItem): ImageViewerContext {
     if (importBatchId != null) {
-      return { type: 'import-batch', ipId: image.ipId, importBatchId };
+      return { type: 'import-batch', ipId: image.ipId, importBatchId, space };
     }
 
-    return { type: 'ip-all', ipId: image.ipId, filter: { type: 'all' } };
+    return { type: 'ip-all', ipId: image.ipId, filter: { type: 'all' }, space };
   }
 
   async function applyActionToImage(image: ImageListItem, action: LastOrganizeAction) {
     if (action.type === 'group') {
-      await imageRepository.setImageGroups(image.id, [action.groupId]);
+      await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(image.id, [action.groupId]));
       return;
     }
 
     if (action.type === 'tags') {
-      await tagRepository.addTagsToImages([image.id], action.tags);
+      await runWithDatabaseSpace(space, () => tagRepository.addTagsToImages([image.id], action.tags));
       return;
     }
 
-    await imageRepository.updateFavorite(image.id, true);
+    await runWithDatabaseSpace(space, () => imageRepository.updateFavorite(image.id, true));
   }
 
   async function handleSetGroup(groupId: number) {
@@ -147,7 +148,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
       return;
     }
 
-    await imageRepository.setImageGroups(current.id, [groupId]);
+    await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(current.id, [groupId]));
     const group = groups.find((item) => item.id === groupId);
     setLastAction({ type: 'group', groupId, label: group ? `分组：${group.name}` : '分组操作' });
     setEditedGroupIdsByImageId((currentGroupsByImageId) => ({ ...currentGroupsByImageId, [current.id]: groupId }));
@@ -166,7 +167,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
       return;
     }
 
-    const savedTags = await tagRepository.setImageTags(current.id, tags);
+    const savedTags = await runWithDatabaseSpace(space, () => tagRepository.setImageTags(current.id, tags));
     if (tags.length > 0) {
       setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
     }
@@ -193,7 +194,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
       return;
     }
 
-    await imageRepository.updateFavorite(current.id, true);
+    await runWithDatabaseSpace(space, () => imageRepository.updateFavorite(current.id, true));
     setLastAction({ type: 'favorite', label: '收藏' });
     patchCurrentImage(current.id, { isFavorite: true });
     showToast('已收藏');
@@ -229,7 +230,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
     }
 
     const targets = images.slice(currentIndex, currentIndex + 20);
-    await tagRepository.addTagsToImages(targets.map((image) => image.id), tags);
+    await runWithDatabaseSpace(space, () => tagRepository.addTagsToImages(targets.map((image) => image.id), tags));
     setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
     setEditedTagNamesByImageId((currentTagsByImageId) => {
       const next = { ...currentTagsByImageId };
@@ -266,7 +267,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
 
     const target = deleteTarget;
     setDeleteTarget(null);
-    await imageRepository.softDeleteMany([target.id]);
+    await runWithDatabaseSpace(space, () => imageRepository.softDeleteMany([target.id]));
     removeImageFromQueue(target.id);
     showToast({
       message: '已移入回收站',
@@ -274,7 +275,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChan
       durationMs: 5200,
       onAction: () => {
         void (async () => {
-          await imageRepository.restoreMany([target.id]);
+          await runWithDatabaseSpace(space, () => imageRepository.restoreMany([target.id]));
           onChanged();
           reload();
           showToast('已恢复');

@@ -165,7 +165,7 @@ test('quick organize uses a stable cursor and does not auto-advance after metada
   assert.doesNotMatch(source, /handleSetGroup[\s\S]{0,500}advanceCurrent\(\)/);
   assert.doesNotMatch(source, /handleAddTags[\s\S]{0,500}advanceCurrent\(\)/);
   assert.doesNotMatch(source, /refreshToken:\s*number/);
-  assert.match(source, /\[importBatchId,\s*ipId\]/);
+  assert.match(source, /\[importBatchId,\s*ipId(?:,\s*space)?\]/);
   assert.doesNotMatch(source, /currentCommittedTagNames/);
   assert.doesNotMatch(source, /<TagChip/);
   assert.doesNotMatch(source, /removable=\{false\}/);

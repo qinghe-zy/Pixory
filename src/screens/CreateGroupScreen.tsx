@@ -10,18 +10,19 @@ import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { GROUP_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from '../constants/limits';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
 import { spacing } from '../design/tokens';
-import { groupRepository, ipRepository } from '../database';
+import { groupRepository, ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
 interface CreateGroupScreenProps {
   ipId: number;
+  space?: PixorySpace;
   ipName?: string;
   onBack: () => void;
   onCreated: () => void;
 }
 
-export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGroupScreenProps) {
+export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCreated }: CreateGroupScreenProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<GroupTypeValue | null>(null);
   const [description, setDescription] = useState('');
@@ -33,10 +34,10 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
         return ipName;
       }
 
-      const record = await ipRepository.findById(ipId);
+      const record = await runWithDatabaseSpace(space, () => ipRepository.findById(ipId));
       return record?.name ?? `IP #${ipId}`;
     },
-    [ipId, ipName],
+    [ipId, ipName, space],
     { initialData: ipName ?? `IP #${ipId}` }
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
@@ -46,12 +47,12 @@ export function CreateGroupScreen({ ipId, ipName, onBack, onCreated }: CreateGro
     const selectedType = type;
 
     void runSubmit(async () => {
-      await groupRepository.create({
+      await runWithDatabaseSpace(space, () => groupRepository.create({
         ipId,
         name: trimmedName,
         type: selectedType as GroupTypeValue,
         description,
-      });
+      }));
       onCreated();
     }, {
       formatError: (error) => {

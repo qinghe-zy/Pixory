@@ -7,7 +7,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, importBatchRepository, type ImageListItem, type ImportBatchSummary } from '../database';
+import { imageRepository, importBatchRepository, runWithDatabaseSpace, type ImageListItem, type ImportBatchSummary, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
@@ -32,6 +32,7 @@ export type BatchInitialMode = 'idle' | 'replace-group' | 'add-tags' | 'apply-te
 
 interface ImportBatchReviewScreenProps {
   ipId: number;
+  space?: PixorySpace;
   importBatchId: number | null;
   imageIds: number[];
   refreshToken: number;
@@ -45,6 +46,7 @@ interface ImportBatchReviewScreenProps {
 
 export function ImportBatchReviewScreen({
   ipId,
+  space = 'normal',
   importBatchId,
   imageIds,
   refreshToken,
@@ -63,14 +65,14 @@ export function ImportBatchReviewScreen({
     images: ImageListItem[];
   }>(
     async () => {
-      const [summary, images] = await Promise.all([
+      const [summary, images] = await runWithDatabaseSpace(space, () => Promise.all([
         importBatchId != null ? importBatchRepository.findSummaryById(importBatchId) : Promise.resolve(null),
         importBatchId != null ? imageRepository.findByImportBatchId(importBatchId) : imageRepository.findByIds(imageIds),
-      ]);
+      ]));
 
       return { summary, images };
     },
-    [imageIds.join(','), importBatchId, ipId, refreshToken],
+    [imageIds.join(','), importBatchId, ipId, refreshToken, space],
     {
       initialData: { summary: null, images: [] },
       formatError: (error) => {

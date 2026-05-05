@@ -46,17 +46,18 @@ import { isDevToolsEnabled } from './src/utils/dev';
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
-  | { name: 'create-ip' }
-  | { name: 'ip-detail'; ipId: number }
-  | { name: 'edit-ip'; ipId: number }
-  | { name: 'edit-group'; ipId: number; groupId: number }
-  | { name: 'edit-image'; imageId: number }
-  | { name: 'group-overview'; ipId: number }
-  | { name: 'create-group'; ipId: number }
-  | { name: 'group-images'; ipId: number; groupId: number }
+  | { name: 'create-ip'; space: PixorySpace }
+  | { name: 'ip-detail'; ipId: number; space: PixorySpace }
+  | { name: 'edit-ip'; ipId: number; space: PixorySpace }
+  | { name: 'edit-group'; ipId: number; groupId: number; space: PixorySpace }
+  | { name: 'edit-image'; imageId: number; space: PixorySpace }
+  | { name: 'group-overview'; ipId: number; space: PixorySpace }
+  | { name: 'create-group'; ipId: number; space: PixorySpace }
+  | { name: 'group-images'; ipId: number; groupId: number; space: PixorySpace }
   | {
       name: 'batch-manage-images';
       ipId: number;
+      space: PixorySpace;
       source: 'ip-detail' | 'all-images' | 'group-images';
       groupId?: number | null;
       importBatchId?: number | null;
@@ -64,21 +65,21 @@ type AppRoute =
       initialSelectedImageIds?: number[];
       initialMode?: BatchInitialMode;
     }
-  | { name: 'import-images'; ipId: number; groupId?: number | null; space?: PixorySpace }
-  | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null }
-  | { name: 'import-batch-history'; ipId: number }
-  | { name: 'duplicate-review'; ipId: number; importBatchId: number }
-  | { name: 'all-images'; ipId: number }
-  | { name: 'image-viewer'; imageId: number; context: ImageViewerContext }
-  | { name: 'image-detail'; imageId: number; context?: ImageViewerContext }
-  | { name: 'move-image-group'; imageId: number }
-  | { name: 'tag-result'; tagId: number }
-  | { name: 'favorites' }
-  | { name: 'recent-viewed' }
-  | { name: 'quick-organize'; ipId?: number; importBatchId?: number | null }
-  | { name: 'global-search'; query?: string }
-  | { name: 'trash' }
-  | { name: 'backup' }
+  | { name: 'import-images'; ipId: number; groupId?: number | null; space: PixorySpace }
+  | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null; space: PixorySpace }
+  | { name: 'import-batch-history'; ipId: number; space: PixorySpace }
+  | { name: 'duplicate-review'; ipId: number; importBatchId: number; space: PixorySpace }
+  | { name: 'all-images'; ipId: number; space: PixorySpace }
+  | { name: 'image-viewer'; imageId: number; space: PixorySpace; context: ImageViewerContext }
+  | { name: 'image-detail'; imageId: number; space: PixorySpace; context?: ImageViewerContext }
+  | { name: 'move-image-group'; imageId: number; space: PixorySpace }
+  | { name: 'tag-result'; tagId: number; space: PixorySpace }
+  | { name: 'favorites'; space: PixorySpace }
+  | { name: 'recent-viewed'; space: PixorySpace }
+  | { name: 'quick-organize'; ipId?: number; importBatchId?: number | null; space: PixorySpace }
+  | { name: 'global-search'; query?: string; space: PixorySpace }
+  | { name: 'trash'; space: PixorySpace }
+  | { name: 'backup'; space: PixorySpace }
   | { name: 'personal-system' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
@@ -200,11 +201,11 @@ export default function App() {
   }
 
   function openImageViewer(imageId: number, context: ImageViewerContext) {
-    pushRoute({ name: 'image-viewer', imageId, context });
+    pushRoute({ name: 'image-viewer', imageId, space: context.space, context });
   }
 
   function openImageDetail(imageId: number, context?: ImageViewerContext) {
-    pushRoute({ name: 'image-detail', imageId, context });
+    pushRoute({ name: 'image-detail', imageId, space: context?.space ?? 'normal', context });
   }
 
   function replaceCurrentRoute(route: AppRoute) {
@@ -249,36 +250,39 @@ export default function App() {
     content = (
       <IpDetailScreen
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
-        onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId })}
-        onEdit={() => pushRoute({ name: 'edit-ip', ipId: currentRoute.ipId })}
-        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId })}
-        onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId })}
-        onOpenAllImages={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId })}
+        onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onEdit={() => pushRoute({ name: 'edit-ip', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
+        onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onOpenAllImages={() => pushRoute({ name: 'all-images', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenBatchManagement={(imageId) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
+            space: currentRoute.space,
             source: 'ip-detail',
             initialSelectedImageIds: imageId ? [imageId] : undefined,
           })
         }
-        onOpenImportBatches={() => pushRoute({ name: 'import-batch-history', ipId: currentRoute.ipId })}
-        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId })}
-        onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId })}
-        onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
+        onOpenImportBatches={() => pushRoute({ name: 'import-batch-history', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
         onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.name === 'edit-ip') {
-    content = <EditIpScreen ipId={currentRoute.ipId} onBack={popRoute} onSaved={popAndRefresh} />;
+    content = <EditIpScreen ipId={currentRoute.ipId} space={currentRoute.space} onBack={popRoute} onSaved={popAndRefresh} />;
   } else if (currentRoute.name === 'edit-group') {
     content = (
       <EditGroupScreen
         groupId={currentRoute.groupId}
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
         onDeleted={popAndRefresh}
         onSaved={popAndRefresh}
@@ -288,6 +292,7 @@ export default function App() {
     content = (
       <EditImageScreen
         imageId={currentRoute.imageId}
+        space={currentRoute.space}
         onBack={popRoute}
         onSaved={popAndRefresh}
         refreshToken={libraryRefreshToken}
@@ -297,32 +302,36 @@ export default function App() {
     content = (
       <GroupOverviewScreen
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
-        onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId })}
-        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId })}
-        onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId })}
+        onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
+        onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.name === 'create-group') {
-    content = <CreateGroupScreen ipId={currentRoute.ipId} onBack={popRoute} onCreated={popAndRefresh} />;
+    content = <CreateGroupScreen ipId={currentRoute.ipId} space={currentRoute.space} onBack={popRoute} onCreated={popAndRefresh} />;
   } else if (currentRoute.name === 'group-images') {
     content = (
       <GroupImagesScreen
         groupId={currentRoute.groupId}
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
         onImportImages={() =>
           pushRoute({
             name: 'import-images',
             ipId: currentRoute.ipId,
             groupId: currentRoute.groupId,
+            space: currentRoute.space,
           })
         }
         onStartBatchManagement={(imageId) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
+            space: currentRoute.space,
             source: 'group-images',
             groupId: currentRoute.groupId,
             initialSelectedImageIds: [imageId],
@@ -337,6 +346,7 @@ export default function App() {
     content = (
       <BatchManageImagesScreen
         groupId={currentRoute.groupId ?? null}
+        space={currentRoute.space}
         initialSelectedImageIds={currentRoute.initialSelectedImageIds}
         importBatchId={currentRoute.importBatchId ?? null}
         initialMode={currentRoute.initialMode}
@@ -349,6 +359,7 @@ export default function App() {
             name: 'import-images',
             ipId: currentRoute.ipId,
             groupId: currentRoute.groupId ?? null,
+            space: currentRoute.space,
           })
         }
         onOpenImage={openImageViewer}
@@ -362,7 +373,7 @@ export default function App() {
       <ImportImagesScreen
         defaultGroupId={currentRoute.groupId ?? null}
         ipId={currentRoute.ipId}
-        space={currentRoute.space ?? 'normal'}
+        space={currentRoute.space}
         onBack={popRoute}
         onImported={(imageIds, importBatchId) => {
           refreshLibrary();
@@ -370,7 +381,7 @@ export default function App() {
             setRouteStack([{ name: 'personal-system' }]);
             return;
           }
-          replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds, importBatchId });
+          replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds, importBatchId, space: currentRoute.space });
         }}
       />
     );
@@ -380,11 +391,13 @@ export default function App() {
         imageIds={currentRoute.imageIds}
         importBatchId={currentRoute.importBatchId}
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
         onBatchOrganize={(imageIds, initialMode) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
+            space: currentRoute.space,
             source: 'all-images',
             importBatchId: currentRoute.importBatchId,
             scopeImageIds: imageIds,
@@ -392,9 +405,11 @@ export default function App() {
             initialMode,
           })
         }
-        onOpenDuplicateReview={(importBatchId) => pushRoute({ name: 'duplicate-review', ipId: currentRoute.ipId, importBatchId })}
-        onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId })}
-        onQuickOrganize={(importBatchId) => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, importBatchId })}
+        onOpenDuplicateReview={(importBatchId) =>
+          pushRoute({ name: 'duplicate-review', ipId: currentRoute.ipId, importBatchId, space: currentRoute.space })
+        }
+        onImportAgain={() => replaceCurrentRoute({ name: 'import-images', ipId: currentRoute.ipId, space: currentRoute.space })}
+        onQuickOrganize={(importBatchId) => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, importBatchId, space: currentRoute.space })}
         onOpenImageDetail={openImageDetail}
         refreshToken={libraryRefreshToken}
       />
@@ -403,6 +418,7 @@ export default function App() {
     content = (
       <ImportBatchHistoryScreen
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
         onOpenBatch={(batch) =>
           pushRoute({
@@ -410,6 +426,7 @@ export default function App() {
             ipId: currentRoute.ipId,
             imageIds: [],
             importBatchId: batch.id,
+            space: currentRoute.space,
           })
         }
         refreshToken={libraryRefreshToken}
@@ -419,6 +436,7 @@ export default function App() {
     content = (
       <DuplicateReviewScreen
         importBatchId={currentRoute.importBatchId}
+        space={currentRoute.space}
         onBack={popRoute}
         refreshToken={libraryRefreshToken}
       />
@@ -427,12 +445,14 @@ export default function App() {
     content = (
       <AllImagesScreen
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
-        onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId })}
+        onImportImages={() => pushRoute({ name: 'import-images', ipId: currentRoute.ipId, space: currentRoute.space })}
         onStartBatchManagement={(imageId) =>
           pushRoute({
             name: 'batch-manage-images',
             ipId: currentRoute.ipId,
+            space: currentRoute.space,
             source: 'all-images',
             initialSelectedImageIds: [imageId],
           })
@@ -456,12 +476,13 @@ export default function App() {
     content = (
       <ImageDetailScreen
         imageId={currentRoute.imageId}
+        space={currentRoute.space}
         context={currentRoute.context}
         onBack={popRoute}
         onDeleted={popAndRefresh}
-        onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId })}
-        onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId })}
-        onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, context })}
+        onEdit={(imageId) => pushRoute({ name: 'edit-image', imageId, space: currentRoute.space })}
+        onMoveGroup={(imageId) => pushRoute({ name: 'move-image-group', imageId, space: currentRoute.space })}
+        onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, space: context?.space ?? currentRoute.space, context })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
       />
@@ -470,6 +491,7 @@ export default function App() {
     content = (
       <MoveImageGroupScreen
         imageId={currentRoute.imageId}
+        space={currentRoute.space}
         onBack={popRoute}
         onSaved={popAndRefresh}
         refreshToken={libraryRefreshToken}
@@ -485,11 +507,13 @@ export default function App() {
           pushRoute({
             name: 'batch-manage-images',
             ipId,
+            space: currentRoute.space,
             source: 'all-images',
             initialSelectedImageIds: [imageId],
           })
         }
         refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
         tagId={currentRoute.tagId}
       />
     );
@@ -503,11 +527,13 @@ export default function App() {
           pushRoute({
             name: 'batch-manage-images',
             ipId,
+            space: currentRoute.space,
             source: 'all-images',
             initialSelectedImageIds: [imageId],
           })
         }
         refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
       />
     );
   } else if (currentRoute.name === 'recent-viewed') {
@@ -520,11 +546,13 @@ export default function App() {
           pushRoute({
             name: 'batch-manage-images',
             ipId,
+            space: currentRoute.space,
             source: 'all-images',
             initialSelectedImageIds: [imageId],
           })
         }
         refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
       />
     );
   } else if (currentRoute.name === 'quick-organize') {
@@ -532,6 +560,7 @@ export default function App() {
       <QuickOrganizeScreen
         importBatchId={currentRoute.importBatchId ?? null}
         ipId={currentRoute.ipId}
+        space={currentRoute.space}
         onBack={popRoute}
         onChanged={refreshLibrary}
         onOpenImage={openImageViewer}
@@ -542,10 +571,10 @@ export default function App() {
       <GlobalSearchScreen
         onBack={popRoute}
         onChangeQuery={setGlobalSearchQuery}
-        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId })}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
         onOpenImageDetail={openImageDetail}
-        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
-        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId })}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: currentRoute.space })}
         query={globalSearchQuery}
       />
     );
@@ -577,8 +606,8 @@ export default function App() {
     content = (
       <GlobalGroupsScreen
         footer={rootFooter}
-        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId })}
-        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId })}
+        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: 'normal' })}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: 'normal' })}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -586,7 +615,7 @@ export default function App() {
     content = (
       <TagsOverviewScreen
         footer={rootFooter}
-        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId })}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: 'normal' })}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -594,11 +623,11 @@ export default function App() {
     content = (
       <MeScreen
         footer={rootFooter}
-        onOpenFavorites={() => pushRoute({ name: 'favorites' })}
-        onOpenBackup={() => pushRoute({ name: 'backup' })}
+        onOpenFavorites={() => pushRoute({ name: 'favorites', space: 'normal' })}
+        onOpenBackup={() => pushRoute({ name: 'backup', space: 'normal' })}
         onOpenPersonalSystem={() => pushRoute({ name: 'personal-system' })}
-        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed' })}
-        onOpenTrash={() => pushRoute({ name: 'trash' })}
+        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: 'normal' })}
+        onOpenTrash={() => pushRoute({ name: 'trash', space: 'normal' })}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -607,13 +636,13 @@ export default function App() {
       <HomeLibraryScreen
         footer={rootFooter}
         initialFilter={currentRoute.initialFilter ?? 'all'}
-        onCreateIp={() => pushRoute({ name: 'create-ip' })}
+        onCreateIp={() => pushRoute({ name: 'create-ip', space: 'normal' })}
         onOpenGlobalSearch={() => {
           setGlobalSearchQuery('');
-          pushRoute({ name: 'global-search' });
+          pushRoute({ name: 'global-search', space: 'normal' });
         }}
-        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize' })}
-        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId })}
+        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: 'normal' })}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: 'normal' })}
         refreshKey={libraryRefreshToken}
       />
     );

@@ -7,13 +7,14 @@ import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface FavoritesScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
@@ -44,6 +45,7 @@ const EMPTY_FAVORITE_FILTERS: FavoriteFilterState = {
 type FavoriteFilterDropdown = 'ip' | 'size' | 'group' | 'tag';
 
 export function FavoritesScreen({
+  space = 'normal',
   refreshToken,
   onBack,
   onOpenImage,
@@ -59,7 +61,7 @@ export function FavoritesScreen({
     tags: TagUsageItem[];
   }>(
     async () => {
-      const [images, ips, groups, tags] = await Promise.all([
+      const [images, ips, groups, tags] = await runWithDatabaseSpace(space, () => Promise.all([
         imageRepository.findFavorites({
           ipIds: activeFilters.ipIds,
           groupIds: activeFilters.groupIds,
@@ -71,10 +73,10 @@ export function FavoritesScreen({
         ipRepository.findAll(),
         groupRepository.findAll(),
         tagRepository.findUsageOverview(),
-      ]);
+      ]));
       return { images, ips, groups, tags };
     },
-    [activeFilters, refreshToken],
+    [activeFilters, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -113,8 +115,8 @@ export function FavoritesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: filterLabel }
-        : { type: 'favorites' }
+        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: filterLabel, space }
+        : { type: 'favorites', space }
     );
   }
 

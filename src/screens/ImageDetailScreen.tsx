@@ -12,7 +12,7 @@ import { ContentCard } from '../components/ContentCard';
 import { Header } from '../components/Header';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
-import { imageRepository, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type TagRecord } from '../database';
+import { imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type PixorySpace, type TagRecord } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { getFileInfo } from '../services/fileStorageService';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
@@ -24,6 +24,7 @@ import { useToast } from '../components/AppToast';
 
 interface ImageDetailScreenProps {
   imageId: number;
+  space?: PixorySpace;
   context?: ImageViewerContext;
   refreshToken: number;
   onBack: () => void;
@@ -36,6 +37,7 @@ interface ImageDetailScreenProps {
 
 export function ImageDetailScreen({
   imageId,
+  space = 'normal',
   context,
   refreshToken,
   onBack,
@@ -47,6 +49,7 @@ export function ImageDetailScreen({
 }: ImageDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
+  const routeSpace = context?.space ?? space;
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [groups, setGroups] = useState<GroupRecord[]>([]);
@@ -69,10 +72,10 @@ export function ImageDetailScreen({
       setErrorMessage(null);
 
       try {
-        const [detail, tagItems] = await Promise.all([
+        const [detail, tagItems] = await runWithDatabaseSpace(routeSpace, () => Promise.all([
           imageRepository.findDetailById(imageId),
           tagRepository.findByImageId(imageId),
-        ]);
+        ]));
 
         if (!isMounted) {
           return;
@@ -83,7 +86,7 @@ export function ImageDetailScreen({
         }
 
         const [groupItems, contextItems, originalInfo, thumbnailInfo] = await Promise.all([
-          imageRepository.findGroupsByImageId(imageId),
+          runWithDatabaseSpace(routeSpace, () => imageRepository.findGroupsByImageId(imageId)),
           context ? loadDetailContextImages(context) : Promise.resolve([]),
           getFileInfo(detail.originalFileUri),
           detail.thumbnailFileUri ? getFileInfo(detail.thumbnailFileUri) : Promise.resolve(null),
@@ -97,7 +100,7 @@ export function ImageDetailScreen({
           originalExists: originalInfo.exists && !originalInfo.isDirectory,
           thumbnailExists: detail.thumbnailFileUri ? Boolean(thumbnailInfo?.exists && !thumbnailInfo.isDirectory) : true,
         });
-        void imageRepository.touchLastViewedAt(imageId);
+        void runWithDatabaseSpace(routeSpace, () => imageRepository.touchLastViewedAt(imageId));
         devLog('Pixory image detail readback:', {
           imageId: detail.id,
           groupName: detail.groupName,
@@ -124,7 +127,7 @@ export function ImageDetailScreen({
     return () => {
       isMounted = false;
     };
-  }, [context, imageId, refreshToken]);
+  }, [context, imageId, refreshToken, routeSpace]);
 
   const contextIndex = contextImages.findIndex((item) => item.id === imageId);
   const previousImage = contextIndex > 0 ? contextImages[contextIndex - 1] : null;
@@ -156,7 +159,7 @@ export function ImageDetailScreen({
     setIsUpdatingFavorite(true);
 
     try {
-      const updated = await imageRepository.updateFavorite(image.id, !image.isFavorite);
+      const updated = await runWithDatabaseSpace(routeSpace, () => imageRepository.updateFavorite(image.id, !image.isFavorite));
 
       if (updated) {
         setImage({
@@ -189,7 +192,7 @@ export function ImageDetailScreen({
 
     setIsDeleteDialogVisible(false);
     try {
-      const deletedCount = await imageRepository.softDeleteMany([image.id]);
+      const deletedCount = await runWithDatabaseSpace(routeSpace, () => imageRepository.softDeleteMany([image.id]));
       if (deletedCount === 0) {
         throw new Error('没有可删除的图片。');
       }
@@ -207,7 +210,7 @@ export function ImageDetailScreen({
         throw new Error('软删除后缩略图文件不存在。');
       }
 
-      const deletedImage = await imageRepository.findById(image.id, { includeDeleted: true });
+      const deletedImage = await runWithDatabaseSpace(routeSpace, () => imageRepository.findById(image.id, { includeDeleted: true }));
       devLog(
         'Pixory single delete verification JSON:',
         JSON.stringify({
@@ -228,7 +231,7 @@ export function ImageDetailScreen({
         durationMs: 5200,
         onAction: () => {
           void (async () => {
-            await imageRepository.restoreMany([image.id]);
+            await runWithDatabaseSpace(routeSpace, () => imageRepository.restoreMany([image.id]));
             onRefreshed();
             showToast('已恢复');
           })();
@@ -466,32 +469,34 @@ export function ImageDetailScreen({
 }
 
 async function loadDetailContextImages(context: ImageViewerContext): Promise<ImageListItem[]> {
-  if (context.type === 'ip-recent') {
-    return imageRepository.findRecentByIpId(context.ipId, context.limit);
-  }
-  if (context.type === 'import-batch') {
-    return imageRepository.findByImportBatchId(context.importBatchId);
-  }
-  if (context.type === 'image-scope') {
-    return imageRepository.findByIds(context.imageIds);
-  }
-  if (context.type === 'ip-all') {
-    const filter = context.filter;
-    if (filter.type === 'favorite') return imageRepository.findByIpId(context.ipId, { favoritesOnly: true });
-    if (filter.type === 'ungrouped') return imageRepository.findByIpId(context.ipId, { ungroupedOnly: true });
-    if (filter.type === 'untagged') return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
-    if (filter.type === 'recent-viewed') return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
-    if (filter.type === 'mime') return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
-    if (filter.type === 'aspect') return imageRepository.findByIpId(context.ipId, { aspectRatio: filter.aspectRatio });
-    if (filter.type === 'size') return imageRepository.findByIpId(context.ipId, { minFileSize: filter.minFileSize, maxFileSize: filter.maxFileSize });
-    if (filter.type === 'group') return imageRepository.findByGroupId(filter.groupId);
-    if (filter.type === 'tag') return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });
-    return imageRepository.findByIpId(context.ipId);
-  }
-  if (context.type === 'group') return imageRepository.findByGroupId(context.groupId);
-  if (context.type === 'tag') return imageRepository.findByTagId(context.tagId);
-  if (context.type === 'favorites') return imageRepository.findFavorites();
-  return imageRepository.findRecentViewed();
+  return runWithDatabaseSpace(context.space, async () => {
+    if (context.type === 'ip-recent') {
+      return imageRepository.findRecentByIpId(context.ipId, context.limit);
+    }
+    if (context.type === 'import-batch') {
+      return imageRepository.findByImportBatchId(context.importBatchId);
+    }
+    if (context.type === 'image-scope') {
+      return imageRepository.findByIds(context.imageIds);
+    }
+    if (context.type === 'ip-all') {
+      const filter = context.filter;
+      if (filter.type === 'favorite') return imageRepository.findByIpId(context.ipId, { favoritesOnly: true });
+      if (filter.type === 'ungrouped') return imageRepository.findByIpId(context.ipId, { ungroupedOnly: true });
+      if (filter.type === 'untagged') return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
+      if (filter.type === 'recent-viewed') return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
+      if (filter.type === 'mime') return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
+      if (filter.type === 'aspect') return imageRepository.findByIpId(context.ipId, { aspectRatio: filter.aspectRatio });
+      if (filter.type === 'size') return imageRepository.findByIpId(context.ipId, { minFileSize: filter.minFileSize, maxFileSize: filter.maxFileSize });
+      if (filter.type === 'group') return imageRepository.findByGroupId(filter.groupId);
+      if (filter.type === 'tag') return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });
+      return imageRepository.findByIpId(context.ipId);
+    }
+    if (context.type === 'group') return imageRepository.findByGroupId(context.groupId);
+    if (context.type === 'tag') return imageRepository.findByTagId(context.tagId);
+    if (context.type === 'favorites') return imageRepository.findFavorites();
+    return imageRepository.findRecentViewed();
+  });
 }
 
 function PrimaryAction({

@@ -8,7 +8,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
@@ -17,6 +17,7 @@ import type { ImageViewerContext } from '../navigation/imageViewerContext';
 interface GroupImagesScreenProps {
   ipId: number;
   groupId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onImportImages: () => void;
@@ -48,6 +49,7 @@ type GroupResultFilterDropdown = 'status' | 'tag' | 'size';
 export function GroupImagesScreen({
   ipId,
   groupId,
+  space = 'normal',
   refreshToken,
   onBack,
   onImportImages,
@@ -64,6 +66,7 @@ export function GroupImagesScreen({
     tags: TagUsageItem[];
   }>(
     async () => {
+      return runWithDatabaseSpace(space, async () => {
       const [ip, group, images, tags] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findById(groupId),
@@ -78,8 +81,9 @@ export function GroupImagesScreen({
       ]);
 
       return { ip, group, images, tags };
+      });
     },
-    [activeFilters, groupId, ipId, refreshToken],
+    [activeFilters, groupId, ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -118,8 +122,8 @@ export function GroupImagesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: `${group?.name ?? '分组'} · ${filterLabel}` }
-        : { type: 'group', ipId, groupId }
+        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: `${group?.name ?? '分组'} · ${filterLabel}`, space }
+        : { type: 'group', ipId, groupId, space }
     );
   }
 

@@ -5,13 +5,14 @@ import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, type ImageListItem } from '../database';
+import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface RecentViewedScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
@@ -20,6 +21,7 @@ interface RecentViewedScreenProps {
 }
 
 export function RecentViewedScreen({
+  space = 'normal',
   refreshToken,
   onBack,
   onOpenImage,
@@ -27,8 +29,8 @@ export function RecentViewedScreen({
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => imageRepository.findRecentViewed(),
-    [refreshToken],
+    () => runWithDatabaseSpace(space, () => imageRepository.findRecentViewed()),
+    [refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -49,7 +51,7 @@ export function RecentViewedScreen({
       return;
     }
 
-    onOpenImage(imageId, { type: 'recent-viewed' });
+    onOpenImage(imageId, { type: 'recent-viewed', space });
   }
 
   function handleImageLongPress(image: ImageListItem) {

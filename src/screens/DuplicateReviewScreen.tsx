@@ -3,21 +3,22 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, type SuspectedDuplicateGroup } from '../database';
+import { imageRepository, runWithDatabaseSpace, type PixorySpace, type SuspectedDuplicateGroup } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatFileSize } from '../utils/formatters';
 
 interface DuplicateReviewScreenProps {
   importBatchId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
 }
 
-export function DuplicateReviewScreen({ importBatchId, refreshToken, onBack }: DuplicateReviewScreenProps) {
+export function DuplicateReviewScreen({ importBatchId, space = 'normal', refreshToken, onBack }: DuplicateReviewScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<SuspectedDuplicateGroup[]>(
-    () => imageRepository.findSuspectedDuplicateGroupsByImportBatchId(importBatchId),
-    [importBatchId, refreshToken],
+    () => runWithDatabaseSpace(space, () => imageRepository.findSuspectedDuplicateGroupsByImportBatchId(importBatchId)),
+    [importBatchId, refreshToken, space],
     {
       initialData: [],
       formatError: (error) => {

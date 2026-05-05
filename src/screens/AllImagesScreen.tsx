@@ -7,7 +7,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
@@ -56,6 +56,7 @@ type AllImagesFilterDropdown = 'status' | 'aspect' | 'file' | 'group' | 'tag';
 
 interface AllImagesScreenProps {
   ipId: number;
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onImportImages: () => void;
@@ -66,6 +67,7 @@ interface AllImagesScreenProps {
 
 export function AllImagesScreen({
   ipId,
+  space = 'normal',
   refreshToken,
   onBack,
   onImportImages,
@@ -82,6 +84,7 @@ export function AllImagesScreen({
     tags: TagUsageItem[];
   }>(
     async () => {
+      return runWithDatabaseSpace(space, async () => {
       const [ip, groups, tags] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
@@ -104,8 +107,9 @@ export function AllImagesScreen({
       const images = filterImagesBySimilarity(baseImages, activeFilters);
 
       return { ip, images, groups, tags };
+      });
     },
-    [activeFilters, ipId, refreshToken],
+    [activeFilters, ipId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -162,8 +166,8 @@ export function AllImagesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: activeFilterLabel }
-        : { type: 'ip-all', ipId, filter: { type: 'all' } }
+        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: activeFilterLabel, space }
+        : { type: 'ip-all', ipId, filter: { type: 'all' }, space }
     );
   }
 
