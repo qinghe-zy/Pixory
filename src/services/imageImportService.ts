@@ -1,8 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 
-import { getDatabase, groupRepository, imageRepository, importBatchRepository, ipRepository, tagRepository } from '../database';
-import type { ImageAssetRecord, ImportBatchRecord, TagRecord } from '../database';
+import { getDatabase, groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, tagRepository } from '../database';
+import type { ImageAssetRecord, ImportBatchRecord, PixorySpace, TagRecord } from '../database';
 import { normalizeOptionalText } from '../database/utils';
 import {
   copyOriginalToAppStorage,
@@ -22,6 +22,7 @@ export interface PickImagesForImportResult {
 }
 
 export interface ImportImagesToIpParams {
+  space?: PixorySpace;
   ipId: number;
   groupId?: number | null;
   groupIds?: number[];
@@ -33,6 +34,7 @@ export interface ImportImagesToIpParams {
 }
 
 export interface BuildImageAssetFromPickedFileParams {
+  space?: PixorySpace;
   ipId: number;
   importBatchId?: number | null;
   groupId?: number | null;
@@ -43,6 +45,7 @@ export interface BuildImageAssetFromPickedFileParams {
 }
 
 export interface ImportSingleImageParams {
+  space?: PixorySpace;
   ipId: number;
   groupId?: number | null;
   groupIds?: number[];
@@ -53,6 +56,7 @@ export interface ImportSingleImageParams {
 }
 
 export interface PendingImageAssetImport {
+  space: PixorySpace;
   ipId: number;
   importBatchId: number | null;
   groupId: number | null;
@@ -327,14 +331,16 @@ async function performSingleImageImport(
     originalFileUri = await copyOriginalToAppStorage(
       pendingImageAsset.sourceUri,
       pendingImageAsset.ipId,
-      pendingImageAsset.internalFilename
+      pendingImageAsset.internalFilename,
+      pendingImageAsset.space
     );
 
     const originalFileInfo = await getFileInfo(originalFileUri);
     thumbnailFileUri = await generateThumbnail(
       originalFileUri,
       pendingImageAsset.ipId,
-      pendingImageAsset.internalFilename
+      pendingImageAsset.internalFilename,
+      pendingImageAsset.space
     );
 
     const createdImage = await imageRepository.create({
@@ -431,6 +437,7 @@ export async function buildImageAssetFromPickedFile(
   const { width, height } = await resolveDimensionsForPickedAsset(pickedAsset, originalFilename);
 
   return {
+    space: params.space ?? 'normal',
     ipId,
     importBatchId: params.importBatchId ?? null,
     groupId: normalizedGroupIds[0] ?? null,
@@ -450,14 +457,17 @@ export async function buildImageAssetFromPickedFile(
 export async function importSingleImage(
   params: ImportSingleImageParams
 ): Promise<ImportedImageResult> {
+  const space = params.space ?? 'normal';
+  return runWithDatabaseSpace(space, async () => {
   const { groupId, ipId, pickedAsset } = params;
   const groupIds = normalizeGroupIds(params.groupIds ?? (groupId != null ? [groupId] : []));
   await ensureImportTargetExists(ipId, groupIds);
-  await ensureAppDirectories();
+  await ensureAppDirectories(space);
 
   const resolvedTags = await resolveTags(params.tagNames);
   const pendingImageAsset = await buildImageAssetFromPickedFile({
     ipId,
+    space,
     groupId,
     groupIds,
     note: params.note,
@@ -466,14 +476,17 @@ export async function importSingleImage(
   });
 
   return performSingleImageImport(pendingImageAsset, resolvedTags);
+  });
 }
 
 export async function importImagesToIp(
   params: ImportImagesToIpParams
 ): Promise<ImportImagesToIpResult> {
+  const space = params.space ?? 'normal';
+  return runWithDatabaseSpace(space, async () => {
   const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
   await ensureImportTargetExists(params.ipId, groupIds);
-  await ensureAppDirectories();
+  await ensureAppDirectories(space);
 
   if (params.pickedAssets.length === 0) {
     return {
@@ -499,6 +512,7 @@ export async function importImagesToIp(
     try {
       const pendingImageAsset = await buildImageAssetFromPickedFile({
         ipId: params.ipId,
+        space,
         importBatchId: importBatch.id,
         groupId: params.groupId,
         groupIds,
@@ -521,6 +535,7 @@ export async function importImagesToIp(
     importedImages,
     errors,
   };
+  });
 }
 
 export async function verifyImportedImageFiles(

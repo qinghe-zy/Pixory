@@ -1,5 +1,12 @@
-export { getDatabase, initDatabase, runMigrations } from './db';
-export { DATABASE_NAME, DATABASE_VERSION } from './schema';
+export {
+  getDatabase,
+  initDatabase,
+  resetDatabaseSpaceCache,
+  runMigrations,
+  runWithDatabaseSpace,
+  type PixorySpace,
+} from './db';
+export { DATABASE_NAME, PERSONAL_DATABASE_NAME, DATABASE_VERSION } from './schema';
 export { seedDevelopmentData } from './seed';
 export { groupRepository } from './repositories/groupRepository';
 export { imageRepository } from './repositories/imageRepository';

@@ -15,7 +15,7 @@ import { TagChip } from '../components/TagChip';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, importTemplateRepository, ipRepository, settingsRepository, tagRepository, type GroupRecord, type ImportTemplateRecord, type IpRecord, type TagUsageItem } from '../database';
+import { groupRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, settingsRepository, tagRepository, type GroupRecord, type ImportTemplateRecord, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -24,11 +24,13 @@ import {
   pickImagesForImport,
   type PickedImageAsset,
 } from '../services/imageImportService';
+import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
 
 interface ImportImagesScreenProps {
+  space?: PixorySpace;
   ipId: number;
   defaultGroupId?: number | null;
   onBack: () => void;
@@ -36,6 +38,7 @@ interface ImportImagesScreenProps {
 }
 
 export function ImportImagesScreen({
+  space = 'normal',
   ipId,
   defaultGroupId = null,
   onBack,
@@ -48,17 +51,17 @@ export function ImportImagesScreen({
     reload,
   } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
     async () => {
-      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await Promise.all([
+      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await runWithDatabaseSpace(space, () => Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
         importTemplateRepository.findAll(),
         settingsRepository.getRecentImportGroupIds(),
         tagRepository.findRecentlyUsed(8),
-      ]);
+      ]));
 
       return { ip, groups, importTemplates, recentGroupIds, recentTags };
     },
-    [ipId],
+    [ipId, space],
     {
       initialData: { ip: null, groups: [], importTemplates: [], recentGroupIds: [], recentTags: [] },
       formatError: (error) => {
@@ -78,6 +81,8 @@ export function ImportImagesScreen({
   const [isOptionalOpen, setIsOptionalOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
+  const [isPickingPackage, setIsPickingPackage] = useState(false);
+  const [packageImportResult, setPackageImportResult] = useState<PackageImportResult | null>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
   const [deleteTemplate, setDeleteTemplate] = useState<ImportTemplateRecord | null>(null);
@@ -143,8 +148,10 @@ export function ImportImagesScreen({
       throw new Error('请输入分组名称。');
     }
 
-    const existing = await groupRepository.findByIpIdAndName(ipId, preparedName);
-    const group = existing ?? (await groupRepository.create({ ipId, name: preparedName, type: 'custom' }));
+    const group = await runWithDatabaseSpace(space, async () => {
+      const existing = await groupRepository.findByIpIdAndName(ipId, preparedName);
+      return existing ?? groupRepository.create({ ipId, name: preparedName, type: 'custom' });
+    });
     setSelectedGroupIds((current) => (current.includes(group.id) ? current : [...current, group.id]));
     await reload();
     return group;
@@ -284,6 +291,7 @@ export function ImportImagesScreen({
       });
 
       const result = await importImagesToIp({
+        space,
         ipId,
         groupIds: selectedGroupIds,
         tagNames: preparedTags,
@@ -309,7 +317,7 @@ export function ImportImagesScreen({
         throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张。`);
       }
 
-      await settingsRepository.rememberImportGroupIds(selectedGroupIds);
+      await runWithDatabaseSpace(space, () => settingsRepository.rememberImportGroupIds(selectedGroupIds));
       showToast(`成功导入 ${result.successCount} 张`);
       onImported(result.importedImages.map((item) => item.image.id), result.importBatch?.id ?? null);
     }, {
@@ -319,6 +327,49 @@ export function ImportImagesScreen({
       },
       validate: () => (pickedAssets.length === 0 ? '请先选择要导入的图片。' : null),
     });
+  }
+
+  async function handlePackageImport() {
+    if (isPickingPackage || isSubmitting) {
+      return;
+    }
+
+    setIsPickingPackage(true);
+    if (submitError) {
+      clearSubmitError();
+    }
+
+    try {
+      const packagePick = await pickPackageForImport();
+      if (packagePick.canceled || !packagePick.packageUri || !packagePick.packageName) {
+        return;
+      }
+
+      const preparedTags = mergeDraftTagNames(tags, tagInput);
+      const result = await importPackageToIp({
+        space,
+        ipId,
+        packageUri: packagePick.packageUri,
+        packageName: packagePick.packageName,
+        tagNames: preparedTags,
+        note: note.trim(),
+        isFavorite,
+      });
+      setPackageImportResult(result);
+
+      if (result.successCount === 0) {
+        throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张，跳过 ${result.skippedCount} 个文件。`);
+      }
+
+      await runWithDatabaseSpace(space, () => settingsRepository.rememberImportGroupIds(selectedGroupIds));
+      showToast(`资源包导入 ${result.successCount} 张，跳过 ${result.skippedCount} 个文件`);
+      onImported(result.importedImages.map((item) => item.image.id), null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`资源包导入失败：${message}`);
+    } finally {
+      setIsPickingPackage(false);
+    }
   }
 
   return (
@@ -365,6 +416,30 @@ export function ImportImagesScreen({
               </View>
             ) : null}
           </View>
+        </LightFormSection>
+
+        <LightFormSection hint=".zip / .pixorypack 会先解压到 Pixory 私有临时目录，再导入原图。" title="资源包导入">
+          <Pressable
+            accessibilityRole="button"
+            disabled={isPickingPackage || isSubmitting}
+            onPress={handlePackageImport}
+            style={({ pressed }) => [styles.packageZone, (isPickingPackage || isSubmitting) && styles.disabled, pressed && styles.pressed]}
+          >
+            <View style={styles.pickIconWrap}>
+              <Ionicons color={colors.primary.default} name="archive-outline" size={22} />
+            </View>
+            <View style={styles.pickCopy}>
+              <Text numberOfLines={1} style={styles.pickTitle}>
+                {isPickingPackage ? '正在处理资源包…' : '选择资源包'}
+              </Text>
+              <Text numberOfLines={1} style={styles.pickHint}>支持 .zip / .pixorypack，文件夹名会映射为分组</Text>
+            </View>
+          </Pressable>
+          {packageImportResult ? (
+            <Text style={styles.packageResult}>
+              成功 {packageImportResult.successCount} · 失败 {packageImportResult.failedCount} · 跳过 {packageImportResult.skippedCount}
+            </Text>
+          ) : null}
         </LightFormSection>
 
         <LightFormSection title="目标归属">
@@ -791,6 +866,22 @@ const styles = StyleSheet.create({
   templateGrid: {
     gap: spacing[2],
     paddingVertical: spacing[2],
+  },
+  packageZone: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    minHeight: 62,
+    padding: spacing[3],
+  },
+  packageResult: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    paddingHorizontal: spacing[1],
   },
   templateHeaderRow: {
     alignItems: 'center',

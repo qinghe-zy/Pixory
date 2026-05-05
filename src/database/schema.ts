@@ -1,4 +1,5 @@
 export const DATABASE_NAME = 'pixory.sqlite';
+export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
 export const DATABASE_VERSION = 9;
 
 export const MIGRATION_STATEMENTS_V1 = `
