@@ -10,6 +10,7 @@ import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, t
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { getFilenamePrefix } from '../utils/batchSelectionRules';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface TagResultScreenProps {
@@ -23,9 +24,15 @@ interface TagResultScreenProps {
 }
 
 type TagResultFileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
+type SimilarFilterKey = 'similarSameSize' | 'similarFilenamePrefix' | 'similarDuplicate';
 
 interface TagResultFilterState {
   favorite: boolean;
+  recentViewed: boolean;
+  similarDuplicate: boolean;
+  similarFilenamePrefix: boolean;
+  similarSameSize: boolean;
+  ungrouped: boolean;
   ipIds: number[];
   groupIds: number[];
   aspectRatio: ImageAspectRatioFilter | null;
@@ -39,7 +46,12 @@ const EMPTY_TAG_RESULT_FILTERS: TagResultFilterState = {
   favorite: false,
   groupIds: [],
   ipIds: [],
+  recentViewed: false,
+  similarDuplicate: false,
+  similarFilenamePrefix: false,
+  similarSameSize: false,
   size: null,
+  ungrouped: false,
 };
 
 type TagResultFilterDropdown = 'status' | 'ip' | 'group' | 'size';
@@ -62,13 +74,16 @@ export function TagResultScreen({
     groups: GroupRecord[];
   }>(
     async () => {
-      const [tag, images, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
+      const [tag, baseImages, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
         tagRepository.findById(db, tagId),
         imageRepository.findByTagId(db, tagId, {
           aspectRatio: activeFilters.aspectRatio ?? undefined,
           favoritesOnly: activeFilters.favorite || undefined,
           groupIds: activeFilters.groupIds,
           ipIds: activeFilters.ipIds,
+          orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : undefined,
+          recentlyViewedOnly: activeFilters.recentViewed || undefined,
+          ungroupedOnly: activeFilters.ungrouped || undefined,
           minFileSize: activeFilters.size?.minFileSize,
           maxFileSize: activeFilters.size?.maxFileSize,
         }),
@@ -79,6 +94,7 @@ export function TagResultScreen({
       if (!tag) {
         throw new Error('没有找到这个标签。');
       }
+      const images = filterImagesBySimilarity(baseImages, activeFilters);
 
       return { tag, images, ips, groups };
     },
@@ -99,6 +115,11 @@ export function TagResultScreen({
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
     if (activeFilters.favorite) labels.push('收藏');
+    if (activeFilters.ungrouped) labels.push('未分组');
+    if (activeFilters.recentViewed) labels.push('最近查看');
+    if (activeFilters.similarSameSize) labels.push('同尺寸');
+    if (activeFilters.similarFilenamePrefix) labels.push('文件名前缀');
+    if (activeFilters.similarDuplicate) labels.push('疑似重复');
     if (activeFilters.ipIds.length > 0) labels.push(`IP ${activeFilters.ipIds.length}`);
     if (activeFilters.groupIds.length > 0) labels.push(`分组 ${activeFilters.groupIds.length}`);
     if (activeFilters.aspectLabel) labels.push(activeFilters.aspectLabel);
@@ -170,9 +191,25 @@ export function TagResultScreen({
     setActiveFilters((current) => ({ ...current, size: current.size?.label === size.label ? null : size }));
   }
 
+  function toggleBooleanFilter(key: 'favorite' | 'ungrouped' | 'recentViewed') {
+    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleSimilarFilter(key: SimilarFilterKey) {
+    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  }
+
   function clearFilterGroup(group: TagResultFilterDropdown) {
     if (group === 'status') {
-      setActiveFilters((current) => ({ ...current, favorite: false }));
+      setActiveFilters((current) => ({
+        ...current,
+        favorite: false,
+        recentViewed: false,
+        similarDuplicate: false,
+        similarFilenamePrefix: false,
+        similarSameSize: false,
+        ungrouped: false,
+      }));
     } else if (group === 'ip') {
       setActiveFilters((current) => ({ ...current, ipIds: [] }));
     } else if (group === 'group') {
@@ -196,7 +233,7 @@ export function TagResultScreen({
 
       <View style={styles.filterBarWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-          <FilterMenuButton active={activeFilters.favorite} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
+          <FilterMenuButton active={activeFilters.favorite || activeFilters.ungrouped || activeFilters.recentViewed || activeFilters.similarSameSize || activeFilters.similarFilenamePrefix || activeFilters.similarDuplicate} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
           <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
           <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
           <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
@@ -216,8 +253,19 @@ export function TagResultScreen({
             title={getTagResultFilterTitle(activeFilterDropdown)}
           >
             {activeFilterDropdown === 'status' ? (
-              <View style={styles.filterOptionGrid}>
-                <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => setActiveFilters((current) => ({ ...current, favorite: !current.favorite }))} />
+              <View style={styles.drawerSections}>
+                <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
+                  <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
+                  <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
+                </View>
+                <Text style={styles.drawerSectionTitle}>相似 · 多选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="同尺寸" selected={activeFilters.similarSameSize} onPress={() => toggleSimilarFilter('similarSameSize')} />
+                  <FilterOptionChip label="文件名前缀" selected={activeFilters.similarFilenamePrefix} onPress={() => toggleSimilarFilter('similarFilenamePrefix')} />
+                  <FilterOptionChip label="疑似重复" selected={activeFilters.similarDuplicate} onPress={() => toggleSimilarFilter('similarDuplicate')} />
+                </View>
               </View>
             ) : null}
             {activeFilterDropdown === 'ip' ? (
@@ -346,6 +394,44 @@ function getTagResultFilterTitle(filter: TagResultFilterDropdown) {
 
 function getTagResultFilterMode(filter: TagResultFilterDropdown): '多选' | '单选' {
   return filter === 'size' ? '单选' : '多选';
+}
+
+function filterImagesBySimilarity(images: ImageListItem[], filters: TagResultFilterState): ImageListItem[] {
+  if (!filters.similarSameSize && !filters.similarFilenamePrefix && !filters.similarDuplicate) {
+    return images;
+  }
+
+  const sameSizeCounts = new Map<string, number>();
+  const prefixCounts = new Map<string, number>();
+  const duplicateCounts = new Map<string, number>();
+
+  for (const image of images) {
+    const sizeKey = `${image.width}x${image.height}`;
+    const duplicateKey = `${sizeKey}:${image.fileSize}`;
+    sameSizeCounts.set(sizeKey, (sameSizeCounts.get(sizeKey) ?? 0) + 1);
+    duplicateCounts.set(duplicateKey, (duplicateCounts.get(duplicateKey) ?? 0) + 1);
+
+    const prefix = getFilenamePrefix(image.originalFilename);
+    if (prefix) {
+      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+  }
+
+  return images.filter((image) => {
+    if (filters.similarSameSize && (sameSizeCounts.get(`${image.width}x${image.height}`) ?? 0) <= 1) {
+      return false;
+    }
+    if (filters.similarDuplicate && (duplicateCounts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) <= 1) {
+      return false;
+    }
+    if (filters.similarFilenamePrefix) {
+      const prefix = getFilenamePrefix(image.originalFilename);
+      if (!prefix || (prefixCounts.get(prefix) ?? 0) <= 1) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 const styles = StyleSheet.create({

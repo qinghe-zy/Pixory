@@ -230,21 +230,35 @@ test('tag and group result pages expose dedicated secondary filters', () => {
   assert.match(tagResultSource, /ipIds: activeFilters\.ipIds/);
   assert.match(tagResultSource, /groupIds: activeFilters\.groupIds/);
   assert.match(tagResultSource, /favoritesOnly: activeFilters\.favorite/);
+  assert.match(tagResultSource, /ungroupedOnly: activeFilters\.ungrouped/);
+  assert.match(tagResultSource, /recentlyViewedOnly: activeFilters\.recentViewed/);
   assert.match(tagResultSource, /FilterMenuButton/);
   assert.match(tagResultSource, /IP 筛选/);
   assert.match(tagResultSource, /分组筛选/);
   assert.match(tagResultSource, /尺寸筛选/);
   assert.match(tagResultSource, /收藏/);
+  assert.match(tagResultSource, /未分组/);
+  assert.match(tagResultSource, /最近查看/);
+  assert.match(tagResultSource, /同尺寸/);
+  assert.match(tagResultSource, /文件名前缀/);
+  assert.match(tagResultSource, /疑似重复/);
 
   assert.match(groupSource, /activeFilters/);
   assert.match(groupSource, /activeFilterDropdown/);
   assert.match(groupSource, /findByGroupId\(db,\s*groupId,\s*\{/);
   assert.match(groupSource, /tagIds: activeFilters\.tagIds/);
   assert.match(groupSource, /favoritesOnly: activeFilters\.favorite/);
+  assert.match(groupSource, /untaggedOnly: activeFilters\.untagged/);
+  assert.match(groupSource, /recentlyViewedOnly: activeFilters\.recentViewed/);
   assert.match(groupSource, /tagRepository\.findUsageOverviewByIpId\(db,\s*ipId\)/);
   assert.match(groupSource, /标签筛选/);
   assert.match(groupSource, /尺寸筛选/);
   assert.match(groupSource, /收藏/);
+  assert.match(groupSource, /无标签/);
+  assert.match(groupSource, /最近查看/);
+  assert.match(groupSource, /同尺寸/);
+  assert.match(groupSource, /文件名前缀/);
+  assert.match(groupSource, /疑似重复/);
 });
 
 test('tag multi select keeps long existing tag lists compact with an internal scroll strategy', () => {
