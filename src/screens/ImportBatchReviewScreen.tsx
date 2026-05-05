@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SecureImage } from '../components/SecureImage';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import {
   imageRepository,
@@ -74,10 +75,10 @@ export function ImportBatchReviewScreen({
     items: ImportBatchItemRecord[];
   }>(
     async () => {
-      const [summary, images, items] = await runWithDatabaseSpace(space, () => Promise.all([
-        importBatchId != null ? importBatchRepository.findSummaryById(importBatchId) : Promise.resolve(null),
-        importBatchId != null ? imageRepository.findByImportBatchId(importBatchId) : imageRepository.findByIds(imageIds),
-        importBatchId != null ? importBatchRepository.findItemsByBatchId(importBatchId) : Promise.resolve([]),
+      const [summary, images, items] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        importBatchId != null ? importBatchRepository.findSummaryById(db, importBatchId) : Promise.resolve(null),
+        importBatchId != null ? imageRepository.findByImportBatchId(db, importBatchId) : imageRepository.findByIds(db, imageIds),
+        importBatchId != null ? importBatchRepository.findItemsByBatchId(db, importBatchId) : Promise.resolve([]),
       ]));
 
       return { summary, images, items };
@@ -244,6 +245,7 @@ export function ImportBatchReviewScreen({
                         setActivePile(pile.key);
                         setActivePrefix(null);
                       }}
+                      space={space}
                     />
                   );
                 })}
@@ -290,7 +292,7 @@ export function ImportBatchReviewScreen({
           </View>
           <View style={styles.grid}>
             {filteredImages.map((image) => (
-              <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} />
+              <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
             ))}
           </View>
         </PageStateBlock>
@@ -314,6 +316,7 @@ function PilePreviewRow({
   onMore,
   onOrganize,
   onPress,
+  space,
 }: {
   active: boolean;
   count: number;
@@ -322,6 +325,7 @@ function PilePreviewRow({
   onMore: () => void;
   onOrganize: () => void;
   onPress: () => void;
+  space: PixorySpace;
 }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.pilePreviewRow, active ? styles.pilePreviewRowActive : null, pressed && styles.pressed]}>
@@ -333,7 +337,7 @@ function PilePreviewRow({
         {images.map((image) => (
           <View key={image.id} style={styles.pilePreviewThumb}>
             {image.thumbnailFileUri ? (
-              <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.pilePreviewImage} />
+              <SecureImage contentFit="cover" space={space} style={styles.pilePreviewImage} uri={image.thumbnailFileUri} />
             ) : (
               <View style={styles.pilePreviewFallback}>
                 <Ionicons color={colors.text.tertiary} name="image-outline" size={13} />

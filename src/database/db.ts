@@ -20,7 +20,6 @@ export type PixorySpace = 'normal' | 'personal';
 
 const databasePromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
 const initializationPromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
-let currentDatabaseSpace: PixorySpace = 'normal';
 
 function getDatabaseNameForSpace(space: PixorySpace): string {
   return space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME;
@@ -120,31 +119,33 @@ export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLit
   return initializationPromises[space];
 }
 
-export async function getDatabase(space: PixorySpace = currentDatabaseSpace): Promise<SQLiteDatabase> {
+export async function getDatabase(space: PixorySpace): Promise<SQLiteDatabase> {
   return initDatabase(space);
 }
 
 export async function runWithDatabaseSpace<T>(
   space: PixorySpace,
-  task: () => Promise<T>
+  task: (db: SQLiteDatabase) => Promise<T>
 ): Promise<T> {
-  const previousSpace = currentDatabaseSpace;
-  currentDatabaseSpace = space;
-  try {
-    return await task();
-  } finally {
-    currentDatabaseSpace = previousSpace;
+  const db = await getDatabase(space);
+  return task(db);
+}
+
+export async function checkpointDatabase(space: PixorySpace): Promise<void> {
+  const database = await databasePromises[space]?.catch(() => null);
+  if (!database) {
+    return;
   }
+
+  await database.execAsync('PRAGMA wal_checkpoint(TRUNCATE);');
 }
 
 export async function resetDatabaseSpaceCache(space: PixorySpace): Promise<void> {
   const database = await databasePromises[space]?.catch(() => null);
   if (database) {
+    await checkpointDatabase(space);
     await database.closeAsync();
   }
   databasePromises[space] = undefined;
   initializationPromises[space] = undefined;
-  if (currentDatabaseSpace === space) {
-    currentDatabaseSpace = 'normal';
-  }
 }

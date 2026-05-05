@@ -72,10 +72,10 @@ async function deleteTrashImageFiles(images: ImageListItem[]): Promise<{
 }
 
 export async function clearTrash(space: PixorySpace = 'normal'): Promise<ClearTrashResult> {
-  return runWithDatabaseSpace(space, async () => {
-    const deletedImages = await imageRepository.findDeleted();
+  return runWithDatabaseSpace(space, async (db) => {
+    const deletedImages = await imageRepository.findDeleted(db);
     const imageIds = deletedImages.map((image) => image.id);
-    const databaseDeletedCount = imageIds.length > 0 ? await imageRepository.deletePermanentlyMany(imageIds) : 0;
+    const databaseDeletedCount = imageIds.length > 0 ? await imageRepository.deletePermanentlyMany(db, imageIds) : 0;
     const shouldDeleteFiles = databaseDeletedCount === deletedImages.length;
     const { fileDeletedCount, fileFailures } = shouldDeleteFiles
       ? await deleteTrashImageFiles(deletedImages)

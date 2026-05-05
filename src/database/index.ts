@@ -1,6 +1,7 @@
 export {
   getDatabase,
   initDatabase,
+  checkpointDatabase,
   resetDatabaseSpaceCache,
   runMigrations,
   runWithDatabaseSpace,

@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'react-native';
 
-import { groupRepository, imageRepository, ipRepository, tagRepository } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository } from '../database';
 import { ensureAppDirectories, getFileInfo, getTempDir } from './fileStorageService';
 import { importImagesToIp, verifyImportedImageFiles, type PickedImageAsset } from './imageImportService';
 
@@ -129,21 +129,24 @@ export async function createFinalRegressionDataset(): Promise<FinalRegressionDat
   const groupBName = `FinalGroupB_${timestamp}`;
   const pickedAssets = await buildPickedRegressionAssets(timestamp);
 
-  const ip = await ipRepository.create({
-    name: ipName,
-    description: 'Dev-only final regression dataset.',
-  });
-  const groupA = await groupRepository.create({
-    ipId: ip.id,
-    name: groupAName,
-    type: 'custom',
-    description: 'Final regression group A',
-  });
-  const groupB = await groupRepository.create({
-    ipId: ip.id,
-    name: groupBName,
-    type: 'custom',
-    description: 'Final regression group B',
+  const { groupA, groupB, ip } = await runWithDatabaseSpace('normal', async (db) => {
+    const ip = await ipRepository.create(db, {
+      name: ipName,
+      description: 'Dev-only final regression dataset.',
+    });
+    const groupA = await groupRepository.create(db, {
+      ipId: ip.id,
+      name: groupAName,
+      type: 'custom',
+      description: 'Final regression group A',
+    });
+    const groupB = await groupRepository.create(db, {
+      ipId: ip.id,
+      name: groupBName,
+      type: 'custom',
+      description: 'Final regression group B',
+    });
+    return { groupA, groupB, ip };
   });
 
   const importResult = await importImagesToIp({
@@ -181,51 +184,53 @@ export async function createFinalRegressionDataset(): Promise<FinalRegressionDat
 }
 
 export async function readLatestFinalRegressionState(): Promise<FinalRegressionStateResult | null> {
-  const regressionIp = (await ipRepository.findAll()).find((item) => item.name.startsWith('FinalRegressionIP_'));
-  if (!regressionIp) {
-    return null;
-  }
+  return runWithDatabaseSpace('normal', async (db) => {
+    const regressionIp = (await ipRepository.findAll(db)).find((item) => item.name.startsWith('FinalRegressionIP_'));
+    if (!regressionIp) {
+      return null;
+    }
 
-  const [groups, images] = await Promise.all([
-    groupRepository.findByIpId(regressionIp.id),
-    imageRepository.findByIpId(regressionIp.id, { includeDeleted: true }),
-  ]);
-  const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const [groups, images] = await Promise.all([
+      groupRepository.findByIpId(db, regressionIp.id),
+      imageRepository.findByIpId(db, regressionIp.id, { includeDeleted: true }),
+    ]);
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
 
-  const imageSnapshots = await Promise.all(
-    images.map(async (image) => {
-      const [tags, originalFile, thumbnailFile] = await Promise.all([
-        tagRepository.findByImageId(image.id),
-        getFileInfo(image.originalFileUri),
-        image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
-      ]);
+    const imageSnapshots = await Promise.all(
+      images.map(async (image) => {
+        const [tags, originalFile, thumbnailFile] = await Promise.all([
+          tagRepository.findByImageId(db, image.id),
+          getFileInfo(image.originalFileUri),
+          image.thumbnailFileUri ? getFileInfo(image.thumbnailFileUri) : Promise.resolve(null),
+        ]);
 
-      return {
-        imageId: image.id,
-        originalFilename: image.originalFilename,
-        groupId: image.groupId,
-        groupName: image.groupId != null ? groupNameById.get(image.groupId) ?? null : null,
-        tagNames: tags.map((tag) => tag.name),
-        note: image.note,
-        isFavorite: image.isFavorite,
-        originalFileUri: image.originalFileUri,
-        thumbnailFileUri: image.thumbnailFileUri,
-        originalExists: originalFile.exists && !originalFile.isDirectory,
-        thumbnailExists: image.thumbnailFileUri ? Boolean(thumbnailFile?.exists && !thumbnailFile.isDirectory) : true,
-        originalSize: originalFile.size,
-        thumbnailSize: thumbnailFile?.size ?? null,
-        deletedAt: image.deletedAt,
-      } satisfies FinalRegressionImageSnapshot;
-    })
-  );
+        return {
+          imageId: image.id,
+          originalFilename: image.originalFilename,
+          groupId: image.groupId,
+          groupName: image.groupId != null ? groupNameById.get(image.groupId) ?? null : null,
+          tagNames: tags.map((tag) => tag.name),
+          note: image.note,
+          isFavorite: image.isFavorite,
+          originalFileUri: image.originalFileUri,
+          thumbnailFileUri: image.thumbnailFileUri,
+          originalExists: originalFile.exists && !originalFile.isDirectory,
+          thumbnailExists: image.thumbnailFileUri ? Boolean(thumbnailFile?.exists && !thumbnailFile.isDirectory) : true,
+          originalSize: originalFile.size,
+          thumbnailSize: thumbnailFile?.size ?? null,
+          deletedAt: image.deletedAt,
+        } satisfies FinalRegressionImageSnapshot;
+      })
+    );
 
-  return {
-    ipId: regressionIp.id,
-    ipName: regressionIp.name,
-    groupNames: groups.map((group) => group.name),
-    totalCount: imageSnapshots.length,
-    activeCount: imageSnapshots.filter((image) => image.deletedAt == null).length,
-    deletedCount: imageSnapshots.filter((image) => image.deletedAt != null).length,
-    imageSnapshots,
-  };
+    return {
+      ipId: regressionIp.id,
+      ipName: regressionIp.name,
+      groupNames: groups.map((group) => group.name),
+      totalCount: imageSnapshots.length,
+      activeCount: imageSnapshots.filter((image) => image.deletedAt == null).length,
+      deletedCount: imageSnapshots.filter((image) => image.deletedAt != null).length,
+      imageSnapshots,
+    };
+  });
 }

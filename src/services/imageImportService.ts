@@ -1,7 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { Image } from 'react-native';
 
-import { getDatabase, groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, tagRepository } from '../database';
+import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, tagRepository } from '../database';
 import type { ImageAssetRecord, ImportBatchRecord, PixorySpace, TagRecord } from '../database';
 import { normalizeOptionalText } from '../database/utils';
 import {
@@ -13,6 +14,7 @@ import {
 } from './fileStorageService';
 import { generateThumbnail } from './thumbnailService';
 import { devLog } from '../utils/dev';
+import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 
 export type PickedImageAsset = ImagePicker.ImagePickerAsset;
 
@@ -31,6 +33,7 @@ export interface ImportImagesToIpParams {
   isFavorite?: boolean;
   templateKey?: string | null;
   pickedAssets: PickedImageAsset[];
+  taskToken?: PersonalTaskToken | null;
 }
 
 export interface BuildImageAssetFromPickedFileParams {
@@ -42,6 +45,7 @@ export interface BuildImageAssetFromPickedFileParams {
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedImageAsset;
+  taskToken?: PersonalTaskToken | null;
 }
 
 export interface ImportSingleImageParams {
@@ -54,6 +58,7 @@ export interface ImportSingleImageParams {
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedImageAsset;
+  taskToken?: PersonalTaskToken | null;
 }
 
 export interface PendingImageAssetImport {
@@ -71,6 +76,7 @@ export interface PendingImageAssetImport {
   fileSize: number;
   isFavorite: boolean;
   note: string | null;
+  taskToken?: PersonalTaskToken | null;
 }
 
 export interface ImportedImageResult {
@@ -198,14 +204,14 @@ function normalizeGroupIds(groupIds?: number[]): number[] {
   return [...new Set(groupIds.filter((groupId) => Number.isInteger(groupId) && groupId > 0))];
 }
 
-async function ensureImportTargetExists(ipId: number, groupIds?: number[]): Promise<void> {
-  const ipRecord = await ipRepository.findById(ipId);
+async function ensureImportTargetExists(db: SQLiteDatabase, ipId: number, groupIds?: number[]): Promise<void> {
+  const ipRecord = await ipRepository.findById(db, ipId);
   if (!ipRecord) {
     throw new Error(`Target IP ${ipId} does not exist.`);
   }
 
   for (const groupId of normalizeGroupIds(groupIds)) {
-    const groupRecord = await groupRepository.findById(groupId);
+    const groupRecord = await groupRepository.findById(db, groupId);
     if (!groupRecord) {
       throw new Error(`Target group ${groupId} does not exist.`);
     }
@@ -216,16 +222,16 @@ async function ensureImportTargetExists(ipId: number, groupIds?: number[]): Prom
   }
 }
 
-async function getOrCreateTag(name: string): Promise<TagRecord> {
-  const existingTag = await tagRepository.findByName(name);
+async function getOrCreateTag(db: SQLiteDatabase, name: string): Promise<TagRecord> {
+  const existingTag = await tagRepository.findByName(db, name);
   if (existingTag) {
     return existingTag;
   }
 
   try {
-    return await tagRepository.create({ name });
+    return await tagRepository.create(db, { name });
   } catch (error) {
-    const concurrentTag = await tagRepository.findByName(name);
+    const concurrentTag = await tagRepository.findByName(db, name);
     if (concurrentTag) {
       return concurrentTag;
     }
@@ -234,7 +240,7 @@ async function getOrCreateTag(name: string): Promise<TagRecord> {
   }
 }
 
-async function resolveTags(tagNames?: string[]): Promise<TagRecord[]> {
+async function resolveTags(db: SQLiteDatabase, tagNames?: string[]): Promise<TagRecord[]> {
   const normalizedTagNames = normalizeTagNames(tagNames);
   if (normalizedTagNames.length === 0) {
     return [];
@@ -243,13 +249,14 @@ async function resolveTags(tagNames?: string[]): Promise<TagRecord[]> {
   const resolvedTags: TagRecord[] = [];
 
   for (const tagName of normalizedTagNames) {
-    resolvedTags.push(await getOrCreateTag(tagName));
+    resolvedTags.push(await getOrCreateTag(db, tagName));
   }
 
   return resolvedTags;
 }
 
 async function cleanupFailedImport(
+  db: SQLiteDatabase,
   createdImageId: number | null,
   originalFileUri: string | null,
   thumbnailFileUri: string | null
@@ -259,7 +266,6 @@ async function cleanupFailedImport(
   if (createdImageId !== null) {
     cleanupTasks.push(
       (async () => {
-        const db = await getDatabase();
         await db.runAsync('DELETE FROM image_assets WHERE id = ?', createdImageId);
       })()
     );
@@ -321,9 +327,11 @@ async function resolveDimensionsForPickedAsset(
 }
 
 async function performSingleImageImport(
+  db: SQLiteDatabase,
   pendingImageAsset: PendingImageAssetImport,
   resolvedTags: TagRecord[]
 ): Promise<ImportedImageResult> {
+  assertPersonalTaskActive(pendingImageAsset.taskToken);
   let originalFileUri: string | null = null;
   let thumbnailFileUri: string | null = null;
   let createdImageId: number | null = null;
@@ -335,6 +343,7 @@ async function performSingleImageImport(
       pendingImageAsset.internalFilename,
       pendingImageAsset.space
     );
+    assertPersonalTaskActive(pendingImageAsset.taskToken);
 
     const originalFileInfo = await getFileInfo(originalFileUri);
     thumbnailFileUri = await generateThumbnail(
@@ -343,8 +352,9 @@ async function performSingleImageImport(
       pendingImageAsset.internalFilename,
       pendingImageAsset.space
     );
+    assertPersonalTaskActive(pendingImageAsset.taskToken);
 
-    const createdImage = await imageRepository.create({
+    const createdImage = await imageRepository.create(db, {
       ipId: pendingImageAsset.ipId,
       importBatchId: pendingImageAsset.importBatchId,
       groupId: pendingImageAsset.groupId,
@@ -360,15 +370,16 @@ async function performSingleImageImport(
       isFavorite: pendingImageAsset.isFavorite,
       note: pendingImageAsset.note,
     });
+    assertPersonalTaskActive(pendingImageAsset.taskToken);
     createdImageId = createdImage.id;
 
-    await tagRepository.replaceImageTags(
+    await tagRepository.replaceImageTags(db,
       createdImage.id,
       resolvedTags.map((tag) => tag.id)
     );
 
-    const persistedImageRecord = await imageRepository.findById(createdImage.id, { includeDeleted: true });
-    const persistedImageTags = await tagRepository.findByImageId(createdImage.id);
+    const persistedImageRecord = await imageRepository.findById(db, createdImage.id, { includeDeleted: true });
+    const persistedImageTags = await tagRepository.findByImageId(db, createdImage.id);
 
     devLog('Pixory import persisted image asset:', {
       imageAssetId: createdImage.id,
@@ -385,7 +396,7 @@ async function performSingleImageImport(
       tags: resolvedTags,
     };
   } catch (error) {
-    await cleanupFailedImport(createdImageId, originalFileUri, thumbnailFileUri);
+    await cleanupFailedImport(db, createdImageId, originalFileUri, thumbnailFileUri);
     throw error;
   }
 }
@@ -450,6 +461,7 @@ export async function buildImageAssetFromPickedFile(
     fileSize,
     isFavorite: Boolean(isFavorite),
     note: normalizeOptionalText(note) ?? null,
+    taskToken: params.taskToken ?? null,
   };
 }
 
@@ -457,13 +469,15 @@ export async function importSingleImage(
   params: ImportSingleImageParams
 ): Promise<ImportedImageResult> {
   const space = params.space ?? 'normal';
-  return runWithDatabaseSpace(space, async () => {
+  assertPersonalTaskActive(params.taskToken);
+  return runWithDatabaseSpace(space, async (db) => {
   const { groupId, ipId, pickedAsset } = params;
   const groupIds = normalizeGroupIds(params.groupIds ?? (groupId != null ? [groupId] : []));
-  await ensureImportTargetExists(ipId, groupIds);
+  await ensureImportTargetExists(db, ipId, groupIds);
   await ensureAppDirectories(space);
 
-  const resolvedTags = await resolveTags(params.tagNames);
+  const resolvedTags = await resolveTags(db, params.tagNames);
+  assertPersonalTaskActive(params.taskToken);
   const pendingImageAsset = await buildImageAssetFromPickedFile({
     ipId,
     space,
@@ -473,9 +487,10 @@ export async function importSingleImage(
     note: params.note,
     isFavorite: params.isFavorite,
     pickedAsset,
+    taskToken: params.taskToken ?? null,
   });
 
-  return performSingleImageImport(pendingImageAsset, resolvedTags);
+  return performSingleImageImport(db, pendingImageAsset, resolvedTags);
   });
 }
 
@@ -483,9 +498,10 @@ export async function importImagesToIp(
   params: ImportImagesToIpParams
 ): Promise<ImportImagesToIpResult> {
   const space = params.space ?? 'normal';
-  return runWithDatabaseSpace(space, async () => {
+  assertPersonalTaskActive(params.taskToken);
+  return runWithDatabaseSpace(space, async (db) => {
   const groupIds = normalizeGroupIds(params.groupIds ?? (params.groupId != null ? [params.groupId] : []));
-  await ensureImportTargetExists(params.ipId, groupIds);
+  await ensureImportTargetExists(db, params.ipId, groupIds);
   await ensureAppDirectories(space);
 
   if (params.pickedAssets.length === 0) {
@@ -498,13 +514,14 @@ export async function importImagesToIp(
     };
   }
 
-  const importBatch = await importBatchRepository.create({
+  const importBatch = await importBatchRepository.create(db, {
     ipId: params.ipId,
     name: `${new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}导入`,
     templateKey: params.templateKey,
     totalCount: params.pickedAssets.length,
   });
-  const resolvedTags = await resolveTags(params.tagNames);
+  assertPersonalTaskActive(params.taskToken);
+  const resolvedTags = await resolveTags(db, params.tagNames);
   const importedImages: ImportedImageResult[] = [];
   const errors: ImageImportError[] = [];
 
@@ -519,14 +536,15 @@ export async function importImagesToIp(
         note: params.note,
         isFavorite: params.isFavorite,
         pickedAsset,
+        taskToken: params.taskToken ?? null,
       });
-      importedImages.push(await performSingleImageImport(pendingImageAsset, resolvedTags));
+      importedImages.push(await performSingleImageImport(db, pendingImageAsset, resolvedTags));
     } catch (error) {
       errors.push(formatImportError(pickedAsset, error));
     }
   }
 
-  const completedBatch = await importBatchRepository.complete(importBatch.id, importedImages.length, errors.length);
+  const completedBatch = await importBatchRepository.complete(db, importBatch.id, importedImages.length, errors.length);
 
   return {
     successCount: importedImages.length,
@@ -539,43 +557,46 @@ export async function importImagesToIp(
 }
 
 export async function verifyImportedImageFiles(
-  importedImages: ImportedImageResult[]
+  importedImages: ImportedImageResult[],
+  space: PixorySpace = 'normal'
 ): Promise<VerifyImportedImageFilesResult> {
   const items: ImportedImageVerificationResult[] = [];
 
-  for (const importedImage of importedImages) {
-    const imageRecord = importedImage.image;
-    const originalFileInfo = await getFileInfo(imageRecord.originalFileUri);
-    const thumbnailFileInfo = imageRecord.thumbnailFileUri
-      ? await getFileInfo(imageRecord.thumbnailFileUri)
-      : null;
-    const databaseRecord = await imageRepository.findById(imageRecord.id, { includeDeleted: true });
-    const imageTagsReadback = await tagRepository.findByImageId(imageRecord.id);
+  await runWithDatabaseSpace(space, async (db) => {
+    for (const importedImage of importedImages) {
+      const imageRecord = importedImage.image;
+      const originalFileInfo = await getFileInfo(imageRecord.originalFileUri);
+      const thumbnailFileInfo = imageRecord.thumbnailFileUri
+        ? await getFileInfo(imageRecord.thumbnailFileUri)
+        : null;
+      const databaseRecord = await imageRepository.findById(db, imageRecord.id, { includeDeleted: true });
+      const imageTagsReadback = await tagRepository.findByImageId(db, imageRecord.id);
 
-    const verificationItem: ImportedImageVerificationResult = {
-      imageId: imageRecord.id,
-      originalFileUri: imageRecord.originalFileUri,
-      thumbnailFileUri: imageRecord.thumbnailFileUri,
-      originalExists: originalFileInfo.exists && !originalFileInfo.isDirectory,
-      thumbnailExists: Boolean(thumbnailFileInfo?.exists && !thumbnailFileInfo.isDirectory),
-      originalSize: originalFileInfo.size,
-      thumbnailSize: thumbnailFileInfo?.size ?? null,
-      originalSizeValid: (originalFileInfo.size ?? 0) > 0,
-      thumbnailSizeValid: (thumbnailFileInfo?.size ?? 0) > 0,
-      databaseRecordFound: Boolean(databaseRecord),
-      imageTagsReadback,
-      allChecksPassed:
-        originalFileInfo.exists &&
-        !originalFileInfo.isDirectory &&
-        (originalFileInfo.size ?? 0) > 0 &&
-        Boolean(thumbnailFileInfo?.exists && !thumbnailFileInfo.isDirectory) &&
-        (thumbnailFileInfo?.size ?? 0) > 0 &&
-        Boolean(databaseRecord),
-    };
+      const verificationItem: ImportedImageVerificationResult = {
+        imageId: imageRecord.id,
+        originalFileUri: imageRecord.originalFileUri,
+        thumbnailFileUri: imageRecord.thumbnailFileUri,
+        originalExists: originalFileInfo.exists && !originalFileInfo.isDirectory,
+        thumbnailExists: Boolean(thumbnailFileInfo?.exists && !thumbnailFileInfo.isDirectory),
+        originalSize: originalFileInfo.size,
+        thumbnailSize: thumbnailFileInfo?.size ?? null,
+        originalSizeValid: (originalFileInfo.size ?? 0) > 0,
+        thumbnailSizeValid: (thumbnailFileInfo?.size ?? 0) > 0,
+        databaseRecordFound: Boolean(databaseRecord),
+        imageTagsReadback,
+        allChecksPassed:
+          originalFileInfo.exists &&
+          !originalFileInfo.isDirectory &&
+          (originalFileInfo.size ?? 0) > 0 &&
+          Boolean(thumbnailFileInfo?.exists && !thumbnailFileInfo.isDirectory) &&
+          (thumbnailFileInfo?.size ?? 0) > 0 &&
+          Boolean(databaseRecord),
+      };
 
-    devLog('Pixory imported image verification:', verificationItem);
-    items.push(verificationItem);
-  }
+      devLog('Pixory imported image verification:', verificationItem);
+      items.push(verificationItem);
+    }
+  });
 
   return {
     verifiedCount: items.filter((item) => item.allChecksPassed).length,
@@ -587,18 +608,22 @@ export async function verifyImportedImageFiles(
 export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevelopmentCheckResult> {
   await ensureAppDirectories();
 
-  const existingIps = await ipRepository.findAll();
-  let createdDevelopmentIp = false;
-  let targetIpId = existingIps[0]?.id;
+  const { createdDevelopmentIp, targetIpId } = await runWithDatabaseSpace('normal', async (db) => {
+    const existingIps = await ipRepository.findAll(db);
+    let createdDevelopmentIp = false;
+    let targetIpId = existingIps[0]?.id;
 
-  if (!targetIpId) {
-    const developmentIp = await ipRepository.create({
-      name: 'Development Import Check',
-      description: 'Temporary local IP used to manually verify the import service chain.',
-    });
-    targetIpId = developmentIp.id;
-    createdDevelopmentIp = true;
-  }
+    if (!targetIpId) {
+      const developmentIp = await ipRepository.create(db, {
+        name: 'Development Import Check',
+        description: 'Temporary local IP used to manually verify the import service chain.',
+      });
+      targetIpId = developmentIp.id;
+      createdDevelopmentIp = true;
+    }
+
+    return { createdDevelopmentIp, targetIpId };
+  });
 
   const pickResult = await pickImagesForImport();
   if (pickResult.canceled) {

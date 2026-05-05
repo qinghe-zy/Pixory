@@ -25,14 +25,14 @@ export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, 
     groups: GroupRecord[];
   }>(
     async () => {
-      const detail = await runWithDatabaseSpace(space, () => imageRepository.findDetailById(imageId, { includeDeleted: true }));
+      const detail = await runWithDatabaseSpace(space, (db) => imageRepository.findDetailById(db, imageId, { includeDeleted: true }));
       if (!detail) {
         throw new Error('没有找到这张图片。');
       }
 
-      const [groups, groupIds] = await runWithDatabaseSpace(space, () => Promise.all([
-        groupRepository.findByIpId(detail.ipId),
-        imageRepository.findGroupIdsByImageId(imageId),
+      const [groups, groupIds] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        groupRepository.findByIpId(db, detail.ipId),
+        imageRepository.findGroupIdsByImageId(db, imageId),
       ]));
       return { image: { ...detail, loadedGroupIds: groupIds }, groups };
     },
@@ -68,7 +68,7 @@ export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, 
 
     void runSubmit(
       async () => {
-        const updated = await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(image.id, selectedGroupIds));
+        const updated = await runWithDatabaseSpace(space, (db) => imageRepository.setImageGroups(db, image.id, selectedGroupIds));
         if (!updated) {
           throw new Error('调整分组时没有找到这张图片。');
         }

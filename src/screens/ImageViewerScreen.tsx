@@ -3,7 +3,6 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { imageRepository, runWithDatabaseSpace, type ImageListItem } from '../database';
+import { SecureImage } from '../components/SecureImage';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
@@ -98,7 +98,7 @@ export function ImageViewerScreen({
       return;
     }
 
-    void runWithDatabaseSpace(context.space, () => imageRepository.touchLastViewedAt(activeImage.id));
+    void runWithDatabaseSpace(context.space, (db) => imageRepository.touchLastViewedAt(db, activeImage.id));
   }, [activeImage, context.space]);
 
   const counterLabel = useMemo(() => {
@@ -117,7 +117,7 @@ export function ImageViewerScreen({
         onLongPress={() => handleImageLongPress(item)}
         style={[styles.page, { height, width: pageSize }]}
       >
-        <Image resizeMode="contain" source={{ uri: item.originalFileUri }} style={styles.image} />
+        <SecureImage contentFit="contain" space={context.space} style={styles.image} uri={item.originalFileUri} />
       </Pressable>
     ),
     [height, pageSize]
@@ -248,76 +248,76 @@ export function ImageViewerScreen({
 }
 
 async function loadImagesForContext(context: ImageViewerContext): Promise<ImageListItem[]> {
-  return runWithDatabaseSpace(context.space, async () => {
+  return runWithDatabaseSpace(context.space, async (db) => {
     if (context.type === 'ip-recent') {
-      return imageRepository.findRecentByIpId(context.ipId, context.limit);
+      return imageRepository.findRecentByIpId(db, context.ipId, context.limit);
     }
 
     if (context.type === 'import-batch') {
-      return imageRepository.findByImportBatchId(context.importBatchId);
+      return imageRepository.findByImportBatchId(db, context.importBatchId);
     }
 
     if (context.type === 'image-scope') {
-      return imageRepository.findByIds(context.imageIds);
+      return imageRepository.findByIds(db, context.imageIds);
     }
 
     if (context.type === 'ip-all') {
       const { filter } = context;
       if (filter.type === 'favorite') {
-        return imageRepository.findByIpId(context.ipId, { favoritesOnly: true });
+        return imageRepository.findByIpId(db, context.ipId, { favoritesOnly: true });
       }
 
       if (filter.type === 'ungrouped') {
-        return imageRepository.findByIpId(context.ipId, { ungroupedOnly: true });
+        return imageRepository.findByIpId(db, context.ipId, { ungroupedOnly: true });
       }
 
       if (filter.type === 'untagged') {
-        return imageRepository.findByIpId(context.ipId, { untaggedOnly: true });
+        return imageRepository.findByIpId(db, context.ipId, { untaggedOnly: true });
       }
 
       if (filter.type === 'recent-viewed') {
-        return imageRepository.findByIpId(context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
+        return imageRepository.findByIpId(db, context.ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' });
       }
 
       if (filter.type === 'mime') {
-        return imageRepository.findByIpId(context.ipId, { mimeType: filter.mimeType });
+        return imageRepository.findByIpId(db, context.ipId, { mimeType: filter.mimeType });
       }
 
       if (filter.type === 'aspect') {
-        return imageRepository.findByIpId(context.ipId, { aspectRatio: filter.aspectRatio });
+        return imageRepository.findByIpId(db, context.ipId, { aspectRatio: filter.aspectRatio });
       }
 
       if (filter.type === 'size') {
-        return imageRepository.findByIpId(context.ipId, {
+        return imageRepository.findByIpId(db, context.ipId, {
           minFileSize: filter.minFileSize,
           maxFileSize: filter.maxFileSize,
         });
       }
 
       if (filter.type === 'group') {
-        return imageRepository.findByGroupId(filter.groupId);
+        return imageRepository.findByGroupId(db, filter.groupId);
       }
 
       if (filter.type === 'tag') {
-        return imageRepository.findByIpId(context.ipId, { tagId: filter.tagId });
+        return imageRepository.findByIpId(db, context.ipId, { tagId: filter.tagId });
       }
 
-      return imageRepository.findByIpId(context.ipId);
+      return imageRepository.findByIpId(db, context.ipId);
     }
 
     if (context.type === 'group') {
-      return imageRepository.findByGroupId(context.groupId);
+      return imageRepository.findByGroupId(db, context.groupId);
     }
 
     if (context.type === 'tag') {
-      return imageRepository.findByTagId(context.tagId);
+      return imageRepository.findByTagId(db, context.tagId);
     }
 
     if (context.type === 'favorites') {
-      return imageRepository.findFavorites();
+      return imageRepository.findFavorites(db);
     }
 
-    return imageRepository.findRecentViewed();
+    return imageRepository.findRecentViewed(db);
   });
 }
 

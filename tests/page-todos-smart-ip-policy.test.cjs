@@ -77,13 +77,13 @@ test('recent image preview stays six but viewer loads import batch context', () 
   const detailSource = readProjectFile('src/screens/ImageDetailScreen.tsx');
 
   assert.match(contextSource, /type:\s*'import-batch'/);
-  assert.match(ipDetailSource, /findRecentByIpId\(ipId,\s*6\)/);
+  assert.match(ipDetailSource, /findRecentByIpId\(db,\s*ipId,\s*6\)/);
   assert.match(ipDetailSource, /importBatchId/);
   assert.match(ipDetailSource, /type:\s*'import-batch'/);
   assert.match(viewerSource, /context\.type === 'import-batch'/);
-  assert.match(viewerSource, /findByImportBatchId\(context\.importBatchId/);
+  assert.match(viewerSource, /findByImportBatchId\(db,\s*context\.importBatchId/);
   assert.match(detailSource, /context\.type === 'import-batch'/);
-  assert.match(detailSource, /findByImportBatchId\(context\.importBatchId/);
+  assert.match(detailSource, /findByImportBatchId\(db,\s*context\.importBatchId/);
 });
 
 test('page TODOs are reflected in concrete UI behavior', () => {

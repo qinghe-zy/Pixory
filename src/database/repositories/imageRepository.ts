@@ -1,4 +1,3 @@
-import { getDatabase } from '../db';
 import { ipRepository } from './ipRepository';
 import type {
   CountRow,
@@ -250,8 +249,7 @@ function buildInClause(ids: number[]): { placeholders: string; values: number[] 
   };
 }
 
-async function loadImagesByIds(ids: number[]): Promise<ImageAssetRecord[]> {
-  const db = await getDatabase();
+async function loadImagesByIds(db: SQLiteDatabase, ids: number[]): Promise<ImageAssetRecord[]> {
   const inClause = buildInClause(ids);
   const rows = await db.getAllAsync<ImageAssetRow>(
     `SELECT * FROM image_assets WHERE id IN (${inClause.placeholders})`,
@@ -261,8 +259,7 @@ async function loadImagesByIds(ids: number[]): Promise<ImageAssetRecord[]> {
   return rows.map(mapImageAssetRow);
 }
 
-async function touchParentRecords(ipId: number, groupId?: number | null): Promise<void> {
-  const db = await getDatabase();
+async function touchParentRecords(db: SQLiteDatabase, ipId: number, groupId?: number | null): Promise<void> {
   const now = createTimestamp();
 
   await db.runAsync('UPDATE ips SET updatedAt = ? WHERE id = ?', now, ipId);
@@ -327,8 +324,7 @@ async function touchManyParentRecords(
   }
 }
 
-async function ensureGroupBelongsToIp(groupId: number, ipId: number): Promise<void> {
-  const db = await getDatabase();
+async function ensureGroupBelongsToIp(db: SQLiteDatabase, groupId: number, ipId: number): Promise<void> {
   const group = await db.getFirstAsync<{ id: number; ipId: number }>('SELECT id, ipId FROM groups WHERE id = ?', groupId);
 
   if (!group) {
@@ -344,11 +340,11 @@ function normalizeGroupIds(groupIds: number[]): number[] {
   return [...new Set(groupIds.filter((groupId) => Number.isInteger(groupId) && groupId > 0))];
 }
 
-async function ensureGroupsBelongToIp(groupIds: number[], ipId: number): Promise<void> {
+async function ensureGroupsBelongToIp(db: SQLiteDatabase, groupIds: number[], ipId: number): Promise<void> {
   const uniqueGroupIds = normalizeGroupIds(groupIds);
 
   for (const groupId of uniqueGroupIds) {
-    await ensureGroupBelongsToIp(groupId, ipId);
+    await ensureGroupBelongsToIp(db, groupId, ipId);
   }
 }
 
@@ -450,11 +446,10 @@ const IMAGE_LIST_SELECT = `
 `;
 
 export const imageRepository = {
-  async create(input: CreateImageAssetInput): Promise<ImageAssetRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateImageAssetInput): Promise<ImageAssetRecord> {
     const now = createTimestamp();
     const groupIds = normalizeGroupIds(input.groupIds ?? (input.groupId != null ? [input.groupId] : []));
-    await ensureGroupsBelongToIp(groupIds, input.ipId);
+    await ensureGroupsBelongToIp(db, groupIds, input.ipId);
     const primaryGroupId = groupIds[0] ?? null;
 
     const result = await db.runAsync(
@@ -507,9 +502,9 @@ export const imageRepository = {
       }
     }
 
-    await touchParentRecords(input.ipId, primaryGroupId);
+    await touchParentRecords(db, input.ipId, primaryGroupId);
 
-    const record = await this.findById(result.lastInsertRowId, { includeDeleted: true });
+    const record = await this.findById(db, result.lastInsertRowId, { includeDeleted: true });
     if (!record) {
       throw new Error(`Image asset ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -517,9 +512,8 @@ export const imageRepository = {
     return record;
   },
 
-  async update(id: number, input: UpdateImageAssetInput): Promise<ImageAssetRecord | null> {
-    const db = await getDatabase();
-    const current = await this.findById(id, { includeDeleted: true });
+  async update(db: SQLiteDatabase, id: number, input: UpdateImageAssetInput): Promise<ImageAssetRecord | null> {
+    const current = await this.findById(db, id, { includeDeleted: true });
     if (!current) {
       return null;
     }
@@ -534,9 +528,9 @@ export const imageRepository = {
     const nextIpId = input.ipId ?? current.ipId;
 
     if (nextGroupIds) {
-      await ensureGroupsBelongToIp(nextGroupIds, nextIpId);
+      await ensureGroupsBelongToIp(db, nextGroupIds, nextIpId);
     } else if (nextPrimaryGroupId != null) {
-      await ensureGroupBelongsToIp(nextPrimaryGroupId, nextIpId);
+      await ensureGroupBelongsToIp(db, nextPrimaryGroupId, nextIpId);
     }
 
     const updates = buildUpdateStatement({
@@ -595,17 +589,16 @@ export const imageRepository = {
     }
 
     const nextGroupId = nextGroupIds ? nextGroupIds[0] ?? null : input.groupId !== undefined ? input.groupId : current.groupId;
-    await touchParentRecords(nextIpId, nextGroupId);
+    await touchParentRecords(db, nextIpId, nextGroupId);
 
     if (current.ipId !== nextIpId || current.groupId !== nextGroupId) {
-      await touchParentRecords(current.ipId, current.groupId);
+      await touchParentRecords(db, current.ipId, current.groupId);
     }
 
-    return this.findById(id, { includeDeleted: true });
+    return this.findById(db, id, { includeDeleted: true });
   },
 
-  async findById(id: number, options?: ImageAssetQueryOptions): Promise<ImageAssetRecord | null> {
-    const db = await getDatabase();
+  async findById(db: SQLiteDatabase, id: number, options?: ImageAssetQueryOptions): Promise<ImageAssetRecord | null> {
     const deletedFilter = buildDeletedFilter('', options);
     const row = await db.getFirstAsync<ImageAssetRow>(
       `SELECT * FROM image_assets WHERE id = ?${deletedFilter ? ` AND ${deletedFilter}` : ''}`,
@@ -615,8 +608,7 @@ export const imageRepository = {
     return row ? mapImageAssetRow(row) : null;
   },
 
-  async findAll(options?: ImageAssetQueryOptions): Promise<ImageAssetRecord[]> {
-    const db = await getDatabase();
+  async findAll(db: SQLiteDatabase, options?: ImageAssetQueryOptions): Promise<ImageAssetRecord[]> {
     const deletedFilter = buildDeletedFilter('', options);
     const rows = await db.getAllAsync<ImageAssetRow>(
       `SELECT * FROM image_assets${deletedFilter ? ` WHERE ${deletedFilter}` : ''} ORDER BY updatedAt DESC, id DESC`
@@ -625,8 +617,7 @@ export const imageRepository = {
     return rows.map(mapImageAssetRow);
   },
 
-  async findRecentByIpId(ipId: number, limit = 6): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findRecentByIpId(db: SQLiteDatabase, ipId: number, limit = 6): Promise<ImageListItem[]> {
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE image_assets.ipId = ? AND ${buildDeletedFilter('image_assets')}
@@ -640,8 +631,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByIpId(ipId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findByIpId(db: SQLiteDatabase, ipId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts(['image_assets.ipId = ?'], [ipId], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
@@ -654,8 +644,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByImportBatchId(importBatchId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findByImportBatchId(db: SQLiteDatabase, importBatchId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts(['image_assets.importBatchId = ?'], [importBatchId], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
@@ -668,8 +657,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findFiltered(options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findFiltered(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts([], [], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
@@ -682,12 +670,10 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByIds(ids: number[], options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+  async findByIds(db: SQLiteDatabase, ids: number[], options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
     if (ids.length === 0) {
       return [];
     }
-
-    const db = await getDatabase();
     const inClause = buildInClause(ids);
     const deletedFilter = buildDeletedFilter('image_assets', options);
     const rows = await db.getAllAsync<ImageListItemRow>(
@@ -701,8 +687,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByGroupId(groupId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findByGroupId(db: SQLiteDatabase, groupId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts(
       ['EXISTS (SELECT 1 FROM image_groups AS filter_groups WHERE filter_groups.imageAssetId = image_assets.id AND filter_groups.groupId = ?)'],
       [groupId],
@@ -719,8 +704,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByTagId(tagId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findByTagId(db: SQLiteDatabase, tagId: number, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts([], [], {
       ...options,
       tagId,
@@ -736,8 +720,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findFavorites(options?: ImageListQueryOptions): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findFavorites(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const queryParts = buildImageListQueryParts([], [], {
       ...options,
       favoritesOnly: true,
@@ -753,8 +736,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findRecentViewed(limit = 60): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findRecentViewed(db: SQLiteDatabase, limit = 60): Promise<ImageListItem[]> {
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE image_assets.deletedAt IS NULL AND image_assets.lastViewedAt IS NOT NULL
@@ -767,8 +749,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findDeleted(): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findDeleted(db: SQLiteDatabase): Promise<ImageListItem[]> {
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE image_assets.deletedAt IS NOT NULL
@@ -779,8 +760,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findDeletedByIpId(ipId: number): Promise<ImageListItem[]> {
-    const db = await getDatabase();
+  async findDeletedByIpId(db: SQLiteDatabase, ipId: number): Promise<ImageListItem[]> {
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE image_assets.deletedAt IS NOT NULL AND image_assets.ipId = ?
@@ -792,8 +772,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findDetailById(id: number, options?: ImageAssetQueryOptions): Promise<ImageDetailRecord | null> {
-    const db = await getDatabase();
+  async findDetailById(db: SQLiteDatabase, id: number, options?: ImageAssetQueryOptions): Promise<ImageDetailRecord | null> {
     const deletedFilter = buildDeletedFilter('image_assets', options);
     const row = await db.getFirstAsync<ImageDetailRow>(
       `${IMAGE_WITH_RELATIONS_SELECT}
@@ -804,8 +783,7 @@ export const imageRepository = {
     return row ? mapImageDetailRow(row) : null;
   },
 
-  async findGroupsByImageId(imageId: number): Promise<GroupRecord[]> {
-    const db = await getDatabase();
+  async findGroupsByImageId(db: SQLiteDatabase, imageId: number): Promise<GroupRecord[]> {
     const rows = await db.getAllAsync<GroupRow>(
       `SELECT groups.*
        FROM groups
@@ -818,9 +796,8 @@ export const imageRepository = {
     return rows.map(mapGroupRow);
   },
 
-  async countNeedsOrganizing(scope?: number | NeedsOrganizingScope): Promise<number> {
+  async countNeedsOrganizing(db: SQLiteDatabase, scope?: number | NeedsOrganizingScope): Promise<number> {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
-    const db = await getDatabase();
     const clauses = [
       'image_assets.deletedAt IS NULL',
       'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
@@ -844,8 +821,7 @@ export const imageRepository = {
     return row?.count ?? 0;
   },
 
-  async getOrganizationProgress(ipId: number): Promise<IpOrganizationProgress> {
-    const db = await getDatabase();
+  async getOrganizationProgress(db: SQLiteDatabase, ipId: number): Promise<IpOrganizationProgress> {
     const row = await db.getFirstAsync<{
       totalCount: number;
       organizedCount: number;
@@ -892,7 +868,7 @@ export const imageRepository = {
     };
   },
 
-  async findNeedsOrganizing(scope?: NeedsOrganizingScope | number): Promise<ImageListItem[]> {
+  async findNeedsOrganizing(db: SQLiteDatabase, scope?: NeedsOrganizingScope | number): Promise<ImageListItem[]> {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
@@ -909,8 +885,6 @@ export const imageRepository = {
       clauses.push('image_assets.importBatchId = ?');
       values.push(normalizedScope.importBatchId);
     }
-
-    const db = await getDatabase();
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE ${clauses.join(' AND ')}
@@ -922,8 +896,8 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findSuspectedDuplicateGroupsByImportBatchId(importBatchId: number): Promise<SuspectedDuplicateGroup[]> {
-    const images = await this.findByImportBatchId(importBatchId);
+  async findSuspectedDuplicateGroupsByImportBatchId(db: SQLiteDatabase, importBatchId: number): Promise<SuspectedDuplicateGroup[]> {
+    const images = await this.findByImportBatchId(db, importBatchId);
     const groups = new Map<string, ImageListItem[]>();
 
     for (const image of images) {
@@ -943,17 +917,16 @@ export const imageRepository = {
       .sort((left, right) => right.images.length - left.images.length || right.fileSize - left.fileSize);
   },
 
-  async softDelete(id: number): Promise<ImageAssetRecord | null> {
-    const affectedCount = await this.softDeleteMany([id]);
+  async softDelete(db: SQLiteDatabase, id: number): Promise<ImageAssetRecord | null> {
+    const affectedCount = await this.softDeleteMany(db, [id]);
     if (affectedCount === 0) {
       return null;
     }
 
-    return this.findById(id, { includeDeleted: true });
+    return this.findById(db, id, { includeDeleted: true });
   },
 
-  async count(options?: ImageAssetQueryOptions): Promise<number> {
-    const db = await getDatabase();
+  async count(db: SQLiteDatabase, options?: ImageAssetQueryOptions): Promise<number> {
     const deletedFilter = buildDeletedFilter('', options);
     const row = await db.getFirstAsync<CountRow>(
       `SELECT COUNT(*) AS count FROM image_assets${deletedFilter ? ` WHERE ${deletedFilter}` : ''}`
@@ -961,7 +934,7 @@ export const imageRepository = {
     return row?.count ?? 0;
   },
 
-  async updateMetadata(
+  async updateMetadata(db: SQLiteDatabase,
     id: number,
     input: {
       originalFilename?: string;
@@ -971,19 +944,19 @@ export const imageRepository = {
       isFavorite?: boolean;
     }
   ): Promise<ImageAssetRecord | null> {
-    const current = await this.findById(id, { includeDeleted: true });
+    const current = await this.findById(db, id, { includeDeleted: true });
     if (!current) {
       return null;
     }
 
     if (input.groupIds !== undefined) {
-      await ensureGroupsBelongToIp(input.groupIds, current.ipId);
+      await ensureGroupsBelongToIp(db, input.groupIds, current.ipId);
     } else if (input.groupId != null) {
-      await ensureGroupBelongsToIp(input.groupId, current.ipId);
+      await ensureGroupBelongsToIp(db, input.groupId, current.ipId);
     }
 
     try {
-      return this.update(id, {
+      return this.update(db, id, {
         originalFilename: input.originalFilename,
         groupId: input.groupId,
         groupIds: input.groupIds,
@@ -1000,19 +973,18 @@ export const imageRepository = {
     }
   },
 
-  async updateGroup(id: number, groupId: number | null): Promise<ImageAssetRecord | null> {
-    return this.setImageGroups(id, groupId != null ? [groupId] : []);
+  async updateGroup(db: SQLiteDatabase, id: number, groupId: number | null): Promise<ImageAssetRecord | null> {
+    return this.setImageGroups(db, id, groupId != null ? [groupId] : []);
   },
 
-  async setImageGroups(id: number, groupIds: number[]): Promise<ImageAssetRecord | null> {
-    const current = await this.findById(id, { includeDeleted: true });
+  async setImageGroups(db: SQLiteDatabase, id: number, groupIds: number[]): Promise<ImageAssetRecord | null> {
+    const current = await this.findById(db, id, { includeDeleted: true });
     if (!current) {
       return null;
     }
 
     const nextGroupIds = normalizeGroupIds(groupIds);
-    await ensureGroupsBelongToIp(nextGroupIds, current.ipId);
-    const db = await getDatabase();
+    await ensureGroupsBelongToIp(db, nextGroupIds, current.ipId);
     const previousGroupIds = await loadGroupIdsByImageIds(db, [id]);
     const now = createTimestamp();
 
@@ -1027,7 +999,7 @@ export const imageRepository = {
         );
       });
 
-      return this.findById(id, { includeDeleted: true });
+      return this.findById(db, id, { includeDeleted: true });
     } catch (error) {
       console.error('Pixory imageRepository.setImageGroups failed.', {
         imageId: id,
@@ -1038,8 +1010,7 @@ export const imageRepository = {
     }
   },
 
-  async findGroupIdsByImageId(imageId: number): Promise<number[]> {
-    const db = await getDatabase();
+  async findGroupIdsByImageId(db: SQLiteDatabase, imageId: number): Promise<number[]> {
     const rows = await db.getAllAsync<{ groupId: number }>(
       'SELECT groupId FROM image_groups WHERE imageAssetId = ? ORDER BY createdAt ASC, groupId ASC',
       imageId
@@ -1047,9 +1018,9 @@ export const imageRepository = {
     return rows.map((row) => row.groupId);
   },
 
-  async updateFavorite(id: number, isFavorite: boolean): Promise<ImageAssetRecord | null> {
+  async updateFavorite(db: SQLiteDatabase, id: number, isFavorite: boolean): Promise<ImageAssetRecord | null> {
     try {
-      return this.update(id, {
+      return this.update(db, id, {
         isFavorite,
       });
     } catch (error) {
@@ -1062,8 +1033,7 @@ export const imageRepository = {
     }
   },
 
-  async touchLastViewedAt(id: number): Promise<ImageAssetRecord | null> {
-    const db = await getDatabase();
+  async touchLastViewedAt(db: SQLiteDatabase, id: number): Promise<ImageAssetRecord | null> {
     const viewedAt = createTimestamp();
     const result = await db.runAsync(
       'UPDATE image_assets SET lastViewedAt = ? WHERE id = ? AND deletedAt IS NULL',
@@ -1075,15 +1045,15 @@ export const imageRepository = {
       return null;
     }
 
-    return this.findById(id);
+    return this.findById(db, id);
   },
 
-  async updateManyGroup(imageIds: number[], groupId: number | null): Promise<number> {
+  async updateManyGroup(db: SQLiteDatabase, imageIds: number[], groupId: number | null): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
@@ -1094,9 +1064,7 @@ export const imageRepository = {
     }
 
     const nextGroupIds = groupId != null ? [groupId] : [];
-    await ensureGroupsBelongToIp(nextGroupIds, ipIds[0]);
-
-    const db = await getDatabase();
+    await ensureGroupsBelongToIp(db, nextGroupIds, ipIds[0]);
     const now = createTimestamp();
     const inClause = buildInClause(currentImages.map((image) => image.id));
     const previousGroupIds = await loadGroupIdsByImageIds(db, currentImages.map((image) => image.id));
@@ -1141,12 +1109,12 @@ export const imageRepository = {
     }
   },
 
-  async addManyToGroup(imageIds: number[], groupId: number): Promise<number> {
+  async addManyToGroup(db: SQLiteDatabase, imageIds: number[], groupId: number): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
@@ -1156,9 +1124,7 @@ export const imageRepository = {
       throw new Error('Batch group update requires all images to belong to the same IP.');
     }
 
-    await ensureGroupBelongsToIp(groupId, ipIds[0]);
-
-    const db = await getDatabase();
+    await ensureGroupBelongsToIp(db, groupId, ipIds[0]);
     const now = createTimestamp();
     let changedCount = 0;
 
@@ -1194,17 +1160,15 @@ export const imageRepository = {
     }
   },
 
-  async removeManyFromGroup(imageIds: number[], groupId: number): Promise<number> {
+  async removeManyFromGroup(db: SQLiteDatabase, imageIds: number[], groupId: number): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const now = createTimestamp();
     const previousGroupIds = await loadGroupIdsByImageIds(db, currentImages.map((image) => image.id));
     let changedCount = 0;
@@ -1246,17 +1210,15 @@ export const imageRepository = {
     }
   },
 
-  async updateManyFavorite(imageIds: number[], isFavorite: boolean): Promise<number> {
+  async updateManyFavorite(db: SQLiteDatabase, imageIds: number[], isFavorite: boolean): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const now = createTimestamp();
     const inClause = buildInClause(currentImages.map((image) => image.id));
 
@@ -1287,17 +1249,15 @@ export const imageRepository = {
     }
   },
 
-  async updateManyNote(imageIds: number[], note: string | null): Promise<number> {
+  async updateManyNote(db: SQLiteDatabase, imageIds: number[], note: string | null): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const now = createTimestamp();
     const inClause = buildInClause(currentImages.map((image) => image.id));
 
@@ -1327,17 +1287,15 @@ export const imageRepository = {
     }
   },
 
-  async softDeleteMany(imageIds: number[]): Promise<number> {
+  async softDeleteMany(db: SQLiteDatabase, imageIds: number[]): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const now = createTimestamp();
     const inClause = buildInClause(currentImages.map((image) => image.id));
 
@@ -1367,17 +1325,15 @@ export const imageRepository = {
     }
   },
 
-  async restoreMany(imageIds: number[]): Promise<number> {
+  async restoreMany(db: SQLiteDatabase, imageIds: number[]): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const now = createTimestamp();
     const inClause = buildInClause(currentImages.map((image) => image.id));
 
@@ -1397,7 +1353,7 @@ export const imageRepository = {
       });
 
       for (const ipId of [...new Set(currentImages.map((image) => image.ipId))]) {
-        await ipRepository.restoreById(ipId);
+        await ipRepository.restoreById(db, ipId);
       }
 
       return changedCount;
@@ -1410,17 +1366,15 @@ export const imageRepository = {
     }
   },
 
-  async deletePermanentlyMany(imageIds: number[]): Promise<number> {
+  async deletePermanentlyMany(db: SQLiteDatabase, imageIds: number[]): Promise<number> {
     if (imageIds.length === 0) {
       return 0;
     }
 
-    const currentImages = await loadImagesByIds(imageIds);
+    const currentImages = await loadImagesByIds(db, imageIds);
     if (currentImages.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const inClause = buildInClause(currentImages.map((image) => image.id));
 
     try {
@@ -1445,24 +1399,21 @@ export const imageRepository = {
     }
   },
 
-  async countFavorites(): Promise<number> {
-    const db = await getDatabase();
+  async countFavorites(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
       'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND isFavorite = 1'
     );
     return row?.count ?? 0;
   },
 
-  async countDeleted(): Promise<number> {
-    const db = await getDatabase();
+  async countDeleted(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
       'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL'
     );
     return row?.count ?? 0;
   },
 
-  async sumFileSize(options?: ImageAssetQueryOptions): Promise<number> {
-    const db = await getDatabase();
+  async sumFileSize(db: SQLiteDatabase, options?: ImageAssetQueryOptions): Promise<number> {
     const deletedFilter = buildDeletedFilter('', options);
     const row = await db.getFirstAsync<SumRow>(
       `SELECT COALESCE(SUM(fileSize), 0) AS totalBytes FROM image_assets${deletedFilter ? ` WHERE ${deletedFilter}` : ''}`

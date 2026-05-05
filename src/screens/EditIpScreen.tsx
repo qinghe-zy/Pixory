@@ -23,7 +23,7 @@ interface EditIpScreenProps {
 export function EditIpScreen({ ipId, space = 'normal', onBack, onSaved }: EditIpScreenProps) {
   const { data: ip, isLoading, errorMessage, reload } = useScreenLoad<IpRecord>(
     async () => {
-      const record = await runWithDatabaseSpace(space, () => ipRepository.findById(ipId));
+      const record = await runWithDatabaseSpace(space, (db) => ipRepository.findById(db, ipId));
       if (!record) {
         throw new Error('没有找到这个 IP。');
       }
@@ -55,7 +55,7 @@ export function EditIpScreen({ ipId, space = 'normal', onBack, onSaved }: EditIp
 
   function handleSave() {
     void runSubmit(async () => {
-      const updated = await runWithDatabaseSpace(space, () => ipRepository.update(ipId, {
+      const updated = await runWithDatabaseSpace(space, (db) => ipRepository.update(db, ipId, {
         name: trimmedName,
         description,
         isFavorite,

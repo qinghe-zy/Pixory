@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SecureImage } from '../components/SecureImage';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -29,9 +30,9 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
     async () => {
-      const [images, ips] = await runWithDatabaseSpace(space, () => Promise.all([
-        activeIpId == null ? imageRepository.findDeleted() : imageRepository.findDeletedByIpId(activeIpId),
-        ipRepository.findAllIncludingDeleted(),
+      const [images, ips] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        activeIpId == null ? imageRepository.findDeleted(db) : imageRepository.findDeletedByIpId(db, activeIpId),
+        ipRepository.findAllIncludingDeleted(db),
       ]));
       return { images, ips };
     },
@@ -55,7 +56,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
   function handleRestore(imageId: number) {
     void (async () => {
       try {
-        const restoredCount = await runWithDatabaseSpace(space, () => imageRepository.restoreMany([imageId]));
+        const restoredCount = await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, [imageId]));
         if (restoredCount === 0) {
           throw new Error('没有可恢复的图片。');
         }
@@ -74,7 +75,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
     const ids = [...multiSelect.selectedImageIds];
     void (async () => {
       try {
-        const restoredCount = await runWithDatabaseSpace(space, () => imageRepository.restoreMany(ids));
+        const restoredCount = await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, ids));
         if (restoredCount === 0) {
           throw new Error('没有可恢复的图片。');
         }
@@ -159,7 +160,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
             >
               <View style={styles.previewWrap}>
                 {image.thumbnailFileUri ? (
-                  <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.previewImage} />
+                  <SecureImage contentFit="cover" space={space} style={styles.previewImage} uri={image.thumbnailFileUri} />
                 ) : (
                   <View style={styles.previewFallback}>
                     <Ionicons color={colors.text.secondary} name="image-outline" size={22} />

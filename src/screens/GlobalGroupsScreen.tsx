@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
@@ -28,7 +29,7 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
   const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
-    () => runWithDatabaseSpace(space, () => groupRepository.findOverview()),
+    () => runWithDatabaseSpace(space, (db) => groupRepository.findOverview(db)),
     [refreshToken, space],
     {
       formatError: (error) => {
@@ -52,7 +53,7 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
     setDeleteGroup(null);
     void (async () => {
       try {
-        const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => groupRepository.deleteById(db, group.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个分组。');
         }
@@ -97,7 +98,7 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
                 >
                   <View style={styles.coverWrap}>
                     {group.coverThumbnailFileUri ? (
-                      <Image resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverImage} />
+                      <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
                     ) : (
                       <View style={styles.coverEmpty}>
                         <Ionicons color={colors.primary.default} name="images-outline" size={22} />
@@ -122,7 +123,7 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
           icon: 'pin-outline',
           onPress: () => {
             void (async () => {
-              await runWithDatabaseSpace(space, () => groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned));
+              await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroup.id, !actionGroup.isPinned));
               showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
               reload();
             })();

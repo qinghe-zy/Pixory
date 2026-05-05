@@ -1,15 +1,19 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import * as ScreenCapture from 'expo-screen-capture';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppScreen } from './src/components/AppScreen';
 import { AppToastProvider } from './src/components/AppToast';
 import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
+import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
+import { clearPersonalImageCache } from './src/components/SecureImage';
 import { colors, spacing, typography } from './src/design/tokens';
-import { initDatabase, type IpLibraryFilter, type PixorySpace } from './src/database';
+import { initDatabase, resetDatabaseSpaceCache, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
@@ -34,7 +38,6 @@ import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
-import { PersonalSystemScreen } from './src/screens/PersonalSystemScreen';
 import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
@@ -42,6 +45,14 @@ import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
 import { TrashScreen } from './src/screens/TrashScreen';
 import type { ImageViewerContext } from './src/navigation/imageViewerContext';
 import { ensureAppDirectories } from './src/services/fileStorageService';
+import {
+  changePersonalPassword,
+  hasPersonalPassword,
+  resetPersonalSystemData,
+  setPersonalPassword,
+  verifyPersonalPassword,
+} from './src/services/personalSystemService';
+import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
 
 type AppRoute =
@@ -82,16 +93,25 @@ type AppRoute =
   | { name: 'tags-overview'; space: PixorySpace }
   | { name: 'trash'; space: PixorySpace }
   | { name: 'backup'; space: PixorySpace }
-  | { name: 'personal-system' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
-type PersonalUnlockState = 'locked' | 'unlocked';
+type PersonalSessionState = 'locked' | 'unlocking' | 'unlocked' | 'locking';
+type PersonalLockReason = 'manual' | 'background' | 'auth-expired' | 'error';
+
+type SpaceSession = {
+  space: PixorySpace;
+  sessionId: string;
+  generation: number;
+  db: SQLiteDatabase;
+  taskToken: PersonalTaskToken;
+  assertActive: () => void;
+};
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
 
 function isPersonalRoute(route: AppRoute): boolean {
-  return route.name === 'personal-system' || ('space' in route && route.space === 'personal');
+  return 'space' in route && route.space === 'personal';
 }
 
 export default function App() {
@@ -102,9 +122,17 @@ export default function App() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [initializationKey, setInitializationKey] = useState(0);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [personalUnlockState, setPersonalUnlockState] = useState<PersonalUnlockState>('locked');
+  const [personalSessionState, setPersonalSessionState] = useState<PersonalSessionState>('locked');
+  const [personalSession, setPersonalSession] = useState<SpaceSession | null>(null);
+  const [personalCredentialAvailable, setPersonalCredentialAvailable] = useState<boolean | null>(null);
+  const [personalUnlockVisible, setPersonalUnlockVisible] = useState(false);
+  const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
+  const [privacyShieldVisible, setPrivacyShieldVisible] = useState(false);
+  const personalGenerationRef = useRef(0);
+  const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
+  const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
 
   useEffect(() => {
     let isMounted = true;
@@ -142,19 +170,153 @@ export default function App() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') {
-        lockPersonalSystem();
+        setPrivacyShieldVisible(true);
+        void lockPersonalSpace('background');
       }
     });
 
     return () => subscription.remove();
   }, []);
 
-  function lockPersonalSystem() {
-    setPersonalUnlockState('locked');
+  useEffect(() => {
+    let isMounted = true;
+    void hasPersonalPassword().then((nextValue) => {
+      if (isMounted) {
+        setPersonalCredentialAvailable(nextValue);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (personalSessionState !== 'unlocked') {
+      return;
+    }
+
+    void ScreenCapture.preventScreenCaptureAsync().catch((error) => {
+      console.warn('Pixory screen capture protection failed.', {
+        message: error instanceof Error ? error.message : 'unknown screen capture error',
+      });
+    });
+
+    return () => {
+      void ScreenCapture.allowScreenCaptureAsync().catch((error) => {
+        console.warn('Pixory screen capture protection failed.', {
+          message: error instanceof Error ? error.message : 'unknown screen capture error',
+        });
+      });
+    };
+  }, [personalSessionState]);
+
+  useEffect(() => {
+    if (personalSessionState !== 'unlocked' && isPersonalRoute(currentRoute)) {
+      setRouteStack([INITIAL_ROUTE]);
+    }
+  }, [currentRoute, personalSessionState]);
+
+  async function unlockPersonalSpace(secret: string) {
+    setPersonalAuthBusy(true);
+    setPersonalSessionState('unlocking');
+    try {
+      const result = await verifyPersonalPassword(secret);
+      if (!result.ok) {
+        throw new Error(result.message ?? '隐私模式验证失败。');
+      }
+      const db = await initDatabase('personal');
+      const generation = personalGenerationRef.current + 1;
+      personalGenerationRef.current = generation;
+      const sessionId = `${Date.now()}-${generation}`;
+      const taskToken = createPersonalTaskToken(sessionId, generation);
+      personalTaskTokenRef.current = taskToken;
+      const session: SpaceSession = {
+        space: 'personal',
+        sessionId,
+        generation,
+        db,
+        taskToken,
+        assertActive: () => {
+          if (!taskToken.isActive() || personalGenerationRef.current !== generation) {
+            throw new Error('Personal session is no longer active.');
+          }
+        },
+      };
+      setPersonalSession(session);
+      setPersonalSessionState('unlocked');
+      setPersonalUnlockVisible(false);
+      setRouteStack([INITIAL_ROUTE]);
+      setLibraryRefreshToken((current) => current + 1);
+    } catch (error) {
+      await lockPersonalSpace('error');
+      throw error;
+    } finally {
+      setPersonalAuthBusy(false);
+    }
   }
 
-  function unlockPersonalSystem() {
-    setPersonalUnlockState('unlocked');
+  async function setupPersonalSpace(secret: string) {
+    setPersonalAuthBusy(true);
+    try {
+      await setPersonalPassword(secret);
+      setPersonalCredentialAvailable(true);
+      await unlockPersonalSpace(secret);
+    } finally {
+      setPersonalAuthBusy(false);
+    }
+  }
+
+  async function updatePersonalPassword(currentSecret: string, nextSecret: string) {
+    setPersonalAuthBusy(true);
+    try {
+      await changePersonalPassword(currentSecret, nextSecret);
+      setPersonalCredentialAvailable(true);
+    } finally {
+      setPersonalAuthBusy(false);
+    }
+  }
+
+  async function resetPersonalDataFromSettings() {
+    setPersonalAuthBusy(true);
+    try {
+      await resetPersonalSystemData();
+      setPersonalCredentialAvailable(false);
+      await lockPersonalSpace('manual');
+    } finally {
+      setPersonalAuthBusy(false);
+    }
+  }
+
+  async function lockPersonalSpace(reason: PersonalLockReason) {
+    setPrivacyShieldVisible(true);
+    setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
+    invalidatePersonalTaskToken(personalTaskTokenRef.current);
+    personalTaskTokenRef.current = null;
+    personalGenerationRef.current += 1;
+    setPersonalSession(null);
+    setPersonalUnlockVisible(false);
+    setRouteStack([INITIAL_ROUTE]);
+    setGlobalSearchQuery('');
+    setLibraryRefreshToken((current) => current + 1);
+
+    const cleanupResults = await Promise.allSettled([
+      clearPersonalImageCache(),
+      resetDatabaseSpaceCache('personal'),
+      ScreenCapture.allowScreenCaptureAsync(),
+    ]);
+    for (const cleanupResult of cleanupResults) {
+      if (cleanupResult.status === 'rejected') {
+        console.warn('Pixory personal lock cleanup failed.', {
+          message: cleanupResult.reason instanceof Error ? cleanupResult.reason.message : 'unknown cleanup error',
+        });
+      }
+    }
+
+    if (reason === 'background') {
+      setRouteStack([INITIAL_ROUTE]);
+    }
+    setPersonalSessionState('locked');
+    setPrivacyShieldVisible(false);
   }
 
   function pushRoute(route: AppRoute) {
@@ -216,16 +378,11 @@ export default function App() {
   }
 
   function openImageDetail(imageId: number, context?: ImageViewerContext) {
-    pushRoute({ name: 'image-detail', imageId, space: context?.space ?? 'normal', context });
+    pushRoute({ name: 'image-detail', imageId, space: context?.space ?? activeSpace, context });
   }
 
   function replaceCurrentRoute(route: AppRoute) {
     setRouteStack((current) => [...current.slice(0, -1), route]);
-  }
-
-  function exitPersonalSystem() {
-    lockPersonalSystem();
-    resetHome();
   }
 
   if (!isReady) {
@@ -252,30 +409,14 @@ export default function App() {
 
   let content;
 
-  if (isPersonalRoute(currentRoute) && currentRoute.name !== 'personal-system' && personalUnlockState === 'locked') {
+  if (isPersonalRoute(currentRoute) && personalSessionState !== 'unlocked') {
     content = (
-      <PersonalSystemScreen
-        isUnlocked={false}
-        onBack={popRoute}
-        onCreateIp={(space) => pushRoute({ name: 'create-ip', space })}
-        onExit={exitPersonalSystem}
-        onImportImages={(ipId, space) => pushRoute({ name: 'import-images', ipId, space })}
-        onOpenImportHistory={(ipId, space) => pushRoute({ name: 'import-batch-history', ipId, space })}
-        onOpenBackup={(space) => pushRoute({ name: 'backup', space })}
-        onOpenFavorites={(space) => pushRoute({ name: 'favorites', space })}
-        onOpenGlobalSearch={(space) => {
-          setGlobalSearchQuery('');
-          pushRoute({ name: 'global-search', space });
-        }}
-        onOpenGroups={(space) => pushRoute({ name: 'global-groups', space })}
-        onOpenIp={(ipId, space) => pushRoute({ name: 'ip-detail', ipId, space })}
-        onOpenQuickOrganize={(space) => pushRoute({ name: 'quick-organize', space })}
-        onOpenRecentViewed={(space) => pushRoute({ name: 'recent-viewed', space })}
-        onOpenTags={(space) => pushRoute({ name: 'tags-overview', space })}
-        onOpenTrash={(space) => pushRoute({ name: 'trash', space })}
-        onUnlocked={unlockPersonalSystem}
-        refreshToken={libraryRefreshToken}
-      />
+      <AppScreen contentStyle={styles.stateScreen}>
+        <View style={styles.stateCard}>
+          <Text style={styles.title}>Pixory</Text>
+          <Text style={styles.message}>隐私模式已锁定，正在返回普通空间。</Text>
+        </View>
+      </AppScreen>
     );
   } else if (currentRoute.name === 'create-ip') {
     content = (
@@ -420,6 +561,7 @@ export default function App() {
         defaultGroupId={currentRoute.groupId ?? null}
         ipId={currentRoute.ipId}
         space={currentRoute.space}
+        taskToken={currentRoute.space === 'personal' ? personalSession?.taskToken ?? null : null}
         onBack={popRoute}
         onImported={(imageIds, importBatchId) => {
           refreshLibrary();
@@ -641,30 +783,12 @@ export default function App() {
   } else if (currentRoute.name === 'trash') {
     content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
   } else if (currentRoute.name === 'backup') {
-    content = <BackupScreen onBack={popRoute} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
-  } else if (currentRoute.name === 'personal-system') {
     content = (
-      <PersonalSystemScreen
-        isUnlocked={personalUnlockState === 'unlocked'}
+      <BackupScreen
         onBack={popRoute}
-        onCreateIp={(space) => pushRoute({ name: 'create-ip', space })}
-        onExit={exitPersonalSystem}
-        onImportImages={(ipId, space) => pushRoute({ name: 'import-images', ipId, space })}
-        onOpenImportHistory={(ipId, space) => pushRoute({ name: 'import-batch-history', ipId, space })}
-        onOpenBackup={(space) => pushRoute({ name: 'backup', space })}
-        onOpenFavorites={(space) => pushRoute({ name: 'favorites', space })}
-        onOpenGlobalSearch={(space) => {
-          setGlobalSearchQuery('');
-          pushRoute({ name: 'global-search', space });
-        }}
-        onOpenGroups={(space) => pushRoute({ name: 'global-groups', space })}
-        onOpenIp={(ipId, space) => pushRoute({ name: 'ip-detail', ipId, space })}
-        onOpenQuickOrganize={(space) => pushRoute({ name: 'quick-organize', space })}
-        onOpenRecentViewed={(space) => pushRoute({ name: 'recent-viewed', space })}
-        onOpenTags={(space) => pushRoute({ name: 'tags-overview', space })}
-        onOpenTrash={(space) => pushRoute({ name: 'trash', space })}
-        onUnlocked={unlockPersonalSystem}
         refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
+        taskToken={currentRoute.space === 'personal' ? personalSession?.taskToken ?? null : null}
       />
     );
   } else if (currentRoute.name === 'placeholder') {
@@ -682,19 +806,19 @@ export default function App() {
   } else if (currentRoute.tab === 'groups') {
     content = (
       <GlobalGroupsScreen
-        space={'normal'}
+        space={activeSpace}
         footer={rootFooter}
-        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: 'normal' })}
-        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: 'normal' })}
+        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
         refreshToken={libraryRefreshToken}
       />
     );
   } else if (currentRoute.tab === 'tags') {
     content = (
       <TagsOverviewScreen
-        space={'normal'}
+        space={activeSpace}
         footer={rootFooter}
-        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: 'normal' })}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: activeSpace })}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -702,12 +826,17 @@ export default function App() {
     content = (
       <MeScreen
         footer={rootFooter}
-        onOpenFavorites={() => pushRoute({ name: 'favorites', space: 'normal' })}
-        onOpenBackup={() => pushRoute({ name: 'backup', space: 'normal' })}
-        onOpenPersonalSystem={() => pushRoute({ name: 'personal-system' })}
-        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: 'normal' })}
-        onOpenTrash={() => pushRoute({ name: 'trash', space: 'normal' })}
+        onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
+        onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
+        onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
+        onLockPersonalSpace={() => {
+          void lockPersonalSpace('manual');
+        }}
+        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: activeSpace })}
+        onOpenTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
+        personalSessionState={personalSessionState}
         refreshToken={libraryRefreshToken}
+        space={activeSpace}
       />
     );
   } else {
@@ -715,14 +844,15 @@ export default function App() {
       <HomeLibraryScreen
         footer={rootFooter}
         initialFilter={currentRoute.initialFilter ?? 'all'}
-        onCreateIp={() => pushRoute({ name: 'create-ip', space: 'normal' })}
+        onCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
         onOpenGlobalSearch={() => {
           setGlobalSearchQuery('');
-          pushRoute({ name: 'global-search', space: 'normal' });
+          pushRoute({ name: 'global-search', space: activeSpace });
         }}
-        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: 'normal' })}
-        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: 'normal' })}
+        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: activeSpace })}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
         refreshKey={libraryRefreshToken}
+        space={activeSpace}
       />
     );
   }
@@ -731,6 +861,26 @@ export default function App() {
     <SafeAreaProvider>
       <AppToastProvider>
         {content}
+        <PersonalUnlockModal
+          hasCredential={personalCredentialAvailable}
+          loading={personalAuthBusy}
+          onChangePassword={updatePersonalPassword}
+          onClose={() => setPersonalUnlockVisible(false)}
+          onResetPersonalData={resetPersonalDataFromSettings}
+          onSetup={setupPersonalSpace}
+          onUnlock={unlockPersonalSpace}
+          visible={personalUnlockVisible}
+        />
+        {personalSessionState === 'unlocked' ? (
+          <View pointerEvents="none" style={styles.personalBanner}>
+            <Text style={styles.personalBannerText}>隐私模式</Text>
+          </View>
+        ) : null}
+        {privacyShieldVisible ? (
+          <View style={styles.privacyShield}>
+            <Text style={styles.privacyShieldText}>Pixory</Text>
+          </View>
+        ) : null}
         <StatusBar style="dark" />
       </AppToastProvider>
     </SafeAreaProvider>
@@ -759,5 +909,30 @@ const styles = StyleSheet.create({
   message: {
     ...typography.textStyles.body,
     textAlign: 'center',
+  },
+  personalBanner: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.active,
+    borderRadius: 999,
+    bottom: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+    position: 'absolute',
+    right: spacing[3],
+  },
+  personalBannerText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+  },
+  privacyShield: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: colors.background.page,
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  privacyShieldText: {
+    ...typography.textStyles.navTitle,
+    color: colors.text.title,
   },
 });

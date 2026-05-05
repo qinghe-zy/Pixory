@@ -5,7 +5,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { colors, layout, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -14,13 +14,18 @@ import { formatFileSize } from '../utils/formatters';
 
 interface MeScreenProps {
   refreshToken: number;
+  space?: PixorySpace;
+  personalSessionState: PersonalSessionState;
   footer?: ReactNode;
   onOpenFavorites: () => void;
   onOpenRecentViewed: () => void;
   onOpenTrash: () => void;
   onOpenBackup: () => void;
-  onOpenPersonalSystem: () => void;
+  onRequestPersonalUnlock: () => void;
+  onLockPersonalSpace: () => void;
 }
+
+type PersonalSessionState = 'locked' | 'unlocking' | 'unlocked' | 'locking';
 
 interface MeStats {
   ipCount: number;
@@ -66,12 +71,15 @@ const ENTRY_ITEMS = [
 
 export function MeScreen({
   refreshToken,
+  space = 'normal',
+  personalSessionState,
   footer,
   onOpenFavorites,
   onOpenRecentViewed,
   onOpenTrash,
   onOpenBackup,
-  onOpenPersonalSystem,
+  onRequestPersonalUnlock,
+  onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
@@ -84,13 +92,13 @@ export function MeScreen({
         deletedImageCount,
         totalOriginalBytes,
         profileAvatarUri,
-      ] = await runWithDatabaseSpace('normal', () => Promise.all([
-        ipRepository.count(),
-        imageRepository.count(),
-        imageRepository.countFavorites(),
-        imageRepository.countDeleted(),
-        imageRepository.sumFileSize({ includeDeleted: true }),
-        settingsRepository.getProfileAvatarUri(),
+      ] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.count(db),
+        imageRepository.count(db),
+        imageRepository.countFavorites(db),
+        imageRepository.countDeleted(db),
+        imageRepository.sumFileSize(db, { includeDeleted: true }),
+        settingsRepository.getProfileAvatarUri(db),
       ]));
 
       return {
@@ -102,7 +110,7 @@ export function MeScreen({
         totalOriginalBytes,
       };
     },
-    [refreshToken],
+    [refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -133,7 +141,12 @@ export function MeScreen({
     }
 
     if (key === 'personal') {
-      onOpenPersonalSystem();
+      if (space === 'personal') {
+        onLockPersonalSpace();
+        return;
+      }
+
+      onRequestPersonalUnlock();
     }
   }
 
@@ -161,7 +174,7 @@ export function MeScreen({
       }
 
       const avatarUri = await copyProfileAvatarToAppStorage(sourceUri);
-      await settingsRepository.setProfileAvatarUri(avatarUri);
+      await runWithDatabaseSpace(space, (db) => settingsRepository.setProfileAvatarUri(db, avatarUri));
       setAvatarOverrideUri(avatarUri);
       reload();
     } catch (error) {
@@ -174,7 +187,7 @@ export function MeScreen({
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
 
   return (
-    <ScreenScaffold decorativeTitle="Me" errorMessage={errorMessage} footer={footer} scrollable title="我的">
+    <ScreenScaffold decorativeTitle={space === 'personal' ? 'Private' : 'Me'} errorMessage={errorMessage} footer={footer} scrollable title="我的">
       <ContentCard style={styles.heroCard}>
         <View style={styles.profileRow}>
           <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
@@ -214,6 +227,11 @@ export function MeScreen({
       <View style={styles.entryList}>
         {ENTRY_ITEMS.map((item) => {
           const isSettings = item.key === 'settings';
+          const entryTitle = item.key === 'personal'
+            ? space === 'personal'
+              ? '返回普通模式'
+              : '进入隐私模式'
+            : item.label;
           const entryContent = (
             <>
               <View style={[styles.entryIconWrap, item.key === 'trash' && styles.trashIconWrap]}>
@@ -224,7 +242,7 @@ export function MeScreen({
                 />
               </View>
               <View style={styles.entryCopy}>
-                <Text style={styles.entryTitle}>{item.label}</Text>
+                <Text style={styles.entryTitle}>{entryTitle}</Text>
               </View>
               {isSettings ? null : (
                 <Text style={styles.entryCount}>
@@ -235,7 +253,9 @@ export function MeScreen({
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
                         : item.key === 'personal'
-                          ? 0
+                          ? personalSessionState === 'unlocked'
+                            ? 'ON'
+                            : 0
                           : data?.ipCount ?? 0}
                 </Text>
               )}

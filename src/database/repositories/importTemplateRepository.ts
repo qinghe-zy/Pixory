@@ -1,4 +1,4 @@
-import { getDatabase } from '../db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   CountRow,
   CreateImportTemplateInput,
@@ -61,8 +61,7 @@ function createTemplateKey(name: string): string {
 }
 
 export const importTemplateRepository = {
-  async findAll(): Promise<ImportTemplateRecord[]> {
-    const db = await getDatabase();
+  async findAll(db: SQLiteDatabase): Promise<ImportTemplateRecord[]> {
     const rows = await db.getAllAsync<ImportTemplateRow>(
       `SELECT *
        FROM import_templates
@@ -72,14 +71,12 @@ export const importTemplateRepository = {
     return rows.map(mapImportTemplateRow);
   },
 
-  async findByKey(key: string): Promise<ImportTemplateRecord | null> {
-    const db = await getDatabase();
+  async findByKey(db: SQLiteDatabase, key: string): Promise<ImportTemplateRecord | null> {
     const row = await db.getFirstAsync<ImportTemplateRow>('SELECT * FROM import_templates WHERE key = ?', key);
     return row ? mapImportTemplateRow(row) : null;
   },
 
-  async create(input: CreateImportTemplateInput): Promise<ImportTemplateRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateImportTemplateInput): Promise<ImportTemplateRecord> {
     const now = createTimestamp();
     const name = requireNonEmptyText(input.name, 'Template name');
     const groupName = requireNonEmptyText(input.groupName, 'Template group name');
@@ -110,7 +107,7 @@ export const importTemplateRepository = {
       now
     );
 
-    const created = await this.findByKey(key);
+    const created = await this.findByKey(db, key);
     if (!created) {
       throw new Error(`Import template ${key} was created but could not be reloaded.`);
     }
@@ -118,13 +115,11 @@ export const importTemplateRepository = {
     return created;
   },
 
-  async update(key: string, input: UpdateImportTemplateInput): Promise<ImportTemplateRecord | null> {
-    const current = await this.findByKey(key);
+  async update(db: SQLiteDatabase, key: string, input: UpdateImportTemplateInput): Promise<ImportTemplateRecord | null> {
+    const current = await this.findByKey(db, key);
     if (!current) {
       return null;
     }
-
-    const db = await getDatabase();
     await db.runAsync(
       `UPDATE import_templates
        SET name = ?,
@@ -143,11 +138,10 @@ export const importTemplateRepository = {
       key
     );
 
-    return this.findByKey(key);
+    return this.findByKey(db, key);
   },
 
-  async deleteByKey(key: string): Promise<number> {
-    const db = await getDatabase();
+  async deleteByKey(db: SQLiteDatabase, key: string): Promise<number> {
     const result = await db.runAsync('DELETE FROM import_templates WHERE key = ?', key);
     return result.changes;
   },

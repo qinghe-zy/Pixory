@@ -1,4 +1,3 @@
-import { getDatabase } from '../db';
 import type { CountRow, CreateTagInput, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
 import { buildUpdateStatement, createTimestamp, mapTagUsageItemRow, requireNonEmptyText } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -34,8 +33,7 @@ function buildInClause(ids: number[]): { placeholders: string; values: number[] 
   };
 }
 
-async function getOrCreateTag(name: string): Promise<TagRecord> {
-  const db = await getDatabase();
+async function getOrCreateTag(db: SQLiteDatabase, name: string): Promise<TagRecord> {
   const normalizedName = requireNonEmptyText(name, 'Tag name');
   const existing = await db.getFirstAsync<TagRecord>(
     'SELECT * FROM tags WHERE name = ? COLLATE NOCASE LIMIT 1',
@@ -121,8 +119,7 @@ async function touchImagesAfterTagChange(db: SQLiteDatabase, imageIds: number[])
 }
 
 export const tagRepository = {
-  async create(input: CreateTagInput): Promise<TagRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateTagInput): Promise<TagRecord> {
     const now = createTimestamp();
     const name = requireNonEmptyText(input.name, 'Tag name');
 
@@ -133,7 +130,7 @@ export const tagRepository = {
       now
     );
 
-    const record = await this.findById(result.lastInsertRowId);
+    const record = await this.findById(db, result.lastInsertRowId);
     if (!record) {
       throw new Error(`Tag ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -141,15 +138,14 @@ export const tagRepository = {
     return record;
   },
 
-  async update(id: number, input: UpdateTagInput): Promise<TagRecord | null> {
-    const db = await getDatabase();
+  async update(db: SQLiteDatabase, id: number, input: UpdateTagInput): Promise<TagRecord | null> {
     const updates = buildUpdateStatement({
       name: input.name !== undefined ? requireNonEmptyText(input.name, 'Tag name') : undefined,
       updatedAt: createTimestamp(),
     });
 
     if (!updates.setClause) {
-      return this.findById(id);
+      return this.findById(db, id);
     }
 
     const result = await db.runAsync(
@@ -162,35 +158,30 @@ export const tagRepository = {
       return null;
     }
 
-    return this.findById(id);
+    return this.findById(db, id);
   },
 
-  async findById(id: number): Promise<TagRecord | null> {
-    const db = await getDatabase();
+  async findById(db: SQLiteDatabase, id: number): Promise<TagRecord | null> {
     return db.getFirstAsync<TagRecord>('SELECT * FROM tags WHERE id = ?', id);
   },
 
-  async findAll(): Promise<TagRecord[]> {
-    const db = await getDatabase();
+  async findAll(db: SQLiteDatabase): Promise<TagRecord[]> {
     return db.getAllAsync<TagRecord>('SELECT * FROM tags ORDER BY name COLLATE NOCASE ASC, id ASC');
   },
 
-  async findByName(name: string): Promise<TagRecord | null> {
-    const db = await getDatabase();
+  async findByName(db: SQLiteDatabase, name: string): Promise<TagRecord | null> {
     return db.getFirstAsync<TagRecord>(
       'SELECT * FROM tags WHERE name = ? COLLATE NOCASE LIMIT 1',
       requireNonEmptyText(name, 'Tag name')
     );
   },
 
-  async count(): Promise<number> {
-    const db = await getDatabase();
+  async count(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM tags');
     return row?.count ?? 0;
   },
 
-  async countByIpId(ipId: number): Promise<number> {
-    const db = await getDatabase();
+  async countByIpId(db: SQLiteDatabase, ipId: number): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
       `SELECT COUNT(DISTINCT image_tags.tagId) AS count
        FROM image_tags
@@ -201,8 +192,7 @@ export const tagRepository = {
     return row?.count ?? 0;
   },
 
-  async findUsageOverview(): Promise<TagUsageItem[]> {
-    const db = await getDatabase();
+  async findUsageOverview(db: SQLiteDatabase): Promise<TagUsageItem[]> {
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
          tags.*,
@@ -218,8 +208,7 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
-  async findUsageOverviewByIpId(ipId: number): Promise<TagUsageItem[]> {
-    const db = await getDatabase();
+  async findUsageOverviewByIpId(db: SQLiteDatabase, ipId: number): Promise<TagUsageItem[]> {
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
          tags.*,
@@ -237,8 +226,7 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
-  async findRecentlyUsed(limit = 8): Promise<TagUsageItem[]> {
-    const db = await getDatabase();
+  async findRecentlyUsed(db: SQLiteDatabase, limit = 8): Promise<TagUsageItem[]> {
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
          tags.*,
@@ -257,8 +245,7 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
-  async replaceImageTags(imageAssetId: number, tagIds: number[]): Promise<void> {
-    const db = await getDatabase();
+  async replaceImageTags(db: SQLiteDatabase, imageAssetId: number, tagIds: number[]): Promise<void> {
     const uniqueTagIds = [...new Set(tagIds)];
     const createdAt = createTimestamp();
 
@@ -278,21 +265,21 @@ export const tagRepository = {
     });
   },
 
-  async setImageTags(imageAssetId: number, tagNames: string[]): Promise<TagRecord[]> {
+  async setImageTags(db: SQLiteDatabase, imageAssetId: number, tagNames: string[]): Promise<TagRecord[]> {
     const normalizedTagNames = normalizeTagNames(tagNames);
     const resolvedTags: TagRecord[] = [];
 
     try {
       for (const tagName of normalizedTagNames) {
-        resolvedTags.push(await getOrCreateTag(tagName));
+        resolvedTags.push(await getOrCreateTag(db, tagName));
       }
 
-      await this.replaceImageTags(
+      await this.replaceImageTags(db,
         imageAssetId,
         resolvedTags.map((tag) => tag.id)
       );
 
-      return this.findByImageId(imageAssetId);
+      return this.findByImageId(db, imageAssetId);
     } catch (error) {
       console.error('Pixory tagRepository.setImageTags failed.', {
         imageAssetId,
@@ -303,7 +290,7 @@ export const tagRepository = {
     }
   },
 
-  async addTagsToImages(imageIds: number[], tagNames: string[]): Promise<TagRecord[]> {
+  async addTagsToImages(db: SQLiteDatabase, imageIds: number[], tagNames: string[]): Promise<TagRecord[]> {
     const uniqueImageIds = [...new Set(imageIds)];
     const normalizedTagNames = normalizeTagNames(tagNames);
 
@@ -313,10 +300,8 @@ export const tagRepository = {
 
     const resolvedTags: TagRecord[] = [];
     for (const tagName of normalizedTagNames) {
-      resolvedTags.push(await getOrCreateTag(tagName));
+      resolvedTags.push(await getOrCreateTag(db, tagName));
     }
-
-    const db = await getDatabase();
     const createdAt = createTimestamp();
 
     try {
@@ -346,8 +331,7 @@ export const tagRepository = {
     }
   },
 
-  async findByImageId(imageAssetId: number): Promise<TagRecord[]> {
-    const db = await getDatabase();
+  async findByImageId(db: SQLiteDatabase, imageAssetId: number): Promise<TagRecord[]> {
     return db.getAllAsync<TagRecord>(
       `SELECT tags.*
        FROM tags
@@ -358,8 +342,7 @@ export const tagRepository = {
     );
   },
 
-  async deleteById(id: number): Promise<number> {
-    const db = await getDatabase();
+  async deleteById(db: SQLiteDatabase, id: number): Promise<number> {
     const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
       'SELECT imageAssetId FROM image_tags WHERE tagId = ?',
       id
@@ -377,13 +360,11 @@ export const tagRepository = {
     return changedCount;
   },
 
-  async deleteMany(ids: number[]): Promise<number> {
+  async deleteMany(db: SQLiteDatabase, ids: number[]): Promise<number> {
     const tagIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
     if (tagIds.length === 0) {
       return 0;
     }
-
-    const db = await getDatabase();
     const tagInClause = buildInClause(tagIds);
     const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
       `SELECT DISTINCT imageAssetId FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,

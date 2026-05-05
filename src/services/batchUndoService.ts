@@ -1,6 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { getDatabase } from '../database/db';
 import type { ImageAssetRow } from '../database/types';
 import { booleanToSqlite, createTimestamp, mapImageAssetRow, requireNonEmptyText } from '../database/utils';
 
@@ -31,13 +30,12 @@ function buildInClause(ids: number[]): { placeholders: string; values: number[] 
   };
 }
 
-export async function captureBatchUndoSnapshot(imageIds: number[]): Promise<BatchUndoSnapshot> {
+export async function captureBatchUndoSnapshot(db: SQLiteDatabase, imageIds: number[]): Promise<BatchUndoSnapshot> {
   const uniqueIds = [...new Set(imageIds)];
   if (uniqueIds.length === 0) {
     return { images: [] };
   }
 
-  const db = await getDatabase();
   const inClause = buildInClause(uniqueIds);
   const [imageRows, groupRows, tagRows] = await Promise.all([
     db.getAllAsync<ImageAssetRow>(
@@ -104,12 +102,11 @@ async function getOrCreateTagId(db: SQLiteDatabase, name: string): Promise<numbe
   return result.lastInsertRowId;
 }
 
-export async function restoreBatchUndoSnapshot(snapshot: BatchUndoSnapshot): Promise<number> {
+export async function restoreBatchUndoSnapshot(db: SQLiteDatabase, snapshot: BatchUndoSnapshot): Promise<number> {
   if (snapshot.images.length === 0) {
     return 0;
   }
 
-  const db = await getDatabase();
   const now = createTimestamp();
 
   await db.withTransactionAsync(async () => {

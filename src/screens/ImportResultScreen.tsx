@@ -5,12 +5,13 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, type ImageListItem } from '../database';
+import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface ImportResultScreenProps {
   imageIds: number[];
+  space?: PixorySpace;
   onViewImport: () => void;
   onContinueOrganize: () => void;
   onImportAgain: () => void;
@@ -20,6 +21,7 @@ interface ImportResultScreenProps {
 
 export function ImportResultScreen({
   imageIds,
+  space = 'normal',
   onViewImport,
   onContinueOrganize,
   onImportAgain,
@@ -27,8 +29,8 @@ export function ImportResultScreen({
   onOpenImageDetail,
 }: ImportResultScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => imageRepository.findByIds(imageIds),
-    [imageIds.join(',')],
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findByIds(db, imageIds)),
+    [imageIds.join(','), space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -75,7 +77,7 @@ export function ImportResultScreen({
       >
         <View style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} />
+            <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
           ))}
         </View>
       </PageStateBlock>

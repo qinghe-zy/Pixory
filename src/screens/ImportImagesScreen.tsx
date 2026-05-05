@@ -28,9 +28,11 @@ import { importPackageToIp, pickPackageForImport, type PackageImportResult } fro
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
+import type { PersonalTaskToken } from '../services/personalTaskToken';
 
 interface ImportImagesScreenProps {
   space?: PixorySpace;
+  taskToken?: PersonalTaskToken | null;
   ipId: number;
   defaultGroupId?: number | null;
   onBack: () => void;
@@ -39,6 +41,7 @@ interface ImportImagesScreenProps {
 
 export function ImportImagesScreen({
   space = 'normal',
+  taskToken = null,
   ipId,
   defaultGroupId = null,
   onBack,
@@ -51,12 +54,12 @@ export function ImportImagesScreen({
     reload,
   } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
     async () => {
-      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await runWithDatabaseSpace(space, () => Promise.all([
-        ipRepository.findById(ipId),
-        groupRepository.findByIpId(ipId),
-        importTemplateRepository.findAll(),
-        settingsRepository.getRecentImportGroupIds(),
-        tagRepository.findRecentlyUsed(8),
+      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findById(db, ipId),
+        groupRepository.findByIpId(db, ipId),
+        importTemplateRepository.findAll(db),
+        settingsRepository.getRecentImportGroupIds(db),
+        tagRepository.findRecentlyUsed(db, 8),
       ]));
 
       return { ip, groups, importTemplates, recentGroupIds, recentTags };
@@ -148,9 +151,9 @@ export function ImportImagesScreen({
       throw new Error('请输入分组名称。');
     }
 
-    const group = await runWithDatabaseSpace(space, async () => {
-      const existing = await groupRepository.findByIpIdAndName(ipId, preparedName);
-      return existing ?? groupRepository.create({ ipId, name: preparedName, type: 'custom' });
+    const group = await runWithDatabaseSpace(space, async (db) => {
+      const existing = await groupRepository.findByIpIdAndName(db, ipId, preparedName);
+      return existing ?? groupRepository.create(db, { ipId, name: preparedName, type: 'custom' });
     });
     setSelectedGroupIds((current) => (current.includes(group.id) ? current : [...current, group.id]));
     await reload();
@@ -224,13 +227,12 @@ export function ImportImagesScreen({
 
     void (async () => {
       try {
-        if (editingTemplate) {
-          await importTemplateRepository.update(editingTemplate.key, input);
-          showToast('已更新模板');
-        } else {
-          await importTemplateRepository.create(input);
-          showToast('已新建模板');
-        }
+        await runWithDatabaseSpace(space, (db) =>
+          editingTemplate
+            ? importTemplateRepository.update(db, editingTemplate.key, input)
+            : importTemplateRepository.create(db, input)
+        );
+        showToast(editingTemplate ? '已更新模板' : '已新建模板');
         setIsTemplateDialogVisible(false);
         resetTemplateForm();
         await reload();
@@ -249,7 +251,7 @@ export function ImportImagesScreen({
     setDeleteTemplate(null);
     void (async () => {
       try {
-        const deletedCount = await importTemplateRepository.deleteByKey(template.key);
+        const deletedCount = await runWithDatabaseSpace(space, (db) => importTemplateRepository.deleteByKey(db, template.key));
         if (deletedCount === 0) {
           throw new Error('没有找到这个模板。');
         }
@@ -299,6 +301,7 @@ export function ImportImagesScreen({
         isFavorite,
         templateKey: selectedTemplateKey,
         pickedAssets,
+        taskToken,
       });
 
       devLog('Pixory import result readback:', {
@@ -317,7 +320,7 @@ export function ImportImagesScreen({
         throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张。`);
       }
 
-      await runWithDatabaseSpace(space, () => settingsRepository.rememberImportGroupIds(selectedGroupIds));
+      await runWithDatabaseSpace(space, (db) => settingsRepository.rememberImportGroupIds(db, selectedGroupIds));
       showToast(`成功导入 ${result.successCount} 张`);
       onImported(result.importedImages.map((item) => item.image.id), result.importBatch?.id ?? null);
     }, {
@@ -362,7 +365,7 @@ export function ImportImagesScreen({
         throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张，跳过 ${result.skippedCount} 个文件。`);
       }
 
-      await runWithDatabaseSpace(space, () => settingsRepository.rememberImportGroupIds(selectedGroupIds));
+      await runWithDatabaseSpace(space, (db) => settingsRepository.rememberImportGroupIds(db, selectedGroupIds));
       showToast(`资源包导入 ${result.successCount} 张，跳过 ${result.skippedCount} 个文件`);
       onImported(result.importedImages.map((item) => item.image.id), result.importBatchId);
     } catch (error) {

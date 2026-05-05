@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SecureImage } from '../components/SecureImage';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type PixorySpace, type TagUsageItem } from '../database';
@@ -33,10 +34,10 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
   const { showToast } = useToast();
   const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[]; tags: TagUsageItem[] }>(
     async () => {
-      const [images, groups, tags] = await runWithDatabaseSpace(space, () => Promise.all([
-        imageRepository.findNeedsOrganizing({ ipId, importBatchId }),
-        ipId != null ? groupRepository.findByIpId(ipId) : groupRepository.findAll(),
-        ipId != null ? tagRepository.findUsageOverviewByIpId(ipId) : tagRepository.findUsageOverview(),
+      const [images, groups, tags] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        imageRepository.findNeedsOrganizing(db, { ipId, importBatchId }),
+        ipId != null ? groupRepository.findByIpId(db, ipId) : groupRepository.findAll(db),
+        ipId != null ? tagRepository.findUsageOverviewByIpId(db, ipId) : tagRepository.findUsageOverview(db),
       ]));
       return { images, groups, tags };
     },
@@ -131,16 +132,16 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
 
   async function applyActionToImage(image: ImageListItem, action: LastOrganizeAction) {
     if (action.type === 'group') {
-      await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(image.id, [action.groupId]));
+      await runWithDatabaseSpace(space, (db) => imageRepository.setImageGroups(db, image.id, [action.groupId]));
       return;
     }
 
     if (action.type === 'tags') {
-      await runWithDatabaseSpace(space, () => tagRepository.addTagsToImages([image.id], action.tags));
+      await runWithDatabaseSpace(space, (db) => tagRepository.addTagsToImages(db, [image.id], action.tags));
       return;
     }
 
-    await runWithDatabaseSpace(space, () => imageRepository.updateFavorite(image.id, true));
+    await runWithDatabaseSpace(space, (db) => imageRepository.updateFavorite(db, image.id, true));
   }
 
   async function handleSetGroup(groupId: number) {
@@ -148,7 +149,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       return;
     }
 
-    await runWithDatabaseSpace(space, () => imageRepository.setImageGroups(current.id, [groupId]));
+    await runWithDatabaseSpace(space, (db) => imageRepository.setImageGroups(db, current.id, [groupId]));
     const group = groups.find((item) => item.id === groupId);
     setLastAction({ type: 'group', groupId, label: group ? `分组：${group.name}` : '分组操作' });
     setEditedGroupIdsByImageId((currentGroupsByImageId) => ({ ...currentGroupsByImageId, [current.id]: groupId }));
@@ -167,7 +168,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       return;
     }
 
-    const savedTags = await runWithDatabaseSpace(space, () => tagRepository.setImageTags(current.id, tags));
+    const savedTags = await runWithDatabaseSpace(space, (db) => tagRepository.setImageTags(db, current.id, tags));
     if (tags.length > 0) {
       setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
     }
@@ -194,7 +195,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       return;
     }
 
-    await runWithDatabaseSpace(space, () => imageRepository.updateFavorite(current.id, true));
+    await runWithDatabaseSpace(space, (db) => imageRepository.updateFavorite(db, current.id, true));
     setLastAction({ type: 'favorite', label: '收藏' });
     patchCurrentImage(current.id, { isFavorite: true });
     showToast('已收藏');
@@ -230,7 +231,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
     }
 
     const targets = images.slice(currentIndex, currentIndex + 20);
-    await runWithDatabaseSpace(space, () => tagRepository.addTagsToImages(targets.map((image) => image.id), tags));
+    await runWithDatabaseSpace(space, (db) => tagRepository.addTagsToImages(db, targets.map((image) => image.id), tags));
     setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
     setEditedTagNamesByImageId((currentTagsByImageId) => {
       const next = { ...currentTagsByImageId };
@@ -267,7 +268,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
 
     const target = deleteTarget;
     setDeleteTarget(null);
-    await runWithDatabaseSpace(space, () => imageRepository.softDeleteMany([target.id]));
+    await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, [target.id]));
     removeImageFromQueue(target.id);
     showToast({
       message: '已移入回收站',
@@ -275,7 +276,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
       durationMs: 5200,
       onAction: () => {
         void (async () => {
-          await runWithDatabaseSpace(space, () => imageRepository.restoreMany([target.id]));
+          await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, [target.id]));
           onChanged();
           reload();
           showToast('已恢复');
@@ -312,7 +313,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
 
               <Pressable onPress={() => onOpenImage(current.id, getViewerContext(current))} style={styles.previewWrap} {...previewPanResponder.panHandlers}>
                 {current.thumbnailFileUri ? (
-                  <Image resizeMode="cover" source={{ uri: current.thumbnailFileUri }} style={styles.previewImage} />
+                  <SecureImage contentFit="cover" space={space} style={styles.previewImage} uri={current.thumbnailFileUri} />
                 ) : (
                   <View style={styles.previewFallback}>
                     <Ionicons color={colors.text.secondary} name="image-outline" size={28} />
@@ -329,7 +330,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
                   {images.map((image, index) => (
                     <Pressable key={image.id} onPress={() => setCurrentIndex(index)} style={[styles.queueTile, index === currentIndex ? styles.selectedQueueTile : null]}>
                       {image.thumbnailFileUri ? (
-                        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.queueImage} />
+                        <SecureImage contentFit="cover" space={space} style={styles.queueImage} uri={image.thumbnailFileUri} />
                       ) : (
                         <View style={styles.queueFallback}>
                           <Ionicons color={colors.text.tertiary} name="image-outline" size={14} />

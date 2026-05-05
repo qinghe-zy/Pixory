@@ -9,18 +9,32 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
 }
 
-test('database layer exposes normal and personal SQLite spaces without changing normal defaults', () => {
+test('database layer exposes normal and personal SQLite spaces without scoped compatibility context', () => {
   const schemaSource = readProjectFile('src/database/schema.ts');
   const dbSource = readProjectFile('src/database/db.ts');
   const indexSource = readProjectFile('src/database/index.ts');
+  const repositoryDir = path.join(rootDir, 'src/database/repositories');
+  const repositorySources = fs
+    .readdirSync(repositoryDir)
+    .filter((file) => file.endsWith('.ts'))
+    .map((file) => [file, fs.readFileSync(path.join(repositoryDir, file), 'utf8')]);
 
   assert.match(schemaSource, /PERSONAL_DATABASE_NAME\s*=\s*'pixory_personal\.sqlite'/);
   assert.match(dbSource, /export type PixorySpace\s*=\s*'normal'\s*\|\s*'personal'/);
-  assert.match(dbSource, /currentDatabaseSpace:\s*PixorySpace\s*=\s*'normal'/);
-  assert.match(dbSource, /getDatabase\(space: PixorySpace = currentDatabaseSpace\)/);
-  assert.match(dbSource, /runWithDatabaseSpace/);
+  assert.doesNotMatch(dbSource, /currentDatabaseSpace/);
+  assert.doesNotMatch(dbSource, /scopedDatabaseSpace/);
+  assert.doesNotMatch(dbSource, /scopedDatabaseQueue/);
+  assert.match(dbSource, /getDatabase\(space: PixorySpace\)/);
+  assert.match(dbSource, /runWithDatabaseSpace[\s\S]{0,260}task\(db\)/);
+  assert.doesNotMatch(dbSource, /previousSpace[\s\S]{0,200}currentDatabaseSpace/);
   assert.match(dbSource, /openDatabaseAsync\(getDatabaseNameForSpace\(space\)\)/);
+  assert.match(dbSource, /checkpointDatabase\(space: PixorySpace\)/);
+  assert.match(dbSource, /resetDatabaseSpaceCache\(space: PixorySpace\)[\s\S]{0,500}checkpointDatabase\(space\)/);
   assert.match(indexSource, /PixorySpace/);
+  for (const [file, source] of repositorySources) {
+    assert.doesNotMatch(source, /getDatabase\(\)/, `${file} must not implicitly open the active/default database`);
+    assert.match(source, /SQLiteDatabase/, `${file} must receive an explicit SQLite db handle`);
+  }
 });
 
 test('file storage keeps personal originals and thumbnails outside the normal pixory tree', () => {

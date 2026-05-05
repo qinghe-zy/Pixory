@@ -78,19 +78,19 @@ export function BatchManageImagesScreen({
     tags: Awaited<ReturnType<typeof tagRepository.findUsageOverviewByIpId>>;
   }>(
     async () => {
-      return runWithDatabaseSpace(space, async () => {
+      return runWithDatabaseSpace(space, async (db) => {
       const [ip, groups, importTemplates, tags, images] = await Promise.all([
-        ipRepository.findById(ipId),
-        groupRepository.findByIpId(ipId),
-        importTemplateRepository.findAll(),
-        tagRepository.findUsageOverviewByIpId(ipId),
+        ipRepository.findById(db, ipId),
+        groupRepository.findByIpId(db, ipId),
+        importTemplateRepository.findAll(db),
+        tagRepository.findUsageOverviewByIpId(db, ipId),
         scopeImageIds != null
-          ? imageRepository.findByIds(scopeImageIds)
+          ? imageRepository.findByIds(db, scopeImageIds)
           : importBatchId != null
-          ? imageRepository.findByImportBatchId(importBatchId)
+          ? imageRepository.findByImportBatchId(db, importBatchId)
           : groupId != null
-            ? imageRepository.findByGroupId(groupId)
-            : imageRepository.findByIpId(ipId),
+            ? imageRepository.findByGroupId(db, groupId)
+            : imageRepository.findByIpId(db, ipId),
       ]);
 
       return { ip, groups, importTemplates, tags, images };
@@ -255,7 +255,7 @@ export function BatchManageImagesScreen({
 
     void (async () => {
       try {
-        const group = await runWithDatabaseSpace(space, () => groupRepository.create({ ipId, name: trimmedName, type: newGroupType }));
+        const group = await runWithDatabaseSpace(space, (db) => groupRepository.create(db, { ipId, name: trimmedName, type: newGroupType }));
         setSelectedGroupId(group.id);
         setNewGroupName('');
         setNewGroupType(null);
@@ -287,7 +287,7 @@ export function BatchManageImagesScreen({
       durationMs: 5200,
       onAction: () => {
         void (async () => {
-          const restoredCount = await runWithDatabaseSpace(space, () => restoreBatchUndoSnapshot(undoSnapshot));
+          const restoredCount = await runWithDatabaseSpace(space, (db) => restoreBatchUndoSnapshot(db, undoSnapshot));
           if (restoredCount > 0) {
             onChanged();
             reload();
@@ -301,15 +301,15 @@ export function BatchManageImagesScreen({
   function handleGroupUpdate() {
     void runSubmit(
       async () => {
-        const undoSnapshot = await runWithDatabaseSpace(space, () => captureBatchUndoSnapshot(selectedImageIds));
+        const undoSnapshot = await runWithDatabaseSpace(space, (db) => captureBatchUndoSnapshot(db, selectedImageIds));
         let changedCount = 0;
 
         if (mode === 'replace-group') {
-          changedCount = await runWithDatabaseSpace(space, () => imageRepository.updateManyGroup(selectedImageIds, selectedGroupId));
+          changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.updateManyGroup(db, selectedImageIds, selectedGroupId));
         } else if (selectedGroupId != null && mode === 'add-group') {
-          changedCount = await runWithDatabaseSpace(space, () => imageRepository.addManyToGroup(selectedImageIds, selectedGroupId));
+          changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.addManyToGroup(db, selectedImageIds, selectedGroupId));
         } else if (selectedGroupId != null && mode === 'remove-group') {
-          changedCount = await runWithDatabaseSpace(space, () => imageRepository.removeManyFromGroup(selectedImageIds, selectedGroupId));
+          changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.removeManyFromGroup(db, selectedImageIds, selectedGroupId));
         }
 
         if (changedCount === 0) {
@@ -343,14 +343,14 @@ export function BatchManageImagesScreen({
   function handleAddTags() {
     void runSubmit(
       async () => {
-        const undoSnapshot = await runWithDatabaseSpace(space, () => captureBatchUndoSnapshot(selectedImageIds));
+        const undoSnapshot = await runWithDatabaseSpace(space, (db) => captureBatchUndoSnapshot(db, selectedImageIds));
         const preparedTags = mergeDraftTagNames(draftTags, tagInput);
         if (preparedTags.length !== draftTags.length) {
           setDraftTags(preparedTags);
           setTagInput('');
         }
 
-        const addedTags = await runWithDatabaseSpace(space, () => tagRepository.addTagsToImages(selectedImageIds, preparedTags));
+        const addedTags = await runWithDatabaseSpace(space, (db) => tagRepository.addTagsToImages(db, selectedImageIds, preparedTags));
         if (addedTags.length === 0) {
           throw new Error('没有可添加的标签。');
         }
@@ -382,8 +382,8 @@ export function BatchManageImagesScreen({
   function handleFavoriteUpdate(isFavorite: boolean) {
     void runSubmit(
       async () => {
-        const undoSnapshot = await runWithDatabaseSpace(space, () => captureBatchUndoSnapshot(selectedImageIds));
-        const changedCount = await runWithDatabaseSpace(space, () => imageRepository.updateManyFavorite(selectedImageIds, isFavorite));
+        const undoSnapshot = await runWithDatabaseSpace(space, (db) => captureBatchUndoSnapshot(db, selectedImageIds));
+        const changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.updateManyFavorite(db, selectedImageIds, isFavorite));
         if (changedCount === 0) {
           throw new Error('没有可更新的图片。');
         }
@@ -404,14 +404,14 @@ export function BatchManageImagesScreen({
   function handleApplyTemplate(template: ImportTemplateRecord) {
     void runSubmit(
       async () => {
-        const undoSnapshot = await runWithDatabaseSpace(space, () => captureBatchUndoSnapshot(selectedImageIds));
-        const groupChangedCount = await runWithDatabaseSpace(space, async () => {
-          const existingGroup = await groupRepository.findByIpIdAndName(ipId, template.groupName);
-          const group = existingGroup ?? (await groupRepository.create({ ipId, name: template.groupName, type: 'custom' }));
-          const changedCount = await imageRepository.updateManyGroup(selectedImageIds, group.id);
-          await tagRepository.addTagsToImages(selectedImageIds, template.tags);
-          await imageRepository.updateManyNote(selectedImageIds, template.note);
-          await imageRepository.updateManyFavorite(selectedImageIds, template.isFavorite);
+        const undoSnapshot = await runWithDatabaseSpace(space, (db) => captureBatchUndoSnapshot(db, selectedImageIds));
+        const groupChangedCount = await runWithDatabaseSpace(space, async (db) => {
+          const existingGroup = await groupRepository.findByIpIdAndName(db, ipId, template.groupName);
+          const group = existingGroup ?? (await groupRepository.create(db, { ipId, name: template.groupName, type: 'custom' }));
+          const changedCount = await imageRepository.updateManyGroup(db, selectedImageIds, group.id);
+          await tagRepository.addTagsToImages(db, selectedImageIds, template.tags);
+          await imageRepository.updateManyNote(db, selectedImageIds, template.note);
+          await imageRepository.updateManyFavorite(db, selectedImageIds, template.isFavorite);
           return changedCount;
         });
 
@@ -450,9 +450,9 @@ export function BatchManageImagesScreen({
     setIsDeleteDialogVisible(false);
     void runSubmit(
       async () => {
-        const undoSnapshot = await runWithDatabaseSpace(space, () => captureBatchUndoSnapshot(selectedImageIds));
+        const undoSnapshot = await runWithDatabaseSpace(space, (db) => captureBatchUndoSnapshot(db, selectedImageIds));
         const imageCopies = [...selectedImages];
-        const deletedCount = await runWithDatabaseSpace(space, () => imageRepository.softDeleteMany(selectedImageIds));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, selectedImageIds));
         if (deletedCount === 0) {
           throw new Error('没有可删除的图片。');
         }
@@ -474,7 +474,7 @@ export function BatchManageImagesScreen({
                 : true,
               originalSize: originalInfo.size,
               thumbnailSize: thumbnailInfo?.size ?? null,
-              deletedAt: (await runWithDatabaseSpace(space, () => imageRepository.findById(image.id, { includeDeleted: true })))?.deletedAt ?? null,
+              deletedAt: (await runWithDatabaseSpace(space, (db) => imageRepository.findById(db, image.id, { includeDeleted: true })))?.deletedAt ?? null,
             };
           })
         );
@@ -796,6 +796,7 @@ export function BatchManageImagesScreen({
               onLongPress={() => enterImageSelection(image.id)}
               onPress={handleOpenImage}
               selected={selectedImageIds.includes(image.id)}
+              space={space}
             />
           ))}
         </View>

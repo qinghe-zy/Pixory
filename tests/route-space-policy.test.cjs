@@ -97,6 +97,9 @@ test('IP and group route screens apply route space to repository work', () => {
   for (const routeName of ['edit-ip', 'group-overview', 'create-group', 'edit-group', 'group-images', 'all-images', 'batch-manage-images']) {
     assert.match(appSource, new RegExp(`name: '${routeName}'[\\s\\S]{0,240}space: currentRoute\\.space`), `${routeName} route must pass currentRoute.space`);
   }
+
+  const ipDetailSource = readProjectFile('src/screens/IpDetailScreen.tsx');
+  assert.match(ipDetailSource, /runWithDatabaseSpace\(space[\s\S]{0,120}updatePinned/, 'IpDetail group pin action must write in route space');
 });
 
 test('image, batch, and library route screens apply route space to repository work', () => {
@@ -155,6 +158,6 @@ test('remaining global route screens receive route space and scope repository wo
     assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
   }
 
-  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{'normal'\}/, 'normal Groups tab must stay normal-only');
-  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{'normal'\}/, 'normal Tags tab must stay normal-only');
+  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Groups tab must use the authenticated active space');
+  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Tags tab must use the authenticated active space');
 });

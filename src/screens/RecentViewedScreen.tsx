@@ -29,7 +29,7 @@ export function RecentViewedScreen({
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => runWithDatabaseSpace(space, () => imageRepository.findRecentViewed()),
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db)),
     [refreshToken, space],
     {
       formatError: (error) => {
@@ -64,6 +64,7 @@ export function RecentViewedScreen({
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
       selectedImages={selectedImages}
+      space={space}
       totalCount={images.length}
     />
   ) : undefined;
@@ -99,6 +100,7 @@ export function RecentViewedScreen({
               onLongPress={() => handleImageLongPress(image)}
               onPress={handleOpenImage}
               selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
             />
           ))}
         </View>

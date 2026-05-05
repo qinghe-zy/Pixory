@@ -61,8 +61,8 @@ export function FavoritesScreen({
     tags: TagUsageItem[];
   }>(
     async () => {
-      const [images, ips, groups, tags] = await runWithDatabaseSpace(space, () => Promise.all([
-        imageRepository.findFavorites({
+      const [images, ips, groups, tags] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        imageRepository.findFavorites(db, {
           ipIds: activeFilters.ipIds,
           groupIds: activeFilters.groupIds,
           tagIds: activeFilters.tagIds,
@@ -70,9 +70,9 @@ export function FavoritesScreen({
           minFileSize: activeFilters.size?.minFileSize,
           maxFileSize: activeFilters.size?.maxFileSize,
         }),
-        ipRepository.findAll(),
-        groupRepository.findAll(),
-        tagRepository.findUsageOverview(),
+        ipRepository.findAll(db),
+        groupRepository.findAll(db),
+        tagRepository.findUsageOverview(db),
       ]));
       return { images, ips, groups, tags };
     },
@@ -177,6 +177,7 @@ export function FavoritesScreen({
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
       selectedImages={selectedImages}
+      space={space}
       totalCount={images.length}
     />
   ) : undefined;
@@ -282,6 +283,7 @@ export function FavoritesScreen({
               onLongPress={() => handleImageLongPress(image)}
               onPress={handleOpenImage}
               selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
             />
           ))}
         </View>

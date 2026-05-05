@@ -62,9 +62,9 @@ export function TagResultScreen({
     groups: GroupRecord[];
   }>(
     async () => {
-      const [tag, images, ips, groups] = await runWithDatabaseSpace(space, () => Promise.all([
-        tagRepository.findById(tagId),
-        imageRepository.findByTagId(tagId, {
+      const [tag, images, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        tagRepository.findById(db, tagId),
+        imageRepository.findByTagId(db, tagId, {
           aspectRatio: activeFilters.aspectRatio ?? undefined,
           favoritesOnly: activeFilters.favorite || undefined,
           groupIds: activeFilters.groupIds,
@@ -72,8 +72,8 @@ export function TagResultScreen({
           minFileSize: activeFilters.size?.minFileSize,
           maxFileSize: activeFilters.size?.maxFileSize,
         }),
-        ipRepository.findAll(),
-        groupRepository.findAll(),
+        ipRepository.findAll(db),
+        groupRepository.findAll(db),
       ]));
 
       if (!tag) {
@@ -137,6 +137,7 @@ export function TagResultScreen({
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
       selectedImages={selectedImages}
+      space={space}
       totalCount={images.length}
     />
   ) : undefined;
@@ -283,6 +284,7 @@ export function TagResultScreen({
               onLongPress={() => handleImageLongPress(image)}
               onPress={handleOpenImage}
               selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
             />
           ))}
         </View>

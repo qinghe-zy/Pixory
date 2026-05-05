@@ -23,13 +23,13 @@ export interface PermanentDeleteIpResult {
 }
 
 export async function softDeleteIpToTrash(ipId: number, space: PixorySpace = 'normal'): Promise<SoftDeleteIpResult> {
-  return runWithDatabaseSpace(space, () => ipRepository.softDeleteById(ipId));
+  return runWithDatabaseSpace(space, (db) => ipRepository.softDeleteById(db, ipId));
 }
 
 export async function permanentlyDeleteIp(ipId: number, space: PixorySpace = 'normal'): Promise<PermanentDeleteIpResult> {
-  const { images, databaseResult } = await runWithDatabaseSpace(space, async () => ({
-    images: await imageRepository.findByIpId(ipId, { includeDeleted: true }),
-    databaseResult: await ipRepository.deletePermanentlyById(ipId),
+  const { images, databaseResult } = await runWithDatabaseSpace(space, async (db) => ({
+    images: await imageRepository.findByIpId(db, ipId, { includeDeleted: true }),
+    databaseResult: await ipRepository.deletePermanentlyById(db, ipId),
   }));
   const fileResult = databaseResult.ipDeletedCount > 0 ? await deleteIpImageFiles(images) : { fileDeletedCount: 0, fileFailures: [] };
 

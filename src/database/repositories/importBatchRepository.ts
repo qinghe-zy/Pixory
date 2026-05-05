@@ -1,4 +1,4 @@
-import { getDatabase } from '../db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   CreateImportBatchInput,
   CreateImportBatchItemInput,
@@ -80,8 +80,7 @@ const IMPORT_BATCH_SUMMARY_SELECT = `
 `;
 
 export const importBatchRepository = {
-  async create(input: CreateImportBatchInput): Promise<ImportBatchRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateImportBatchInput): Promise<ImportBatchRecord> {
     const now = createTimestamp();
     const fallbackName = `导入批次 ${now.slice(0, 10)}`;
     const result = await db.runAsync(
@@ -104,7 +103,7 @@ export const importBatchRepository = {
       now
     );
 
-    const record = await this.findById(result.lastInsertRowId);
+    const record = await this.findById(db, result.lastInsertRowId);
     if (!record) {
       throw new Error(`Import batch ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -112,7 +111,7 @@ export const importBatchRepository = {
     return record;
   },
 
-  async update(id: number, input: UpdateImportBatchInput): Promise<ImportBatchRecord | null> {
+  async update(db: SQLiteDatabase, id: number, input: UpdateImportBatchInput): Promise<ImportBatchRecord | null> {
     const updates = buildUpdateStatement({
       name: input.name !== undefined ? requireNonEmptyText(input.name, 'Import batch name') : undefined,
       templateKey: normalizeOptionalText(input.templateKey),
@@ -124,10 +123,8 @@ export const importBatchRepository = {
     });
 
     if (!updates.setClause) {
-      return this.findById(id);
+      return this.findById(db, id);
     }
-
-    const db = await getDatabase();
     const result = await db.runAsync(
       `UPDATE import_batches SET ${updates.setClause} WHERE id = ?`,
       ...updates.values,
@@ -138,25 +135,23 @@ export const importBatchRepository = {
       return null;
     }
 
-    return this.findById(id);
+    return this.findById(db, id);
   },
 
-  async complete(id: number, successCount: number, failedCount: number): Promise<ImportBatchRecord | null> {
-    return this.update(id, {
+  async complete(db: SQLiteDatabase, id: number, successCount: number, failedCount: number): Promise<ImportBatchRecord | null> {
+    return this.update(db, id, {
       successCount,
       failedCount,
       completedAt: createTimestamp(),
     });
   },
 
-  async findById(id: number): Promise<ImportBatchRecord | null> {
-    const db = await getDatabase();
+  async findById(db: SQLiteDatabase, id: number): Promise<ImportBatchRecord | null> {
     const row = await db.getFirstAsync<ImportBatchRow>('SELECT * FROM import_batches WHERE id = ?', id);
     return row ? mapImportBatchRow(row) : null;
   },
 
-  async findSummaryById(id: number): Promise<ImportBatchSummary | null> {
-    const db = await getDatabase();
+  async findSummaryById(db: SQLiteDatabase, id: number): Promise<ImportBatchSummary | null> {
     const row = await db.getFirstAsync<ImportBatchSummaryRow>(
       `${IMPORT_BATCH_SUMMARY_SELECT}
        WHERE import_batches.id = ?
@@ -167,8 +162,7 @@ export const importBatchRepository = {
     return row ? mapImportBatchSummaryRow(row) : null;
   },
 
-  async findRecentByIpId(ipId: number, limit = 5): Promise<ImportBatchSummary[]> {
-    const db = await getDatabase();
+  async findRecentByIpId(db: SQLiteDatabase, ipId: number, limit = 5): Promise<ImportBatchSummary[]> {
     const rows = await db.getAllAsync<ImportBatchSummaryRow>(
       `${IMPORT_BATCH_SUMMARY_SELECT}
        WHERE import_batches.ipId = ?
@@ -182,12 +176,11 @@ export const importBatchRepository = {
     return rows.map(mapImportBatchSummaryRow);
   },
 
-  async findByIpId(ipId: number, limit = 20): Promise<ImportBatchSummary[]> {
-    return this.findRecentByIpId(ipId, limit);
+  async findByIpId(db: SQLiteDatabase, ipId: number, limit = 20): Promise<ImportBatchSummary[]> {
+    return this.findRecentByIpId(db, ipId, limit);
   },
 
-  async createItem(input: CreateImportBatchItemInput): Promise<ImportBatchItemRecord> {
-    const db = await getDatabase();
+  async createItem(db: SQLiteDatabase, input: CreateImportBatchItemInput): Promise<ImportBatchItemRecord> {
     const now = createTimestamp();
     const result = await db.runAsync(
       `INSERT INTO import_batch_items (
@@ -218,8 +211,7 @@ export const importBatchRepository = {
     return mapImportBatchItemRow(record);
   },
 
-  async findItemsByBatchId(importBatchId: number): Promise<ImportBatchItemRecord[]> {
-    const db = await getDatabase();
+  async findItemsByBatchId(db: SQLiteDatabase, importBatchId: number): Promise<ImportBatchItemRecord[]> {
     const rows = await db.getAllAsync<ImportBatchItemRow>(
       'SELECT * FROM import_batch_items WHERE importBatchId = ? ORDER BY id ASC',
       importBatchId
@@ -227,8 +219,7 @@ export const importBatchRepository = {
     return rows.map(mapImportBatchItemRow);
   },
 
-  async countItemsByStatus(importBatchId: number): Promise<ImportBatchItemStatusCount[]> {
-    const db = await getDatabase();
+  async countItemsByStatus(db: SQLiteDatabase, importBatchId: number): Promise<ImportBatchItemStatusCount[]> {
     const rows = await db.getAllAsync<ImportBatchItemStatusCount>(
       `SELECT status, COUNT(*) AS count
        FROM import_batch_items

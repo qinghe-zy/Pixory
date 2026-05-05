@@ -1,4 +1,4 @@
-import { getDatabase } from '../db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   CountRow,
   CreateIpInput,
@@ -101,8 +101,7 @@ function buildLibraryQuery(query?: IpLibraryQuery): { sql: string; values: Array
 }
 
 export const ipRepository = {
-  async create(input: CreateIpInput): Promise<IpRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateIpInput): Promise<IpRecord> {
     const now = createTimestamp();
     const name = requireNonEmptyText(input.name, 'IP name');
     const description = normalizeOptionalText(input.description) ?? null;
@@ -116,7 +115,7 @@ export const ipRepository = {
       now
     );
 
-    const record = await this.findById(result.lastInsertRowId);
+    const record = await this.findById(db, result.lastInsertRowId);
     if (!record) {
       throw new Error(`IP ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -124,8 +123,7 @@ export const ipRepository = {
     return record;
   },
 
-  async update(id: number, input: UpdateIpInput): Promise<IpRecord | null> {
-    const db = await getDatabase();
+  async update(db: SQLiteDatabase, id: number, input: UpdateIpInput): Promise<IpRecord | null> {
     const updates = buildUpdateStatement({
       name: input.name !== undefined ? requireNonEmptyText(input.name, 'IP name') : undefined,
       description: normalizeOptionalText(input.description),
@@ -134,7 +132,7 @@ export const ipRepository = {
     });
 
     if (!updates.setClause) {
-      return this.findById(id);
+      return this.findById(db, id);
     }
 
     const result = await db.runAsync(
@@ -147,36 +145,31 @@ export const ipRepository = {
       return null;
     }
 
-    return this.findById(id);
+    return this.findById(db, id);
   },
 
-  async findById(id: number): Promise<IpRecord | null> {
-    const db = await getDatabase();
+  async findById(db: SQLiteDatabase, id: number): Promise<IpRecord | null> {
     const row = await db.getFirstAsync<IpRow>('SELECT * FROM ips WHERE id = ? AND deletedAt IS NULL', id);
     return row ? mapIpRow(row) : null;
   },
 
-  async findAll(): Promise<IpRecord[]> {
-    const db = await getDatabase();
+  async findAll(db: SQLiteDatabase): Promise<IpRecord[]> {
     const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips WHERE deletedAt IS NULL ORDER BY updatedAt DESC, id DESC');
     return rows.map(mapIpRow);
   },
 
-  async findAllIncludingDeleted(): Promise<IpRecord[]> {
-    const db = await getDatabase();
+  async findAllIncludingDeleted(db: SQLiteDatabase): Promise<IpRecord[]> {
     const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips ORDER BY deletedAt IS NULL DESC, updatedAt DESC, id DESC');
     return rows.map(mapIpRow);
   },
 
-  async findLibraryItems(query?: IpLibraryQuery): Promise<IpListItem[]> {
-    const db = await getDatabase();
+  async findLibraryItems(db: SQLiteDatabase, query?: IpLibraryQuery): Promise<IpListItem[]> {
     const builtQuery = buildLibraryQuery(query);
     const rows = await db.getAllAsync<IpListItemRow>(builtQuery.sql, ...builtQuery.values);
     return rows.map(mapIpListItemRow);
   },
 
-  async findLibraryItemById(id: number): Promise<IpListItem | null> {
-    const db = await getDatabase();
+  async findLibraryItemById(db: SQLiteDatabase, id: number): Promise<IpListItem | null> {
     const row = await db.getFirstAsync<IpListItemRow>(
       `${IP_LIBRARY_SELECT} WHERE ips.id = ? AND ips.deletedAt IS NULL GROUP BY ips.id`,
       id
@@ -184,8 +177,7 @@ export const ipRepository = {
     return row ? mapIpListItemRow(row) : null;
   },
 
-  async findDetailById(id: number): Promise<IpDetailRecord | null> {
-    const db = await getDatabase();
+  async findDetailById(db: SQLiteDatabase, id: number): Promise<IpDetailRecord | null> {
     const row = await db.getFirstAsync<
       IpRow & {
         imageCount: number;
@@ -197,14 +189,12 @@ export const ipRepository = {
     return row ? mapIpDetailRow(row) : null;
   },
 
-  async count(): Promise<number> {
-    const db = await getDatabase();
+  async count(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM ips WHERE deletedAt IS NULL');
     return row?.count ?? 0;
   },
 
-  async softDeleteById(id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number }> {
-    const db = await getDatabase();
+  async softDeleteById(db: SQLiteDatabase, id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number }> {
     const now = createTimestamp();
     let ipDeletedCount = 0;
     let imageDeletedCount = 0;
@@ -230,8 +220,7 @@ export const ipRepository = {
     return { ipDeletedCount, imageDeletedCount };
   },
 
-  async restoreById(id: number): Promise<number> {
-    const db = await getDatabase();
+  async restoreById(db: SQLiteDatabase, id: number): Promise<number> {
     const result = await db.runAsync(
       'UPDATE ips SET deletedAt = NULL, updatedAt = ? WHERE id = ? AND deletedAt IS NOT NULL',
       createTimestamp(),
@@ -240,8 +229,7 @@ export const ipRepository = {
     return result.changes;
   },
 
-  async deletePermanentlyById(id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number; groupDeletedCount: number; importBatchDeletedCount: number }> {
-    const db = await getDatabase();
+  async deletePermanentlyById(db: SQLiteDatabase, id: number): Promise<{ ipDeletedCount: number; imageDeletedCount: number; groupDeletedCount: number; importBatchDeletedCount: number }> {
     let ipDeletedCount = 0;
     let imageDeletedCount = 0;
     let groupDeletedCount = 0;
@@ -264,8 +252,7 @@ export const ipRepository = {
     return { ipDeletedCount, imageDeletedCount, groupDeletedCount, importBatchDeletedCount };
   },
 
-  async deleteById(id: number): Promise<number> {
-    const db = await getDatabase();
+  async deleteById(db: SQLiteDatabase, id: number): Promise<number> {
     const imageCountRow = await db.getFirstAsync<CountRow>(
       'SELECT COUNT(*) AS count FROM image_assets WHERE ipId = ?',
       id

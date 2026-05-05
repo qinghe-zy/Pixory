@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
+import { SecureImage } from '../components/SecureImage';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
@@ -74,13 +75,13 @@ export function IpDetailScreen({
     organizationProgress: Awaited<ReturnType<typeof imageRepository.getOrganizationProgress>>;
   }>(
     async () => {
-      const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, () => Promise.all([
-        ipRepository.findDetailById(ipId),
-        groupRepository.findOverviewByIpId(ipId),
-        imageRepository.findRecentByIpId(ipId, 6),
-        importBatchRepository.findByIpId(ipId, 3),
-        imageRepository.countNeedsOrganizing(ipId),
-        imageRepository.getOrganizationProgress(ipId),
+      const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findDetailById(db, ipId),
+        groupRepository.findOverviewByIpId(db, ipId),
+        imageRepository.findRecentByIpId(db, ipId, 6),
+        importBatchRepository.findByIpId(db, ipId, 3),
+        imageRepository.countNeedsOrganizing(db, ipId),
+        imageRepository.getOrganizationProgress(db, ipId),
       ]));
 
       if (!ip) {
@@ -143,7 +144,7 @@ export function IpDetailScreen({
     setDeleteGroup(null);
     void (async () => {
       try {
-        const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => groupRepository.deleteById(db, group.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个分组。');
         }
@@ -187,7 +188,7 @@ export function IpDetailScreen({
           <>
             <View style={styles.cover}>
               {recentImages[0]?.thumbnailFileUri ? (
-                <Image resizeMode="cover" source={{ uri: recentImages[0].thumbnailFileUri }} style={styles.coverImage} />
+                <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={recentImages[0].thumbnailFileUri} />
               ) : (
                 <View style={styles.coverFallback}>
                   <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
@@ -327,6 +328,7 @@ export function IpDetailScreen({
                     key={image.id}
                     onLongPress={() => handleImageLongPress(image)}
                     onPress={handleOpenRecentImage}
+                    space={space}
                   />
                 ))}
               </View>
@@ -345,7 +347,7 @@ export function IpDetailScreen({
           icon: 'pin-outline',
           onPress: () => {
             void (async () => {
-              await groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned);
+              await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroup.id, !actionGroup.isPinned));
               showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
               reload();
             })();

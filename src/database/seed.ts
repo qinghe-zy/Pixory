@@ -2,43 +2,45 @@ import { groupRepository } from './repositories/groupRepository';
 import { imageRepository } from './repositories/imageRepository';
 import { ipRepository } from './repositories/ipRepository';
 import { tagRepository } from './repositories/tagRepository';
+import { getDatabase } from './db';
 import { devLog } from '../utils/dev';
 
 export async function seedDevelopmentData(): Promise<void> {
-  const existingIpCount = await ipRepository.count();
+  const db = await getDatabase('normal');
+  const existingIpCount = await ipRepository.count(db);
   if (existingIpCount > 0) {
     devLog('Pixory seed skipped: database already contains IP records.');
     return;
   }
 
-  const mainIp = await ipRepository.create({
+  const mainIp = await ipRepository.create(db, {
     name: 'Demo Character Collection',
     description: 'Seed data for validating Pixory list and detail UI states.',
   });
 
-  const alternateIp = await ipRepository.create({
+  const alternateIp = await ipRepository.create(db, {
     name: 'Festival Poster Set',
     description: 'Secondary seed IP used for filters and grouping checks.',
   });
 
-  const portraitGroup = await groupRepository.create({
+  const portraitGroup = await groupRepository.create(db, {
     ipId: mainIp.id,
     name: 'Portrait',
     type: 'scene',
     sortOrder: 1,
   });
 
-  const holidayGroup = await groupRepository.create({
+  const holidayGroup = await groupRepository.create(db, {
     ipId: alternateIp.id,
     name: 'Spring Festival',
     type: 'festival',
     sortOrder: 1,
   });
 
-  const warmTag = await tagRepository.create({ name: 'Warm Tone' });
-  const keyVisualTag = await tagRepository.create({ name: 'Key Visual' });
+  const warmTag = await tagRepository.create(db, { name: 'Warm Tone' });
+  const keyVisualTag = await tagRepository.create(db, { name: 'Key Visual' });
 
-  const firstImage = await imageRepository.create({
+  const firstImage = await imageRepository.create(db, {
     ipId: mainIp.id,
     groupId: portraitGroup.id,
     originalFileUri: 'file:///pixory/assets/original/ip_1/demo-portrait-1.jpg',
@@ -53,7 +55,7 @@ export async function seedDevelopmentData(): Promise<void> {
     note: 'Seed image used to validate favorite badge and note rendering.',
   });
 
-  const secondImage = await imageRepository.create({
+  const secondImage = await imageRepository.create(db, {
     ipId: alternateIp.id,
     groupId: holidayGroup.id,
     originalFileUri: 'file:///pixory/assets/original/ip_2/demo-festival-1.png',
@@ -67,8 +69,8 @@ export async function seedDevelopmentData(): Promise<void> {
     note: 'Seed image reserved for future grid and metadata checks.',
   });
 
-  await tagRepository.replaceImageTags(firstImage.id, [warmTag.id, keyVisualTag.id]);
-  await tagRepository.replaceImageTags(secondImage.id, [keyVisualTag.id]);
+  await tagRepository.replaceImageTags(db, firstImage.id, [warmTag.id, keyVisualTag.id]);
+  await tagRepository.replaceImageTags(db, secondImage.id, [keyVisualTag.id]);
 
   devLog('Pixory seed data created successfully.');
 }

@@ -50,17 +50,17 @@ test('quick organize still surfaces missing organization fields and supports imp
   const quickOrganizeSource = readProjectFile('src/screens/QuickOrganizeScreen.tsx');
   const needsOrganizingSource = readFunctionSlice(
     imageRepositorySource,
-    'async findNeedsOrganizing(scope?: NeedsOrganizingScope | number)',
+    'async findNeedsOrganizing(db: SQLiteDatabase, scope?: NeedsOrganizingScope | number)',
     'async findSuspectedDuplicateGroupsByImportBatchId'
   );
 
-  assert.match(imageRepositorySource, /findNeedsOrganizing\(scope\?:\s*NeedsOrganizingScope/);
+  assert.match(imageRepositorySource, /findNeedsOrganizing\(db:\s*SQLiteDatabase,\s*scope\?:\s*NeedsOrganizingScope/);
   assert.match(needsOrganizingSource, /NOT EXISTS \(SELECT 1 FROM image_groups/);
   assert.doesNotMatch(needsOrganizingSource, /OR NOT EXISTS \(SELECT 1 FROM image_tags/);
   assert.doesNotMatch(needsOrganizingSource, /OR image_assets\.note IS NULL/);
   assert.match(importBatchReviewSource, /image\.groupCount > 0\)\.length/);
   assert.match(quickOrganizeSource, /importBatchId\?: number \| null/);
-  assert.match(quickOrganizeSource, /findNeedsOrganizing\(\{\s*ipId,\s*importBatchId/);
+  assert.match(quickOrganizeSource, /findNeedsOrganizing\(db,\s*\{\s*ipId,\s*importBatchId/);
 });
 
 test('batch manage same-prefix selection ignores weak filename prefixes', () => {
@@ -155,7 +155,7 @@ test('quick organize uses a stable cursor and does not auto-advance after metada
   assert.match(source, /selectedQueueTile/);
   assert.match(source, /onOpenImage/);
   assert.match(source, /handleAutoSaveTags/);
-  assert.match(source, /tagRepository\.setImageTags\(current\.id,\s*tags\)/);
+  assert.match(source, /tagRepository\.setImageTags\(db,\s*current\.id,\s*tags\)/);
   assert.match(source, /areSameTagNames/);
   assert.match(source, /bulkTagTargetCount/);
   assert.match(source, /numberOfLines=\{2\}/);
@@ -182,7 +182,7 @@ test('import batch pile management scopes batch screen to the selected pile', ()
   assert.match(appSource, /scopeImageIds\?: number\[\]/);
   assert.match(appSource, /scopeImageIds: imageIds/);
   assert.match(batchSource, /scopeImageIds/);
-  assert.match(batchSource, /imageRepository\.findByIds\(scopeImageIds/);
+  assert.match(batchSource, /imageRepository\.findByIds\(db,\s*scopeImageIds/);
   assert.match(batchSource, /type: 'image-scope'/);
   assert.match(batchSource, /当前堆/);
   assert.match(reviewSource, /管理这堆/);
@@ -226,7 +226,7 @@ test('tag and group result pages expose dedicated secondary filters', () => {
 
   assert.match(tagResultSource, /activeFilters/);
   assert.match(tagResultSource, /activeFilterDropdown/);
-  assert.match(tagResultSource, /findByTagId\(tagId,\s*\{/);
+  assert.match(tagResultSource, /findByTagId\(db,\s*tagId,\s*\{/);
   assert.match(tagResultSource, /ipIds: activeFilters\.ipIds/);
   assert.match(tagResultSource, /groupIds: activeFilters\.groupIds/);
   assert.match(tagResultSource, /favoritesOnly: activeFilters\.favorite/);
@@ -238,10 +238,10 @@ test('tag and group result pages expose dedicated secondary filters', () => {
 
   assert.match(groupSource, /activeFilters/);
   assert.match(groupSource, /activeFilterDropdown/);
-  assert.match(groupSource, /findByGroupId\(groupId,\s*\{/);
+  assert.match(groupSource, /findByGroupId\(db,\s*groupId,\s*\{/);
   assert.match(groupSource, /tagIds: activeFilters\.tagIds/);
   assert.match(groupSource, /favoritesOnly: activeFilters\.favorite/);
-  assert.match(groupSource, /tagRepository\.findUsageOverviewByIpId\(ipId\)/);
+  assert.match(groupSource, /tagRepository\.findUsageOverviewByIpId\(db,\s*ipId\)/);
   assert.match(groupSource, /标签筛选/);
   assert.match(groupSource, /尺寸筛选/);
   assert.match(groupSource, /收藏/);
@@ -309,8 +309,8 @@ test('import batches expose history and current-batch duplicate review without f
 
   assert.match(appSource, /import-batch-history/);
   assert.match(appSource, /duplicate-review/);
-  assert.match(importBatchRepositorySource, /findByIpId\(ipId: number/);
-  assert.match(imageRepositorySource, /findSuspectedDuplicateGroupsByImportBatchId\(importBatchId: number/);
+  assert.match(importBatchRepositorySource, /findByIpId\(db:\s*SQLiteDatabase,\s*ipId: number/);
+  assert.match(imageRepositorySource, /findSuspectedDuplicateGroupsByImportBatchId\(db:\s*SQLiteDatabase,\s*importBatchId: number/);
   assert.doesNotMatch(imageRepositorySource, /findSuspectedDuplicateGroups\(\)/);
 });
 

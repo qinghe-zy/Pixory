@@ -1,4 +1,4 @@
-import { getDatabase } from '../db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type { AppSettingRecord } from '../types';
 import { createTimestamp } from '../utils';
 
@@ -7,8 +7,7 @@ const RECENT_IMPORT_GROUP_IDS_KEY = 'recentImportGroupIds';
 const LAST_BACKUP_AT_KEY = 'lastBackupAt';
 
 export const settingsRepository = {
-  async getValue(key: string): Promise<string | null> {
-    const db = await getDatabase();
+  async getValue(db: SQLiteDatabase, key: string): Promise<string | null> {
     const row = await db.getFirstAsync<AppSettingRecord>(
       'SELECT key, value, updatedAt FROM app_settings WHERE key = ?',
       key
@@ -17,8 +16,7 @@ export const settingsRepository = {
     return row?.value ?? null;
   },
 
-  async setValue(key: string, value: string | null): Promise<void> {
-    const db = await getDatabase();
+  async setValue(db: SQLiteDatabase, key: string, value: string | null): Promise<void> {
     const now = createTimestamp();
 
     await db.runAsync(
@@ -31,16 +29,16 @@ export const settingsRepository = {
     );
   },
 
-  async getProfileAvatarUri(): Promise<string | null> {
-    return this.getValue(PROFILE_AVATAR_KEY);
+  async getProfileAvatarUri(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, PROFILE_AVATAR_KEY);
   },
 
-  async setProfileAvatarUri(uri: string | null): Promise<void> {
-    await this.setValue(PROFILE_AVATAR_KEY, uri);
+  async setProfileAvatarUri(db: SQLiteDatabase, uri: string | null): Promise<void> {
+    await this.setValue(db, PROFILE_AVATAR_KEY, uri);
   },
 
-  async getRecentImportGroupIds(): Promise<number[]> {
-    const value = await this.getValue(RECENT_IMPORT_GROUP_IDS_KEY);
+  async getRecentImportGroupIds(db: SQLiteDatabase): Promise<number[]> {
+    const value = await this.getValue(db, RECENT_IMPORT_GROUP_IDS_KEY);
     if (!value) {
       return [];
     }
@@ -53,18 +51,18 @@ export const settingsRepository = {
     }
   },
 
-  async rememberImportGroupIds(groupIds: number[]): Promise<void> {
-    const current = await this.getRecentImportGroupIds();
+  async rememberImportGroupIds(db: SQLiteDatabase, groupIds: number[]): Promise<void> {
+    const current = await this.getRecentImportGroupIds(db);
     const next = [...new Set([...groupIds, ...current])].filter((groupId) => Number.isInteger(groupId) && groupId > 0).slice(0, 5);
-    await this.setValue(RECENT_IMPORT_GROUP_IDS_KEY, JSON.stringify(next));
+    await this.setValue(db, RECENT_IMPORT_GROUP_IDS_KEY, JSON.stringify(next));
   },
 
-  async getLastBackupAt(): Promise<string | null> {
-    return this.getValue(LAST_BACKUP_AT_KEY);
+  async getLastBackupAt(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, LAST_BACKUP_AT_KEY);
   },
 
-  async setLastBackupAt(value: string): Promise<void> {
-    await this.setValue(LAST_BACKUP_AT_KEY, value);
+  async setLastBackupAt(db: SQLiteDatabase, value: string): Promise<void> {
+    await this.setValue(db, LAST_BACKUP_AT_KEY, value);
   },
 };
 

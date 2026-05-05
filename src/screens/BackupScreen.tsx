@@ -15,8 +15,6 @@ import {
   createEncryptedPersonalPack,
   createFullBackup,
   createIpBackup,
-  createPersonalIpPlainBackup,
-  createPersonalPlainBackup,
   exportBackupToSystemDirectory,
   importEncryptedPersonalPack,
   type BackupResult,
@@ -24,14 +22,16 @@ import {
 } from '../services/backupService';
 import { formatDateTime, formatFileSize } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
+import type { PersonalTaskToken } from '../services/personalTaskToken';
 
 interface BackupScreenProps {
   space?: PixorySpace;
+  taskToken?: PersonalTaskToken | null;
   refreshToken: number;
   onBack: () => void;
 }
 
-export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupScreenProps) {
+export function BackupScreen({ space = 'normal', taskToken = null, refreshToken, onBack }: BackupScreenProps) {
   const { showToast } = useToast();
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -41,7 +41,7 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
   const [personalSecret, setPersonalSecret] = useState('');
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ips: IpRecord[]; lastBackupAt: string | null }>(
     async () => {
-      const [ips, lastBackupAt] = await runWithDatabaseSpace(space, () => Promise.all([ipRepository.findAll(), settingsRepository.getLastBackupAt()]));
+      const [ips, lastBackupAt] = await runWithDatabaseSpace(space, (db) => Promise.all([ipRepository.findAll(db), settingsRepository.getLastBackupAt(db)]));
       return { ips, lastBackupAt };
     },
     [refreshToken, space],
@@ -114,6 +114,7 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
         packageUri: pickResult.assets[0].uri,
         secret: personalSecret,
         mode: 'merge',
+        taskToken,
       });
       showToast(`已合并导入 ${result.importedIpCount} 个 IP，${result.importedImageCount} 张图片`);
       reload();
@@ -147,7 +148,9 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
         <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={18} />
         <View style={styles.safetyCopy}>
           <Text style={styles.safetyTitle}>完整备份包含 SQLite、原图、缩略图和 manifest</Text>
-          <Text style={styles.safetyText}>原图按原文件复制；缩略图是独立预览文件，不压缩、不重编码。</Text>
+          <Text style={styles.safetyText}>
+            原图按原文件复制；缩略图是独立预览文件，不压缩、不重编码。普通备份不包含隐私系统数据。
+          </Text>
         </View>
       </View>
 
@@ -159,7 +162,7 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
       {space === 'personal' ? (
         <View style={styles.personalExportPanel}>
           <Text style={styles.sectionTitle}>隐私导出</Text>
-          <Text style={styles.resultHint}>隐私普通导出会把 private 数据明文写入你选择的导出目录；加密导出会生成单个 .pixorypack。</Text>
+          <Text style={styles.resultHint}>隐私数据只能从已解锁的隐私模式导出为加密 .pixorypack。</Text>
           <TextInput
             onChangeText={setPersonalSecret}
             placeholder="再次输入 Personal System 密码"
@@ -170,21 +173,14 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
           />
           <PrimaryButton
             disabled={isBackingUp || !personalSecret.trim()}
-            label={isBackingUp ? '导出中' : '普通导出隐私数据'}
-            loading={isBackingUp}
-            onPress={() => runBackup(() => createPersonalPlainBackup(personalSecret), '隐私普通备份已生成')}
-            variant="outline"
-          />
-          <PrimaryButton
-            disabled={isBackingUp || !personalSecret.trim()}
             label={isBackingUp ? '加密中' : '加密导出隐私 .pixorypack'}
             loading={isBackingUp}
-            onPress={() => runEncryptedExport(() => createEncryptedPersonalPack(personalSecret), '隐私加密包已生成')}
+            onPress={() => runEncryptedExport(() => createEncryptedPersonalPack(personalSecret, taskToken), '隐私加密包已生成')}
           />
           <PrimaryButton
             disabled={isBackingUp || !personalSecret.trim()}
             label="加密导出全部数据"
-            onPress={() => runEncryptedExport(() => createEncryptedAllPack(personalSecret), '全部数据加密包已生成')}
+            onPress={() => runEncryptedExport(() => createEncryptedAllPack(personalSecret, taskToken), '全部数据加密包已生成')}
             variant="outline"
           />
           <PrimaryButton
@@ -230,40 +226,36 @@ export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupS
         </View>
       ) : null}
 
-      <PageStateBlock
-        emptyDescription="创建 IP 后，可以导出单个 IP 资产包。"
-        emptyIconName="archive-outline"
-        emptyTitle="没有可导出的 IP"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && ips.length === 0}
-        loading={isLoading}
-        loadingDescription="正在读取可导出的 IP。"
-        loadingTitle="读取备份信息"
-        onRetry={reload}
-      >
-        <View style={styles.ipList}>
-          <Text style={styles.sectionTitle}>导出单个 IP 资产包</Text>
-          {ips.map((ip) => (
-            <Pressable
-              disabled={space === 'personal' && !personalSecret.trim()}
-              key={ip.id}
-              onPress={() =>
-                runBackup(
-                  () => (space === 'personal' ? createPersonalIpPlainBackup(personalSecret, ip.id) : createIpBackup(ip.id, 'normal')),
-                  `已导出「${ip.name}」`
-                )
-              }
-              style={({ pressed }) => [styles.ipRow, space === 'personal' && !personalSecret.trim() ? styles.disabledRow : null, pressed && styles.pressed]}
-            >
-              <View style={styles.ipCopy}>
-                <Text numberOfLines={1} style={styles.ipName}>{ip.name}</Text>
-                <Text style={styles.ipMeta}>SQLite 副本 + 当前 IP 原图和缩略图</Text>
-              </View>
-              <Ionicons color={colors.primary.default} name="download-outline" size={18} />
-            </Pressable>
-          ))}
-        </View>
-      </PageStateBlock>
+      {space === 'normal' ? (
+        <PageStateBlock
+          emptyDescription="创建 IP 后，可以导出单个 IP 资产包。"
+          emptyIconName="archive-outline"
+          emptyTitle="没有可导出的 IP"
+          errorMessage={errorMessage}
+          isEmpty={!isLoading && ips.length === 0}
+          loading={isLoading}
+          loadingDescription="正在读取可导出的 IP。"
+          loadingTitle="读取备份信息"
+          onRetry={reload}
+        >
+          <View style={styles.ipList}>
+            <Text style={styles.sectionTitle}>导出单个 IP 资产包</Text>
+            {ips.map((ip) => (
+              <Pressable
+                key={ip.id}
+                onPress={() => runBackup(() => createIpBackup(ip.id, 'normal'), `已导出「${ip.name}」`)}
+                style={({ pressed }) => [styles.ipRow, pressed && styles.pressed]}
+              >
+                <View style={styles.ipCopy}>
+                  <Text numberOfLines={1} style={styles.ipName}>{ip.name}</Text>
+                  <Text style={styles.ipMeta}>SQLite 副本 + 当前 IP 原图和缩略图</Text>
+                </View>
+                <Ionicons color={colors.primary.default} name="download-outline" size={18} />
+              </Pressable>
+            ))}
+          </View>
+        </PageStateBlock>
+      ) : null}
     </ScreenScaffold>
   );
 }

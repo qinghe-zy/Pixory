@@ -84,14 +84,14 @@ export function AllImagesScreen({
     tags: TagUsageItem[];
   }>(
     async () => {
-      return runWithDatabaseSpace(space, async () => {
+      return runWithDatabaseSpace(space, async (db) => {
       const [ip, groups, tags] = await Promise.all([
-        ipRepository.findById(ipId),
-        groupRepository.findByIpId(ipId),
-        tagRepository.findUsageOverviewByIpId(ipId),
+        ipRepository.findById(db, ipId),
+        groupRepository.findByIpId(db, ipId),
+        tagRepository.findUsageOverviewByIpId(db, ipId),
       ]);
 
-      const baseImages = await imageRepository.findByIpId(ipId, {
+      const baseImages = await imageRepository.findByIpId(db, ipId, {
         favoritesOnly: activeFilters.favorite || undefined,
         ungroupedOnly: activeFilters.ungrouped || undefined,
         untaggedOnly: activeFilters.untagged || undefined,
@@ -253,6 +253,7 @@ export function AllImagesScreen({
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
       selectedImages={selectedImages}
+      space={space}
       totalCount={images.length}
     />
   ) : undefined;
@@ -394,6 +395,7 @@ export function AllImagesScreen({
               onLongPress={handleImageLongPress}
               onPress={handleOpenImage}
               selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
             />
           ))}
         </View>

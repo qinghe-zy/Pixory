@@ -1,4 +1,4 @@
-import { getDatabase } from '../db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   CountRow,
   CreateGroupInput,
@@ -21,8 +21,7 @@ import {
   requireNonEmptyText,
 } from '../utils';
 
-async function touchIpUpdatedAt(ipId: number): Promise<void> {
-  const db = await getDatabase();
+async function touchIpUpdatedAt(db: SQLiteDatabase, ipId: number): Promise<void> {
   await db.runAsync('UPDATE ips SET updatedAt = ? WHERE id = ?', createTimestamp(), ipId);
 }
 
@@ -56,8 +55,7 @@ const GROUP_OVERVIEW_SELECT = `
 `;
 
 export const groupRepository = {
-  async create(input: CreateGroupInput): Promise<GroupRecord> {
-    const db = await getDatabase();
+  async create(db: SQLiteDatabase, input: CreateGroupInput): Promise<GroupRecord> {
     const now = createTimestamp();
     const name = requireNonEmptyText(input.name, 'Group name');
     const type = input.type ? requireNonEmptyText(input.type, 'Group type') : 'custom';
@@ -77,9 +75,9 @@ export const groupRepository = {
       now
     );
 
-    await touchIpUpdatedAt(input.ipId);
+    await touchIpUpdatedAt(db, input.ipId);
 
-    const record = await this.findById(result.lastInsertRowId);
+    const record = await this.findById(db, result.lastInsertRowId);
     if (!record) {
       throw new Error(`Group ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -87,9 +85,8 @@ export const groupRepository = {
     return record;
   },
 
-  async update(id: number, input: UpdateGroupInput): Promise<GroupRecord | null> {
-    const db = await getDatabase();
-    const current = await this.findById(id);
+  async update(db: SQLiteDatabase, id: number, input: UpdateGroupInput): Promise<GroupRecord | null> {
+    const current = await this.findById(db, id);
     if (!current) {
       return null;
     }
@@ -118,30 +115,27 @@ export const groupRepository = {
       return null;
     }
 
-    await touchIpUpdatedAt(input.ipId ?? current.ipId);
+    await touchIpUpdatedAt(db, input.ipId ?? current.ipId);
     if (input.ipId && input.ipId !== current.ipId) {
-      await touchIpUpdatedAt(current.ipId);
+      await touchIpUpdatedAt(db, current.ipId);
     }
 
-    return this.findById(id);
+    return this.findById(db, id);
   },
 
-  async findById(id: number): Promise<GroupRecord | null> {
-    const db = await getDatabase();
+  async findById(db: SQLiteDatabase, id: number): Promise<GroupRecord | null> {
     const row = await db.getFirstAsync<GroupRow>('SELECT * FROM groups WHERE id = ?', id);
     return row ? mapGroupRow(row) : null;
   },
 
-  async findAll(): Promise<GroupRecord[]> {
-    const db = await getDatabase();
+  async findAll(db: SQLiteDatabase): Promise<GroupRecord[]> {
     const rows = await db.getAllAsync<GroupRow>(
       'SELECT * FROM groups ORDER BY ipId ASC, isPinned DESC, sortOrder ASC, updatedAt DESC, id DESC'
     );
     return rows.map(mapGroupRow);
   },
 
-  async findByIpId(ipId: number): Promise<GroupRecord[]> {
-    const db = await getDatabase();
+  async findByIpId(db: SQLiteDatabase, ipId: number): Promise<GroupRecord[]> {
     const rows = await db.getAllAsync<GroupRow>(
       'SELECT * FROM groups WHERE ipId = ? ORDER BY isPinned DESC, type ASC, sortOrder ASC, updatedAt DESC, id DESC',
       ipId
@@ -149,8 +143,7 @@ export const groupRepository = {
     return rows.map(mapGroupRow);
   },
 
-  async findByIpIdAndName(ipId: number, name: string): Promise<GroupRecord | null> {
-    const db = await getDatabase();
+  async findByIpIdAndName(db: SQLiteDatabase, ipId: number, name: string): Promise<GroupRecord | null> {
     const row = await db.getFirstAsync<GroupRow>(
       'SELECT * FROM groups WHERE ipId = ? AND name = ? COLLATE NOCASE LIMIT 1',
       ipId,
@@ -159,8 +152,7 @@ export const groupRepository = {
     return row ? mapGroupRow(row) : null;
   },
 
-  async findOverviewByIpId(ipId: number): Promise<GroupListItem[]> {
-    const db = await getDatabase();
+  async findOverviewByIpId(db: SQLiteDatabase, ipId: number): Promise<GroupListItem[]> {
     const rows = await db.getAllAsync<GroupListItemRow>(
       `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`,
       ipId
@@ -168,23 +160,20 @@ export const groupRepository = {
     return rows.map(mapGroupListItemRow);
   },
 
-  async findOverview(): Promise<GlobalGroupListItem[]> {
-    const db = await getDatabase();
+  async findOverview(db: SQLiteDatabase): Promise<GlobalGroupListItem[]> {
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
       `${GROUP_OVERVIEW_SELECT} WHERE ips.deletedAt IS NULL GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
     );
     return rows.map(mapGlobalGroupListItemRow);
   },
 
-  async count(): Promise<number> {
-    const db = await getDatabase();
+  async count(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>('SELECT COUNT(*) AS count FROM groups');
     return row?.count ?? 0;
   },
 
-  async deleteById(id: number): Promise<number> {
-    const db = await getDatabase();
-    const current = await this.findById(id);
+  async deleteById(db: SQLiteDatabase, id: number): Promise<number> {
+    const current = await this.findById(db, id);
     if (!current) {
       return 0;
     }
@@ -218,8 +207,8 @@ export const groupRepository = {
     return changedCount;
   },
 
-  async updatePinned(id: number, isPinned: boolean): Promise<GroupRecord | null> {
-    return this.update(id, { isPinned });
+  async updatePinned(db: SQLiteDatabase, id: number, isPinned: boolean): Promise<GroupRecord | null> {
+    return this.update(db, id, { isPinned });
   },
 };
 

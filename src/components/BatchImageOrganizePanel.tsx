@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
+import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 import { AppDialog } from './AppDialog';
@@ -19,6 +19,7 @@ type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'a
 
 interface BatchImageOrganizePanelProps {
   selectedImages: ImageListItem[];
+  space?: PixorySpace;
   totalCount: number;
   currentGroupId?: number | null;
   onClearSelection: () => void;
@@ -28,6 +29,7 @@ interface BatchImageOrganizePanelProps {
 
 export function BatchImageOrganizePanel({
   selectedImages,
+  space = 'normal',
   totalCount,
   currentGroupId = null,
   onClearSelection,
@@ -67,10 +69,10 @@ export function BatchImageOrganizePanel({
       }
 
       try {
-        const [nextGroups, nextTags] = await Promise.all([
-          groupRepository.findByIpId(singleIpId),
-          tagRepository.findUsageOverviewByIpId(singleIpId),
-        ]);
+        const [nextGroups, nextTags] = await runWithDatabaseSpace(space, (db) => Promise.all([
+          groupRepository.findByIpId(db, singleIpId),
+          tagRepository.findUsageOverviewByIpId(db, singleIpId),
+        ]));
         if (isMounted) {
           setGroups(nextGroups);
           setAvailableTags(nextTags);
@@ -132,7 +134,9 @@ export function BatchImageOrganizePanel({
     }
 
     try {
-      const group = await groupRepository.create({ ipId: singleIpId, name: trimmedName, type: newGroupType });
+      const group = await runWithDatabaseSpace(space, (db) =>
+        groupRepository.create(db, { ipId: singleIpId, name: trimmedName, type: newGroupType })
+      );
       setGroups((current) => [group, ...current]);
       setSelectedGroupId(group.id);
       setNewGroupName('');
@@ -178,15 +182,21 @@ export function BatchImageOrganizePanel({
       }
 
       let changedCount = 0;
-      if (mode === 'replace-group') {
-        changedCount = await imageRepository.updateManyGroup(selectedImageIds, selectedGroupId);
-      } else if (selectedGroupId != null && mode === 'add-group') {
-        changedCount = await imageRepository.addManyToGroup(selectedImageIds, selectedGroupId);
-      } else if (currentGroupId != null && mode === 'remove-group') {
-        changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, currentGroupId);
-      } else if (selectedGroupId != null && mode === 'remove-group') {
-        changedCount = await imageRepository.removeManyFromGroup(selectedImageIds, selectedGroupId);
-      }
+      changedCount = await runWithDatabaseSpace(space, async (db) => {
+        if (mode === 'replace-group') {
+          return imageRepository.updateManyGroup(db, selectedImageIds, selectedGroupId);
+        }
+        if (selectedGroupId != null && mode === 'add-group') {
+          return imageRepository.addManyToGroup(db, selectedImageIds, selectedGroupId);
+        }
+        if (currentGroupId != null && mode === 'remove-group') {
+          return imageRepository.removeManyFromGroup(db, selectedImageIds, currentGroupId);
+        }
+        if (selectedGroupId != null && mode === 'remove-group') {
+          return imageRepository.removeManyFromGroup(db, selectedImageIds, selectedGroupId);
+        }
+        return 0;
+      });
 
       if (changedCount === 0) {
         throw new Error('没有需要更新的图片。');
@@ -212,7 +222,7 @@ export function BatchImageOrganizePanel({
         throw new Error('请至少输入一个标签。');
       }
 
-      const addedTags = await tagRepository.addTagsToImages(selectedImageIds, preparedTags);
+      const addedTags = await runWithDatabaseSpace(space, (db) => tagRepository.addTagsToImages(db, selectedImageIds, preparedTags));
       if (addedTags.length === 0) {
         throw new Error('没有可添加的标签。');
       }
@@ -227,7 +237,7 @@ export function BatchImageOrganizePanel({
         throw new Error('请先选择至少一张图片。');
       }
 
-      const changedCount = await imageRepository.updateManyFavorite(selectedImageIds, isFavorite);
+      const changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.updateManyFavorite(db, selectedImageIds, isFavorite));
       if (changedCount === 0) {
         throw new Error('没有可更新的图片。');
       }
@@ -242,7 +252,7 @@ export function BatchImageOrganizePanel({
 
     void runAction(
       async () => {
-        const deletedCount = await imageRepository.softDeleteMany(idsToDelete);
+        const deletedCount = await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, idsToDelete));
         if (deletedCount === 0) {
           throw new Error('没有可删除的图片。');
         }
@@ -257,7 +267,7 @@ export function BatchImageOrganizePanel({
           durationMs: 5200,
           onAction: () => {
             void (async () => {
-              const restoredCount = await imageRepository.restoreMany(idsToDelete);
+              const restoredCount = await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, idsToDelete));
               if (restoredCount > 0) {
                 onChanged();
                 showToast('已恢复');

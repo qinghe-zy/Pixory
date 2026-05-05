@@ -42,11 +42,11 @@ export function GlobalSearchScreen({
         return { groups: [], images: [], ips: [], tags: [] };
       }
 
-      const [ips, allGroups, allTags, images] = await runWithDatabaseSpace(space, () => Promise.all([
-        ipRepository.findLibraryItems({ searchText: keyword }),
-        groupRepository.findOverview(),
-        tagRepository.findUsageOverview(),
-        imageRepository.findFiltered({ searchText: keyword }),
+      const [ips, allGroups, allTags, images] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findLibraryItems(db, { searchText: keyword }),
+        groupRepository.findOverview(db),
+        tagRepository.findUsageOverview(db),
+        imageRepository.findFiltered(db, { searchText: keyword }),
       ]));
       const lower = keyword.toLowerCase();
 
@@ -105,7 +105,7 @@ export function GlobalSearchScreen({
           <ResultSection title="图片" count={images.length}>
             <View style={styles.grid}>
               {images.map((image) => (
-                <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} />
+                <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
               ))}
             </View>
           </ResultSection>

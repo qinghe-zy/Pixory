@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SecureImage } from '../components/SecureImage';
 import { imageRepository, runWithDatabaseSpace, type PixorySpace, type SuspectedDuplicateGroup } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -17,7 +18,7 @@ interface DuplicateReviewScreenProps {
 
 export function DuplicateReviewScreen({ importBatchId, space = 'normal', refreshToken, onBack }: DuplicateReviewScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad<SuspectedDuplicateGroup[]>(
-    () => runWithDatabaseSpace(space, () => imageRepository.findSuspectedDuplicateGroupsByImportBatchId(importBatchId)),
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findSuspectedDuplicateGroupsByImportBatchId(db, importBatchId)),
     [importBatchId, refreshToken, space],
     {
       initialData: [],
@@ -65,7 +66,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
                   <View key={image.id} style={styles.imageRow}>
                     <View style={styles.thumb}>
                       {image.thumbnailFileUri ? (
-                        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.thumbImage} />
+                        <SecureImage contentFit="cover" space={space} style={styles.thumbImage} uri={image.thumbnailFileUri} />
                       ) : (
                         <Ionicons color={colors.text.tertiary} name="image-outline" size={16} />
                       )}

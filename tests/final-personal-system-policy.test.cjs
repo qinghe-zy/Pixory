@@ -9,54 +9,62 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
 }
 
-test('App owns Personal System unlock state and guards personal-space routes after relock', () => {
+test('App owns unified personal mode session state and removes the standalone console route', () => {
   const appSource = readProjectFile('App.tsx');
 
-  assert.match(appSource, /type PersonalUnlockState\s*=\s*'locked'\s*\|\s*'unlocked'/);
-  assert.match(appSource, /useState<PersonalUnlockState>\('locked'\)/);
-  assert.match(appSource, /function lockPersonalSystem/);
+  assert.doesNotMatch(appSource, /PersonalSystemScreen/);
+  assert.doesNotMatch(appSource, /name:\s*'personal-system'/);
+  assert.match(appSource, /type PersonalSessionState\s*=\s*'locked'\s*\|\s*'unlocking'\s*\|\s*'unlocked'\s*\|\s*'locking'/);
+  assert.match(appSource, /type SpaceSession\s*=\s*\{/);
+  assert.match(appSource, /sessionId:\s*string/);
+  assert.match(appSource, /generation:\s*number/);
+  assert.match(appSource, /taskToken:\s*PersonalTaskToken/);
+  assert.match(appSource, /useState<PersonalSessionState>\('locked'\)/);
+  assert.match(appSource, /function lockPersonalSpace\(reason:\s*PersonalLockReason/);
+  assert.match(appSource, /setPrivacyShieldVisible\(true\)[\s\S]{0,700}invalidatePersonalTaskToken/);
   assert.match(appSource, /function isPersonalRoute/);
-  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,500}lockPersonalSystem/);
-  assert.match(appSource, /isPersonalRoute\(currentRoute\)[\s\S]{0,500}personalUnlockState === 'locked'/);
-  assert.match(appSource, /onUnlocked=\{unlockPersonalSystem\}/);
-  assert.match(appSource, /function exitPersonalSystem\(\)\s*\{[\s\S]{0,120}lockPersonalSystem\(\)/);
-  assert.match(appSource, /onExit=\{exitPersonalSystem\}/);
+  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,600}lockPersonalSpace\('background'\)/);
+  assert.match(appSource, /isPersonalRoute\(currentRoute\)[\s\S]{0,700}personalSessionState !== 'unlocked'/);
+  assert.match(appSource, /const activeSpace = personalSessionState === 'unlocked' \? 'personal' : 'normal'/);
+  assert.match(appSource, /reason === 'background'[\s\S]{0,500}INITIAL_ROUTE/);
 });
 
-test('Personal System dashboard exposes normal/private sections, full private detail, and password lifecycle actions', () => {
-  const screenSource = readProjectFile('src/screens/PersonalSystemScreen.tsx');
+test('Settings area owns personal setup unlock reset and mode toggle without a dashboard', () => {
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
   const appSource = readProjectFile('App.tsx');
 
-  assert.match(screenSource, /isUnlocked:\s*boolean/);
-  assert.match(screenSource, /onUnlocked:\s*\(\)\s*=>\s*void/);
-  assert.match(screenSource, /onOpenIp:\s*\(ipId:\s*number,\s*space:\s*PixorySpace\)\s*=>\s*void/);
-  assert.match(screenSource, /onImportImages:\s*\(ipId:\s*number,\s*space:\s*PixorySpace\)\s*=>\s*void/);
-  assert.match(screenSource, /onCreateIp:\s*\(space:\s*PixorySpace\)\s*=>\s*void/);
-  assert.match(screenSource, /runWithDatabaseSpace\('normal'[\s\S]{0,180}ipRepository\.findLibraryItems/);
-  assert.match(screenSource, /runWithDatabaseSpace\('personal'[\s\S]{0,180}ipRepository\.findLibraryItems/);
-  assert.match(screenSource, /普通 IP/);
-  assert.match(screenSource, /隐私 IP/);
-  assert.match(screenSource, /\(ps\)/);
-  assert.match(screenSource, /changePersonalPassword/);
-  assert.match(screenSource, /onOpenIp\(item\.id,\s*'personal'\)/);
-  assert.match(screenSource, /onImportImages\(item\.id,\s*isPersonal \? 'personal' : 'normal'\)/);
-  assert.match(screenSource, /导入历史/);
-  assert.match(screenSource, /疑似重复/);
-  assert.match(appSource, /onImportImages=\{\(ipId,\s*space\)\s*=>\s*pushRoute\(\{\s*name:\s*'import-images',\s*ipId,\s*space\s*\}\)\}/);
+  assert.match(meSource, /space\?:\s*PixorySpace/);
+  assert.match(meSource, /personalSessionState:\s*PersonalSessionState/);
+  assert.match(meSource, /onRequestPersonalUnlock:\s*\(\)\s*=>\s*void/);
+  assert.match(meSource, /onLockPersonalSpace:\s*\(\)\s*=>\s*void/);
+  assert.match(meSource, /进入隐私模式/);
+  assert.match(meSource, /返回普通模式|退出隐私模式/);
+  assert.match(meSource, /space === 'personal'[\s\S]{0,500}onLockPersonalSpace/);
+  assert.match(meSource, /space === 'personal'[\s\S]{0,500}onLockPersonalSpace[\s\S]{0,500}onRequestPersonalUnlock/);
+  assert.match(appSource, /PersonalUnlockModal/);
+  assert.match(appSource, /setPersonalPassword/);
+  assert.match(appSource, /verifyPersonalPassword/);
+  assert.match(appSource, /changePersonalPassword/);
+  assert.match(appSource, /resetPersonalSystemData/);
+  assert.match(appSource, /resetPersonalDataFromSettings[\s\S]{0,700}resetPersonalSystemData\(\)[\s\S]{0,700}lockPersonalSpace\('manual'\)/);
 });
 
-test('normal entry surfaces are explicitly scoped to normal space and deletion service accepts space', () => {
+test('root entry surfaces use the active authenticated space and deletion service accepts space', () => {
   const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
   const meSource = readProjectFile('src/screens/MeScreen.tsx');
   const deletionSource = readProjectFile('src/services/ipDeletionService.ts');
   const appSource = readProjectFile('App.tsx');
 
-  assert.match(homeSource, /runWithDatabaseSpace\('normal'/);
-  assert.match(meSource, /runWithDatabaseSpace\('normal'/);
+  assert.match(homeSource, /space\?:\s*PixorySpace/);
+  assert.match(homeSource, /runWithDatabaseSpace\(space/);
+  assert.match(meSource, /runWithDatabaseSpace\(space/);
   assert.match(deletionSource, /softDeleteIpToTrash\(ipId:\s*number,\s*space:\s*PixorySpace = 'normal'\)/);
   assert.match(deletionSource, /permanentlyDeleteIp\(ipId:\s*number,\s*space:\s*PixorySpace = 'normal'\)/);
-  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{'normal'\}/);
-  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{'normal'\}/);
+  assert.match(appSource, /const activeSpace = personalSessionState === 'unlocked' \? 'personal' : 'normal'/);
+  assert.match(appSource, /<HomeLibraryScreen[\s\S]{0,900}space=\{activeSpace\}/);
+  assert.match(appSource, /<MeScreen[\s\S]{0,900}space=\{activeSpace\}/);
+  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{activeSpace\}/);
+  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{activeSpace\}/);
 });
 
 test('package import has durable per-file item schema, repository methods, and records package outcomes', () => {

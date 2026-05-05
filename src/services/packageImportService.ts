@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import { getUncompressedSize, unzip } from 'react-native-zip-archive';
 
 import { groupRepository, importBatchRepository, runWithDatabaseSpace, type GroupRecord, type ImportBatchItemRecord, type PixorySpace } from '../database';
@@ -194,6 +195,7 @@ function resolvePackageGroupName(relativePath: string): string | null {
 }
 
 async function getOrCreatePackageGroup(
+  db: SQLiteDatabase,
   ipId: number,
   groupName: string | null
 ): Promise<GroupRecord | null> {
@@ -201,8 +203,8 @@ async function getOrCreatePackageGroup(
     return null;
   }
 
-  const existingGroup = await groupRepository.findByIpIdAndName(ipId, groupName);
-  return existingGroup ?? groupRepository.create({ ipId, name: groupName, type: 'custom' });
+  const existingGroup = await groupRepository.findByIpIdAndName(db, ipId, groupName);
+  return existingGroup ?? groupRepository.create(db, { ipId, name: groupName, type: 'custom' });
 }
 
 function mergePackageGroupIds(manualGroupIds: number[] = [], packageGroupId: number | null): number[] {
@@ -272,7 +274,7 @@ export async function importPackageToIp(params: {
   const space = params.space ?? 'normal';
   await ensureAppDirectories(space);
 
-  return runWithDatabaseSpace(space, async () => {
+  return runWithDatabaseSpace(space, async (db) => {
     let copiedPackageUri: string | null = null;
     let extractDir: string | null = null;
 
@@ -281,7 +283,7 @@ export async function importPackageToIp(params: {
       await validatePackageFile(copiedPackageUri, params.packageName);
       extractDir = await unzipPackageToPrivateTemp(copiedPackageUri, space);
       const files = await scanExtractedFiles(extractDir);
-      const importBatch = await importBatchRepository.create({
+      const importBatch = await importBatchRepository.create(db, {
         ipId: params.ipId,
         name: `${params.packageName} 资源包导入`,
         totalCount: files.length,
@@ -297,7 +299,7 @@ export async function importPackageToIp(params: {
           if (!imageType) {
             skippedCount += 1;
             items.push(
-              await importBatchRepository.createItem({
+              await importBatchRepository.createItem(db, {
                 importBatchId: importBatch.id,
                 sourcePath: file.relativePath,
                 originalFilename: file.name,
@@ -308,7 +310,7 @@ export async function importPackageToIp(params: {
             continue;
           }
 
-          const group = await getOrCreatePackageGroup(params.ipId, resolvePackageGroupName(file.relativePath));
+          const group = await getOrCreatePackageGroup(db, params.ipId, resolvePackageGroupName(file.relativePath));
           const groupIds = mergePackageGroupIds(params.groupIds, group?.id ?? null);
           const fileName = file.name.includes('.') ? file.name : `${file.name}.${imageType.extension}`;
           const pickedAsset: PickedImageAsset = {
@@ -336,7 +338,7 @@ export async function importPackageToIp(params: {
           const importedImage = importedImages[importedImages.length - 1];
           if (importedImage) {
             items.push(
-              await importBatchRepository.createItem({
+              await importBatchRepository.createItem(db, {
                 importBatchId: importBatch.id,
                 sourcePath: file.relativePath,
                 originalFilename: file.name,
@@ -353,7 +355,7 @@ export async function importPackageToIp(params: {
           };
           errors.push(importError);
           items.push(
-            await importBatchRepository.createItem({
+            await importBatchRepository.createItem(db, {
               importBatchId: importBatch.id,
               sourcePath: file.relativePath,
               originalFilename: file.name,
@@ -364,7 +366,7 @@ export async function importPackageToIp(params: {
         }
       }
 
-      await importBatchRepository.complete(importBatch.id, importedImages.length, errors.length);
+      await importBatchRepository.complete(db, importBatch.id, importedImages.length, errors.length);
 
       return {
         importBatchId: importBatch.id,

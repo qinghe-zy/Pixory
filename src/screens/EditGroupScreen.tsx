@@ -32,9 +32,9 @@ export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDel
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const { data, errorMessage } = useScreenLoad<{ ip: IpRecord | null; group: GroupRecord | null }>(
     async () => {
-      const [ip, group] = await runWithDatabaseSpace(space, () => Promise.all([
-        ipRepository.findById(ipId),
-        groupRepository.findById(groupId),
+      const [ip, group] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findById(db, ipId),
+        groupRepository.findById(db, groupId),
       ]));
 
       if (!group) {
@@ -70,7 +70,7 @@ export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDel
     const selectedType = type;
 
     void runSubmit(async () => {
-      const updated = await runWithDatabaseSpace(space, () => groupRepository.update(groupId, {
+      const updated = await runWithDatabaseSpace(space, (db) => groupRepository.update(db, groupId, {
         description,
         name: trimmedName,
         type: selectedType as GroupTypeValue,
@@ -115,7 +115,7 @@ export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDel
 
     setIsDeleteDialogVisible(false);
     void runSubmit(async () => {
-      const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
+      const deletedCount = await runWithDatabaseSpace(space, (db) => groupRepository.deleteById(db, group.id));
       if (deletedCount === 0) {
         throw new Error('没有找到这个分组。');
       }

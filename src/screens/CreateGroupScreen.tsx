@@ -34,7 +34,7 @@ export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCr
         return ipName;
       }
 
-      const record = await runWithDatabaseSpace(space, () => ipRepository.findById(ipId));
+      const record = await runWithDatabaseSpace(space, (db) => ipRepository.findById(db, ipId));
       return record?.name ?? `IP #${ipId}`;
     },
     [ipId, ipName, space],
@@ -47,7 +47,7 @@ export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCr
     const selectedType = type;
 
     void runSubmit(async () => {
-      await runWithDatabaseSpace(space, () => groupRepository.create({
+      await runWithDatabaseSpace(space, (db) => groupRepository.create(db, {
         ipId,
         name: trimmedName,
         type: selectedType as GroupTypeValue,

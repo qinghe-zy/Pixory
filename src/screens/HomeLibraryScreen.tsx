@@ -11,7 +11,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
-import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -26,6 +26,7 @@ const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
 interface HomeLibraryScreenProps {
   refreshKey: number;
   initialFilter?: IpLibraryFilter;
+  space?: PixorySpace;
   footer?: ReactNode;
   onCreateIp: () => void;
   onOpenGlobalSearch: () => void;
@@ -36,6 +37,7 @@ interface HomeLibraryScreenProps {
 export function HomeLibraryScreen({
   refreshKey,
   initialFilter = 'all',
+  space = 'normal',
   footer,
   onCreateIp,
   onOpenGlobalSearch,
@@ -49,15 +51,15 @@ export function HomeLibraryScreen({
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
     async () => {
-      const [items, needsOrganizingCount] = await runWithDatabaseSpace('normal', () => Promise.all([
-        ipRepository.findLibraryItems({
+      const [items, needsOrganizingCount] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findLibraryItems(db, {
           filter: activeFilter,
         }),
-        imageRepository.countNeedsOrganizing(),
+        imageRepository.countNeedsOrganizing(db),
       ]));
       return { items, needsOrganizingCount };
     },
-    [activeFilter, refreshKey],
+    [activeFilter, refreshKey, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -103,7 +105,7 @@ export function HomeLibraryScreen({
     setTrashIp(null);
     void (async () => {
       try {
-        const result = await softDeleteIpToTrash(ip.id, 'normal');
+        const result = await softDeleteIpToTrash(ip.id, space);
         if (result.ipDeletedCount === 0) {
           throw new Error('没有找到这个 IP。');
         }
@@ -124,7 +126,7 @@ export function HomeLibraryScreen({
     setPermanentDeleteIp(null);
     void (async () => {
       try {
-        const result = await permanentlyDeleteIp(ip.id, 'normal');
+        const result = await permanentlyDeleteIp(ip.id, space);
         if (result.ipDeletedCount === 0) {
           throw new Error('没有找到这个 IP。');
         }
@@ -211,7 +213,7 @@ export function HomeLibraryScreen({
         >
           <View style={styles.grid}>
             {items.map((item) => (
-              <IPCard ip={item} key={item.id} onLongPress={handleDeleteIp} onPress={onOpenIp} />
+              <IPCard ip={item} key={item.id} onLongPress={handleDeleteIp} onPress={onOpenIp} space={space} />
             ))}
           </View>
         </PageStateBlock>

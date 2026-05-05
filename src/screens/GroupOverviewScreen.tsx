@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -8,6 +8,7 @@ import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
+import { SecureImage } from '../components/SecureImage';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type IpRecord, type PixorySpace } from '../database';
@@ -40,9 +41,9 @@ export function GroupOverviewScreen({
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
     async () => {
-      const [ip, groups] = await runWithDatabaseSpace(space, () => Promise.all([
-        ipRepository.findById(ipId),
-        groupRepository.findOverviewByIpId(ipId),
+      const [ip, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        ipRepository.findById(db, ipId),
+        groupRepository.findOverviewByIpId(db, ipId),
       ]));
 
       return { ip, groups };
@@ -82,7 +83,7 @@ export function GroupOverviewScreen({
     setDeleteGroup(null);
     void (async () => {
       try {
-        const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => groupRepository.deleteById(db, group.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个分组。');
         }
@@ -126,7 +127,7 @@ export function GroupOverviewScreen({
                   <ContentCard style={styles.groupCard}>
                     <View style={styles.coverWrap}>
                       {group.coverThumbnailFileUri ? (
-                        <Image resizeMode="cover" source={{ uri: group.coverThumbnailFileUri }} style={styles.coverImage} />
+                        <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
                       ) : (
                         <View style={styles.coverEmpty}>
                           <Ionicons color={colors.primary.default} name="images-outline" size={26} />
@@ -168,7 +169,7 @@ export function GroupOverviewScreen({
           icon: 'pin-outline',
           onPress: () => {
             void (async () => {
-              await runWithDatabaseSpace(space, () => groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned));
+              await runWithDatabaseSpace(space, (db) => groupRepository.updatePinned(db, actionGroup.id, !actionGroup.isPinned));
               showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
               reload();
             })();

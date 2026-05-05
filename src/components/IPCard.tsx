@@ -1,17 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { IpListItem } from '../database';
+import type { IpListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { SecureImage } from './SecureImage';
 
 interface IPCardProps {
   ip: IpListItem;
+  space?: PixorySpace;
   onLongPress?: (ip: IpListItem) => void;
   onPress: (ipId: number) => void;
 }
 
-export function IPCard({ ip, onLongPress, onPress }: IPCardProps) {
+export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
 
   return (
@@ -23,14 +25,10 @@ export function IPCard({ ip, onLongPress, onPress }: IPCardProps) {
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       {ip.coverThumbnailFileUri ? (
-        <ImageBackground
-          imageStyle={styles.coverImage}
-          resizeMode="cover"
-          source={{ uri: ip.coverThumbnailFileUri }}
-          style={styles.cover}
-        >
+        <View style={styles.cover}>
+          <SecureImage contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
           {content}
-        </ImageBackground>
+        </View>
       ) : (
         <View style={[styles.cover, styles.fallbackCover]}>
           <Text numberOfLines={1} style={styles.initialsText}>

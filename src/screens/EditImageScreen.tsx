@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FormInputRow } from '../components/FormInputRow';
@@ -9,6 +9,7 @@ import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
+import { SecureImage } from '../components/SecureImage';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
@@ -34,15 +35,15 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
     tags: TagRecord[];
   }>(
     async () => {
-      const detail = await runWithDatabaseSpace(space, () => imageRepository.findDetailById(imageId, { includeDeleted: true }));
+      const detail = await runWithDatabaseSpace(space, (db) => imageRepository.findDetailById(db, imageId, { includeDeleted: true }));
       if (!detail) {
         throw new Error('没有找到这张图片。');
       }
 
-      const [groups, tags, groupIds] = await runWithDatabaseSpace(space, () => Promise.all([
-        groupRepository.findByIpId(detail.ipId),
-        tagRepository.findByImageId(imageId),
-        imageRepository.findGroupIdsByImageId(imageId),
+      const [groups, tags, groupIds] = await runWithDatabaseSpace(space, (db) => Promise.all([
+        groupRepository.findByIpId(db, detail.ipId),
+        tagRepository.findByImageId(db, imageId),
+        imageRepository.findGroupIdsByImageId(db, imageId),
       ]));
 
       return { image: { ...detail, loadedGroupIds: groupIds }, groups, tags };
@@ -113,7 +114,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
           setTagInput('');
         }
 
-        const updatedImage = await runWithDatabaseSpace(space, () => imageRepository.updateMetadata(image.id, {
+        const updatedImage = await runWithDatabaseSpace(space, (db) => imageRepository.updateMetadata(db, image.id, {
           originalFilename,
           groupIds: selectedGroupIds,
           note,
@@ -124,7 +125,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
           throw new Error('保存时没有找到这张图片。');
         }
 
-        await runWithDatabaseSpace(space, () => tagRepository.setImageTags(image.id, preparedTags));
+        await runWithDatabaseSpace(space, (db) => tagRepository.setImageTags(db, image.id, preparedTags));
         onSaved();
       },
       {
@@ -155,10 +156,11 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
         <View style={styles.previewPanel}>
           <View style={styles.previewFrame}>
             {image?.thumbnailFileUri ?? image?.originalFileUri ? (
-              <Image
-                resizeMode="cover"
-                source={{ uri: image.thumbnailFileUri ?? image.originalFileUri }}
+              <SecureImage
+                contentFit="cover"
+                space={space}
                 style={styles.previewImage}
+                uri={image.thumbnailFileUri ?? image.originalFileUri}
               />
             ) : (
               <View style={styles.previewFallback}>

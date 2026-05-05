@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { ImageListItem } from '../database';
+import type { ImageListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { SecureImage } from './SecureImage';
 
 interface ThumbnailTileProps {
   image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite'>;
+  space?: PixorySpace;
   onPress?: (imageId: number) => void;
   onLongPress?: (imageId: number) => void;
   aspectRatio?: number;
@@ -14,6 +16,7 @@ interface ThumbnailTileProps {
 
 export function ThumbnailTile({
   image,
+  space = 'normal',
   onPress,
   onLongPress,
   aspectRatio = componentTokens.thumbnail.aspectRatio,
@@ -22,7 +25,7 @@ export function ThumbnailTile({
   const content = (
     <View style={[styles.tile, selected ? styles.selectedTile : null, { aspectRatio }]}>
       {image.thumbnailFileUri ? (
-        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.image} />
+        <SecureImage contentFit="cover" space={space} style={styles.image} uri={image.thumbnailFileUri} />
       ) : (
         <View style={styles.emptyPreview}>
           <Ionicons color={colors.text.secondary} name="image-outline" size={22} />

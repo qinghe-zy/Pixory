@@ -34,7 +34,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [isBatchDeleteDialogVisible, setIsBatchDeleteDialogVisible] = useState(false);
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
-    () => runWithDatabaseSpace(space, () => tagRepository.findUsageOverview()),
+    () => runWithDatabaseSpace(space, (db) => tagRepository.findUsageOverview(db)),
     [refreshToken, space],
     {
       formatError: (error) => {
@@ -119,7 +119,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
     setDeleteTag(null);
     void (async () => {
       try {
-        const deletedCount = await runWithDatabaseSpace(space, () => tagRepository.deleteById(tag.id));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => tagRepository.deleteById(db, tag.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个标签。');
         }
@@ -141,7 +141,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
     setIsBatchDeleteDialogVisible(false);
     void (async () => {
       try {
-        const deletedCount = await runWithDatabaseSpace(space, () => tagRepository.deleteMany(tagIds));
+        const deletedCount = await runWithDatabaseSpace(space, (db) => tagRepository.deleteMany(db, tagIds));
         showToast(`已批量删除 ${deletedCount} 个标签`);
         clearSelectionMode();
         reload();
@@ -169,7 +169,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
 
     void (async () => {
       try {
-        await runWithDatabaseSpace(space, () => tagRepository.update(renameTag.id, { name: nextName }));
+        await runWithDatabaseSpace(space, (db) => tagRepository.update(db, renameTag.id, { name: nextName }));
         showToast('已重命名标签');
         setRenameTag(null);
         setRenameValue('');
@@ -189,7 +189,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
 
     void (async () => {
       try {
-        await runWithDatabaseSpace(space, () => tagRepository.create({ name }));
+        await runWithDatabaseSpace(space, (db) => tagRepository.create(db, { name }));
         setCreateTagValue('');
         setIsCreateDialogVisible(false);
         showToast('已新增标签');

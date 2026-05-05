@@ -27,7 +27,7 @@ export function CreateIpScreen({ space = 'normal', onCancel, onCreated }: Create
 
   function handleCreate() {
     void runSubmit(async () => {
-      const createdIp = await runWithDatabaseSpace(space, () => ipRepository.create({
+      const createdIp = await runWithDatabaseSpace(space, (db) => ipRepository.create(db, {
         name: trimmedName,
         description,
         isFavorite,
