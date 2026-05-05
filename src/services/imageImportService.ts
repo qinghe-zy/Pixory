@@ -47,6 +47,7 @@ export interface BuildImageAssetFromPickedFileParams {
 export interface ImportSingleImageParams {
   space?: PixorySpace;
   ipId: number;
+  importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   tagNames?: string[];
@@ -371,14 +372,12 @@ async function performSingleImageImport(
 
     devLog('Pixory import persisted image asset:', {
       imageAssetId: createdImage.id,
-      originalFileUri: createdImage.originalFileUri,
-      thumbnailFileUri: createdImage.thumbnailFileUri,
       fileSize: createdImage.fileSize,
       width: createdImage.width,
       height: createdImage.height,
       mimeType: createdImage.mimeType,
-      imageAssetsWriteResult: persistedImageRecord,
-      imageTagsWriteResult: persistedImageTags,
+      databaseRecordFound: Boolean(persistedImageRecord),
+      tagCount: persistedImageTags.length,
     });
 
     return {
@@ -468,6 +467,7 @@ export async function importSingleImage(
   const pendingImageAsset = await buildImageAssetFromPickedFile({
     ipId,
     space,
+    importBatchId: params.importBatchId ?? null,
     groupId,
     groupIds,
     note: params.note,
@@ -648,14 +648,11 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
     errors: result.errors,
     importedImages: result.importedImages.map((item) => ({
       imageAssetId: item.image.id,
-      originalFileUri: item.image.originalFileUri,
-      thumbnailFileUri: item.image.thumbnailFileUri,
       fileSize: item.image.fileSize,
       width: item.image.width,
       height: item.image.height,
       mimeType: item.image.mimeType,
-      imageAssetsWriteResult: item.image,
-      imageTagsWriteResult: item.tags,
+      tagCount: item.tags.length,
     })),
     verification,
   });

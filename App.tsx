@@ -78,13 +78,21 @@ type AppRoute =
   | { name: 'recent-viewed'; space: PixorySpace }
   | { name: 'quick-organize'; ipId?: number; importBatchId?: number | null; space: PixorySpace }
   | { name: 'global-search'; query?: string; space: PixorySpace }
+  | { name: 'global-groups'; space: PixorySpace }
+  | { name: 'tags-overview'; space: PixorySpace }
   | { name: 'trash'; space: PixorySpace }
   | { name: 'backup'; space: PixorySpace }
   | { name: 'personal-system' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
+type PersonalUnlockState = 'locked' | 'unlocked';
+
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
+
+function isPersonalRoute(route: AppRoute): boolean {
+  return route.name === 'personal-system' || ('space' in route && route.space === 'personal');
+}
 
 export default function App() {
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
@@ -94,6 +102,7 @@ export default function App() {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [initializationKey, setInitializationKey] = useState(0);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [personalUnlockState, setPersonalUnlockState] = useState<PersonalUnlockState>('locked');
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
 
@@ -133,18 +142,20 @@ export default function App() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') {
-        setRouteStack((current) => {
-          const route = current[current.length - 1];
-          if (route?.name === 'personal-system' || (route?.name === 'import-images' && route.space === 'personal')) {
-            return [INITIAL_ROUTE];
-          }
-          return current;
-        });
+        lockPersonalSystem();
       }
     });
 
     return () => subscription.remove();
   }, []);
+
+  function lockPersonalSystem() {
+    setPersonalUnlockState('locked');
+  }
+
+  function unlockPersonalSystem() {
+    setPersonalUnlockState('unlocked');
+  }
 
   function pushRoute(route: AppRoute) {
     setRouteStack((current) => [...current, route]);
@@ -212,6 +223,11 @@ export default function App() {
     setRouteStack((current) => [...current.slice(0, -1), route]);
   }
 
+  function exitPersonalSystem() {
+    lockPersonalSystem();
+    resetHome();
+  }
+
   if (!isReady) {
     return (
       <SafeAreaProvider>
@@ -236,7 +252,32 @@ export default function App() {
 
   let content;
 
-  if (currentRoute.name === 'create-ip') {
+  if (isPersonalRoute(currentRoute) && currentRoute.name !== 'personal-system' && personalUnlockState === 'locked') {
+    content = (
+      <PersonalSystemScreen
+        isUnlocked={false}
+        onBack={popRoute}
+        onCreateIp={(space) => pushRoute({ name: 'create-ip', space })}
+        onExit={exitPersonalSystem}
+        onImportImages={(ipId, space) => pushRoute({ name: 'import-images', ipId, space })}
+        onOpenImportHistory={(ipId, space) => pushRoute({ name: 'import-batch-history', ipId, space })}
+        onOpenBackup={(space) => pushRoute({ name: 'backup', space })}
+        onOpenFavorites={(space) => pushRoute({ name: 'favorites', space })}
+        onOpenGlobalSearch={(space) => {
+          setGlobalSearchQuery('');
+          pushRoute({ name: 'global-search', space });
+        }}
+        onOpenGroups={(space) => pushRoute({ name: 'global-groups', space })}
+        onOpenIp={(ipId, space) => pushRoute({ name: 'ip-detail', ipId, space })}
+        onOpenQuickOrganize={(space) => pushRoute({ name: 'quick-organize', space })}
+        onOpenRecentViewed={(space) => pushRoute({ name: 'recent-viewed', space })}
+        onOpenTags={(space) => pushRoute({ name: 'tags-overview', space })}
+        onOpenTrash={(space) => pushRoute({ name: 'trash', space })}
+        onUnlocked={unlockPersonalSystem}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'create-ip') {
     content = (
       <CreateIpScreen
         space={currentRoute.space}
@@ -382,10 +423,6 @@ export default function App() {
         onBack={popRoute}
         onImported={(imageIds, importBatchId) => {
           refreshLibrary();
-          if (currentRoute.space === 'personal') {
-            setRouteStack([{ name: 'personal-system' }]);
-            return;
-          }
           replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds, importBatchId, space: currentRoute.space });
         }}
       />
@@ -584,6 +621,23 @@ export default function App() {
         query={globalSearchQuery}
       />
     );
+  } else if (currentRoute.name === 'global-groups') {
+    content = (
+      <GlobalGroupsScreen
+        space={currentRoute.space}
+        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: currentRoute.space })}
+        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'tags-overview') {
+    content = (
+      <TagsOverviewScreen
+        space={currentRoute.space}
+        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: currentRoute.space })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
   } else if (currentRoute.name === 'trash') {
     content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
   } else if (currentRoute.name === 'backup') {
@@ -591,8 +645,25 @@ export default function App() {
   } else if (currentRoute.name === 'personal-system') {
     content = (
       <PersonalSystemScreen
+        isUnlocked={personalUnlockState === 'unlocked'}
         onBack={popRoute}
-        onImportImages={(ipId) => pushRoute({ name: 'import-images', ipId, space: 'personal' })}
+        onCreateIp={(space) => pushRoute({ name: 'create-ip', space })}
+        onExit={exitPersonalSystem}
+        onImportImages={(ipId, space) => pushRoute({ name: 'import-images', ipId, space })}
+        onOpenImportHistory={(ipId, space) => pushRoute({ name: 'import-batch-history', ipId, space })}
+        onOpenBackup={(space) => pushRoute({ name: 'backup', space })}
+        onOpenFavorites={(space) => pushRoute({ name: 'favorites', space })}
+        onOpenGlobalSearch={(space) => {
+          setGlobalSearchQuery('');
+          pushRoute({ name: 'global-search', space });
+        }}
+        onOpenGroups={(space) => pushRoute({ name: 'global-groups', space })}
+        onOpenIp={(ipId, space) => pushRoute({ name: 'ip-detail', ipId, space })}
+        onOpenQuickOrganize={(space) => pushRoute({ name: 'quick-organize', space })}
+        onOpenRecentViewed={(space) => pushRoute({ name: 'recent-viewed', space })}
+        onOpenTags={(space) => pushRoute({ name: 'tags-overview', space })}
+        onOpenTrash={(space) => pushRoute({ name: 'trash', space })}
+        onUnlocked={unlockPersonalSystem}
         refreshToken={libraryRefreshToken}
       />
     );

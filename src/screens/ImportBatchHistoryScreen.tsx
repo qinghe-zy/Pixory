@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { importBatchRepository, runWithDatabaseSpace, type ImportBatchSummary, type PixorySpace } from '../database';
+import { importBatchRepository, runWithDatabaseSpace, type ImportBatchItemStatus, type ImportBatchSummary, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
@@ -16,19 +16,51 @@ interface ImportBatchHistoryScreenProps {
   onOpenBatch: (batch: ImportBatchSummary) => void;
 }
 
+type ImportBatchItemCounts = Record<ImportBatchItemStatus, number>;
+
+type ImportBatchHistoryData = {
+  batches: ImportBatchSummary[];
+  itemCountsByBatchId: Record<number, ImportBatchItemCounts>;
+};
+
+const EMPTY_ITEM_COUNTS: ImportBatchItemCounts = {
+  success: 0,
+  failed: 0,
+  skipped: 0,
+};
+
 export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken, onBack, onOpenBatch }: ImportBatchHistoryScreenProps) {
   const { data, isLoading, errorMessage, reload } = useScreenLoad(
-    () => runWithDatabaseSpace(space, () => importBatchRepository.findByIpId(ipId, 30)),
+    () =>
+      runWithDatabaseSpace(space, async (): Promise<ImportBatchHistoryData> => {
+        const batches = await importBatchRepository.findByIpId(ipId, 30);
+        const itemCountEntries = await Promise.all(
+          batches.map(async (batch) => {
+            const counts: ImportBatchItemCounts = { ...EMPTY_ITEM_COUNTS };
+            const items = await importBatchRepository.findItemsByBatchId(batch.id);
+            for (const item of items) {
+              counts[item.status] += 1;
+            }
+            return [batch.id, counts] as const;
+          })
+        );
+
+        return {
+          batches,
+          itemCountsByBatchId: Object.fromEntries(itemCountEntries),
+        };
+      }),
     [ipId, refreshToken, space],
     {
-      initialData: [],
+      initialData: { batches: [], itemCountsByBatchId: {} },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取导入批次失败：${message}`;
       },
     }
   );
-  const batches = data ?? [];
+  const batches = data?.batches ?? [];
+  const itemCountsByBatchId = data?.itemCountsByBatchId ?? {};
 
   return (
     <ScreenScaffold decorativeTitle="Batches" onBack={onBack} scrollable title="导入批次">
@@ -46,6 +78,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
         <View style={styles.list}>
           {batches.map((batch) => {
             const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
+            const itemCounts = itemCountsByBatchId[batch.id] ?? EMPTY_ITEM_COUNTS;
             return (
               <Pressable key={batch.id} onPress={() => onOpenBatch(batch)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
                 <View style={styles.icon}>
@@ -60,6 +93,9 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
                     <Text style={styles.fact}>未分组 {batch.ungroupedCount}</Text>
                     <Text style={styles.fact}>无标签 {batch.untaggedCount}</Text>
                     <Text style={styles.fact}>疑似重复 {batch.suspectedDuplicateCount}</Text>
+                    <Text style={styles.fact}>成功 {itemCounts.success}</Text>
+                    <Text style={styles.fact}>失败 {itemCounts.failed}</Text>
+                    <Text style={styles.fact}>跳过 {itemCounts.skipped}</Text>
                   </View>
                 </View>
                 <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />

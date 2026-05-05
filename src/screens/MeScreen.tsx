@@ -5,7 +5,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, ipRepository, settingsRepository } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository } from '../database';
 import { colors, layout, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -84,14 +84,14 @@ export function MeScreen({
         deletedImageCount,
         totalOriginalBytes,
         profileAvatarUri,
-      ] = await Promise.all([
+      ] = await runWithDatabaseSpace('normal', () => Promise.all([
         ipRepository.count(),
         imageRepository.count(),
         imageRepository.countFavorites(),
         imageRepository.countDeleted(),
         imageRepository.sumFileSize({ includeDeleted: true }),
         settingsRepository.getProfileAvatarUri(),
-      ]);
+      ]));
 
       return {
         ipCount,

@@ -1,12 +1,28 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { EncryptionMethods, unzipWithPassword, zipWithPassword } from 'react-native-zip-archive';
 
-import { DATABASE_NAME, PERSONAL_DATABASE_NAME, getDatabase, imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
+import {
+  DATABASE_NAME,
+  PERSONAL_DATABASE_NAME,
+  getDatabase,
+  groupRepository,
+  imageRepository,
+  importBatchRepository,
+  ipRepository,
+  runWithDatabaseSpace,
+  settingsRepository,
+  tagRepository,
+  type PixorySpace,
+} from '../database';
 import { formatImageAssetCode } from '../utils/imageAssetCode';
 import {
   copyLocalFile,
+  deleteLocalFile,
   ensureLocalDirectory,
   getExportsDir,
+  generateInternalFilename,
   getOriginalsDir,
+  getTempDir,
   getThumbnailsDir,
   joinStoragePath,
   writeBase64File,
@@ -31,6 +47,32 @@ export interface BackupSystemExportResult {
   exportedDirUri: string;
   copiedFileCount: number;
 }
+
+export interface EncryptedPackResult {
+  packUri: string;
+  stagingDir: string;
+  createdAt: string;
+}
+
+export interface ImportEncryptedPersonalPackParams {
+  packageUri: string;
+  secret: string;
+  mode: 'merge';
+}
+
+export interface ImportEncryptedPersonalPackResult {
+  importedIpCount: number;
+  importedImageCount: number;
+}
+
+type ExportData = {
+  ips: Awaited<ReturnType<typeof ipRepository.findAllIncludingDeleted>>;
+  groups: Awaited<ReturnType<typeof groupRepository.findAll>>;
+  tags: Awaited<ReturnType<typeof tagRepository.findAll>>;
+  images: Array<Awaited<ReturnType<typeof imageRepository.findAll>>[number] & { groupIds: number[]; tagNames: string[] }>;
+  importBatches: Awaited<ReturnType<typeof importBatchRepository.findByIpId>>;
+  importBatchItemsByBatchId: Record<string, Awaited<ReturnType<typeof importBatchRepository.findItemsByBatchId>>>;
+};
 
 function toBase64(bytes: Uint8Array): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -66,6 +108,38 @@ async function copyFileIfExists(sourceUri: string, destinationUri: string): Prom
   return true;
 }
 
+async function copyDirectoryIfExists(sourceDirUri: string, destinationDirUri: string): Promise<number> {
+  const info = await FileSystem.getInfoAsync(sourceDirUri);
+  if (!info.exists || !info.isDirectory) {
+    return 0;
+  }
+
+  await ensureLocalDirectory(destinationDirUri);
+  const normalizedSourceDir = sourceDirUri.endsWith('/') ? sourceDirUri : `${sourceDirUri}/`;
+  const normalizedDestinationDir = destinationDirUri.endsWith('/') ? destinationDirUri : `${destinationDirUri}/`;
+  const entries = await FileSystem.readDirectoryAsync(normalizedSourceDir);
+  let copiedFileCount = 0;
+
+  for (const entry of entries) {
+    const sourceUri = `${normalizedSourceDir}${entry}`;
+    const destinationUri = joinStoragePath(normalizedDestinationDir, entry);
+    const entryInfo = await FileSystem.getInfoAsync(sourceUri);
+    if (!entryInfo.exists) {
+      continue;
+    }
+
+    if (entryInfo.isDirectory) {
+      copiedFileCount += await copyDirectoryIfExists(`${sourceUri}/`, `${destinationUri}/`);
+      continue;
+    }
+
+    await copyLocalFile(sourceUri, destinationUri);
+    copiedFileCount += 1;
+  }
+
+  return copiedFileCount;
+}
+
 function getFileName(fileUri: string): string {
   return fileUri.replace(/\/$/, '').split('/').pop() ?? 'backup-file';
 }
@@ -98,6 +172,33 @@ function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageReposi
     fileSize: image.fileSize,
     deletedAt: image.deletedAt,
   }));
+}
+
+async function buildExportData(ipId?: number): Promise<ExportData> {
+  const [ips, groups, tags, images] = await Promise.all([
+    ipRepository.findAllIncludingDeleted(),
+    groupRepository.findAll(),
+    tagRepository.findAll(),
+    imageRepository.findAll({ includeDeleted: true }),
+  ]);
+  const filteredIps = ipId != null ? ips.filter((ip) => ip.id === ipId) : ips;
+  const filteredIpIds = new Set(filteredIps.map((ip) => ip.id));
+  const filteredGroups = groups.filter((group) => filteredIpIds.has(group.ipId));
+  const filteredImages = images.filter((image) => filteredIpIds.has(image.ipId));
+  const imagesWithRelations = await Promise.all(
+    filteredImages.map(async (image) => ({
+      ...image,
+      groupIds: await imageRepository.findGroupIdsByImageId(image.id),
+      tagNames: (await tagRepository.findByImageId(image.id)).map((tag) => tag.name),
+    }))
+  );
+  const importBatches = (await Promise.all(filteredIps.map((ip) => importBatchRepository.findByIpId(ip.id, 1000)))).flat();
+  const importBatchItemsByBatchId: ExportData['importBatchItemsByBatchId'] = {};
+  for (const batch of importBatches) {
+    importBatchItemsByBatchId[String(batch.id)] = await importBatchRepository.findItemsByBatchId(batch.id);
+  }
+
+  return { ips: filteredIps, groups: filteredGroups, tags, images: imagesWithRelations, importBatches, importBatchItemsByBatchId };
 }
 
 async function calculateDirectorySize(directoryUri: string): Promise<number> {
@@ -217,6 +318,7 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
           thumbnailCount,
           imageCount: images.length,
           images: buildManifestImageEntries(images),
+          exportData: await buildExportData(),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -273,6 +375,7 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
           thumbnailCount,
           imageCount: images.length,
           images: buildManifestImageEntries(images),
+          exportData: await buildExportData(ipId),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -292,6 +395,15 @@ export async function requirePersonalVerification(secret: string): Promise<void>
 }
 
 export async function createPersonalBackup(secret: string): Promise<BackupResult> {
+  return createPersonalPlainBackup(secret);
+}
+
+export async function createPersonalIpPlainBackup(secret: string, ipId: number): Promise<BackupResult> {
+  await requirePersonalVerification(secret);
+  return createIpBackup(ipId, 'personal');
+}
+
+export async function createPersonalPlainBackup(secret: string): Promise<BackupResult> {
   await requirePersonalVerification(secret);
   return runWithDatabaseSpace('personal', async () => {
     const space: PixorySpace = 'personal';
@@ -334,6 +446,9 @@ export async function createPersonalBackup(secret: string): Promise<BackupResult
           thumbnailCount,
           imageCount: images.length,
           images: buildManifestImageEntries(images),
+          exportData: await buildExportData(),
+          plainExportWarning:
+            'This is a plain personal export. If copied to a public directory, private names, metadata, originals, and thumbnails are visible.',
           safety:
             'Personal backup requires password verification. First version isolates files and database but does not encrypt originals at rest.',
         },
@@ -352,6 +467,225 @@ export async function createPersonalBackup(secret: string): Promise<BackupResult
       totalBytes: await calculateDirectorySize(backupDir),
     };
   });
+}
+
+async function createEncryptedPackFromBackup(backup: BackupResult, prefix: string, secret: string): Promise<EncryptedPackResult> {
+  const createdAt = new Date().toISOString();
+  const packUri = joinStoragePath(getExportsDir('personal'), `${prefix}_${timestampForPath(createdAt)}.pixorypack`);
+  await zipWithPassword(backup.backupDir, packUri, secret, EncryptionMethods.AES_256);
+  return {
+    packUri,
+    stagingDir: backup.backupDir,
+    createdAt,
+  };
+}
+
+export async function createEncryptedPersonalPack(secret: string): Promise<EncryptedPackResult> {
+  await requirePersonalVerification(secret);
+  const backup = await createPersonalPlainBackup(secret);
+  return createEncryptedPackFromBackup(backup, 'personal_encrypted', secret);
+}
+
+export async function createEncryptedAllPack(secret: string): Promise<EncryptedPackResult> {
+  await requirePersonalVerification(secret);
+  const normalBackup = await createFullBackup('normal');
+  const personalBackup = await createPersonalPlainBackup(secret);
+  const createdAt = new Date().toISOString();
+  const stagingDir = `${joinStoragePath(getTempDir('personal'), `all_pack_${timestampForPath(createdAt)}`)}/`;
+  await ensureLocalDirectory(stagingDir);
+  await copyDirectoryIfExists(normalBackup.backupDir, `${joinStoragePath(stagingDir, 'normal')}/`);
+  await copyDirectoryIfExists(personalBackup.backupDir, `${joinStoragePath(stagingDir, 'personal')}/`);
+  await writeTextFile(
+    joinStoragePath(stagingDir, 'manifest.json'),
+    JSON.stringify({ type: 'all-encrypted', createdAt, spaces: ['normal', 'personal'] }, null, 2)
+  );
+  const packUri = joinStoragePath(getExportsDir('personal'), `all_encrypted_${timestampForPath(createdAt)}.pixorypack`);
+  await zipWithPassword(stagingDir, packUri, secret, EncryptionMethods.AES_256);
+  return { packUri, stagingDir, createdAt };
+}
+
+async function findManifestUri(directoryUri: string): Promise<string> {
+  const directManifestUri = joinStoragePath(directoryUri, 'manifest.json');
+  const directInfo = await FileSystem.getInfoAsync(directManifestUri);
+  if (directInfo.exists && !directInfo.isDirectory) {
+    return directManifestUri;
+  }
+
+  const entries = await FileSystem.readDirectoryAsync(directoryUri);
+  for (const entry of entries) {
+    const entryUri = joinStoragePath(directoryUri, entry);
+    const info = await FileSystem.getInfoAsync(entryUri);
+    if (!info.exists || !info.isDirectory) {
+      continue;
+    }
+    const nestedManifestUri = joinStoragePath(`${entryUri}/`, 'manifest.json');
+    const nestedInfo = await FileSystem.getInfoAsync(nestedManifestUri);
+    if (nestedInfo.exists && !nestedInfo.isDirectory) {
+      return nestedManifestUri;
+    }
+  }
+
+  throw new Error('加密包缺少 manifest.json。');
+}
+
+function resolveBackupRelativeFile(rootManifestUri: string, role: 'originals' | 'thumbnails', ipId: number, fileName: string): string {
+  const backupDir = rootManifestUri.slice(0, rootManifestUri.lastIndexOf('/') + 1);
+  return joinStoragePath(`${joinStoragePath(`${joinStoragePath(backupDir, role)}/`, `ip_${ipId}`)}/`, fileName);
+}
+
+export async function importEncryptedPersonalPack({
+  packageUri,
+  secret,
+  mode,
+}: ImportEncryptedPersonalPackParams): Promise<ImportEncryptedPersonalPackResult> {
+  if (mode !== 'merge') {
+    throw new Error('Personal encrypted import only supports merge mode.');
+  }
+  await requirePersonalVerification(secret);
+
+  const createdAt = new Date().toISOString();
+  const tempDir = `${joinStoragePath(getTempDir('personal'), `encrypted_import_${timestampForPath(createdAt)}`)}/`;
+  const copiedPackUri = joinStoragePath(tempDir, 'source.pixorypack');
+  let importedIpCount = 0;
+  let importedImageCount = 0;
+
+  try {
+    await ensureLocalDirectory(tempDir);
+    await copyLocalFile(packageUri, copiedPackUri);
+    await unzipWithPassword(copiedPackUri, tempDir, secret);
+    const manifestUri = await findManifestUri(tempDir);
+    const manifest = JSON.parse(await FileSystem.readAsStringAsync(manifestUri, { encoding: FileSystem.EncodingType.UTF8 })) as {
+      type?: string;
+      space?: PixorySpace;
+      exportData?: ExportData;
+    };
+
+    if (!manifest.exportData || (manifest.space !== 'personal' && manifest.type !== 'personal')) {
+      throw new Error('只能在 Personal System 内合并导入 personal 加密包。');
+    }
+
+    await runWithDatabaseSpace('personal', async () => {
+      const exportData = manifest.exportData;
+      const ipIdMap = new Map<number, number>();
+      const groupIdMap = new Map<number, number>();
+      const importBatchIdMap = new Map<number, number>();
+      const imageIdMap = new Map<number, number>();
+
+      for (const ip of exportData?.ips ?? []) {
+        const createdIp = await ipRepository.create({
+          name: ip.name,
+          description: ip.description,
+          isFavorite: ip.isFavorite,
+        });
+        ipIdMap.set(ip.id, createdIp.id);
+        importedIpCount += 1;
+      }
+
+      for (const group of exportData?.groups ?? []) {
+        const nextIpId = ipIdMap.get(group.ipId);
+        if (!nextIpId) {
+          continue;
+        }
+        const createdGroup = await groupRepository.create({
+          ipId: nextIpId,
+          name: group.name,
+          type: group.type,
+          sortOrder: group.sortOrder,
+          isPinned: group.isPinned,
+          description: group.description,
+        });
+        groupIdMap.set(group.id, createdGroup.id);
+      }
+
+      for (const batch of exportData?.importBatches ?? []) {
+        const nextIpId = ipIdMap.get(batch.ipId);
+        if (!nextIpId) {
+          continue;
+        }
+        const createdBatch = await importBatchRepository.create({
+          ipId: nextIpId,
+          name: batch.name,
+          templateKey: batch.templateKey,
+          totalCount: batch.totalCount,
+        });
+        importBatchIdMap.set(batch.id, createdBatch.id);
+      }
+
+      for (const image of exportData?.images ?? []) {
+        const nextIpId = ipIdMap.get(image.ipId);
+        if (!nextIpId) {
+          continue;
+        }
+        const nextImportBatchId =
+          image.importBatchId != null ? importBatchIdMap.get(image.importBatchId) ?? null : null;
+        const groupIds = image.groupIds
+          .map((groupId) => groupIdMap.get(groupId))
+          .filter((groupId): groupId is number => groupId != null);
+        const nextInternalFilename = generateInternalFilename(image.originalFilename);
+        const originalSourceUri = resolveBackupRelativeFile(manifestUri, 'originals', image.ipId, image.internalFilename);
+        const thumbnailName = image.thumbnailFileUri?.split('/').pop() ?? null;
+        const thumbnailSourceUri = thumbnailName ? resolveBackupRelativeFile(manifestUri, 'thumbnails', image.ipId, thumbnailName) : null;
+        const originalDestinationDir = `${joinStoragePath(getOriginalsDir('personal'), `ip_${nextIpId}`)}/`;
+        const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir('personal'), `ip_${nextIpId}`)}/`;
+        await ensureLocalDirectory(originalDestinationDir);
+        await ensureLocalDirectory(thumbnailDestinationDir);
+        const originalDestinationUri = joinStoragePath(originalDestinationDir, nextInternalFilename);
+        await copyLocalFile(originalSourceUri, originalDestinationUri);
+        const thumbnailDestinationUri = thumbnailSourceUri && thumbnailName ? joinStoragePath(thumbnailDestinationDir, thumbnailName) : null;
+        if (thumbnailSourceUri && thumbnailDestinationUri) {
+          await copyLocalFile(thumbnailSourceUri, thumbnailDestinationUri);
+        }
+
+        const createdImage = await imageRepository.create({
+          ipId: nextIpId,
+          importBatchId: nextImportBatchId,
+          groupId: groupIds[0] ?? null,
+          groupIds,
+          originalFileUri: originalDestinationUri,
+          thumbnailFileUri: thumbnailDestinationUri,
+          originalFilename: image.originalFilename,
+          internalFilename: nextInternalFilename,
+          width: image.width,
+          height: image.height,
+          mimeType: image.mimeType,
+          fileSize: image.fileSize,
+          isFavorite: image.isFavorite,
+          note: image.note,
+        });
+        imageIdMap.set(image.id, createdImage.id);
+        const tagIds = [];
+        for (const tagName of image.tagNames) {
+          const existingTag = await tagRepository.findByName(tagName);
+          const tag = existingTag ?? (await tagRepository.create({ name: tagName }));
+          tagIds.push(tag.id);
+        }
+        await tagRepository.replaceImageTags(createdImage.id, tagIds);
+        importedImageCount += 1;
+      }
+
+      for (const batch of exportData?.importBatches ?? []) {
+        const nextBatchId = importBatchIdMap.get(batch.id);
+        if (!nextBatchId) {
+          continue;
+        }
+        for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
+          await importBatchRepository.createItem({
+            importBatchId: nextBatchId,
+            sourcePath: item.sourcePath,
+            originalFilename: item.originalFilename,
+            status: item.status,
+            imageAssetId: item.imageAssetId != null ? imageIdMap.get(item.imageAssetId) ?? null : null,
+            reason: item.reason,
+          });
+        }
+        await importBatchRepository.complete(nextBatchId, batch.successCount, batch.failedCount);
+      }
+    });
+
+    return { importedIpCount, importedImageCount };
+  } finally {
+    await deleteLocalFile(tempDir);
+  }
 }
 
 export async function exportBackupToSystemDirectory(backupDir: string): Promise<BackupSystemExportResult> {

@@ -326,6 +326,35 @@ export interface ImportBatchSummaryRow extends ImportBatchRow {
   suspectedDuplicateCount: number;
 }
 
+export type ImportBatchItemStatus = 'success' | 'failed' | 'skipped';
+
+export interface ImportBatchItemRecord {
+  id: number;
+  importBatchId: number;
+  sourcePath: string;
+  originalFilename: string;
+  status: ImportBatchItemStatus;
+  imageAssetId: number | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface ImportBatchItemRow extends ImportBatchItemRecord {}
+
+export interface CreateImportBatchItemInput {
+  importBatchId: number;
+  sourcePath: string;
+  originalFilename: string;
+  status: ImportBatchItemStatus;
+  imageAssetId?: number | null;
+  reason?: string | null;
+}
+
+export interface ImportBatchItemStatusCount {
+  status: ImportBatchItemStatus;
+  count: number;
+}
+
 export interface ImportTemplateRecord {
   key: string;
   name: string;

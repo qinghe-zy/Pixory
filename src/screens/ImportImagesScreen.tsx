@@ -351,6 +351,7 @@ export function ImportImagesScreen({
         ipId,
         packageUri: packagePick.packageUri,
         packageName: packagePick.packageName,
+        groupIds: selectedGroupIds,
         tagNames: preparedTags,
         note: note.trim(),
         isFavorite,
@@ -363,7 +364,7 @@ export function ImportImagesScreen({
 
       await runWithDatabaseSpace(space, () => settingsRepository.rememberImportGroupIds(selectedGroupIds));
       showToast(`资源包导入 ${result.successCount} 张，跳过 ${result.skippedCount} 个文件`);
-      onImported(result.importedImages.map((item) => item.image.id), null);
+      onImported(result.importedImages.map((item) => item.image.id), result.importBatchId);
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`资源包导入失败：${message}`);

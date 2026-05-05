@@ -6,9 +6,10 @@ import { ContentCard } from '../components/ContentCard';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { ipRepository, runWithDatabaseSpace, type IpListItem } from '../database';
+import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import {
+  changePersonalPassword,
   hasPersonalPassword,
   resetPersonalSystemData,
   setPersonalPassword,
@@ -18,18 +19,58 @@ import { useToast } from '../components/AppToast';
 
 interface PersonalSystemScreenProps {
   refreshToken: number;
+  isUnlocked: boolean;
   onBack: () => void;
-  onImportImages: (ipId: number) => void;
+  onUnlocked: () => void;
+  onExit: () => void;
+  onCreateIp: (space: PixorySpace) => void;
+  onOpenIp: (ipId: number, space: PixorySpace) => void;
+  onImportImages: (ipId: number, space: PixorySpace) => void;
+  onOpenImportHistory: (ipId: number, space: PixorySpace) => void;
+  onOpenGlobalSearch: (space: PixorySpace) => void;
+  onOpenGroups: (space: PixorySpace) => void;
+  onOpenTags: (space: PixorySpace) => void;
+  onOpenFavorites: (space: PixorySpace) => void;
+  onOpenRecentViewed: (space: PixorySpace) => void;
+  onOpenTrash: (space: PixorySpace) => void;
+  onOpenBackup: (space: PixorySpace) => void;
+  onOpenQuickOrganize: (space: PixorySpace) => void;
 }
 
-export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: PersonalSystemScreenProps) {
+type DashboardAction = {
+  key: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+};
+
+export function PersonalSystemScreen({
+  refreshToken,
+  isUnlocked,
+  onBack,
+  onUnlocked,
+  onExit,
+  onCreateIp,
+  onOpenIp,
+  onImportImages,
+  onOpenImportHistory,
+  onOpenGlobalSearch,
+  onOpenGroups,
+  onOpenTags,
+  onOpenFavorites,
+  onOpenRecentViewed,
+  onOpenTrash,
+  onOpenBackup,
+  onOpenQuickOrganize,
+}: PersonalSystemScreenProps) {
   const { showToast } = useToast();
   const [hasCredential, setHasCredential] = useState<boolean | null>(null);
-  const [isUnlocked, setIsUnlocked] = useState(false);
   const [secret, setSecret] = useState('');
   const [confirmSecret, setConfirmSecret] = useState('');
-  const [ipName, setIpName] = useState('');
-  const [items, setItems] = useState<IpListItem[]>([]);
+  const [currentSecret, setCurrentSecret] = useState('');
+  const [nextSecret, setNextSecret] = useState('');
+  const [normalItems, setNormalItems] = useState<IpListItem[]>([]);
+  const [personalItems, setPersonalItems] = useState<IpListItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,7 +78,7 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
     setHasCredential(await hasPersonalPassword());
   }
 
-  async function reloadPersonalIps() {
+  async function reloadDashboard() {
     if (!isUnlocked) {
       return;
     }
@@ -45,10 +86,14 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const nextItems = await runWithDatabaseSpace('personal', () => ipRepository.findLibraryItems());
-      setItems(nextItems);
+      const [nextNormalItems, nextPersonalItems] = await Promise.all([
+        runWithDatabaseSpace('normal', () => ipRepository.findLibraryItems()),
+        runWithDatabaseSpace('personal', () => ipRepository.findLibraryItems()),
+      ]);
+      setNormalItems(nextNormalItems);
+      setPersonalItems(nextPersonalItems);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '读取隐私系统失败');
+      setErrorMessage(error instanceof Error ? error.message : '读取 Personal System 失败');
     } finally {
       setIsLoading(false);
     }
@@ -59,7 +104,7 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
   }, []);
 
   useEffect(() => {
-    void reloadPersonalIps();
+    void reloadDashboard();
   }, [isUnlocked, refreshToken]);
 
   async function handleSetSecret() {
@@ -71,7 +116,7 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
       setSecret('');
       setConfirmSecret('');
       setHasCredential(true);
-      setIsUnlocked(true);
+      onUnlocked();
       showToast('隐私系统已创建');
     } catch (error) {
       showToast(error instanceof Error ? error.message : '设置隐私系统失败');
@@ -86,29 +131,18 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
     }
 
     setSecret('');
-    setIsUnlocked(true);
+    onUnlocked();
     showToast('已进入 Personal System');
   }
 
-  async function handleCreatePersonalIp() {
-    const preparedName = ipName.trim();
-    if (!preparedName) {
-      showToast('请输入 IP 名称');
-      return;
-    }
-
+  async function handleChangePassword() {
     try {
-      await runWithDatabaseSpace('personal', () =>
-        ipRepository.create({
-          name: preparedName,
-          description: 'Personal System',
-        })
-      );
-      setIpName('');
-      await reloadPersonalIps();
-      showToast(`已创建 ${preparedName} (ps)`);
+      await changePersonalPassword(currentSecret, nextSecret);
+      setCurrentSecret('');
+      setNextSecret('');
+      showToast('隐私系统密码已更新');
     } catch (error) {
-      showToast(error instanceof Error ? `创建失败：${error.message}` : '创建失败');
+      showToast(error instanceof Error ? error.message : '修改密码失败');
     }
   }
 
@@ -116,9 +150,10 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
     try {
       await resetPersonalSystemData();
       setHasCredential(false);
-      setIsUnlocked(false);
-      setItems([]);
-      showToast('已清除隐私系统数据');
+      setNormalItems([]);
+      setPersonalItems([]);
+      onExit();
+      showToast('已清除隐私系统数据，普通空间未受影响');
     } catch (error) {
       showToast(error instanceof Error ? `清除失败：${error.message}` : '清除失败');
     }
@@ -163,50 +198,141 @@ export function PersonalSystemScreen({ refreshToken, onBack, onImportImages }: P
     );
   }
 
+  const actions: DashboardAction[] = [
+    { key: 'search', label: '搜索', icon: 'search-outline', onPress: () => onOpenGlobalSearch('personal') },
+    { key: 'groups', label: '分组', icon: 'albums-outline', onPress: () => onOpenGroups('personal') },
+    { key: 'tags', label: '标签', icon: 'pricetag-outline', onPress: () => onOpenTags('personal') },
+    { key: 'favorites', label: '收藏', icon: 'star-outline', onPress: () => onOpenFavorites('personal') },
+    { key: 'recent', label: '最近', icon: 'time-outline', onPress: () => onOpenRecentViewed('personal') },
+    { key: 'trash', label: '回收站', icon: 'trash-outline', onPress: () => onOpenTrash('personal') },
+    { key: 'backup', label: '备份导出', icon: 'archive-outline', onPress: () => onOpenBackup('personal') },
+    { key: 'quick', label: '快速整理', icon: 'sparkles-outline', onPress: () => onOpenQuickOrganize('personal') },
+  ];
+
   return (
     <ScreenScaffold decorativeTitle="Personal" onBack={onBack} scrollable title="Personal System">
-      <View style={styles.createRow}>
-        <TextInput
-          onChangeText={setIpName}
-          placeholder="新建 private IP"
-          placeholderTextColor={colors.text.placeholder}
-          style={styles.input}
-          value={ipName}
-        />
-        <PrimaryButton label="新建" onPress={handleCreatePersonalIp} />
+      <View style={styles.actionGrid}>
+        <PrimaryButton label="新建普通 IP" onPress={() => onCreateIp('normal')} variant="outline" />
+        <PrimaryButton label="新建隐私 IP" onPress={() => onCreateIp('personal')} />
       </View>
+
+      <View style={styles.quickGrid}>
+        {actions.map((action) => (
+          <Pressable key={action.key} onPress={action.onPress} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}>
+            <Ionicons color={colors.primary.active} name={action.icon} size={18} />
+            <Text numberOfLines={1} style={styles.quickActionText}>{action.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       <PageStateBlock
-        emptyDescription="private IP 会写入独立 personal 数据库和 pixory_personal 文件目录。"
+        emptyDescription="Personal System 会同时展示普通空间和隐私空间，隐私数据只在解锁后出现。"
         emptyIconName="lock-closed-outline"
-        emptyTitle="还没有 private IP"
+        emptyTitle="还没有可管理的 IP"
         errorMessage={errorMessage}
-        isEmpty={!isLoading && items.length === 0}
+        isEmpty={!isLoading && normalItems.length === 0 && personalItems.length === 0}
         loading={isLoading}
-        loadingDescription="正在读取 personal 数据库。"
-        loadingTitle="读取隐私系统"
-        onRetry={reloadPersonalIps}
+        loadingDescription="正在分别读取 normal 和 personal 数据库。"
+        loadingTitle="读取 Personal System"
+        onRetry={reloadDashboard}
       >
-        <View style={styles.ipList}>
-          {items.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => onImportImages(item.id)}
-              style={({ pressed }) => [styles.ipRow, pressed && styles.pressed]}
-            >
-              <View style={styles.ipIcon}>
-                <Ionicons color={colors.primary.active} name="image-outline" size={18} />
-              </View>
-              <View style={styles.ipCopy}>
-                <Text numberOfLines={1} style={styles.ipName}>{item.name} (ps)</Text>
-                <Text style={styles.ipMeta}>{item.imageCount} 张图片 · 点击导入</Text>
-              </View>
-              <Ionicons color={colors.text.secondary} name="chevron-forward" size={17} />
-            </Pressable>
-          ))}
+        <View style={styles.sections}>
+          <IpSection
+            emptyText="普通空间还没有 IP"
+            items={normalItems}
+            onImportImages={onImportImages}
+            onOpenImportHistory={onOpenImportHistory}
+            onOpenIp={(item) => onOpenIp(item.id, 'normal')}
+            title="普通 IP"
+          />
+          <IpSection
+            emptyText="隐私空间还没有 IP"
+            isPersonal
+            items={personalItems}
+            onImportImages={onImportImages}
+            onOpenImportHistory={onOpenImportHistory}
+            onOpenIp={(item) => onOpenIp(item.id, 'personal')}
+            title="隐私 IP"
+          />
         </View>
       </PageStateBlock>
-      <PrimaryButton label="退出隐私系统" onPress={() => setIsUnlocked(false)} variant="outline" />
+
+      <ContentCard style={styles.passwordCard}>
+        <Text style={styles.sectionTitle}>修改密码</Text>
+        <TextInput
+          onChangeText={setCurrentSecret}
+          placeholder="当前密码"
+          placeholderTextColor={colors.text.placeholder}
+          secureTextEntry
+          style={styles.input}
+          value={currentSecret}
+        />
+        <TextInput
+          onChangeText={setNextSecret}
+          placeholder="新密码"
+          placeholderTextColor={colors.text.placeholder}
+          secureTextEntry
+          style={styles.input}
+          value={nextSecret}
+        />
+        <PrimaryButton
+          disabled={!currentSecret.trim() || !nextSecret.trim()}
+          label="更新隐私系统密码"
+          onPress={handleChangePassword}
+          variant="outline"
+        />
+      </ContentCard>
+
+      <PrimaryButton label="退出隐私系统并锁定" onPress={onExit} variant="outline" />
     </ScreenScaffold>
+  );
+}
+
+function IpSection({
+  emptyText,
+  isPersonal = false,
+  items,
+  onImportImages,
+  onOpenImportHistory,
+  onOpenIp,
+  title,
+}: {
+  emptyText: string;
+  isPersonal?: boolean;
+  items: IpListItem[];
+  onImportImages: (ipId: number, space: PixorySpace) => void;
+  onOpenImportHistory: (ipId: number, space: PixorySpace) => void;
+  onOpenIp: (item: IpListItem) => void;
+  title: string;
+}) {
+  return (
+    <ContentCard style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {items.length === 0 ? <Text style={styles.emptyLine}>{emptyText}</Text> : null}
+      {items.map((item) => (
+        <Pressable key={`${isPersonal ? 'personal' : 'normal'}-${item.id}`} onPress={() => onOpenIp(item)} style={({ pressed }) => [styles.ipRow, pressed && styles.pressed]}>
+          <View style={styles.ipIcon}>
+            <Ionicons color={colors.primary.active} name={isPersonal ? 'lock-closed-outline' : 'image-outline'} size={18} />
+          </View>
+          <View style={styles.ipCopy}>
+            <Text numberOfLines={1} style={styles.ipName}>{item.name}{isPersonal ? ' (ps)' : ''}</Text>
+            <Text style={styles.ipMeta}>{item.imageCount} 张图片 · {item.groupCount} 个分组</Text>
+          </View>
+          <View style={styles.rowActions}>
+            <Pressable hitSlop={8} onPress={() => onImportImages(item.id, isPersonal ? 'personal' : 'normal')} style={({ pressed }) => [styles.importChip, pressed && styles.pressed]}>
+              <Text style={styles.importChipText}>导入</Text>
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => onOpenImportHistory(item.id, isPersonal ? 'personal' : 'normal')} style={({ pressed }) => [styles.importChip, pressed && styles.pressed]}>
+              <Text style={styles.importChipText}>导入历史</Text>
+            </Pressable>
+            <Pressable hitSlop={8} onPress={() => onOpenImportHistory(item.id, isPersonal ? 'personal' : 'normal')} style={({ pressed }) => [styles.importChip, pressed && styles.pressed]}>
+              <Text style={styles.importChipText}>疑似重复</Text>
+            </Pressable>
+          </View>
+          <Ionicons color={colors.text.secondary} name="chevron-forward" size={17} />
+        </Pressable>
+      ))}
+    </ContentCard>
   );
 }
 
@@ -241,11 +367,44 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing[3],
   },
-  createRow: {
+  actionGrid: {
     gap: spacing[3],
   },
-  ipList: {
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing[2],
+  },
+  quickAction: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexBasis: '23%',
+    flexGrow: 1,
+    gap: spacing[1],
+    minHeight: 64,
+    justifyContent: 'center',
+    padding: spacing[2],
+  },
+  quickActionText: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+  },
+  sections: {
+    gap: spacing[3],
+  },
+  sectionCard: {
+    gap: spacing[3],
+  },
+  sectionTitle: {
+    ...typography.textStyles.sectionTitle,
+    color: colors.text.title,
+  },
+  emptyLine: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   ipRow: {
     alignItems: 'center',
@@ -279,8 +438,24 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.secondary,
   },
+  importChip: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  rowActions: {
+    alignItems: 'flex-end',
+    gap: spacing[1],
+  },
+  importChipText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+  },
+  passwordCard: {
+    gap: spacing[3],
+  },
   pressed: {
     opacity: 0.82,
   },
 });
-

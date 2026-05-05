@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-native-zip-archive@7.1.0:
+    hash: a06e27a8bd92b6fd4e3ef166b7c780bfc2ffc307bfdb074e2582fe66466618f6
+    path: patches/react-native-zip-archive@7.1.0.patch
+
 importers:
 
   .:
@@ -55,7 +60,7 @@ importers:
         version: 5.6.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-zip-archive:
         specifier: ^7.1.0
-        version: 7.1.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        version: 7.1.0(patch_hash=a06e27a8bd92b6fd4e3ef166b7c780bfc2ffc307bfdb074e2582fe66466618f6)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
     devDependencies:
       '@types/react':
         specifier: ~19.1.0
@@ -5388,7 +5393,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
-  react-native-zip-archive@7.1.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-zip-archive@7.1.0(patch_hash=a06e27a8bd92b6fd4e3ef166b7c780bfc2ffc307bfdb074e2582fe66466618f6)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)

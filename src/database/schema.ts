@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 9;
+export const DATABASE_VERSION = 10;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -171,4 +171,22 @@ CREATE TABLE IF NOT EXISTS import_templates (
 CREATE INDEX IF NOT EXISTS idx_import_templates_sort_order ON import_templates(sortOrder, updatedAt);
 
 ${seedDefaultImportTemplates}
+`;
+
+export const MIGRATION_STATEMENTS_V10 = `
+CREATE TABLE IF NOT EXISTS import_batch_items (
+  id INTEGER PRIMARY KEY NOT NULL,
+  importBatchId INTEGER NOT NULL,
+  sourcePath TEXT NOT NULL,
+  originalFilename TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'skipped')),
+  imageAssetId INTEGER,
+  reason TEXT,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (importBatchId) REFERENCES import_batches(id) ON DELETE CASCADE,
+  FOREIGN KEY (imageAssetId) REFERENCES image_assets(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_batch_items_batch_id ON import_batch_items(importBatchId);
+CREATE INDEX IF NOT EXISTS idx_import_batch_items_status ON import_batch_items(importBatchId, status);
 `;

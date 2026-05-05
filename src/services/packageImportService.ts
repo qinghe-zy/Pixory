@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getUncompressedSize, unzip } from 'react-native-zip-archive';
 
-import { groupRepository, runWithDatabaseSpace, type GroupRecord, type PixorySpace } from '../database';
+import { groupRepository, importBatchRepository, runWithDatabaseSpace, type GroupRecord, type ImportBatchItemRecord, type PixorySpace } from '../database';
 import {
   copyLocalFile,
   deleteLocalFile,
@@ -18,6 +18,7 @@ export const MAX_PACKAGE_BYTES = 200 * 1024 * 1024;
 export const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
 export const MAX_PACKAGE_FILE_COUNT = 1000;
 export const MAX_PACKAGE_DIRECTORY_DEPTH = 8;
+const MIN_FREE_STORAGE_AFTER_IMPORT_BYTES = 64 * 1024 * 1024;
 
 type SupportedPackageImageType = {
   mimeType: string;
@@ -37,11 +38,13 @@ export interface PackageImportError {
 }
 
 export interface PackageImportResult {
+  importBatchId: number | null;
   successCount: number;
   failedCount: number;
   importedImages: ImportedImageResult[];
   errors: PackageImportError[];
   skippedCount: number;
+  items: ImportBatchItemRecord[];
 }
 
 interface ExtractedPackageFile {
@@ -202,6 +205,14 @@ async function getOrCreatePackageGroup(
   return existingGroup ?? groupRepository.create({ ipId, name: groupName, type: 'custom' });
 }
 
+function mergePackageGroupIds(manualGroupIds: number[] = [], packageGroupId: number | null): number[] {
+  const mergedIds = [...manualGroupIds];
+  if (packageGroupId != null) {
+    mergedIds.push(packageGroupId);
+  }
+  return [...new Set(mergedIds.filter((groupId) => Number.isInteger(groupId) && groupId > 0))];
+}
+
 async function validatePackageFile(packageUri: string, packageName: string): Promise<void> {
   const extension = getPackageExtension(packageName);
   if (!extension || !SUPPORTED_PACKAGE_EXTENSIONS.includes(extension)) {
@@ -216,6 +227,16 @@ async function validatePackageFile(packageUri: string, packageName: string): Pro
   const uncompressedBytes = await getUncompressedSize(packageUri);
   if (uncompressedBytes > MAX_UNCOMPRESSED_BYTES) {
     throw new Error('资源包解压后体积过大。');
+  }
+
+  await assertEnoughStorageForPackage(uncompressedBytes, packageInfo.size ?? 0);
+}
+
+async function assertEnoughStorageForPackage(uncompressedBytes: number, packageBytes: number): Promise<void> {
+  const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+  const requiredBytes = uncompressedBytes + packageBytes + MIN_FREE_STORAGE_AFTER_IMPORT_BYTES;
+  if (freeBytes < requiredBytes) {
+    throw new Error('设备剩余空间不足，已停止导入。');
   }
 }
 
@@ -244,6 +265,7 @@ export async function importPackageToIp(params: {
   packageUri: string;
   packageName: string;
   tagNames?: string[];
+  groupIds?: number[];
   note?: string | null;
   isFavorite?: boolean;
 }): Promise<PackageImportResult> {
@@ -259,8 +281,14 @@ export async function importPackageToIp(params: {
       await validatePackageFile(copiedPackageUri, params.packageName);
       extractDir = await unzipPackageToPrivateTemp(copiedPackageUri, space);
       const files = await scanExtractedFiles(extractDir);
+      const importBatch = await importBatchRepository.create({
+        ipId: params.ipId,
+        name: `${params.packageName} 资源包导入`,
+        totalCount: files.length,
+      });
       const importedImages: ImportedImageResult[] = [];
       const errors: PackageImportError[] = [];
+      const items: ImportBatchItemRecord[] = [];
       let skippedCount = 0;
 
       for (const file of files) {
@@ -268,10 +296,20 @@ export async function importPackageToIp(params: {
           const imageType = await detectImageTypeFromMagicBytes(file.uri);
           if (!imageType) {
             skippedCount += 1;
+            items.push(
+              await importBatchRepository.createItem({
+                importBatchId: importBatch.id,
+                sourcePath: file.relativePath,
+                originalFilename: file.name,
+                status: 'skipped',
+                reason: 'Unsupported file type or unrecognized image magic bytes.',
+              })
+            );
             continue;
           }
 
           const group = await getOrCreatePackageGroup(params.ipId, resolvePackageGroupName(file.relativePath));
+          const groupIds = mergePackageGroupIds(params.groupIds, group?.id ?? null);
           const fileName = file.name.includes('.') ? file.name : `${file.name}.${imageType.extension}`;
           const pickedAsset: PickedImageAsset = {
             uri: file.uri,
@@ -286,28 +324,56 @@ export async function importPackageToIp(params: {
             await importSingleImage({
               space,
               ipId: params.ipId,
-              groupId: group?.id ?? null,
+              importBatchId: importBatch.id,
+              groupId: groupIds[0] ?? null,
+              groupIds,
               pickedAsset,
               tagNames: params.tagNames,
               note: params.note,
               isFavorite: params.isFavorite,
             })
           );
+          const importedImage = importedImages[importedImages.length - 1];
+          if (importedImage) {
+            items.push(
+              await importBatchRepository.createItem({
+                importBatchId: importBatch.id,
+                sourcePath: file.relativePath,
+                originalFilename: file.name,
+                status: 'success',
+                imageAssetId: importedImage.image.id,
+              })
+            );
+          }
         } catch (error) {
-          errors.push({
+          const importError = {
             sourcePath: file.relativePath,
             originalFilename: file.name,
             message: error instanceof Error ? error.message : '未知导入错误。',
-          });
+          };
+          errors.push(importError);
+          items.push(
+            await importBatchRepository.createItem({
+              importBatchId: importBatch.id,
+              sourcePath: file.relativePath,
+              originalFilename: file.name,
+              status: 'failed',
+              reason: importError.message,
+            })
+          );
         }
       }
 
+      await importBatchRepository.complete(importBatch.id, importedImages.length, errors.length);
+
       return {
+        importBatchId: importBatch.id,
         successCount: importedImages.length,
         failedCount: errors.length,
         importedImages,
         errors,
         skippedCount,
+        items,
       };
     } finally {
       if (extractDir) {

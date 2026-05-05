@@ -7,7 +7,15 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, importBatchRepository, runWithDatabaseSpace, type ImageListItem, type ImportBatchSummary, type PixorySpace } from '../database';
+import {
+  imageRepository,
+  importBatchRepository,
+  runWithDatabaseSpace,
+  type ImageListItem,
+  type ImportBatchItemRecord,
+  type ImportBatchSummary,
+  type PixorySpace,
+} from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
@@ -63,18 +71,20 @@ export function ImportBatchReviewScreen({
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     summary: ImportBatchSummary | null;
     images: ImageListItem[];
+    items: ImportBatchItemRecord[];
   }>(
     async () => {
-      const [summary, images] = await runWithDatabaseSpace(space, () => Promise.all([
+      const [summary, images, items] = await runWithDatabaseSpace(space, () => Promise.all([
         importBatchId != null ? importBatchRepository.findSummaryById(importBatchId) : Promise.resolve(null),
         importBatchId != null ? imageRepository.findByImportBatchId(importBatchId) : imageRepository.findByIds(imageIds),
+        importBatchId != null ? importBatchRepository.findItemsByBatchId(importBatchId) : Promise.resolve([]),
       ]));
 
-      return { summary, images };
+      return { summary, images, items };
     },
     [imageIds.join(','), importBatchId, ipId, refreshToken, space],
     {
-      initialData: { summary: null, images: [] },
+      initialData: { summary: null, images: [], items: [] },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取本次导入失败：${message}`;
@@ -83,6 +93,7 @@ export function ImportBatchReviewScreen({
   );
 
   const images = data?.images ?? [];
+  const batchItems = data?.items ?? [];
   const summary = data?.summary ?? null;
   const stats = useMemo(() => buildBatchStats(images, summary), [images, summary]);
   const piles = useMemo(() => buildPileOptions(images, stats), [images, stats]);
@@ -145,6 +156,24 @@ export function ImportBatchReviewScreen({
             <Metric label="疑似重复" value={stats.suspectedDuplicateCount} />
           </View>
         </View>
+
+        {batchItems.length > 0 ? (
+          <View style={styles.itemDetailsPanel}>
+            <Text style={styles.sectionTitle}>资源包明细</Text>
+            <Text style={styles.itemDetailsMeta}>
+              成功 {batchItems.filter((item) => item.status === 'success').length} · 失败 {batchItems.filter((item) => item.status === 'failed').length} · 跳过 {batchItems.filter((item) => item.status === 'skipped').length}
+            </Text>
+            {batchItems
+              .filter((item) => item.status !== 'success')
+              .slice(0, 8)
+              .map((item) => (
+                <View key={item.id} style={styles.itemDetailRow}>
+                  <Text numberOfLines={1} style={styles.itemDetailName}>{item.originalFilename}</Text>
+                  <Text numberOfLines={2} style={styles.itemDetailReason}>{item.status} · {item.reason ?? item.sourcePath}</Text>
+                </View>
+              ))}
+          </View>
+        ) : null}
 
         <View style={styles.actions}>
           <PrimaryButton label="进入批量整理" onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} />
@@ -538,6 +567,32 @@ const styles = StyleSheet.create({
   metricGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  itemDetailsPanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    padding: spacing[3],
+  },
+  itemDetailsMeta: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+  },
+  itemDetailRow: {
+    borderTopColor: colors.border.subtle,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: spacing[1],
+    paddingTop: spacing[2],
+  },
+  itemDetailName: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  itemDetailReason: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
   metric: {
     gap: spacing[1],

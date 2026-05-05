@@ -192,9 +192,7 @@ export async function copyOriginalToAppStorage(
     }
 
     console.warn('Pixory original copyAsync failed for content URI, retrying with base64 fallback.', {
-      sourceUri,
-      destinationUri,
-      error,
+      error: error instanceof Error ? error.message : 'unknown copy error',
     });
 
     await copyContentUriWithBase64Fallback(sourceUri, destinationUri);
@@ -225,9 +223,7 @@ export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<
     }
 
     console.warn('Pixory avatar copyAsync failed for content URI, retrying with base64 fallback.', {
-      sourceUri,
-      destinationUri,
-      error,
+      error: error instanceof Error ? error.message : 'unknown copy error',
     });
 
     await copyContentUriWithBase64Fallback(sourceUri, destinationUri);

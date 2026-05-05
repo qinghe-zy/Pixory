@@ -1,6 +1,10 @@
 import { getDatabase } from '../db';
 import type {
   CreateImportBatchInput,
+  CreateImportBatchItemInput,
+  ImportBatchItemRecord,
+  ImportBatchItemRow,
+  ImportBatchItemStatusCount,
   ImportBatchRecord,
   ImportBatchRow,
   ImportBatchSummary,
@@ -27,6 +31,14 @@ function mapImportBatchSummaryRow(row: ImportBatchSummaryRow): ImportBatchSummar
     untaggedCount: row.untaggedCount ?? 0,
     noNoteCount: row.noNoteCount ?? 0,
     suspectedDuplicateCount: row.suspectedDuplicateCount ?? 0,
+  };
+}
+
+function mapImportBatchItemRow(row: ImportBatchItemRow): ImportBatchItemRecord {
+  return {
+    ...row,
+    imageAssetId: row.imageAssetId ?? null,
+    reason: row.reason ?? null,
   };
 }
 
@@ -172,6 +184,59 @@ export const importBatchRepository = {
 
   async findByIpId(ipId: number, limit = 20): Promise<ImportBatchSummary[]> {
     return this.findRecentByIpId(ipId, limit);
+  },
+
+  async createItem(input: CreateImportBatchItemInput): Promise<ImportBatchItemRecord> {
+    const db = await getDatabase();
+    const now = createTimestamp();
+    const result = await db.runAsync(
+      `INSERT INTO import_batch_items (
+        importBatchId,
+        sourcePath,
+        originalFilename,
+        status,
+        imageAssetId,
+        reason,
+        createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      input.importBatchId,
+      requireNonEmptyText(input.sourcePath, 'Import item source path'),
+      requireNonEmptyText(input.originalFilename, 'Import item filename'),
+      input.status,
+      input.imageAssetId ?? null,
+      normalizeOptionalText(input.reason) ?? null,
+      now
+    );
+
+    const record = await db.getFirstAsync<ImportBatchItemRow>(
+      'SELECT * FROM import_batch_items WHERE id = ?',
+      result.lastInsertRowId
+    );
+    if (!record) {
+      throw new Error(`Import batch item ${result.lastInsertRowId} was created but could not be reloaded.`);
+    }
+    return mapImportBatchItemRow(record);
+  },
+
+  async findItemsByBatchId(importBatchId: number): Promise<ImportBatchItemRecord[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImportBatchItemRow>(
+      'SELECT * FROM import_batch_items WHERE importBatchId = ? ORDER BY id ASC',
+      importBatchId
+    );
+    return rows.map(mapImportBatchItemRow);
+  },
+
+  async countItemsByStatus(importBatchId: number): Promise<ImportBatchItemStatusCount[]> {
+    const db = await getDatabase();
+    const rows = await db.getAllAsync<ImportBatchItemStatusCount>(
+      `SELECT status, COUNT(*) AS count
+       FROM import_batch_items
+       WHERE importBatchId = ?
+       GROUP BY status`,
+      importBatchId
+    );
+    return rows;
   },
 };
 

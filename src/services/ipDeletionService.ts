@@ -1,4 +1,4 @@
-import { imageRepository, ipRepository, type ImageListItem } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { deleteLocalFile } from './fileStorageService';
 
 export interface SoftDeleteIpResult {
@@ -22,16 +22,16 @@ export interface PermanentDeleteIpResult {
   fileFailures: PermanentDeleteIpFileFailure[];
 }
 
-export async function softDeleteIpToTrash(ipId: number): Promise<SoftDeleteIpResult> {
-  return ipRepository.softDeleteById(ipId);
+export async function softDeleteIpToTrash(ipId: number, space: PixorySpace = 'normal'): Promise<SoftDeleteIpResult> {
+  return runWithDatabaseSpace(space, () => ipRepository.softDeleteById(ipId));
 }
 
-export async function permanentlyDeleteIp(ipId: number): Promise<PermanentDeleteIpResult> {
-  const images = await imageRepository.findByIpId(ipId, { includeDeleted: true });
-  const databaseResult = await ipRepository.deletePermanentlyById(ipId);
-  const fileResult = databaseResult.ipDeletedCount > 0
-    ? await deleteIpImageFiles(images)
-    : { fileDeletedCount: 0, fileFailures: [] };
+export async function permanentlyDeleteIp(ipId: number, space: PixorySpace = 'normal'): Promise<PermanentDeleteIpResult> {
+  const { images, databaseResult } = await runWithDatabaseSpace(space, async () => ({
+    images: await imageRepository.findByIpId(ipId, { includeDeleted: true }),
+    databaseResult: await ipRepository.deletePermanentlyById(ipId),
+  }));
+  const fileResult = databaseResult.ipDeletedCount > 0 ? await deleteIpImageFiles(images) : { fileDeletedCount: 0, fileFailures: [] };
 
   return {
     ...databaseResult,

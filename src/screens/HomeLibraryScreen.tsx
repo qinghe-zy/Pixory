@@ -11,7 +11,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
-import { imageRepository, ipRepository, type IpLibraryFilter, type IpListItem } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
@@ -49,12 +49,12 @@ export function HomeLibraryScreen({
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
     async () => {
-      const [items, needsOrganizingCount] = await Promise.all([
+      const [items, needsOrganizingCount] = await runWithDatabaseSpace('normal', () => Promise.all([
         ipRepository.findLibraryItems({
           filter: activeFilter,
         }),
         imageRepository.countNeedsOrganizing(),
-      ]);
+      ]));
       return { items, needsOrganizingCount };
     },
     [activeFilter, refreshKey],
@@ -103,7 +103,7 @@ export function HomeLibraryScreen({
     setTrashIp(null);
     void (async () => {
       try {
-        const result = await softDeleteIpToTrash(ip.id);
+        const result = await softDeleteIpToTrash(ip.id, 'normal');
         if (result.ipDeletedCount === 0) {
           throw new Error('没有找到这个 IP。');
         }
@@ -124,7 +124,7 @@ export function HomeLibraryScreen({
     setPermanentDeleteIp(null);
     void (async () => {
       try {
-        const result = await permanentlyDeleteIp(ip.id);
+        const result = await permanentlyDeleteIp(ip.id, 'normal');
         if (result.ipDeletedCount === 0) {
           throw new Error('没有找到这个 IP。');
         }

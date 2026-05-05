@@ -18,6 +18,18 @@ Current progress note, 2026-05-05:
 - Latest verification: `pnpm test` passed 40/40, `pnpm typecheck` passed, and `pnpm exec expo install --check` reported dependencies up to date.
 - Matrix rows remain `Planned` unless the full row target behavior, automated evidence, and Android/manual expectation have all been satisfied. Do not mark final `Done` based only on source-shape policy tests.
 
+Implementation progress note, 2026-05-05:
+
+- Added app-level Personal System lock state and personal-route guard source coverage.
+- Added unlocked Personal System dashboard source coverage for normal/private IP sections, full private IP detail routing, create normal/private IP actions, and password change.
+- Added Personal dashboard space-preserving import/history actions so normal rows stay normal and personal rows stay personal.
+- Added `import_batch_items` migration, repository methods, package import item persistence, import result detail UI, and import history item status summaries.
+- Added personal plain export, personal encrypted `.pixorypack` export, all-data encrypted `.pixorypack` export, and encrypted personal merge-import service/source coverage including IP/group/image/tag/import batch/import batch item ID remapping.
+- Added package import storage-headroom preflight on top of package size, uncompressed size, file count, directory depth, Zip Slip, magic-byte, manual+folder group union, and current-space temp handling.
+- Added normal-mode policy coverage for normal-only home/me queries, normal scoped deletion, file-storage warning redaction, and dev log string/object redaction.
+- Latest automated checks in this implementation pass: `pnpm test` passed 49/49, `pnpm typecheck` passed, `pnpm exec expo install --check` passed.
+- Android APK validation evidence is still required before marking affected matrix rows `Done`.
+
 | Requirement | Target Behavior | Implementation Area | Automated Test | Android Manual Test | Status |
 | --- | --- | --- | --- | --- | --- |
 | Normal home excludes private IPs | Home in normal mode lists only normal IPs. | Home routing and normal DB queries | Normal home query defaults to normal only | Create private IP, return home, verify absent | Planned |
