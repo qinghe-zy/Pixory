@@ -161,3 +161,13 @@ test('remaining global route screens receive route space and scope repository wo
   assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Groups tab must use the authenticated active space');
   assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Tags tab must use the authenticated active space');
 });
+
+test('Android hardware back uses a synchronous route stack ref instead of updater side effects', () => {
+  const appSource = readProjectFile('App.tsx');
+
+  assert.match(appSource, /const routeStackRef = useRef\(routeStack\)/);
+  assert.match(appSource, /routeStackRef\.current = routeStack/);
+  assert.match(appSource, /const current = routeStackRef\.current/);
+  assert.match(appSource, /setRouteStack\(nextRouteStack\)/);
+  assert.doesNotMatch(appSource, /let handled = false/);
+});

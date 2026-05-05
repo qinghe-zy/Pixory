@@ -40,6 +40,9 @@ test('package import identifies images by magic bytes and maps folders to groups
   }
 
   assert.match(source, /detectImageTypeFromMagicBytes/);
+  assert.match(source, /MAGIC_BYTE_READ_LENGTH/);
+  assert.match(source, /readAsStringAsync\(fileUri,\s*\{[\s\S]{0,160}position:\s*0/);
+  assert.match(source, /readAsStringAsync\(fileUri,\s*\{[\s\S]{0,180}length:\s*MAGIC_BYTE_READ_LENGTH/);
   assert.match(source, /resolvePackageGroupName/);
   assert.match(source, /groupRepository\.findByIpIdAndName/);
   assert.match(source, /groupRepository\.create/);

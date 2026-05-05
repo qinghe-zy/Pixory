@@ -2,7 +2,7 @@ export const colors = {
   primary: {
     background: '#F2E7D5',
     hover: '#DCC79D',
-    default: '#B99055',
+    default: '#8A6332',
     active: '#7C5A2E',
     dark: '#6D4D27',
     weak: '#F2E7D5',

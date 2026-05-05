@@ -118,6 +118,7 @@ export default function App() {
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
   const [routeStack, setRouteStack] = useState<AppRoute[]>([INITIAL_ROUTE]);
+  const routeStackRef = useRef(routeStack);
   const [libraryRefreshToken, setLibraryRefreshToken] = useState(0);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [initializationKey, setInitializationKey] = useState(0);
@@ -133,6 +134,10 @@ export default function App() {
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
+
+  useEffect(() => {
+    routeStackRef.current = routeStack;
+  }, [routeStack]);
 
   useEffect(() => {
     let isMounted = true;
@@ -333,24 +338,25 @@ export default function App() {
     }
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      let handled = false;
+      const current = routeStackRef.current;
+      let nextRouteStack: AppRoute[] | null = null;
 
-      setRouteStack((current) => {
-        if (current.length > 1) {
-          handled = true;
-          return current.slice(0, -1);
-        }
-
+      if (current.length > 1) {
+        nextRouteStack = current.slice(0, -1);
+      } else {
         const [rootRoute] = current;
         if (rootRoute?.name === 'root' && rootRoute.tab !== 'home') {
-          handled = true;
-          return [INITIAL_ROUTE];
+          nextRouteStack = [INITIAL_ROUTE];
         }
+      }
 
-        return current;
-      });
+      if (!nextRouteStack) {
+        return false;
+      }
 
-      return handled;
+      routeStackRef.current = nextRouteStack;
+      setRouteStack(nextRouteStack);
+      return true;
     });
 
     return () => subscription.remove();

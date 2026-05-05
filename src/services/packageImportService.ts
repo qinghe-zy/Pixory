@@ -20,6 +20,7 @@ export const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
 export const MAX_PACKAGE_FILE_COUNT = 1000;
 export const MAX_PACKAGE_DIRECTORY_DEPTH = 8;
 const MIN_FREE_STORAGE_AFTER_IMPORT_BYTES = 64 * 1024 * 1024;
+const MAGIC_BYTE_READ_LENGTH = 16;
 
 type SupportedPackageImageType = {
   mimeType: string;
@@ -31,6 +32,7 @@ export interface PickPackageForImportResult {
   packageUri: string | null;
   packageName: string | null;
 }
+
 
 export interface PackageImportError {
   sourcePath: string;
@@ -158,27 +160,29 @@ async function scanExtractedFiles(rootDir: string): Promise<ExtractedPackageFile
 }
 
 async function detectImageTypeFromMagicBytes(fileUri: string): Promise<SupportedPackageImageType | null> {
-  const base64Contents = await FileSystem.readAsStringAsync(fileUri, {
+  const base64Header = await FileSystem.readAsStringAsync(fileUri, {
     encoding: FileSystem.EncodingType.Base64,
+    position: 0,
+    length: MAGIC_BYTE_READ_LENGTH,
   });
 
-  if (base64Contents.startsWith('iVBORw0KGgo')) {
+  if (base64Header.startsWith('iVBORw0KGgo')) {
     return { mimeType: 'image/png', extension: 'png' };
   }
 
-  if (base64Contents.startsWith('/9j/')) {
+  if (base64Header.startsWith('/9j/')) {
     return { mimeType: 'image/jpeg', extension: 'jpg' };
   }
 
-  if (base64Contents.startsWith('UklGR')) {
+  if (base64Header.startsWith('UklGR')) {
     return { mimeType: 'image/webp', extension: 'webp' };
   }
 
-  if (base64Contents.startsWith('R0lGOD')) {
+  if (base64Header.startsWith('R0lGOD')) {
     return { mimeType: 'image/gif', extension: 'gif' };
   }
 
-  if (base64Contents.startsWith('Qk')) {
+  if (base64Header.startsWith('Qk')) {
     return { mimeType: 'image/bmp', extension: 'bmp' };
   }
 
@@ -387,4 +391,3 @@ export async function importPackageToIp(params: {
     }
   });
 }
-

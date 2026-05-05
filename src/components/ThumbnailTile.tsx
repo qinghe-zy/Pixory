@@ -22,6 +22,9 @@ export function ThumbnailTile({
   aspectRatio = componentTokens.thumbnail.aspectRatio,
   selected = false,
 }: ThumbnailTileProps) {
+  const accessibilityLabel = selected
+    ? `打开图片：${image.originalFilename}，已选中`
+    : `打开图片：${image.originalFilename}`;
   const content = (
     <View style={[styles.tile, selected ? styles.selectedTile : null, { aspectRatio }]}>
       {image.thumbnailFileUri ? (
@@ -56,6 +59,9 @@ export function ThumbnailTile({
 
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="imagebutton"
+      accessibilityState={{ selected }}
       delayLongPress={220}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}
