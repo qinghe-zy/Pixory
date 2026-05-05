@@ -32,6 +32,8 @@ export function PersonalUnlockModal({
   const [currentSecret, setCurrentSecret] = useState('');
   const [nextSecret, setNextSecret] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [changePasswordErrorMessage, setChangePasswordErrorMessage] = useState<string | null>(null);
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [resetConfirmVisible, setResetConfirmVisible] = useState(false);
 
   useEffect(() => {
@@ -41,6 +43,8 @@ export function PersonalUnlockModal({
       setCurrentSecret('');
       setNextSecret('');
       setErrorMessage(null);
+      setChangePasswordErrorMessage(null);
+      setChangePasswordVisible(false);
       setResetConfirmVisible(false);
     }
   }, [visible]);
@@ -61,6 +65,30 @@ export function PersonalUnlockModal({
       await onUnlock(secret);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '隐私模式操作失败');
+    }
+  }
+
+  function openChangePasswordDialog() {
+    setCurrentSecret('');
+    setNextSecret('');
+    setChangePasswordErrorMessage(null);
+    setChangePasswordVisible(true);
+  }
+
+  function closeChangePasswordDialog() {
+    setChangePasswordVisible(false);
+    setCurrentSecret('');
+    setNextSecret('');
+    setChangePasswordErrorMessage(null);
+  }
+
+  async function submitChangePassword() {
+    setChangePasswordErrorMessage(null);
+    try {
+      await onChangePassword(currentSecret, nextSecret);
+      closeChangePasswordDialog();
+    } catch (error) {
+      setChangePasswordErrorMessage(error instanceof Error ? error.message : '修改密码失败');
     }
   }
 
@@ -111,49 +139,62 @@ export function PersonalUnlockModal({
           />
 
           {hasCredential ? (
-            <View style={styles.secondarySection}>
-              <Text style={styles.sectionTitle}>修改密码</Text>
-              <TextInput
-                onChangeText={setCurrentSecret}
-                placeholder="当前密码"
-                placeholderTextColor={colors.text.placeholder}
-                secureTextEntry
-                style={styles.input}
-                value={currentSecret}
-              />
-              <TextInput
-                onChangeText={setNextSecret}
-                placeholder="新密码"
-                placeholderTextColor={colors.text.placeholder}
-                secureTextEntry
-                style={styles.input}
-                value={nextSecret}
-              />
-              <PrimaryButton
-                disabled={loading || !currentSecret.trim() || !nextSecret.trim()}
-                label="更新隐私模式密码"
-                loading={loading}
-                onPress={() => {
-                  void onChangePassword(currentSecret, nextSecret).catch((error) => {
-                    setErrorMessage(error instanceof Error ? error.message : '修改密码失败');
-                  });
-                }}
-                variant="outline"
-              />
-              <PrimaryButton
+            <View style={styles.textActions}>
+              <Pressable
+                accessibilityRole="button"
                 disabled={loading}
-                label="忘记密码，重置隐私数据"
-                loading={loading}
+                hitSlop={8}
+                onPress={openChangePasswordDialog}
+                style={({ pressed }) => [styles.textActionButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.updatePasswordText}>更新密码</Text>
+              </Pressable>
+              <View style={styles.textActionDivider} />
+              <Pressable
+                accessibilityRole="button"
+                disabled={loading}
+                hitSlop={8}
                 onPress={() => {
                   setResetConfirmVisible(true);
                 }}
-                variant="outline"
-              />
+                style={({ pressed }) => [styles.textActionButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.forgotPasswordText}>忘记密码</Text>
+              </Pressable>
             </View>
           ) : null}
         </View>
       </View>
     </Modal>
+    <AppDialog
+      message="输入当前密码后设置一个新的隐私模式密码。"
+      onClose={closeChangePasswordDialog}
+      onPrimary={() => {
+        void submitChangePassword();
+      }}
+      primaryDisabled={loading || !currentSecret.trim() || !nextSecret.trim()}
+      primaryLabel="确认更新"
+      title="更新隐私模式密码"
+      visible={changePasswordVisible}
+    >
+      <TextInput
+        onChangeText={setCurrentSecret}
+        placeholder="当前密码"
+        placeholderTextColor={colors.text.placeholder}
+        secureTextEntry
+        style={styles.input}
+        value={currentSecret}
+      />
+      <TextInput
+        onChangeText={setNextSecret}
+        placeholder="新密码"
+        placeholderTextColor={colors.text.placeholder}
+        secureTextEntry
+        style={styles.input}
+        value={nextSecret}
+      />
+      {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
+    </AppDialog>
     <AppDialog
       danger
       message="这只会删除隐私模式的密码、SQLite、原图、缩略图、临时文件和导出文件；普通模式数据不会被删除。"
@@ -231,15 +272,31 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing[3],
   },
-  secondarySection: {
+  textActions: {
+    alignItems: 'center',
     borderTopColor: colors.border.subtle,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'center',
     paddingTop: spacing[3],
   },
-  sectionTitle: {
+  textActionButton: {
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  textActionDivider: {
+    backgroundColor: colors.border.subtle,
+    height: 14,
+    width: StyleSheet.hairlineWidth,
+  },
+  updatePasswordText: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+  },
+  forgotPasswordText: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
   },
   errorText: {
     ...typography.textStyles.caption,

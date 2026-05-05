@@ -29,7 +29,9 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
 
         return (
           <Pressable
+            accessibilityLabel={item.label}
             accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
             key={item.key}
             onPress={() => onSelectTab(item.key)}
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}

@@ -232,6 +232,7 @@ export function MeScreen({
               ? '返回普通模式'
               : '进入隐私模式'
             : item.label;
+          const entryAccessibilityLabel = isSettings ? '设置，未开放' : entryTitle;
           const entryContent = (
             <>
               <View style={[styles.entryIconWrap, item.key === 'trash' && styles.trashIconWrap]}>
@@ -244,7 +245,9 @@ export function MeScreen({
               <View style={styles.entryCopy}>
                 <Text style={styles.entryTitle}>{entryTitle}</Text>
               </View>
-              {isSettings ? null : (
+              {isSettings ? (
+                <Text style={styles.unavailableBadge}>未开放</Text>
+              ) : (
                 <Text style={styles.entryCount}>
                   {item.key === 'favorites'
                     ? data?.favoriteImageCount ?? 0
@@ -264,11 +267,17 @@ export function MeScreen({
           );
 
           return isSettings ? (
-            <View key={item.key} style={[styles.entryCard, styles.disabledEntry]}>
+            <View accessibilityLabel={entryAccessibilityLabel} accessible key={item.key} style={[styles.entryCard, styles.disabledEntry]}>
               {entryContent}
             </View>
           ) : (
-            <Pressable key={item.key} onPress={() => handleEntryPress(item.key)} style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
+            <Pressable
+              accessibilityLabel={entryAccessibilityLabel}
+              accessibilityRole="button"
+              key={item.key}
+              onPress={() => handleEntryPress(item.key)}
+              style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}
+            >
               {entryContent}
             </Pressable>
           );
@@ -428,6 +437,15 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     minWidth: 32,
     textAlign: 'right',
+  },
+  unavailableBadge: {
+    ...typography.textStyles.micro,
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
+    color: colors.text.secondary,
+    overflow: 'hidden',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
   pressed: {
     opacity: 0.82,

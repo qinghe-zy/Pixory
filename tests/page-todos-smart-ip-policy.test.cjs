@@ -158,3 +158,21 @@ test('empty guide cards can sit lower on home groups and tags pages', () => {
   assert.match(groupsSource, /emptyGuideOffset/);
   assert.match(tagsSource, /emptyGuideOffset/);
 });
+
+test('global groups empty state gives a concrete next action', () => {
+  const appSource = readProjectFile('App.tsx');
+  const groupsSource = readProjectFile('src/screens/GlobalGroupsScreen.tsx');
+
+  assert.match(groupsSource, /onCreateFirstIp/);
+  assert.match(groupsSource, /emptyActionLabel=\{onCreateFirstIp \? '去首页创建 IP' : undefined\}/);
+  assert.match(groupsSource, /先创建或打开 IP/);
+  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,500}onCreateFirstIp=\{\(\) => pushRoute\(\{ name: 'create-ip'/);
+});
+
+test('settings entry is visibly marked unavailable instead of looking broken', () => {
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
+
+  assert.match(meSource, /设置，未开放/);
+  assert.match(meSource, /unavailableBadge/);
+  assert.match(meSource, /<Text style=\{styles\.unavailableBadge\}>未开放<\/Text>/);
+});

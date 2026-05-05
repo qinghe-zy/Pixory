@@ -46,3 +46,10 @@ test('thumbnail tiles expose clickable image accessibility metadata', () => {
   assert.match(source, /已选中/);
   assert.match(source, /accessibilityState=\{\{\s*selected\s*\}\}/);
 });
+
+test('bottom tabs expose text-only accessibility labels and selected state', () => {
+  const source = readProjectFile('src/components/BottomTabBar.tsx');
+
+  assert.match(source, /accessibilityLabel=\{item\.label\}/);
+  assert.match(source, /accessibilityState=\{\{\s*selected:\s*isActive\s*\}\}/);
+});

@@ -773,6 +773,7 @@ export default function App() {
     content = (
       <GlobalGroupsScreen
         space={currentRoute.space}
+        onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: currentRoute.space })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: currentRoute.space })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
@@ -814,6 +815,7 @@ export default function App() {
       <GlobalGroupsScreen
         space={activeSpace}
         footer={rootFooter}
+        onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
         refreshToken={libraryRefreshToken}

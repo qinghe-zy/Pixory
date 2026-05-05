@@ -20,11 +20,19 @@ interface GlobalGroupsScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
+  onCreateFirstIp?: () => void;
   onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
 }
 
-export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onEditGroup, onOpenGroup }: GlobalGroupsScreenProps) {
+export function GlobalGroupsScreen({
+  space = 'normal',
+  refreshToken,
+  footer,
+  onCreateFirstIp,
+  onEditGroup,
+  onOpenGroup,
+}: GlobalGroupsScreenProps) {
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
@@ -69,8 +77,8 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
     <>
     <ScreenScaffold decorativeTitle="Groups" footer={footer} scrollable title="分组">
       <PageStateBlock
-        emptyActionLabel={undefined}
-        emptyDescription="创建分组后，这里会展示全部 IP 下的真实分组数据。"
+        emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
+        emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
         emptyContainerStyle={styles.emptyGuideOffset}
         emptyIconName="folder-open-outline"
         emptyTitle={commonEmptyStateCopy.noGroupsTitle}
@@ -79,6 +87,7 @@ export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onE
         loading={isLoading}
         loadingDescription="本地分组数据读取完成后，这里会展示全部分组。"
         loadingTitle="正在读取分组"
+        onEmptyAction={onCreateFirstIp}
         onRetry={reload}
       >
         <View style={styles.list}>
