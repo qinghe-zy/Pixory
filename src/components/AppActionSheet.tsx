@@ -11,6 +11,7 @@ export interface AppActionSheetItem {
   meta?: string;
   danger?: boolean;
   disabled?: boolean;
+  selected?: boolean;
   onPress: () => void;
 }
 
@@ -20,9 +21,11 @@ interface AppActionSheetProps {
   message?: string;
   items: AppActionSheetItem[];
   onClose: () => void;
+  closeOnSelect?: boolean;
+  cancelLabel?: string;
 }
 
-export function AppActionSheet({ visible, title, message, items, onClose }: AppActionSheetProps) {
+export function AppActionSheet({ visible, title, message, items, onClose, closeOnSelect = true, cancelLabel = '取消' }: AppActionSheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -42,7 +45,9 @@ export function AppActionSheet({ visible, title, message, items, onClose }: AppA
                 disabled={item.disabled}
                 key={item.key}
                 onPress={() => {
-                  onClose();
+                  if (closeOnSelect) {
+                    onClose();
+                  }
                   item.onPress();
                 }}
                 style={({ pressed }) => [
@@ -64,12 +69,16 @@ export function AppActionSheet({ visible, title, message, items, onClose }: AppA
                   <Text numberOfLines={1} style={[styles.rowLabel, item.danger ? styles.dangerText : null]}>{item.label}</Text>
                   {item.meta ? <Text numberOfLines={1} style={styles.rowMeta}>{item.meta}</Text> : null}
                 </View>
-                <Ionicons color={colors.text.tertiary} name="chevron-forward" size={15} />
+                <Ionicons
+                  color={!closeOnSelect && item.selected ? colors.primary.default : colors.text.tertiary}
+                  name={closeOnSelect ? 'chevron-forward' : item.selected ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={15}
+                />
               </Pressable>
             ))}
           </View>
           <Pressable onPress={onClose} style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}>
-            <Text style={styles.cancelText}>取消</Text>
+            <Text style={styles.cancelText}>{cancelLabel}</Text>
           </Pressable>
         </View>
       </View>

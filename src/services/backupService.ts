@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { DATABASE_NAME, getDatabase, imageRepository, ipRepository, settingsRepository } from '../database';
+import { DATABASE_NAME, PERSONAL_DATABASE_NAME, getDatabase, imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
+import { formatImageAssetCode } from '../utils/imageAssetCode';
 import {
   copyLocalFile,
   ensureLocalDirectory,
@@ -11,6 +12,10 @@ import {
   writeBase64File,
   writeTextFile,
 } from './fileStorageService';
+import { verifyPersonalPassword } from './personalSystemService';
+
+export type BackupScope = 'normal' | 'personal' | 'all';
+const NORMAL_BACKUP_SCOPE = { space: 'normal' as const };
 
 export interface BackupResult {
   backupDir: string;
@@ -80,6 +85,21 @@ function getMimeType(fileName: string): string {
   return 'application/octet-stream';
 }
 
+function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageRepository.findAll>>) {
+  return images.map((image) => ({
+    id: image.id,
+    assetCode: formatImageAssetCode(image),
+    ipId: image.ipId,
+    originalFilename: image.originalFilename,
+    internalFilename: image.internalFilename,
+    width: image.width,
+    height: image.height,
+    mimeType: image.mimeType,
+    fileSize: image.fileSize,
+    deletedAt: image.deletedAt,
+  }));
+}
+
 async function calculateDirectorySize(directoryUri: string): Promise<number> {
   const entries = await FileSystem.readDirectoryAsync(directoryUri);
   let totalBytes = 0;
@@ -135,9 +155,9 @@ async function copyBackupDirectoryToSaf(sourceDirUri: string, destinationDirUri:
   return copiedFileCount;
 }
 
-async function createBackupShell(prefix: string) {
+async function createBackupShell(prefix: string, space: PixorySpace = 'normal') {
   const createdAt = new Date().toISOString();
-  const backupRoot = joinStoragePath(getExportsDir(), 'backups');
+  const backupRoot = joinStoragePath(getExportsDir(space), 'backups');
   await ensureLocalDirectory(backupRoot);
   const backupDir = `${joinStoragePath(backupRoot, `${prefix}_${timestampForPath(createdAt)}`)}/`;
   await ensureLocalDirectory(backupDir);
@@ -148,16 +168,18 @@ async function createBackupShell(prefix: string) {
   return { backupDir, createdAt };
 }
 
-async function writeDatabaseCopy(backupDir: string): Promise<string> {
-  const db = await getDatabase();
-  const databaseUri = joinStoragePath(`${joinStoragePath(backupDir, 'database')}/`, DATABASE_NAME);
+async function writeDatabaseCopy(backupDir: string, space: PixorySpace = 'normal'): Promise<string> {
+  const db = await getDatabase(space);
+  const databaseName = space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME;
+  const databaseUri = joinStoragePath(`${joinStoragePath(backupDir, 'database')}/`, databaseName);
   await writeBase64File(databaseUri, toBase64(await db.serializeAsync()));
   return databaseUri;
 }
 
 export async function createFullBackup(): Promise<BackupResult> {
-  const { backupDir, createdAt } = await createBackupShell('full');
-  const databaseUri = await writeDatabaseCopy(backupDir);
+  const space: PixorySpace = 'normal';
+  const { backupDir, createdAt } = await createBackupShell('full', space);
+  const databaseUri = await writeDatabaseCopy(backupDir, space);
   const images = await imageRepository.findAll({ includeDeleted: true });
   let originalCount = 0;
   let thumbnailCount = 0;
@@ -188,11 +210,13 @@ export async function createFullBackup(): Promise<BackupResult> {
         type: 'full',
         createdAt,
         database: databaseUri,
-        originalRoot: getOriginalsDir(),
-        thumbnailRoot: getThumbnailsDir(),
+        space,
+        originalRoot: getOriginalsDir(space),
+        thumbnailRoot: getThumbnailsDir(space),
         originalCount,
         thumbnailCount,
         imageCount: images.length,
+        images: buildManifestImageEntries(images),
         safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
       },
       null,
@@ -210,8 +234,9 @@ export async function createIpBackup(ipId: number): Promise<BackupResult> {
     throw new Error('没有找到这个 IP。');
   }
 
-  const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`);
-  const databaseUri = await writeDatabaseCopy(backupDir);
+  const space: PixorySpace = 'normal';
+  const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`, space);
+  const databaseUri = await writeDatabaseCopy(backupDir, space);
   const images = await imageRepository.findByIpId(ipId, { includeDeleted: true });
   const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${ipId}`)}/`;
   const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${ipId}`)}/`;
@@ -239,12 +264,14 @@ export async function createIpBackup(ipId: number): Promise<BackupResult> {
     JSON.stringify(
       {
         type: 'ip',
+        space,
         ip,
         createdAt,
         database: databaseUri,
         originalCount,
         thumbnailCount,
         imageCount: images.length,
+        images: buildManifestImageEntries(images),
         safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
       },
       null,
@@ -253,6 +280,76 @@ export async function createIpBackup(ipId: number): Promise<BackupResult> {
   );
 
   return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+}
+
+export async function requirePersonalVerification(secret: string): Promise<void> {
+  const result = await verifyPersonalPassword(secret);
+  if (!result.ok) {
+    throw new Error(result.message ?? '隐私系统验证失败。');
+  }
+}
+
+export async function createPersonalBackup(secret: string): Promise<BackupResult> {
+  await requirePersonalVerification(secret);
+  return runWithDatabaseSpace('personal', async () => {
+    const space: PixorySpace = 'personal';
+    const { backupDir, createdAt } = await createBackupShell('personal', space);
+    const databaseUri = await writeDatabaseCopy(backupDir, space);
+    const images = await imageRepository.findAll({ includeDeleted: true });
+    let originalCount = 0;
+    let thumbnailCount = 0;
+
+    for (const image of images) {
+      const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${image.ipId}`)}/`;
+      const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${image.ipId}`)}/`;
+      await ensureLocalDirectory(originalDir);
+      await ensureLocalDirectory(thumbnailDir);
+
+      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
+        originalCount += 1;
+      }
+
+      if (image.thumbnailFileUri) {
+        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
+        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
+          thumbnailCount += 1;
+        }
+      }
+    }
+
+    const manifestUri = joinStoragePath(backupDir, 'manifest.json');
+    await writeTextFile(
+      manifestUri,
+      JSON.stringify(
+        {
+          type: 'personal',
+          space,
+          createdAt,
+          database: databaseUri,
+          originalRoot: getOriginalsDir(space),
+          thumbnailRoot: getThumbnailsDir(space),
+          originalCount,
+          thumbnailCount,
+          imageCount: images.length,
+          images: buildManifestImageEntries(images),
+          safety:
+            'Personal backup requires password verification. First version isolates files and database but does not encrypt originals at rest.',
+        },
+        null,
+        2
+      )
+    );
+
+    return {
+      backupDir,
+      createdAt,
+      databaseUri,
+      manifestUri,
+      originalCount,
+      thumbnailCount,
+      totalBytes: await calculateDirectorySize(backupDir),
+    };
+  });
 }
 
 export async function exportBackupToSystemDirectory(backupDir: string): Promise<BackupSystemExportResult> {

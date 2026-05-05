@@ -19,6 +19,7 @@ interface MeScreenProps {
   onOpenRecentViewed: () => void;
   onOpenTrash: () => void;
   onOpenBackup: () => void;
+  onOpenPersonalSystem: () => void;
 }
 
 interface MeStats {
@@ -52,6 +53,11 @@ const ENTRY_ITEMS = [
     icon: 'archive-outline',
   },
   {
+    key: 'personal',
+    label: '隐私系统',
+    icon: 'lock-closed-outline',
+  },
+  {
     key: 'settings',
     label: '设置',
     icon: 'settings-outline',
@@ -65,6 +71,7 @@ export function MeScreen({
   onOpenRecentViewed,
   onOpenTrash,
   onOpenBackup,
+  onOpenPersonalSystem,
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
@@ -122,6 +129,11 @@ export function MeScreen({
 
     if (key === 'backup') {
       onOpenBackup();
+      return;
+    }
+
+    if (key === 'personal') {
+      onOpenPersonalSystem();
     }
   }
 
@@ -222,7 +234,9 @@ export function MeScreen({
                       ? data?.activeImageCount ?? 0
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
-                        : data?.ipCount ?? 0}
+                        : item.key === 'personal'
+                          ? 0
+                          : data?.ipCount ?? 0}
                 </Text>
               )}
               {isSettings ? null : <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />}

@@ -11,17 +11,26 @@ import {
   MIGRATION_STATEMENTS_V6,
   MIGRATION_STATEMENTS_V7,
   MIGRATION_STATEMENTS_V8,
+  MIGRATION_STATEMENTS_V9,
+  PERSONAL_DATABASE_NAME,
 } from './schema';
 
-let databasePromise: Promise<SQLiteDatabase> | null = null;
-let initializationPromise: Promise<SQLiteDatabase> | null = null;
+export type PixorySpace = 'normal' | 'personal';
 
-async function openPixoryDatabase(): Promise<SQLiteDatabase> {
-  if (!databasePromise) {
-    databasePromise = openDatabaseAsync(DATABASE_NAME);
+const databasePromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
+const initializationPromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
+let currentDatabaseSpace: PixorySpace = 'normal';
+
+function getDatabaseNameForSpace(space: PixorySpace): string {
+  return space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME;
+}
+
+async function openPixoryDatabase(space: PixorySpace = 'normal'): Promise<SQLiteDatabase> {
+  if (!databasePromises[space]) {
+    databasePromises[space] = openDatabaseAsync(getDatabaseNameForSpace(space));
   }
 
-  return databasePromise;
+  return databasePromises[space];
 }
 
 async function configureDatabase(db: SQLiteDatabase): Promise<void> {
@@ -29,8 +38,18 @@ async function configureDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
 }
 
-export async function runMigrations(db?: SQLiteDatabase): Promise<void> {
-  const database = db ?? (await openPixoryDatabase());
+async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
+  const table = await db.getFirstAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'import_templates'"
+  );
+
+  if (!table) {
+    await db.execAsync(MIGRATION_STATEMENTS_V9);
+  }
+}
+
+export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'normal'): Promise<void> {
+  const database = db ?? (await openPixoryDatabase(space));
 
   await database.withTransactionAsync(async () => {
     const versionRow = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -68,28 +87,59 @@ export async function runMigrations(db?: SQLiteDatabase): Promise<void> {
       await database.execAsync(MIGRATION_STATEMENTS_V8);
     }
 
+    if (currentVersion < 9) {
+      await database.execAsync(MIGRATION_STATEMENTS_V9);
+    }
+
+    await ensureImportTemplatesSchema(database);
+
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
   });
 }
 
-export async function initDatabase(): Promise<SQLiteDatabase> {
-  if (!initializationPromise) {
-    initializationPromise = (async () => {
-      const db = await openPixoryDatabase();
+export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLiteDatabase> {
+  if (!initializationPromises[space]) {
+    initializationPromises[space] = (async () => {
+      const db = await openPixoryDatabase(space);
       await configureDatabase(db);
-      await runMigrations(db);
+      await runMigrations(db, space);
       return db;
     })().catch((error) => {
-      initializationPromise = null;
+      initializationPromises[space] = undefined;
       throw error;
     });
   }
 
-  return initializationPromise;
+  return initializationPromises[space];
 }
 
-export async function getDatabase(): Promise<SQLiteDatabase> {
-  return initDatabase();
+export async function getDatabase(space: PixorySpace = currentDatabaseSpace): Promise<SQLiteDatabase> {
+  return initDatabase(space);
+}
+
+export async function runWithDatabaseSpace<T>(
+  space: PixorySpace,
+  task: () => Promise<T>
+): Promise<T> {
+  const previousSpace = currentDatabaseSpace;
+  currentDatabaseSpace = space;
+  try {
+    return await task();
+  } finally {
+    currentDatabaseSpace = previousSpace;
+  }
+}
+
+export async function resetDatabaseSpaceCache(space: PixorySpace): Promise<void> {
+  const database = await databasePromises[space]?.catch(() => null);
+  if (database) {
+    await database.closeAsync();
+  }
+  databasePromises[space] = undefined;
+  initializationPromises[space] = undefined;
+  if (currentDatabaseSpace === space) {
+    currentDatabaseSpace = 'normal';
+  }
 }

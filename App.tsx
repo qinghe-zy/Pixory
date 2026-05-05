@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppScreen } from './src/components/AppScreen';
@@ -9,7 +9,7 @@ import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { colors, spacing, typography } from './src/design/tokens';
-import { initDatabase, type IpLibraryFilter } from './src/database';
+import { initDatabase, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
@@ -34,6 +34,7 @@ import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
+import { PersonalSystemScreen } from './src/screens/PersonalSystemScreen';
 import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
@@ -59,10 +60,11 @@ type AppRoute =
       source: 'ip-detail' | 'all-images' | 'group-images';
       groupId?: number | null;
       importBatchId?: number | null;
+      scopeImageIds?: number[];
       initialSelectedImageIds?: number[];
       initialMode?: BatchInitialMode;
     }
-  | { name: 'import-images'; ipId: number; groupId?: number | null }
+  | { name: 'import-images'; ipId: number; groupId?: number | null; space?: PixorySpace }
   | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null }
   | { name: 'import-batch-history'; ipId: number }
   | { name: 'duplicate-review'; ipId: number; importBatchId: number }
@@ -77,6 +79,7 @@ type AppRoute =
   | { name: 'global-search'; query?: string }
   | { name: 'trash' }
   | { name: 'backup' }
+  | { name: 'personal-system' }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -125,6 +128,22 @@ export default function App() {
       isMounted = false;
     };
   }, [initializationKey]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        setRouteStack((current) => {
+          const route = current[current.length - 1];
+          if (route?.name === 'personal-system' || (route?.name === 'import-images' && route.space === 'personal')) {
+            return [INITIAL_ROUTE];
+          }
+          return current;
+        });
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   function pushRoute(route: AppRoute) {
     setRouteStack((current) => [...current, route]);
@@ -334,6 +353,7 @@ export default function App() {
         }
         onOpenImage={openImageViewer}
         refreshToken={libraryRefreshToken}
+        scopeImageIds={currentRoute.scopeImageIds}
         source={currentRoute.source}
       />
     );
@@ -342,9 +362,14 @@ export default function App() {
       <ImportImagesScreen
         defaultGroupId={currentRoute.groupId ?? null}
         ipId={currentRoute.ipId}
+        space={currentRoute.space ?? 'normal'}
         onBack={popRoute}
         onImported={(imageIds, importBatchId) => {
           refreshLibrary();
+          if (currentRoute.space === 'personal') {
+            setRouteStack([{ name: 'personal-system' }]);
+            return;
+          }
           replaceCurrentRoute({ name: 'import-result', ipId: currentRoute.ipId, imageIds, importBatchId });
         }}
       />
@@ -362,6 +387,7 @@ export default function App() {
             ipId: currentRoute.ipId,
             source: 'all-images',
             importBatchId: currentRoute.importBatchId,
+            scopeImageIds: imageIds,
             initialSelectedImageIds: imageIds,
             initialMode,
           })
@@ -508,7 +534,7 @@ export default function App() {
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onChanged={refreshLibrary}
-        refreshToken={libraryRefreshToken}
+        onOpenImage={openImageViewer}
       />
     );
   } else if (currentRoute.name === 'global-search') {
@@ -527,6 +553,14 @@ export default function App() {
     content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} />;
   } else if (currentRoute.name === 'backup') {
     content = <BackupScreen onBack={popRoute} refreshToken={libraryRefreshToken} />;
+  } else if (currentRoute.name === 'personal-system') {
+    content = (
+      <PersonalSystemScreen
+        onBack={popRoute}
+        onImportImages={(ipId) => pushRoute({ name: 'import-images', ipId, space: 'personal' })}
+        refreshToken={libraryRefreshToken}
+      />
+    );
   } else if (currentRoute.name === 'placeholder') {
     content = <PlaceholderScreen description={currentRoute.description} onBack={popRoute} title={currentRoute.title} />;
   } else if (currentRoute.name === 'import-development') {
@@ -562,6 +596,7 @@ export default function App() {
         footer={rootFooter}
         onOpenFavorites={() => pushRoute({ name: 'favorites' })}
         onOpenBackup={() => pushRoute({ name: 'backup' })}
+        onOpenPersonalSystem={() => pushRoute({ name: 'personal-system' })}
         onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed' })}
         onOpenTrash={() => pushRoute({ name: 'trash' })}
         refreshToken={libraryRefreshToken}

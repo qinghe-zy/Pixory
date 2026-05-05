@@ -1,6 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import type { PixorySpace } from '../database';
 
 const APP_STORAGE_ROOT_DIR_NAME = 'pixory';
+const PERSONAL_STORAGE_ROOT_DIR_NAME = 'pixory_personal';
 const ORIGINALS_DIR_NAME = 'originals';
 const THUMBNAILS_DIR_NAME = 'thumbnails';
 const EXPORTS_DIR_NAME = 'exports';
@@ -42,6 +44,11 @@ function normalizeDirectoryUri(directoryUri: string): string {
 
 function getAppStorageRootDir(): string {
   return normalizeDirectoryUri(`${getDocumentDirectoryOrThrow()}${APP_STORAGE_ROOT_DIR_NAME}`);
+}
+
+function getStorageRootDir(space: PixorySpace = 'normal'): string {
+  const rootName = space === 'personal' ? PERSONAL_STORAGE_ROOT_DIR_NAME : APP_STORAGE_ROOT_DIR_NAME;
+  return normalizeDirectoryUri(`${getDocumentDirectoryOrThrow()}${rootName}`);
 }
 
 function joinPath(baseDir: string, childName: string): string {
@@ -117,14 +124,14 @@ async function copyContentUriWithBase64Fallback(sourceUri: string, destinationUr
   });
 }
 
-export async function ensureAppDirectories(): Promise<void> {
+export async function ensureAppDirectories(space: PixorySpace = 'normal'): Promise<void> {
   const directories = [
-    getAppStorageRootDir(),
-    getOriginalsDir(),
-    getThumbnailsDir(),
-    getExportsDir(),
-    getTempDir(),
-    getProfileDir(),
+    getStorageRootDir(space),
+    getOriginalsDir(space),
+    getThumbnailsDir(space),
+    getExportsDir(space),
+    getTempDir(space),
+    ...(space === 'normal' ? [getProfileDir()] : []),
   ];
 
   for (const directoryUri of directories) {
@@ -132,20 +139,20 @@ export async function ensureAppDirectories(): Promise<void> {
   }
 }
 
-export function getOriginalsDir(): string {
-  return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), ORIGINALS_DIR_NAME));
+export function getOriginalsDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), ORIGINALS_DIR_NAME));
 }
 
-export function getThumbnailsDir(): string {
-  return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), THUMBNAILS_DIR_NAME));
+export function getThumbnailsDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), THUMBNAILS_DIR_NAME));
 }
 
-export function getExportsDir(): string {
-  return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), EXPORTS_DIR_NAME));
+export function getExportsDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), EXPORTS_DIR_NAME));
 }
 
-export function getTempDir(): string {
-  return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), TEMP_DIR_NAME));
+export function getTempDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), TEMP_DIR_NAME));
 }
 
 export function getProfileDir(): string {
@@ -164,12 +171,13 @@ export function generateInternalFilename(originalFilename: string): string {
 export async function copyOriginalToAppStorage(
   sourceUri: string,
   ipId: number,
-  internalFilename: string
+  internalFilename: string,
+  space: PixorySpace = 'normal'
 ): Promise<string> {
-  await ensureAppDirectories();
+  await ensureAppDirectories(space);
   await ensureSourceFileExists(sourceUri);
 
-  const ipOriginalsDir = buildIpScopedDir(getOriginalsDir(), ipId);
+  const ipOriginalsDir = buildIpScopedDir(getOriginalsDir(space), ipId);
   await ensureDirectoryExists(ipOriginalsDir);
 
   const destinationUri = joinPath(ipOriginalsDir, internalFilename);
@@ -298,7 +306,7 @@ export async function runFileStorageDevelopmentCheck(): Promise<FileStorageDevel
   );
 
   return {
-    appStorageRoot: getAppStorageRootDir(),
+    appStorageRoot: getStorageRootDir('normal'),
     directories,
     sampleOriginalDestination: `${buildIpScopedDir(originalsDir, 1)}${sampleInternalFilename}`,
     sampleThumbnailDestination: `${buildIpScopedDir(thumbnailsDir, 1)}${sampleInternalFilename.replace(

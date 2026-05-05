@@ -55,7 +55,9 @@
             "photo"
           ]
         }
-      ]
+      ],
+      "expo-document-picker",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

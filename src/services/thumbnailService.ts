@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Image } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
+import type { PixorySpace } from '../database';
 import { ensureAppDirectories, getThumbnailsDir } from './fileStorageService';
 
 const THUMBNAIL_MAX_DIMENSION = 480;
@@ -14,8 +15,8 @@ function joinPath(baseDir: string, childName: string): string {
   return `${normalizeDirectoryUri(baseDir)}${childName}`;
 }
 
-function buildIpScopedThumbnailDir(ipId: number): string {
-  return normalizeDirectoryUri(joinPath(getThumbnailsDir(), `ip_${ipId}`));
+function buildIpScopedThumbnailDir(ipId: number, space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getThumbnailsDir(space), `ip_${ipId}`));
 }
 
 function getThumbnailFormat(internalFilename: string): SaveFormat {
@@ -59,11 +60,12 @@ function getImageDimensions(fileUri: string): Promise<{ width: number; height: n
 export async function generateThumbnail(
   originalFileUri: string,
   ipId: number,
-  internalFilename: string
+  internalFilename: string,
+  space: PixorySpace = 'normal'
 ): Promise<string> {
-  await ensureAppDirectories();
+  await ensureAppDirectories(space);
 
-  const thumbnailDir = buildIpScopedThumbnailDir(ipId);
+  const thumbnailDir = buildIpScopedThumbnailDir(ipId, space);
   await FileSystem.makeDirectoryAsync(thumbnailDir, { intermediates: true });
 
   const { width, height } = await getImageDimensions(originalFileUri);

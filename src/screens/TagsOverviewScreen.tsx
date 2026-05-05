@@ -29,6 +29,9 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   const [renameValue, setRenameValue] = useState('');
   const [createTagValue, setCreateTagValue] = useState('');
   const [isCreateDialogVisible, setIsCreateDialogVisible] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [isBatchDeleteDialogVisible, setIsBatchDeleteDialogVisible] = useState(false);
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
     () => tagRepository.findUsageOverview(),
     [refreshToken],
@@ -58,6 +61,53 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   );
   const shouldShowPopular = !searchText.trim() && popularTags.length > 0;
   const shouldShowRecent = !searchText.trim() && recentTags.length > 0;
+  const allSelected = visibleTags.length > 0 && visibleTags.every((tag) => selectedTagIds.includes(tag.id));
+  const selectedCount = selectedTagIds.length;
+
+  function toggleTagSelection(tagId: number) {
+    setSelectedTagIds((current) => (current.includes(tagId) ? current.filter((id) => id !== tagId) : [...current, tagId]));
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      const visibleIds = new Set(visibleTags.map((tag) => tag.id));
+      setSelectedTagIds((current) => current.filter((id) => !visibleIds.has(id)));
+      return;
+    }
+
+    setSelectedTagIds((current) => [...new Set([...current, ...visibleTags.map((tag) => tag.id)])]);
+  }
+
+  function enterSelectionMode(tagId?: number) {
+    setActionTag(null);
+    setIsSelectionMode(true);
+    if (tagId != null) {
+      setSelectedTagIds((current) => (current.includes(tagId) ? current : [...current, tagId]));
+    }
+  }
+
+  function clearSelectionMode() {
+    setIsSelectionMode(false);
+    setSelectedTagIds([]);
+  }
+
+  function handleTagPress(tag: TagUsageItem) {
+    if (isSelectionMode) {
+      toggleTagSelection(tag.id);
+      return;
+    }
+
+    onOpenTag(tag.id);
+  }
+
+  function handleTagLongPress(tag: TagUsageItem) {
+    if (isSelectionMode) {
+      toggleTagSelection(tag.id);
+      return;
+    }
+
+    setActionTag(tag);
+  }
 
   function confirmDeleteTag() {
     if (!deleteTag) {
@@ -76,6 +126,26 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
         reload();
       } catch (error) {
         showToast(error instanceof Error ? `删除标签失败：${error.message}` : '删除标签失败');
+      }
+    })();
+  }
+
+  function confirmBatchDeleteTags() {
+    if (selectedTagIds.length === 0) {
+      showToast('请先选择标签');
+      return;
+    }
+
+    const tagIds = selectedTagIds;
+    setIsBatchDeleteDialogVisible(false);
+    void (async () => {
+      try {
+        const deletedCount = await tagRepository.deleteMany(tagIds);
+        showToast(`已批量删除 ${deletedCount} 个标签`);
+        clearSelectionMode();
+        reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `批量删除失败：${error.message}` : '批量删除失败');
       }
     })();
   }
@@ -130,9 +200,18 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   }
 
   const rightAction = (
-    <Pressable accessibilityLabel="新增标签" onPress={() => setIsCreateDialogVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
-      <Ionicons color={colors.primary.default} name="add" size={20} />
-    </Pressable>
+    <View style={styles.headerActions}>
+      <Pressable
+        accessibilityLabel={isSelectionMode ? '退出选择' : '选择标签'}
+        onPress={isSelectionMode ? clearSelectionMode : () => enterSelectionMode()}
+        style={({ pressed }) => [styles.headerAction, isSelectionMode ? styles.headerActionActive : null, pressed && styles.pressed]}
+      >
+        <Ionicons color={isSelectionMode ? colors.primary.active : colors.text.title} name={isSelectionMode ? 'close' : 'checkmark-circle-outline'} size={20} />
+      </Pressable>
+      <Pressable accessibilityLabel="新增标签" onPress={() => setIsCreateDialogVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
+        <Ionicons color={colors.primary.default} name="add" size={20} />
+      </Pressable>
+    </View>
   );
 
   return (
@@ -141,6 +220,22 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
       </View>
+      {isSelectionMode ? (
+        <View style={styles.selectionPanel}>
+          <View style={styles.selectionCopy}>
+            <Text style={styles.selectionTitle}>已选择 {selectedCount} 个标签</Text>
+            <Text style={styles.selectionMeta}>批量删除只移除标签和图片关联，不会删除图片。</Text>
+          </View>
+          <View style={styles.selectionActions}>
+            <Pressable disabled={visibleTags.length === 0} onPress={toggleSelectAll} style={({ pressed }) => [styles.selectionButton, visibleTags.length === 0 ? styles.disabled : null, pressed && visibleTags.length > 0 ? styles.pressed : null]}>
+              <Text style={styles.selectionButtonText}>{allSelected ? '取消全选' : '全选'}</Text>
+            </Pressable>
+            <Pressable disabled={selectedCount === 0} onPress={() => setIsBatchDeleteDialogVisible(true)} style={({ pressed }) => [styles.selectionButtonDanger, selectedCount === 0 ? styles.disabled : null, pressed && selectedCount > 0 ? styles.pressed : null]}>
+              <Text style={styles.selectionButtonDangerText}>批量删除</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       {renameTag ? (
         <View style={styles.renamePanel}>
           <Text style={styles.resultLabel}>重命名</Text>
@@ -178,12 +273,13 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
                 {recentTags.map((tag) => (
                   <Pressable
                     key={tag.id}
-                    onLongPress={() => setActionTag(tag)}
-                    onPress={() => onOpenTag(tag.id)}
-                    style={({ pressed }) => [styles.recentTagPill, pressed && styles.pressed]}
+                    onLongPress={() => handleTagLongPress(tag)}
+                    onPress={() => handleTagPress(tag)}
+                    style={({ pressed }) => [styles.recentTagPill, selectedTagIds.includes(tag.id) ? styles.selectedPill : null, pressed && styles.pressed]}
                   >
                     <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
                     <Text style={styles.pillCount}>{tag.imageCount}</Text>
+                    {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
                   </Pressable>
                 ))}
               </View>
@@ -197,15 +293,17 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
                 {popularTags.map((tag) => (
                   <Pressable
                     key={tag.id}
-                    onLongPress={() => setActionTag(tag)}
-                    onPress={() => onOpenTag(tag.id)}
+                    onLongPress={() => handleTagLongPress(tag)}
+                    onPress={() => handleTagPress(tag)}
                     style={({ pressed }) => [
                       styles.popularTag,
+                      selectedTagIds.includes(tag.id) ? styles.selectedTag : null,
                       pressed && styles.pressed,
                     ]}
                   >
                     <Text numberOfLines={1} style={styles.popularName}>#{tag.name}</Text>
                     <Text style={styles.countBadge}>{tag.imageCount}</Text>
+                    {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
                   </Pressable>
                 ))}
               </View>
@@ -218,15 +316,17 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
               {visibleTags.map((tag) => (
                 <Pressable
                   key={tag.id}
-                  onLongPress={() => setActionTag(tag)}
-                  onPress={() => onOpenTag(tag.id)}
+                  onLongPress={() => handleTagLongPress(tag)}
+                  onPress={() => handleTagPress(tag)}
                   style={({ pressed }) => [
                     styles.tagPill,
+                    selectedTagIds.includes(tag.id) ? styles.selectedPill : null,
                     pressed && styles.pressed,
                   ]}
                 >
                   <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
                   <Text style={styles.pillCount}>{tag.imageCount}</Text>
+                  {isSelectionMode ? <Ionicons color={selectedTagIds.includes(tag.id) ? colors.primary.active : colors.text.tertiary} name={selectedTagIds.includes(tag.id) ? 'checkmark-circle' : 'ellipse-outline'} size={16} /> : null}
                 </Pressable>
               ))}
             </View>
@@ -276,11 +376,25 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
       title="删除标签"
       visible={Boolean(deleteTag)}
     />
+    <AppDialog
+      danger
+      message={`将删除已选 ${selectedCount} 个标签，并移除它们与图片的关联。图片原文件、缩略图和图片记录都会保留。`}
+      onClose={() => setIsBatchDeleteDialogVisible(false)}
+      onPrimary={confirmBatchDeleteTags}
+      primaryDisabled={selectedCount === 0}
+      primaryLabel="确认批量删除"
+      title="批量删除标签"
+      visible={isBatchDeleteDialogVisible}
+    />
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
   headerAction: {
     alignItems: 'center',
     backgroundColor: colors.background.elevated,
@@ -291,8 +405,61 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
+  headerActionActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
   searchBlock: {
     marginBottom: spacing[1],
+  },
+  selectionPanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[3],
+    padding: spacing[3],
+  },
+  selectionCopy: {
+    gap: spacing[1],
+  },
+  selectionTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  selectionMeta: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  selectionActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  selectionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  selectionButtonText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  selectionButtonDanger: {
+    alignItems: 'center',
+    backgroundColor: colors.semantic.dangerBackground,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  selectionButtonDangerText: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
+    fontWeight: '700',
   },
   emptyGuideOffset: {
     paddingTop: spacing[8],
@@ -458,5 +625,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  disabled: {
+    opacity: 0.45,
   },
 });

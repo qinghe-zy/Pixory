@@ -89,6 +89,7 @@ export interface ImageListItem extends ImageAssetRecord {
   groupName: string | null;
   groupCount: number;
   tagCount: number;
+  tagNames: string[];
 }
 
 export interface ImageListItemRow extends ImageAssetRow {
@@ -96,6 +97,7 @@ export interface ImageListItemRow extends ImageAssetRow {
   groupName: string | null;
   groupCount: number;
   tagCount: number;
+  tagNames: string | null;
 }
 
 export interface ImageDetailRecord extends ImageAssetRecord {
@@ -237,9 +239,12 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   untaggedOnly?: boolean;
   recentlyViewedOnly?: boolean;
   ipId?: number;
+  ipIds?: number[];
   importBatchId?: number;
   groupId?: number;
+  groupIds?: number[];
   tagId?: number;
+  tagIds?: number[];
   mimeType?: string;
   aspectRatio?: ImageAspectRatioFilter;
   minFileSize?: number;
@@ -319,6 +324,39 @@ export interface ImportBatchSummaryRow extends ImportBatchRow {
   untaggedCount: number;
   noNoteCount: number;
   suspectedDuplicateCount: number;
+}
+
+export interface ImportTemplateRecord {
+  key: string;
+  name: string;
+  groupName: string;
+  tags: string[];
+  note: string;
+  isFavorite: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportTemplateRow extends Omit<ImportTemplateRecord, 'tags' | 'isFavorite'> {
+  tagsJson: string;
+  isFavorite: number;
+}
+
+export interface CreateImportTemplateInput {
+  name: string;
+  groupName: string;
+  tags?: string[];
+  note?: string;
+  isFavorite?: boolean;
+}
+
+export interface UpdateImportTemplateInput {
+  name?: string;
+  groupName?: string;
+  tags?: string[];
+  note?: string;
+  isFavorite?: boolean;
 }
 
 export interface SuspectedDuplicateGroup {

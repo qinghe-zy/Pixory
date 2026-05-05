@@ -3,51 +3,40 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
-import { GROUP_NAME_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
+import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
-import {
-  applySelectionRules,
-  BATCH_SELECTION_RULE_OPTIONS,
-  type BatchSelectionRuleKey,
-  type BatchSelectionRulesResult,
-} from '../utils/batchSelectionRules';
-import { AppActionSheet } from './AppActionSheet';
 import { AppDialog } from './AppDialog';
+import { AlbumSaveDialog } from './AlbumSaveDialog';
 import { LightFormSection } from './LightFormSection';
 import { OptionSelectRow } from './OptionSelectRow';
 import { PrimaryButton } from './PrimaryButton';
-import { TagChip } from './TagChip';
+import { TagMultiSelectPanel } from './TagMultiSelectPanel';
 import { useToast } from './AppToast';
 
 type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
 
 interface BatchImageOrganizePanelProps {
-  allImages?: ImageListItem[];
   selectedImages: ImageListItem[];
   totalCount: number;
   currentGroupId?: number | null;
-  importBatchId?: number | null;
-  onApplyRuleSelection?: (imageIds: number[]) => void;
   onClearSelection: () => void;
   onChanged: () => void;
   onDeleted: () => void;
 }
 
 export function BatchImageOrganizePanel({
-  allImages,
   selectedImages,
   totalCount,
   currentGroupId = null,
-  importBatchId = null,
-  onApplyRuleSelection,
   onClearSelection,
   onChanged,
   onDeleted,
 }: BatchImageOrganizePanelProps) {
   const { showToast } = useToast();
   const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const [availableTags, setAvailableTags] = useState<Awaited<ReturnType<typeof tagRepository.findUsageOverviewByIpId>>>([]);
   const [mode, setMode] = useState<OrganizeMode>('idle');
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(currentGroupId);
   const [tagInput, setTagInput] = useState('');
@@ -55,13 +44,12 @@ export function BatchImageOrganizePanel({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
-  const [activeRuleKeys, setActiveRuleKeys] = useState<BatchSelectionRuleKey[]>([]);
-  const [activeRule, setActiveRule] = useState<BatchSelectionRulesResult | null>(null);
   const [isCreateGroupDialogVisible, setIsCreateGroupDialogVisible] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
+  const [isAlbumDialogVisible, setIsAlbumDialogVisible] = useState(false);
+  const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
-  const ruleImages = allImages ?? selectedImages;
   const selectedCount = selectedImages.length;
   const selectedIpIds = useMemo(() => [...new Set(selectedImages.map((image) => image.ipId))], [selectedImages]);
   const singleIpId = selectedIpIds.length === 1 ? selectedIpIds[0] : null;
@@ -74,13 +62,18 @@ export function BatchImageOrganizePanel({
     async function loadGroups() {
       if (singleIpId == null) {
         setGroups([]);
+        setAvailableTags([]);
         return;
       }
 
       try {
-        const nextGroups = await groupRepository.findByIpId(singleIpId);
+        const [nextGroups, nextTags] = await Promise.all([
+          groupRepository.findByIpId(singleIpId),
+          tagRepository.findUsageOverviewByIpId(singleIpId),
+        ]);
         if (isMounted) {
           setGroups(nextGroups);
+          setAvailableTags(nextTags);
         }
       } catch (error) {
         if (isMounted) {
@@ -104,19 +97,22 @@ export function BatchImageOrganizePanel({
   function resetMode(nextMode: OrganizeMode = 'idle') {
     setMode(nextMode);
     setErrorMessage(null);
-    if (nextMode !== 'add-tags') {
-      setTagInput('');
-      setDraftTags([]);
+      if (nextMode !== 'add-tags') {
+        setTagInput('');
+        setDraftTags([]);
     }
     if (!isGroupMode(nextMode)) {
       setSelectedGroupId(currentGroupId);
     }
   }
 
-  function addDraftTag(rawValue?: string) {
-    const nextTags = mergeDraftTagNames(draftTags, rawValue ?? tagInput);
-    setDraftTags(nextTags);
-    setTagInput('');
+  function handleSaveToAlbum() {
+    if (selectedCount === 0) {
+      showToast('请先选择至少一张图片');
+      return;
+    }
+
+    setIsAlbumDialogVisible(true);
   }
 
   async function handleCreateGroup() {
@@ -240,41 +236,6 @@ export function BatchImageOrganizePanel({
     });
   }
 
-  function handleApplyRule(rule: BatchSelectionRuleKey) {
-    if (!onApplyRuleSelection) {
-      return;
-    }
-
-    const nextRuleKeys = activeRuleKeys.includes(rule)
-      ? activeRuleKeys.filter((item) => item !== rule)
-      : [...activeRuleKeys, rule];
-
-    if (nextRuleKeys.length === 0) {
-      setActiveRuleKeys([]);
-      setActiveRule(null);
-      onApplyRuleSelection([]);
-      return;
-    }
-
-    try {
-      const result = applySelectionRules({
-        images: ruleImages,
-        selectedImageIds,
-        rule,
-        rules: nextRuleKeys,
-        importBatchId,
-      });
-      setActiveRuleKeys(nextRuleKeys);
-      setActiveRule(result);
-      setErrorMessage(null);
-      onApplyRuleSelection(result.imageIds);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '请选择基准图片。';
-      setErrorMessage(message);
-      showToast(message);
-    }
-  }
-
   function confirmSoftDelete() {
     const idsToDelete = [...selectedImageIds];
     setIsDeleteDialogVisible(false);
@@ -327,20 +288,6 @@ export function BatchImageOrganizePanel({
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-        {onApplyRuleSelection ? (
-          <SmartSelectionRuleBar
-            activeRuleKeys={activeRuleKeys}
-            activeRule={activeRule}
-            disabled={isSubmitting}
-            onApplyRule={handleApplyRule}
-            onCancelRule={() => {
-              setActiveRuleKeys([]);
-              setActiveRule(null);
-              onApplyRuleSelection([]);
-            }}
-          />
-        ) : null}
-
         {isGroupMode(mode) ? (
           <View style={styles.inlinePanel}>
             <LightFormSection title={getGroupModeTitle(mode)} hint={getGroupModeHint(mode)}>
@@ -382,36 +329,13 @@ export function BatchImageOrganizePanel({
         ) : mode === 'add-tags' ? (
           <View style={styles.inlinePanel}>
             <LightFormSection title="添加标签" hint="追加到已选图片，不覆盖原有标签。">
-              <View style={styles.tagInputRow}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  maxLength={TAG_NAME_MAX_LENGTH}
-                  onChangeText={setTagInput}
-                  onSubmitEditing={() => addDraftTag()}
-                  placeholder="输入标签后回车"
-                  placeholderTextColor={colors.text.placeholder}
-                  returnKeyType="done"
-                  selectionColor={colors.primary.default}
-                  style={styles.tagInput}
-                  value={tagInput}
-                />
-                <Pressable onPress={() => addDraftTag()} style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.primary.default} name="add" size={17} />
-                </Pressable>
-              </View>
-              {draftTags.length > 0 ? (
-                <View style={styles.tagsWrap}>
-                  {draftTags.map((tag) => (
-                    <TagChip
-                      key={tag}
-                      label={tag}
-                      onRemove={() => setDraftTags((current) => current.filter((item) => item.toLowerCase() !== tag.toLowerCase()))}
-                      removable
-                    />
-                  ))}
-                </View>
-              ) : null}
+              <TagMultiSelectPanel
+                availableTags={availableTags}
+                inputValue={tagInput}
+                onInputChange={setTagInput}
+                onSelectedTagNamesChange={setDraftTags}
+                selectedTagNames={draftTags}
+              />
             </LightFormSection>
             <View style={styles.inlineActions}>
               <View style={styles.primaryGrow}>
@@ -432,6 +356,7 @@ export function BatchImageOrganizePanel({
               label={allFavorite ? '取消收藏' : '收藏'}
               onPress={() => handleFavoriteUpdate(!allFavorite)}
             />
+            <PanelAction disabled={isSubmitting || isSavingToAlbum} icon="download-outline" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} />
             <PanelAction danger disabled={isSubmitting} icon="trash-outline" label="删除到回收站" onPress={() => setIsDeleteDialogVisible(true)} />
           </View>
         )}
@@ -476,59 +401,19 @@ export function BatchImageOrganizePanel({
           ))}
         </View>
       </AppDialog>
-    </>
-  );
-}
-
-function SmartSelectionRuleBar({
-  activeRuleKeys,
-  activeRule,
-  disabled,
-  onApplyRule,
-  onCancelRule,
-}: {
-  activeRuleKeys: BatchSelectionRuleKey[];
-  activeRule: BatchSelectionRulesResult | null;
-  disabled: boolean;
-  onApplyRule: (rule: BatchSelectionRuleKey) => void;
-  onCancelRule: () => void;
-}) {
-  const [isSheetVisible, setIsSheetVisible] = useState(false);
-
-  return (
-    <View style={styles.rulePanel}>
-      <Pressable
-        disabled={disabled}
-        onPress={() => setIsSheetVisible(true)}
-        style={({ pressed }) => [styles.ruleButton, disabled ? styles.disabled : null, pressed && !disabled ? styles.pressed : null]}
-      >
-        <Ionicons color={colors.primary.default} name="sparkles-outline" size={16} />
-        <Text style={styles.ruleButtonText}>智能分堆</Text>
-      </Pressable>
-      {activeRule ? (
-        <View style={styles.activeRuleRow}>
-          <Text numberOfLines={2} style={styles.activeRuleText}>
-            {activeRule.label} · {activeRule.description}
-          </Text>
-          <Pressable onPress={onCancelRule} style={({ pressed }) => [styles.cancelRuleButton, pressed && styles.pressed]}>
-            <Text style={styles.cancelRuleText}>取消该规则</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      <AppActionSheet
-        items={BATCH_SELECTION_RULE_OPTIONS.map((option) => ({
-          key: option.key,
-          label: option.label,
-          icon: option.key === 'suspected-duplicate' ? 'copy-outline' : option.key === 'import-batch' ? 'file-tray-stacked-outline' : 'sparkles-outline',
-          meta: activeRuleKeys.includes(option.key) ? '已选，点击取消' : '按交集加入规则',
-          onPress: () => onApplyRule(option.key),
-        }))}
-        message="智能分堆按多条规则的交集改变当前选择集，不会直接写入 SQLite 或移动图片。"
-        onClose={() => setIsSheetVisible(false)}
-        title="智能分堆"
-        visible={isSheetVisible}
+      <AlbumSaveDialog
+        imageUris={selectedImages.map((image) => image.originalFileUri)}
+        isSavingToAlbum={isSavingToAlbum}
+        onClose={() => setIsAlbumDialogVisible(false)}
+        onError={(message) => setErrorMessage(message)}
+        onSaved={(message) => {
+          onChanged();
+          showToast(message);
+        }}
+        onSavingChange={setIsSavingToAlbum}
+        visible={isAlbumDialogVisible}
       />
-    </View>
+    </>
   );
 }
 
@@ -659,51 +544,6 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.secondary,
     paddingTop: spacing[2],
-  },
-  rulePanel: {
-    gap: spacing[2],
-  },
-  ruleButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: 32,
-    paddingHorizontal: spacing[3],
-  },
-  ruleButtonText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-    fontWeight: '700',
-  },
-  activeRuleRow: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[2],
-    padding: spacing[2],
-  },
-  activeRuleText: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-    flex: 1,
-  },
-  cancelRuleButton: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  cancelRuleText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.default,
-    fontWeight: '700',
   },
   inlinePanel: {
     gap: spacing[3],

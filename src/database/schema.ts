@@ -1,5 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
-export const DATABASE_VERSION = 8;
+export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
+export const DATABASE_VERSION = 9;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -133,4 +134,41 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_import_batch_id ON image_assets(impo
 export const MIGRATION_STATEMENTS_V8 = `
 ALTER TABLE ips ADD COLUMN deletedAt TEXT;
 CREATE INDEX IF NOT EXISTS idx_ips_deleted_at ON ips(deletedAt);
+`;
+
+export const seedDefaultImportTemplates = `
+INSERT OR IGNORE INTO import_templates (
+  key,
+  name,
+  groupName,
+  tagsJson,
+  note,
+  isFavorite,
+  sortOrder,
+  createdAt,
+  updatedAt
+) VALUES
+  ('character-standee', '角色立绘', '角色立绘', '["角色","立绘"]', '角色展示素材', 1, 10, datetime('now'), datetime('now')),
+  ('festival-event', '节日活动', '节日活动', '["节日","活动"]', '节日活动素材', 0, 20, datetime('now'), datetime('now')),
+  ('operation-poster', '运营海报', '运营海报', '["运营","海报"]', '运营投放素材', 0, 30, datetime('now'), datetime('now')),
+  ('scene-art', '场景图', '场景图', '["场景","背景"]', '场景与背景素材', 0, 40, datetime('now'), datetime('now')),
+  ('stickers', '表情包', '表情包', '["表情包","社媒"]', '表情与轻量传播素材', 0, 50, datetime('now'), datetime('now'));
+`;
+
+export const MIGRATION_STATEMENTS_V9 = `
+CREATE TABLE IF NOT EXISTS import_templates (
+  key TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  groupName TEXT NOT NULL,
+  tagsJson TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  isFavorite INTEGER NOT NULL DEFAULT 0,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_templates_sort_order ON import_templates(sortOrder, updatedAt);
+
+${seedDefaultImportTemplates}
 `;
