@@ -7,7 +7,7 @@ import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { imageRepository, ipRepository, type ImageListItem, type IpRecord } from '../database';
+import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { clearTrash } from '../services/trashService';
@@ -16,25 +16,26 @@ import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useToast } from '../components/AppToast';
 
 interface TrashScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
   onChanged: () => void;
 }
 
-export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProps) {
+export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged }: TrashScreenProps) {
   const { showToast } = useToast();
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
     async () => {
-      const [images, ips] = await Promise.all([
+      const [images, ips] = await runWithDatabaseSpace(space, () => Promise.all([
         activeIpId == null ? imageRepository.findDeleted() : imageRepository.findDeletedByIpId(activeIpId),
         ipRepository.findAllIncludingDeleted(),
-      ]);
+      ]));
       return { images, ips };
     },
-    [activeIpId, refreshToken],
+    [activeIpId, refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -54,7 +55,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
   function handleRestore(imageId: number) {
     void (async () => {
       try {
-        const restoredCount = await imageRepository.restoreMany([imageId]);
+        const restoredCount = await runWithDatabaseSpace(space, () => imageRepository.restoreMany([imageId]));
         if (restoredCount === 0) {
           throw new Error('没有可恢复的图片。');
         }
@@ -73,7 +74,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     const ids = [...multiSelect.selectedImageIds];
     void (async () => {
       try {
-        const restoredCount = await imageRepository.restoreMany(ids);
+        const restoredCount = await runWithDatabaseSpace(space, () => imageRepository.restoreMany(ids));
         if (restoredCount === 0) {
           throw new Error('没有可恢复的图片。');
         }
@@ -91,7 +92,7 @@ export function TrashScreen({ refreshToken, onBack, onChanged }: TrashScreenProp
     setIsClearDialogVisible(false);
     void (async () => {
       try {
-        const result = await clearTrash();
+        const result = await clearTrash(space);
         multiSelect.clearSelection();
         onChanged();
         reload();

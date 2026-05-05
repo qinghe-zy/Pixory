@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { DESCRIPTION_MAX_LENGTH, IP_NAME_MAX_LENGTH } from '../constants/limits';
-import { ipRepository } from '../database';
+import { ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import { spacing } from '../design/tokens';
 import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
@@ -12,11 +12,12 @@ import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { useSubmitState } from '../hooks/useSubmitState';
 
 interface CreateIpScreenProps {
+  space?: PixorySpace;
   onCancel: () => void;
   onCreated: (ipId: number) => void;
 }
 
-export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
+export function CreateIpScreen({ space = 'normal', onCancel, onCreated }: CreateIpScreenProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
@@ -26,11 +27,11 @@ export function CreateIpScreen({ onCancel, onCreated }: CreateIpScreenProps) {
 
   function handleCreate() {
     void runSubmit(async () => {
-      const createdIp = await ipRepository.create({
+      const createdIp = await runWithDatabaseSpace(space, () => ipRepository.create({
         name: trimmedName,
         description,
         isFavorite,
-      });
+      }));
 
       onCreated(createdIp.id);
     }, {

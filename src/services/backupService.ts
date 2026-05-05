@@ -176,110 +176,112 @@ async function writeDatabaseCopy(backupDir: string, space: PixorySpace = 'normal
   return databaseUri;
 }
 
-export async function createFullBackup(): Promise<BackupResult> {
-  const space: PixorySpace = 'normal';
-  const { backupDir, createdAt } = await createBackupShell('full', space);
-  const databaseUri = await writeDatabaseCopy(backupDir, space);
-  const images = await imageRepository.findAll({ includeDeleted: true });
-  let originalCount = 0;
-  let thumbnailCount = 0;
+export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.space): Promise<BackupResult> {
+  return runWithDatabaseSpace(space, async () => {
+    const { backupDir, createdAt } = await createBackupShell('full', space);
+    const databaseUri = await writeDatabaseCopy(backupDir, space);
+    const images = await imageRepository.findAll({ includeDeleted: true });
+    let originalCount = 0;
+    let thumbnailCount = 0;
 
-  for (const image of images) {
-    const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${image.ipId}`)}/`;
-    const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${image.ipId}`)}/`;
-    await ensureLocalDirectory(originalDir);
-    await ensureLocalDirectory(thumbnailDir);
+    for (const image of images) {
+      const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${image.ipId}`)}/`;
+      const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${image.ipId}`)}/`;
+      await ensureLocalDirectory(originalDir);
+      await ensureLocalDirectory(thumbnailDir);
 
-    if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
-      originalCount += 1;
-    }
+      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
+        originalCount += 1;
+      }
 
-    if (image.thumbnailFileUri) {
-      const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
-      if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
-        thumbnailCount += 1;
+      if (image.thumbnailFileUri) {
+        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
+        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
+          thumbnailCount += 1;
+        }
       }
     }
-  }
 
-  const manifestUri = joinStoragePath(backupDir, 'manifest.json');
-  await writeTextFile(
-    manifestUri,
-    JSON.stringify(
-      {
-        type: 'full',
-        createdAt,
-        database: databaseUri,
-        space,
-        originalRoot: getOriginalsDir(space),
-        thumbnailRoot: getThumbnailsDir(space),
-        originalCount,
-        thumbnailCount,
-        imageCount: images.length,
-        images: buildManifestImageEntries(images),
-        safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
-      },
-      null,
-      2
-    )
-  );
-  await settingsRepository.setLastBackupAt(createdAt);
+    const manifestUri = joinStoragePath(backupDir, 'manifest.json');
+    await writeTextFile(
+      manifestUri,
+      JSON.stringify(
+        {
+          type: 'full',
+          createdAt,
+          database: databaseUri,
+          space,
+          originalRoot: getOriginalsDir(space),
+          thumbnailRoot: getThumbnailsDir(space),
+          originalCount,
+          thumbnailCount,
+          imageCount: images.length,
+          images: buildManifestImageEntries(images),
+          safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
+        },
+        null,
+        2
+      )
+    );
+    await settingsRepository.setLastBackupAt(createdAt);
 
-  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+    return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+  });
 }
 
-export async function createIpBackup(ipId: number): Promise<BackupResult> {
-  const ip = await ipRepository.findById(ipId);
-  if (!ip) {
-    throw new Error('没有找到这个 IP。');
-  }
-
-  const space: PixorySpace = 'normal';
-  const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`, space);
-  const databaseUri = await writeDatabaseCopy(backupDir, space);
-  const images = await imageRepository.findByIpId(ipId, { includeDeleted: true });
-  const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${ipId}`)}/`;
-  const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${ipId}`)}/`;
-  await ensureLocalDirectory(originalDir);
-  await ensureLocalDirectory(thumbnailDir);
-  let originalCount = 0;
-  let thumbnailCount = 0;
-
-  for (const image of images) {
-    if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
-      originalCount += 1;
+export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_BACKUP_SCOPE.space): Promise<BackupResult> {
+  return runWithDatabaseSpace(space, async () => {
+    const ip = await ipRepository.findById(ipId);
+    if (!ip) {
+      throw new Error('没有找到这个 IP。');
     }
 
-    if (image.thumbnailFileUri) {
-      const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
-      if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
-        thumbnailCount += 1;
+    const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`, space);
+    const databaseUri = await writeDatabaseCopy(backupDir, space);
+    const images = await imageRepository.findByIpId(ipId, { includeDeleted: true });
+    const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${ipId}`)}/`;
+    const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${ipId}`)}/`;
+    await ensureLocalDirectory(originalDir);
+    await ensureLocalDirectory(thumbnailDir);
+    let originalCount = 0;
+    let thumbnailCount = 0;
+
+    for (const image of images) {
+      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
+        originalCount += 1;
+      }
+
+      if (image.thumbnailFileUri) {
+        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
+        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
+          thumbnailCount += 1;
+        }
       }
     }
-  }
 
-  const manifestUri = joinStoragePath(backupDir, 'manifest.json');
-  await writeTextFile(
-    manifestUri,
-    JSON.stringify(
-      {
-        type: 'ip',
-        space,
-        ip,
-        createdAt,
-        database: databaseUri,
-        originalCount,
-        thumbnailCount,
-        imageCount: images.length,
-        images: buildManifestImageEntries(images),
-        safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
-      },
-      null,
-      2
-    )
-  );
+    const manifestUri = joinStoragePath(backupDir, 'manifest.json');
+    await writeTextFile(
+      manifestUri,
+      JSON.stringify(
+        {
+          type: 'ip',
+          space,
+          ip,
+          createdAt,
+          database: databaseUri,
+          originalCount,
+          thumbnailCount,
+          imageCount: images.length,
+          images: buildManifestImageEntries(images),
+          safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
+        },
+        null,
+        2
+      )
+    );
 
-  return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+    return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+  });
 }
 
 export async function requirePersonalVerification(secret: string): Promise<void> {

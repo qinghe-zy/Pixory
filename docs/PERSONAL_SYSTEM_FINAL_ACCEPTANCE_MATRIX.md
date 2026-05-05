@@ -11,6 +11,13 @@ Status legend:
 
 All items are marked `Planned` at documentation handoff time.
 
+Current progress note, 2026-05-05:
+
+- Route-space propagation has advanced beyond the original documentation handoff.
+- Automated route-space policy tests now cover required `AppRoute` space identity, `ImageViewerContext` top-level space, and route-space wiring for major screens including `CreateIpScreen`, `GlobalSearchScreen`, `TrashScreen`, `BackupScreen`, `GlobalGroupsScreen`, and `TagsOverviewScreen`.
+- Latest verification: `pnpm test` passed 40/40, `pnpm typecheck` passed, and `pnpm exec expo install --check` reported dependencies up to date.
+- Matrix rows remain `Planned` unless the full row target behavior, automated evidence, and Android/manual expectation have all been satisfied. Do not mark final `Done` based only on source-shape policy tests.
+
 | Requirement | Target Behavior | Implementation Area | Automated Test | Android Manual Test | Status |
 | --- | --- | --- | --- | --- | --- |
 | Normal home excludes private IPs | Home in normal mode lists only normal IPs. | Home routing and normal DB queries | Normal home query defaults to normal only | Create private IP, return home, verify absent | Planned |

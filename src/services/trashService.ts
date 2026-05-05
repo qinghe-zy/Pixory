@@ -1,4 +1,4 @@
-import { imageRepository, type ImageListItem } from '../database';
+import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { deleteLocalFile } from './fileStorageService';
 
 export type TrashClearFileRole = 'original' | 'thumbnail';
@@ -71,34 +71,36 @@ async function deleteTrashImageFiles(images: ImageListItem[]): Promise<{
   };
 }
 
-export async function clearTrash(): Promise<ClearTrashResult> {
-  const deletedImages = await imageRepository.findDeleted();
-  const imageIds = deletedImages.map((image) => image.id);
-  const databaseDeletedCount = imageIds.length > 0 ? await imageRepository.deletePermanentlyMany(imageIds) : 0;
-  const shouldDeleteFiles = databaseDeletedCount === deletedImages.length;
-  const { fileDeletedCount, fileFailures } = shouldDeleteFiles
-    ? await deleteTrashImageFiles(deletedImages)
-    : {
-        fileDeletedCount: 0,
-        fileFailures: deletedImages.map((image) => ({
-          imageId: image.id,
-          originalFilename: image.originalFilename,
-          fileRole: 'original' as const,
-          fileUri: image.originalFileUri,
-          message: '数据库清空数量不一致，已保留本地文件等待人工核验。',
-        })),
-      };
+export async function clearTrash(space: PixorySpace = 'normal'): Promise<ClearTrashResult> {
+  return runWithDatabaseSpace(space, async () => {
+    const deletedImages = await imageRepository.findDeleted();
+    const imageIds = deletedImages.map((image) => image.id);
+    const databaseDeletedCount = imageIds.length > 0 ? await imageRepository.deletePermanentlyMany(imageIds) : 0;
+    const shouldDeleteFiles = databaseDeletedCount === deletedImages.length;
+    const { fileDeletedCount, fileFailures } = shouldDeleteFiles
+      ? await deleteTrashImageFiles(deletedImages)
+      : {
+          fileDeletedCount: 0,
+          fileFailures: deletedImages.map((image) => ({
+            imageId: image.id,
+            originalFilename: image.originalFilename,
+            fileRole: 'original' as const,
+            fileUri: image.originalFileUri,
+            message: '数据库清空数量不一致，已保留本地文件等待人工核验。',
+          })),
+        };
 
-  const clearedCount = databaseDeletedCount;
-  const remainingCount = Math.max(0, deletedImages.length - databaseDeletedCount);
+    const clearedCount = databaseDeletedCount;
+    const remainingCount = Math.max(0, deletedImages.length - databaseDeletedCount);
 
-  return {
-    requestedCount: deletedImages.length,
-    databaseDeletedCount,
-    fileDeletedCount,
-    fileFailures,
-    clearedCount,
-    remainingCount,
-    failures: fileFailures,
-  };
+    return {
+      requestedCount: deletedImages.length,
+      databaseDeletedCount,
+      fileDeletedCount,
+      fileFailures,
+      clearedCount,
+      remainingCount,
+      failures: fileFailures,
+    };
+  });
 }

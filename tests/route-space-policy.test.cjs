@@ -133,3 +133,28 @@ test('image, batch, and library route screens apply route space to repository wo
     assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
   }
 });
+
+test('remaining global route screens receive route space and scope repository work', () => {
+  const appSource = readProjectFile('App.tsx');
+  const screenFiles = [
+    'src/screens/CreateIpScreen.tsx',
+    'src/screens/GlobalSearchScreen.tsx',
+    'src/screens/TrashScreen.tsx',
+    'src/screens/BackupScreen.tsx',
+    'src/screens/GlobalGroupsScreen.tsx',
+    'src/screens/TagsOverviewScreen.tsx',
+  ];
+
+  for (const file of screenFiles) {
+    const source = readProjectFile(file);
+    assert.match(source, /space\?: PixorySpace/, `${file} must accept route space`);
+    assert.match(source, /runWithDatabaseSpace\(space/, `${file} must run repository work in route space`);
+  }
+
+  for (const screenName of ['CreateIpScreen', 'GlobalSearchScreen', 'TrashScreen', 'BackupScreen']) {
+    assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
+  }
+
+  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{'normal'\}/, 'normal Groups tab must stay normal-only');
+  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{'normal'\}/, 'normal Tags tab must stay normal-only');
+});

@@ -39,13 +39,13 @@ This target is intentionally higher than the current first-version entrance. A p
 
 ## Current Verified Baseline
 
-The latest non-mutating baseline checks passed before this documentation pass:
+The latest verified checks after the route-space continuation pass:
 
 ```bash
 pnpm test
 ```
 
-Result: 34 tests passed.
+Result: 40 tests passed.
 
 ```bash
 pnpm typecheck
@@ -58,6 +58,12 @@ pnpm exec expo install --check
 ```
 
 Result: dependencies are up to date.
+
+Latest confirmed progress commit:
+
+```text
+f7c8d7f WIP personal system route space propagation
+```
 
 ## Current Implementation State
 
@@ -133,23 +139,22 @@ Incomplete:
 
 Implemented:
 
-- `App.tsx` route type carries `space?: PixorySpace` only for `import-images`.
+- `App.tsx` route type now carries required `space: PixorySpace` for the ID-bearing and library routes covered by `tests/route-space-policy.test.cjs`.
+- `src/navigation/imageViewerContext.ts` carries top-level `space` and exports `SpacedId` / `SpacedRecord<T>`.
+- `ImageViewerScreen` and `ImageDetailScreen` run viewer/detail repository work in the viewer context or route space.
+- `App.tsx` passes `currentRoute.space` into many route screens and pins ordinary root tab entries to normal where appropriate.
 - `PersonalSystemScreen` passes `space: 'personal'` into private import.
-- `AppState` currently returns home when leaving Personal System or personal import.
 
 Incomplete:
 
-- Most ID-bearing routes are not space-aware.
-- `ImageViewerContext` does not carry space.
-- IP, image, group, tag, import batch, duplicate review, trash, favorites, recent, quick organize, viewer, and detail routes can still default to normal.
-- Normal and personal SQLite IDs can collide, but current callbacks often pass only numeric IDs.
-- Full implementation must pass `{ space, id }` or route `space` everywhere an ID crosses a screen boundary.
+- Personal System still does not expose a complete dashboard that can open all normal/personal feature paths.
+- Route guards after Personal System relock are not implemented.
+- Combined normal + personal lists still need collision-safe rows everywhere they merge records.
+- Remaining future callbacks added for Personal System must continue to pass `space` alongside IDs.
 
 ### Existing Feature Chain
 
-Most screens already use repositories that can work in either space, but the screens themselves do not accept or apply `space`.
-
-Affected screens include:
+Many screens now accept `space?: PixorySpace` and wrap repository work in `runWithDatabaseSpace(space, ...)`, including:
 
 - `IpDetailScreen`
 - `EditIpScreen`
@@ -176,10 +181,13 @@ Affected screens include:
 - `RecentViewedScreen`
 - `TrashScreen`
 - `BackupScreen`
+
+Still requiring future integration or leak validation:
+
 - `MeScreen`
 - `HomeLibraryScreen`
 
-Normal mode currently benefits from default normal queries, but Personal System cannot yet operate the full feature chain against personal data.
+Normal mode currently benefits from default normal queries and explicit normal root-tab wiring, but Personal System still cannot operate the full feature chain because the unlocked dashboard and combined entry points are incomplete.
 
 ### Resource Package Import
 
@@ -222,14 +230,15 @@ Incomplete:
 
 Implemented in `src/services/backupService.ts`:
 
-- `createFullBackup()` is explicitly normal scoped.
-- `createIpBackup(ipId)` is normal scoped.
+- `createFullBackup(space)` defaults to normal and runs repository work in the selected space.
+- `createIpBackup(ipId, space)` defaults to normal and runs repository work in the selected space.
 - `createPersonalBackup(secret)` exists and requires password verification.
 - Normal backup should not serialize `pixory_personal.sqlite`.
+- `BackupScreen` accepts `space?: PixorySpace`; ordinary mode routes pass normal.
 
 Incomplete:
 
-- `BackupScreen` still exposes only normal full backup and normal IP export.
+- `BackupScreen` still exposes directory-style full backup and IP export, not final encrypted private/all pack flows.
 - Personal System does not expose:
   - export normal data
   - export private data

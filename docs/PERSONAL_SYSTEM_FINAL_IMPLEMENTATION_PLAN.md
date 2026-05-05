@@ -33,6 +33,31 @@ Do not ship this as a basic Personal System entrance, a private IP list, or a vi
 
 The final implementation must include tests. A feature path is not complete when it is merely coded; it is complete only when the related automated tests pass and the Android APK checklist has evidence for native package import, private import, encrypted export, encrypted import, and normal-mode leak prevention.
 
+## Current Progress Snapshot
+
+As of the 2026-05-05 route-space continuation pass:
+
+- Phase 1 is substantially implemented for the current route graph:
+  - `AppRoute` requires `space: PixorySpace` for covered ID-bearing/library routes.
+  - `ImageViewerContext` includes top-level `space`.
+  - route-space policy tests cover route identity, viewer context space, and major screen space wiring.
+- Phase 3 is partially implemented:
+  - most core route screens accept `space?: PixorySpace`, default to normal, and wrap repository work.
+  - the latest added screens are `CreateIpScreen`, `GlobalSearchScreen`, `TrashScreen`, `BackupScreen`, `GlobalGroupsScreen`, and `TagsOverviewScreen`.
+  - `TrashScreen` uses `clearTrash(space)`.
+  - `BackupScreen` uses `createFullBackup(space)` and `createIpBackup(ipId, space)`.
+- Ordinary root tab entry points for groups and tags are explicitly pinned to `space: 'normal'`.
+- Verification after that pass:
+  - `pnpm test`: 40 tests passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm exec expo install --check`: dependencies are up to date.
+
+Next recommended implementation focus:
+
+1. Complete Phase 2: Personal System dashboard and lock lifecycle.
+2. Then continue Phase 3 by wiring the dashboard into already space-enabled feature screens and adding missing combined normal+personal variants.
+3. After the full feature chain is usable, continue Phase 4 package import item persistence and Phase 5 encrypted pack export/import.
+
 ## Phase 1: Route And Context Space Propagation
 
 ### Target
@@ -60,6 +85,11 @@ Every ID-bearing navigation path must carry `space: PixorySpace`. Numeric IDs fr
 - No route from Personal System can open a screen without a personal or normal space value.
 - Image viewer and image detail update `lastViewedAt` in the correct database.
 - Normal and personal records with the same numeric ID cannot be confused.
+
+Current status:
+
+- Automated policy coverage exists for the current route graph.
+- Product acceptance still depends on the Personal System dashboard and route guard work in Phase 2.
 
 ## Phase 2: Personal System Dashboard And Lock Lifecycle
 

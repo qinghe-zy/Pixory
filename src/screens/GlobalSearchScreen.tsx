@@ -5,11 +5,12 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface GlobalSearchScreenProps {
+  space?: PixorySpace;
   query: string;
   onChangeQuery: (value: string) => void;
   onBack: () => void;
@@ -20,6 +21,7 @@ interface GlobalSearchScreenProps {
 }
 
 export function GlobalSearchScreen({
+  space = 'normal',
   query,
   onChangeQuery,
   onBack,
@@ -40,12 +42,12 @@ export function GlobalSearchScreen({
         return { groups: [], images: [], ips: [], tags: [] };
       }
 
-      const [ips, allGroups, allTags, images] = await Promise.all([
+      const [ips, allGroups, allTags, images] = await runWithDatabaseSpace(space, () => Promise.all([
         ipRepository.findLibraryItems({ searchText: keyword }),
         groupRepository.findOverview(),
         tagRepository.findUsageOverview(),
         imageRepository.findFiltered({ searchText: keyword }),
-      ]);
+      ]));
       const lower = keyword.toLowerCase();
 
       return {
@@ -55,7 +57,7 @@ export function GlobalSearchScreen({
         images,
       };
     },
-    [keyword],
+    [keyword, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';

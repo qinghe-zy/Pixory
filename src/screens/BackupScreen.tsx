@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { ipRepository, settingsRepository, type IpRecord } from '../database';
+import { ipRepository, runWithDatabaseSpace, settingsRepository, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { createFullBackup, createIpBackup, exportBackupToSystemDirectory, type BackupResult } from '../services/backupService';
@@ -13,11 +13,12 @@ import { formatDateTime, formatFileSize } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
 
 interface BackupScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
 }
 
-export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
+export function BackupScreen({ space = 'normal', refreshToken, onBack }: BackupScreenProps) {
   const { showToast } = useToast();
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -25,10 +26,10 @@ export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
   const [lastExportUri, setLastExportUri] = useState<string | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ips: IpRecord[]; lastBackupAt: string | null }>(
     async () => {
-      const [ips, lastBackupAt] = await Promise.all([ipRepository.findAll(), settingsRepository.getLastBackupAt()]);
+      const [ips, lastBackupAt] = await runWithDatabaseSpace(space, () => Promise.all([ipRepository.findAll(), settingsRepository.getLastBackupAt()]));
       return { ips, lastBackupAt };
     },
-    [refreshToken],
+    [refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -94,7 +95,7 @@ export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
         disabled={isBackingUp}
         label={isBackingUp ? '备份中' : '一键完整备份'}
         loading={isBackingUp}
-        onPress={() => runBackup(createFullBackup, '完整备份已生成')}
+        onPress={() => runBackup(() => createFullBackup(space), '完整备份已生成')}
       />
 
       {lastResult ? (
@@ -132,7 +133,7 @@ export function BackupScreen({ refreshToken, onBack }: BackupScreenProps) {
           {ips.map((ip) => (
             <Pressable
               key={ip.id}
-              onPress={() => runBackup(() => createIpBackup(ip.id), `已导出「${ip.name}」`)}
+              onPress={() => runBackup(() => createIpBackup(ip.id, space), `已导出「${ip.name}」`)}
               style={({ pressed }) => [styles.ipRow, pressed && styles.pressed]}
             >
               <View style={styles.ipCopy}>

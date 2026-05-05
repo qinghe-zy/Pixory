@@ -9,26 +9,27 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
-import { groupRepository, type GlobalGroupListItem } from '../database';
+import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
 
 interface GlobalGroupsScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
   onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
 }
 
-export function GlobalGroupsScreen({ refreshToken, footer, onEditGroup, onOpenGroup }: GlobalGroupsScreenProps) {
+export function GlobalGroupsScreen({ space = 'normal', refreshToken, footer, onEditGroup, onOpenGroup }: GlobalGroupsScreenProps) {
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
-    () => groupRepository.findOverview(),
-    [refreshToken],
+    () => runWithDatabaseSpace(space, () => groupRepository.findOverview()),
+    [refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -51,7 +52,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onEditGroup, onOpenGr
     setDeleteGroup(null);
     void (async () => {
       try {
-        const deletedCount = await groupRepository.deleteById(group.id);
+        const deletedCount = await runWithDatabaseSpace(space, () => groupRepository.deleteById(group.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个分组。');
         }
@@ -121,7 +122,7 @@ export function GlobalGroupsScreen({ refreshToken, footer, onEditGroup, onOpenGr
           icon: 'pin-outline',
           onPress: () => {
             void (async () => {
-              await groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned);
+              await runWithDatabaseSpace(space, () => groupRepository.updatePinned(actionGroup.id, !actionGroup.isPinned));
               showToast(actionGroup.isPinned ? '已取消置顶' : '已置顶');
               reload();
             })();

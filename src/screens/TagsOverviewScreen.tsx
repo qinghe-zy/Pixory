@@ -9,18 +9,19 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { SearchBar } from '../components/SearchBar';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
-import { tagRepository, type TagUsageItem } from '../database';
+import { runWithDatabaseSpace, tagRepository, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 
 interface TagsOverviewScreenProps {
+  space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
   onOpenTag: (tagId: number) => void;
 }
 
-export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOverviewScreenProps) {
+export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onOpenTag }: TagsOverviewScreenProps) {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [actionTag, setActionTag] = useState<TagUsageItem | null>(null);
@@ -33,8 +34,8 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [isBatchDeleteDialogVisible, setIsBatchDeleteDialogVisible] = useState(false);
   const { data: tags = [], isLoading, errorMessage, reload } = useScreenLoad<TagUsageItem[]>(
-    () => tagRepository.findUsageOverview(),
-    [refreshToken],
+    () => runWithDatabaseSpace(space, () => tagRepository.findUsageOverview()),
+    [refreshToken, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -118,7 +119,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     setDeleteTag(null);
     void (async () => {
       try {
-        const deletedCount = await tagRepository.deleteById(tag.id);
+        const deletedCount = await runWithDatabaseSpace(space, () => tagRepository.deleteById(tag.id));
         if (deletedCount === 0) {
           throw new Error('没有找到这个标签。');
         }
@@ -140,7 +141,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
     setIsBatchDeleteDialogVisible(false);
     void (async () => {
       try {
-        const deletedCount = await tagRepository.deleteMany(tagIds);
+        const deletedCount = await runWithDatabaseSpace(space, () => tagRepository.deleteMany(tagIds));
         showToast(`已批量删除 ${deletedCount} 个标签`);
         clearSelectionMode();
         reload();
@@ -168,7 +169,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 
     void (async () => {
       try {
-        await tagRepository.update(renameTag.id, { name: nextName });
+        await runWithDatabaseSpace(space, () => tagRepository.update(renameTag.id, { name: nextName }));
         showToast('已重命名标签');
         setRenameTag(null);
         setRenameValue('');
@@ -188,7 +189,7 @@ export function TagsOverviewScreen({ refreshToken, footer, onOpenTag }: TagsOver
 
     void (async () => {
       try {
-        await tagRepository.create({ name });
+        await runWithDatabaseSpace(space, () => tagRepository.create({ name }));
         setCreateTagValue('');
         setIsCreateDialogVisible(false);
         showToast('已新增标签');

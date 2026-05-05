@@ -239,9 +239,14 @@ export default function App() {
   if (currentRoute.name === 'create-ip') {
     content = (
       <CreateIpScreen
+        space={currentRoute.space}
         onCancel={() => resetHome()}
-        onCreated={() => {
+        onCreated={(ipId) => {
           setLibraryRefreshToken((current) => current + 1);
+          if (currentRoute.space === 'personal') {
+            replaceCurrentRoute({ name: 'ip-detail', ipId, space: currentRoute.space });
+            return;
+          }
           resetHome('recent');
         }}
       />
@@ -569,19 +574,20 @@ export default function App() {
   } else if (currentRoute.name === 'global-search') {
     content = (
       <GlobalSearchScreen
+        space={currentRoute.space}
         onBack={popRoute}
         onChangeQuery={setGlobalSearchQuery}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
-        onOpenImageDetail={openImageDetail}
+        onOpenImageDetail={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: currentRoute.space })}
         query={globalSearchQuery}
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} />;
+    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
   } else if (currentRoute.name === 'backup') {
-    content = <BackupScreen onBack={popRoute} refreshToken={libraryRefreshToken} />;
+    content = <BackupScreen onBack={popRoute} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
   } else if (currentRoute.name === 'personal-system') {
     content = (
       <PersonalSystemScreen
@@ -605,6 +611,7 @@ export default function App() {
   } else if (currentRoute.tab === 'groups') {
     content = (
       <GlobalGroupsScreen
+        space={'normal'}
         footer={rootFooter}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: 'normal' })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: 'normal' })}
@@ -614,6 +621,7 @@ export default function App() {
   } else if (currentRoute.tab === 'tags') {
     content = (
       <TagsOverviewScreen
+        space={'normal'}
         footer={rootFooter}
         onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: 'normal' })}
         refreshToken={libraryRefreshToken}
