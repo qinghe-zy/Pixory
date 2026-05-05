@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { DATABASE_NAME, getDatabase, imageRepository, ipRepository, settingsRepository } from '../database';
+import { formatImageAssetCode } from '../utils/imageAssetCode';
 import {
   copyLocalFile,
   ensureLocalDirectory,
@@ -78,6 +79,21 @@ function getMimeType(fileName: string): string {
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.webp')) return 'image/webp';
   return 'application/octet-stream';
+}
+
+function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageRepository.findAll>>) {
+  return images.map((image) => ({
+    id: image.id,
+    assetCode: formatImageAssetCode(image),
+    ipId: image.ipId,
+    originalFilename: image.originalFilename,
+    internalFilename: image.internalFilename,
+    width: image.width,
+    height: image.height,
+    mimeType: image.mimeType,
+    fileSize: image.fileSize,
+    deletedAt: image.deletedAt,
+  }));
 }
 
 async function calculateDirectorySize(directoryUri: string): Promise<number> {
@@ -193,6 +209,7 @@ export async function createFullBackup(): Promise<BackupResult> {
         originalCount,
         thumbnailCount,
         imageCount: images.length,
+        images: buildManifestImageEntries(images),
         safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
       },
       null,
@@ -245,6 +262,7 @@ export async function createIpBackup(ipId: number): Promise<BackupResult> {
         originalCount,
         thumbnailCount,
         imageCount: images.length,
+        images: buildManifestImageEntries(images),
         safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
       },
       null,

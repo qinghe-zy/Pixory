@@ -11,6 +11,7 @@ import {
   MIGRATION_STATEMENTS_V6,
   MIGRATION_STATEMENTS_V7,
   MIGRATION_STATEMENTS_V8,
+  MIGRATION_STATEMENTS_V9,
 } from './schema';
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
@@ -27,6 +28,16 @@ async function openPixoryDatabase(): Promise<SQLiteDatabase> {
 async function configureDatabase(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
+}
+
+async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
+  const table = await db.getFirstAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'import_templates'"
+  );
+
+  if (!table) {
+    await db.execAsync(MIGRATION_STATEMENTS_V9);
+  }
 }
 
 export async function runMigrations(db?: SQLiteDatabase): Promise<void> {
@@ -67,6 +78,12 @@ export async function runMigrations(db?: SQLiteDatabase): Promise<void> {
     if (currentVersion < 8) {
       await database.execAsync(MIGRATION_STATEMENTS_V8);
     }
+
+    if (currentVersion < 9) {
+      await database.execAsync(MIGRATION_STATEMENTS_V9);
+    }
+
+    await ensureImportTemplatesSchema(database);
 
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

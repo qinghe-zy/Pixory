@@ -3,18 +3,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
+import { AlbumSaveDialog } from '../components/AlbumSaveDialog';
 import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { TagChip } from '../components/TagChip';
+import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
-import { IMPORT_TEMPLATES, type ImportTemplate } from '../constants/importTemplates';
-import { GROUP_NAME_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type IpRecord } from '../database';
+import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
+import { groupRepository, imageRepository, importTemplateRepository, ipRepository, tagRepository, type GroupRecord, type ImageListItem, type ImportTemplateRecord, type IpRecord } from '../database';
 import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -41,6 +41,7 @@ interface BatchManageImagesScreenProps {
   source: BatchSource;
   groupId?: number | null;
   importBatchId?: number | null;
+  scopeImageIds?: number[];
   initialSelectedImageIds?: number[];
   initialMode?: InitialBatchMode;
   refreshToken: number;
@@ -56,6 +57,7 @@ export function BatchManageImagesScreen({
   source,
   groupId = null,
   importBatchId = null,
+  scopeImageIds,
   initialSelectedImageIds = [],
   initialMode = 'idle',
   refreshToken,
@@ -70,27 +72,33 @@ export function BatchManageImagesScreen({
     ip: IpRecord | null;
     groups: GroupRecord[];
     images: ImageListItem[];
+    importTemplates: ImportTemplateRecord[];
+    tags: Awaited<ReturnType<typeof tagRepository.findUsageOverviewByIpId>>;
   }>(
     async () => {
-      const [ip, groups, images] = await Promise.all([
+      const [ip, groups, importTemplates, tags, images] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
-        importBatchId != null
+        importTemplateRepository.findAll(),
+        tagRepository.findUsageOverviewByIpId(ipId),
+        scopeImageIds != null
+          ? imageRepository.findByIds(scopeImageIds)
+          : importBatchId != null
           ? imageRepository.findByImportBatchId(importBatchId)
           : groupId != null
             ? imageRepository.findByGroupId(groupId)
             : imageRepository.findByIpId(ipId),
       ]);
 
-      return { ip, groups, images };
+      return { ip, groups, importTemplates, tags, images };
     },
-    [groupId, importBatchId, ipId, refreshToken],
+    [groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? ''],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取批量管理数据失败：${message}`;
       },
-      initialData: { ip: null, groups: [], images: [] },
+      initialData: { ip: null, groups: [], images: [], importTemplates: [], tags: [] },
     }
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
@@ -106,8 +114,13 @@ export function BatchManageImagesScreen({
   const [isCreateGroupDialogVisible, setIsCreateGroupDialogVisible] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
+  const [isAlbumDialogVisible, setIsAlbumDialogVisible] = useState(false);
+  const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
+  const importTemplates = data?.importTemplates ?? [];
+  const tags = data?.tags ?? [];
+  const isScopedPile = scopeImageIds != null;
   const visibleImageIds = useMemo(() => images.map((image) => image.id), [images]);
   const selectedImages = useMemo(
     () => images.filter((image) => selectedImageIds.includes(image.id)),
@@ -154,6 +167,10 @@ export function BatchManageImagesScreen({
   }
 
   function getImageViewerContext(): ImageViewerContext {
+    if (scopeImageIds != null) {
+      return { type: 'image-scope', imageIds: scopeImageIds, label: '当前堆' };
+    }
+
     if (importBatchId != null) {
       return { type: 'import-batch', ipId, importBatchId };
     }
@@ -256,22 +273,6 @@ export function BatchManageImagesScreen({
     }
     if (!isGroupMode(nextMode)) {
       setSelectedGroupId(groupId ?? null);
-    }
-  }
-
-  function addDraftTag(rawValue?: string) {
-    const nextTags = mergeDraftTagNames(draftTags, rawValue ?? tagInput);
-    if (nextTags.length === draftTags.length) {
-      if ((rawValue ?? tagInput).trim()) {
-        setTagInput('');
-      }
-      return;
-    }
-
-    setDraftTags(nextTags);
-    setTagInput('');
-    if (submitError) {
-      clearSubmitError();
     }
   }
 
@@ -396,7 +397,7 @@ export function BatchManageImagesScreen({
     );
   }
 
-  function handleApplyTemplate(template: ImportTemplate) {
+  function handleApplyTemplate(template: ImportTemplateRecord) {
     void runSubmit(
       async () => {
         const undoSnapshot = await captureBatchUndoSnapshot(selectedImageIds);
@@ -427,6 +428,15 @@ export function BatchManageImagesScreen({
     }
 
     setIsDeleteDialogVisible(true);
+  }
+
+  function handleSaveToAlbum() {
+    if (selectedCount === 0) {
+      showToast('请先选择至少一张图片');
+      return;
+    }
+
+    setIsAlbumDialogVisible(true);
   }
 
   function confirmSoftDelete() {
@@ -590,6 +600,12 @@ export function BatchManageImagesScreen({
             onPress={() => handleFavoriteUpdate(false)}
           />
           <BatchActionButton
+            disabled={selectedCount === 0 || isSubmitting || isSavingToAlbum}
+            icon="download-outline"
+            label={isSavingToAlbum ? '保存中' : '保存相册'}
+            onPress={handleSaveToAlbum}
+          />
+          <BatchActionButton
             danger
             disabled={selectedCount === 0 || isSubmitting}
             icon="trash-outline"
@@ -611,7 +627,9 @@ export function BatchManageImagesScreen({
         <View style={styles.summaryCopy}>
           <Text numberOfLines={1} style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
           <Text numberOfLines={2} style={styles.summaryMeta}>
-          {source === 'group-images'
+          {isScopedPile
+              ? `当前堆 ${images.length} 张，可批量整理`
+            : source === 'group-images'
               ? `分组内 ${images.length} 张，可批量整理`
               : importBatchId != null
                 ? `本次导入 ${images.length} 张，可批量整理`
@@ -642,14 +660,14 @@ export function BatchManageImagesScreen({
 
         <View style={styles.ruleWrap}>
           <RuleChip label="当前筛选" onPress={() => selectByRule('visible')} />
-          <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} selected={activeRuleKeys.includes('ungrouped')} />
+          {source !== 'group-images' ? <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} selected={activeRuleKeys.includes('ungrouped')} /> : null}
           <RuleChip label="无标签" onPress={() => selectByRule('untagged')} selected={activeRuleKeys.includes('untagged')} />
           <RuleChip label="反选" onPress={() => selectByRule('invert')} />
           <RuleChip label="规则模式" onPress={() => setIsRuleMode((current) => !current)} selected={isRuleMode} />
         </View>
         {isRuleMode ? (
           <View style={styles.ruleModePanel}>
-            {BATCH_SELECTION_RULE_OPTIONS.map((option) => (
+            {BATCH_SELECTION_RULE_OPTIONS.filter((option) => !(source === 'group-images' && option.key === 'ungrouped')).map((option) => (
               <RuleChip
                 key={option.key}
                 label={option.key === 'filename-prefix' ? '文件名前缀' : option.label}
@@ -704,47 +722,24 @@ export function BatchManageImagesScreen({
         {mode === 'add-tags' ? (
           <LightFormSection hint={`追加到已选 ${selectedCount} 张图片，不覆盖原有标签。`} title="添加标签">
             <View style={styles.tagPanel}>
-              <View style={styles.tagInputRow}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isSubmitting}
-                  maxLength={TAG_NAME_MAX_LENGTH}
-                  onChangeText={(value) => {
-                    setTagInput(value);
-                    if (submitError) {
-                      clearSubmitError();
-                    }
-                  }}
-                  placeholder="例如：batchTag"
-                  placeholderTextColor={colors.text.placeholder}
-                  selectionColor={colors.primary.default}
-                  style={styles.tagInput}
-                  value={tagInput}
-                />
-                <Pressable
-                  accessibilityLabel="添加标签"
-                  onPress={() => addDraftTag()}
-                  style={({ pressed }) => [styles.addTagButton, pressed && styles.pressed]}
-                >
-                  <Ionicons color={colors.primary.default} name="add" size={18} />
-                  <Text style={styles.addTagLabel}>添加</Text>
-                </Pressable>
-              </View>
-              {draftTags.length > 0 ? (
-                <View style={styles.tagsWrap}>
-                  {draftTags.map((tag) => (
-                    <TagChip
-                      key={tag}
-                      label={tag}
-                      onRemove={() => setDraftTags((current) => current.filter((item) => item.toLowerCase() !== tag.toLowerCase()))}
-                      removable
-                    />
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.helperText}>暂时还没有待添加标签。</Text>
-              )}
+              <TagMultiSelectPanel
+                availableTags={tags}
+                inputValue={tagInput}
+                onInputChange={(value) => {
+                  setTagInput(value);
+                  if (submitError) {
+                    clearSubmitError();
+                  }
+                }}
+                onSelectedTagNamesChange={(tagNames) => {
+                  setDraftTags(tagNames);
+                  if (submitError) {
+                    clearSubmitError();
+                  }
+                }}
+                placeholder="例如：batchTag"
+                selectedTagNames={draftTags}
+              />
               {isDevToolsEnabled ? (
                 <Pressable
                   disabled={isSubmitting}
@@ -768,7 +763,7 @@ export function BatchManageImagesScreen({
         {mode === 'apply-template' ? (
           <LightFormSection hint={`应用到已选 ${selectedCount} 张图片。`} title="导入模板">
             <View style={styles.templateGrid}>
-              {IMPORT_TEMPLATES.map((template) => (
+              {importTemplates.map((template) => (
                 <Pressable
                   disabled={isSubmitting}
                   key={template.key}
@@ -839,6 +834,18 @@ export function BatchManageImagesScreen({
         ))}
       </View>
     </AppDialog>
+    <AlbumSaveDialog
+      imageUris={selectedImages.map((image) => image.originalFileUri)}
+      isSavingToAlbum={isSavingToAlbum}
+      onClose={() => setIsAlbumDialogVisible(false)}
+      onError={(message) => showToast(`保存相册失败：${message}`)}
+      onSaved={(message) => {
+        onChanged();
+        showToast(message);
+      }}
+      onSavingChange={setIsSavingToAlbum}
+      visible={isAlbumDialogVisible}
+    />
     </>
   );
 }

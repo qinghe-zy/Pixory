@@ -376,6 +376,37 @@ export const tagRepository = {
 
     return changedCount;
   },
+
+  async deleteMany(ids: number[]): Promise<number> {
+    const tagIds = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+    if (tagIds.length === 0) {
+      return 0;
+    }
+
+    const db = await getDatabase();
+    const tagInClause = buildInClause(tagIds);
+    const affectedImages = await db.getAllAsync<{ imageAssetId: number }>(
+      `SELECT DISTINCT imageAssetId FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
+      ...tagInClause.values
+    );
+    const affectedImageIds = affectedImages.map((image) => image.imageAssetId);
+    let changedCount = 0;
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        `DELETE FROM image_tags WHERE tagId IN (${tagInClause.placeholders})`,
+        ...tagInClause.values
+      );
+      const result = await db.runAsync(
+        `DELETE FROM tags WHERE id IN (${tagInClause.placeholders})`,
+        ...tagInClause.values
+      );
+      changedCount = result.changes;
+      await touchImagesAfterTagChange(db, affectedImageIds);
+    });
+
+    return changedCount;
+  },
 };
 
 export default tagRepository;

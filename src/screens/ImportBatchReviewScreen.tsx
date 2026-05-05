@@ -312,7 +312,7 @@ function PilePreviewRow({
         ))}
       </View>
       <Pressable onPress={onOrganize} style={({ pressed }) => [styles.organizeButton, pressed && styles.pressed]}>
-        <Text style={styles.organizeButtonText}>整理这堆</Text>
+        <Text style={styles.organizeButtonText}>管理这堆</Text>
       </Pressable>
       <Pressable hitSlop={8} onPress={onMore} style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
         <Ionicons color={colors.text.secondary} name="ellipsis-horizontal" size={17} />
@@ -347,7 +347,7 @@ function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | 
 
   return {
     totalCount,
-    organizedCount: summary?.organizedCount ?? images.filter((image) => image.groupCount > 0 && image.tagCount > 0 && image.note).length,
+    organizedCount: summary?.organizedCount ?? images.filter((image) => image.groupCount > 0).length,
     ungroupedCount,
     untaggedCount,
     noNoteCount,

@@ -1,25 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
-import { Image, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Image, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { TagChip } from '../components/TagChip';
+import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { getGroupTypeLabel } from '../constants/groups';
-import { TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem } from '../database';
+import { groupRepository, imageRepository, tagRepository, type GroupRecord, type ImageListItem, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { mergeDelimitedDraftTagNames } from '../utils/tagDrafts';
+import { formatImageAssetCode } from '../utils/imageAssetCode';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface QuickOrganizeScreenProps {
   ipId?: number;
   importBatchId?: number | null;
-  refreshToken: number;
   onBack: () => void;
   onChanged: () => void;
+  onOpenImage: (imageId: number, context: ImageViewerContext) => void;
 }
 
 type LastOrganizeAction =
@@ -27,34 +28,49 @@ type LastOrganizeAction =
   | { type: 'tags'; tags: string[]; label: string }
   | { type: 'favorite'; label: string };
 
-export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, onBack, onChanged }: QuickOrganizeScreenProps) {
+export function QuickOrganizeScreen({ ipId, importBatchId = null, onBack, onChanged, onOpenImage }: QuickOrganizeScreenProps) {
   const { showToast } = useToast();
-  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[] }>(
+  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ images: ImageListItem[]; groups: GroupRecord[]; tags: TagUsageItem[] }>(
     async () => {
-      const [images, groups] = await Promise.all([
+      const [images, groups, tags] = await Promise.all([
         imageRepository.findNeedsOrganizing({ ipId, importBatchId }),
         ipId != null ? groupRepository.findByIpId(ipId) : groupRepository.findAll(),
+        ipId != null ? tagRepository.findUsageOverviewByIpId(ipId) : tagRepository.findUsageOverview(),
       ]);
-      return { images, groups };
+      return { images, groups, tags };
     },
-    [importBatchId, ipId, refreshToken],
+    [importBatchId, ipId],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取待整理队列失败：${message}`;
       },
-      initialData: { images: [], groups: [] },
+      initialData: { images: [], groups: [], tags: [] },
     }
   );
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
-  const current = images[0] ?? null;
+  const tags = data?.tags ?? [];
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [editedGroupIdsByImageId, setEditedGroupIdsByImageId] = useState<Record<number, number | null>>({});
+  const [editedTagNamesByImageId, setEditedTagNamesByImageId] = useState<Record<number, string[]>>({});
+  const current = images[currentIndex] ?? null;
   const currentGroups = current ? groups.filter((group) => group.ipId === current.ipId).slice(0, 8) : [];
-  const upcomingImages = images.slice(1, 6);
+  const currentGroupId = current ? editedGroupIdsByImageId[current.id] ?? current.groupId : null;
+  const currentSelectedTagNames = current ? editedTagNamesByImageId[current.id] ?? current.tagNames : [];
+  const bulkTagTargetCount = Math.min(20, Math.max(images.length - currentIndex, 0));
   const [tagInput, setTagInput] = useState('');
-  const [draftTags, setDraftTags] = useState<string[]>([]);
   const [lastAction, setLastAction] = useState<LastOrganizeAction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageListItem | null>(null);
+
+  useEffect(() => {
+    if (images.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    setCurrentIndex((index) => Math.min(index, images.length - 1));
+  }, [images.length]);
+
   const previewPanResponder = useMemo(
     () =>
       PanResponder.create({
@@ -65,18 +81,51 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
           }
 
           if (gesture.dx > 0) {
-            advanceCurrent();
-            return;
+            setDeleteTarget(current);
+          } else {
+            handleNextImage();
           }
-
-          setDeleteTarget(current);
         },
       }),
-    [current]
+    [current, currentIndex, images.length]
   );
 
-  function advanceCurrent() {
-    setData((currentData) => currentData ? { ...currentData, images: currentData.images.slice(1) } : currentData);
+  function handleNextImage() {
+    setCurrentIndex((index) => Math.min(index + 1, Math.max(images.length - 1, 0)));
+  }
+
+  function handlePreviousImage() {
+    setCurrentIndex((index) => Math.max(index - 1, 0));
+  }
+
+  function patchCurrentImage(imageId: number, patch: Partial<ImageListItem>) {
+    setData((currentData) =>
+      currentData
+        ? {
+            ...currentData,
+            images: currentData.images.map((image) => (image.id === imageId ? { ...image, ...patch } : image)),
+          }
+        : currentData
+    );
+  }
+
+  function removeImageFromQueue(imageId: number) {
+    setData((currentData) =>
+      currentData
+        ? {
+            ...currentData,
+            images: currentData.images.filter((image) => image.id !== imageId),
+          }
+        : currentData
+    );
+  }
+
+  function getViewerContext(image: ImageListItem): ImageViewerContext {
+    if (importBatchId != null) {
+      return { type: 'import-batch', ipId: image.ipId, importBatchId };
+    }
+
+    return { type: 'ip-all', ipId: image.ipId, filter: { type: 'all' } };
   }
 
   async function applyActionToImage(image: ImageListItem, action: LastOrganizeAction) {
@@ -101,29 +150,42 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
     await imageRepository.setImageGroups(current.id, [groupId]);
     const group = groups.find((item) => item.id === groupId);
     setLastAction({ type: 'group', groupId, label: group ? `分组：${group.name}` : '分组操作' });
+    setEditedGroupIdsByImageId((currentGroupsByImageId) => ({ ...currentGroupsByImageId, [current.id]: groupId }));
+    patchCurrentImage(current.id, { groupCount: 1, groupName: group?.name ?? current.groupName, groupId });
     showToast('已加入分组');
     onChanged();
-    advanceCurrent();
   }
 
-  async function handleAddTags() {
+  async function handleAutoSaveTags(nextTagNames: string[]) {
     if (!current) {
       return;
     }
 
-    const tags = mergeDelimitedDraftTagNames(draftTags, tagInput);
-    if (tags.length === 0) {
-      showToast('请先输入标签');
+    const tags = mergeDelimitedDraftTagNames([], nextTagNames.join(' '));
+    if (areSameTagNames(tags, currentSelectedTagNames)) {
       return;
     }
 
-    await tagRepository.addTagsToImages([current.id], tags);
-    setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
-    setDraftTags([]);
+    const savedTags = await tagRepository.setImageTags(current.id, tags);
+    if (tags.length > 0) {
+      setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
+    }
+    setEditedTagNamesByImageId((currentTagsByImageId) => ({ ...currentTagsByImageId, [current.id]: tags }));
+    patchCurrentImage(current.id, { tagCount: tags.length, tagNames: tags });
+    setData((currentData) => {
+      if (!currentData || savedTags.length === 0) {
+        return currentData;
+      }
+
+      const existingKeys = new Set(currentData.tags.map((tag) => tag.name.toLowerCase()));
+      const createdUsageItems = savedTags
+        .filter((tag) => !existingKeys.has(tag.name.toLowerCase()))
+        .map((tag) => ({ ...tag, imageCount: 1, lastUsedAt: new Date().toISOString() }));
+
+      return createdUsageItems.length > 0 ? { ...currentData, tags: [...createdUsageItems, ...currentData.tags] } : currentData;
+    });
     setTagInput('');
-    showToast('已添加标签');
     onChanged();
-    advanceCurrent();
   }
 
   async function handleFavorite() {
@@ -133,9 +195,9 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
 
     await imageRepository.updateFavorite(current.id, true);
     setLastAction({ type: 'favorite', label: '收藏' });
+    patchCurrentImage(current.id, { isFavorite: true });
     showToast('已收藏');
     onChanged();
-    advanceCurrent();
   }
 
   async function handleRepeatLastAction() {
@@ -144,25 +206,56 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
     }
 
     await applyActionToImage(current, lastAction);
+    if (lastAction.type === 'group') {
+      const group = groups.find((item) => item.id === lastAction.groupId);
+      setEditedGroupIdsByImageId((currentGroupsByImageId) => ({ ...currentGroupsByImageId, [current.id]: lastAction.groupId }));
+      patchCurrentImage(current.id, { groupCount: 1, groupName: group?.name ?? current.groupName, groupId: lastAction.groupId });
+    } else if (lastAction.type === 'tags') {
+      const nextTagNames = mergeDelimitedDraftTagNames(current.tagNames, lastAction.tags.join(' '));
+      setEditedTagNamesByImageId((currentTagsByImageId) => ({ ...currentTagsByImageId, [current.id]: nextTagNames }));
+      patchCurrentImage(current.id, { tagCount: Math.max(current.tagCount, nextTagNames.length), tagNames: nextTagNames });
+    } else {
+      patchCurrentImage(current.id, { isFavorite: true });
+    }
     showToast(`已沿用上一操作：${lastAction.label}`);
     onChanged();
-    advanceCurrent();
   }
 
   async function handleApplyTagsToNext20() {
-    const tags = lastAction?.type === 'tags' ? lastAction.tags : mergeDelimitedDraftTagNames(draftTags, tagInput);
+    const tags = lastAction?.type === 'tags' ? lastAction.tags : mergeDelimitedDraftTagNames(currentSelectedTagNames, tagInput);
     if (tags.length === 0 || images.length === 0) {
       showToast('请先输入或沿用一组标签');
       return;
     }
 
-    const targets = images.slice(0, 20);
+    const targets = images.slice(currentIndex, currentIndex + 20);
     await tagRepository.addTagsToImages(targets.map((image) => image.id), tags);
     setLastAction({ type: 'tags', tags, label: `标签：${tags.join('、')}` });
-    setDraftTags([]);
+    setEditedTagNamesByImageId((currentTagsByImageId) => {
+      const next = { ...currentTagsByImageId };
+      for (const image of targets) {
+        next[image.id] = mergeDelimitedDraftTagNames(image.tagNames, tags.join(' '));
+      }
+      return next;
+    });
     setTagInput('');
-    setData((currentData) => currentData ? { ...currentData, images: currentData.images.slice(targets.length) } : currentData);
-    showToast(`已把 #${tags.join(' #')} 加到接下来 ${targets.length} 张`);
+    setData((currentData) =>
+      currentData
+        ? {
+            ...currentData,
+            images: currentData.images.map((image) =>
+              targets.some((target) => target.id === image.id)
+                ? {
+                    ...image,
+                    tagCount: Math.max(image.tagCount, mergeDelimitedDraftTagNames(image.tagNames, tags.join(' ')).length),
+                    tagNames: mergeDelimitedDraftTagNames(image.tagNames, tags.join(' ')),
+                  }
+                : image
+            ),
+          }
+        : currentData
+    );
+    showToast(`已把 #${tags.join(' #')} 加到当前起 ${targets.length} 张`);
     onChanged();
   }
 
@@ -174,6 +267,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
     const target = deleteTarget;
     setDeleteTarget(null);
     await imageRepository.softDeleteMany([target.id]);
+    removeImageFromQueue(target.id);
     showToast({
       message: '已移入回收站',
       actionLabel: '撤销',
@@ -188,20 +282,19 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
       },
     });
     onChanged();
-    advanceCurrent();
   }
 
   return (
     <>
       <ScreenScaffold decorativeTitle="Queue" onBack={onBack} scrollable title="待整理">
         <PageStateBlock
-          emptyDescription="未分组、无标签、无备注的图片都已处理完。"
+          emptyDescription="还没有分组的图片都已处理完。无标签图片会在进度里单独提醒。"
           emptyIconName="checkmark-circle-outline"
           emptyTitle="整理完成"
           errorMessage={errorMessage}
           isEmpty={!isLoading && images.length === 0}
           loading={isLoading}
-          loadingDescription="正在读取未分组、无标签、无备注的图片。"
+          loadingDescription="正在读取还没有分组的图片。"
           loadingTitle="读取待整理队列"
           onRetry={reload}
         >
@@ -209,12 +302,14 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
             <View style={styles.queue}>
               <View style={styles.queueHeader}>
                 <View style={styles.counter}>
-                  <Text style={styles.counterText}>剩余 {images.length} 张</Text>
+                  <Text style={styles.counterText}>{currentIndex + 1}/{images.length}</Text>
                 </View>
-                <Text numberOfLines={1} style={styles.headerFilename}>{current.originalFilename}</Text>
+                <Text numberOfLines={1} style={styles.headerFilename}>
+                  {formatImageAssetCode(current)} · {current.originalFilename}
+                </Text>
               </View>
 
-              <View style={styles.previewWrap} {...previewPanResponder.panHandlers}>
+              <Pressable onPress={() => onOpenImage(current.id, getViewerContext(current))} style={styles.previewWrap} {...previewPanResponder.panHandlers}>
                 {current.thumbnailFileUri ? (
                   <Image resizeMode="cover" source={{ uri: current.thumbnailFileUri }} style={styles.previewImage} />
                 ) : (
@@ -222,26 +317,26 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
                     <Ionicons color={colors.text.secondary} name="image-outline" size={28} />
                   </View>
                 )}
-              </View>
+              </Pressable>
               <View style={styles.gestureHintRow}>
-                <Text style={styles.gestureHint}>右滑跳过</Text>
-                <Text style={styles.gestureHint}>左滑回收站</Text>
+                <Text style={styles.gestureHint}>左滑跳过</Text>
+                <Text style={styles.gestureHint}>右滑回收站</Text>
               </View>
 
-              {upcomingImages.length > 0 ? (
-                <View style={styles.upcomingStrip}>
-                  {upcomingImages.map((image) => (
-                    <View key={image.id} style={styles.upcomingTile}>
+              {images.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.queueStrip} contentContainerStyle={styles.queueStripContent}>
+                  {images.map((image, index) => (
+                    <Pressable key={image.id} onPress={() => setCurrentIndex(index)} style={[styles.queueTile, index === currentIndex ? styles.selectedQueueTile : null]}>
                       {image.thumbnailFileUri ? (
-                        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.upcomingImage} />
+                        <Image resizeMode="cover" source={{ uri: image.thumbnailFileUri }} style={styles.queueImage} />
                       ) : (
-                        <View style={styles.upcomingFallback}>
+                        <View style={styles.queueFallback}>
                           <Ionicons color={colors.text.tertiary} name="image-outline" size={14} />
                         </View>
                       )}
-                    </View>
+                    </Pressable>
                   ))}
-                </View>
+                </ScrollView>
               ) : null}
 
               <View style={styles.continuityPanel}>
@@ -253,7 +348,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
                 />
                 <QueueActionButton
                   icon="copy-outline"
-                  label="同标签给接下来20张"
+                  label={bulkTagTargetCount <= 1 ? '同标签给当前这张' : `同标签给当前起${bulkTagTargetCount}张`}
                   onPress={handleApplyTagsToNext20}
                 />
               </View>
@@ -263,7 +358,15 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
                 {currentGroups.length > 0 ? (
                   <View style={styles.groupGrid}>
                     {currentGroups.map((group) => (
-                      <Pressable key={group.id} onPress={() => void handleSetGroup(group.id)} style={({ pressed }) => [styles.groupChip, pressed && styles.pressed]}>
+                      <Pressable
+                        key={group.id}
+                        onPress={() => void handleSetGroup(group.id)}
+                        style={({ pressed }) => [
+                          styles.groupChip,
+                          currentGroupId === group.id ? styles.groupChipSelected : null,
+                          pressed && styles.pressed,
+                        ]}
+                      >
                         <Text numberOfLines={1} style={styles.groupName}>{group.name}</Text>
                         <Text style={styles.groupMeta}>{getGroupTypeLabel(group.type)}</Text>
                       </Pressable>
@@ -276,40 +379,24 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, refreshToken, 
 
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>加标签</Text>
-                <View style={styles.tagInputRow}>
-                  <TextInput
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    maxLength={TAG_NAME_MAX_LENGTH}
-                    onChangeText={(value) => {
-                      if (/[,\uFF0C\s]/.test(value)) {
-                        setDraftTags((currentTags) => mergeDelimitedDraftTagNames(currentTags, value));
-                        setTagInput('');
-                        return;
-                      }
-                      setTagInput(value);
-                    }}
-                    onSubmitEditing={handleAddTags}
-                    placeholder="输入标签后回车"
-                    placeholderTextColor={colors.text.placeholder}
-                    style={styles.tagInput}
-                    value={tagInput}
-                  />
-                  <Pressable onPress={() => void handleAddTags()} style={({ pressed }) => [styles.tagAddButton, pressed && styles.pressed]}>
-                    <Ionicons color={colors.text.inverse} name="add" size={18} />
-                    <Text style={styles.tagAddText}>添加</Text>
-                  </Pressable>
-                </View>
-                {draftTags.length > 0 ? (
-                  <View style={styles.tagsWrap}>
-                    {draftTags.map((tag) => <TagChip key={tag} label={tag} />)}
-                  </View>
-                ) : null}
+                <TagMultiSelectPanel
+                  availableTags={tags}
+                  inputValue={tagInput}
+                  onInputChange={setTagInput}
+                  onSelectedTagNamesChange={(tagNames) => {
+                    if (!current) {
+                      return;
+                    }
+                    void handleAutoSaveTags(tagNames);
+                  }}
+                  selectedTagNames={currentSelectedTagNames}
+                />
               </View>
 
               <View style={styles.actions}>
+                <QueueActionButton disabled={currentIndex === 0} icon="arrow-back-outline" label="上一张" onPress={handlePreviousImage} />
+                <QueueActionButton disabled={currentIndex >= images.length - 1} icon="arrow-forward-outline" label="下一张" onPress={handleNextImage} />
                 <QueueActionButton icon="star-outline" label="收藏" onPress={handleFavorite} />
-                <QueueActionButton icon="arrow-forward-outline" label="跳过" onPress={advanceCurrent} />
                 <QueueActionButton danger icon="trash-outline" label="回收站" onPress={() => setDeleteTarget(current)} />
               </View>
             </View>
@@ -345,9 +432,18 @@ function QueueActionButton({
   return (
     <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.actionCard, danger && styles.dangerActionCard, disabled && styles.disabledAction, pressed && !disabled && styles.pressed]}>
       <Ionicons color={danger ? colors.semantic.danger : colors.primary.active} name={icon} size={18} />
-      <Text style={[styles.actionText, danger && styles.dangerActionText]}>{label}</Text>
+      <Text ellipsizeMode="tail" numberOfLines={2} style={[styles.actionText, danger && styles.dangerActionText]}>{label}</Text>
     </Pressable>
   );
+}
+
+function areSameTagNames(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  const rightKeys = new Set(right.map((tagName) => tagName.toLowerCase()));
+  return left.every((tagName) => rightKeys.has(tagName.toLowerCase()));
 }
 
 const styles = StyleSheet.create({
@@ -404,25 +500,31 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.tertiary,
   },
-  upcomingStrip: {
-    flexDirection: 'row',
-    gap: spacing[2],
+  queueStrip: {
+    marginHorizontal: -spacing[1],
   },
-  upcomingTile: {
+  queueStripContent: {
+    gap: spacing[2],
+    paddingHorizontal: spacing[1],
+  },
+  queueTile: {
     aspectRatio: 1,
     backgroundColor: colors.background.empty,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    flex: 1,
-    maxWidth: 58,
+    width: 58,
     overflow: 'hidden',
   },
-  upcomingImage: {
+  selectedQueueTile: {
+    borderColor: colors.primary.default,
+    borderWidth: 2,
+  },
+  queueImage: {
     height: '100%',
     width: '100%',
   },
-  upcomingFallback: {
+  queueFallback: {
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
@@ -452,6 +554,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
     width: '48.6%',
+  },
+  groupChipSelected: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.hover,
   },
   groupName: {
     ...typography.textStyles.caption,
@@ -493,11 +599,6 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     fontWeight: '500',
   },
-  tagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
-  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -514,6 +615,7 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     justifyContent: 'center',
     minHeight: 46,
+    paddingHorizontal: spacing[2],
     width: '48%',
   },
   dangerActionCard: {
@@ -522,7 +624,9 @@ const styles = StyleSheet.create({
   actionText: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+    flexShrink: 1,
     fontWeight: '600',
+    minWidth: 0,
   },
   dangerActionText: {
     color: colors.semantic.danger,

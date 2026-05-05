@@ -38,9 +38,12 @@ test('batch selection rules are shared and stay selection-only', () => {
   assert.match(rulesSource, /先选一张/);
   assert.doesNotMatch(rulesSource, /Repository|runAsync|deleteLocalFile|softDelete|updateMany/);
   assert.match(batchManageSource, /applySelectionRule/);
-  assert.match(organizePanelSource, /SmartSelectionRuleBar/);
+  assert.doesNotMatch(organizePanelSource, /SmartSelectionRuleBar/);
+  assert.doesNotMatch(organizePanelSource, /ruleFilterPanel/);
+  assert.doesNotMatch(organizePanelSource, /hideSmartSelectionRules/);
+  assert.doesNotMatch(organizePanelSource, /AppActionSheet/);
   assert.match(multiSelectSource, /applyRuleSelection/);
-  assert.match(organizePanelSource, /取消该规则/);
+  assert.doesNotMatch(organizePanelSource, /智能分堆/);
 });
 
 test('IP deletion supports recycle bin and permanent local cleanup paths', () => {
@@ -51,7 +54,7 @@ test('IP deletion supports recycle bin and permanent local cleanup paths', () =>
   const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
   const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*8/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*9/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN deletedAt TEXT/);
   assert.match(typesSource, /deletedAt:\s*string \| null/);
   assert.match(ipRepositorySource, /softDeleteById/);
@@ -130,6 +133,20 @@ test('tag creation uses a header plus dialog instead of an inline long row', () 
   assert.match(tagsSource, /name="add"/);
   assert.match(tagsSource, /新增标签/);
   assert.doesNotMatch(tagsSource, /<View style=\{styles\.createPanel\}>/);
+});
+
+test('tag overview supports select all and batch deletion', () => {
+  const tagsSource = readProjectFile('src/screens/TagsOverviewScreen.tsx');
+  const tagRepositorySource = readProjectFile('src/database/repositories/tagRepository.ts');
+
+  assert.match(tagsSource, /isSelectionMode/);
+  assert.match(tagsSource, /selectedTagIds/);
+  assert.match(tagsSource, /toggleSelectAll/);
+  assert.match(tagsSource, /全选/);
+  assert.match(tagsSource, /批量删除/);
+  assert.match(tagsSource, /confirmBatchDeleteTags/);
+  assert.match(tagsSource, /tagRepository\.deleteMany/);
+  assert.match(tagRepositorySource, /async deleteMany/);
 });
 
 test('empty guide cards can sit lower on home groups and tags pages', () => {

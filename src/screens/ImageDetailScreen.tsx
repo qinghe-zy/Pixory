@@ -17,6 +17,7 @@ import { colors, componentTokens, radius, spacing, typography } from '../design/
 import { getFileInfo } from '../services/fileStorageService';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { devLog } from '../utils/dev';
+import { formatImageAssetCode } from '../utils/imageAssetCode';
 import { formatDateTime, formatFileSize, formatImageDimensions } from '../utils/formatters';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { useToast } from '../components/AppToast';
@@ -265,6 +266,7 @@ export function ImageDetailScreen({
 
     await Clipboard.setStringAsync(
       [
+        `素材编号：${formatImageAssetCode(image)}`,
         `文件名：${image.originalFilename}`,
         `尺寸：${formatImageDimensions(image.width, image.height)}`,
         `大小：${formatFileSize(image.fileSize)}`,
@@ -350,6 +352,10 @@ export function ImageDetailScreen({
                     : `${image.groupName} · ${getGroupTypeLabel(image.groupType)}`
                   : '未分组'}
               </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>素材编号</Text>
+              <Text selectable style={[styles.infoValue, styles.infoValueLong]}>{formatImageAssetCode(image)}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>文件名</Text>
@@ -465,6 +471,9 @@ async function loadDetailContextImages(context: ImageViewerContext): Promise<Ima
   }
   if (context.type === 'import-batch') {
     return imageRepository.findByImportBatchId(context.importBatchId);
+  }
+  if (context.type === 'image-scope') {
+    return imageRepository.findByIds(context.imageIds);
   }
   if (context.type === 'ip-all') {
     const filter = context.filter;

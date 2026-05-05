@@ -2,21 +2,130 @@ import * as MediaLibrary from 'expo-media-library';
 
 import { getFileInfo } from './fileStorageService';
 
-export async function saveImageToSystemAlbum(originalFileUri: string): Promise<void> {
+let hasMediaLibrarySavePermission = false;
+
+export interface SystemAlbumOption {
+  id: string;
+  title: string;
+  assetCount: number;
+}
+
+export interface SaveImagesToSystemAlbumOptions {
+  albumId?: string | null;
+  newAlbumName?: string | null;
+  onProgress?: (completedCount: number, totalCount: number) => void;
+}
+
+export async function requestMediaLibrarySavePermission(): Promise<void> {
   const isAvailable = await MediaLibrary.isAvailableAsync();
   if (!isAvailable) {
     throw new Error('当前平台不支持保存到系统相册。');
   }
+
+  if (hasMediaLibrarySavePermission) {
+    return;
+  }
+
+  const currentPermission = await MediaLibrary.getPermissionsAsync(false, ['photo']);
+  if (currentPermission.granted) {
+    hasMediaLibrarySavePermission = true;
+    return;
+  }
+
+  const permission = await MediaLibrary.requestPermissionsAsync(false, ['photo']);
+  if (!permission.granted) {
+    throw new Error('未获得相册写入权限。');
+  }
+  hasMediaLibrarySavePermission = true;
+}
+
+export async function getSystemAlbums(): Promise<SystemAlbumOption[]> {
+  await requestMediaLibrarySavePermission();
+  const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: false });
+  return albums
+    .map((album) => ({ id: album.id, title: album.title, assetCount: album.assetCount }))
+    .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+}
+
+export async function saveImageToSystemAlbum(originalFileUri: string, albumId?: string | null): Promise<void> {
+  await requestMediaLibrarySavePermission();
 
   const fileInfo = await getFileInfo(originalFileUri);
   if (!fileInfo.exists || fileInfo.isDirectory) {
     throw new Error('原图文件不存在，无法保存到系统相册。');
   }
 
-  const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
-  if (!permission.granted) {
-    throw new Error('未获得相册写入权限。');
+  await MediaLibrary.createAssetAsync(originalFileUri, albumId ?? undefined);
+}
+
+export interface SaveImagesToSystemAlbumResult {
+  successCount: number;
+  failedCount: number;
+  failedUris: string[];
+}
+
+export async function saveImagesToSystemAlbum(
+  originalFileUris: string[],
+  options: SaveImagesToSystemAlbumOptions = {}
+): Promise<SaveImagesToSystemAlbumResult> {
+  const uniqueUris = [...new Set(originalFileUris)];
+  const failedUris: string[] = [];
+  let completedCount = 0;
+
+  function reportProgress() {
+    completedCount += 1;
+    options.onProgress?.(completedCount, uniqueUris.length);
   }
 
-  await MediaLibrary.saveToLibraryAsync(originalFileUri);
+  await requestMediaLibrarySavePermission();
+
+  const validUris: string[] = [];
+  for (const originalFileUri of uniqueUris) {
+    const fileInfo = await getFileInfo(originalFileUri);
+    if (!fileInfo.exists || fileInfo.isDirectory) {
+      failedUris.push(originalFileUri);
+      reportProgress();
+    } else {
+      validUris.push(originalFileUri);
+    }
+  }
+
+  const newAlbumName = options.newAlbumName?.trim();
+  if (newAlbumName && validUris.length > 0) {
+    const [firstUri, ...remainingUris] = validUris;
+    try {
+      const album = await MediaLibrary.createAlbumAsync(newAlbumName, undefined, false, firstUri);
+      reportProgress();
+      for (const originalFileUri of remainingUris) {
+        try {
+          await MediaLibrary.createAssetAsync(originalFileUri, album.id);
+        } catch {
+          failedUris.push(originalFileUri);
+        } finally {
+          reportProgress();
+        }
+      }
+    } catch {
+      failedUris.push(...validUris);
+      while (completedCount < uniqueUris.length) {
+        reportProgress();
+      }
+    }
+  } else {
+    for (const originalFileUri of validUris) {
+      try {
+        await MediaLibrary.createAssetAsync(originalFileUri, options.albumId ?? undefined);
+      } catch {
+        failedUris.push(originalFileUri);
+      } finally {
+        reportProgress();
+      }
+    }
+  }
+
+  return {
+    successCount: uniqueUris.length - failedUris.length,
+    failedCount: failedUris.length,
+    failedUris,
+  };
 }

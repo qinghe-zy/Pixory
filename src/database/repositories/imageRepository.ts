@@ -49,6 +49,46 @@ function buildOrderByClause(orderBy?: ImageListQueryOptions['orderBy']): string 
   return 'ORDER BY image_assets.createdAt DESC, image_assets.id DESC';
 }
 
+function parseBase36CodeSegment(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 36);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildImageAssetSearchCodeExpression(searchText: string): { clause: string; values: number[] } | null {
+  const upperSearchText = searchText.toUpperCase().trim();
+  const match = /^PX-([0-9A-Z]+)(?:-([0-9A-Z]+))?(?:-(\d+)X(\d+))?$/.exec(upperSearchText);
+
+  if (!match) {
+    return null;
+  }
+
+  const ipId = parseBase36CodeSegment(match[1]);
+  const imageId = parseBase36CodeSegment(match[2]);
+  const clauses: string[] = [];
+  const values: number[] = [];
+
+  if (ipId != null) {
+    clauses.push('image_assets.ipId = ?');
+    values.push(ipId);
+  }
+
+  if (imageId != null) {
+    clauses.push('image_assets.id = ?');
+    values.push(imageId);
+  }
+
+  if (match[3] && match[4]) {
+    clauses.push('image_assets.width = ? AND image_assets.height = ?');
+    values.push(Number(match[3]), Number(match[4]));
+  }
+
+  return clauses.length > 0 ? { clause: `(${clauses.join(' AND ')})`, values } : null;
+}
+
 function buildImageListQueryParts(
   baseClauses: string[],
   baseValues: Array<number | string>,
@@ -85,6 +125,12 @@ function buildImageListQueryParts(
     values.push(options.ipId);
   }
 
+  if (options?.ipIds && options.ipIds.length > 0) {
+    const ipInClause = buildInClause(options.ipIds);
+    clauses.push(`image_assets.ipId IN (${ipInClause.placeholders})`);
+    values.push(...ipInClause.values);
+  }
+
   if (options?.importBatchId != null) {
     clauses.push('image_assets.importBatchId = ?');
     values.push(options.importBatchId);
@@ -97,11 +143,27 @@ function buildImageListQueryParts(
     values.push(options.groupId);
   }
 
+  if (options?.groupIds && options.groupIds.length > 0) {
+    const groupInClause = buildInClause(options.groupIds);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM image_groups AS filter_groups WHERE filter_groups.imageAssetId = image_assets.id AND filter_groups.groupId IN (${groupInClause.placeholders}))`
+    );
+    values.push(...groupInClause.values);
+  }
+
   if (options?.tagId != null) {
     clauses.push(
       'EXISTS (SELECT 1 FROM image_tags AS filter_tags WHERE filter_tags.imageAssetId = image_assets.id AND filter_tags.tagId = ?)'
     );
     values.push(options.tagId);
+  }
+
+  if (options?.tagIds && options.tagIds.length > 0) {
+    const tagInClause = buildInClause(options.tagIds);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM image_tags AS filter_tags WHERE filter_tags.imageAssetId = image_assets.id AND filter_tags.tagId IN (${tagInClause.placeholders}))`
+    );
+    values.push(...tagInClause.values);
   }
 
   if (options?.mimeType) {
@@ -137,23 +199,35 @@ function buildImageListQueryParts(
 
   const searchText = options?.searchText?.trim();
   if (searchText) {
-    clauses.push(
-      `(image_assets.originalFilename LIKE ? OR image_assets.note LIKE ? OR ips.name LIKE ? OR EXISTS (
+    const codeExpression = buildImageAssetSearchCodeExpression(searchText);
+    const searchClauses = [
+      `image_assets.originalFilename LIKE ?`,
+      `image_assets.note LIKE ?`,
+      `ips.name LIKE ?`,
+      `EXISTS (
         SELECT 1
         FROM image_tags AS search_image_tags
         INNER JOIN tags AS search_tags ON search_tags.id = search_image_tags.tagId
         WHERE search_image_tags.imageAssetId = image_assets.id
           AND search_tags.name LIKE ?
-      ) OR EXISTS (
+      )`,
+      `EXISTS (
         SELECT 1
         FROM image_groups AS search_image_groups
         INNER JOIN groups AS search_groups ON search_groups.id = search_image_groups.groupId
         WHERE search_image_groups.imageAssetId = image_assets.id
           AND search_groups.name LIKE ?
-      ))`
-    );
+      )`,
+    ];
+    if (codeExpression) {
+      searchClauses.push(codeExpression.clause);
+    }
+    clauses.push(`(${searchClauses.join(' OR ')})`);
     const likeValue = `%${searchText}%`;
     values.push(likeValue, likeValue, likeValue, likeValue, likeValue);
+    if (codeExpression) {
+      values.push(...codeExpression.values);
+    }
   }
 
   return {
@@ -363,7 +437,14 @@ const IMAGE_LIST_SELECT = `
       WHERE image_groups.imageAssetId = image_assets.id
     ) AS groupName,
     (SELECT COUNT(*) FROM image_groups WHERE image_groups.imageAssetId = image_assets.id) AS groupCount,
-    (SELECT COUNT(DISTINCT image_tags.tagId) FROM image_tags WHERE image_tags.imageAssetId = image_assets.id) AS tagCount
+    (SELECT COUNT(DISTINCT image_tags.tagId) FROM image_tags WHERE image_tags.imageAssetId = image_assets.id) AS tagCount,
+    (
+      SELECT GROUP_CONCAT(tags.name, char(31))
+      FROM image_tags
+      INNER JOIN tags ON tags.id = image_tags.tagId
+      WHERE image_tags.imageAssetId = image_assets.id
+      ORDER BY tags.name COLLATE NOCASE ASC, tags.id ASC
+    ) AS tagNames
   FROM image_assets
   INNER JOIN ips ON ips.id = image_assets.ipId
 `;
@@ -742,9 +823,7 @@ export const imageRepository = {
     const db = await getDatabase();
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      `(NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
-        OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
-        OR image_assets.note IS NULL)`,
+      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
 
@@ -778,8 +857,6 @@ export const imageRepository = {
         COUNT(*) AS totalCount,
         SUM(CASE
           WHEN EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
-           AND EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
-           AND image_assets.note IS NOT NULL
           THEN 1 ELSE 0 END
         ) AS organizedCount,
         SUM(CASE
@@ -795,8 +872,6 @@ export const imageRepository = {
            AND image_assets.createdAt >= datetime('now', '-14 days')
            AND (
              NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
-             OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
-             OR image_assets.note IS NULL
            )
           THEN 1 ELSE 0 END
         ) AS recentImportUnorganizedCount
@@ -821,9 +896,7 @@ export const imageRepository = {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
-      `(NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)
-        OR NOT EXISTS (SELECT 1 FROM image_tags WHERE image_tags.imageAssetId = image_assets.id)
-        OR image_assets.note IS NULL)`,
+      'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
 

@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
+import { AppDialog } from '../components/AppDialog';
 import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
@@ -13,9 +14,8 @@ import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
 import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
-import { IMPORT_TEMPLATES, type ImportTemplate } from '../constants/importTemplates';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, ipRepository, settingsRepository, tagRepository, type GroupRecord, type IpRecord, type TagUsageItem } from '../database';
+import { groupRepository, importTemplateRepository, ipRepository, settingsRepository, tagRepository, type GroupRecord, type ImportTemplateRecord, type IpRecord, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -46,20 +46,21 @@ export function ImportImagesScreen({
     data: screenData,
     errorMessage: loadErrorMessage,
     reload,
-  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
+  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
     async () => {
-      const [ip, groups, recentGroupIds, recentTags] = await Promise.all([
+      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await Promise.all([
         ipRepository.findById(ipId),
         groupRepository.findByIpId(ipId),
+        importTemplateRepository.findAll(),
         settingsRepository.getRecentImportGroupIds(),
         tagRepository.findRecentlyUsed(8),
       ]);
 
-      return { ip, groups, recentGroupIds, recentTags };
+      return { ip, groups, importTemplates, recentGroupIds, recentTags };
     },
     [ipId],
     {
-      initialData: { ip: null, groups: [], recentGroupIds: [], recentTags: [] },
+      initialData: { ip: null, groups: [], importTemplates: [], recentGroupIds: [], recentTags: [] },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取导入配置失败：${message}`;
@@ -77,6 +78,14 @@ export function ImportImagesScreen({
   const [isOptionalOpen, setIsOptionalOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
+  const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
+  const [deleteTemplate, setDeleteTemplate] = useState<ImportTemplateRecord | null>(null);
+  const [templateName, setTemplateName] = useState('');
+  const [templateGroupName, setTemplateGroupName] = useState('');
+  const [templateTagsInput, setTemplateTagsInput] = useState('');
+  const [templateNote, setTemplateNote] = useState('');
+  const [templateFavorite, setTemplateFavorite] = useState(false);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const canImport = useMemo(
     () => pickedAssets.length > 0 && !isSubmitting,
@@ -84,6 +93,7 @@ export function ImportImagesScreen({
   );
   const ip = screenData?.ip ?? null;
   const groups = screenData?.groups ?? [];
+  const importTemplates = screenData?.importTemplates ?? [];
   const recentGroupIds = screenData?.recentGroupIds ?? [];
   const recentTags = screenData?.recentTags ?? [];
   const recentGroups = useMemo(() => {
@@ -157,7 +167,7 @@ export function ImportImagesScreen({
     }
   }
 
-  async function applyTemplate(template: ImportTemplate) {
+  async function applyTemplate(template: ImportTemplateRecord) {
     try {
       const group = await createGroupAndSelect(template.groupName);
       setSelectedGroupIds([group.id]);
@@ -169,6 +179,82 @@ export function ImportImagesScreen({
     } catch (error) {
       showToast(error instanceof Error ? error.message : '应用模板失败');
     }
+  }
+
+  function resetTemplateForm() {
+    setEditingTemplate(null);
+    setTemplateName('');
+    setTemplateGroupName('');
+    setTemplateTagsInput('');
+    setTemplateNote('');
+    setTemplateFavorite(false);
+  }
+
+  function startCreateTemplate() {
+    resetTemplateForm();
+    setIsTemplateDialogVisible(true);
+  }
+
+  function startEditTemplate(template: ImportTemplateRecord) {
+    setEditingTemplate(template);
+    setTemplateName(template.name);
+    setTemplateGroupName(template.groupName);
+    setTemplateTagsInput(template.tags.join(' '));
+    setTemplateNote(template.note);
+    setTemplateFavorite(template.isFavorite);
+    setIsTemplateDialogVisible(true);
+  }
+
+  function submitTemplateForm() {
+    const preparedTags = mergeDelimitedDraftTagNames([], templateTagsInput);
+    const input = {
+      name: templateName,
+      groupName: templateGroupName,
+      tags: preparedTags,
+      note: templateNote,
+      isFavorite: templateFavorite,
+    };
+
+    void (async () => {
+      try {
+        if (editingTemplate) {
+          await importTemplateRepository.update(editingTemplate.key, input);
+          showToast('已更新模板');
+        } else {
+          await importTemplateRepository.create(input);
+          showToast('已新建模板');
+        }
+        setIsTemplateDialogVisible(false);
+        resetTemplateForm();
+        await reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `保存模板失败：${error.message}` : '保存模板失败');
+      }
+    })();
+  }
+
+  function confirmDeleteTemplate() {
+    if (!deleteTemplate) {
+      return;
+    }
+
+    const template = deleteTemplate;
+    setDeleteTemplate(null);
+    void (async () => {
+      try {
+        const deletedCount = await importTemplateRepository.deleteByKey(template.key);
+        if (deletedCount === 0) {
+          throw new Error('没有找到这个模板。');
+        }
+        if (selectedTemplateKey === template.key) {
+          setSelectedTemplateKey(null);
+        }
+        showToast('已删除模板');
+        await reload();
+      } catch (error) {
+        showToast(error instanceof Error ? `删除模板失败：${error.message}` : '删除模板失败');
+      }
+    })();
   }
 
   function applyRegressionPreset() {
@@ -370,15 +456,32 @@ export function ImportImagesScreen({
         {isOptionalOpen ? (
           <>
             <LightFormSection hint="一键套用常见导入归属和初始整理信息。" title="导入模板">
+              <View style={styles.templateHeaderRow}>
+                <Text style={styles.inlineLabel}>本地模板</Text>
+                <Pressable onPress={startCreateTemplate} style={({ pressed }) => [styles.templateCreateButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.primary.active} name="add" size={15} />
+                  <Text style={styles.templateCreateText}>新建模板</Text>
+                </Pressable>
+              </View>
               <View style={styles.templateGrid}>
-                {IMPORT_TEMPLATES.map((template) => (
-                  <Pressable
-                    key={template.key}
-                    onPress={() => void applyTemplate(template)}
-                    style={({ pressed }) => [styles.templateChip, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={styles.templateText}>{template.name}</Text>
-                  </Pressable>
+                {importTemplates.map((template) => (
+                  <View key={template.key} style={styles.templateCard}>
+                    <Pressable
+                      onPress={() => void applyTemplate(template)}
+                      style={({ pressed }) => [styles.templateApplyArea, selectedTemplateKey === template.key ? styles.templateSelected : null, pressed && styles.pressed]}
+                    >
+                      <Text numberOfLines={1} style={styles.templateText}>{template.name}</Text>
+                      <Text numberOfLines={1} style={styles.templateMeta}>{template.tags.map((tag) => `#${tag}`).join(' ') || template.groupName}</Text>
+                    </Pressable>
+                    <View style={styles.templateActions}>
+                      <Pressable accessibilityLabel="编辑模板" onPress={() => startEditTemplate(template)} style={({ pressed }) => [styles.templateIconButton, pressed && styles.pressed]}>
+                        <Ionicons color={colors.text.secondary} name="create-outline" size={16} />
+                      </Pressable>
+                      <Pressable accessibilityLabel="删除模板" onPress={() => setDeleteTemplate(template)} style={({ pressed }) => [styles.templateIconButton, pressed && styles.pressed]}>
+                        <Ionicons color={colors.semantic.danger} name="trash-outline" size={16} />
+                      </Pressable>
+                    </View>
+                  </View>
                 ))}
               </View>
             </LightFormSection>
@@ -481,6 +584,70 @@ export function ImportImagesScreen({
           <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
         </DevOnlyCard>
       </View>
+      <AppDialog
+        onClose={() => {
+          setIsTemplateDialogVisible(false);
+          resetTemplateForm();
+        }}
+        onPrimary={submitTemplateForm}
+        primaryDisabled={!templateName.trim() || !templateGroupName.trim()}
+        primaryLabel={editingTemplate ? '保存模板' : '新建模板'}
+        title={editingTemplate ? '编辑模板' : '新建模板'}
+        visible={isTemplateDialogVisible}
+      >
+        <View style={styles.templateDialogBody}>
+          <TextInput
+            onChangeText={setTemplateName}
+            placeholder="模板名称"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.dialogInput}
+            value={templateName}
+          />
+          <TextInput
+            onChangeText={setTemplateGroupName}
+            placeholder="默认分组名称"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.dialogInput}
+            value={templateGroupName}
+          />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setTemplateTagsInput}
+            placeholder="默认标签，用空格或逗号分隔"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.dialogInput}
+            value={templateTagsInput}
+          />
+          <TextInput
+            multiline
+            onChangeText={setTemplateNote}
+            placeholder="默认备注"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={[styles.dialogInput, styles.dialogTextarea]}
+            value={templateNote}
+          />
+          <SwitchSettingRow
+            hint="应用模板后，导入图片默认标记为收藏。"
+            label="默认收藏"
+            onValueChange={setTemplateFavorite}
+            value={templateFavorite}
+          />
+        </View>
+      </AppDialog>
+      <AppDialog
+        danger
+        message={deleteTemplate ? `删除模板「${deleteTemplate.name}」不会影响已经导入的图片。` : ''}
+        onClose={() => setDeleteTemplate(null)}
+        onPrimary={confirmDeleteTemplate}
+        primaryLabel="删除模板"
+        title="删除模板"
+        visible={Boolean(deleteTemplate)}
+      />
     </FormScreenScaffold>
   );
 }
@@ -622,24 +789,92 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   templateGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing[2],
     paddingVertical: spacing[2],
   },
-  templateChip: {
+  templateHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing[2],
+  },
+  templateCreateButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 30,
+    paddingHorizontal: spacing[3],
+  },
+  templateCreateText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  templateCard: {
+    alignItems: 'center',
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[3],
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+    minHeight: 48,
+    padding: spacing[2],
+  },
+  templateApplyArea: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+    paddingHorizontal: spacing[1],
+    paddingVertical: spacing[1],
+  },
+  templateSelected: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.sm,
   },
   templateText: {
     ...typography.textStyles.caption,
     color: colors.text.body,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  templateMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
+  templateActions: {
+    flexDirection: 'row',
+    gap: spacing[1],
+  },
+  templateIconButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  templateDialogBody: {
+    gap: spacing[3],
+  },
+  dialogInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  dialogTextarea: {
+    minHeight: 76,
+    textAlignVertical: 'top',
   },
   quickTags: {
     gap: spacing[2],

@@ -64,6 +64,14 @@ export function mapImageAssetRow(row: ImageAssetRow): ImageAssetRecord {
   };
 }
 
+export function parseListTagNames(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value.split('\u001F').filter(Boolean);
+}
+
 export function mapImageListItemRow(row: ImageListItemRow): ImageListItem {
   return {
     ...mapImageAssetRow(row),
@@ -71,6 +79,7 @@ export function mapImageListItemRow(row: ImageListItemRow): ImageListItem {
     groupName: row.groupName,
     groupCount: row.groupCount ?? 0,
     tagCount: row.tagCount ?? 0,
+    tagNames: parseListTagNames(row.tagNames),
   };
 }
 

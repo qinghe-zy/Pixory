@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -12,9 +11,48 @@ import { groupRepository, imageRepository, ipRepository, tagRepository, type Gro
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
-import type { ImageViewerContext, ImageViewerIpAllFilter } from '../navigation/imageViewerContext';
+import { getFilenamePrefix } from '../utils/batchSelectionRules';
+import type { ImageAspectRatioFilter } from '../database';
+import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
-type AllImagesFilter = ImageViewerIpAllFilter;
+type FileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
+type SimilarFilterKey = 'similarSameSize' | 'similarFilenamePrefix' | 'similarDuplicate';
+
+interface AllImagesFilterState {
+  favorite: boolean;
+  ungrouped: boolean;
+  untagged: boolean;
+  recentViewed: boolean;
+  similarSameSize: boolean;
+  similarFilenamePrefix: boolean;
+  similarDuplicate: boolean;
+  mimeType: string | null;
+  mimeLabel: string | null;
+  aspectRatio: ImageAspectRatioFilter | null;
+  aspectLabel: string | null;
+  size: FileSizeFilter | null;
+  groupIds: number[];
+  tagIds: number[];
+}
+
+const EMPTY_FILTERS: AllImagesFilterState = {
+  favorite: false,
+  ungrouped: false,
+  untagged: false,
+  recentViewed: false,
+  similarSameSize: false,
+  similarFilenamePrefix: false,
+  similarDuplicate: false,
+  mimeType: null,
+  mimeLabel: null,
+  aspectRatio: null,
+  aspectLabel: null,
+  size: null,
+  groupIds: [],
+  tagIds: [],
+};
+
+type AllImagesFilterDropdown = 'status' | 'aspect' | 'file' | 'group' | 'tag';
 
 interface AllImagesScreenProps {
   ipId: number;
@@ -35,8 +73,8 @@ export function AllImagesScreen({
   onOpenImageDetail,
   onStartBatchManagement,
 }: AllImagesScreenProps) {
-  const [activeFilter, setActiveFilter] = useState<AllImagesFilter>({ type: 'all' });
-  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<AllImagesFilterState>(EMPTY_FILTERS);
+  const [activeFilterDropdown, setActiveFilterDropdown] = useState<AllImagesFilterDropdown | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     images: ImageListItem[];
@@ -50,30 +88,24 @@ export function AllImagesScreen({
         tagRepository.findUsageOverviewByIpId(ipId),
       ]);
 
-      const images =
-        activeFilter.type === 'favorite'
-          ? await imageRepository.findByIpId(ipId, { favoritesOnly: true })
-          : activeFilter.type === 'ungrouped'
-            ? await imageRepository.findByIpId(ipId, { ungroupedOnly: true })
-            : activeFilter.type === 'untagged'
-              ? await imageRepository.findByIpId(ipId, { untaggedOnly: true })
-              : activeFilter.type === 'recent-viewed'
-                ? await imageRepository.findByIpId(ipId, { recentlyViewedOnly: true, orderBy: 'lastViewedAtDesc' })
-                : activeFilter.type === 'mime'
-                  ? await imageRepository.findByIpId(ipId, { mimeType: activeFilter.mimeType })
-                  : activeFilter.type === 'aspect'
-                    ? await imageRepository.findByIpId(ipId, { aspectRatio: activeFilter.aspectRatio })
-                  : activeFilter.type === 'size'
-                    ? await imageRepository.findByIpId(ipId, { minFileSize: activeFilter.minFileSize, maxFileSize: activeFilter.maxFileSize })
-                    : activeFilter.type === 'group'
-                      ? await imageRepository.findByGroupId(activeFilter.groupId)
-                      : activeFilter.type === 'tag'
-                        ? await imageRepository.findByIpId(ipId, { tagId: activeFilter.tagId })
-                        : await imageRepository.findByIpId(ipId);
+      const baseImages = await imageRepository.findByIpId(ipId, {
+        favoritesOnly: activeFilters.favorite || undefined,
+        ungroupedOnly: activeFilters.ungrouped || undefined,
+        untaggedOnly: activeFilters.untagged || undefined,
+        recentlyViewedOnly: activeFilters.recentViewed || undefined,
+        orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : undefined,
+        mimeType: activeFilters.mimeType ?? undefined,
+        aspectRatio: activeFilters.aspectRatio ?? undefined,
+        minFileSize: activeFilters.size?.minFileSize,
+        maxFileSize: activeFilters.size?.maxFileSize,
+        groupIds: activeFilters.groupIds,
+        tagIds: activeFilters.tagIds,
+      });
+      const images = filterImagesBySimilarity(baseImages, activeFilters);
 
       return { ip, images, groups, tags };
     },
-    [activeFilter, ipId, refreshToken],
+    [activeFilters, ipId, refreshToken],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -87,45 +119,24 @@ export function AllImagesScreen({
   const images = data?.images ?? [];
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
-  const activeFilterLabel = useMemo(() => {
-    if (activeFilter.type === 'favorite') {
-      return '已收藏';
-    }
-
-    if (activeFilter.type === 'ungrouped') {
-      return '未分组';
-    }
-
-    if (activeFilter.type === 'untagged') {
-      return '无标签';
-    }
-
-    if (activeFilter.type === 'recent-viewed') {
-      return '最近查看';
-    }
-
-    if (activeFilter.type === 'mime') {
-      return activeFilter.label;
-    }
-
-    if (activeFilter.type === 'aspect') {
-      return activeFilter.label;
-    }
-
-    if (activeFilter.type === 'size') {
-      return activeFilter.label;
-    }
-
-    if (activeFilter.type === 'group') {
-      return groups.find((group) => group.id === activeFilter.groupId)?.name ?? '按分组';
-    }
-
-    if (activeFilter.type === 'tag') {
-      return `#${tags.find((tag) => tag.id === activeFilter.tagId)?.name ?? '标签'}`;
-    }
-
-    return '全部';
-  }, [activeFilter, groups, tags]);
+  const activeFilterLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (activeFilters.favorite) labels.push('收藏');
+    if (activeFilters.ungrouped) labels.push('未分组');
+    if (activeFilters.untagged) labels.push('无标签');
+    if (activeFilters.recentViewed) labels.push('最近查看');
+    if (activeFilters.similarSameSize) labels.push('同尺寸');
+    if (activeFilters.similarFilenamePrefix) labels.push('文件名前缀');
+    if (activeFilters.similarDuplicate) labels.push('疑似重复');
+    if (activeFilters.mimeLabel) labels.push(activeFilters.mimeLabel);
+    if (activeFilters.aspectLabel) labels.push(activeFilters.aspectLabel);
+    if (activeFilters.size) labels.push(activeFilters.size.label);
+    if (activeFilters.groupIds.length > 0) labels.push(`分组 ${activeFilters.groupIds.length}`);
+    if (activeFilters.tagIds.length > 0) labels.push(`标签 ${activeFilters.tagIds.length}`);
+    return labels;
+  }, [activeFilters, groups, tags]);
+  const activeFilterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
+  const hasActiveFilters = activeFilterLabels.length > 0;
   const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
   const selectedImages = useMemo(
     () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
@@ -148,17 +159,92 @@ export function AllImagesScreen({
       return;
     }
 
-    onOpenImage(imageId, { type: 'ip-all', ipId, filter: activeFilter });
+    onOpenImage(
+      imageId,
+      hasActiveFilters
+        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: activeFilterLabel }
+        : { type: 'ip-all', ipId, filter: { type: 'all' } }
+    );
   }
 
   function handleImageLongPress(imageId: number) {
     multiSelect.enterSelection(imageId);
   }
 
+  function toggleBooleanFilter(key: 'favorite' | 'ungrouped' | 'untagged' | 'recentViewed') {
+    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleSimilarFilter(key: SimilarFilterKey) {
+    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function toggleMimeFilter(mimeType: string, label: string) {
+    setActiveFilters((current) => ({
+      ...current,
+      mimeType: current.mimeType === mimeType ? null : mimeType,
+      mimeLabel: current.mimeType === mimeType ? null : label,
+    }));
+  }
+
+  function toggleAspectFilter(aspectRatio: ImageAspectRatioFilter, label: string) {
+    setActiveFilters((current) => ({
+      ...current,
+      aspectRatio: current.aspectRatio === aspectRatio ? null : aspectRatio,
+      aspectLabel: current.aspectRatio === aspectRatio ? null : label,
+    }));
+  }
+
+  function toggleSizeFilter(size: FileSizeFilter) {
+    setActiveFilters((current) => ({
+      ...current,
+      size: current.size?.label === size.label ? null : size,
+    }));
+  }
+
+  function toggleGroupFilter(groupId: number) {
+    setActiveFilters((current) => ({
+      ...current,
+      groupIds: current.groupIds.includes(groupId)
+        ? current.groupIds.filter((item) => item !== groupId)
+        : [...current.groupIds, groupId],
+    }));
+  }
+
+  function toggleTagFilter(tagId: number) {
+    setActiveFilters((current) => ({
+      ...current,
+      tagIds: current.tagIds.includes(tagId)
+        ? current.tagIds.filter((item) => item !== tagId)
+        : [...current.tagIds, tagId],
+    }));
+  }
+
+  function clearFilterGroup(group: AllImagesFilterDropdown) {
+    if (group === 'status') {
+      setActiveFilters((current) => ({
+        ...current,
+        favorite: false,
+        recentViewed: false,
+        similarDuplicate: false,
+        similarFilenamePrefix: false,
+        similarSameSize: false,
+        ungrouped: false,
+        untagged: false,
+      }));
+    } else if (group === 'aspect') {
+      setActiveFilters((current) => ({ ...current, aspectRatio: null, aspectLabel: null }));
+    } else if (group === 'file') {
+      setActiveFilters((current) => ({ ...current, mimeType: null, mimeLabel: null, size: null }));
+    } else if (group === 'group') {
+      setActiveFilters((current) => ({ ...current, groupIds: [] }));
+    } else {
+      setActiveFilters((current) => ({ ...current, tagIds: [] }));
+    }
+  }
+
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
-      allImages={images}
-      onApplyRuleSelection={multiSelect.applyRuleSelection}
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
@@ -166,44 +252,7 @@ export function AllImagesScreen({
       totalCount={images.length}
     />
   ) : undefined;
-  const filterItems = useMemo<AppActionSheetItem[]>(() => {
-    const baseItems: AppActionSheetItem[] = [
-      { key: 'all', label: '全部图片', icon: 'images-outline', onPress: () => setActiveFilter({ type: 'all' }) },
-      { key: 'favorite', label: '收藏', icon: 'star-outline', onPress: () => setActiveFilter({ type: 'favorite' }) },
-      { key: 'ungrouped', label: '未分组', icon: 'folder-open-outline', onPress: () => setActiveFilter({ type: 'ungrouped' }) },
-      { key: 'untagged', label: '无标签', icon: 'pricetags-outline', onPress: () => setActiveFilter({ type: 'untagged' }) },
-      { key: 'recent-viewed', label: '最近查看', icon: 'time-outline', onPress: () => setActiveFilter({ type: 'recent-viewed' }) },
-      { key: 'jpeg', label: 'JPEG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/jpeg', label: 'JPEG' }) },
-      { key: 'png', label: 'PNG', icon: 'document-outline', onPress: () => setActiveFilter({ type: 'mime', mimeType: 'image/png', label: 'PNG' }) },
-      { key: 'landscape', label: '横图', icon: 'tablet-landscape-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'landscape', label: '横图' }) },
-      { key: 'portrait', label: '竖图', icon: 'phone-portrait-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'portrait', label: '竖图' }) },
-      { key: 'square', label: '方图', icon: 'crop-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'square', label: '方图' }) },
-      { key: 'panorama', label: '长图', icon: 'resize-outline', meta: '画幅', onPress: () => setActiveFilter({ type: 'aspect', aspectRatio: 'panorama', label: '长图' }) },
-      { key: 'small-size', label: '小于 500 KB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '< 500 KB', maxFileSize: 500 * 1024 }) },
-      { key: 'large-size', label: '大于 2 MB', icon: 'resize-outline', meta: '尺寸/大小', onPress: () => setActiveFilter({ type: 'size', label: '> 2 MB', minFileSize: 2 * 1024 * 1024 }) },
-    ];
-
-    return [
-      ...baseItems,
-      ...groups.map((group) => ({
-        key: `group-${group.id}`,
-        label: group.name,
-        icon: 'folder-outline' as const,
-        meta: '分组',
-        onPress: () => setActiveFilter({ type: 'group', groupId: group.id }),
-      })),
-      ...tags.map((tag) => ({
-        key: `tag-${tag.id}`,
-        label: `#${tag.name}`,
-        icon: 'pricetag-outline' as const,
-        meta: '标签',
-        onPress: () => setActiveFilter({ type: 'tag', tagId: tag.id }),
-      })),
-    ];
-  }, [groups, tags]);
-
   return (
-    <>
     <ScreenScaffold decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="图片库">
       <View style={styles.summaryPanel}>
         <View style={styles.summaryTopLine}>
@@ -213,31 +262,104 @@ export function AllImagesScreen({
             <Text style={styles.countPillText}>{images.length} 张</Text>
           </View>
         </View>
-        <Text numberOfLines={1} style={styles.summaryTitle}>{activeFilterLabel}</Text>
-        <View style={styles.summaryMetaRow}>
-          <Text numberOfLines={1} style={styles.summaryMeta}>分组 {groups.length}</Text>
-          <View style={styles.metaDot} />
-          <Text numberOfLines={1} style={styles.summaryMeta}>标签 {tags.length}</Text>
+        <View style={styles.summaryTitleRow}>
+          <Text numberOfLines={1} style={styles.summaryTitle}>{hasActiveFilters ? '筛选结果' : '全部图片'}</Text>
+          <View style={styles.summaryMetaRow}>
+            <Text numberOfLines={1} style={styles.summaryMeta}>分组 {groups.length}</Text>
+            <View style={styles.metaDot} />
+            <Text numberOfLines={1} style={styles.summaryMeta}>标签 {tags.length}</Text>
+          </View>
         </View>
       </View>
 
-      <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterSummary, pressed && styles.pressed]}>
-        <View style={styles.filterTitleWrap}>
-          <Ionicons color={colors.text.secondary} name="options-outline" size={16} />
-          <Text style={styles.filterSectionLabel}>当前筛选：{activeFilterLabel}</Text>
-        </View>
-        <Text style={styles.filterStatus}>筛选</Text>
-      </Pressable>
+      <View style={styles.filterBarWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
+          <FilterMenuButton active={activeFilters.favorite || activeFilters.ungrouped || activeFilters.untagged || activeFilters.recentViewed || activeFilters.similarSameSize || activeFilters.similarFilenamePrefix || activeFilters.similarDuplicate} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
+          <FilterMenuButton active={activeFilters.aspectRatio != null} label="画幅" onPress={() => setActiveFilterDropdown((current) => (current === 'aspect' ? null : 'aspect'))} />
+          <FilterMenuButton active={activeFilters.mimeType != null || activeFilters.size != null} label="文件" onPress={() => setActiveFilterDropdown((current) => (current === 'file' ? null : 'file'))} />
+          <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
+          <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
+          {hasActiveFilters ? (
+            <Pressable onPress={() => setActiveFilters(EMPTY_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
+              <Text style={styles.clearFilterText}>清空</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+        <Text numberOfLines={1} style={styles.filterStatus}>
+          {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${activeFilterLabel}` : '未设置筛选'}
+        </Text>
+        {activeFilterDropdown ? (
+          <FilterDrawer
+            mode={getAllImagesFilterMode(activeFilterDropdown)}
+            onClear={() => clearFilterGroup(activeFilterDropdown)}
+            title={getAllImagesFilterTitle(activeFilterDropdown)}
+          >
+            {activeFilterDropdown === 'status' ? (
+              <View style={styles.drawerSections}>
+                <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
+                  <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
+                  <FilterOptionChip label="无标签" selected={activeFilters.untagged} onPress={() => toggleBooleanFilter('untagged')} />
+                  <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
+                </View>
+                <Text style={styles.drawerSectionTitle}>相似 · 多选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="同尺寸" selected={activeFilters.similarSameSize} onPress={() => toggleSimilarFilter('similarSameSize')} />
+                  <FilterOptionChip label="文件名前缀" selected={activeFilters.similarFilenamePrefix} onPress={() => toggleSimilarFilter('similarFilenamePrefix')} />
+                  <FilterOptionChip label="疑似重复" selected={activeFilters.similarDuplicate} onPress={() => toggleSimilarFilter('similarDuplicate')} />
+                </View>
+              </View>
+            ) : null}
+            {activeFilterDropdown === 'aspect' ? (
+              <View style={styles.filterOptionGrid}>
+                <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+                <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+                <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+                <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+              </View>
+            ) : null}
+            {activeFilterDropdown === 'file' ? (
+              <View style={styles.drawerSections}>
+                <Text style={styles.drawerSectionTitle}>格式 · 单选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="JPEG" selected={activeFilters.mimeType === 'image/jpeg'} onPress={() => toggleMimeFilter('image/jpeg', 'JPEG')} />
+                  <FilterOptionChip label="PNG" selected={activeFilters.mimeType === 'image/png'} onPress={() => toggleMimeFilter('image/png', 'PNG')} />
+                </View>
+                <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+                  <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+                </View>
+              </View>
+            ) : null}
+            {activeFilterDropdown === 'group' ? (
+              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                {groups.map((group) => (
+                  <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+                ))}
+              </ScrollView>
+            ) : null}
+            {activeFilterDropdown === 'tag' ? (
+              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                {tags.map((tag) => (
+                  <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+                ))}
+              </ScrollView>
+            ) : null}
+          </FilterDrawer>
+        ) : null}
+      </View>
 
       <PageStateBlock
         emptyActionLabel={commonButtonCopy.importImages}
         emptyDescription={
-          activeFilter.type === 'all'
+          !hasActiveFilters
             ? '上传第一张图片后，就可以在这里按分组和标签进行管理'
             : '这个筛选条件下暂时没有图片。'
         }
         emptyIconName="images-outline"
-        emptyTitle={activeFilter.type === 'all' ? commonEmptyStateCopy.noImagesTitle : commonEmptyStateCopy.noSearchResultTitle}
+        emptyTitle={!hasActiveFilters ? commonEmptyStateCopy.noImagesTitle : commonEmptyStateCopy.noSearchResultTitle}
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}
@@ -273,15 +395,100 @@ export function AllImagesScreen({
         </View>
       </PageStateBlock>
     </ScreenScaffold>
-    <AppActionSheet
-      items={filterItems}
-      message="选择一个筛选条件。分组和标签会基于当前 IP 的真实数据展示。"
-      onClose={() => setIsFilterSheetVisible(false)}
-      title="筛选图片"
-      visible={isFilterSheetVisible}
-    />
-    </>
   );
+}
+
+function FilterMenuButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterMenuButton, active ? styles.filterMenuButtonActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={1} style={[styles.filterMenuText, active ? styles.filterMenuTextActive : null]}>{label}</Text>
+      <Ionicons color={active ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
+    </Pressable>
+  );
+}
+
+function FilterDrawer({ children, mode, onClear, title }: { children: ReactNode; mode: '多选' | '单选'; onClear: () => void; title: string }) {
+  return (
+    <View style={styles.filterDrawer}>
+      <View style={styles.filterDrawerHeader}>
+        <View style={styles.filterDrawerTitleRow}>
+          <Text style={styles.filterDrawerTitle}>{title}</Text>
+          <Text style={styles.filterDrawerMode}>{mode}</Text>
+        </View>
+        <Pressable onPress={onClear} style={({ pressed }) => [styles.drawerClearButton, pressed && styles.pressed]}>
+          <Text style={styles.drawerClearText}>清空本类</Text>
+        </Pressable>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function FilterOptionChip({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterOptionChip, selected ? styles.filterOptionChipActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={1} style={[styles.filterOptionText, selected ? styles.filterOptionTextActive : null]}>{label}</Text>
+      {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={14} /> : null}
+    </Pressable>
+  );
+}
+
+function FilterOptionRow({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterOptionRow, selected ? styles.filterOptionRowActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={2} style={[styles.filterOptionRowText, selected ? styles.filterOptionTextActive : null]}>{label}</Text>
+      <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
+    </Pressable>
+  );
+}
+
+function getAllImagesFilterTitle(filter: AllImagesFilterDropdown) {
+  if (filter === 'status') return '状态筛选';
+  if (filter === 'aspect') return '画幅筛选';
+  if (filter === 'file') return '文件筛选';
+  if (filter === 'group') return '分组筛选';
+  return '标签筛选';
+}
+
+function getAllImagesFilterMode(filter: AllImagesFilterDropdown): '多选' | '单选' {
+  return filter === 'status' || filter === 'group' || filter === 'tag' ? '多选' : '单选';
+}
+
+function filterImagesBySimilarity(images: ImageListItem[], filters: AllImagesFilterState): ImageListItem[] {
+  if (!filters.similarSameSize && !filters.similarFilenamePrefix && !filters.similarDuplicate) {
+    return images;
+  }
+
+  const sameSizeCounts = countBy(images, (image) => `${image.width}x${image.height}`);
+  const duplicateCounts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
+  const prefixCounts = countBy(images, (image) => getFilenamePrefix(image.originalFilename) ?? '');
+
+  return images.filter((image) => {
+    if (filters.similarSameSize && (sameSizeCounts.get(`${image.width}x${image.height}`) ?? 0) <= 1) {
+      return false;
+    }
+    if (filters.similarDuplicate && (duplicateCounts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) <= 1) {
+      return false;
+    }
+    if (filters.similarFilenamePrefix) {
+      const prefix = getFilenamePrefix(image.originalFilename);
+      if (!prefix || (prefixCounts.get(prefix) ?? 0) <= 1) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+function countBy<T>(items: T[], getKey: (item: T) => string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = getKey(item);
+    if (key) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 const styles = StyleSheet.create({
@@ -321,12 +528,21 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     ...typography.textStyles.sectionTitle,
+    flex: 1,
     fontSize: 18,
     lineHeight: 24,
+    minWidth: 0,
+  },
+  summaryTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
   },
   summaryMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexShrink: 0,
     gap: spacing[2],
   },
   summaryMeta: {
@@ -355,70 +571,163 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '600',
   },
-  filterSummary: {
+  filterBarWrap: {
+    gap: spacing[2],
+    marginTop: spacing[1],
+  },
+  filterBar: {
+    gap: spacing[2],
+    paddingTop: spacing[1],
+    paddingRight: spacing[2],
+  },
+  filterMenuButton: {
     alignItems: 'center',
-    backgroundColor: colors.background.soft,
+    backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing[2],
-    padding: spacing[3],
-  },
-  filterPanelHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[2],
-    justifyContent: 'space-between',
-  },
-  filterTitleWrap: {
-    alignItems: 'center',
-    flexDirection: 'row',
     gap: spacing[1],
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  filterMenuButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterMenuText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  filterMenuTextActive: {
+    color: colors.primary.active,
   },
   filterStatus: {
     ...typography.textStyles.micro,
     color: colors.text.tertiary,
-    flexShrink: 1,
-    textAlign: 'right',
+    paddingHorizontal: spacing[1],
+    paddingTop: 2,
   },
-  filterToggle: {
+  filterDrawer: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    padding: spacing[3],
+  },
+  filterDrawerHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: 28,
-    paddingLeft: spacing[2],
-  },
-  filterGroup: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: spacing[2],
   },
-  filterLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    lineHeight: 28,
-    width: 44,
-  },
-  filterSectionLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    fontWeight: '500',
-  },
-  filterRow: {
+  filterDrawerTitleRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: spacing[1.5],
-    rowGap: spacing[2],
-  },
-  filterOptions: {
     flex: 1,
+    gap: spacing[2],
+    minWidth: 0,
+  },
+  filterDrawerTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+  },
+  filterDrawerMode: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+  },
+  drawerClearButton: {
+    backgroundColor: colors.background.input,
+    borderRadius: radius.pill,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  drawerClearText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  drawerSections: {
+    gap: spacing[2],
+  },
+  drawerSectionTitle: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+    fontWeight: '700',
+  },
+  filterOptionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing[1.5],
-    rowGap: spacing[2],
-    minWidth: 0,
+    gap: spacing[2],
+  },
+  filterOptionChip: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+  },
+  filterOptionChipActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterOptionText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  filterOptionTextActive: {
+    color: colors.primary.active,
+  },
+  filterDrawerList: {
+    maxHeight: 250,
+  },
+  filterOptionRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+    marginBottom: spacing[2],
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  filterOptionRowActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  filterOptionRowText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    flex: 1,
+    fontWeight: '700',
+  },
+  clearFilterPill: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  clearFilterText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '700',
   },
   galleryHeading: {
     alignItems: 'flex-end',

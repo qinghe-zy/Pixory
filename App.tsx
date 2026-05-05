@@ -59,6 +59,7 @@ type AppRoute =
       source: 'ip-detail' | 'all-images' | 'group-images';
       groupId?: number | null;
       importBatchId?: number | null;
+      scopeImageIds?: number[];
       initialSelectedImageIds?: number[];
       initialMode?: BatchInitialMode;
     }
@@ -334,6 +335,7 @@ export default function App() {
         }
         onOpenImage={openImageViewer}
         refreshToken={libraryRefreshToken}
+        scopeImageIds={currentRoute.scopeImageIds}
         source={currentRoute.source}
       />
     );
@@ -362,6 +364,7 @@ export default function App() {
             ipId: currentRoute.ipId,
             source: 'all-images',
             importBatchId: currentRoute.importBatchId,
+            scopeImageIds: imageIds,
             initialSelectedImageIds: imageIds,
             initialMode,
           })
@@ -508,7 +511,7 @@ export default function App() {
         ipId={currentRoute.ipId}
         onBack={popRoute}
         onChanged={refreshLibrary}
-        refreshToken={libraryRefreshToken}
+        onOpenImage={openImageViewer}
       />
     );
   } else if (currentRoute.name === 'global-search') {
