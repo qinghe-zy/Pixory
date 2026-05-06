@@ -5,6 +5,7 @@ import { createTimestamp } from '../utils';
 const PROFILE_AVATAR_KEY = 'profileAvatarUri';
 const RECENT_IMPORT_GROUP_IDS_KEY = 'recentImportGroupIds';
 const LAST_BACKUP_AT_KEY = 'lastBackupAt';
+const BACKUP_EXPORT_DIRECTORY_URI_KEY = 'backupExportDirectoryUri';
 
 export const settingsRepository = {
   async getValue(db: SQLiteDatabase, key: string): Promise<string | null> {
@@ -63,6 +64,14 @@ export const settingsRepository = {
 
   async setLastBackupAt(db: SQLiteDatabase, value: string): Promise<void> {
     await this.setValue(db, LAST_BACKUP_AT_KEY, value);
+  },
+
+  async getBackupExportDirectoryUri(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, BACKUP_EXPORT_DIRECTORY_URI_KEY);
+  },
+
+  async setBackupExportDirectoryUri(db: SQLiteDatabase, uri: string | null): Promise<void> {
+    await this.setValue(db, BACKUP_EXPORT_DIRECTORY_URI_KEY, uri);
   },
 };
 
