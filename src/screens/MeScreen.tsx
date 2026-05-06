@@ -3,12 +3,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { colors, layout, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
+import { cleanupAppCache } from '../services/cacheCleanupService';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
 
@@ -64,6 +66,11 @@ const ENTRY_ITEMS = [
     icon: 'lock-closed-outline',
   },
   {
+    key: 'clear-cache',
+    label: '清理缓存',
+    icon: 'sparkles-outline',
+  },
+  {
     key: 'settings',
     label: '设置',
     icon: 'settings-outline',
@@ -84,6 +91,8 @@ export function MeScreen({
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
+  const [cacheCleanupConfirmVisible, setCacheCleanupConfirmVisible] = useState(false);
+  const [isCleaningCache, setIsCleaningCache] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
       const [
@@ -151,6 +160,28 @@ export function MeScreen({
       }
 
       onRequestPersonalUnlock();
+      return;
+    }
+
+    if (key === 'clear-cache') {
+      setCacheCleanupConfirmVisible(true);
+    }
+  }
+
+  async function handleConfirmCacheCleanup() {
+    setIsCleaningCache(true);
+    try {
+      await cleanupAppCache({
+        includeDiskImageCache: true,
+        tempMaxAgeMs: 0,
+      });
+      setCacheCleanupConfirmVisible(false);
+      showToast('已清理缓存，不影响已导入素材');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`清理缓存失败：${message}`);
+    } finally {
+      setIsCleaningCache(false);
     }
   }
 
@@ -263,6 +294,8 @@ export function MeScreen({
                           ? personalSessionState === 'unlocked'
                             ? 'ON'
                             : 0
+                          : item.key === 'clear-cache'
+                            ? '清理'
                           : data?.ipCount ?? 0}
                 </Text>
               )}
@@ -294,6 +327,21 @@ export function MeScreen({
           重新加载
         </Text>
       ) : null}
+      <AppDialog
+        message="将清理图片显示缓存和临时文件，不会删除原图、缩略图、标签、分组、备注和隐私数据。"
+        onClose={() => {
+          if (!isCleaningCache) {
+            setCacheCleanupConfirmVisible(false);
+          }
+        }}
+        onPrimary={() => {
+          void handleConfirmCacheCleanup();
+        }}
+        primaryDisabled={isCleaningCache}
+        primaryLabel={isCleaningCache ? '清理中…' : '确认清理'}
+        title="清理缓存"
+        visible={cacheCleanupConfirmVisible}
+      />
     </ScreenScaffold>
   );
 }
