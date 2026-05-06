@@ -48,6 +48,7 @@ export interface BackupResult {
 
 export interface BackupSystemExportResult {
   exportedDirUri: string;
+  destinationDirUri: string;
   copiedFileCount: number;
 }
 
@@ -711,21 +712,30 @@ export async function importEncryptedPersonalPack({
   }
 }
 
-export async function exportBackupToSystemDirectory(backupDir: string): Promise<BackupSystemExportResult> {
-  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+export async function requestBackupExportDirectory(initialDirectoryUri?: string | null): Promise<string> {
+  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync(initialDirectoryUri ?? null);
   if (!permissions.granted) {
     throw new Error('未选择系统导出目录。');
   }
 
+  return permissions.directoryUri;
+}
+
+export async function exportBackupToSystemDirectory(
+  backupDir: string,
+  destinationDirUri?: string | null
+): Promise<BackupSystemExportResult> {
+  const parentDirUri = destinationDirUri ?? (await requestBackupExportDirectory());
   const backupFolderName = getFileName(backupDir);
   const exportedDirUri = await FileSystem.StorageAccessFramework.makeDirectoryAsync(
-    permissions.directoryUri,
+    parentDirUri,
     backupFolderName
   );
   const copiedFileCount = await copyBackupDirectoryToSaf(backupDir.endsWith('/') ? backupDir : `${backupDir}/`, exportedDirUri);
 
   return {
     exportedDirUri,
+    destinationDirUri: parentDirUri,
     copiedFileCount,
   };
 }

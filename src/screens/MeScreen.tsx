@@ -30,6 +30,7 @@ type PersonalSessionState = 'locked' | 'unlocking' | 'unlocked' | 'locking';
 interface MeStats {
   ipCount: number;
   activeImageCount: number;
+  recentViewedCount: number;
   favoriteImageCount: number;
   deletedImageCount: number;
   profileAvatarUri: string | null;
@@ -88,6 +89,7 @@ export function MeScreen({
       const [
         ipCount,
         activeImageCount,
+        recentViewedCount,
         favoriteImageCount,
         deletedImageCount,
         totalOriginalBytes,
@@ -95,6 +97,7 @@ export function MeScreen({
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.count(db),
         imageRepository.count(db),
+        imageRepository.countRecentViewed(db),
         imageRepository.countFavorites(db),
         imageRepository.countDeleted(db),
         imageRepository.sumFileSize(db, { includeDeleted: true }),
@@ -104,6 +107,7 @@ export function MeScreen({
       return {
         ipCount,
         activeImageCount,
+        recentViewedCount,
         favoriteImageCount,
         deletedImageCount,
         profileAvatarUri,
@@ -252,7 +256,7 @@ export function MeScreen({
                   {item.key === 'favorites'
                     ? data?.favoriteImageCount ?? 0
                     : item.key === 'recent'
-                      ? data?.activeImageCount ?? 0
+                      ? data?.recentViewedCount ?? 0
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
                         : item.key === 'personal'

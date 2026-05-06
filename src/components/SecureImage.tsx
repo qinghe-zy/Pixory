@@ -6,13 +6,15 @@ import type { PixorySpace } from '../database';
 interface SecureImageProps {
   uri: string;
   space: PixorySpace;
+  blurRadius?: number;
   contentFit?: ImageContentFit;
   style?: StyleProp<ImageStyle>;
 }
 
-export function SecureImage({ uri, space, contentFit = 'cover', style }: SecureImageProps) {
+export function SecureImage({ uri, space, blurRadius, contentFit = 'cover', style }: SecureImageProps) {
   return (
     <Image
+      blurRadius={blurRadius}
       cachePolicy={space === 'personal' ? 'none' : 'disk'}
       contentFit={contentFit}
       source={{ uri }}

@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { commonButtonCopy, commonErrorCopy } from '../constants/copy';
-import { colors, typography } from '../design/tokens';
+import { typography } from '../design/tokens';
 import { ContentCard } from './ContentCard';
 import { EmptyState } from './EmptyState';
+import { LoadingTransition } from './LoadingTransition';
 import { PrimaryButton } from './PrimaryButton';
 
 interface PageStateBlockProps {
@@ -45,11 +46,9 @@ export function PageStateBlock({
 }: PageStateBlockProps) {
   if (loading) {
     return (
-      <ContentCard style={styles.feedbackCard}>
-        <ActivityIndicator color={colors.primary.default} size="small" />
-        <Text style={styles.feedbackTitle}>{loadingTitle}</Text>
-        <Text style={styles.feedbackText}>{loadingDescription}</Text>
-      </ContentCard>
+      <View style={styles.loadingWrap}>
+        <LoadingTransition description={loadingDescription} title={loadingTitle} />
+      </View>
     );
   }
 
@@ -81,6 +80,12 @@ export function PageStateBlock({
 }
 
 const styles = StyleSheet.create({
+  loadingWrap: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    minHeight: 280,
+  },
   feedbackCard: {
     alignItems: 'center',
     alignSelf: 'center',

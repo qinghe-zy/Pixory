@@ -15,6 +15,7 @@ interface IPCardProps {
 
 export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
+  const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? 18 : undefined;
 
   return (
     <Pressable
@@ -26,7 +27,7 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
     >
       {ip.coverThumbnailFileUri ? (
         <View style={styles.cover}>
-          <SecureImage contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
+          <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
           {content}
         </View>
       ) : (

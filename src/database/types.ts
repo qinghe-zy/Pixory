@@ -3,6 +3,8 @@ export interface IpRecord {
   name: string;
   description: string | null;
   isFavorite: boolean;
+  coverImageAssetId: number | null;
+  coverBlurEnabled: boolean | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -18,10 +20,13 @@ export interface UpdateIpInput {
   name?: string;
   description?: string | null;
   isFavorite?: boolean;
+  coverImageAssetId?: number | null;
+  coverBlurEnabled?: boolean | null;
 }
 
-export interface IpRow extends Omit<IpRecord, 'isFavorite'> {
+export interface IpRow extends Omit<IpRecord, 'isFavorite' | 'coverBlurEnabled'> {
   isFavorite: number;
+  coverBlurEnabled: number | null;
 }
 
 export type IpLibraryFilter = 'all' | 'recent' | 'favorite';
@@ -35,12 +40,14 @@ export interface IpListItem extends IpRecord {
   imageCount: number;
   groupCount: number;
   coverThumbnailFileUri: string | null;
+  coverSource: 'custom' | 'default';
 }
 
 export interface IpListItemRow extends IpRow {
   imageCount: number;
   groupCount: number;
   coverThumbnailFileUri: string | null;
+  coverSource: 'custom' | 'default' | null;
 }
 
 export interface GroupRecord {
@@ -82,6 +89,8 @@ export interface IpDetailRecord extends IpRecord {
   groupCount: number;
   tagCount: number;
   recentUpdatedAt: string;
+  coverThumbnailFileUri: string | null;
+  coverSource: 'custom' | 'default';
 }
 
 export interface ImageListItem extends ImageAssetRecord {

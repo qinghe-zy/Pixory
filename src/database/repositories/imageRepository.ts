@@ -1413,6 +1413,13 @@ export const imageRepository = {
     return row?.count ?? 0;
   },
 
+  async countRecentViewed(db: SQLiteDatabase): Promise<number> {
+    const row = await db.getFirstAsync<CountRow>(
+      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND lastViewedAt IS NOT NULL'
+    );
+    return row?.count ?? 0;
+  },
+
   async sumFileSize(db: SQLiteDatabase, options?: ImageAssetQueryOptions): Promise<number> {
     const deletedFilter = buildDeletedFilter('', options);
     const row = await db.getFirstAsync<SumRow>(

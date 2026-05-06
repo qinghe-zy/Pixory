@@ -23,10 +23,13 @@ test('App owns unified personal mode session state and removes the standalone co
   assert.match(appSource, /function lockPersonalSpace\(reason:\s*PersonalLockReason/);
   assert.match(appSource, /setPrivacyShieldVisible\(true\)[\s\S]{0,700}invalidatePersonalTaskToken/);
   assert.match(appSource, /function isPersonalRoute/);
-  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,600}lockPersonalSpace\('background'\)/);
+  assert.match(appSource, /PERSONAL_BACKGROUND_LOCK_GRACE_MS\s*=\s*30\s*\*\s*1000/);
+  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,700}schedulePersonalBackgroundLock\(\)/);
+  assert.match(appSource, /setTimeout\([\s\S]{0,500}lockPersonalSpace\('background'\)[\s\S]{0,120}PERSONAL_BACKGROUND_LOCK_GRACE_MS/);
+  assert.match(appSource, /nextState === 'active'[\s\S]{0,300}clearPendingPersonalBackgroundLock\(\)/);
   assert.match(appSource, /isPersonalRoute\(currentRoute\)[\s\S]{0,700}personalSessionState !== 'unlocked'/);
   assert.match(appSource, /const activeSpace = personalSessionState === 'unlocked' \? 'personal' : 'normal'/);
-  assert.match(appSource, /reason === 'background'[\s\S]{0,500}INITIAL_ROUTE/);
+  assert.doesNotMatch(appSource, /function lockPersonalSpace\(reason:\s*PersonalLockReason\)[\s\S]{0,700}setRouteStack\(\[INITIAL_ROUTE\]\)/);
 });
 
 test('Settings area owns personal setup unlock reset and mode toggle without a dashboard', () => {
@@ -73,7 +76,7 @@ test('package import has durable per-file item schema, repository methods, and r
   const repositorySource = readProjectFile('src/database/repositories/importBatchRepository.ts');
   const serviceSource = readProjectFile('src/services/packageImportService.ts');
 
-  assert.match(schemaSource, /DATABASE_VERSION = 10/);
+  assert.match(schemaSource, /DATABASE_VERSION = 11/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS import_batch_items/);
   assert.match(schemaSource, /status TEXT NOT NULL CHECK \(status IN \('success', 'failed', 'skipped'\)\)/);
   assert.match(typesSource, /export type ImportBatchItemStatus = 'success' \| 'failed' \| 'skipped'/);
