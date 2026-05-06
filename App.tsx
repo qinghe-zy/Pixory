@@ -45,6 +45,11 @@ import { TagResultScreen } from './src/screens/TagResultScreen';
 import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
 import { TrashScreen } from './src/screens/TrashScreen';
 import type { ImageViewerContext } from './src/navigation/imageViewerContext';
+import {
+  BACKGROUND_MEMORY_CACHE_CLEAR_DELAY_MS,
+  cleanupDailyAppTempCache,
+  clearImageMemoryCache,
+} from './src/services/cacheCleanupService';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import {
   changePersonalPassword,
@@ -136,6 +141,7 @@ export default function App() {
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
   const backgroundLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundMemoryCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
@@ -159,6 +165,11 @@ export default function App() {
       try {
         await ensureAppDirectories();
         await initDatabase();
+        void cleanupDailyAppTempCache().catch((error) => {
+          console.warn('Pixory temp cache cleanup failed.', {
+            message: error instanceof Error ? error.message : 'unknown temp cache cleanup error',
+          });
+        });
 
         if (isMounted) {
           setIsReady(true);
@@ -185,15 +196,18 @@ export default function App() {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         clearPendingPersonalBackgroundLock();
+        clearPendingBackgroundMemoryCacheCleanup();
         setPrivacyShieldVisible(false);
         return;
       }
 
       schedulePersonalBackgroundLock();
+      scheduleBackgroundMemoryCacheCleanup();
     });
 
     return () => {
       clearPendingPersonalBackgroundLock();
+      clearPendingBackgroundMemoryCacheCleanup();
       subscription.remove();
     };
   }, []);
@@ -241,6 +255,27 @@ export default function App() {
       clearTimeout(backgroundLockTimerRef.current);
       backgroundLockTimerRef.current = null;
     }
+  }
+
+  function clearPendingBackgroundMemoryCacheCleanup() {
+    if (backgroundMemoryCacheTimerRef.current) {
+      clearTimeout(backgroundMemoryCacheTimerRef.current);
+      backgroundMemoryCacheTimerRef.current = null;
+    }
+  }
+
+  function scheduleBackgroundMemoryCacheCleanup() {
+    clearPendingBackgroundMemoryCacheCleanup();
+    backgroundMemoryCacheTimerRef.current = setTimeout(() => {
+      backgroundMemoryCacheTimerRef.current = null;
+      void clearImageMemoryCache().catch(reportBackgroundMemoryCacheCleanupFailure);
+    }, BACKGROUND_MEMORY_CACHE_CLEAR_DELAY_MS);
+  }
+
+  function reportBackgroundMemoryCacheCleanupFailure(error: unknown) {
+    console.warn('Pixory background memory cache cleanup failed.', {
+      message: error instanceof Error ? error.message : 'unknown memory cache cleanup error',
+    });
   }
 
   function schedulePersonalBackgroundLock() {
