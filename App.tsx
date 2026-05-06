@@ -35,6 +35,7 @@ import { ImportBatchHistoryScreen } from './src/screens/ImportBatchHistoryScreen
 import { ImportBatchReviewScreen, type BatchInitialMode } from './src/screens/ImportBatchReviewScreen';
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
+import { IpCoverPickerScreen } from './src/screens/IpCoverPickerScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
@@ -59,6 +60,7 @@ type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
   | { name: 'create-ip'; space: PixorySpace }
   | { name: 'ip-detail'; ipId: number; space: PixorySpace }
+  | { name: 'ip-cover-picker'; ipId: number; space: PixorySpace }
   | { name: 'edit-ip'; ipId: number; space: PixorySpace }
   | { name: 'edit-group'; ipId: number; groupId: number; space: PixorySpace }
   | { name: 'edit-image'; imageId: number; space: PixorySpace }
@@ -109,6 +111,7 @@ type SpaceSession = {
 };
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
+const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 30 * 1000;
 
 function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
@@ -131,6 +134,8 @@ export default function App() {
   const [privacyShieldVisible, setPrivacyShieldVisible] = useState(false);
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
+  const personalSessionStateRef = useRef(personalSessionState);
+  const backgroundLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
@@ -138,6 +143,10 @@ export default function App() {
   useEffect(() => {
     routeStackRef.current = routeStack;
   }, [routeStack]);
+
+  useEffect(() => {
+    personalSessionStateRef.current = personalSessionState;
+  }, [personalSessionState]);
 
   useEffect(() => {
     let isMounted = true;
@@ -174,13 +183,19 @@ export default function App() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') {
-        setPrivacyShieldVisible(true);
-        void lockPersonalSpace('background');
+      if (nextState === 'active') {
+        clearPendingPersonalBackgroundLock();
+        setPrivacyShieldVisible(false);
+        return;
       }
+
+      schedulePersonalBackgroundLock();
     });
 
-    return () => subscription.remove();
+    return () => {
+      clearPendingPersonalBackgroundLock();
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -221,14 +236,40 @@ export default function App() {
     }
   }, [currentRoute, personalSessionState]);
 
+  function clearPendingPersonalBackgroundLock() {
+    if (backgroundLockTimerRef.current) {
+      clearTimeout(backgroundLockTimerRef.current);
+      backgroundLockTimerRef.current = null;
+    }
+  }
+
+  function schedulePersonalBackgroundLock() {
+    if (personalSessionStateRef.current !== 'unlocked') {
+      return;
+    }
+
+    setPrivacyShieldVisible(true);
+    clearPendingPersonalBackgroundLock();
+    backgroundLockTimerRef.current = setTimeout(() => {
+      backgroundLockTimerRef.current = null;
+      if (personalSessionStateRef.current === 'unlocked') {
+        void lockPersonalSpace('background');
+        return;
+      }
+      setPrivacyShieldVisible(false);
+    }, PERSONAL_BACKGROUND_LOCK_GRACE_MS);
+  }
+
   async function unlockPersonalSpace(secret: string) {
     setPersonalAuthBusy(true);
     setPersonalSessionState('unlocking');
+    personalSessionStateRef.current = 'unlocking';
     try {
       const result = await verifyPersonalPassword(secret);
       if (!result.ok) {
         throw new Error(result.message ?? '隐私模式验证失败。');
       }
+      await ensureAppDirectories('personal');
       const db = await initDatabase('personal');
       const generation = personalGenerationRef.current + 1;
       personalGenerationRef.current = generation;
@@ -249,6 +290,7 @@ export default function App() {
       };
       setPersonalSession(session);
       setPersonalSessionState('unlocked');
+      personalSessionStateRef.current = 'unlocked';
       setPersonalUnlockVisible(false);
       setRouteStack([INITIAL_ROUTE]);
       setLibraryRefreshToken((current) => current + 1);
@@ -293,14 +335,20 @@ export default function App() {
   }
 
   async function lockPersonalSpace(reason: PersonalLockReason) {
+    clearPendingPersonalBackgroundLock();
+    if (personalSessionStateRef.current === 'locked' && !personalTaskTokenRef.current) {
+      setPrivacyShieldVisible(false);
+      return;
+    }
+
     setPrivacyShieldVisible(true);
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
+    personalSessionStateRef.current = 'locking';
     invalidatePersonalTaskToken(personalTaskTokenRef.current);
     personalTaskTokenRef.current = null;
     personalGenerationRef.current += 1;
     setPersonalSession(null);
     setPersonalUnlockVisible(false);
-    setRouteStack([INITIAL_ROUTE]);
     setGlobalSearchQuery('');
     setLibraryRefreshToken((current) => current + 1);
 
@@ -317,10 +365,8 @@ export default function App() {
       }
     }
 
-    if (reason === 'background') {
-      setRouteStack([INITIAL_ROUTE]);
-    }
     setPersonalSessionState('locked');
+    personalSessionStateRef.current = 'locked';
     setPrivacyShieldVisible(false);
   }
 
@@ -463,9 +509,20 @@ export default function App() {
         onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
+        onOpenCoverPicker={() => pushRoute({ name: 'ip-cover-picker', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
+        onChanged={refreshLibrary}
         refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'ip-cover-picker') {
+    content = (
+      <IpCoverPickerScreen
+        ipId={currentRoute.ipId}
+        space={currentRoute.space}
+        onBack={popRoute}
+        onChanged={refreshLibrary}
       />
     );
   } else if (currentRoute.name === 'edit-ip') {

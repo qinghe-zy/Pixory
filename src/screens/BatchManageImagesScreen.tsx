@@ -26,6 +26,7 @@ import { mergeDraftTagNames } from '../utils/tagDrafts';
 import {
   applySelectionRules,
   BATCH_SELECTION_RULE_OPTIONS,
+  normalizeSelectionRuleKeys,
   type BatchSelectionRuleKey,
   type BatchSelectionRulesResult,
 } from '../utils/batchSelectionRules';
@@ -208,9 +209,10 @@ export function BatchManageImagesScreen({
       return;
     }
 
-    const nextRuleKeys = activeRuleKeys.includes(rule)
+    const rawRuleKeys = activeRuleKeys.includes(rule)
       ? activeRuleKeys.filter((item) => item !== rule)
       : [...activeRuleKeys, rule];
+    const nextRuleKeys = normalizeSelectionRuleKeys(rawRuleKeys);
 
     if (nextRuleKeys.length === 0) {
       setActiveRuleKeys([]);

@@ -3,19 +3,18 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { deleteDatabaseAsync } from 'expo-sqlite';
 
-import { initDatabase, PERSONAL_DATABASE_NAME, resetDatabaseSpaceCache } from '../database';
+import { PERSONAL_DATABASE_NAME, resetDatabaseSpaceCache } from '../database';
 import { ensureAppDirectories, getExportsDir, getOriginalsDir, getTempDir, getThumbnailsDir } from './fileStorageService';
 
 export const PERSONAL_CREDENTIAL_KEY = 'pixory.personal.credential.v1';
 export const MAX_PERSONAL_UNLOCK_FAILURES = 5;
+const PERSONAL_CREDENTIAL_VERSION = 2;
 const PERSONAL_LOCK_MS = 5 * 60 * 1000;
-const PERSONAL_KDF_ITERATIONS = 120000;
 
 interface PersonalCredential {
-  version: 1;
+  version: number;
   salt: string;
   hash: string;
-  iterations: number;
   failedAttempts: number;
   lockedUntil: string | null;
   updatedAt: string;
@@ -46,12 +45,8 @@ async function generateSalt(): Promise<string> {
   return toHex(await Crypto.getRandomBytesAsync(16));
 }
 
-async function deriveSecretHash(secret: string, salt: string, iterations: number): Promise<string> {
-  let digest = `${salt}:${secret}`;
-  for (let index = 0; index < iterations; index += 1) {
-    digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, digest);
-  }
-  return digest;
+async function hashPersonalSecret(secret: string, salt: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}:${secret}`);
 }
 
 async function readCredential(): Promise<PersonalCredential | null> {
@@ -79,10 +74,9 @@ export async function setPersonalPassword(secret: string): Promise<void> {
 
   const salt = await generateSalt();
   const credential: PersonalCredential = {
-    version: 1,
+    version: PERSONAL_CREDENTIAL_VERSION,
     salt,
-    hash: await deriveSecretHash(preparedSecret, salt, PERSONAL_KDF_ITERATIONS),
-    iterations: PERSONAL_KDF_ITERATIONS,
+    hash: await hashPersonalSecret(preparedSecret, salt),
     failedAttempts: 0,
     lockedUntil: null,
     updatedAt: nowIso(),
@@ -90,7 +84,6 @@ export async function setPersonalPassword(secret: string): Promise<void> {
 
   await writeCredential(credential);
   await ensureAppDirectories('personal');
-  await initDatabase('personal');
 }
 
 export async function verifyPersonalPassword(secret: string): Promise<PersonalVerificationResult> {
@@ -113,7 +106,16 @@ export async function verifyPersonalPassword(secret: string): Promise<PersonalVe
     };
   }
 
-  const nextHash = await deriveSecretHash(secret.trim(), credential.salt, credential.iterations);
+  if (credential.version !== PERSONAL_CREDENTIAL_VERSION) {
+    return {
+      ok: false,
+      lockedUntil: null,
+      remainingAttempts: MAX_PERSONAL_UNLOCK_FAILURES,
+      message: '隐私密码格式已更新，请重置隐私空间密码。',
+    };
+  }
+
+  const nextHash = await hashPersonalSecret(secret.trim(), credential.salt);
   if (nextHash === credential.hash) {
     await writeCredential({
       ...credential,
@@ -121,8 +123,6 @@ export async function verifyPersonalPassword(secret: string): Promise<PersonalVe
       lockedUntil: null,
       updatedAt: nowIso(),
     });
-    await ensureAppDirectories('personal');
-    await initDatabase('personal');
     return {
       ok: true,
       lockedUntil: null,

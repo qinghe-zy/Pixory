@@ -27,19 +27,42 @@ const IP_LIBRARY_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.coverImageAssetId,
+    ips.coverBlurEnabled,
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
     COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
     COUNT(DISTINCT groups.id) AS groupCount,
-    (
-      SELECT image_assets.thumbnailFileUri
-      FROM image_assets
-      WHERE image_assets.ipId = ips.id
-        AND image_assets.deletedAt IS NULL
-      ORDER BY image_assets.updatedAt DESC, image_assets.id DESC
-      LIMIT 1
-    ) AS coverThumbnailFileUri
+    COALESCE(
+      (
+        SELECT customCover.thumbnailFileUri
+        FROM image_assets AS customCover
+        WHERE customCover.id = ips.coverImageAssetId
+          AND customCover.ipId = ips.id
+          AND customCover.deletedAt IS NULL
+        LIMIT 1
+      ),
+      (
+        SELECT defaultCover.thumbnailFileUri
+        FROM image_assets AS defaultCover
+        WHERE defaultCover.ipId = ips.id
+          AND defaultCover.deletedAt IS NULL
+        ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
+        LIMIT 1
+      )
+    ) AS coverThumbnailFileUri,
+    CASE
+      WHEN EXISTS (
+        SELECT 1
+        FROM image_assets AS customCover
+        WHERE customCover.id = ips.coverImageAssetId
+          AND customCover.ipId = ips.id
+          AND customCover.deletedAt IS NULL
+      )
+      THEN 'custom'
+      ELSE 'default'
+    END AS coverSource
   FROM ips
   LEFT JOIN image_assets ON image_assets.ipId = ips.id
   LEFT JOIN groups ON groups.ipId = ips.id
@@ -51,6 +74,8 @@ const IP_DETAIL_SELECT = `
     ips.name,
     ips.description,
     ips.isFavorite,
+    ips.coverImageAssetId,
+    ips.coverBlurEnabled,
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
@@ -64,6 +89,36 @@ const IP_DETAIL_SELECT = `
         ips.updatedAt
       )
     ) AS recentUpdatedAt
+    ,
+    COALESCE(
+      (
+        SELECT customCover.thumbnailFileUri
+        FROM image_assets AS customCover
+        WHERE customCover.id = ips.coverImageAssetId
+          AND customCover.ipId = ips.id
+          AND customCover.deletedAt IS NULL
+        LIMIT 1
+      ),
+      (
+        SELECT defaultCover.thumbnailFileUri
+        FROM image_assets AS defaultCover
+        WHERE defaultCover.ipId = ips.id
+          AND defaultCover.deletedAt IS NULL
+        ORDER BY defaultCover.updatedAt DESC, defaultCover.id DESC
+        LIMIT 1
+      )
+    ) AS coverThumbnailFileUri,
+    CASE
+      WHEN EXISTS (
+        SELECT 1
+        FROM image_assets AS customCover
+        WHERE customCover.id = ips.coverImageAssetId
+          AND customCover.ipId = ips.id
+          AND customCover.deletedAt IS NULL
+      )
+      THEN 'custom'
+      ELSE 'default'
+    END AS coverSource
   FROM ips
   LEFT JOIN groups ON groups.ipId = ips.id
   LEFT JOIN image_assets ON image_assets.ipId = ips.id
@@ -128,6 +183,8 @@ export const ipRepository = {
       name: input.name !== undefined ? requireNonEmptyText(input.name, 'IP name') : undefined,
       description: normalizeOptionalText(input.description),
       isFavorite: input.isFavorite !== undefined ? booleanToSqlite(input.isFavorite) : undefined,
+      coverImageAssetId: input.coverImageAssetId,
+      coverBlurEnabled: input.coverBlurEnabled === undefined ? undefined : input.coverBlurEnabled == null ? null : booleanToSqlite(input.coverBlurEnabled),
       updatedAt: createTimestamp(),
     });
 
@@ -184,9 +241,32 @@ export const ipRepository = {
         groupCount: number;
         tagCount: number;
         recentUpdatedAt: string | null;
+        coverThumbnailFileUri: string | null;
+        coverSource: 'custom' | 'default' | null;
       }
     >(`${IP_DETAIL_SELECT} WHERE ips.id = ? AND ips.deletedAt IS NULL GROUP BY ips.id`, id);
     return row ? mapIpDetailRow(row) : null;
+  },
+
+  async setCoverImage(db: SQLiteDatabase, ipId: number, imageAssetId: number): Promise<IpRecord | null> {
+    const image = await db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM image_assets WHERE id = ? AND ipId = ? AND deletedAt IS NULL',
+      imageAssetId,
+      ipId
+    );
+    if (!image) {
+      throw new Error('只能选择当前 IP 下未删除的图片作为封面。');
+    }
+
+    return this.update(db, ipId, { coverImageAssetId: imageAssetId });
+  },
+
+  async clearCoverImage(db: SQLiteDatabase, ipId: number): Promise<IpRecord | null> {
+    return this.update(db, ipId, { coverImageAssetId: null });
+  },
+
+  async setCoverBlurEnabled(db: SQLiteDatabase, ipId: number, enabled: boolean): Promise<IpRecord | null> {
+    return this.update(db, ipId, { coverBlurEnabled: enabled });
   },
 
   async count(db: SQLiteDatabase): Promise<number> {

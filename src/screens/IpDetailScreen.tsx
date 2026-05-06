@@ -8,6 +8,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
 import { SecureImage } from '../components/SecureImage';
+import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
@@ -33,8 +34,10 @@ interface IpDetailScreenProps {
   onOpenBatchManagement: (imageId?: number) => void;
   onOpenImportBatches: () => void;
   onOpenNeedsOrganizing: () => void;
+  onOpenCoverPicker: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
   onOpenImageDetail: (imageId: number) => void;
+  onChanged: () => void;
 }
 
 const QUICK_ACTIONS = [
@@ -59,8 +62,10 @@ export function IpDetailScreen({
   onOpenBatchManagement,
   onOpenImportBatches,
   onOpenNeedsOrganizing,
+  onOpenCoverPicker,
   onOpenImage,
   onOpenImageDetail,
+  onChanged,
 }: IpDetailScreenProps) {
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
@@ -170,6 +175,18 @@ export function IpDetailScreen({
     setActionImage(image);
   }
 
+  function handleCoverBlurChange(enabled: boolean) {
+    void (async () => {
+      try {
+        await runWithDatabaseSpace(space, (db) => ipRepository.setCoverBlurEnabled(db, ipId, enabled));
+        reload();
+        onChanged();
+      } catch (error) {
+        showToast(error instanceof Error ? `更新封面模糊失败：${error.message}` : '更新封面模糊失败');
+      }
+    })();
+  }
+
   return (
     <>
     <ScreenScaffold decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
@@ -187,8 +204,14 @@ export function IpDetailScreen({
         {ip ? (
           <>
             <View style={styles.cover}>
-              {recentImages[0]?.thumbnailFileUri ? (
-                <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={recentImages[0].thumbnailFileUri} />
+              {ip.coverThumbnailFileUri ? (
+                <SecureImage
+                  blurRadius={space === 'personal' && (ip.coverBlurEnabled ?? true) ? 18 : undefined}
+                  contentFit="cover"
+                  space={space}
+                  style={styles.coverImage}
+                  uri={ip.coverThumbnailFileUri}
+                />
               ) : (
                 <View style={styles.coverFallback}>
                   <Text style={styles.coverInitials}>{getIpInitials(ip.name)}</Text>
@@ -204,7 +227,19 @@ export function IpDetailScreen({
                   {ip.name}
                 </Text>
               </View>
+              <Pressable onPress={onOpenCoverPicker} style={({ pressed }) => [styles.coverAction, pressed && styles.pressed]}>
+                <Ionicons color={colors.text.inverse} name="image-outline" size={14} />
+                <Text style={styles.coverActionText}>{ip.coverSource === 'custom' ? '更换封面' : '选择封面'}</Text>
+              </Pressable>
             </View>
+            {space === 'personal' ? (
+              <SwitchSettingRow
+                hint="只模糊隐私空间中的 IP 封面预览，不修改原图。"
+                label="封面模糊"
+                onValueChange={handleCoverBlurChange}
+                value={ip.coverBlurEnabled ?? true}
+              />
+            ) : null}
 
             <View style={styles.managementSummary}>
               <View style={styles.statsStrip}>
@@ -459,6 +494,25 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(23, 33, 43, 0.92)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 12,
+  },
+  coverAction: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(5, 7, 10, 0.48)',
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    left: spacing[3],
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+    position: 'absolute',
+    top: spacing[3],
+  },
+  coverActionText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   statsStrip: {
     flexDirection: 'row',

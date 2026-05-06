@@ -59,7 +59,33 @@ export const BATCH_SELECTION_RULE_OPTIONS: BatchSelectionRuleOption[] = [
   { key: 'suspected-duplicate', label: '疑似重复' },
 ];
 
+export const BATCH_SELECTION_RULE_MUTEX_GROUPS: BatchSelectionRuleKey[][] = [
+  ['landscape', 'portrait', 'square', 'panorama'],
+  ['large', 'small'],
+];
+
 const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);
+
+export function normalizeSelectionRuleKeys(rules: BatchSelectionRuleKey[]): BatchSelectionRuleKey[] {
+  const normalizedRules: BatchSelectionRuleKey[] = [];
+
+  for (const rule of rules) {
+    const mutexGroup = BATCH_SELECTION_RULE_MUTEX_GROUPS.find((group) => group.includes(rule));
+    if (mutexGroup) {
+      for (let index = normalizedRules.length - 1; index >= 0; index -= 1) {
+        if (mutexGroup.includes(normalizedRules[index])) {
+          normalizedRules.splice(index, 1);
+        }
+      }
+    }
+
+    if (!normalizedRules.includes(rule)) {
+      normalizedRules.push(rule);
+    }
+  }
+
+  return normalizedRules;
+}
 
 export function requiresSelectionBase(rule: BatchSelectionRuleKey, importBatchId?: number | null): boolean {
   if (rule === 'import-batch') {
@@ -99,7 +125,7 @@ export function applySelectionRules({
   rules,
   importBatchId = null,
 }: ApplySelectionRuleInput & { rules: BatchSelectionRuleKey[] }): BatchSelectionRulesResult {
-  const uniqueRules = [...new Set(rules)];
+  const uniqueRules = normalizeSelectionRuleKeys(rules);
   if (uniqueRules.length === 0) {
     return {
       keys: [],

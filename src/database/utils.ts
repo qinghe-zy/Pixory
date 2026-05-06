@@ -97,6 +97,8 @@ export function mapIpRow(row: IpRow): IpRecord {
   return {
     ...row,
     isFavorite: sqliteToBoolean(row.isFavorite),
+    coverImageAssetId: row.coverImageAssetId ?? null,
+    coverBlurEnabled: row.coverBlurEnabled == null ? null : sqliteToBoolean(row.coverBlurEnabled),
   };
 }
 
@@ -106,6 +108,7 @@ export function mapIpListItemRow(row: IpListItemRow): IpListItem {
     imageCount: row.imageCount ?? 0,
     groupCount: row.groupCount ?? 0,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+    coverSource: row.coverSource === 'custom' ? 'custom' : 'default',
   };
 }
 
@@ -115,6 +118,8 @@ export function mapIpDetailRow(
     groupCount: number;
     tagCount: number;
     recentUpdatedAt: string | null;
+    coverThumbnailFileUri: string | null;
+    coverSource: 'custom' | 'default' | null;
   }
 ): IpDetailRecord {
   return {
@@ -123,6 +128,8 @@ export function mapIpDetailRow(
     groupCount: row.groupCount ?? 0,
     tagCount: row.tagCount ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
+    coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+    coverSource: row.coverSource === 'custom' ? 'custom' : 'default',
   };
 }
 
