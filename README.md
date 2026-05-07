@@ -18,7 +18,7 @@ Pixory 是一个 Android-first、local-only 的 IP 图片 / 视觉资产管理�
 - IP 资产库
 - IP 下分组管理
 - 图片批量导入
-- 后续 v2 规划：视频导入、视频封面、视频查看与大容量性能治理
+- v2 目标：视频导入、视频封面、视频查看与大容量性能治理
 - 标签总览与标签结果页
 - 图片详情
 - 图片编辑
@@ -45,7 +45,7 @@ Pixory 是一个 Android-first、local-only 的 IP 图片 / 视觉资产管理�
 - SQLite 保存结构化元数据。
 - 应用私有文件目录保存 original 文件。
 - 应用私有文件目录保存 thumbnail / preview 文件。
-- `originalFileUri`、`thumbnailFileUri`、未来的视频封面 URI 分离维护。
+- `originalFileUri`、`thumbnailFileUri`、视频封面 URI 分离维护。
 - 清空回收站前，软删除资产对应的原始文件和预览文件仍会保留。
 - 列表页只读取元数据和预览资源，原始文件只在详情、查看器、导出或备份时访问。
 
@@ -105,8 +105,11 @@ pnpm exec expo start --android -c
 - 不在启动时扫描全库文件。
 - 不把大文件放进 SQLite。
 - 不让 UI 页面直接绕过 repository / service 修改数据库或文件。
-- 大批量导入、备份、恢复、清理和未来视频导入必须按任务化、分批、可校验的方式设计。
+- 大批量导入、备份、恢复、清理和视频导入必须按任务化、分批、可校验的方式设计。
 
 ## 文档
 
 - [v2 开发规划](./docs/V2_DEVELOPMENT_PLAN.md)
+- [v2 视频与导入规格](./docs/V2_VIDEO_AND_IMPORT_SPEC.md)
+- [v2 验收标准](./docs/V2_ACCEPTANCE_CRITERIA.md)
+- [v2 播放器视觉参考](./docs/assets/v2-video-player-visual-reference.png)
