@@ -54,7 +54,7 @@ test('IP deletion supports recycle bin and permanent local cleanup paths', () =>
   const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
   const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*11/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*12/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN deletedAt TEXT/);
   assert.match(typesSource, /deletedAt:\s*string \| null/);
   assert.match(ipRepositorySource, /softDeleteById/);
@@ -77,7 +77,7 @@ test('recent image preview stays six but viewer loads import batch context', () 
   const detailSource = readProjectFile('src/screens/ImageDetailScreen.tsx');
 
   assert.match(contextSource, /type:\s*'import-batch'/);
-  assert.match(ipDetailSource, /findRecentByIpId\(db,\s*ipId,\s*6\)/);
+  assert.match(ipDetailSource, /findRecentByIpId\(db,\s*ipId,\s*6,\s*\{\s*mediaType:\s*'all'\s*\}\)/);
   assert.match(ipDetailSource, /importBatchId/);
   assert.match(ipDetailSource, /type:\s*'import-batch'/);
   assert.match(viewerSource, /context\.type === 'import-batch'/);

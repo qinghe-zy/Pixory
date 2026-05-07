@@ -1,3 +1,5 @@
+import type { PixorySpace } from './db';
+
 export interface IpRecord {
   id: number;
   name: string;
@@ -148,12 +150,15 @@ export interface ImageAssetRecord {
   ipId: number;
   importBatchId: number | null;
   groupId: number | null;
+  mediaType: AssetMediaType;
   originalFileUri: string;
   thumbnailFileUri: string | null;
+  coverThumbnailFileUri: string | null;
   originalFilename: string;
   internalFilename: string;
   width: number;
   height: number;
+  durationMs: number | null;
   mimeType: string;
   fileSize: number;
   isFavorite: boolean;
@@ -162,25 +167,36 @@ export interface ImageAssetRecord {
   createdAt: string;
   updatedAt: string;
   lastViewedAt: string | null;
+  lastPlaybackPositionMs: number | null;
+  previewStatus: AssetPreviewStatus;
 }
+
+export type AssetMediaType = 'image' | 'video';
+export type AssetPreviewStatus = 'ready' | 'pending' | 'failed';
+export type AssetMediaTypeFilter = AssetMediaType | 'all';
 
 export interface CreateImageAssetInput {
   ipId: number;
   importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
+  mediaType?: AssetMediaType;
   originalFileUri: string;
   thumbnailFileUri?: string | null;
+  coverThumbnailFileUri?: string | null;
   originalFilename: string;
   internalFilename: string;
   width: number;
   height: number;
+  durationMs?: number | null;
   mimeType: string;
   fileSize: number;
   isFavorite?: boolean;
   note?: string | null;
   deletedAt?: string | null;
   lastViewedAt?: string | null;
+  lastPlaybackPositionMs?: number | null;
+  previewStatus?: AssetPreviewStatus;
 }
 
 export interface UpdateImageAssetInput {
@@ -188,18 +204,23 @@ export interface UpdateImageAssetInput {
   importBatchId?: number | null;
   groupId?: number | null;
   groupIds?: number[];
+  mediaType?: AssetMediaType;
   originalFileUri?: string;
   thumbnailFileUri?: string | null;
+  coverThumbnailFileUri?: string | null;
   originalFilename?: string;
   internalFilename?: string;
   width?: number;
   height?: number;
+  durationMs?: number | null;
   mimeType?: string;
   fileSize?: number;
   isFavorite?: boolean;
   note?: string | null;
   deletedAt?: string | null;
   lastViewedAt?: string | null;
+  lastPlaybackPositionMs?: number | null;
+  previewStatus?: AssetPreviewStatus;
 }
 
 export interface TagRecord {
@@ -219,6 +240,7 @@ export interface UpdateTagInput {
 
 export interface ImageAssetQueryOptions {
   includeDeleted?: boolean;
+  mediaType?: AssetMediaTypeFilter;
 }
 
 export interface ImageAssetRow extends Omit<ImageAssetRecord, 'isFavorite'> {
@@ -412,4 +434,69 @@ export interface IpOrganizationProgress {
   ungroupedCount: number;
   untaggedCount: number;
   recentImportUnorganizedCount: number;
+}
+
+export type BackgroundTaskStatus =
+  | 'pending'
+  | 'preparing'
+  | 'copying'
+  | 'verifying'
+  | 'generatingPreview'
+  | 'writingDatabase'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type BackgroundTaskType =
+  | 'image-import'
+  | 'video-import'
+  | 'package-import'
+  | 'archive-temp-read'
+  | 'backup'
+  | 'restore'
+  | 'ip-space-migration'
+  | 'trash-clear';
+
+export interface BackgroundTaskRecord {
+  id: string;
+  type: BackgroundTaskType;
+  space: PixorySpace;
+  status: BackgroundTaskStatus;
+  title: string;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  totalBytes: number | null;
+  completedBytes: number;
+  currentLabel: string | null;
+  errorMessage: string | null;
+  resultJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface CreateBackgroundTaskInput {
+  id?: string;
+  type: BackgroundTaskType;
+  space: PixorySpace;
+  status?: BackgroundTaskStatus;
+  title: string;
+  totalCount?: number;
+  totalBytes?: number | null;
+  currentLabel?: string | null;
+}
+
+export interface UpdateBackgroundTaskInput {
+  status?: BackgroundTaskStatus;
+  title?: string;
+  totalCount?: number;
+  successCount?: number;
+  failedCount?: number;
+  totalBytes?: number | null;
+  completedBytes?: number;
+  currentLabel?: string | null;
+  errorMessage?: string | null;
+  resultJson?: string | null;
+  completedAt?: string | null;
 }

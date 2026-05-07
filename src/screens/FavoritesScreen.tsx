@@ -63,6 +63,7 @@ export function FavoritesScreen({
     async () => {
       const [images, ips, groups, tags] = await runWithDatabaseSpace(space, (db) => Promise.all([
         imageRepository.findFavorites(db, {
+          mediaType: activeFilters.aspectRatio || activeFilters.size ? 'image' : 'all',
           ipIds: activeFilters.ipIds,
           groupIds: activeFilters.groupIds,
           tagIds: activeFilters.tagIds,
@@ -86,13 +87,14 @@ export function FavoritesScreen({
     }
   );
   const images = data?.images ?? [];
+  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
   const ips = data?.ips ?? [];
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
-  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
   const selectedImages = useMemo(
-    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [images, multiSelect.selectedImageIds]
+    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableImages, multiSelect.selectedImageIds]
   );
   const activeFilterLabels = useMemo(() => {
     const labels: string[] = [];
@@ -107,6 +109,11 @@ export function FavoritesScreen({
   const hasActiveFilters = activeFilterLabels.length > 0;
 
   function handleOpenImage(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
       return;
@@ -115,12 +122,16 @@ export function FavoritesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: filterLabel, space }
+        ? { type: 'image-scope', imageIds: selectableImages.map((image) => image.id), label: filterLabel, space }
         : { type: 'favorites', space }
     );
   }
 
   function handleImageLongPress(image: ImageListItem) {
+    if (image.mediaType === 'video') {
+      onOpenImageDetail(image.id);
+      return;
+    }
     multiSelect.enterSelection(image.id);
   }
 
@@ -178,7 +189,7 @@ export function FavoritesScreen({
       onDeleted={reload}
       selectedImages={selectedImages}
       space={space}
-      totalCount={images.length}
+      totalCount={selectableImages.length}
     />
   ) : undefined;
   return (

@@ -31,7 +31,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
     async () => {
       const [images, ips] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        activeIpId == null ? imageRepository.findDeleted(db) : imageRepository.findDeletedByIpId(db, activeIpId),
+        activeIpId == null ? imageRepository.findDeleted(db, { mediaType: 'all' }) : imageRepository.findDeletedByIpId(db, activeIpId, { mediaType: 'all' }),
         ipRepository.findAllIncludingDeleted(db),
       ]));
       return { images, ips };

@@ -29,7 +29,7 @@ export function RecentViewedScreen({
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db)),
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db, 60, { mediaType: 'all' })),
     [refreshToken, space],
     {
       formatError: (error) => {
@@ -39,13 +39,19 @@ export function RecentViewedScreen({
       initialData: [],
     }
   );
-  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
   const selectedImages = useMemo(
-    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [images, multiSelect.selectedImageIds]
+    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableImages, multiSelect.selectedImageIds]
   );
 
   function handleOpenImage(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
       return;
@@ -55,6 +61,10 @@ export function RecentViewedScreen({
   }
 
   function handleImageLongPress(image: ImageListItem) {
+    if (image.mediaType === 'video') {
+      onOpenImageDetail(image.id);
+      return;
+    }
     multiSelect.enterSelection(image.id);
   }
 
@@ -65,7 +75,7 @@ export function RecentViewedScreen({
       onDeleted={reload}
       selectedImages={selectedImages}
       space={space}
-      totalCount={images.length}
+      totalCount={selectableImages.length}
     />
   ) : undefined;
 

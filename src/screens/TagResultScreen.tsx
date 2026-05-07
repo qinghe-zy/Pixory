@@ -77,6 +77,7 @@ export function TagResultScreen({
       const [tag, baseImages, ips, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
         tagRepository.findById(db, tagId),
         imageRepository.findByTagId(db, tagId, {
+          mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
           aspectRatio: activeFilters.aspectRatio ?? undefined,
           favoritesOnly: activeFilters.favorite || undefined,
           groupIds: activeFilters.groupIds,
@@ -110,6 +111,7 @@ export function TagResultScreen({
 
   const tag = data?.tag ?? null;
   const images = data?.images ?? [];
+  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
   const ips = data?.ips ?? [];
   const groups = data?.groups ?? [];
   const activeFilterLabels = useMemo(() => {
@@ -128,13 +130,18 @@ export function TagResultScreen({
   }, [activeFilters, groups, ips]);
   const filterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
   const hasActiveFilters = activeFilterLabels.length > 0;
-  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
   const selectedImages = useMemo(
-    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [images, multiSelect.selectedImageIds]
+    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableImages, multiSelect.selectedImageIds]
   );
 
   function handleOpenImage(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
       return;
@@ -143,12 +150,16 @@ export function TagResultScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
+        ? { type: 'image-scope', imageIds: selectableImages.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
         : { type: 'tag', tagId, space }
     );
   }
 
   function handleImageLongPress(image: ImageListItem) {
+    if (image.mediaType === 'video') {
+      onOpenImageDetail(image.id);
+      return;
+    }
     multiSelect.enterSelection(image.id);
   }
 
@@ -159,7 +170,7 @@ export function TagResultScreen({
       onDeleted={reload}
       selectedImages={selectedImages}
       space={space}
-      totalCount={images.length}
+      totalCount={selectableImages.length}
     />
   ) : undefined;
 
@@ -432,6 +443,10 @@ function filterImagesBySimilarity(images: ImageListItem[], filters: TagResultFil
     }
     return true;
   });
+}
+
+function hasImageOnlyFilter(filters: TagResultFilterState): boolean {
+  return Boolean(filters.aspectRatio || filters.similarDuplicate || filters.similarFilenamePrefix || filters.similarSameSize);
 }
 
 const styles = StyleSheet.create({

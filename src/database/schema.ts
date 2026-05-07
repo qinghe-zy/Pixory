@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 11;
+export const DATABASE_VERSION = 12;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -195,4 +195,38 @@ export const MIGRATION_STATEMENTS_V11 = `
 ALTER TABLE ips ADD COLUMN coverImageAssetId INTEGER;
 ALTER TABLE ips ADD COLUMN coverBlurEnabled INTEGER;
 CREATE INDEX IF NOT EXISTS idx_ips_cover_image_asset_id ON ips(coverImageAssetId);
+`;
+
+export const MIGRATION_STATEMENTS_V12 = `
+ALTER TABLE image_assets ADD COLUMN mediaType TEXT NOT NULL DEFAULT 'image';
+ALTER TABLE image_assets ADD COLUMN coverThumbnailFileUri TEXT;
+ALTER TABLE image_assets ADD COLUMN durationMs INTEGER;
+ALTER TABLE image_assets ADD COLUMN lastPlaybackPositionMs INTEGER;
+ALTER TABLE image_assets ADD COLUMN previewStatus TEXT NOT NULL DEFAULT 'ready';
+
+CREATE TABLE IF NOT EXISTS background_tasks (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'preparing', 'copying', 'verifying', 'generatingPreview', 'writingDatabase', 'completed', 'failed', 'cancelled')),
+  title TEXT NOT NULL,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  successCount INTEGER NOT NULL DEFAULT 0,
+  failedCount INTEGER NOT NULL DEFAULT 0,
+  totalBytes INTEGER,
+  completedBytes INTEGER NOT NULL DEFAULT 0,
+  currentLabel TEXT,
+  errorMessage TEXT,
+  resultJson TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_assets_media_type_deleted_at ON image_assets(mediaType, deletedAt);
+CREATE INDEX IF NOT EXISTS idx_image_assets_ip_media_type_deleted_at ON image_assets(ipId, mediaType, deletedAt);
+CREATE INDEX IF NOT EXISTS idx_image_assets_last_viewed_at ON image_assets(lastViewedAt);
+CREATE INDEX IF NOT EXISTS idx_image_assets_duration_ms ON image_assets(durationMs);
+CREATE INDEX IF NOT EXISTS idx_background_tasks_space_updated_at ON background_tasks(space, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_background_tasks_status_updated_at ON background_tasks(status, updatedAt);
 `;

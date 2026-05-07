@@ -7,13 +7,14 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppScreen } from './src/components/AppScreen';
 import { AppToastProvider } from './src/components/AppToast';
+import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
 import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
 import { colors, spacing, typography } from './src/design/tokens';
-import { initDatabase, resetDatabaseSpaceCache, type IpLibraryFilter, type PixorySpace } from './src/database';
+import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
@@ -44,6 +45,8 @@ import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
 import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
 import { TrashScreen } from './src/screens/TrashScreen';
+import { VideoDetailScreen } from './src/screens/VideoDetailScreen';
+import { VideoPlayerScreen } from './src/screens/VideoPlayerScreen';
 import type { ImageViewerContext } from './src/navigation/imageViewerContext';
 import {
   BACKGROUND_MEMORY_CACHE_CLEAR_DELAY_MS,
@@ -60,6 +63,7 @@ import {
 } from './src/services/personalSystemService';
 import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
+import { getInitialExternalOpen } from './src/native/pixoryMediaModule';
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
@@ -90,6 +94,10 @@ type AppRoute =
   | { name: 'all-images'; ipId: number; space: PixorySpace }
   | { name: 'image-viewer'; imageId: number; space: PixorySpace; context: ImageViewerContext }
   | { name: 'image-detail'; imageId: number; space: PixorySpace; context?: ImageViewerContext }
+  | { name: 'video-detail'; videoId: number; space: PixorySpace }
+  | { name: 'video-player'; videoId: number; space: PixorySpace }
+  | { name: 'external-video-player'; uri: string; fileName: string; mimeType?: string | null; fileSize?: number | null }
+  | { name: 'archive-reader'; uri: string; fileName: string }
   | { name: 'move-image-group'; imageId: number; space: PixorySpace }
   | { name: 'tag-result'; tagId: number; space: PixorySpace }
   | { name: 'favorites'; space: PixorySpace }
@@ -191,6 +199,37 @@ export default function App() {
       isMounted = false;
     };
   }, [initializationKey]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+    let isMounted = true;
+    void getInitialExternalOpen()
+      .then((externalOpen) => {
+        if (!isMounted || !externalOpen?.uri) {
+          return;
+        }
+        const lowerUri = externalOpen.uri.toLowerCase();
+        const mimeType = externalOpen.mimeType ?? null;
+        if (mimeType?.startsWith('video/') || /\.(mp4|mkv|mov|webm|m4v|avi)(\?|$)/.test(lowerUri)) {
+          const [cleanUri] = externalOpen.uri.split('?');
+          const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external-video.mp4';
+          setRouteStack([{ name: 'external-video-player', uri: externalOpen.uri, fileName, mimeType, fileSize: null }]);
+          return;
+        }
+        if (mimeType === 'application/zip' || /\.(zip|cbz)(\?|$)/.test(lowerUri)) {
+          const [cleanUri] = externalOpen.uri.split('?');
+          const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external.zip';
+          setRouteStack([{ name: 'archive-reader', uri: externalOpen.uri, fileName }]);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReady]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -465,7 +504,18 @@ export default function App() {
   }
 
   function openImageDetail(imageId: number, context?: ImageViewerContext) {
-    pushRoute({ name: 'image-detail', imageId, space: context?.space ?? activeSpace, context });
+    const routeSpace = context?.space ?? activeSpace;
+    void runWithDatabaseSpace(routeSpace, (db) => imageRepository.findById(db, imageId, { includeDeleted: true, mediaType: 'all' }))
+      .then((asset) => {
+        if (asset?.mediaType === 'video') {
+          pushRoute({ name: 'video-detail', videoId: imageId, space: routeSpace });
+          return;
+        }
+        pushRoute({ name: 'image-detail', imageId, space: routeSpace, context });
+      })
+      .catch(() => {
+        pushRoute({ name: 'image-detail', imageId, space: routeSpace, context });
+      });
   }
 
   function replaceCurrentRoute(route: AppRoute) {
@@ -767,6 +817,48 @@ export default function App() {
         onNavigateImage={(imageId, context) => replaceCurrentRoute({ name: 'image-detail', imageId, space: context?.space ?? currentRoute.space, context })}
         onRefreshed={() => setLibraryRefreshToken((current) => current + 1)}
         refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'video-detail') {
+    content = (
+      <VideoDetailScreen
+        videoId={currentRoute.videoId}
+        space={currentRoute.space}
+        onBack={popRoute}
+        onDeleted={popAndRefresh}
+        onPlay={(videoId) => pushRoute({ name: 'video-player', videoId, space: currentRoute.space })}
+        onRefreshed={refreshLibrary}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'video-player') {
+    content = (
+      <VideoPlayerScreen
+        videoId={currentRoute.videoId}
+        space={currentRoute.space}
+        onBack={popRoute}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'external-video-player') {
+    content = (
+      <VideoPlayerScreen
+        externalSource={{
+          uri: currentRoute.uri,
+          fileName: currentRoute.fileName,
+          mimeType: currentRoute.mimeType ?? 'video/mp4',
+          fileSize: currentRoute.fileSize ?? null,
+        }}
+        onBack={popRoute}
+        refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'archive-reader') {
+    content = (
+      <ArchiveReaderScreen
+        archiveName={currentRoute.fileName}
+        archiveUri={currentRoute.uri}
+        onBack={popRoute}
       />
     );
   } else if (currentRoute.name === 'move-image-group') {

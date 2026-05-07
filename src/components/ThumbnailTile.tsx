@@ -3,10 +3,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ImageListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { formatDuration } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
 
 interface ThumbnailTileProps {
-  image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite'>;
+  image: Pick<ImageListItem, 'id' | 'thumbnailFileUri' | 'originalFilename' | 'isFavorite' | 'mediaType' | 'durationMs'>;
   space?: PixorySpace;
   onPress?: (imageId: number) => void;
   onLongPress?: (imageId: number) => void;
@@ -22,21 +23,32 @@ export function ThumbnailTile({
   aspectRatio = componentTokens.thumbnail.aspectRatio,
   selected = false,
 }: ThumbnailTileProps) {
-  const accessibilityLabel = selected
-    ? `打开图片：${image.originalFilename}，已选中`
-    : `打开图片：${image.originalFilename}`;
+  const isVideo = image.mediaType === 'video';
+  const accessibilityLabel = isVideo
+    ? selected
+      ? `打开视频：${image.originalFilename}，已选中`
+      : `打开视频：${image.originalFilename}`
+    : selected
+      ? `打开图片：${image.originalFilename}，已选中`
+      : `打开图片：${image.originalFilename}`;
   const content = (
     <View style={[styles.tile, selected ? styles.selectedTile : null, { aspectRatio }]}>
       {image.thumbnailFileUri ? (
         <SecureImage contentFit="cover" space={space} style={styles.image} uri={image.thumbnailFileUri} />
       ) : (
         <View style={styles.emptyPreview}>
-          <Ionicons color={colors.text.secondary} name="image-outline" size={22} />
+          <Ionicons color={colors.text.secondary} name={isVideo ? 'videocam-outline' : 'image-outline'} size={22} />
           <Text numberOfLines={1} style={styles.emptyText}>
             {image.originalFilename}
           </Text>
         </View>
       )}
+      {isVideo ? (
+        <View style={styles.videoBadge}>
+          <Ionicons color={colors.text.inverse} name="play" size={10} />
+          <Text style={styles.videoBadgeText}>{formatDuration(image.durationMs)}</Text>
+        </View>
+      ) : null}
       {image.isFavorite ? (
         <View style={styles.favoriteBadge}>
           <Ionicons color={colors.semantic.favorite} name="star" size={12} />
@@ -120,6 +132,23 @@ const styles = StyleSheet.create({
     right: spacing[2],
     top: spacing[2],
     width: componentTokens.thumbnail.favoriteBadgeSize,
+  },
+  videoBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 38, 29, 0.72)',
+    borderRadius: radius.pill,
+    bottom: spacing[2],
+    flexDirection: 'row',
+    gap: 3,
+    minHeight: 22,
+    paddingHorizontal: spacing[2],
+    position: 'absolute',
+    right: spacing[2],
+  },
+  videoBadgeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   selectionOverlay: {
     ...StyleSheet.absoluteFillObject,

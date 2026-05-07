@@ -9,7 +9,6 @@ import { LightFormSection } from '../components/LightFormSection';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { TagChip } from '../components/TagChip';
 import { commonButtonCopy } from '../constants/copy';
@@ -25,6 +24,7 @@ import {
   type PickedImageAsset,
 } from '../services/imageImportService';
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
+import { importVideosToIp, pickVideosForImport, type PickedVideoAsset } from '../services/videoImportService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
@@ -75,6 +75,7 @@ export function ImportImagesScreen({
   );
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>(defaultGroupId != null ? [defaultGroupId] : []);
   const [pickedAssets, setPickedAssets] = useState<PickedImageAsset[]>([]);
+  const [pickedVideos, setPickedVideos] = useState<PickedVideoAsset[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -84,8 +85,10 @@ export function ImportImagesScreen({
   const [isOptionalOpen, setIsOptionalOpen] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
+  const [isPickingVideos, setIsPickingVideos] = useState(false);
   const [isPickingPackage, setIsPickingPackage] = useState(false);
   const [packageImportResult, setPackageImportResult] = useState<PackageImportResult | null>(null);
+  const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
   const [deleteTemplate, setDeleteTemplate] = useState<ImportTemplateRecord | null>(null);
@@ -96,8 +99,8 @@ export function ImportImagesScreen({
   const [templateFavorite, setTemplateFavorite] = useState(false);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const canImport = useMemo(
-    () => pickedAssets.length > 0 && !isSubmitting,
-    [pickedAssets.length, isSubmitting]
+    () => (pickedAssets.length > 0 || pickedVideos.length > 0) && !isSubmitting,
+    [pickedAssets.length, pickedVideos.length, isSubmitting]
   );
   const ip = screenData?.ip ?? null;
   const groups = screenData?.groups ?? [];
@@ -129,6 +132,25 @@ export function ImportImagesScreen({
       showToast(`选择图片失败：${message}`);
     } finally {
       setIsPicking(false);
+    }
+  }
+
+  async function handlePickVideos() {
+    setIsPickingVideos(true);
+    if (submitError) {
+      clearSubmitError();
+    }
+
+    try {
+      const result = await pickVideosForImport();
+      if (!result.canceled) {
+        setPickedVideos(result.pickedAssets);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`选择视频失败：${message}`);
+    } finally {
+      setIsPickingVideos(false);
     }
   }
 
@@ -274,61 +296,104 @@ export function ImportImagesScreen({
 
   function handleImport() {
     void runSubmit(async () => {
-      const preparedTags = mergeDraftTagNames(tags, tagInput);
-      const preparedNote = note.trim();
+      try {
+        const preparedTags = mergeDraftTagNames(tags, tagInput);
+        const preparedNote = note.trim();
 
-      if (preparedTags.length !== tags.length) {
-        setTags(preparedTags);
-        setTagInput('');
+        if (preparedTags.length !== tags.length) {
+          setTags(preparedTags);
+          setTagInput('');
+        }
+
+        devLog('Pixory import request payload:', {
+          ipId,
+          groupIds: selectedGroupIds,
+          tagNames: preparedTags,
+          note: preparedNote || null,
+          isFavorite,
+          templateKey: selectedTemplateKey,
+          pickedAssetsCount: pickedAssets.length,
+          pickedVideosCount: pickedVideos.length,
+        });
+
+      const importedAssetIds: number[] = [];
+      let importBatchId: number | null = null;
+      let imageSuccessCount = 0;
+      let videoSuccessCount = 0;
+      let failedCount = 0;
+
+      if (pickedAssets.length > 0) {
+        setImportProgressLabel(`正在导入 ${pickedAssets.length} 张图片`);
+        const imageResult = await importImagesToIp({
+          space,
+          ipId,
+          groupIds: selectedGroupIds,
+          tagNames: preparedTags,
+          note: preparedNote,
+          isFavorite,
+          templateKey: selectedTemplateKey,
+          pickedAssets,
+          taskToken,
+        });
+
+        imageSuccessCount = imageResult.successCount;
+        failedCount += imageResult.failedCount;
+        importedAssetIds.push(...imageResult.importedImages.map((item) => item.image.id));
+        importBatchId = imageResult.importBatch?.id ?? importBatchId;
+
+        devLog('Pixory image import result readback:', {
+          successCount: imageResult.successCount,
+          failedCount: imageResult.failedCount,
+          importedImages: imageResult.importedImages.map((item) => ({
+            imageId: item.image.id,
+            groupId: item.image.groupId,
+            isFavorite: item.image.isFavorite,
+            note: item.image.note,
+            tagNames: item.tags.map((tag) => tag.name),
+          })),
+        });
       }
 
-      devLog('Pixory import request payload:', {
-        ipId,
-        groupIds: selectedGroupIds,
-        tagNames: preparedTags,
-        note: preparedNote || null,
-        isFavorite,
-        templateKey: selectedTemplateKey,
-        pickedAssetsCount: pickedAssets.length,
-      });
+      if (pickedVideos.length > 0) {
+        setImportProgressLabel(`正在导入 ${pickedVideos.length} 个视频`);
+        const videoResult = await importVideosToIp({
+          space,
+          ipId,
+          groupIds: selectedGroupIds,
+          tagNames: preparedTags,
+          note: preparedNote,
+          isFavorite,
+          pickedAssets: pickedVideos,
+        });
 
-      const result = await importImagesToIp({
-        space,
-        ipId,
-        groupIds: selectedGroupIds,
-        tagNames: preparedTags,
-        note: preparedNote,
-        isFavorite,
-        templateKey: selectedTemplateKey,
-        pickedAssets,
-        taskToken,
-      });
+        videoSuccessCount = videoResult.successCount;
+        failedCount += videoResult.failedCount;
+        importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
+        importBatchId = pickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
+      }
 
-      devLog('Pixory import result readback:', {
-        successCount: result.successCount,
-        failedCount: result.failedCount,
-        importedImages: result.importedImages.map((item) => ({
-          imageId: item.image.id,
-          groupId: item.image.groupId,
-          isFavorite: item.image.isFavorite,
-          note: item.image.note,
-          tagNames: item.tags.map((tag) => tag.name),
-        })),
-      });
+      setImportProgressLabel(null);
 
-      if (result.successCount === 0) {
-        throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张。`);
+      if (importedAssetIds.length === 0) {
+        throw new Error(`没有成功导入素材，失败 ${failedCount} 个。`);
       }
 
       await runWithDatabaseSpace(space, (db) => settingsRepository.rememberImportGroupIds(db, selectedGroupIds));
-      showToast(`成功导入 ${result.successCount} 张`);
-      onImported(result.importedImages.map((item) => item.image.id), result.importBatch?.id ?? null);
+      const toastParts = [
+        imageSuccessCount > 0 ? `${imageSuccessCount} 张图片` : null,
+        videoSuccessCount > 0 ? `${videoSuccessCount} 个视频` : null,
+      ].filter(Boolean);
+        showToast(`成功导入 ${toastParts.join('、')}`);
+        onImported(importedAssetIds, importBatchId);
+      } finally {
+        setImportProgressLabel(null);
+      }
     }, {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `导入失败：${message}`;
       },
-      validate: () => (pickedAssets.length === 0 ? '请先选择要导入的图片。' : null),
+      validate: () => (pickedAssets.length === 0 && pickedVideos.length === 0 ? '请先选择要导入的素材。' : null),
     });
   }
 
@@ -390,10 +455,10 @@ export function ImportImagesScreen({
       onBack={onBack}
       primaryAction={{ disabled: !canImport, label: '开始导入', loading: isSubmitting, onPress: handleImport }}
       secondaryAction={{ disabled: isSubmitting, label: '取消返回', onPress: onBack }}
-      title="导入图片"
+      title="导入素材"
     >
       <View style={styles.formWrap}>
-        <LightFormSection hint="复制原图，缩略图单独生成。" title="选择图片">
+        <LightFormSection title="选择图片">
           <View style={styles.pickRow}>
             <Pressable
               accessibilityRole="button"
@@ -423,7 +488,44 @@ export function ImportImagesScreen({
           </View>
         </LightFormSection>
 
-        <LightFormSection hint=".zip / .pixorypack 会先解压到 Pixory 私有临时目录，再导入原图。" title="资源包导入">
+        {importProgressLabel ? (
+          <View style={styles.progressPanel}>
+            <Ionicons color={colors.primary.active} name="sync-outline" size={18} />
+            <Text style={styles.progressText}>{importProgressLabel}</Text>
+          </View>
+        ) : null}
+
+        <LightFormSection title="选择视频">
+          <Pressable
+            accessibilityRole="button"
+            disabled={isPickingVideos || isSubmitting}
+            onPress={handlePickVideos}
+            style={({ pressed }) => [styles.packageZone, (isPickingVideos || isSubmitting) && styles.disabled, pressed && styles.pressed]}
+          >
+            <View style={styles.pickIconWrap}>
+              <Ionicons color={colors.primary.default} name="videocam-outline" size={22} />
+            </View>
+            <View style={styles.pickCopy}>
+              <Text numberOfLines={1} style={styles.pickTitle}>
+                {isPickingVideos ? '正在打开文件选择…' : pickedVideos.length > 0 ? `已选择 ${pickedVideos.length} 个视频` : '选择视频'}
+              </Text>
+              <Text numberOfLines={1} style={styles.pickHint}>{pickedVideos.length > 0 ? '点击可重新选择' : '从系统文件中选择视频'}</Text>
+            </View>
+          </Pressable>
+          {pickedVideos.length > 0 ? (
+            <View style={styles.videoPreviewList}>
+              {pickedVideos.slice(0, 5).map((video, index) => (
+                <View key={`${video.uri}-${index}`} style={styles.videoPreviewRow}>
+                  <Ionicons color={colors.primary.default} name="play-circle-outline" size={18} />
+                  <Text numberOfLines={1} style={styles.videoPreviewName}>{video.fileName}</Text>
+                </View>
+              ))}
+              {pickedVideos.length > 5 ? <Text style={styles.pickHint}>另有 {pickedVideos.length - 5} 个视频</Text> : null}
+            </View>
+          ) : null}
+        </LightFormSection>
+
+        <LightFormSection title="资源包导入">
           <Pressable
             accessibilityRole="button"
             disabled={isPickingPackage || isSubmitting}
@@ -437,7 +539,7 @@ export function ImportImagesScreen({
               <Text numberOfLines={1} style={styles.pickTitle}>
                 {isPickingPackage ? '正在处理资源包…' : '选择资源包'}
               </Text>
-              <Text numberOfLines={1} style={styles.pickHint}>支持 .zip / .pixorypack，文件夹名会映射为分组</Text>
+              <Text numberOfLines={1} style={styles.pickHint}>支持 .zip / .pixorypack</Text>
             </View>
           </Pressable>
           {packageImportResult ? (
@@ -448,18 +550,12 @@ export function ImportImagesScreen({
         </LightFormSection>
 
         <LightFormSection title="目标归属">
-          <ReadonlyInfoRow
-            hint={
-              selectedGroupIds.length > 0
-                ? `已选分组：${selectedGroupIds
-                    .map((groupId) => groups.find((group) => group.id === groupId)?.name)
-                    .filter(Boolean)
-                    .join('、')}`
-                : '未选择分组时导入到当前 IP。'
-            }
-            label="当前 IP"
-            value={ip?.name ?? `IP #${ipId}`}
-          />
+          <View style={styles.currentIpRow}>
+            <Text style={styles.currentIpLabel}>当前 IP</Text>
+            <View style={styles.currentIpBadge}>
+              <Text numberOfLines={1} style={styles.currentIpBadgeText}>{ip?.name ?? `IP #${ipId}`}</Text>
+            </View>
+          </View>
 
           <View style={styles.optionList}>
             <OptionSelectRow
@@ -566,7 +662,7 @@ export function ImportImagesScreen({
               </View>
             </LightFormSection>
 
-            <LightFormSection hint="这些内容会应用到本次导入的全部图片。" title="标签与备注">
+            <LightFormSection hint="这些内容会应用到本次导入的全部素材。" title="标签与备注">
               {recentTags.length > 0 ? (
                 <View style={styles.quickTags}>
                   <Text style={styles.inlineLabel}>常用标签</Text>
@@ -631,7 +727,7 @@ export function ImportImagesScreen({
 
               <FormTextareaRow
                 editable={!isSubmitting}
-                hint="给这批图片补充统一备注。"
+                hint="给这批素材补充统一备注。"
                 label="备注"
                 maxLength={NOTE_MAX_LENGTH}
                 minHeight={84}
@@ -788,6 +884,69 @@ const styles = StyleSheet.create({
   previewImage: {
     height: '100%',
     width: '100%',
+  },
+  videoPreviewList: {
+    gap: spacing[2],
+    paddingTop: spacing[2],
+  },
+  videoPreviewRow: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 38,
+    paddingHorizontal: spacing[3],
+  },
+  videoPreviewName: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    flex: 1,
+    minWidth: 0,
+  },
+  progressPanel: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.hover,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  progressText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    flex: 1,
+    fontWeight: '700',
+  },
+  currentIpRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  currentIpLabel: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  currentIpBadge: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.hover,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  currentIpBadgeText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '800',
   },
   optionList: {
     gap: spacing[1],

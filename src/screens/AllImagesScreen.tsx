@@ -92,6 +92,7 @@ export function AllImagesScreen({
       ]);
 
       const baseImages = await imageRepository.findByIpId(db, ipId, {
+        mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
         favoritesOnly: activeFilters.favorite || undefined,
         ungroupedOnly: activeFilters.ungrouped || undefined,
         untaggedOnly: activeFilters.untagged || undefined,
@@ -121,6 +122,7 @@ export function AllImagesScreen({
 
   const ip = data?.ip ?? null;
   const images = data?.images ?? [];
+  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
   const activeFilterLabels = useMemo(() => {
@@ -141,10 +143,10 @@ export function AllImagesScreen({
   }, [activeFilters, groups, tags]);
   const activeFilterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
   const hasActiveFilters = activeFilterLabels.length > 0;
-  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
   const selectedImages = useMemo(
-    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [images, multiSelect.selectedImageIds]
+    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableImages, multiSelect.selectedImageIds]
   );
 
   const rightAction = (
@@ -158,6 +160,12 @@ export function AllImagesScreen({
   );
 
   function handleOpenImage(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
+
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
       return;
@@ -166,12 +174,17 @@ export function AllImagesScreen({
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: images.map((image) => image.id), label: activeFilterLabel, space }
+        ? { type: 'image-scope', imageIds: selectableImages.map((image) => image.id), label: activeFilterLabel, space }
         : { type: 'ip-all', ipId, filter: { type: 'all' }, space }
     );
   }
 
   function handleImageLongPress(imageId: number) {
+    const asset = images.find((item) => item.id === imageId);
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
     multiSelect.enterSelection(imageId);
   }
 
@@ -254,21 +267,21 @@ export function AllImagesScreen({
       onDeleted={reload}
       selectedImages={selectedImages}
       space={space}
-      totalCount={images.length}
+      totalCount={selectableImages.length}
     />
   ) : undefined;
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="图片库">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="素材库">
       <View style={styles.summaryPanel}>
         <View style={styles.summaryTopLine}>
           <Text numberOfLines={1} style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
           <View style={styles.countPill}>
             <Ionicons color={colors.primary.active} name="images-outline" size={14} />
-            <Text style={styles.countPillText}>{images.length} 张</Text>
+            <Text style={styles.countPillText}>{images.length} 个</Text>
           </View>
         </View>
         <View style={styles.summaryTitleRow}>
-          <Text numberOfLines={1} style={styles.summaryTitle}>{hasActiveFilters ? '筛选结果' : '全部图片'}</Text>
+          <Text numberOfLines={1} style={styles.summaryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'}</Text>
           <View style={styles.summaryMetaRow}>
             <Text numberOfLines={1} style={styles.summaryMeta}>分组 {groups.length}</Text>
             <View style={styles.metaDot} />
@@ -361,26 +374,26 @@ export function AllImagesScreen({
         emptyDescription={
           !hasActiveFilters
             ? '上传第一张图片后，就可以在这里按分组和标签进行管理'
-            : '这个筛选条件下暂时没有图片。'
+            : '这个筛选条件下暂时没有素材。'
         }
         emptyIconName="images-outline"
         emptyTitle={!hasActiveFilters ? commonEmptyStateCopy.noImagesTitle : commonEmptyStateCopy.noSearchResultTitle}
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}
-        loadingDescription="本地图片索引加载完成后，这里会展示当前 IP 下的全部图片。"
-        loadingTitle="正在读取图片库"
+        loadingDescription="本地索引加载完成后，这里会展示当前 IP 下的全部素材。"
+        loadingTitle="正在读取素材库"
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
         <View style={styles.galleryHeading}>
-          <Text style={styles.galleryTitle}>图片</Text>
+          <Text style={styles.galleryTitle}>素材</Text>
           <View style={styles.galleryActions}>
             <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
             <Pressable
-              disabled={images.length === 0}
+              disabled={selectableImages.length === 0}
               onPress={multiSelect.toggleSelectAll}
-              style={({ pressed }) => [styles.selectAllButton, images.length === 0 ? styles.disabled : null, pressed && images.length > 0 ? styles.pressed : null]}
+              style={({ pressed }) => [styles.selectAllButton, selectableImages.length === 0 ? styles.disabled : null, pressed && selectableImages.length > 0 ? styles.pressed : null]}
             >
               <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
             </Pressable>
@@ -484,6 +497,16 @@ function filterImagesBySimilarity(images: ImageListItem[], filters: AllImagesFil
     }
     return true;
   });
+}
+
+function hasImageOnlyFilter(filters: AllImagesFilterState): boolean {
+  return Boolean(
+    filters.aspectRatio ||
+    filters.mimeType?.startsWith('image/') ||
+    filters.similarDuplicate ||
+    filters.similarFilenamePrefix ||
+    filters.similarSameSize
+  );
 }
 
 function countBy<T>(items: T[], getKey: (item: T) => string): Map<string, number> {

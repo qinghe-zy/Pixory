@@ -1,4 +1,6 @@
 import type {
+  AssetMediaType,
+  AssetPreviewStatus,
   GlobalGroupListItem,
   GlobalGroupListItemRow,
   GroupRecord,
@@ -57,10 +59,23 @@ export function sqliteToBoolean(value: number): boolean {
   return value === 1;
 }
 
+function normalizeMediaType(value: string | null | undefined): AssetMediaType {
+  return value === 'video' ? 'video' : 'image';
+}
+
+function normalizePreviewStatus(value: string | null | undefined): AssetPreviewStatus {
+  return value === 'pending' || value === 'failed' ? value : 'ready';
+}
+
 export function mapImageAssetRow(row: ImageAssetRow): ImageAssetRecord {
   return {
     ...row,
+    mediaType: normalizeMediaType(row.mediaType),
+    coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+    durationMs: row.durationMs ?? null,
     isFavorite: sqliteToBoolean(row.isFavorite),
+    lastPlaybackPositionMs: row.lastPlaybackPositionMs ?? null,
+    previewStatus: normalizePreviewStatus(row.previewStatus),
   };
 }
 

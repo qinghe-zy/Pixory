@@ -1,7 +1,7 @@
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { deleteLocalFile } from './fileStorageService';
 
-export type TrashClearFileRole = 'original' | 'thumbnail';
+export type TrashClearFileRole = 'original' | 'thumbnail' | 'cover';
 
 export interface TrashClearFileFailure {
   imageId: number;
@@ -63,6 +63,15 @@ async function deleteTrashImageFiles(images: ImageListItem[]): Promise<{
         fileDeletedCount += 1;
       }
     }
+
+    if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
+      const coverFailure = await deleteTrashFile(image, 'cover', image.coverThumbnailFileUri);
+      if (coverFailure) {
+        fileFailures.push(coverFailure);
+      } else {
+        fileDeletedCount += 1;
+      }
+    }
   }
 
   return {
@@ -73,7 +82,7 @@ async function deleteTrashImageFiles(images: ImageListItem[]): Promise<{
 
 export async function clearTrash(space: PixorySpace = 'normal'): Promise<ClearTrashResult> {
   return runWithDatabaseSpace(space, async (db) => {
-    const deletedImages = await imageRepository.findDeleted(db);
+    const deletedImages = await imageRepository.findDeleted(db, { mediaType: 'all' });
     const imageIds = deletedImages.map((image) => image.id);
     const databaseDeletedCount = imageIds.length > 0 ? await imageRepository.deletePermanentlyMany(db, imageIds) : 0;
     const shouldDeleteFiles = databaseDeletedCount === deletedImages.length;

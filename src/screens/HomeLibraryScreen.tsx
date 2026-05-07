@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -16,6 +16,7 @@ import { colors, componentTokens, radius, shadows, spacing, typography } from '.
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
+import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 
 const FILTER_OPTIONS: Array<{ key: IpLibraryFilter; label: string }> = [
   { key: 'all', label: '全部' },
@@ -49,6 +50,9 @@ export function HomeLibraryScreen({
   const [actionIp, setActionIp] = useState<IpListItem | null>(null);
   const [trashIp, setTrashIp] = useState<IpListItem | null>(null);
   const [permanentDeleteIp, setPermanentDeleteIp] = useState<IpListItem | null>(null);
+  const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
+  const [personalPassword, setPersonalPassword] = useState('');
+  const [isMovingSpace, setIsMovingSpace] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ items: IpListItem[]; needsOrganizingCount: number }>(
     async () => {
       const [items, needsOrganizingCount] = await runWithDatabaseSpace(space, (db) => Promise.all([
@@ -136,6 +140,38 @@ export function HomeLibraryScreen({
         showToast(error instanceof Error ? `永久删除失败：${error.message}` : '永久删除失败');
       }
     })();
+  }
+
+  function startMoveSpace(ip: IpListItem) {
+    setSpaceMoveIp(ip);
+    setPersonalPassword('');
+    if (space === 'personal') {
+      void confirmMoveSpace(ip, '');
+    }
+  }
+
+  async function confirmMoveSpace(ip = spaceMoveIp, password = personalPassword) {
+    if (!ip || isMovingSpace) {
+      return;
+    }
+
+    setIsMovingSpace(true);
+    try {
+      const result = await moveIpBetweenSpaces({
+        ipId: ip.id,
+        sourceSpace: space,
+        targetSpace: space === 'normal' ? 'personal' : 'normal',
+        personalPassword: password,
+      });
+      showToast(`已${space === 'normal' ? '移入隐私空间' : '移出隐私空间'}，包含 ${result.assetCount} 个素材`);
+      setSpaceMoveIp(null);
+      setPersonalPassword('');
+      reload();
+    } catch (error) {
+      showToast(error instanceof Error ? `空间迁移失败：${error.message}` : '空间迁移失败');
+    } finally {
+      setIsMovingSpace(false);
+    }
   }
 
   return (
@@ -238,8 +274,40 @@ export function HomeLibraryScreen({
       title="永久删除 IP"
       visible={Boolean(permanentDeleteIp)}
     />
+    <AppDialog
+      message={spaceMoveIp && space === 'normal' ? `将「${spaceMoveIp.name}」移入隐私空间。需要先验证隐私密码，复制和校验目标空间完成后才会清理普通空间数据。` : ''}
+      onClose={() => {
+        if (!isMovingSpace) {
+          setSpaceMoveIp(null);
+          setPersonalPassword('');
+        }
+      }}
+      onPrimary={() => void confirmMoveSpace()}
+      primaryDisabled={space === 'normal' && !personalPassword.trim()}
+      primaryLabel={isMovingSpace ? '正在迁移' : '移入隐私空间'}
+      title="移入隐私空间"
+      visible={Boolean(spaceMoveIp && space === 'normal')}
+    >
+      <TextInput
+        secureTextEntry
+        editable={!isMovingSpace}
+        onChangeText={setPersonalPassword}
+        placeholder="输入隐私密码"
+        placeholderTextColor={colors.text.placeholder}
+        selectionColor={colors.primary.default}
+        style={styles.passwordInput}
+        value={personalPassword}
+      />
+    </AppDialog>
     <AppActionSheet
       items={actionIp ? [
+        {
+          key: 'space',
+          label: space === 'normal' ? '移入隐私空间' : '移出隐私空间',
+          icon: space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline',
+          meta: space === 'normal' ? '需要验证隐私密码' : '移动到普通空间',
+          onPress: () => startMoveSpace(actionIp),
+        },
         {
           key: 'trash',
           label: '移入回收站',
@@ -322,5 +390,15 @@ const styles = StyleSheet.create({
   },
   grid: {
     gap: spacing[4],
+  },
+  passwordInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
   },
 });

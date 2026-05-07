@@ -55,7 +55,7 @@ export function GlobalSearchScreen({
         ipRepository.findLibraryItems(db, { searchText: keyword }),
         groupRepository.findOverview(db),
         tagRepository.findUsageOverview(db),
-        imageRepository.findFiltered(db, { searchText: keyword }),
+        imageRepository.findFiltered(db, { mediaType: 'all', searchText: keyword }),
       ]));
       const lower = keyword.toLowerCase();
 

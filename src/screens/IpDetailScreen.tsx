@@ -41,9 +41,9 @@ interface IpDetailScreenProps {
 }
 
 const QUICK_ACTIONS = [
-  { key: 'import', label: '导入图片', icon: 'cloud-upload-outline' },
+  { key: 'import', label: '导入素材', icon: 'cloud-upload-outline' },
   { key: 'create-group', label: '新建分组', icon: 'folder-open-outline' },
-  { key: 'all-images', label: '全部图片', icon: 'images-outline' },
+  { key: 'all-images', label: '全部素材', icon: 'images-outline' },
   { key: 'batch', label: '批量管理', icon: 'albums-outline' },
 ] as const;
 
@@ -83,7 +83,7 @@ export function IpDetailScreen({
       const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findDetailById(db, ipId),
         groupRepository.findOverviewByIpId(db, ipId),
-        imageRepository.findRecentByIpId(db, ipId, 6),
+        imageRepository.findRecentByIpId(db, ipId, 6, { mediaType: 'all' }),
         importBatchRepository.findByIpId(db, ipId, 3),
         imageRepository.countNeedsOrganizing(db, ipId),
         imageRepository.getOrganizationProgress(db, ipId),
@@ -163,6 +163,10 @@ export function IpDetailScreen({
 
   function handleOpenRecentImage(imageId: number) {
     const image = recentImages.find((item) => item.id === imageId);
+    if (image?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
+      return;
+    }
     if (image?.importBatchId != null) {
       onOpenImage(imageId, { type: 'import-batch', ipId, importBatchId: image.importBatchId, space });
       return;
@@ -243,7 +247,7 @@ export function IpDetailScreen({
 
             <View style={styles.managementSummary}>
               <View style={styles.statsStrip}>
-                <StatBlock label="图片数量" value={String(ip.imageCount)} />
+                <StatBlock label="素材数量" value={String(ip.imageCount)} />
                 <StatBlock label="分组数量" value={String(ip.groupCount)} />
                 <StatBlock label="标签数量" value={String(ip.tagCount)} />
                 <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
@@ -345,11 +349,11 @@ export function IpDetailScreen({
             <SectionHeader
               actionLabel={recentImages.length > 0 ? commonButtonCopy.allImages : undefined}
               onActionPress={recentImages.length > 0 ? onOpenAllImages : undefined}
-              title="最近图片"
+              title="最近素材"
             />
             <PageStateBlock
               emptyActionLabel={commonButtonCopy.importImages}
-              emptyDescription="导入第一批素材后，这里会显示最近导入的图片。"
+              emptyDescription="导入第一批素材后，这里会显示最近导入的图片和视频。"
               emptyIconName="image-outline"
               emptyTitle={commonEmptyStateCopy.noImagesTitle}
               isEmpty={recentImages.length === 0}
@@ -374,7 +378,7 @@ export function IpDetailScreen({
     </ScreenScaffold>
     <AppActionSheet
       items={actionGroup ? [
-        { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        { key: 'view', label: '查看素材', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
         {
           key: 'pin',
@@ -398,7 +402,7 @@ export function IpDetailScreen({
     <AppActionSheet
       items={actionImage ? [
         { key: 'detail', label: '查看详情', icon: 'information-circle-outline', onPress: () => onOpenImageDetail(actionImage.id) },
-        { key: 'organize', label: '整理', icon: 'albums-outline', onPress: () => onOpenBatchManagement(actionImage.id) },
+        ...(actionImage.mediaType === 'video' ? [] : [{ key: 'organize', label: '整理', icon: 'albums-outline' as const, onPress: () => onOpenBatchManagement(actionImage.id) }]),
       ] : []}
       onClose={() => setActionImage(null)}
       title={actionImage?.originalFilename ?? '图片操作'}

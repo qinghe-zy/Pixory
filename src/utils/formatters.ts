@@ -57,6 +57,23 @@ export function formatFileSize(sizeInBytes: number): string {
   return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function formatDuration(durationMs: number | null | undefined): string {
+  if (!Number.isFinite(durationMs ?? NaN) || (durationMs ?? 0) <= 0) {
+    return '00:00';
+  }
+
+  const totalSeconds = Math.max(0, Math.floor((durationMs ?? 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+  }
+
+  return `${pad(minutes)}:${pad(seconds)}`;
+}
+
 export function formatImageDimensions(width: number, height: number): string {
   if (width <= 0 || height <= 0) {
     return '未知尺寸';

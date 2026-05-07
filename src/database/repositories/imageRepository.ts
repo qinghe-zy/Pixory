@@ -3,6 +3,7 @@ import type {
   CountRow,
   CreateImageAssetInput,
   ImageAssetQueryOptions,
+  AssetMediaTypeFilter,
   ImageAssetRecord,
   ImageAssetRow,
   ImageDetailRecord,
@@ -32,8 +33,24 @@ import {
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions): string {
-  const column = columnPrefix ? `${columnPrefix}.deletedAt` : 'deletedAt';
-  return options?.includeDeleted ? '' : `${column} IS NULL`;
+  const filters: string[] = [];
+  const deletedColumn = columnPrefix ? `${columnPrefix}.deletedAt` : 'deletedAt';
+  const mediaTypeColumn = columnPrefix ? `${columnPrefix}.mediaType` : 'mediaType';
+  const mediaType = resolveMediaTypeFilter(options?.mediaType);
+
+  if (!options?.includeDeleted) {
+    filters.push(`${deletedColumn} IS NULL`);
+  }
+
+  if (mediaType !== 'all') {
+    filters.push(`${mediaTypeColumn} = '${mediaType}'`);
+  }
+
+  return filters.join(' AND ');
+}
+
+function resolveMediaTypeFilter(mediaType?: AssetMediaTypeFilter): AssetMediaTypeFilter {
+  return mediaType ?? 'image';
 }
 
 function buildOrderByClause(orderBy?: ImageListQueryOptions['orderBy']): string {
@@ -457,12 +474,15 @@ export const imageRepository = {
         ipId,
         importBatchId,
         groupId,
+        mediaType,
         originalFileUri,
         thumbnailFileUri,
+        coverThumbnailFileUri,
         originalFilename,
         internalFilename,
         width,
         height,
+        durationMs,
         mimeType,
         fileSize,
         isFavorite,
@@ -470,17 +490,22 @@ export const imageRepository = {
         deletedAt,
         createdAt,
         updatedAt,
-        lastViewedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        lastViewedAt,
+        lastPlaybackPositionMs,
+        previewStatus
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.ipId,
       input.importBatchId ?? null,
       primaryGroupId,
+      input.mediaType ?? 'image',
       requireNonEmptyText(input.originalFileUri, 'Original file URI'),
       normalizeOptionalText(input.thumbnailFileUri) ?? null,
+      normalizeOptionalText(input.coverThumbnailFileUri) ?? null,
       requireNonEmptyText(input.originalFilename, 'Original filename'),
       requireNonEmptyText(input.internalFilename, 'Internal filename'),
       input.width,
       input.height,
+      input.durationMs ?? null,
       requireNonEmptyText(input.mimeType, 'MIME type'),
       input.fileSize,
       booleanToSqlite(input.isFavorite ?? false),
@@ -488,7 +513,9 @@ export const imageRepository = {
       input.deletedAt ?? null,
       now,
       now,
-      input.lastViewedAt ?? null
+      input.lastViewedAt ?? null,
+      input.lastPlaybackPositionMs ?? null,
+      input.previewStatus ?? 'ready'
     );
 
     if (groupIds.length > 0) {
@@ -504,7 +531,10 @@ export const imageRepository = {
 
     await touchParentRecords(db, input.ipId, primaryGroupId);
 
-    const record = await this.findById(db, result.lastInsertRowId, { includeDeleted: true });
+    const record = await this.findById(db, result.lastInsertRowId, {
+      includeDeleted: true,
+      mediaType: input.mediaType ?? 'image',
+    });
     if (!record) {
       throw new Error(`Image asset ${result.lastInsertRowId} was created but could not be reloaded.`);
     }
@@ -513,7 +543,10 @@ export const imageRepository = {
   },
 
   async update(db: SQLiteDatabase, id: number, input: UpdateImageAssetInput): Promise<ImageAssetRecord | null> {
-    const current = await this.findById(db, id, { includeDeleted: true });
+    const current = await this.findById(db, id, {
+      includeDeleted: true,
+      mediaType: input.mediaType ?? 'image',
+    });
     if (!current) {
       return null;
     }
@@ -537,11 +570,13 @@ export const imageRepository = {
       ipId: input.ipId,
       importBatchId: input.importBatchId,
       groupId: nextPrimaryGroupId,
+      mediaType: input.mediaType,
       originalFileUri:
         input.originalFileUri !== undefined
           ? requireNonEmptyText(input.originalFileUri, 'Original file URI')
           : undefined,
       thumbnailFileUri: normalizeOptionalText(input.thumbnailFileUri),
+      coverThumbnailFileUri: normalizeOptionalText(input.coverThumbnailFileUri),
       originalFilename:
         input.originalFilename !== undefined
           ? requireNonEmptyText(input.originalFilename, 'Original filename')
@@ -552,12 +587,15 @@ export const imageRepository = {
           : undefined,
       width: input.width,
       height: input.height,
+      durationMs: input.durationMs,
       mimeType: input.mimeType !== undefined ? requireNonEmptyText(input.mimeType, 'MIME type') : undefined,
       fileSize: input.fileSize,
       isFavorite: input.isFavorite !== undefined ? booleanToSqlite(input.isFavorite) : undefined,
       note: normalizeOptionalText(input.note),
       deletedAt: input.deletedAt,
       lastViewedAt: input.lastViewedAt,
+      lastPlaybackPositionMs: input.lastPlaybackPositionMs,
+      previewStatus: input.previewStatus,
       updatedAt: createTimestamp(),
     });
 
@@ -595,7 +633,7 @@ export const imageRepository = {
       await touchParentRecords(db, current.ipId, current.groupId);
     }
 
-    return this.findById(db, id, { includeDeleted: true });
+    return this.findById(db, id, { includeDeleted: true, mediaType: input.mediaType ?? current.mediaType });
   },
 
   async findById(db: SQLiteDatabase, id: number, options?: ImageAssetQueryOptions): Promise<ImageAssetRecord | null> {
@@ -617,10 +655,10 @@ export const imageRepository = {
     return rows.map(mapImageAssetRow);
   },
 
-  async findRecentByIpId(db: SQLiteDatabase, ipId: number, limit = 6): Promise<ImageListItem[]> {
+  async findRecentByIpId(db: SQLiteDatabase, ipId: number, limit = 6, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.ipId = ? AND ${buildDeletedFilter('image_assets')}
+       WHERE image_assets.ipId = ? AND ${buildDeletedFilter('image_assets', options)}
        GROUP BY image_assets.id
        ORDER BY image_assets.createdAt DESC, image_assets.id DESC
        LIMIT ?`,
@@ -736,10 +774,11 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findRecentViewed(db: SQLiteDatabase, limit = 60): Promise<ImageListItem[]> {
+  async findRecentViewed(db: SQLiteDatabase, limit = 60, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+    const deletedFilter = buildDeletedFilter('image_assets', options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.deletedAt IS NULL AND image_assets.lastViewedAt IS NOT NULL
+       WHERE ${deletedFilter} AND image_assets.lastViewedAt IS NOT NULL
        GROUP BY image_assets.id
        ORDER BY image_assets.lastViewedAt DESC, image_assets.id DESC
        LIMIT ?`,
@@ -749,10 +788,11 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findDeleted(db: SQLiteDatabase): Promise<ImageListItem[]> {
+  async findDeleted(db: SQLiteDatabase, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+    const mediaFilter = options?.mediaType === 'all' ? '' : ` AND image_assets.mediaType = '${options?.mediaType ?? 'image'}'`;
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.deletedAt IS NOT NULL
+       WHERE image_assets.deletedAt IS NOT NULL${mediaFilter}
        GROUP BY image_assets.id
        ORDER BY image_assets.deletedAt DESC, image_assets.id DESC`
     );
@@ -760,10 +800,11 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findDeletedByIpId(db: SQLiteDatabase, ipId: number): Promise<ImageListItem[]> {
+  async findDeletedByIpId(db: SQLiteDatabase, ipId: number, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+    const mediaFilter = options?.mediaType === 'all' ? '' : ` AND image_assets.mediaType = '${options?.mediaType ?? 'image'}'`;
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE image_assets.deletedAt IS NOT NULL AND image_assets.ipId = ?
+       WHERE image_assets.deletedAt IS NOT NULL${mediaFilter} AND image_assets.ipId = ?
        GROUP BY image_assets.id
        ORDER BY image_assets.deletedAt DESC, image_assets.id DESC`,
       ipId
@@ -800,6 +841,7 @@ export const imageRepository = {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
+      "image_assets.mediaType = 'image'",
       'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
@@ -852,7 +894,7 @@ export const imageRepository = {
           THEN 1 ELSE 0 END
         ) AS recentImportUnorganizedCount
        FROM image_assets
-       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL`,
+       WHERE image_assets.ipId = ? AND image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image'`,
       ipId
     );
     const totalCount = row?.totalCount ?? 0;
@@ -872,6 +914,7 @@ export const imageRepository = {
     const normalizedScope = typeof scope === 'number' ? { ipId: scope } : scope;
     const clauses = [
       'image_assets.deletedAt IS NULL',
+      "image_assets.mediaType = 'image'",
       'NOT EXISTS (SELECT 1 FROM image_groups WHERE image_groups.imageAssetId = image_assets.id)',
     ];
     const values: number[] = [];
@@ -1401,21 +1444,21 @@ export const imageRepository = {
 
   async countFavorites(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND isFavorite = 1'
+      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND mediaType = 'image' AND isFavorite = 1"
     );
     return row?.count ?? 0;
   },
 
   async countDeleted(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL'
+      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NOT NULL AND mediaType = 'image'"
     );
     return row?.count ?? 0;
   },
 
   async countRecentViewed(db: SQLiteDatabase): Promise<number> {
     const row = await db.getFirstAsync<CountRow>(
-      'SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND lastViewedAt IS NOT NULL'
+      "SELECT COUNT(*) AS count FROM image_assets WHERE deletedAt IS NULL AND mediaType = 'image' AND lastViewedAt IS NOT NULL"
     );
     return row?.count ?? 0;
   },

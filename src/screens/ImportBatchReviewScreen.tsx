@@ -77,7 +77,7 @@ export function ImportBatchReviewScreen({
     async () => {
       const [summary, images, items] = await runWithDatabaseSpace(space, (db) => Promise.all([
         importBatchId != null ? importBatchRepository.findSummaryById(db, importBatchId) : Promise.resolve(null),
-        importBatchId != null ? imageRepository.findByImportBatchId(db, importBatchId) : imageRepository.findByIds(db, imageIds),
+        importBatchId != null ? imageRepository.findByImportBatchId(db, importBatchId, { mediaType: 'all' }) : imageRepository.findByIds(db, imageIds, { mediaType: 'all' }),
         importBatchId != null ? importBatchRepository.findItemsByBatchId(db, importBatchId) : Promise.resolve([]),
       ]));
 
@@ -103,19 +103,20 @@ export function ImportBatchReviewScreen({
     const pileImages = filterImagesByPile(images, activePile);
     return activePrefix ? pileImages.filter((image) => getFilenamePrefix(image.originalFilename) === activePrefix) : pileImages;
   }, [activePile, activePrefix, images]);
+  const filteredImageAssetIds = useMemo(() => getImageAssetIds(filteredImages), [filteredImages]);
   const organizationPercent = stats.totalCount > 0 ? Math.round((stats.organizedCount / stats.totalCount) * 100) : 100;
   const suggestions = useMemo(() => buildSuggestionCards(stats, importBatchId), [importBatchId, stats]);
   const actionSheetItems: AppActionSheetItem[] = actionPile
     ? [
         {
           key: 'tags',
-          label: `给这 ${actionPile.imageIds.length} 张加标签`,
+          label: `给这 ${actionPile.imageIds.length} 张图片加标签`,
           icon: 'pricetags-outline',
           onPress: () => onBatchOrganize(actionPile.imageIds, 'add-tags'),
         },
         {
           key: 'template',
-          label: `套用模板到这 ${actionPile.imageIds.length} 张`,
+          label: `套用模板到这 ${actionPile.imageIds.length} 张图片`,
           icon: 'albums-outline',
           onPress: () => onBatchOrganize(actionPile.imageIds, 'apply-template'),
         },
@@ -139,7 +140,7 @@ export function ImportBatchReviewScreen({
               <Ionicons color={colors.primary.active} name="file-tray-stacked-outline" size={21} />
             </View>
             <View style={styles.heroCopy}>
-              <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 张</Text>
+              <Text style={styles.heroTitle}>本次导入 {stats.totalCount} 个素材</Text>
               <Text numberOfLines={1} style={styles.heroMeta}>
                 {summary ? `${summary.ipName} · ${formatDateTime(summary.createdAt)}` : '导入结果整理台'}
               </Text>
@@ -155,6 +156,7 @@ export function ImportBatchReviewScreen({
             <Metric label="无标签" value={stats.untaggedCount} />
             <Metric label="无备注" value={stats.noNoteCount} />
             <Metric label="疑似重复" value={stats.suspectedDuplicateCount} />
+            <Metric label="视频" value={stats.videoCount} />
           </View>
         </View>
 
@@ -177,7 +179,7 @@ export function ImportBatchReviewScreen({
         ) : null}
 
         <View style={styles.actions}>
-          <PrimaryButton label="进入批量整理" onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} />
+          <PrimaryButton disabled={filteredImageAssetIds.length === 0} label="进入批量整理" onPress={() => onBatchOrganize(filteredImageAssetIds)} />
           <View style={styles.secondaryActions}>
             <View style={styles.secondaryAction}>
               <PrimaryButton label="连续整理" onPress={() => onQuickOrganize(importBatchId)} variant="ghost" />
@@ -232,6 +234,7 @@ export function ImportBatchReviewScreen({
                 .slice(0, 8)
                 .map((pile) => {
                   const pileImages = filterImagesByPile(images, pile.key);
+                  const pileImageAssetIds = getImageAssetIds(pileImages);
                   return (
                     <PilePreviewRow
                       active={activePile === pile.key && activePrefix == null}
@@ -239,8 +242,8 @@ export function ImportBatchReviewScreen({
                       images={pileImages.slice(0, 4)}
                       key={pile.key}
                       label={pile.label}
-                      onMore={() => setActionPile({ key: pile.key, label: pile.label, imageIds: pileImages.map((image) => image.id) })}
-                      onOrganize={() => onBatchOrganize(pileImages.map((image) => image.id))}
+                      onMore={() => setActionPile({ key: pile.key, label: pile.label, imageIds: pileImageAssetIds })}
+                      onOrganize={() => onBatchOrganize(pileImageAssetIds)}
                       onPress={() => {
                         setActivePile(pile.key);
                         setActivePrefix(null);
@@ -285,8 +288,12 @@ export function ImportBatchReviewScreen({
           </View>
 
           <View style={styles.gridHeader}>
-            <Text style={styles.sectionTitle}>{activePrefix ?? getPileLabel(activePile)} {filteredImages.length} 张</Text>
-            <Pressable onPress={() => onBatchOrganize(filteredImages.map((image) => image.id))} style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}>
+            <Text style={styles.sectionTitle}>{activePrefix ?? getPileLabel(activePile)} {filteredImages.length} 个</Text>
+            <Pressable
+              disabled={filteredImageAssetIds.length === 0}
+              onPress={() => onBatchOrganize(filteredImageAssetIds)}
+              style={({ pressed }) => [styles.textButton, filteredImageAssetIds.length === 0 ? styles.disabledTextButton : null, pressed && styles.pressed]}
+            >
               <Text style={styles.textButtonLabel}>整理这堆</Text>
             </Pressable>
           </View>
@@ -299,7 +306,7 @@ export function ImportBatchReviewScreen({
       </ScreenScaffold>
       <AppActionSheet
         items={actionSheetItems}
-        message={actionPile ? `${actionPile.label} · ${actionPile.imageIds.length} 张。更多动作需要你确认后才会写入。` : undefined}
+        message={actionPile ? `${actionPile.label} · ${actionPile.imageIds.length} 张图片。更多动作需要你确认后才会写入。` : undefined}
         onClose={() => setActionPile(null)}
         title="分堆操作"
         visible={Boolean(actionPile)}
@@ -375,6 +382,8 @@ function PileChip({ active, count, label, onPress }: { active: boolean; count: n
 }
 
 function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | null) {
+  const imageAssets = images.filter((image) => image.mediaType !== 'video');
+  const videoCount = images.length - imageAssets.length;
   const totalCount = summary?.successCount ?? images.length;
   const ungroupedCount = summary?.ungroupedCount ?? images.filter((image) => image.groupCount === 0).length;
   const untaggedCount = summary?.untaggedCount ?? images.filter((image) => image.tagCount === 0).length;
@@ -386,7 +395,8 @@ function buildBatchStats(images: ImageListItem[], summary: ImportBatchSummary | 
     ungroupedCount,
     untaggedCount,
     noNoteCount,
-    suspectedDuplicateCount: summary?.suspectedDuplicateCount ?? countSuspectedDuplicates(images),
+    suspectedDuplicateCount: summary?.suspectedDuplicateCount ?? countSuspectedDuplicates(imageAssets),
+    videoCount,
   };
 }
 
@@ -413,29 +423,34 @@ function filterImagesByPile(images: ImageListItem[], pile: BatchPileKey): ImageL
   if (pile === 'ungrouped') return images.filter((image) => image.groupCount === 0);
   if (pile === 'untagged') return images.filter((image) => image.tagCount === 0);
   if (pile === 'no-note') return images.filter((image) => !image.note);
-  if (pile === 'landscape') return images.filter((image) => image.width > image.height && image.width / image.height < 2.2);
-  if (pile === 'portrait') return images.filter((image) => image.height > image.width && image.height / image.width < 2.2);
-  if (pile === 'square') return images.filter((image) => Math.abs(image.width - image.height) <= Math.max(image.width, image.height) * 0.08);
-  if (pile === 'panorama') return images.filter((image) => Math.max(image.width / image.height, image.height / image.width) >= 2.2);
-  if (pile === 'large') return images.filter((image) => image.width >= 2400 || image.height >= 2400);
-  if (pile === 'small') return images.filter((image) => image.width <= 900 && image.height <= 900);
-  if (pile === 'large-file') return images.filter((image) => image.fileSize >= 5 * 1024 * 1024);
+  const imageAssets = images.filter((image) => image.mediaType !== 'video');
+  if (pile === 'landscape') return imageAssets.filter((image) => image.width > image.height && image.width / image.height < 2.2);
+  if (pile === 'portrait') return imageAssets.filter((image) => image.height > image.width && image.height / image.width < 2.2);
+  if (pile === 'square') return imageAssets.filter((image) => Math.abs(image.width - image.height) <= Math.max(image.width, image.height) * 0.08);
+  if (pile === 'panorama') return imageAssets.filter((image) => Math.max(image.width / image.height, image.height / image.width) >= 2.2);
+  if (pile === 'large') return imageAssets.filter((image) => image.width >= 2400 || image.height >= 2400);
+  if (pile === 'small') return imageAssets.filter((image) => image.width <= 900 && image.height <= 900);
+  if (pile === 'large-file') return imageAssets.filter((image) => image.fileSize >= 5 * 1024 * 1024);
   if (pile === 'same-size') {
-    const counts = countBy(images, (image) => `${image.width}x${image.height}`);
-    return images.filter((image) => (counts.get(`${image.width}x${image.height}`) ?? 0) > 1);
+    const counts = countBy(imageAssets, (image) => `${image.width}x${image.height}`);
+    return imageAssets.filter((image) => (counts.get(`${image.width}x${image.height}`) ?? 0) > 1);
   }
   if (pile === 'filename-prefix') {
-    const counts = countBy(images, (image) => getFilenamePrefix(image.originalFilename) ?? '');
-    return images.filter((image) => {
+    const counts = countBy(imageAssets, (image) => getFilenamePrefix(image.originalFilename) ?? '');
+    return imageAssets.filter((image) => {
       const prefix = getFilenamePrefix(image.originalFilename);
       return prefix ? (counts.get(prefix) ?? 0) > 1 : false;
     });
   }
   if (pile === 'suspected-duplicate') {
-    const counts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
-    return images.filter((image) => (counts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) > 1);
+    const counts = countBy(imageAssets, (image) => `${image.width}x${image.height}:${image.fileSize}`);
+    return imageAssets.filter((image) => (counts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) > 1);
   }
   return images;
+}
+
+function getImageAssetIds(images: ImageListItem[]): number[] {
+  return images.filter((image) => image.mediaType !== 'video').map((image) => image.id);
 }
 
 const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);
@@ -812,6 +827,9 @@ const styles = StyleSheet.create({
   textButton: {
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
+  },
+  disabledTextButton: {
+    opacity: 0.38,
   },
   textButtonLabel: {
     ...typography.textStyles.caption,

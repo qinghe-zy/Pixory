@@ -9,7 +9,7 @@ export interface SoftDeleteIpResult {
 export interface PermanentDeleteIpFileFailure {
   imageId: number;
   fileUri: string;
-  fileRole: 'original' | 'thumbnail';
+  fileRole: 'original' | 'thumbnail' | 'cover';
   message: string;
 }
 
@@ -28,7 +28,7 @@ export async function softDeleteIpToTrash(ipId: number, space: PixorySpace = 'no
 
 export async function permanentlyDeleteIp(ipId: number, space: PixorySpace = 'normal'): Promise<PermanentDeleteIpResult> {
   const { images, databaseResult } = await runWithDatabaseSpace(space, async (db) => ({
-    images: await imageRepository.findByIpId(db, ipId, { includeDeleted: true }),
+    images: await imageRepository.findByIpId(db, ipId, { includeDeleted: true, mediaType: 'all' }),
     databaseResult: await ipRepository.deletePermanentlyById(db, ipId),
   }));
   const fileResult = databaseResult.ipDeletedCount > 0 ? await deleteIpImageFiles(images) : { fileDeletedCount: 0, fileFailures: [] };
@@ -62,6 +62,14 @@ async function deleteIpImageFiles(images: ImageListItem[]): Promise<{
         fileDeletedCount += 1;
       }
     }
+    if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
+      const coverFailure = await deleteIpFile(image, 'cover', image.coverThumbnailFileUri);
+      if (coverFailure) {
+        fileFailures.push(coverFailure);
+      } else {
+        fileDeletedCount += 1;
+      }
+    }
   }
 
   return { fileDeletedCount, fileFailures };
@@ -69,7 +77,7 @@ async function deleteIpImageFiles(images: ImageListItem[]): Promise<{
 
 async function deleteIpFile(
   image: ImageListItem,
-  fileRole: 'original' | 'thumbnail',
+  fileRole: 'original' | 'thumbnail' | 'cover',
   fileUri: string
 ): Promise<PermanentDeleteIpFileFailure | null> {
   try {

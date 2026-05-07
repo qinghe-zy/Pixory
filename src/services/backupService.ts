@@ -167,6 +167,7 @@ function getMimeType(fileName: string): string {
 function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageRepository.findAll>>) {
   return images.map((image) => ({
     id: image.id,
+    mediaType: image.mediaType,
     assetCode: formatImageAssetCode(image),
     ipId: image.ipId,
     originalFilename: image.originalFilename,
@@ -175,6 +176,8 @@ function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageReposi
     height: image.height,
     mimeType: image.mimeType,
     fileSize: image.fileSize,
+    durationMs: image.durationMs,
+    coverThumbnailFileUri: image.coverThumbnailFileUri,
     deletedAt: image.deletedAt,
   }));
 }
@@ -184,7 +187,7 @@ async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<Expor
     ipRepository.findAllIncludingDeleted(db),
     groupRepository.findAll(db),
     tagRepository.findAll(db),
-    imageRepository.findAll(db, { includeDeleted: true }),
+    imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' }),
   ]);
   const filteredIps = ipId != null ? ips.filter((ip) => ip.id === ipId) : ips;
   const filteredIpIds = new Set(filteredIps.map((ip) => ip.id));
@@ -288,7 +291,7 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
     await checkpointDatabase(space);
     const { backupDir, createdAt } = await createBackupShell('full', space);
     const databaseUri = await writeDatabaseCopy(backupDir, space);
-    const images = await imageRepository.findAll(db, { includeDeleted: true });
+    const images = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
     let originalCount = 0;
     let thumbnailCount = 0;
 
@@ -309,6 +312,12 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
           thumbnailCount += 1;
         }
       }
+      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
+        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
+        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
+          thumbnailCount += 1;
+        }
+      }
     }
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
@@ -324,7 +333,9 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
           thumbnailRoot: getThumbnailsDir(space),
           originalCount,
           thumbnailCount,
-          imageCount: images.length,
+          assetCount: images.length,
+          imageCount: images.filter((image) => image.mediaType === 'image').length,
+          videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
@@ -350,7 +361,7 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
 
     const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`, space);
     const databaseUri = await writeDatabaseCopy(backupDir, space);
-    const images = await imageRepository.findByIpId(db, ipId, { includeDeleted: true });
+    const images = await imageRepository.findByIpId(db, ipId, { includeDeleted: true, mediaType: 'all' });
     const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${ipId}`)}/`;
     const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${ipId}`)}/`;
     await ensureLocalDirectory(originalDir);
@@ -370,6 +381,12 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
           thumbnailCount += 1;
         }
       }
+      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
+        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
+        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
+          thumbnailCount += 1;
+        }
+      }
     }
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
@@ -384,7 +401,9 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
           database: databaseUri,
           originalCount,
           thumbnailCount,
-          imageCount: images.length,
+          assetCount: images.length,
+          imageCount: images.filter((image) => image.mediaType === 'image').length,
+          videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db, ipId),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
@@ -423,7 +442,7 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
     await checkpointDatabase('personal');
     const { backupDir, createdAt } = await createBackupShell('personal', space);
     const databaseUri = await writeDatabaseCopy(backupDir, space);
-    const images = await imageRepository.findAll(db, { includeDeleted: true });
+    const images = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
     let originalCount = 0;
     let thumbnailCount = 0;
 
@@ -444,6 +463,12 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
           thumbnailCount += 1;
         }
       }
+      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
+        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
+        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
+          thumbnailCount += 1;
+        }
+      }
     }
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
@@ -459,7 +484,9 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
           thumbnailRoot: getThumbnailsDir(space),
           originalCount,
           thumbnailCount,
-          imageCount: images.length,
+          assetCount: images.length,
+          imageCount: images.filter((image) => image.mediaType === 'image').length,
+          videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db),
           plainExportWarning:
@@ -659,22 +686,32 @@ export async function importEncryptedPersonalPack({
         if (thumbnailSourceUri && thumbnailDestinationUri) {
           await copyLocalFile(thumbnailSourceUri, thumbnailDestinationUri);
         }
+        const coverName = image.coverThumbnailFileUri?.split('/').pop() ?? null;
+        const coverSourceUri = coverName ? resolveBackupRelativeFile(manifestUri, 'thumbnails', image.ipId, coverName) : null;
+        const coverDestinationUri = coverSourceUri && coverName ? joinStoragePath(thumbnailDestinationDir, coverName) : null;
+        if (coverSourceUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
+          await copyLocalFile(coverSourceUri, coverDestinationUri);
+        }
 
         const createdImage = await imageRepository.create(db, {
+          mediaType: image.mediaType ?? 'image',
           ipId: nextIpId,
           importBatchId: nextImportBatchId,
           groupId: groupIds[0] ?? null,
           groupIds,
           originalFileUri: originalDestinationUri,
           thumbnailFileUri: thumbnailDestinationUri,
+          coverThumbnailFileUri: coverDestinationUri ?? thumbnailDestinationUri,
           originalFilename: image.originalFilename,
           internalFilename: nextInternalFilename,
           width: image.width,
           height: image.height,
+          durationMs: image.durationMs ?? null,
           mimeType: image.mimeType,
           fileSize: image.fileSize,
           isFavorite: image.isFavorite,
           note: image.note,
+          previewStatus: image.previewStatus ?? 'ready',
         });
         imageIdMap.set(image.id, createdImage.id);
         const tagIds = [];
