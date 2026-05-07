@@ -56,12 +56,15 @@ export function AppScreen({
     <View style={[styles.content, { paddingBottom: bodyBottomPadding }, contentStyle]}>{children}</View>
   );
 
-  const screenContent = (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}
-    >
+  const bodyContent = Platform.OS === 'ios' ? (
+    <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       {body}
+    </KeyboardAvoidingView>
+  ) : body;
+
+  const screenContent = (
+    <View style={styles.flex}>
+      {bodyContent}
       {footer ? (
         <View
           style={[
@@ -75,7 +78,7 @@ export function AppScreen({
           {footer}
         </View>
       ) : null}
-    </KeyboardAvoidingView>
+    </View>
   );
 
   if (dismissKeyboardOnTouch) {

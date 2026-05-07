@@ -282,7 +282,7 @@ export function MeScreen({
               </View>
               {isSettings ? (
                 <Text style={styles.unavailableBadge}>未开放</Text>
-              ) : (
+              ) : item.key === 'personal' ? null : (
                 <Text style={styles.entryCount}>
                   {item.key === 'favorites'
                     ? data?.favoriteImageCount ?? 0
@@ -290,12 +290,8 @@ export function MeScreen({
                       ? data?.recentViewedCount ?? 0
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
-                        : item.key === 'personal'
-                          ? personalSessionState === 'unlocked'
-                            ? 'ON'
-                            : 0
-                          : item.key === 'clear-cache'
-                            ? '清理'
+                        : item.key === 'clear-cache'
+                          ? '清理'
                           : data?.ipCount ?? 0}
                 </Text>
               )}

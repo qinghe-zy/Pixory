@@ -18,6 +18,7 @@
     "android": {
       "package": "com.pixory.app",
       "versionCode": 108,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/pixory-icon.png",
         "backgroundColor": "#ffffff"
