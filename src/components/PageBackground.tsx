@@ -1,20 +1,16 @@
 import type { ReactNode } from 'react';
-import {
-  Image,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-  type ImageStyle,
-  type ViewStyle,
-} from 'react-native';
+import { Image, StyleSheet, useWindowDimensions, View, type ImageStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  pageBackgroundImages,
   pageBackgroundVariants,
   type PageBackgroundElementRecipe,
   type PageBackgroundVariant,
 } from '../design/backgrounds';
 import { colors } from '../design/tokens';
+
+const BACKGROUND_IMAGE_ASPECT_RATIO = 1080 / 2400;
 
 interface PageBackgroundProps {
   children: ReactNode;
@@ -31,11 +27,19 @@ export function PageBackground({
 }: PageBackgroundProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const recipe = variant ? pageBackgroundVariants[variant] : [];
+  const backgroundImage = variant ? pageBackgroundImages[variant as keyof typeof pageBackgroundImages] : undefined;
+  const recipe = variant && !backgroundImage ? pageBackgroundVariants[variant] : [];
 
   return (
     <View style={[styles.root, { backgroundColor }]}>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {backgroundImage ? (
+          <Image
+            resizeMode="contain"
+            source={backgroundImage}
+            style={[buildBackgroundImageStyle(width, height), dimmed && styles.dimmed]}
+          />
+        ) : null}
         {recipe.map((element, index) => (
           <Image
             key={`${variant}-${index}`}
@@ -48,6 +52,21 @@ export function PageBackground({
       <View style={styles.content}>{children}</View>
     </View>
   );
+}
+
+function buildBackgroundImageStyle(screenWidth: number, screenHeight: number): ImageStyle {
+  const screenAspectRatio = screenWidth / screenHeight;
+  const useHeight = screenAspectRatio > BACKGROUND_IMAGE_ASPECT_RATIO;
+  const imageHeight = useHeight ? screenHeight : screenWidth / BACKGROUND_IMAGE_ASPECT_RATIO;
+  const imageWidth = useHeight ? screenHeight * BACKGROUND_IMAGE_ASPECT_RATIO : screenWidth;
+
+  return {
+    height: imageHeight,
+    left: (screenWidth - imageWidth) / 2,
+    position: 'absolute',
+    top: (screenHeight - imageHeight) / 2,
+    width: imageWidth,
+  };
 }
 
 function buildElementStyle(
@@ -80,7 +99,7 @@ function buildElementStyle(
     style.top = screenHeight * 0.5 - elementHeight * 0.5 + screenHeight * element.offsetYRatio;
   }
 
-  const transform: NonNullable<ViewStyle['transform']> = [];
+  const transform: Array<{ rotate: string } | { scaleX: number }> = [];
   if (element.rotate) {
     transform.push({ rotate: element.rotate });
   }
@@ -88,7 +107,7 @@ function buildElementStyle(
     transform.push({ scaleX: -1 });
   }
   if (transform.length > 0) {
-    style.transform = transform;
+    style.transform = transform as ImageStyle['transform'];
   }
 
   return style;
@@ -101,5 +120,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  dimmed: {
+    opacity: 0.72,
   },
 });

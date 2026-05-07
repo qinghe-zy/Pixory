@@ -40,8 +40,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
   },
   active: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: colors.primary.default,
+    borderColor: colors.primary.default,
     borderWidth: StyleSheet.hairlineWidth,
   },
   inactive: {
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     maxWidth: 148,
   },
   activeText: {
-    color: colors.primary.active,
+    color: colors.text.inverse,
   },
   inactiveText: {
     color: colors.text.primary,

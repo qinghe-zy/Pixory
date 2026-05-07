@@ -63,10 +63,12 @@ function CardCaption({ ip }: { ip: IpListItem }) {
 
 const styles = StyleSheet.create({
   card: {
-    ...shadows.xs,
+    ...shadows.sm,
     aspectRatio: 2.08,
     backgroundColor: colors.background.empty,
+    borderColor: colors.border.subtle,
     borderRadius: componentTokens.ipCard.radius,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     width: '100%',
   },
@@ -84,9 +86,7 @@ const styles = StyleSheet.create({
     borderRadius: componentTokens.ipCard.radius,
   },
   fallbackCover: {
-    backgroundColor: colors.support.sky100,
-    borderColor: colors.border.default,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.background.empty,
   },
   fallbackMark: {
     backgroundColor: colors.primary.weak,
@@ -122,8 +122,8 @@ const styles = StyleSheet.create({
   },
   favoriteBadge: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 252, 247, 0.88)',
-    borderColor: 'rgba(255, 255, 255, 0.66)',
+    backgroundColor: colors.overlay.softSurface,
+    borderColor: colors.border.subtle,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     height: 30,

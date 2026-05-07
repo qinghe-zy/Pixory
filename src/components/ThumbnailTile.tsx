@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   },
   selectedTile: {
     borderColor: colors.primary.default,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   image: {
     height: '100%',
@@ -111,7 +111,9 @@ const styles = StyleSheet.create({
   favoriteBadge: {
     alignItems: 'center',
     backgroundColor: colors.overlay.softSurface,
+    borderColor: colors.border.subtle,
     borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
     height: componentTokens.thumbnail.favoriteBadgeSize,
     justifyContent: 'center',
     position: 'absolute',
@@ -121,7 +123,7 @@ const styles = StyleSheet.create({
   },
   selectionOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.overlay.selectedGold,
+    backgroundColor: 'rgba(86, 107, 72, 0.16)',
   },
   selectionBadge: {
     alignItems: 'center',

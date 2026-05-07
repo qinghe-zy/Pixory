@@ -36,7 +36,7 @@ export const componentTokens = {
     illustrationSize: 76,
     illustrationGap: 20,
     descriptionGap: 24,
-    radius: 20,
+    radius: radius.xl,
   },
   thumbnail: {
     radius: radius.md,
@@ -45,7 +45,7 @@ export const componentTokens = {
     favoriteBadgeSize: 24,
   },
   field: {
-    height: 48,
+    height: 50,
     multilineMinHeight: 92,
     radius: radius.md,
   },

@@ -151,18 +151,11 @@ floating: {
 ## Background Tokens
 
 ```ts
-export const backgroundVariants = {
-  home: require('../../../assets/backgrounds/japanese-fresh/standard/bg-home-botanical.png'),
-  archive: require('../../../assets/backgrounds/japanese-fresh/standard/bg-archive-folder.png'),
-  tags: require('../../../assets/backgrounds/japanese-fresh/standard/bg-tags-stationery.png'),
-  profile: require('../../../assets/backgrounds/japanese-fresh/standard/bg-profile-storage.png'),
-  gallery: require('../../../assets/backgrounds/japanese-fresh/standard/bg-gallery-film.png'),
-  workflow: require('../../../assets/backgrounds/japanese-fresh/standard/bg-workflow-import.png'),
-  search: require('../../../assets/backgrounds/japanese-fresh/standard/bg-search-index.png'),
-  trash: require('../../../assets/backgrounds/japanese-fresh/standard/bg-trash-soft-warning.png'),
-  backup: require('../../../assets/backgrounds/japanese-fresh/standard/bg-backup-manifest.png'),
-  detail: require('../../../assets/backgrounds/japanese-fresh/standard/bg-detail-minimal.png'),
+export const backgroundElements = {
+  botanicalBranch: require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png'),
+  washiPaperCorner: require('../../assets/backgrounds/japanese-fresh/elements/washi-paper-corner.png'),
+  dotIndexGrid: require('../../assets/backgrounds/japanese-fresh/elements/dot-index-grid.png'),
 } as const;
 ```
 
-后续如需按屏幕比例选择 `short / standard / tall`，在一个独立 helper 中根据 `useWindowDimensions()` 选择，不要在页面里到处写判断。
+当前实现使用 `src/design/backgrounds.ts` 维护静态 require 和 10 个场景配方。页面只传 `backgroundVariant`，定位逻辑集中在 `PageBackground` 中按 `useWindowDimensions()` 与 `safeAreaInsets.bottom` 计算，不在页面里到处写判断。

@@ -4,6 +4,7 @@ Add-Type -AssemblyName System.Drawing
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $outputDir = Join-Path $root 'assets/backgrounds/japanese-fresh/elements'
+$alphaBoost = 1.9
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 function New-Canvas {
@@ -34,7 +35,8 @@ function New-Color {
     [int] $Blue
   )
 
-  return [System.Drawing.Color]::FromArgb($Alpha, $Red, $Green, $Blue)
+  $boostedAlpha = [Math]::Min(168, [Math]::Max(0, [Math]::Round($Alpha * $script:alphaBoost)))
+  return [System.Drawing.Color]::FromArgb($boostedAlpha, $Red, $Green, $Blue)
 }
 
 function New-RoundedRectPath {

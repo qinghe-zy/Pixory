@@ -86,24 +86,25 @@ Component token 绑定组件尺寸和视觉密度。
 
 页面选择背景时按模板，而不是按单页硬编码：
 
-| Background | Pages |
+| Background Variant | Pages |
 | --- | --- |
-| `bg-home-botanical` | 首页、启动后首页 |
-| `bg-archive-folder` | 分组、新建分组、IP 详情 |
-| `bg-tags-stationery` | 标签、标签结果 |
-| `bg-profile-storage` | 我的、本地空间、隐私 |
-| `bg-gallery-film` | 图片库、收藏、最近查看、搜索结果 |
-| `bg-workflow-import` | 导入、待整理、批量管理 |
-| `bg-search-index` | 全局搜索 |
-| `bg-trash-soft-warning` | 回收站 |
-| `bg-backup-manifest` | 备份导出 |
-| `bg-detail-minimal` | 图片详情、元数据 |
+| `home` | 首页、启动后首页 |
+| `archive` | 分组、新建分组、IP 详情 |
+| `tags` | 标签、标签结果 |
+| `profile` | 我的、本地空间、隐私 |
+| `gallery` | 图片库、收藏、最近查看、搜索结果 |
+| `workflow` | 导入、待整理、批量管理 |
+| `search` | 全局搜索 |
+| `trash` | 回收站 |
+| `backup` | 备份导出 |
+| `detail` | 图片详情、元数据 |
 
 接入原则：
 
 - 背景图无状态栏、无文字、无 UI。
-- 使用 `ImageBackground` 或绝对定位 `Image`，`resizeMode="cover"`。
-- 背景只放一张，不在页面运行时堆 6-10 个装饰 View。
+- 使用绝对定位 `Image` 渲染少量透明 PNG 装饰元素。
+- 装饰元素由 `src/design/backgrounds.ts` 统一维护，按屏幕比例和边缘锚点定位。
+- 不使用整屏截图式背景，不在页面文件中散落固定坐标。
 - 页面中部保持低对比，保证可读性。
 
 ## Existing Component Upgrade Map
@@ -133,7 +134,7 @@ Component token 绑定组件尺寸和视觉密度。
 
 ### 1. `PageBackground`
 
-职责：页面背景图和底色。
+职责：页面底色和轻量装饰层。
 
 Props:
 
@@ -143,8 +144,9 @@ Props:
 
 规则：
 
-- 只渲染一个背景图片。
-- 背景图片使用静态 require 映射，避免动态路径打包失败。
+- 只渲染当前场景配方中的少量装饰元素。
+- 装饰图片使用静态 require 映射，避免动态路径打包失败。
+- 状态栏、导航栏、卡片、文字、输入、按钮、阴影、圆角全部留在代码和 token 中。
 - 图片加载失败时退回 `jpFresh.background.page`。
 
 ### 2. `DecorativeHeaderZone`
@@ -310,7 +312,7 @@ Structure:
 
 Primary focus: IP 卡片和图片氛围。
 
-Background: `bg-home-botanical`
+Background: `home`
 
 ### 2. Empty Overview Template
 
@@ -503,9 +505,9 @@ Primary focus: 完整备份和本地可靠性。
 
 ### Static Backgrounds
 
-- 每屏最多 1 张背景图。
-- 背景图不要超过 1080px 宽。
-- 优先使用 PNG 作为设计源，交付前可评估 WebP。
+- 每屏最多渲染 3 个装饰 PNG。
+- 单个装饰 PNG 尽量控制在 50 KB 以内。
+- 优先使用透明 PNG 作为设计源，交付前可评估 WebP。
 - 页面滚动时背景不要跟随复杂 parallax。
 - 背景图不加 blur，不叠多层透明大图。
 
@@ -537,7 +539,7 @@ Primary focus: 完整备份和本地可靠性。
 
 ### Bundle
 
-- 背景资产按 10 个场景控制，不为 22 个页面各放一张大图。
+- 背景资产按 10 个场景配方控制，不为 22 个页面各放一张大图。
 - `assets/backgrounds/japanese-fresh` 应只放最终要打包的图，不放效果图或 contact sheet。
 - 效果图继续放在 `output/`，不进入 App bundle。
 

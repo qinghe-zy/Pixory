@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   outline: {
     backgroundColor: colors.background.input,
-    borderColor: colors.primary.default,
+    borderColor: colors.border.default,
     borderWidth: 1,
   },
   ghost: {

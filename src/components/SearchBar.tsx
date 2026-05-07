@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { colors, componentTokens, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
 
 interface SearchBarProps {
   value: string;
@@ -54,9 +54,10 @@ export function SearchBar({ value, onChangeText, onPress, placeholder }: SearchB
 
 const styles = StyleSheet.create({
   container: {
+    ...shadows.xs,
     alignItems: 'center',
     backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: componentTokens.searchBar.radius,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',

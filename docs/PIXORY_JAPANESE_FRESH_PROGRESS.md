@@ -1,6 +1,6 @@
 # Pixory Japanese Fresh Upgrade Progress
 
-保存时间：2026-05-06
+保存时间：2026-05-07
 
 ## 当前结论
 
@@ -74,7 +74,7 @@ docs/PIXORY_BACKGROUND_ASSET_SPEC.md
 - 迁移顺序
 - 验收清单
 
-### 3. Token 草案已保存
+### 3. Token 草案已保存，并已开始映射到现有 token
 
 已新增：
 
@@ -82,7 +82,7 @@ docs/PIXORY_BACKGROUND_ASSET_SPEC.md
 src/design/tokens/japaneseFresh.ts
 ```
 
-当前只是 token 草案，尚未接入 `src/design/tokens/index.ts`，不会影响现有运行逻辑。
+`japaneseFresh.ts` 仍作为参考草案保留；本轮没有改变业务页面 import，而是直接将现有 token 文件逐步映射到日系清新方向，避免大范围改页面导入路径。
 
 ### 4. 设计拆解参考板已保存
 
@@ -96,74 +96,208 @@ output/ui-upgrade-2026-05-06-japanese-fresh/design-system/manifest.design-system
 
 这些是设计参考图，不应打包进 App。
 
-### 5. App 背景资产目录已创建
+### 5. App 背景资产目录已创建并生成装饰元素
 
-已创建代码内资产目录：
+已创建代码内资产目录，并补充 `$imagegen` 生成的 8 张纯背景图：
+
+```text
+assets/backgrounds/japanese-fresh/generated-full/
+```
+
+当前纯背景包括：
+
+```text
+bg-home-botanical.png
+bg-archive-folder.png
+bg-tags-stationery.png
+bg-gallery-film.png
+bg-workflow-import.png
+bg-profile-storage.png
+bg-search-paper.png
+bg-safety-backup-trash.png
+```
+
+原始 imagegen sheet 备份在：
+
+```text
+output/android-visual-acceptance-2026-05-07/imagegen-five-backgrounds-sheet.png
+```
+
+同时按“拆件装饰层”方案保留 12 个透明 PNG：
 
 ```text
 assets/backgrounds/japanese-fresh/
-assets/backgrounds/japanese-fresh/master/
-assets/backgrounds/japanese-fresh/short/
-assets/backgrounds/japanese-fresh/standard/
-assets/backgrounds/japanese-fresh/tall/
+assets/backgrounds/japanese-fresh/elements/
 ```
 
-并保存了生成前快照：
+当前装饰元素包括：
 
 ```text
-assets/backgrounds/japanese-fresh/generated-before.txt
+archive-folder-outline.png
+backup-manifest-sheet.png
+botanical-branch.png
+detail-paper-edge.png
+dot-index-grid.png
+film-edge.png
+import-tray.png
+magnifier-texture.png
+storage-box-outline.png
+tag-paper-stack.png
+trash-soft-warning.png
+washi-paper-corner.png
 ```
+
+生成脚本：
+
+```text
+scripts/generate-japanese-fresh-background-elements.ps1
+```
+
+清单：
+
+```text
+assets/backgrounds/japanese-fresh/elements/manifest.background-elements.json
+```
+
+### 6. 背景装饰系统已接入代码
+
+已新增：
+
+```text
+src/design/backgrounds.ts
+src/components/PageBackground.tsx
+```
+
+已扩展：
+
+```text
+src/components/AppScreen.tsx
+src/components/ScreenScaffold.tsx
+src/components/FormScreenScaffold.tsx
+```
+
+实现方式：
+
+- 页面只传 `backgroundVariant`。
+- 8 张纯背景图分配到所有现有 `backgroundVariant` 场景。
+- `detail` 复用 `bg-search-paper.png`，`backup` 和 `trash` 复用 `bg-safety-backup-trash.png`，避免为了数量堆图。
+- 背景资产使用静态 `require`，可进入 Expo / Android bundle。
+- 纯背景图按 `1080 / 2400` 设计画布比例 `contain` 居中显示，避免 `cover` 导致边缘装饰被不可控裁切。
+- 装饰元素按屏幕宽高比例和边缘锚点定位。
+- 底部锚定会叠加 `safeAreaInsets.bottom`。
+- 状态栏、导航栏、卡片、文字、按钮、输入、阴影、圆角都留在代码和 token 中。
+
+### 7. Token 已开始映射到日系清新方向
+
+已更新：
+
+```text
+src/design/tokens/colors.ts
+src/design/tokens/radius.ts
+src/design/tokens/shadows.ts
+src/design/tokens/metrics.ts
+src/design/tokens/layout.ts
+src/design/tokens/typography.ts
+src/design/tokens/components.ts
+```
+
+### 8. 主要页面已接入背景场景
+
+已覆盖模板：
+
+- `home`
+- `archive`
+- `tags`
+- `profile`
+- `gallery`
+- `workflow`
+- `search`
+- `trash`
+- `backup`
+- `detail`
 
 ## 未完成
 
-### 1. 代码内背景图片尚未生成
+### 1. Android 真机/模拟器截图验收尚未完成
 
-用户提醒“全是文档没有放在代码的图片吗”后，已开始准备生成可打包背景图，但在生成前用户要求“保存进度”，所以此处暂停。
+本轮已完成 Android 平台 export 检查，但尚未进行真机或模拟器逐页截图验收。后续应在真实数据状态下重点检查：
 
-尚未生成以下 10 张背景母版：
+- 首页
+- 分组
+- 标签
+- 我的
+- 图片库
+- IP 详情
+- 导入图片
+- 批量管理
+- 图片详情
+- 全局搜索
+- 回收站
+- 备份导出
 
-- `bg-home-botanical`
-- `bg-archive-folder`
-- `bg-tags-stationery`
-- `bg-profile-storage`
-- `bg-gallery-film`
-- `bg-workflow-import`
-- `bg-search-index`
-- `bg-trash-soft-warning`
-- `bg-backup-manifest`
-- `bg-detail-minimal`
+### 2. 组件级精修仍需 Android 截图校准
 
-尚未导出：
+本轮已完成第一批核心组件 token 化精修：
 
-- `short` 版本
-- `standard` 版本
-- `tall` 版本
+- Header
+- SearchBar
+- FilterChip
+- BottomTabBar
+- IPCard
+- ThumbnailTile
+- EmptyState
+- PrimaryButton
 
-### 2. 背景资产尚未接入代码
+仍需在 Android 截图中继续校准：
 
-尚未新增：
+- 表单组件
+- 底部操作栏
+- 复杂列表和批量管理面板
 
-- `backgroundVariants` 静态 require 映射
-- `PageBackground` 组件
-- `AppScreen` 的 `backgroundVariant` 支持
+这些组件应继续使用 token，不在页面里散落颜色、阴影、圆角。
 
-### 3. Token 尚未替换现有页面
+## 验证
 
-当前 `japaneseFresh.ts` 没有影响现有页面。后续应分阶段映射到现有 token，而不是一次性大范围替换。
+已通过：
+
+```text
+pnpm typecheck
+pnpm test
+pnpm exec expo export --platform android --output-dir output/export-check-japanese-fresh
+```
+
+Android export 日志确认 12 个装饰 PNG 已进入 bundle，单个文件约 1.6 KB - 15.2 KB。
+
+2026-05-07 追加验证：
+
+```text
+pnpm typecheck
+pnpm test
+pnpm exec expo export --platform android --output-dir output/export-check-japanese-fresh-bg8
+```
+
+追加 Android export 日志确认 8 张 `generated-full` 纯背景图全部进入 bundle。已用当前源码 Expo Go 在 `Pixory_API_35` 模拟器抽验：
+
+```text
+output/android-visual-acceptance-2026-05-07/pages-bg8/05-me2.png
+output/android-visual-acceptance-2026-05-07/pages-bg8/06-backup.png
+output/android-visual-acceptance-2026-05-07/pages-bg8/07-search.png
+```
+
+抽验结论：新增 `profile / search / backup` 背景已正确显示；纯背景图按设计画布比例居中，不再用 `cover` 随机裁边。
 
 ## 下一步建议
 
-1. 先生成 10 张无 UI、无状态栏、无文字、可打包背景母版。
-2. 从母版裁切导出 `short / standard / tall` 三种手机比例。
-3. 生成 `assets/backgrounds/japanese-fresh/index.ts` 或 `src/design/backgrounds.ts` 静态映射。
-4. 新增 `PageBackground`。
-5. 扩展 `AppScreen`，先只在首页试接入背景。
-6. Android 截图验证后，再推广到其他页面模板。
+1. 启动 Android 模拟器，按 22 个页面做真实数据截图验收。
+2. 根据截图微调 `src/design/backgrounds.ts` 中的比例、透明度和锚点。
+3. 继续精修 Header、SearchBar、FilterChip、BottomTabBar、IPCard、ThumbnailTile、EmptyState。
+4. 再处理表单页和底部操作栏。
+5. 最后更新验收截图和视觉回归记录。
 
 ## 注意事项
 
 - `output/` 下的图片全部是设计参考，不进 App bundle。
-- `assets/backgrounds/japanese-fresh/` 才是后续要打包进代码的图片资产目录。
-- 背景图片必须无 UI、无状态栏、无文字、无按钮。
-- 每屏最多使用 1 张背景图，避免性能问题。
+- `assets/backgrounds/japanese-fresh/elements/` 是当前要打包进代码的图片资产目录。
+- 背景装饰必须无 UI、无状态栏、无文字、无按钮。
+- 每屏最多渲染 3 个装饰 PNG，避免性能问题。
 - 背景图不能替代组件 token，页面仍应由组件和 token 控制层级。

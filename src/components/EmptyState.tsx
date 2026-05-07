@@ -48,7 +48,9 @@ const styles = StyleSheet.create({
   illustrationWrap: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
+    borderColor: colors.border.default,
     borderRadius: componentTokens.emptyState.radius,
+    borderWidth: StyleSheet.hairlineWidth,
     height: componentTokens.emptyState.illustrationSize,
     justifyContent: 'center',
     marginBottom: componentTokens.emptyState.illustrationGap,

@@ -1,0 +1,11 @@
+Starting project at D:\Project\Pixory\pixory
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+› Opening exp://192.168.10.105:8081 on Pixory_API_35
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ▓▓▓▓░░░░░░░░░░░░ 26.1% (185/362)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 91.4% (827/865)
+Android Bundled 9271ms index.ts (959 modules)
+ WARN  Due to changes in Androids permission requirements, Expo Go can no longer provide full access to the media library. To test the full functionality of this module, you can create a development build. https://docs.expo.dev/develop/development-builds/create-a-build

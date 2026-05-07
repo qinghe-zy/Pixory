@@ -1,12 +1,12 @@
 import { metrics } from './metrics';
 
 export const layout = {
-  pagePaddingHorizontal: 20,
-  pageTopOffset: 22,
+  pagePaddingHorizontal: 22,
+  pageTopOffset: 28,
   pageBottomOffset: 18,
   stickyFooterBottomOffset: metrics.bottomActionInset,
   sectionGap: metrics.sectionGap,
-  blockGap: 16,
+  blockGap: 14,
   gridGap: 12,
   galleryGap: 8,
   headerHeight: 76,
