@@ -39,8 +39,10 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
 
   useEffect(() => {
     let isMounted = true;
+    let cleanupSessionDir: string | null = null;
     async function loadArchive() {
       const nextSessionDir = `${joinStoragePath(getTempDir('normal'), `archive_${Date.now()}`)}/`;
+      cleanupSessionDir = nextSessionDir;
       await ensureLocalDirectory(nextSessionDir);
       const archiveCopyUri = joinStoragePath(nextSessionDir, archiveName || 'external.zip');
       await copyUriToFileWithProgress(archiveUri, archiveCopyUri, `archive-${Date.now()}`);
@@ -62,8 +64,8 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
 
     return () => {
       isMounted = false;
-      if (sessionDir) {
-        void cleanupNativeTempSession(sessionDir).catch(() => undefined);
+      if (cleanupSessionDir) {
+        void cleanupNativeTempSession(cleanupSessionDir).catch(() => undefined);
       }
     };
   }, []);
@@ -119,18 +121,7 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
     }
     setIsBusy(true);
     try {
-      const sizeInfo = await FileSystem.getInfoAsync(currentImageUri);
-      const dimensions = await getImageDimensions(currentImageUri);
-      const pickedAsset: PickedImageAsset = {
-        uri: currentImageUri,
-        width: dimensions.width,
-        height: dimensions.height,
-        fileName: currentEntry.name.split('/').pop() ?? 'archive-image.jpg',
-        fileSize: sizeInfo.exists && !sizeInfo.isDirectory ? sizeInfo.size ?? undefined : undefined,
-        mimeType: guessImageMimeType(currentEntry.name),
-        type: 'image',
-      };
-      await importImagesToIp({ space: 'normal', ipId, pickedAssets: [pickedAsset] });
+      await importCurrentImageToIp(ipId);
       showToast('已保存到 IP');
       setIpPickerVisible(false);
     } catch (error) {
@@ -147,17 +138,42 @@ export function ArchiveReaderScreen({ archiveName, archiveUri, onBack }: Archive
       return;
     }
     setIsBusy(true);
+    let createdIpId: number | null = null;
     try {
       const createdIp = await runWithDatabaseSpace('normal', (db) => ipRepository.create(db, { name: preparedName }));
+      createdIpId = createdIp.id;
+      await importCurrentImageToIp(createdIp.id);
       setNewIpDialogVisible(false);
       setNewIpName('');
-      setIsBusy(false);
-      await saveCurrentToIp(createdIp.id);
+      setIpPickerVisible(false);
+      showToast('已新建 IP 并保存');
     } catch (error) {
+      if (createdIpId != null) {
+        await runWithDatabaseSpace('normal', (db) => db.runAsync('DELETE FROM ips WHERE id = ?', createdIpId)).catch(() => undefined);
+      }
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`新建 IP 失败：${message}`);
+    } finally {
       setIsBusy(false);
     }
+  }
+
+  async function importCurrentImageToIp(ipId: number) {
+    if (!currentImageUri || !currentEntry) {
+      throw new Error('当前图片不可用。');
+    }
+    const sizeInfo = await FileSystem.getInfoAsync(currentImageUri);
+    const dimensions = await getImageDimensions(currentImageUri);
+    const pickedAsset: PickedImageAsset = {
+      uri: currentImageUri,
+      width: dimensions.width,
+      height: dimensions.height,
+      fileName: currentEntry.name.split('/').pop() ?? 'archive-image.jpg',
+      fileSize: sizeInfo.exists && !sizeInfo.isDirectory ? sizeInfo.size ?? undefined : undefined,
+      mimeType: guessImageMimeType(currentEntry.name),
+      type: 'image',
+    };
+    await importImagesToIp({ space: 'normal', ipId, pickedAssets: [pickedAsset] });
   }
 
   function move(delta: number) {

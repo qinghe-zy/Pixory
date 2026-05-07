@@ -17,6 +17,7 @@ import {
   type PixorySpace,
 } from '../database';
 import { formatImageAssetCode } from '../utils/imageAssetCode';
+import { copyFileToSafWithProgress } from '../native/pixoryMediaModule';
 import {
   copyLocalFile,
   deleteLocalFile,
@@ -149,11 +150,6 @@ function getFileName(fileUri: string): string {
   return fileUri.replace(/\/$/, '').split('/').pop() ?? 'backup-file';
 }
 
-function getFileStem(fileName: string): string {
-  const dotIndex = fileName.lastIndexOf('.');
-  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-}
-
 function getMimeType(fileName: string): string {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.json')) return 'application/json';
@@ -247,17 +243,7 @@ async function copyBackupDirectoryToSaf(sourceDirUri: string, destinationDirUri:
       continue;
     }
 
-    const destinationFileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-      destinationDirUri,
-      getFileStem(entry),
-      getMimeType(entry)
-    );
-    const base64Contents = await FileSystem.readAsStringAsync(sourceUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    await FileSystem.StorageAccessFramework.writeAsStringAsync(destinationFileUri, base64Contents, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    await copyFileToSafWithProgress(sourceUri, destinationDirUri, entry, getMimeType(entry), `backup-export-${Date.now()}`);
     copiedFileCount += 1;
   }
 
@@ -595,6 +581,7 @@ export async function importEncryptedPersonalPack({
   const copiedPackUri = joinStoragePath(tempDir, 'source.pixorypack');
   let importedIpCount = 0;
   let importedImageCount = 0;
+  const stagedDestinationUris: string[] = [];
 
   try {
     await ensureLocalDirectory(tempDir);
@@ -612,7 +599,7 @@ export async function importEncryptedPersonalPack({
       throw new Error('只能在 Personal System 内合并导入 personal 加密包。');
     }
 
-    await runWithDatabaseSpace('personal', async (db) => {
+    await runWithDatabaseSpace('personal', async (db) => db.withTransactionAsync(async () => {
       assertPersonalTaskActive(taskToken);
       const exportData = manifest.exportData;
       const ipIdMap = new Map<number, number>();
@@ -682,15 +669,18 @@ export async function importEncryptedPersonalPack({
         await ensureLocalDirectory(thumbnailDestinationDir);
         const originalDestinationUri = joinStoragePath(originalDestinationDir, nextInternalFilename);
         await copyLocalFile(originalSourceUri, originalDestinationUri);
+        stagedDestinationUris.push(originalDestinationUri);
         const thumbnailDestinationUri = thumbnailSourceUri && thumbnailName ? joinStoragePath(thumbnailDestinationDir, thumbnailName) : null;
         if (thumbnailSourceUri && thumbnailDestinationUri) {
           await copyLocalFile(thumbnailSourceUri, thumbnailDestinationUri);
+          stagedDestinationUris.push(thumbnailDestinationUri);
         }
         const coverName = image.coverThumbnailFileUri?.split('/').pop() ?? null;
         const coverSourceUri = coverName ? resolveBackupRelativeFile(manifestUri, 'thumbnails', image.ipId, coverName) : null;
         const coverDestinationUri = coverSourceUri && coverName ? joinStoragePath(thumbnailDestinationDir, coverName) : null;
         if (coverSourceUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
           await copyLocalFile(coverSourceUri, coverDestinationUri);
+          stagedDestinationUris.push(coverDestinationUri);
         }
 
         const createdImage = await imageRepository.create(db, {
@@ -741,9 +731,12 @@ export async function importEncryptedPersonalPack({
         }
         await importBatchRepository.complete(db, nextBatchId, batch.successCount, batch.failedCount);
       }
-    });
+    }));
 
     return { importedIpCount, importedImageCount };
+  } catch (error) {
+    await Promise.allSettled(stagedDestinationUris.map((uri) => deleteLocalFile(uri)));
+    throw error;
   } finally {
     await deleteLocalFile(tempDir);
   }

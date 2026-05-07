@@ -3,7 +3,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
@@ -16,6 +16,7 @@ import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 3000;
+const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 
 interface VideoPlayerScreenProps {
   videoId?: number;
@@ -55,6 +56,7 @@ export function VideoPlayerScreen({
   const [trackWidth, setTrackWidth] = useState(1);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sourceLoadVersionRef = useRef(0);
 
   const sourceUri = externalSource?.uri ?? video?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? video?.originalFilename ?? 'video.mp4';
@@ -112,7 +114,14 @@ export function VideoPlayerScreen({
     if (!sourceUri) {
       return;
     }
+    let isActive = true;
+    const loadVersion = sourceLoadVersionRef.current + 1;
+    sourceLoadVersionRef.current = loadVersion;
     void player.replaceAsync({ uri: sourceUri }).then(() => {
+      if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
+        player.pause();
+        return;
+      }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       if (!externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000) {
@@ -120,8 +129,15 @@ export function VideoPlayerScreen({
       }
       player.play();
       setIsPlaying(true);
+    }).catch((error) => {
+      if (isActive) {
+        showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
+      }
     });
-  }, [externalSource, player, sourceUri, speed, video?.id]);
+    return () => {
+      isActive = false;
+    };
+  }, [externalSource, player, showToast, sourceUri, video?.id]);
 
   useEffect(() => {
     player.playbackRate = speed;
@@ -157,6 +173,27 @@ export function VideoPlayerScreen({
       }
     };
   }, [player, space, video]);
+
+  useEffect(() => {
+    if (externalSource || !video) {
+      return;
+    }
+
+    const persistPlaybackPosition = () => {
+      void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(player.currentTime * 1000)));
+    };
+    const interval = setInterval(persistPlaybackPosition, PLAYBACK_PROGRESS_SAVE_INTERVAL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        persistPlaybackPosition();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [externalSource, player, space, video]);
 
   const progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
@@ -229,12 +266,7 @@ export function VideoPlayerScreen({
     }
     setIsSavingToIp(true);
     try {
-      await importVideosToIp({
-        space: 'normal',
-        ipId,
-        pickedAssets: [externalSource],
-        title: '保存外部视频',
-      });
+      await importExternalVideoToIp(ipId);
       showToast('已保存到 IP');
       setIpPickerVisible(false);
     } catch (error) {
@@ -251,17 +283,36 @@ export function VideoPlayerScreen({
       return;
     }
     setIsSavingToIp(true);
+    let createdIpId: number | null = null;
     try {
       const createdIp = await runWithDatabaseSpace('normal', (db) => ipRepository.create(db, { name: preparedName }));
+      createdIpId = createdIp.id;
+      await importExternalVideoToIp(createdIp.id);
       setNewIpDialogVisible(false);
       setNewIpName('');
-      await saveExternalVideoToIp(createdIp.id);
+      setIpPickerVisible(false);
+      showToast('已新建 IP 并保存');
     } catch (error) {
+      if (createdIpId != null) {
+        await runWithDatabaseSpace('normal', (db) => db.runAsync('DELETE FROM ips WHERE id = ?', createdIpId)).catch(() => undefined);
+      }
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`新建 IP 失败：${message}`);
     } finally {
       setIsSavingToIp(false);
     }
+  }
+
+  async function importExternalVideoToIp(ipId: number) {
+    if (!externalSource) {
+      throw new Error('外部视频不可用。');
+    }
+    await importVideosToIp({
+      space: 'normal',
+      ipId,
+      pickedAssets: [externalSource],
+      title: '保存外部视频',
+    });
   }
 
   function clearHideTimer() {

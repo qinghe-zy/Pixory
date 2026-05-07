@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import type { PixorySpace } from '../database';
+import { copyUriToFileWithProgress } from '../native/pixoryMediaModule';
 
 const APP_STORAGE_ROOT_DIR_NAME = 'pixory';
 const PERSONAL_STORAGE_ROOT_DIR_NAME = 'pixory_personal';
@@ -114,14 +115,8 @@ function isAndroidContentUri(fileUri: string): boolean {
   return fileUri.startsWith('content://');
 }
 
-async function copyContentUriWithBase64Fallback(sourceUri: string, destinationUri: string): Promise<void> {
-  const base64Contents = await FileSystem.readAsStringAsync(sourceUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-
-  await FileSystem.writeAsStringAsync(destinationUri, base64Contents, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+async function copyContentUriWithNativeStream(sourceUri: string, destinationUri: string): Promise<void> {
+  await copyUriToFileWithProgress(sourceUri, destinationUri);
 }
 
 export async function ensureAppDirectories(space: PixorySpace = 'normal'): Promise<void> {
@@ -191,11 +186,11 @@ export async function copyOriginalToAppStorage(
       throw error;
     }
 
-    console.warn('Pixory original copyAsync failed for content URI, retrying with base64 fallback.', {
+    console.warn('Pixory original copyAsync failed for content URI, retrying with native stream copy.', {
       error: error instanceof Error ? error.message : 'unknown copy error',
     });
 
-    await copyContentUriWithBase64Fallback(sourceUri, destinationUri);
+    await copyContentUriWithNativeStream(sourceUri, destinationUri);
   }
 
   return destinationUri;
@@ -222,11 +217,11 @@ export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<
       throw error;
     }
 
-    console.warn('Pixory avatar copyAsync failed for content URI, retrying with base64 fallback.', {
+    console.warn('Pixory avatar copyAsync failed for content URI, retrying with native stream copy.', {
       error: error instanceof Error ? error.message : 'unknown copy error',
     });
 
-    await copyContentUriWithBase64Fallback(sourceUri, destinationUri);
+    await copyContentUriWithNativeStream(sourceUri, destinationUri);
   }
 
   return destinationUri;

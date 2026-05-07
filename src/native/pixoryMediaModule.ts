@@ -15,6 +15,7 @@ export interface NativeVideoMetadata {
   durationMs: number;
   width: number;
   height: number;
+  rotation?: number;
   mimeType: string | null;
   fileSize: number;
 }
@@ -35,6 +36,13 @@ interface PixoryMediaNativeModule {
   copyUriToFileWithProgress(
     sourceUri: string,
     destinationUri: string,
+    options?: { taskId?: string | null }
+  ): Promise<NativeCopyResult>;
+  copyFileToSafWithProgress(
+    sourceUri: string,
+    destinationDirUri: string,
+    displayName: string,
+    mimeType?: string | null,
     options?: { taskId?: string | null }
   ): Promise<NativeCopyResult>;
   getVideoMetadata(sourceUri: string): Promise<NativeVideoMetadata>;
@@ -77,6 +85,16 @@ export function copyUriToFileWithProgress(
   taskId?: string | null
 ): Promise<NativeCopyResult> {
   return requireNativeModule().copyUriToFileWithProgress(sourceUri, destinationUri, { taskId: taskId ?? null });
+}
+
+export function copyFileToSafWithProgress(
+  sourceUri: string,
+  destinationDirUri: string,
+  displayName: string,
+  mimeType?: string | null,
+  taskId?: string | null
+): Promise<NativeCopyResult> {
+  return requireNativeModule().copyFileToSafWithProgress(sourceUri, destinationDirUri, displayName, mimeType ?? null, { taskId: taskId ?? null });
 }
 
 export function getNativeVideoMetadata(sourceUri: string): Promise<NativeVideoMetadata> {

@@ -51,6 +51,7 @@ import type { ImageViewerContext } from './src/navigation/imageViewerContext';
 import {
   BACKGROUND_MEMORY_CACHE_CLEAR_DELAY_MS,
   cleanupDailyAppTempCache,
+  cleanupOldTempFiles,
   clearImageMemoryCache,
 } from './src/services/cacheCleanupService';
 import { ensureAppDirectories } from './src/services/fileStorageService';
@@ -173,6 +174,11 @@ export default function App() {
       try {
         await ensureAppDirectories();
         await initDatabase();
+        void cleanupOldTempFiles('personal', 0).catch((error) => {
+          console.warn('Pixory personal temp startup cleanup failed.', {
+            message: error instanceof Error ? error.message : 'unknown personal temp cleanup error',
+          });
+        });
         void cleanupDailyAppTempCache().catch((error) => {
           console.warn('Pixory temp cache cleanup failed.', {
             message: error instanceof Error ? error.message : 'unknown temp cache cleanup error',
@@ -428,6 +434,7 @@ export default function App() {
 
     const cleanupResults = await Promise.allSettled([
       clearPersonalImageCache(),
+      cleanupOldTempFiles('personal', 0),
       resetDatabaseSpaceCache('personal'),
       ScreenCapture.allowScreenCaptureAsync(),
     ]);
