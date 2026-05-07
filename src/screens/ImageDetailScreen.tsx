@@ -49,7 +49,7 @@ export function ImageDetailScreen({
   onDeleted,
 }: ImageDetailScreenProps) {
   const insets = useSafeAreaInsets();
-  const { showToast } = useToast();
+  const { showToast, showUndoSnackbar } = useToast();
   const routeSpace = context?.space ?? space;
   const [image, setImage] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
@@ -226,11 +226,9 @@ export function ImageDetailScreen({
         })
       );
 
-      showToast({
+      showUndoSnackbar({
         message: '已移入回收站',
-        actionLabel: '撤销',
-        durationMs: 5200,
-        onAction: () => {
+        onUndo: () => {
           void (async () => {
             await runWithDatabaseSpace(routeSpace, (db) => imageRepository.restoreMany(db, [image.id]));
             onRefreshed();

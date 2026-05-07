@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -54,6 +54,7 @@ import {
   cleanupOldTempFiles,
   clearImageMemoryCache,
 } from './src/services/cacheCleanupService';
+import { clearExpiredTrashOnIdle } from './src/services/trashService';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import {
   changePersonalPassword,
@@ -65,6 +66,8 @@ import {
 import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
 import { getInitialExternalOpen } from './src/native/pixoryMediaModule';
+import { finishNativeShareActivity, getInitialShareIntent, type NativeShareItem } from './src/native/pixoryMediaModule';
+import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
@@ -99,6 +102,7 @@ type AppRoute =
   | { name: 'video-player'; videoId: number; space: PixorySpace }
   | { name: 'external-video-player'; uri: string; fileName: string; mimeType?: string | null; fileSize?: number | null }
   | { name: 'archive-reader'; uri: string; fileName: string }
+  | { name: 'share-collect'; items: NativeShareItem[] }
   | { name: 'move-image-group'; imageId: number; space: PixorySpace }
   | { name: 'tag-result'; tagId: number; space: PixorySpace }
   | { name: 'favorites'; space: PixorySpace }
@@ -132,7 +136,7 @@ function isPersonalRoute(route: AppRoute): boolean {
 }
 
 function isExternalEntryRoute(route: AppRoute): boolean {
-  return route.name === 'external-video-player' || route.name === 'archive-reader';
+  return route.name === 'external-video-player' || route.name === 'archive-reader' || route.name === 'share-collect';
 }
 
 export default function App() {
@@ -188,6 +192,15 @@ export default function App() {
             message: error instanceof Error ? error.message : 'unknown temp cache cleanup error',
           });
         });
+        setTimeout(() => {
+          InteractionManager.runAfterInteractions(() => {
+            void clearExpiredTrashOnIdle('normal').catch((error) => {
+              console.warn('Pixory normal trash idle cleanup failed.', {
+                message: error instanceof Error ? error.message : 'unknown trash cleanup error',
+              });
+            });
+          });
+        }, 1400);
 
         if (isMounted) {
           setIsReady(true);
@@ -215,25 +228,31 @@ export default function App() {
       return;
     }
     let isMounted = true;
-    void getInitialExternalOpen()
-      .then((externalOpen) => {
-        if (!isMounted || !externalOpen?.uri) {
+    void (async () => {
+      const shareIntent = await getInitialShareIntent().catch(() => null);
+      if (isMounted && shareIntent?.hasShare && shareIntent.items.length > 0) {
+        setRouteStack([{ name: 'share-collect', items: shareIntent.items }]);
+        return;
+      }
+
+      const externalOpen = await getInitialExternalOpen();
+      if (!isMounted || !externalOpen?.uri) {
           return;
-        }
-        const lowerUri = externalOpen.uri.toLowerCase();
-        const mimeType = externalOpen.mimeType ?? null;
-        if (mimeType?.startsWith('video/') || /\.(mp4|mkv|mov|webm|m4v|avi)(\?|$)/.test(lowerUri)) {
-          const [cleanUri] = externalOpen.uri.split('?');
-          const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external-video.mp4';
-          setRouteStack([{ name: 'external-video-player', uri: externalOpen.uri, fileName, mimeType, fileSize: null }]);
-          return;
-        }
-        if (mimeType === 'application/zip' || /\.(zip|cbz)(\?|$)/.test(lowerUri)) {
-          const [cleanUri] = externalOpen.uri.split('?');
-          const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external.zip';
-          setRouteStack([{ name: 'archive-reader', uri: externalOpen.uri, fileName }]);
-        }
-      })
+      }
+      const lowerUri = externalOpen.uri.toLowerCase();
+      const mimeType = externalOpen.mimeType ?? null;
+      if (mimeType?.startsWith('video/') || /\.(mp4|mkv|mov|webm|m4v|avi)(\?|$)/.test(lowerUri)) {
+        const [cleanUri] = externalOpen.uri.split('?');
+        const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external-video.mp4';
+        setRouteStack([{ name: 'external-video-player', uri: externalOpen.uri, fileName, mimeType, fileSize: null }]);
+        return;
+      }
+      if (mimeType === 'application/zip' || /\.(zip|cbz)(\?|$)/.test(lowerUri)) {
+        const [cleanUri] = externalOpen.uri.split('?');
+        const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external.zip';
+        setRouteStack([{ name: 'archive-reader', uri: externalOpen.uri, fileName }]);
+      }
+    })()
       .catch(() => undefined);
 
     return () => {
@@ -378,6 +397,19 @@ export default function App() {
       setPersonalUnlockVisible(false);
       setRouteStack([INITIAL_ROUTE]);
       setLibraryRefreshToken((current) => current + 1);
+      setTimeout(() => {
+        if (taskToken.isActive()) {
+          InteractionManager.runAfterInteractions(() => {
+            if (taskToken.isActive()) {
+              void clearExpiredTrashOnIdle('personal').catch((error) => {
+                console.warn('Pixory personal trash idle cleanup failed.', {
+                  message: error instanceof Error ? error.message : 'unknown personal trash cleanup error',
+                });
+              });
+            }
+          });
+        }
+      }, 1400);
     } catch (error) {
       await lockPersonalSpace('error');
       throw error;
@@ -466,6 +498,14 @@ export default function App() {
   function exitExternalEntry() {
     if (Platform.OS === 'android') {
       BackHandler.exitApp();
+      return;
+    }
+    setRouteStack([INITIAL_ROUTE]);
+  }
+
+  function exitShareEntry() {
+    if (Platform.OS === 'android') {
+      void finishNativeShareActivity().catch(() => BackHandler.exitApp());
       return;
     }
     setRouteStack([INITIAL_ROUTE]);
@@ -884,6 +924,14 @@ export default function App() {
         archiveName={currentRoute.fileName}
         archiveUri={currentRoute.uri}
         onBack={exitExternalEntry}
+      />
+    );
+  } else if (currentRoute.name === 'share-collect') {
+    content = (
+      <ShareCollectScreen
+        items={currentRoute.items}
+        onClose={exitShareEntry}
+        onSaved={refreshLibrary}
       />
     );
   } else if (currentRoute.name === 'move-image-group') {

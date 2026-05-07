@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -7,6 +7,9 @@ import {
   StyleSheet,
   TouchableWithoutFeedback,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ScrollView as ScrollViewType,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -26,6 +29,8 @@ interface AppScreenProps {
   dismissKeyboardOnTouch?: boolean;
   backgroundVariant?: PageBackgroundVariant;
   backgroundDimmed?: boolean;
+  scrollViewRef?: RefObject<ScrollViewType | null>;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }
 
 export function AppScreen({
@@ -38,14 +43,19 @@ export function AppScreen({
   dismissKeyboardOnTouch = false,
   backgroundVariant,
   backgroundDimmed,
+  scrollViewRef,
+  onScroll,
 }: AppScreenProps) {
   const insets = useSafeAreaInsets();
   const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset;
 
   const body = scrollable ? (
     <ScrollView
+      ref={scrollViewRef}
       keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       keyboardShouldPersistTaps="handled"
+      onScroll={onScroll}
+      scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
       style={styles.flex}

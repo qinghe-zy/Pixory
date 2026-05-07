@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import type { ImageListItem, PixorySpace } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
@@ -13,6 +13,7 @@ interface ThumbnailTileProps {
   onLongPress?: (imageId: number) => void;
   aspectRatio?: number;
   selected?: boolean;
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
 export function ThumbnailTile({
@@ -22,6 +23,7 @@ export function ThumbnailTile({
   onLongPress,
   aspectRatio = componentTokens.thumbnail.aspectRatio,
   selected = false,
+  onLayout,
 }: ThumbnailTileProps) {
   const isVideo = image.mediaType === 'video';
   const accessibilityLabel = isVideo
@@ -75,6 +77,7 @@ export function ThumbnailTile({
       accessibilityRole="imagebutton"
       accessibilityState={{ selected }}
       delayLongPress={220}
+      onLayout={onLayout}
       onLongPress={onLongPress ? () => onLongPress(image.id) : undefined}
       onPress={onPress ? () => onPress(image.id) : undefined}
       style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}

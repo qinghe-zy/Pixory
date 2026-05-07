@@ -1,5 +1,14 @@
-import type { ReactNode } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import type { ReactNode, RefObject } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ScrollView,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, typography } from '../design/tokens';
@@ -21,6 +30,8 @@ interface ScreenScaffoldProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   backgroundVariant?: PageBackgroundVariant;
   backgroundDimmed?: boolean;
+  scrollViewRef?: RefObject<ScrollView | null>;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }
 
 export function ScreenScaffold({
@@ -38,6 +49,8 @@ export function ScreenScaffold({
   contentContainerStyle,
   backgroundVariant,
   backgroundDimmed,
+  scrollViewRef,
+  onScroll,
 }: ScreenScaffoldProps) {
   return (
     <AppScreen
@@ -45,6 +58,8 @@ export function ScreenScaffold({
       backgroundVariant={backgroundVariant}
       contentStyle={contentContainerStyle}
       footer={footer}
+      onScroll={onScroll}
+      scrollViewRef={scrollViewRef}
       scrollable={scrollable}
     >
       <Header

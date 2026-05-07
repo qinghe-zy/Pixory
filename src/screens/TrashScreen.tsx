@@ -11,8 +11,8 @@ import { SecureImage } from '../components/SecureImage';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
-import { clearTrash } from '../services/trashService';
-import { formatDateTime } from '../utils/formatters';
+import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/trashService';
+import { formatDateTime, formatDuration } from '../utils/formatters';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useToast } from '../components/AppToast';
 
@@ -28,6 +28,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [isClearDialogVisible, setIsClearDialogVisible] = useState(false);
+  const [isClearSelectedDialogVisible, setIsClearSelectedDialogVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ images: ImageListItem[]; ips: IpRecord[] }>(
     async () => {
       const [images, ips] = await runWithDatabaseSpace(space, (db) => Promise.all([
@@ -58,7 +59,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
       try {
         const restoredCount = await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, [imageId]));
         if (restoredCount === 0) {
-          throw new Error('没有可恢复的图片。');
+          throw new Error('没有可恢复的素材。');
         }
 
         onChanged();
@@ -77,12 +78,12 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
       try {
         const restoredCount = await runWithDatabaseSpace(space, (db) => imageRepository.restoreMany(db, ids));
         if (restoredCount === 0) {
-          throw new Error('没有可恢复的图片。');
+          throw new Error('没有可恢复的素材。');
         }
         multiSelect.clearSelection();
         onChanged();
         reload();
-        showToast(`已恢复 ${restoredCount} 张`);
+        showToast(`已恢复 ${restoredCount} 个素材`);
       } catch (error) {
         showToast(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败');
       }
@@ -116,6 +117,27 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
     })();
   }
 
+  function confirmClearSelected() {
+    const ids = [...multiSelect.selectedImageIds];
+    setIsClearSelectedDialogVisible(false);
+    void (async () => {
+      try {
+        const result = await clearTrashItems(ids, space);
+        multiSelect.clearSelection();
+        onChanged();
+        reload();
+        if (result.fileFailures.length > 0) {
+          showToast(`已删除 ${result.databaseDeletedCount} 条记录，${result.fileFailures.length} 个文件需核验`);
+          return;
+        }
+        showToast(`已永久删除 ${result.databaseDeletedCount} 个素材`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        showToast(`彻底清理失败：${message}`);
+      }
+    })();
+  }
+
   const rightAction =
     images.length > 0 ? (
       <Pressable onPress={() => setIsClearDialogVisible(true)} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}>
@@ -126,6 +148,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
     <View style={styles.footerPanel}>
       <Text style={styles.footerTitle}>已选择 {selectedImages.length} 张</Text>
       <PrimaryButton label="批量恢复" onPress={handleRestoreSelected} />
+      <PrimaryButton label="彻底清理所选" onPress={() => setIsClearSelectedDialogVisible(true)} variant="outline" />
       <PrimaryButton label="取消选择" onPress={multiSelect.clearSelection} variant="ghost" />
     </View>
   ) : undefined;
@@ -140,13 +163,13 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
 
       <PageStateBlock
         emptyActionLabel={undefined}
-        emptyDescription="当前没有处于软删除状态的图片。"
+        emptyDescription="当前没有处于软删除状态的图片或视频。"
         emptyIconName="trash-outline"
         emptyTitle="回收站是空的"
         errorMessage={errorMessage}
         isEmpty={!isLoading && images.length === 0}
         loading={isLoading}
-        loadingDescription="本地回收站索引读取完成后，这里会展示已软删除图片。"
+        loadingDescription="本地回收站索引读取完成后，这里会展示已软删除图片和视频。"
         loadingTitle="正在读取回收站"
         onRetry={reload}
       >
@@ -163,9 +186,15 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
                   <SecureImage contentFit="cover" space={space} style={styles.previewImage} uri={image.thumbnailFileUri} />
                 ) : (
                   <View style={styles.previewFallback}>
-                    <Ionicons color={colors.text.secondary} name="image-outline" size={22} />
+                    <Ionicons color={colors.text.secondary} name={image.mediaType === 'video' ? 'videocam-outline' : 'image-outline'} size={22} />
                   </View>
                 )}
+                {image.mediaType === 'video' ? (
+                  <View style={styles.mediaBadge}>
+                    <Ionicons color={colors.text.inverse} name="play" size={10} />
+                    <Text style={styles.mediaBadgeText}>{formatDuration(image.durationMs)}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.remainingBadge}>
                   <Text style={styles.remainingText}>{getTrashStatusLabel(image.deletedAt)}</Text>
                 </View>
@@ -175,7 +204,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
                   {image.originalFilename}
                 </Text>
                 <Text style={styles.itemMeta}>
-                  {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
+                  {image.mediaType === 'video' ? '视频' : '图片'} · {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
                 </Text>
                 <Pressable onPress={() => handleRestore(image.id)} style={({ pressed }) => [styles.restoreChip, pressed && styles.pressed]}>
                   <Text style={styles.restoreText}>恢复</Text>
@@ -204,6 +233,15 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
       title="确认清空回收站"
       visible={isClearDialogVisible}
     />
+    <AppDialog
+      danger
+      message={`将永久删除所选 ${selectedImages.length} 个素材的数据库记录和 Pixory 私有文件。此操作不可撤销。`}
+      onClose={() => setIsClearSelectedDialogVisible(false)}
+      onPrimary={confirmClearSelected}
+      primaryLabel="彻底清理"
+      title="彻底清理所选"
+      visible={isClearSelectedDialogVisible}
+    />
     </>
   );
 }
@@ -218,7 +256,9 @@ function getTrashStatusLabel(deletedAt: string | null) {
     return '文件保留';
   }
 
-  return '待清空';
+  const elapsedDays = Math.floor((Date.now() - deletedTime) / (24 * 60 * 60 * 1000));
+  const remainingDays = Math.max(0, TRASH_RETENTION_DAYS - elapsedDays);
+  return `距永久删除 ${remainingDays} 天`;
 }
 
 const styles = StyleSheet.create({
@@ -298,6 +338,23 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     position: 'absolute',
     right: spacing[1],
+  },
+  mediaBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 38, 29, 0.72)',
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 2,
+    position: 'absolute',
+    right: spacing[1],
+    top: spacing[1],
+  },
+  mediaBadgeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   remainingText: {
     ...typography.textStyles.micro,

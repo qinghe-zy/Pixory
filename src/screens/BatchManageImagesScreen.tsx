@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AlbumSaveDialog } from '../components/AlbumSaveDialog';
@@ -18,6 +18,7 @@ import { groupRepository, imageRepository, importTemplateRepository, ipRepositor
 import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { getFileInfo } from '../services/fileStorageService';
 import { captureBatchUndoSnapshot, restoreBatchUndoSnapshot } from '../services/batchUndoService';
 import { isDevToolsEnabled } from '../utils/dev';
@@ -70,7 +71,8 @@ export function BatchManageImagesScreen({
   onChanged,
   onDeleted,
 }: BatchManageImagesScreenProps) {
-  const { showToast } = useToast();
+  const { showToast, showUndoSnackbar } = useToast();
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
@@ -133,6 +135,16 @@ export function BatchManageImagesScreen({
   );
   const selectedCount = selectedImages.length;
   const allSelected = images.length > 0 && selectedCount === images.length;
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: selectedImageIds,
+    setSelectedIds: (updater) => {
+      setActiveRuleKeys([]);
+      setActiveRule(null);
+      setSelectedImageIds(updater);
+    },
+    scrollViewRef,
+  });
 
   useEffect(() => {
     setSelectedImageIds((current) => current.filter((imageId) => visibleImageIds.includes(imageId)));
@@ -283,11 +295,9 @@ export function BatchManageImagesScreen({
   }
 
   function showUndoToast(message: string, undoSnapshot: Awaited<ReturnType<typeof captureBatchUndoSnapshot>>) {
-    showToast({
+    showUndoSnackbar({
       message,
-      actionLabel: '撤销',
-      durationMs: 5200,
-      onAction: () => {
+      onUndo: () => {
         void (async () => {
           const restoredCount = await runWithDatabaseSpace(space, (db) => restoreBatchUndoSnapshot(db, undoSnapshot));
           if (restoredCount > 0) {
@@ -628,7 +638,7 @@ export function BatchManageImagesScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="workflow" footer={footer} onBack={onBack} scrollable title="批量管理">
+    <ScreenScaffold backgroundVariant="workflow" footer={footer} onBack={onBack} onScroll={swipeSelection.onScroll} scrollViewRef={scrollViewRef} scrollable title="批量管理">
       <View style={styles.summaryCard}>
         <View style={styles.summaryIcon}>
           <Ionicons color={colors.primary.default} name="albums-outline" size={22} />
@@ -790,12 +800,16 @@ export function BatchManageImagesScreen({
           </LightFormSection>
         ) : null}
 
-        <View style={[styles.grid, mode !== 'idle' ? styles.gridAfterPanel : null]}>
+        <View {...swipeSelection.panHandlers} style={[styles.grid, mode !== 'idle' ? styles.gridAfterPanel : null]}>
           {images.map((image) => (
             <ThumbnailTile
               image={image}
               key={image.id}
-              onLongPress={() => enterImageSelection(image.id)}
+              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+              onLongPress={() => {
+                enterImageSelection(image.id);
+                swipeSelection.beginSwipeSelection(image.id);
+              }}
               onPress={handleOpenImage}
               selected={selectedImageIds.includes(image.id)}
               space={space}

@@ -27,6 +27,19 @@ export interface NativeExternalOpen {
   name?: string | null;
 }
 
+export interface NativeShareItem {
+  uri: string;
+  mimeType?: string | null;
+  name?: string | null;
+  size?: number | null;
+}
+
+export interface NativeShareIntent {
+  hasShare: boolean;
+  mimeType?: string | null;
+  items: NativeShareItem[];
+}
+
 export interface NativeZipEntry {
   name: string;
   size: number;
@@ -49,6 +62,8 @@ interface PixoryMediaNativeModule {
   createVideoThumbnail(sourceUri: string, destinationUri: string): Promise<NativeCopyResult>;
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
   getInitialExternalOpen(): Promise<NativeExternalOpen>;
+  getInitialShareIntent(): Promise<NativeShareIntent>;
+  finishShareActivity(): Promise<boolean>;
   listZipImageEntries(zipUri: string): Promise<NativeZipEntry[]>;
   extractZipEntryToTemp(zipUri: string, entryName: string, destinationUri: string): Promise<string>;
   cleanupTempSession(tempDirUri: string): Promise<boolean>;
@@ -111,6 +126,14 @@ export function saveNativeVideoToMediaStore(sourceUri: string, displayName: stri
 
 export function getInitialExternalOpen(): Promise<NativeExternalOpen> {
   return requireNativeModule().getInitialExternalOpen();
+}
+
+export function getInitialShareIntent(): Promise<NativeShareIntent> {
+  return requireNativeModule().getInitialShareIntent();
+}
+
+export function finishNativeShareActivity(): Promise<boolean> {
+  return requireNativeModule().finishShareActivity();
 }
 
 export function listNativeZipImageEntries(zipUri: string): Promise<NativeZipEntry[]> {

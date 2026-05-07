@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 12;
+export const DATABASE_VERSION = 13;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -229,4 +229,19 @@ CREATE INDEX IF NOT EXISTS idx_image_assets_last_viewed_at ON image_assets(lastV
 CREATE INDEX IF NOT EXISTS idx_image_assets_duration_ms ON image_assets(durationMs);
 CREATE INDEX IF NOT EXISTS idx_background_tasks_space_updated_at ON background_tasks(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_background_tasks_status_updated_at ON background_tasks(status, updatedAt);
+`;
+
+export const MIGRATION_STATEMENTS_V13 = `
+CREATE TABLE IF NOT EXISTS trash_cleanup_failures (
+  id INTEGER PRIMARY KEY NOT NULL,
+  assetId INTEGER,
+  fileUri TEXT,
+  fileRole TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  message TEXT NOT NULL,
+  createdAt TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_trash_cleanup_failures_asset_id ON trash_cleanup_failures(assetId);
+CREATE INDEX IF NOT EXISTS idx_trash_cleanup_failures_created_at ON trash_cleanup_failures(createdAt);
 `;

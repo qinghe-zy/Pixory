@@ -76,7 +76,7 @@ test('package import has durable per-file item schema, repository methods, and r
   const repositorySource = readProjectFile('src/database/repositories/importBatchRepository.ts');
   const serviceSource = readProjectFile('src/services/packageImportService.ts');
 
-  assert.match(schemaSource, /DATABASE_VERSION = 12/);
+  assert.match(schemaSource, /DATABASE_VERSION = 13/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS import_batch_items/);
   assert.match(schemaSource, /status TEXT NOT NULL CHECK \(status IN \('success', 'failed', 'skipped'\)\)/);
   assert.match(typesSource, /export type ImportBatchItemStatus = 'success' \| 'failed' \| 'skipped'/);

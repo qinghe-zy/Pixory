@@ -94,7 +94,8 @@ test('batch manage opens images on tap and enters selection from long press', ()
   assert.match(batchSource, /onOpenImage:\s*\(imageId: number, context: ImageViewerContext\) => void/);
   assert.match(batchSource, /function handleOpenImage\(imageId: number\)/);
   assert.match(batchSource, /selectedCount > 0/);
-  assert.match(batchSource, /onLongPress=\{\(\) => enterImageSelection\(image\.id\)\}/);
+  assert.match(batchSource, /enterImageSelection\(image\.id\)/);
+  assert.match(batchSource, /beginSwipeSelection\(image\.id\)/);
 });
 
 test('batch rule selection supports multi-rule intersection with selected chips', () => {
@@ -337,7 +338,7 @@ test('import templates are local user-managed records used by import and batch f
   const importScreenSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*12/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*13/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS import_templates/);
   assert.match(schemaSource, /seedDefaultImportTemplates/);
   assert.match(dbSource, /ensureImportTemplatesSchema/);

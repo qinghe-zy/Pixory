@@ -9,14 +9,23 @@ interface ToastOptions {
   actionLabel?: string;
   onAction?: () => void;
   durationMs?: number;
+  kind?: 'toast' | 'undo';
 }
 
 interface ToastState extends ToastOptions {
   id: number;
 }
 
+interface UndoSnackbarOptions {
+  message: string;
+  undoLabel?: string;
+  onUndo: () => void;
+  durationMs?: number;
+}
+
 interface ToastContextValue {
   showToast: (options: ToastOptions | string) => void;
+  showUndoSnackbar: (options: UndoSnackbarOptions) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -39,6 +48,7 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
       const nextToast: ToastState = {
         id: Date.now(),
         durationMs: 2600,
+        kind: 'toast',
         ...(typeof options === 'string' ? { message: options } : options),
       };
       setToast(nextToast);
@@ -51,14 +61,27 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
     [clearTimer]
   );
 
-  const value = useMemo(() => ({ showToast }), [showToast]);
+  const showUndoSnackbar = useCallback(
+    (options: UndoSnackbarOptions) => {
+      showToast({
+        message: options.message,
+        actionLabel: options.undoLabel ?? '撤销',
+        onAction: options.onUndo,
+        durationMs: options.durationMs ?? 4000,
+        kind: 'undo',
+      });
+    },
+    [showToast]
+  );
+
+  const value = useMemo(() => ({ showToast, showUndoSnackbar }), [showToast, showUndoSnackbar]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       {toast ? (
         <View pointerEvents="box-none" style={[styles.host, { bottom: insets.bottom + layout.stickyFooterBottomOffset + spacing[4] }]}>
-          <View style={styles.toast}>
+          <View style={[styles.toast, toast.kind === 'undo' ? styles.undoToast : null]}>
             <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
             {toast.actionLabel && toast.onAction ? (
               <Pressable
@@ -110,6 +133,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     width: '100%',
+  },
+  undoToast: {
+    minHeight: 50,
   },
   message: {
     ...typography.textStyles.caption,
