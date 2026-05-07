@@ -131,6 +131,10 @@ function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
 }
 
+function isExternalEntryRoute(route: AppRoute): boolean {
+  return route.name === 'external-video-player' || route.name === 'archive-reader';
+}
+
 export default function App() {
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
@@ -459,6 +463,14 @@ export default function App() {
     setRouteStack((current) => (current.length > 1 ? current.slice(0, -1) : current));
   }
 
+  function exitExternalEntry() {
+    if (Platform.OS === 'android') {
+      BackHandler.exitApp();
+      return;
+    }
+    setRouteStack([INITIAL_ROUTE]);
+  }
+
   useEffect(() => {
     if (Platform.OS !== 'android') {
       return undefined;
@@ -472,7 +484,13 @@ export default function App() {
         nextRouteStack = current.slice(0, -1);
       } else {
         const [rootRoute] = current;
+        if (rootRoute && isExternalEntryRoute(rootRoute)) {
+          BackHandler.exitApp();
+          return true;
+        }
         if (rootRoute?.name === 'root' && rootRoute.tab !== 'home') {
+          nextRouteStack = [INITIAL_ROUTE];
+        } else if (rootRoute?.name !== 'root') {
           nextRouteStack = [INITIAL_ROUTE];
         }
       }
@@ -856,7 +874,7 @@ export default function App() {
           mimeType: currentRoute.mimeType ?? 'video/mp4',
           fileSize: currentRoute.fileSize ?? null,
         }}
-        onBack={popRoute}
+        onBack={exitExternalEntry}
         refreshToken={libraryRefreshToken}
       />
     );
@@ -865,7 +883,7 @@ export default function App() {
       <ArchiveReaderScreen
         archiveName={currentRoute.fileName}
         archiveUri={currentRoute.uri}
-        onBack={popRoute}
+        onBack={exitExternalEntry}
       />
     );
   } else if (currentRoute.name === 'move-image-group') {

@@ -17,6 +17,7 @@ import { formatDuration } from '../utils/formatters';
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
 const CONTROL_HIDE_DELAY_MS = 3000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
+const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
 
 interface VideoPlayerScreenProps {
   videoId?: number;
@@ -40,13 +41,14 @@ export function VideoPlayerScreen({
   const [queue, setQueue] = useState<ImageListItem[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(1);
   const [holdSpeed, setHoldSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(3);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [speedMenuVisible, setSpeedMenuVisible] = useState(false);
   const [queueVisible, setQueueVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
+  const [holdSpeedVisible, setHoldSpeedVisible] = useState(false);
   const [ipPickerVisible, setIpPickerVisible] = useState(false);
   const [normalIps, setNormalIps] = useState<IpListItem[]>([]);
   const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
@@ -54,17 +56,22 @@ export function VideoPlayerScreen({
   const [isSavingToIp, setIsSavingToIp] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
   const [trackWidth, setTrackWidth] = useState(1);
+  const [surfaceWidth, setSurfaceWidth] = useState(1);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceLoadVersionRef = useRef(0);
+  const currentTimeRef = useRef(0);
+  const holdWasPlayingRef = useRef(false);
+  const isHoldingFastForwardRef = useRef(false);
+  const scrubStartTimeRef = useRef(0);
+  const lastSurfaceTapAtRef = useRef(0);
 
   const sourceUri = externalSource?.uri ?? video?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? video?.originalFilename ?? 'video.mp4';
 
-  const player = useVideoPlayer(sourceUri ? { uri: sourceUri } : null, (instance) => {
+  const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
-    instance.play();
   });
 
   useEffect(() => {
@@ -75,6 +82,7 @@ export function VideoPlayerScreen({
     if (externalSource) {
       setVideo(null);
       setQueue([]);
+      currentTimeRef.current = 0;
       setCurrentTime(0);
       setDuration(0);
       return;
@@ -95,7 +103,9 @@ export function VideoPlayerScreen({
         return;
       }
       setVideo(detail);
-      setCurrentTime((detail.lastPlaybackPositionMs ?? 0) / 1000);
+      const savedTime = (detail.lastPlaybackPositionMs ?? 0) / 1000;
+      currentTimeRef.current = savedTime;
+      setCurrentTime(savedTime);
       const queueItems = await runWithDatabaseSpace(space, (db) => assetRepository.findQueueVideosByIpId(db, detail.ipId));
       if (isMounted) {
         setQueue(queueItems);
@@ -117,18 +127,23 @@ export function VideoPlayerScreen({
     let isActive = true;
     const loadVersion = sourceLoadVersionRef.current + 1;
     sourceLoadVersionRef.current = loadVersion;
+    safePausePlayer();
+    currentTimeRef.current = 0;
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
     void player.replaceAsync({ uri: sourceUri }).then(() => {
       if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
-        player.pause();
         return;
       }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       if (!externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000) {
         player.currentTime = video.lastPlaybackPositionMs / 1000;
+        currentTimeRef.current = video.lastPlaybackPositionMs / 1000;
       }
-      player.play();
-      setIsPlaying(true);
+      safePausePlayer();
+      setIsPlaying(false);
     }).catch((error) => {
       if (isActive) {
         showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
@@ -145,6 +160,7 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     const timeSubscription = player.addListener('timeUpdate', (payload) => {
+      currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
       setDuration(Number.isFinite(player.duration) && player.duration > 0 ? player.duration : duration);
     });
@@ -167,30 +183,32 @@ export function VideoPlayerScreen({
     return () => {
       clearHideTimer();
       clearLongPressTimer();
-      player.pause();
+      safePausePlayer();
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
       if (!externalSource && video) {
-        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(player.currentTime * 1000)));
+        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
       }
     };
-  }, [player, space, video]);
+  }, [externalSource, space, video]);
 
   useEffect(() => {
-    if (externalSource || !video) {
-      return;
-    }
-
     const persistPlaybackPosition = () => {
-      void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(player.currentTime * 1000)));
+      if (!externalSource && video) {
+        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
+      }
     };
-    const interval = setInterval(persistPlaybackPosition, PLAYBACK_PROGRESS_SAVE_INTERVAL_MS);
+    const interval = !externalSource && video ? setInterval(persistPlaybackPosition, PLAYBACK_PROGRESS_SAVE_INTERVAL_MS) : null;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') {
+        safePausePlayer();
         persistPlaybackPosition();
       }
     });
 
     return () => {
-      clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
       subscription.remove();
     };
   }, [externalSource, player, space, video]);
@@ -227,15 +245,33 @@ export function VideoPlayerScreen({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
           showControls();
-          seekFromLocation(event.nativeEvent.locationX);
+          seekFromTrackLocation(event.nativeEvent.locationX);
         },
         onPanResponderMove: (event) => {
-          seekFromLocation(event.nativeEvent.locationX);
+          seekFromTrackLocation(event.nativeEvent.locationX);
         },
         onPanResponderRelease: resetHideTimer,
         onPanResponderTerminate: resetHideTimer,
       }),
     [duration, player, trackWidth]
+  );
+
+  const surfacePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_event, gestureState) => Math.abs(gestureState.dx) > 8 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        onPanResponderGrant: () => {
+          showControls();
+          scrubStartTimeRef.current = currentTimeRef.current;
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          seekFromSurfaceDelta(gestureState.dx);
+        },
+        onPanResponderRelease: resetHideTimer,
+        onPanResponderTerminate: resetHideTimer,
+      }),
+    [duration, player, surfaceWidth]
   );
 
   async function handleSaveLocal() {
@@ -341,15 +377,39 @@ export function VideoPlayerScreen({
       clearInterval(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    setHoldSpeedVisible(false);
+  }
+
+  function safePausePlayer() {
+    try {
+      player.pause();
+      setIsPlaying(false);
+    } catch {
+      // The expo-video shared object may already be released during teardown.
+    }
+  }
+
+  function safePlayPlayer() {
+    try {
+      player.play();
+      setIsPlaying(true);
+    } catch (error) {
+      showToast(error instanceof Error ? `播放失败：${error.message}` : '播放失败');
+      setIsPlaying(false);
+    }
   }
 
   function startHoldFastForward() {
     showControls();
     clearLongPressTimer();
+    isHoldingFastForwardRef.current = true;
+    holdWasPlayingRef.current = isPlaying;
+    setHoldSpeedVisible(true);
     const previousSpeed = player.playbackRate;
     player.playbackRate = holdSpeed;
-    player.play();
+    safePlayPlayer();
     longPressTimerRef.current = setInterval(() => {
+      currentTimeRef.current = player.currentTime;
       setCurrentTime(player.currentTime);
     }, 150);
     return () => {
@@ -361,19 +421,52 @@ export function VideoPlayerScreen({
   function togglePlay() {
     showControls();
     if (isPlaying) {
-      player.pause();
+      safePausePlayer();
     } else {
-      player.play();
+      safePlayPlayer();
     }
   }
 
-  function seekFromLocation(locationX: number) {
-    if (duration <= 0 || trackWidth <= 0) {
+  function handleSurfacePress() {
+    const now = Date.now();
+    if (now - lastSurfaceTapAtRef.current <= DOUBLE_TAP_PAUSE_WINDOW_MS) {
+      lastSurfaceTapAtRef.current = 0;
+      togglePlay();
       return;
     }
-    const nextTime = Math.min(duration, Math.max(0, (locationX / trackWidth) * duration));
-    player.currentTime = nextTime;
-    setCurrentTime(nextTime);
+    lastSurfaceTapAtRef.current = now;
+    showControls();
+  }
+
+  function getEffectiveDuration() {
+    return duration > 0 ? duration : Number.isFinite(player.duration) && player.duration > 0 ? player.duration : 0;
+  }
+
+  function seekToTime(nextTime: number) {
+    const effectiveDuration = getEffectiveDuration();
+    if (effectiveDuration <= 0) {
+      return;
+    }
+    const clampedTime = Math.min(effectiveDuration, Math.max(0, nextTime));
+    player.currentTime = clampedTime;
+    currentTimeRef.current = clampedTime;
+    setCurrentTime(clampedTime);
+  }
+
+  function seekFromTrackLocation(locationX: number) {
+    const effectiveDuration = getEffectiveDuration();
+    if (effectiveDuration <= 0 || trackWidth <= 0) {
+      return;
+    }
+    seekToTime((locationX / trackWidth) * effectiveDuration);
+  }
+
+  function seekFromSurfaceDelta(deltaX: number) {
+    const effectiveDuration = getEffectiveDuration();
+    if (effectiveDuration <= 0 || surfaceWidth <= 0) {
+      return;
+    }
+    seekToTime(scrubStartTimeRef.current + (deltaX / surfaceWidth) * effectiveDuration);
   }
 
   async function toggleOrientation() {
@@ -393,8 +486,9 @@ export function VideoPlayerScreen({
 
   function switchVideo(nextVideoId: number) {
     if (!externalSource && video) {
-      void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(player.currentTime * 1000)));
+      void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
     }
+    safePausePlayer();
     setActiveVideoId(nextVideoId);
     setQueueVisible(false);
     showControls();
@@ -402,23 +496,30 @@ export function VideoPlayerScreen({
 
   const title = sourceFileName;
 
+  function handleBack() {
+    safePausePlayer();
+    onBack();
+  }
+
   return (
     <View style={styles.shell}>
       <ExpoStatusBar hidden />
       <Pressable
+        {...surfacePanResponder.panHandlers}
         delayLongPress={260}
         onLongPress={() => {
-          const stop = startHoldFastForward();
-          longPressTimerRef.current = setInterval(() => {
-            setCurrentTime(player.currentTime);
-          }, 120);
-          return stop;
+          startHoldFastForward();
         }}
-        onPress={showControls}
+        onPress={handleSurfacePress}
         onPressOut={() => {
           player.playbackRate = speed;
+          if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
+            safePausePlayer();
+          }
+          isHoldingFastForwardRef.current = false;
           clearLongPressTimer();
         }}
+        onLayout={(event) => setSurfaceWidth(Math.max(1, event.nativeEvent.layout.width))}
         style={styles.videoSurface}
       >
         <VideoView allowsFullscreen={false} contentFit="contain" nativeControls={false} player={player} style={styles.videoView} />
@@ -427,14 +528,49 @@ export function VideoPlayerScreen({
       {controlsVisible ? (
         <>
           <View style={[styles.topBar, { paddingTop: insets.top + spacing[2] }]}>
-            <Pressable accessibilityLabel="返回" onPress={onBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
+            <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
               <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
             </Pressable>
             <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
-            <Pressable accessibilityLabel="更多" onPress={() => setMoreVisible(true)} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
+            {holdSpeedVisible ? (
+              <View style={styles.holdSpeedBadge}>
+                <Ionicons color={colors.primary.hover} name="play-forward" size={13} />
+                <Text style={styles.holdSpeedBadgeText}>{holdSpeed}x</Text>
+              </View>
+            ) : null}
+            <Pressable
+              accessibilityLabel="更多"
+              onPress={() => {
+                setMoreVisible((current) => !current);
+                showControls();
+              }}
+              style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}
+            >
               <Ionicons color={colors.text.inverse} name="ellipsis-vertical" size={22} />
             </Pressable>
           </View>
+
+          {moreVisible ? (
+            <>
+              <Pressable accessibilityLabel="关闭视频操作菜单" onPress={() => setMoreVisible(false)} style={styles.menuDismissLayer} />
+              <View style={[styles.moreMenu, { top: insets.top + 58, right: spacing[3] }]}>
+                {moreItems.map((item) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={item.key}
+                    onPress={() => {
+                      setMoreVisible(false);
+                      item.onPress();
+                    }}
+                    style={({ pressed }) => [styles.moreMenuRow, pressed && styles.pressed]}
+                  >
+                    {item.icon ? <Ionicons color={colors.text.inverse} name={item.icon} size={17} /> : null}
+                    <Text style={styles.moreMenuText}>{item.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : null}
 
           {queueVisible ? (
             <View style={[styles.queuePanel, { bottom: insets.bottom + 86 }]}>
@@ -499,7 +635,6 @@ export function VideoPlayerScreen({
         </>
       ) : null}
 
-      <AppActionSheet items={moreItems} onClose={() => setMoreVisible(false)} title="视频操作" visible={moreVisible} />
       <AppActionSheet
         items={[
           { key: 'new', label: '新建 IP 并保存', icon: 'add-circle-outline', onPress: () => setNewIpDialogVisible(true) },
@@ -574,6 +709,50 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     flex: 1,
     minWidth: 0,
+  },
+  menuDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 8,
+  },
+  moreMenu: {
+    backgroundColor: 'rgba(12, 15, 13, 0.92)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[1],
+    minWidth: 152,
+    padding: spacing[2],
+    position: 'absolute',
+    zIndex: 12,
+  },
+  moreMenuRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 38,
+    paddingHorizontal: spacing[2],
+  },
+  moreMenuText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
+  },
+  holdSpeedBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.78)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 28,
+    paddingHorizontal: spacing[2],
+  },
+  holdSpeedBadgeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '800',
   },
   bottomBar: {
     backgroundColor: 'rgba(0, 0, 0, 0.42)',
