@@ -22,9 +22,11 @@ export interface NativeVideoMetadata {
 
 export interface NativeExternalOpen {
   hasOpen: boolean;
+  action?: string | null;
   uri?: string;
   mimeType?: string | null;
   name?: string | null;
+  fileSize?: number | null;
 }
 
 export interface NativeShareItem {
@@ -36,8 +38,15 @@ export interface NativeShareItem {
 
 export interface NativeShareIntent {
   hasShare: boolean;
+  action?: string | null;
   mimeType?: string | null;
   items: NativeShareItem[];
+}
+
+export interface NativeIntentEvent {
+  kind: 'share' | 'externalOpen' | 'unknown';
+  shareIntent?: NativeShareIntent;
+  externalOpen?: NativeExternalOpen;
 }
 
 export interface NativeZipEntry {
@@ -92,6 +101,16 @@ export function addNativeCopyProgressListener(
   }
 
   return emitter.addListener('PixoryMediaCopyProgress', listener);
+}
+
+export function addNativeIntentListener(
+  listener: (event: NativeIntentEvent) => void
+): { remove: () => void } {
+  if (!emitter) {
+    return { remove: () => undefined };
+  }
+
+  return emitter.addListener('PixoryMediaIntentReceived', listener);
 }
 
 export function copyUriToFileWithProgress(

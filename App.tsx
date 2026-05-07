@@ -66,8 +66,15 @@ import {
 } from './src/services/personalSystemService';
 import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
-import { getInitialExternalOpen } from './src/native/pixoryMediaModule';
-import { finishNativeShareActivity, getInitialShareIntent, type NativeShareItem } from './src/native/pixoryMediaModule';
+import {
+  addNativeIntentListener,
+  finishNativeShareActivity,
+  getInitialExternalOpen,
+  getInitialShareIntent,
+  type NativeExternalOpen,
+  type NativeShareIntent,
+  type NativeShareItem,
+} from './src/native/pixoryMediaModule';
 import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
 
 type AppRoute =
@@ -104,6 +111,7 @@ type AppRoute =
   | { name: 'video-player'; videoId: number; space: PixorySpace }
   | { name: 'external-video-player'; uri: string; fileName: string; mimeType?: string | null; fileSize?: number | null }
   | { name: 'archive-reader'; uri: string; fileName: string }
+  | { name: 'external-package-placeholder'; fileName: string }
   | { name: 'share-collect'; items: NativeShareItem[] }
   | { name: 'move-image-group'; imageId: number; space: PixorySpace }
   | { name: 'tag-result'; tagId: number; space: PixorySpace }
@@ -138,7 +146,65 @@ function isPersonalRoute(route: AppRoute): boolean {
 }
 
 function isExternalEntryRoute(route: AppRoute): boolean {
-  return route.name === 'external-video-player' || route.name === 'archive-reader' || route.name === 'share-collect';
+  return route.name === 'external-video-player' || route.name === 'archive-reader' || route.name === 'external-package-placeholder' || route.name === 'share-collect';
+}
+
+function isArchiveMimeType(mimeType: string | null | undefined): boolean {
+  return mimeType === 'application/zip' || mimeType === 'application/x-cbz' || mimeType === 'application/vnd.comicbook+zip';
+}
+
+function resolveExternalEntryFileName(externalOpen: NativeExternalOpen, fallbackName: string): string {
+  const [cleanUri] = (externalOpen.uri ?? '').split('?');
+  return externalOpen.name ?? cleanUri.split('/').pop() ?? fallbackName;
+}
+
+function resolveExternalEntryRoute(externalOpen: NativeExternalOpen | null | undefined): AppRoute | null {
+  if (!externalOpen?.uri) {
+    return null;
+  }
+
+  const candidateName = (externalOpen.name ?? externalOpen.uri).toLowerCase();
+  const mimeType = externalOpen.mimeType ?? null;
+  if (
+    externalOpen.action === 'android.intent.action.VIEW' &&
+    (mimeType?.startsWith('video/') || /\.(mp4|mkv|mov|webm|m4v|avi)(\?|$)/.test(candidateName))
+  ) {
+    return {
+      name: 'external-video-player',
+      uri: externalOpen.uri,
+      fileName: resolveExternalEntryFileName(externalOpen, 'external-video.mp4'),
+      mimeType,
+      fileSize: externalOpen.fileSize ?? null,
+    };
+  }
+
+  if (
+    externalOpen.action === 'android.intent.action.VIEW' &&
+    (isArchiveMimeType(mimeType) || /\.(zip|cbz)(\?|$)/.test(candidateName))
+  ) {
+    return {
+      name: 'archive-reader',
+      uri: externalOpen.uri,
+      fileName: resolveExternalEntryFileName(externalOpen, 'external.zip'),
+    };
+  }
+
+  if (externalOpen.action === 'android.intent.action.VIEW' && /\.(pixorypack)(\?|$)/.test(candidateName)) {
+    return {
+      name: 'external-package-placeholder',
+      fileName: resolveExternalEntryFileName(externalOpen, 'external.pixorypack'),
+    };
+  }
+
+  return null;
+}
+
+function resolveShareRoute(shareIntent: NativeShareIntent | null | undefined): AppRoute | null {
+  if (!shareIntent?.hasShare || shareIntent.items.length === 0) {
+    return null;
+  }
+
+  return { name: 'share-collect', items: shareIntent.items };
 }
 
 export default function App() {
@@ -232,27 +298,19 @@ export default function App() {
     let isMounted = true;
     void (async () => {
       const shareIntent = await getInitialShareIntent().catch(() => null);
-      if (isMounted && shareIntent?.hasShare && shareIntent.items.length > 0) {
-        setRouteStack([{ name: 'share-collect', items: shareIntent.items }]);
+      const shareRoute = resolveShareRoute(shareIntent);
+      if (isMounted && shareRoute) {
+        setRouteStack([shareRoute]);
         return;
       }
 
-      const externalOpen = await getInitialExternalOpen();
-      if (!isMounted || !externalOpen?.uri) {
-          return;
-      }
-      const lowerUri = externalOpen.uri.toLowerCase();
-      const mimeType = externalOpen.mimeType ?? null;
-      if (mimeType?.startsWith('video/') || /\.(mp4|mkv|mov|webm|m4v|avi)(\?|$)/.test(lowerUri)) {
-        const [cleanUri] = externalOpen.uri.split('?');
-        const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external-video.mp4';
-        setRouteStack([{ name: 'external-video-player', uri: externalOpen.uri, fileName, mimeType, fileSize: null }]);
+      const externalOpen = await getInitialExternalOpen().catch(() => null);
+      if (!isMounted) {
         return;
       }
-      if (mimeType === 'application/zip' || /\.(zip|cbz)(\?|$)/.test(lowerUri)) {
-        const [cleanUri] = externalOpen.uri.split('?');
-        const fileName = externalOpen.name ?? cleanUri.split('/').pop() ?? 'external.zip';
-        setRouteStack([{ name: 'archive-reader', uri: externalOpen.uri, fileName }]);
+      const externalRoute = resolveExternalEntryRoute(externalOpen);
+      if (externalRoute) {
+        setRouteStack([externalRoute]);
       }
     })()
       .catch(() => undefined);
@@ -260,6 +318,31 @@ export default function App() {
     return () => {
       isMounted = false;
     };
+  }, [isReady]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    const subscription = addNativeIntentListener((event) => {
+      if (event.kind === 'share') {
+        const shareRoute = resolveShareRoute(event.shareIntent);
+        if (shareRoute) {
+          setRouteStack([shareRoute]);
+        }
+        return;
+      }
+
+      if (event.kind === 'externalOpen') {
+        const externalRoute = resolveExternalEntryRoute(event.externalOpen);
+        if (externalRoute) {
+          setRouteStack([externalRoute]);
+        }
+      }
+    });
+
+    return () => subscription.remove();
   }, [isReady]);
 
   useEffect(() => {
@@ -938,6 +1021,14 @@ export default function App() {
         archiveName={currentRoute.fileName}
         archiveUri={currentRoute.uri}
         onBack={exitExternalEntry}
+      />
+    );
+  } else if (currentRoute.name === 'external-package-placeholder') {
+    content = (
+      <PlaceholderScreen
+        description={`Pixory 资源包暂时需要在应用内导入。\n\n请先进入 Pixory，打开目标 IP，再使用“选择资源包”导入 ${currentRoute.fileName}。`}
+        onBack={exitExternalEntry}
+        title="资源包入口待接入"
       />
     );
   } else if (currentRoute.name === 'share-collect') {
