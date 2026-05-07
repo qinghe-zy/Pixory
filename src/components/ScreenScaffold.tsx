@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, typography } from '../design/tokens';
 import { AppScreen } from './AppScreen';
 import { Header } from './Header';
@@ -18,6 +19,8 @@ interface ScreenScaffoldProps {
   loading?: boolean;
   errorMessage?: string | null;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  backgroundVariant?: PageBackgroundVariant;
+  backgroundDimmed?: boolean;
 }
 
 export function ScreenScaffold({
@@ -33,9 +36,13 @@ export function ScreenScaffold({
   loading = false,
   errorMessage,
   contentContainerStyle,
+  backgroundVariant,
+  backgroundDimmed,
 }: ScreenScaffoldProps) {
   return (
     <AppScreen
+      backgroundDimmed={backgroundDimmed}
+      backgroundVariant={backgroundVariant}
       contentStyle={contentContainerStyle}
       footer={footer}
       scrollable={scrollable}

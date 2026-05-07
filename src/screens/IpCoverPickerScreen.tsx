@@ -68,7 +68,7 @@ export function IpCoverPickerScreen({ ipId, space = 'normal', onBack, onChanged 
   }
 
   return (
-    <ScreenScaffold decorativeTitle="Cover" onBack={onBack} scrollable title="选择 IP 封面">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Cover" onBack={onBack} scrollable title="选择 IP 封面">
       <View style={styles.headerPanel}>
         <View style={styles.iconWrap}>
           <Ionicons color={colors.primary.active} name="image-outline" size={18} />

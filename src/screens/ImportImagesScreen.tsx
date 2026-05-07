@@ -378,6 +378,7 @@ export function ImportImagesScreen({
 
   return (
     <FormScreenScaffold
+      backgroundVariant="workflow"
       errorMessage={submitError ?? loadErrorMessage}
       footerExtra={
         loadErrorMessage ? (

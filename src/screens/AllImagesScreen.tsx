@@ -258,7 +258,7 @@ export function AllImagesScreen({
     />
   ) : undefined;
   return (
-    <ScreenScaffold decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="图片库">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="图片库">
       <View style={styles.summaryPanel}>
         <View style={styles.summaryTopLine}>
           <Text numberOfLines={1} style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>

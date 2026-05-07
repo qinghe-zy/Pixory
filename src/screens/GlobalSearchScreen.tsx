@@ -73,7 +73,7 @@ export function GlobalSearchScreen({
   const totalCount = ips.length + groups.length + tags.length + images.length;
 
   return (
-    <ScreenScaffold decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
+    <ScreenScaffold backgroundVariant="search" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
       <SearchBar onChangeText={onChangeQuery} placeholder="搜 IP / 分组 / 标签 / 文件名 / 备注" value={query} />
       <PageStateBlock
         emptyDescription={keyword ? '换一个关键词，或减少筛选条件。' : '输入关键词后会同时搜索 IP、分组、标签、文件名和备注。'}

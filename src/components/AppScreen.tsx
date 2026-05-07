@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, layout, radius, shadows, spacing } from '../design/tokens';
+import { PageBackground } from './PageBackground';
 
 interface AppScreenProps {
   children: ReactNode;
@@ -22,6 +24,8 @@ interface AppScreenProps {
   footer?: ReactNode;
   footerStyle?: StyleProp<ViewStyle>;
   dismissKeyboardOnTouch?: boolean;
+  backgroundVariant?: PageBackgroundVariant;
+  backgroundDimmed?: boolean;
 }
 
 export function AppScreen({
@@ -32,6 +36,8 @@ export function AppScreen({
   footer,
   footerStyle,
   dismissKeyboardOnTouch = false,
+  backgroundVariant,
+  backgroundDimmed,
 }: AppScreenProps) {
   const insets = useSafeAreaInsets();
   const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset;
@@ -74,33 +80,30 @@ export function AppScreen({
 
   if (dismissKeyboardOnTouch) {
     return (
-      <View style={[styles.safeArea, { backgroundColor }]}>
+      <PageBackground backgroundColor={backgroundColor} dimmed={backgroundDimmed} variant={backgroundVariant}>
         <TouchableWithoutFeedback accessible={false} onPress={Keyboard.dismiss}>
           {screenContent}
         </TouchableWithoutFeedback>
-      </View>
+      </PageBackground>
     );
   }
 
   if (scrollable) {
     return (
-      <View style={[styles.safeArea, { backgroundColor }]}>
+      <PageBackground backgroundColor={backgroundColor} dimmed={backgroundDimmed} variant={backgroundVariant}>
         {screenContent}
-      </View>
+      </PageBackground>
     );
   }
 
   return (
-    <View style={[styles.safeArea, { backgroundColor }]}>
+    <PageBackground backgroundColor={backgroundColor} dimmed={backgroundDimmed} variant={backgroundVariant}>
       {screenContent}
-    </View>
+    </PageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   flex: {
     flex: 1,
   },

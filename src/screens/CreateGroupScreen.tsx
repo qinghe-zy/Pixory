@@ -75,6 +75,7 @@ export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCr
 
   return (
     <FormScreenScaffold
+      backgroundVariant="archive"
       errorMessage={submitError}
       onBack={onBack}
       primaryAction={{ disabled: !trimmedName || !type, label: '创建分组', loading: isSubmitting, onPress: handleCreate }}

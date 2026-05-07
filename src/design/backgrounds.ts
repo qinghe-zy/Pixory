@@ -1,0 +1,283 @@
+import type { ImageSourcePropType } from 'react-native';
+
+type DecorAnchorX = 'left' | 'right';
+type DecorAnchorY = 'top' | 'center' | 'bottom';
+
+export interface PageBackgroundElementRecipe {
+  source: ImageSourcePropType;
+  widthRatio: number;
+  aspectRatio: number;
+  anchorX: DecorAnchorX;
+  anchorY: DecorAnchorY;
+  offsetXRatio: number;
+  offsetYRatio: number;
+  opacity?: number;
+  rotate?: string;
+  mirror?: boolean;
+}
+
+const elements = {
+  archiveFolder: require('../../assets/backgrounds/japanese-fresh/elements/archive-folder-outline.png') as ImageSourcePropType,
+  backupManifest: require('../../assets/backgrounds/japanese-fresh/elements/backup-manifest-sheet.png') as ImageSourcePropType,
+  botanicalBranch: require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png') as ImageSourcePropType,
+  detailPaperEdge: require('../../assets/backgrounds/japanese-fresh/elements/detail-paper-edge.png') as ImageSourcePropType,
+  dotIndexGrid: require('../../assets/backgrounds/japanese-fresh/elements/dot-index-grid.png') as ImageSourcePropType,
+  filmEdge: require('../../assets/backgrounds/japanese-fresh/elements/film-edge.png') as ImageSourcePropType,
+  importTray: require('../../assets/backgrounds/japanese-fresh/elements/import-tray.png') as ImageSourcePropType,
+  magnifierTexture: require('../../assets/backgrounds/japanese-fresh/elements/magnifier-texture.png') as ImageSourcePropType,
+  storageBox: require('../../assets/backgrounds/japanese-fresh/elements/storage-box-outline.png') as ImageSourcePropType,
+  tagPaperStack: require('../../assets/backgrounds/japanese-fresh/elements/tag-paper-stack.png') as ImageSourcePropType,
+  trashSoftWarning: require('../../assets/backgrounds/japanese-fresh/elements/trash-soft-warning.png') as ImageSourcePropType,
+  washiPaperCorner: require('../../assets/backgrounds/japanese-fresh/elements/washi-paper-corner.png') as ImageSourcePropType,
+} as const;
+
+export const pageBackgroundVariants = {
+  home: [
+    {
+      source: elements.botanicalBranch,
+      widthRatio: 0.46,
+      aspectRatio: 360 / 520,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.13,
+      offsetYRatio: -0.03,
+      opacity: 0.78,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.6,
+      aspectRatio: 440 / 340,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.22,
+      offsetYRatio: 0.08,
+      opacity: 0.56,
+      rotate: '-8deg',
+    },
+    {
+      source: elements.dotIndexGrid,
+      widthRatio: 0.54,
+      aspectRatio: 340 / 260,
+      anchorX: 'left',
+      anchorY: 'top',
+      offsetXRatio: -0.24,
+      offsetYRatio: 0.22,
+      opacity: 0.42,
+    },
+  ],
+  archive: [
+    {
+      source: elements.archiveFolder,
+      widthRatio: 0.6,
+      aspectRatio: 420 / 300,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.2,
+      offsetYRatio: 0.11,
+      opacity: 0.5,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.58,
+      aspectRatio: 440 / 340,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.18,
+      offsetYRatio: 0.1,
+      opacity: 0.42,
+      rotate: '7deg',
+    },
+  ],
+  tags: [
+    {
+      source: elements.tagPaperStack,
+      widthRatio: 0.52,
+      aspectRatio: 340 / 250,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.16,
+      offsetYRatio: 0.14,
+      opacity: 0.54,
+      rotate: '-4deg',
+    },
+    {
+      source: elements.dotIndexGrid,
+      widthRatio: 0.58,
+      aspectRatio: 340 / 260,
+      anchorX: 'left',
+      anchorY: 'top',
+      offsetXRatio: -0.28,
+      offsetYRatio: 0.24,
+      opacity: 0.4,
+    },
+    {
+      source: elements.magnifierTexture,
+      widthRatio: 0.36,
+      aspectRatio: 1,
+      anchorX: 'right',
+      anchorY: 'bottom',
+      offsetXRatio: -0.12,
+      offsetYRatio: 0.1,
+      opacity: 0.32,
+    },
+  ],
+  profile: [
+    {
+      source: elements.storageBox,
+      widthRatio: 0.58,
+      aspectRatio: 390 / 290,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.2,
+      offsetYRatio: 0.12,
+      opacity: 0.5,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.54,
+      aspectRatio: 440 / 340,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.2,
+      offsetYRatio: 0.08,
+      opacity: 0.42,
+      mirror: true,
+    },
+  ],
+  gallery: [
+    {
+      source: elements.filmEdge,
+      widthRatio: 0.24,
+      aspectRatio: 180 / 560,
+      anchorX: 'left',
+      anchorY: 'center',
+      offsetXRatio: -0.11,
+      offsetYRatio: -0.04,
+      opacity: 0.35,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.52,
+      aspectRatio: 440 / 340,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.24,
+      offsetYRatio: 0.1,
+      opacity: 0.36,
+      rotate: '-5deg',
+    },
+  ],
+  workflow: [
+    {
+      source: elements.importTray,
+      widthRatio: 0.52,
+      aspectRatio: 360 / 280,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.16,
+      offsetYRatio: 0.13,
+      opacity: 0.5,
+    },
+    {
+      source: elements.dotIndexGrid,
+      widthRatio: 0.52,
+      aspectRatio: 340 / 260,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.26,
+      offsetYRatio: 0.1,
+      opacity: 0.32,
+    },
+  ],
+  search: [
+    {
+      source: elements.magnifierTexture,
+      widthRatio: 0.52,
+      aspectRatio: 1,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.18,
+      offsetYRatio: 0.12,
+      opacity: 0.42,
+    },
+    {
+      source: elements.dotIndexGrid,
+      widthRatio: 0.6,
+      aspectRatio: 340 / 260,
+      anchorX: 'left',
+      anchorY: 'top',
+      offsetXRatio: -0.26,
+      offsetYRatio: 0.28,
+      opacity: 0.34,
+    },
+  ],
+  trash: [
+    {
+      source: elements.trashSoftWarning,
+      widthRatio: 0.48,
+      aspectRatio: 340 / 260,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.16,
+      offsetYRatio: 0.14,
+      opacity: 0.42,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.54,
+      aspectRatio: 440 / 340,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.2,
+      offsetYRatio: 0.09,
+      opacity: 0.34,
+    },
+  ],
+  backup: [
+    {
+      source: elements.backupManifest,
+      widthRatio: 0.5,
+      aspectRatio: 350 / 310,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.16,
+      offsetYRatio: 0.12,
+      opacity: 0.48,
+    },
+    {
+      source: elements.storageBox,
+      widthRatio: 0.5,
+      aspectRatio: 390 / 290,
+      anchorX: 'left',
+      anchorY: 'bottom',
+      offsetXRatio: -0.18,
+      offsetYRatio: 0.08,
+      opacity: 0.32,
+      mirror: true,
+    },
+  ],
+  detail: [
+    {
+      source: elements.detailPaperEdge,
+      widthRatio: 0.32,
+      aspectRatio: 240 / 560,
+      anchorX: 'left',
+      anchorY: 'center',
+      offsetXRatio: -0.14,
+      offsetYRatio: -0.02,
+      opacity: 0.3,
+    },
+    {
+      source: elements.washiPaperCorner,
+      widthRatio: 0.46,
+      aspectRatio: 440 / 340,
+      anchorX: 'right',
+      anchorY: 'top',
+      offsetXRatio: -0.2,
+      offsetYRatio: 0.08,
+      opacity: 0.28,
+    },
+  ],
+} as const satisfies Record<string, readonly PageBackgroundElementRecipe[]>;
+
+export type PageBackgroundVariant = keyof typeof pageBackgroundVariants;

@@ -220,7 +220,7 @@ export function TagResultScreen({
   }
 
   return (
-    <ScreenScaffold footer={footer} onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
+    <ScreenScaffold backgroundVariant="tags" footer={footer} onBack={onBack} scrollable title={tag ? `#${tag.name}` : '标签结果'}>
       {tag ? (
         <View style={styles.summary}>
           <View style={styles.summaryCopy}>

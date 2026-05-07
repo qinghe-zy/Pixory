@@ -141,6 +141,7 @@ export function HomeLibraryScreen({
   return (
     <>
     <ScreenScaffold
+      backgroundVariant="home"
       footer={footer}
       rightAction={rightSlot}
       scrollable

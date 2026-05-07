@@ -285,7 +285,7 @@ export function ImageDetailScreen({
   }
 
   return (
-    <AppScreen scrollable>
+    <AppScreen backgroundDimmed backgroundVariant="detail" scrollable>
       <Header onBack={onBack} rightSlot={rightSlot} title="图片详情" />
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

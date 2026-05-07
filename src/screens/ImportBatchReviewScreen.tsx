@@ -132,7 +132,7 @@ export function ImportBatchReviewScreen({
 
   return (
     <>
-      <ScreenScaffold decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
+      <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" onBack={onBack} scrollable title="本次导入">
         <View style={styles.heroPanel}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>

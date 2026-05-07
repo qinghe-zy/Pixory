@@ -182,7 +182,7 @@ export function FavoritesScreen({
     />
   ) : undefined;
   return (
-    <ScreenScaffold decorativeTitle="Favorites" footer={footer} onBack={onBack} scrollable title="收藏">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Favorites" footer={footer} onBack={onBack} scrollable title="收藏">
       <View style={styles.summary}>
         <Text numberOfLines={1} style={styles.subtitle}>
           {hasActiveFilters ? '筛选结果' : '全部收藏'}

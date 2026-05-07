@@ -45,6 +45,7 @@ export function CreateIpScreen({ space = 'normal', onCancel, onCreated }: Create
 
   return (
     <FormScreenScaffold
+      backgroundVariant="archive"
       errorMessage={submitError}
       onBack={onCancel}
       primaryAction={{ label: '创建IP', loading: isSubmitting, onPress: handleCreate }}

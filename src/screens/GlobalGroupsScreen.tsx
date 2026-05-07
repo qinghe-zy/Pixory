@@ -75,7 +75,7 @@ export function GlobalGroupsScreen({
 
   return (
     <>
-    <ScreenScaffold decorativeTitle="Groups" footer={footer} scrollable title="分组">
+    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} scrollable title="分组">
       <PageStateBlock
         emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
         emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"

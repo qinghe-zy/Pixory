@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, layout, metrics, spacing, typography } from '../design/tokens';
 import { PrimaryButton } from './PrimaryButton';
 import { ScreenScaffold } from './ScreenScaffold';
@@ -27,6 +28,7 @@ interface FormScreenScaffoldProps {
   secondaryAction?: SecondaryFormAction;
   footerExtra?: ReactNode;
   scrollContentStyle?: StyleProp<ViewStyle>;
+  backgroundVariant?: PageBackgroundVariant;
 }
 
 export function FormScreenScaffold({
@@ -38,6 +40,7 @@ export function FormScreenScaffold({
   secondaryAction,
   footerExtra,
   scrollContentStyle,
+  backgroundVariant,
 }: FormScreenScaffoldProps) {
   function handlePrimaryPress() {
     if (primaryAction.loading || primaryAction.disabled) {
@@ -73,6 +76,7 @@ export function FormScreenScaffold({
 
   return (
     <ScreenScaffold
+      backgroundVariant={backgroundVariant}
       contentContainerStyle={[styles.scrollContent, scrollContentStyle]}
       footer={footer}
       onBack={onBack}

@@ -86,6 +86,7 @@ export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, 
 
   return (
     <FormScreenScaffold
+      backgroundVariant="archive"
       errorMessage={submitError ?? loadErrorMessage}
       onBack={onBack}
       primaryAction={{ disabled: !canSubmit, label: '保存分组', loading: isSubmitting, onPress: handleSave }}

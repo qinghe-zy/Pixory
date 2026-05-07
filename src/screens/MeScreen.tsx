@@ -222,7 +222,7 @@ export function MeScreen({
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
 
   return (
-    <ScreenScaffold decorativeTitle={space === 'personal' ? 'Private' : 'Me'} errorMessage={errorMessage} footer={footer} scrollable title="我的">
+    <ScreenScaffold backgroundVariant="profile" decorativeTitle={space === 'personal' ? 'Private' : 'Me'} errorMessage={errorMessage} footer={footer} scrollable title="我的">
       <ContentCard style={styles.heroCard}>
         <View style={styles.profileRow}>
           <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>

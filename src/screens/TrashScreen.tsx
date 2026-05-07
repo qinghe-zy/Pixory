@@ -132,7 +132,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
 
   return (
     <>
-    <ScreenScaffold decorativeTitle="Trash" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="回收站">
+    <ScreenScaffold backgroundVariant="trash" decorativeTitle="Trash" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="回收站">
       <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />

@@ -32,7 +32,7 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
   const duplicateCount = groups.reduce((total, group) => total + group.images.length, 0);
 
   return (
-    <ScreenScaffold decorativeTitle="Duplicate" onBack={onBack} scrollable title="疑似重复">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title="疑似重复">
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
           <Ionicons color={colors.primary.active} name="copy-outline" size={20} />

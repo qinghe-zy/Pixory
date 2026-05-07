@@ -138,6 +138,7 @@ export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDel
   return (
     <>
     <FormScreenScaffold
+      backgroundVariant="archive"
       errorMessage={submitError ?? errorMessage}
       footerExtra={footerExtra}
       onBack={onBack}

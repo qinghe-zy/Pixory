@@ -41,7 +41,7 @@ export function ImportResultScreen({
   );
 
   return (
-    <ScreenScaffold decorativeTitle="Imported" onBack={onBack} scrollable title="导入完成">
+    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Imported" onBack={onBack} scrollable title="导入完成">
       <View style={styles.safetyPanel}>
         <View style={styles.safetyIcon}>
           <Ionicons color={colors.semantic.success} name="shield-checkmark-outline" size={19} />

@@ -189,7 +189,7 @@ export function IpDetailScreen({
 
   return (
     <>
-    <ScreenScaffold decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
+    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
       <PageStateBlock
         emptyDescription=""
         emptyTitle=""

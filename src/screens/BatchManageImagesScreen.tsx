@@ -628,7 +628,7 @@ export function BatchManageImagesScreen({
 
   return (
     <>
-    <ScreenScaffold footer={footer} onBack={onBack} scrollable title="批量管理">
+    <ScreenScaffold backgroundVariant="workflow" footer={footer} onBack={onBack} scrollable title="批量管理">
       <View style={styles.summaryCard}>
         <View style={styles.summaryIcon}>
           <Ionicons color={colors.primary.default} name="albums-outline" size={22} />

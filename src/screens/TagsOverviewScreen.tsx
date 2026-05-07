@@ -217,7 +217,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
 
   return (
     <>
-    <ScreenScaffold decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签">
+    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签">
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
       </View>

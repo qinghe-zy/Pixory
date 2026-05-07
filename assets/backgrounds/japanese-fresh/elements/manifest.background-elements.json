@@ -1,0 +1,19 @@
+﻿{
+    "generatedAt":  "2026-05-07T12:43:51+08:00",
+    "strategy":  "transparent-decor-elements",
+    "note":  "Decorative PNGs only. UI, text, status bars, cards, shadows, and controls stay in React Native code and tokens.",
+    "elements":  [
+                     "botanical-branch.png",
+                     "washi-paper-corner.png",
+                     "dot-index-grid.png",
+                     "magnifier-texture.png",
+                     "archive-folder-outline.png",
+                     "tag-paper-stack.png",
+                     "film-edge.png",
+                     "storage-box-outline.png",
+                     "import-tray.png",
+                     "trash-soft-warning.png",
+                     "backup-manifest-sheet.png",
+                     "detail-paper-edge.png"
+                 ]
+}

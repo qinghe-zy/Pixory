@@ -77,6 +77,7 @@ export function EditIpScreen({ ipId, space = 'normal', onBack, onSaved }: EditIp
 
   return (
     <FormScreenScaffold
+      backgroundVariant="archive"
       errorMessage={submitError}
       onBack={onBack}
       primaryAction={{ disabled: !trimmedName || isLoading || !ip, label: '保存修改', loading: isSubmitting, onPress: handleSave }}

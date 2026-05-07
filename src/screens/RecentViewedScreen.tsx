@@ -70,7 +70,7 @@ export function RecentViewedScreen({
   ) : undefined;
 
   return (
-    <ScreenScaffold decorativeTitle="Recent" footer={footer} onBack={onBack} scrollable title="最近查看">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Recent" footer={footer} onBack={onBack} scrollable title="最近查看">
       <View style={styles.summary}>
         <Text numberOfLines={1} style={styles.subtitle}>
           最近打开

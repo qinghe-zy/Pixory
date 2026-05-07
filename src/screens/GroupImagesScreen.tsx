@@ -210,7 +210,7 @@ export function GroupImagesScreen({
   }
 
   return (
-    <ScreenScaffold decorativeTitle="Gallery" footer={footer} onBack={onBack} scrollable title="分组图片">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} scrollable title="分组图片">
       {group ? (
         <View style={styles.summary}>
           <View style={styles.summaryCopy}>
