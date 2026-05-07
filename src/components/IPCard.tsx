@@ -15,7 +15,7 @@ interface IPCardProps {
 
 export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
-  const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? 18 : undefined;
+  const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? 10 : undefined;
 
   return (
     <Pressable

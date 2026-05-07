@@ -6,11 +6,12 @@ import { colors, componentTokens, shadows, spacing, typography } from '../design
 interface SearchBarProps {
   value: string;
   onChangeText: (value: string) => void;
+  onFocus?: () => void;
   onPress?: () => void;
   placeholder: string;
 }
 
-export function SearchBar({ value, onChangeText, onPress, placeholder }: SearchBarProps) {
+export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }: SearchBarProps) {
   const content = (
     <>
       <Ionicons color={colors.overlay.iconMuted} name="search-outline" size={componentTokens.searchBar.iconSize} />
@@ -18,6 +19,7 @@ export function SearchBar({ value, onChangeText, onPress, placeholder }: SearchB
         accessibilityLabel={placeholder}
         editable={!onPress}
         onChangeText={onChangeText}
+        onFocus={onFocus}
         placeholder={placeholder}
         placeholderTextColor={colors.text.placeholder}
         selectionColor={colors.primary.default}

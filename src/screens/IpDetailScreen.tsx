@@ -206,7 +206,7 @@ export function IpDetailScreen({
             <View style={styles.cover}>
               {ip.coverThumbnailFileUri ? (
                 <SecureImage
-                  blurRadius={space === 'personal' && (ip.coverBlurEnabled ?? true) ? 18 : undefined}
+                  blurRadius={space === 'personal' && (ip.coverBlurEnabled ?? true) ? 10 : undefined}
                   contentFit="cover"
                   space={space}
                   style={styles.coverImage}
