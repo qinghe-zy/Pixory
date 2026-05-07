@@ -154,10 +154,10 @@ Avoid:
 - Fake placeholder text
 - Empty screens without designed empty states
 
-For future page creation or page polish work, follow the reusable visual method in:
+For future page creation or page polish work, follow the reusable design context in:
 
 ```text
-docs/UI_PAGE_OPTIMIZATION_RULES.md
+.impeccable.md
 ```
 
 Default expectation:
