@@ -7,6 +7,7 @@ export interface IpRecord {
   isFavorite: boolean;
   coverImageAssetId: number | null;
   coverBlurEnabled: boolean | null;
+  coverBlurRadius: number | null;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -24,6 +25,7 @@ export interface UpdateIpInput {
   isFavorite?: boolean;
   coverImageAssetId?: number | null;
   coverBlurEnabled?: boolean | null;
+  coverBlurRadius?: number | null;
 }
 
 export interface IpRow extends Omit<IpRecord, 'isFavorite' | 'coverBlurEnabled'> {
@@ -59,6 +61,7 @@ export interface GroupRecord {
   type: string;
   sortOrder: number;
   isPinned: boolean;
+  coverImageAssetId: number | null;
   description?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +77,7 @@ export interface CreateGroupInput {
   type?: string;
   sortOrder?: number;
   isPinned?: boolean;
+  coverImageAssetId?: number | null;
   description?: string | null;
 }
 
@@ -83,6 +87,7 @@ export interface UpdateGroupInput {
   type?: string;
   sortOrder?: number;
   isPinned?: boolean;
+  coverImageAssetId?: number | null;
   description?: string | null;
 }
 
@@ -129,16 +134,22 @@ export interface GroupListItem extends GroupRecord {
   imageCount: number;
   recentUpdatedAt: string;
   coverThumbnailFileUri: string | null;
+  coverSource: 'custom' | 'default';
 }
 
 export interface GroupListItemRow extends GroupRow {
   imageCount: number;
   recentUpdatedAt: string | null;
   coverThumbnailFileUri: string | null;
+  coverSource: 'custom' | 'default' | null;
+  ipCoverBlurEnabled: number | null;
+  ipCoverBlurRadius: number | null;
 }
 
 export interface GlobalGroupListItem extends GroupListItem {
   ipName: string;
+  ipCoverBlurEnabled: boolean | null;
+  ipCoverBlurRadius: number | null;
 }
 
 export interface GlobalGroupListItemRow extends GroupListItemRow {

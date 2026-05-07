@@ -26,6 +26,7 @@ import { FavoritesScreen } from './src/screens/FavoritesScreen';
 import { GlobalGroupsScreen } from './src/screens/GlobalGroupsScreen';
 import { GlobalSearchScreen } from './src/screens/GlobalSearchScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
+import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
@@ -74,6 +75,7 @@ type AppRoute =
   | { name: 'create-ip'; space: PixorySpace }
   | { name: 'ip-detail'; ipId: number; space: PixorySpace }
   | { name: 'ip-cover-picker'; ipId: number; space: PixorySpace }
+  | { name: 'group-cover-picker'; ipId: number; groupId: number; space: PixorySpace }
   | { name: 'edit-ip'; ipId: number; space: PixorySpace }
   | { name: 'edit-group'; ipId: number; groupId: number; space: PixorySpace }
   | { name: 'edit-image'; imageId: number; space: PixorySpace }
@@ -659,6 +661,7 @@ export default function App() {
         onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenGroups={() => pushRoute({ name: 'group-overview', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
+        onOpenGroupCoverPicker={(groupId) => pushRoute({ name: 'group-cover-picker', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
         onOpenCoverPicker={() => pushRoute({ name: 'ip-cover-picker', ipId: currentRoute.ipId, space: currentRoute.space })}
         onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
@@ -669,6 +672,16 @@ export default function App() {
   } else if (currentRoute.name === 'ip-cover-picker') {
     content = (
       <IpCoverPickerScreen
+        ipId={currentRoute.ipId}
+        space={currentRoute.space}
+        onBack={popRoute}
+        onChanged={refreshLibrary}
+      />
+    );
+  } else if (currentRoute.name === 'group-cover-picker') {
+    content = (
+      <GroupCoverPickerScreen
+        groupId={currentRoute.groupId}
         ipId={currentRoute.ipId}
         space={currentRoute.space}
         onBack={popRoute}
@@ -706,6 +719,7 @@ export default function App() {
         onBack={popRoute}
         onCreateGroup={() => pushRoute({ name: 'create-group', ipId: currentRoute.ipId, space: currentRoute.space })}
         onEditGroup={(groupId) => pushRoute({ name: 'edit-group', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
+        onOpenCoverPicker={(groupId) => pushRoute({ name: 'group-cover-picker', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
         onOpenGroup={(groupId) => pushRoute({ name: 'group-images', ipId: currentRoute.ipId, groupId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
       />
@@ -1031,6 +1045,7 @@ export default function App() {
       <GlobalGroupsScreen
         space={currentRoute.space}
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: currentRoute.space })}
+        onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: currentRoute.space })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: currentRoute.space })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
@@ -1073,6 +1088,7 @@ export default function App() {
         space={activeSpace}
         footer={rootFooter}
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+        onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: activeSpace })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
         refreshToken={libraryRefreshToken}

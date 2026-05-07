@@ -146,10 +146,11 @@ export async function moveIpBetweenSpaces(params: {
       }
 
       const targetCoverId = sourceSnapshot.ip.coverImageAssetId ? assetIdMap.get(sourceSnapshot.ip.coverImageAssetId) ?? null : null;
-      if (targetCoverId != null || sourceSnapshot.ip.coverBlurEnabled != null) {
+      if (targetCoverId != null || sourceSnapshot.ip.coverBlurEnabled != null || sourceSnapshot.ip.coverBlurRadius != null) {
         await ipRepository.update(db, targetIpId, {
           coverImageAssetId: targetCoverId,
           coverBlurEnabled: sourceSnapshot.ip.coverBlurEnabled,
+          coverBlurRadius: sourceSnapshot.ip.coverBlurRadius,
         });
       }
 

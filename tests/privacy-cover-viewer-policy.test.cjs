@@ -39,18 +39,50 @@ test('IP cover metadata supports custom cover and personal blur fallback', () =>
   const ipRepositorySource = readProjectFile('src/database/repositories/ipRepository.ts');
   const secureImageSource = readProjectFile('src/components/SecureImage.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION = 13/);
+  assert.match(schemaSource, /DATABASE_VERSION = 14/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverImageAssetId INTEGER/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurEnabled INTEGER/);
+  assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurRadius INTEGER/);
   assert.match(typesSource, /coverImageAssetId: number \| null/);
   assert.match(typesSource, /coverBlurEnabled: boolean \| null/);
+  assert.match(typesSource, /coverBlurRadius: number \| null/);
   assert.match(typesSource, /coverSource: 'custom' \| 'default'/);
   assert.match(ipRepositorySource, /customCover/);
   assert.match(ipRepositorySource, /defaultCover/);
   assert.match(ipRepositorySource, /setCoverImage/);
   assert.match(ipRepositorySource, /setCoverBlurEnabled/);
+  assert.match(ipRepositorySource, /setCoverBlurRadius/);
   assert.match(ipRepositorySource, /clearCoverImage/);
   assert.match(secureImageSource, /blurRadius\?: number/);
+});
+
+test('personal cover blur is lighter and group covers support manual selection', () => {
+  const schemaSource = readProjectFile('src/database/schema.ts');
+  const typesSource = readProjectFile('src/database/types.ts');
+  const groupRepositorySource = readProjectFile('src/database/repositories/groupRepository.ts');
+  const ipCardSource = readProjectFile('src/components/IPCard.tsx');
+  const privacyConstantsSource = readProjectFile('src/constants/privacy.ts');
+  const ipDetailSource = readProjectFile('src/screens/IpDetailScreen.tsx');
+  const groupOverviewSource = readProjectFile('src/screens/GroupOverviewScreen.tsx');
+  const globalGroupsSource = readProjectFile('src/screens/GlobalGroupsScreen.tsx');
+  const groupCoverPickerSource = readProjectFile('src/screens/GroupCoverPickerScreen.tsx');
+  const appSource = readProjectFile('App.tsx');
+
+  assert.match(schemaSource, /ALTER TABLE groups ADD COLUMN coverImageAssetId INTEGER/);
+  assert.match(typesSource, /coverImageAssetId: number \| null/);
+  assert.match(groupRepositorySource, /setCoverImage/);
+  assert.match(groupRepositorySource, /clearCoverImage/);
+  assert.match(groupRepositorySource, /customCover/);
+  assert.match(privacyConstantsSource, /PERSONAL_COVER_BLUR_RADIUS\s*=\s*6/);
+  assert.match(ipCardSource, /resolvePersonalCoverBlurRadius/);
+  assert.match(ipDetailSource, /PERSONAL_COVER_BLUR_OPTIONS/);
+  assert.match(ipDetailSource, /handleCoverBlurRadiusChange/);
+  assert.match(ipDetailSource, /resolvePersonalCoverBlurRadius/);
+  assert.match(groupOverviewSource, /blurRadius=\{groupCoverBlurRadius\}/);
+  assert.match(globalGroupsSource, /blurRadius=\{getGroupCoverBlurRadius\(group\)\}/);
+  assert.match(groupCoverPickerSource, /选择分组封面/);
+  assert.match(groupCoverPickerSource, /使用系统默认封面/);
+  assert.match(appSource, /group-cover-picker/);
 });
 
 test('recent viewed count uses lastViewedAt rather than active image count', () => {

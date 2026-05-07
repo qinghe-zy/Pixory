@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem, PixorySpace } from '../database';
+import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
@@ -15,7 +16,7 @@ interface IPCardProps {
 
 export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardProps) {
   const content = <CardCaption ip={ip} />;
-  const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? 10 : undefined;
+  const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
 
   return (
     <Pressable

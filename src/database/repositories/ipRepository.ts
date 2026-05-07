@@ -29,6 +29,7 @@ const IP_LIBRARY_SELECT = `
     ips.isFavorite,
     ips.coverImageAssetId,
     ips.coverBlurEnabled,
+    ips.coverBlurRadius,
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
@@ -76,6 +77,7 @@ const IP_DETAIL_SELECT = `
     ips.isFavorite,
     ips.coverImageAssetId,
     ips.coverBlurEnabled,
+    ips.coverBlurRadius,
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
@@ -185,6 +187,7 @@ export const ipRepository = {
       isFavorite: input.isFavorite !== undefined ? booleanToSqlite(input.isFavorite) : undefined,
       coverImageAssetId: input.coverImageAssetId,
       coverBlurEnabled: input.coverBlurEnabled === undefined ? undefined : input.coverBlurEnabled == null ? null : booleanToSqlite(input.coverBlurEnabled),
+      coverBlurRadius: input.coverBlurRadius,
       updatedAt: createTimestamp(),
     });
 
@@ -267,6 +270,11 @@ export const ipRepository = {
 
   async setCoverBlurEnabled(db: SQLiteDatabase, ipId: number, enabled: boolean): Promise<IpRecord | null> {
     return this.update(db, ipId, { coverBlurEnabled: enabled });
+  },
+
+  async setCoverBlurRadius(db: SQLiteDatabase, ipId: number, radius: number): Promise<IpRecord | null> {
+    const normalizedRadius = Math.max(0, Math.min(12, Math.round(radius)));
+    return this.update(db, ipId, { coverBlurRadius: normalizedRadius });
   },
 
   async count(db: SQLiteDatabase): Promise<number> {

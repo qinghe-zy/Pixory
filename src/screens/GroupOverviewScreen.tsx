@@ -11,6 +11,7 @@ import { SectionHeader } from '../components/SectionHeader';
 import { SecureImage } from '../components/SecureImage';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
+import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -24,6 +25,7 @@ interface GroupOverviewScreenProps {
   onBack: () => void;
   onCreateGroup: () => void;
   onEditGroup: (groupId: number) => void;
+  onOpenCoverPicker: (groupId: number) => void;
   onOpenGroup: (groupId: number) => void;
 }
 
@@ -34,6 +36,7 @@ export function GroupOverviewScreen({
   onBack,
   onCreateGroup,
   onEditGroup,
+  onOpenCoverPicker,
   onOpenGroup,
 }: GroupOverviewScreenProps) {
   const { showToast } = useToast();
@@ -69,6 +72,7 @@ export function GroupOverviewScreen({
 
   const ip = data?.ip ?? null;
   const groups = data?.groups ?? [];
+  const groupCoverBlurRadius = space === 'personal' && (ip?.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip?.coverBlurRadius) : undefined;
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
     items: groups.filter((group) => group.type === option.value),
@@ -127,7 +131,7 @@ export function GroupOverviewScreen({
                   <ContentCard style={styles.groupCard}>
                     <View style={styles.coverWrap}>
                       {group.coverThumbnailFileUri ? (
-                        <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                        <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
                       ) : (
                         <View style={styles.coverEmpty}>
                           <Ionicons color={colors.primary.default} name="images-outline" size={26} />
@@ -162,6 +166,7 @@ export function GroupOverviewScreen({
     <AppActionSheet
       items={actionGroup ? [
         { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
         {
           key: 'pin',

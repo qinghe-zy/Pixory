@@ -34,22 +34,30 @@ const GROUP_OVERVIEW_SELECT = `
     groups.type,
     groups.sortOrder,
     groups.isPinned,
+    groups.coverImageAssetId,
     groups.description,
     groups.createdAt,
     groups.updatedAt,
+    ips.coverBlurEnabled AS ipCoverBlurEnabled,
+    ips.coverBlurRadius AS ipCoverBlurRadius,
     COUNT(CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
     MAX(COALESCE(image_assets.updatedAt, groups.updatedAt)) AS recentUpdatedAt,
-    (
+    COALESCE(customCover.thumbnailFileUri, (
       SELECT image_assets.thumbnailFileUri
       FROM image_assets
       INNER JOIN image_groups ON image_groups.imageAssetId = image_assets.id
       WHERE image_groups.groupId = groups.id
         AND image_assets.deletedAt IS NULL
+        AND image_assets.mediaType = 'image'
       ORDER BY image_assets.createdAt DESC, image_assets.id DESC
       LIMIT 1
-    ) AS coverThumbnailFileUri
+    )) AS coverThumbnailFileUri,
+    CASE WHEN customCover.id IS NOT NULL THEN 'custom' ELSE 'default' END AS coverSource
   FROM groups
   INNER JOIN ips ON ips.id = groups.ipId
+  LEFT JOIN image_assets AS customCover ON customCover.id = groups.coverImageAssetId
+    AND customCover.deletedAt IS NULL
+    AND customCover.mediaType = 'image'
   LEFT JOIN image_groups ON image_groups.groupId = groups.id
   LEFT JOIN image_assets ON image_assets.id = image_groups.imageAssetId
 `;
@@ -61,15 +69,17 @@ export const groupRepository = {
     const type = input.type ? requireNonEmptyText(input.type, 'Group type') : 'custom';
     const sortOrder = input.sortOrder ?? 0;
     const isPinned = booleanToSqlite(input.isPinned ?? false);
+    const coverImageAssetId = input.coverImageAssetId ?? null;
     const description = normalizeOptionalText(input.description) ?? null;
 
     const result = await db.runAsync(
-      'INSERT INTO groups (ipId, name, type, sortOrder, isPinned, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO groups (ipId, name, type, sortOrder, isPinned, coverImageAssetId, description, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       input.ipId,
       name,
       type,
       sortOrder,
       isPinned,
+      coverImageAssetId,
       description,
       now,
       now
@@ -97,6 +107,7 @@ export const groupRepository = {
       type: input.type !== undefined ? requireNonEmptyText(input.type, 'Group type') : undefined,
       sortOrder: input.sortOrder,
       isPinned: input.isPinned !== undefined ? booleanToSqlite(input.isPinned) : undefined,
+      coverImageAssetId: input.coverImageAssetId,
       description: normalizeOptionalText(input.description),
       updatedAt: createTimestamp(),
     });
@@ -209,6 +220,38 @@ export const groupRepository = {
 
   async updatePinned(db: SQLiteDatabase, id: number, isPinned: boolean): Promise<GroupRecord | null> {
     return this.update(db, id, { isPinned });
+  },
+
+  async setCoverImage(db: SQLiteDatabase, groupId: number, imageAssetId: number): Promise<GroupRecord | null> {
+    const current = await this.findById(db, groupId);
+    if (!current) {
+      return null;
+    }
+
+    const image = await db.getFirstAsync<{ id: number }>(
+      `SELECT image_assets.id
+       FROM image_assets
+       INNER JOIN image_groups ON image_groups.imageAssetId = image_assets.id
+       WHERE image_assets.id = ?
+         AND image_groups.groupId = ?
+         AND image_assets.ipId = ?
+         AND image_assets.deletedAt IS NULL
+         AND image_assets.mediaType = 'image'
+       LIMIT 1`,
+      imageAssetId,
+      groupId,
+      current.ipId
+    );
+
+    if (!image) {
+      throw new Error('只能选择当前分组内的图片作为封面。');
+    }
+
+    return this.update(db, groupId, { coverImageAssetId: imageAssetId });
+  },
+
+  async clearCoverImage(db: SQLiteDatabase, groupId: number): Promise<GroupRecord | null> {
+    return this.update(db, groupId, { coverImageAssetId: null });
   },
 };
 

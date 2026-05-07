@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 13;
+export const DATABASE_VERSION = 14;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -244,4 +244,10 @@ CREATE TABLE IF NOT EXISTS trash_cleanup_failures (
 
 CREATE INDEX IF NOT EXISTS idx_trash_cleanup_failures_asset_id ON trash_cleanup_failures(assetId);
 CREATE INDEX IF NOT EXISTS idx_trash_cleanup_failures_created_at ON trash_cleanup_failures(createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V14 = `
+ALTER TABLE groups ADD COLUMN coverImageAssetId INTEGER;
+ALTER TABLE ips ADD COLUMN coverBlurRadius INTEGER;
+CREATE INDEX IF NOT EXISTS idx_groups_cover_image_asset_id ON groups(coverImageAssetId);
 `;

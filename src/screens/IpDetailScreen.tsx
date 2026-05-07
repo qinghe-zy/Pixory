@@ -12,6 +12,7 @@ import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
+import { PERSONAL_COVER_BLUR_OPTIONS, resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -30,6 +31,7 @@ interface IpDetailScreenProps {
   onCreateGroup: () => void;
   onOpenGroups: () => void;
   onOpenGroup: (groupId: number) => void;
+  onOpenGroupCoverPicker: (groupId: number) => void;
   onOpenAllImages: () => void;
   onOpenBatchManagement: (imageId?: number) => void;
   onOpenImportBatches: () => void;
@@ -58,6 +60,7 @@ export function IpDetailScreen({
   onCreateGroup,
   onOpenGroups,
   onOpenGroup,
+  onOpenGroupCoverPicker,
   onOpenAllImages,
   onOpenBatchManagement,
   onOpenImportBatches,
@@ -120,6 +123,9 @@ export function IpDetailScreen({
   const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
   const organizationProgress = data?.organizationProgress;
   const managementSummary = needsOrganizingCount > 0 || Boolean(organizationProgress) || recentImportBatches.length > 0;
+  const activeCoverBlurRadius = resolvePersonalCoverBlurRadius(ip?.coverBlurRadius);
+  const personalCoverBlurRadius = space === 'personal' && (ip?.coverBlurEnabled ?? true) ? activeCoverBlurRadius : undefined;
+  const groupCoverBlurRadius = personalCoverBlurRadius;
 
   function handleQuickAction(key: (typeof QUICK_ACTIONS)[number]['key']) {
     if (key === 'import') {
@@ -191,6 +197,18 @@ export function IpDetailScreen({
     })();
   }
 
+  function handleCoverBlurRadiusChange(radiusValue: number) {
+    void (async () => {
+      try {
+        await runWithDatabaseSpace(space, (db) => ipRepository.setCoverBlurRadius(db, ipId, radiusValue));
+        reload();
+        onChanged();
+      } catch (error) {
+        showToast(error instanceof Error ? `更新模糊强度失败：${error.message}` : '更新模糊强度失败');
+      }
+    })();
+  }
+
   return (
     <>
     <ScreenScaffold backgroundVariant="archive" decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
@@ -210,7 +228,7 @@ export function IpDetailScreen({
             <View style={styles.cover}>
               {ip.coverThumbnailFileUri ? (
                 <SecureImage
-                  blurRadius={space === 'personal' && (ip.coverBlurEnabled ?? true) ? 10 : undefined}
+                  blurRadius={personalCoverBlurRadius}
                   contentFit="cover"
                   space={space}
                   style={styles.coverImage}
@@ -237,12 +255,37 @@ export function IpDetailScreen({
               </Pressable>
             </View>
             {space === 'personal' ? (
+              <>
               <SwitchSettingRow
                 hint="只模糊隐私空间中的 IP 封面预览，不修改原图。"
                 label="封面模糊"
                 onValueChange={handleCoverBlurChange}
                 value={ip.coverBlurEnabled ?? true}
               />
+              {(ip.coverBlurEnabled ?? true) ? (
+                <View style={styles.blurOptions}>
+                  <Text style={styles.blurOptionsLabel}>模糊强度</Text>
+                  <View style={styles.blurOptionRow}>
+                    {PERSONAL_COVER_BLUR_OPTIONS.map((radiusValue) => {
+                      const selected = activeCoverBlurRadius === radiusValue;
+                      return (
+                        <Pressable
+                          key={radiusValue}
+                          onPress={() => handleCoverBlurRadiusChange(radiusValue)}
+                          style={({ pressed }) => [
+                            styles.blurOption,
+                            selected && styles.blurOptionSelected,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={[styles.blurOptionText, selected && styles.blurOptionTextSelected]}>{radiusValue}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+              </>
             ) : null}
 
             <View style={styles.managementSummary}>
@@ -330,6 +373,19 @@ export function IpDetailScreen({
                       onPress={() => onOpenGroup(group.id)}
                       style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}
                     >
+                      <View style={styles.groupEntryCover}>
+                        {group.coverThumbnailFileUri ? (
+                          <SecureImage
+                            blurRadius={groupCoverBlurRadius}
+                            contentFit="cover"
+                            space={space}
+                            style={styles.groupEntryCoverImage}
+                            uri={group.coverThumbnailFileUri}
+                          />
+                        ) : (
+                          <Ionicons color={colors.primary.default} name="images-outline" size={18} />
+                        )}
+                      </View>
                       <View style={styles.groupEntryCopy}>
                         <Text numberOfLines={1} style={styles.groupEntryTitle}>{group.name}</Text>
                         <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)} · {group.imageCount} 张</Text>
@@ -379,6 +435,7 @@ export function IpDetailScreen({
     <AppActionSheet
       items={actionGroup ? [
         { key: 'view', label: '查看素材', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
+        { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenGroupCoverPicker(actionGroup.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
         {
           key: 'pin',
@@ -517,6 +574,45 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.inverse,
     fontWeight: '700',
+  },
+  blurOptions: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[3],
+    padding: spacing[3],
+  },
+  blurOptionsLabel: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  blurOptionRow: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  blurOption: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 34,
+    justifyContent: 'center',
+    width: 54,
+  },
+  blurOptionSelected: {
+    backgroundColor: colors.primary.active,
+    borderColor: colors.primary.active,
+  },
+  blurOptionText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    fontWeight: '700',
+  },
+  blurOptionTextSelected: {
+    color: colors.text.inverse,
   },
   statsStrip: {
     flexDirection: 'row',
@@ -692,6 +788,19 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
+  },
+  groupEntryCover: {
+    alignItems: 'center',
+    backgroundColor: colors.background.empty,
+    borderRadius: radius.sm,
+    height: 42,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 58,
+  },
+  groupEntryCoverImage: {
+    height: '100%',
+    width: '100%',
   },
   groupEntryCopy: {
     flex: 1,

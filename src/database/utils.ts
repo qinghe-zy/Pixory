@@ -114,6 +114,7 @@ export function mapIpRow(row: IpRow): IpRecord {
     isFavorite: sqliteToBoolean(row.isFavorite),
     coverImageAssetId: row.coverImageAssetId ?? null,
     coverBlurEnabled: row.coverBlurEnabled == null ? null : sqliteToBoolean(row.coverBlurEnabled),
+    coverBlurRadius: row.coverBlurRadius ?? null,
   };
 }
 
@@ -152,6 +153,7 @@ export function mapGroupRow(row: GroupRow): GroupRecord {
   return {
     ...row,
     isPinned: sqliteToBoolean(row.isPinned),
+    coverImageAssetId: row.coverImageAssetId ?? null,
     description: row.description ?? null,
   };
 }
@@ -163,6 +165,7 @@ export function mapGroupListItemRow(row: GroupListItemRow): GroupListItem {
     imageCount: row.imageCount ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
+    coverSource: row.coverSource === 'custom' ? 'custom' : 'default',
   };
 }
 
@@ -170,6 +173,8 @@ export function mapGlobalGroupListItemRow(row: GlobalGroupListItemRow): GlobalGr
   return {
     ...mapGroupListItemRow(row),
     ipName: row.ipName,
+    ipCoverBlurEnabled: row.ipCoverBlurEnabled == null ? null : sqliteToBoolean(row.ipCoverBlurEnabled),
+    ipCoverBlurRadius: row.ipCoverBlurRadius ?? null,
   };
 }
 

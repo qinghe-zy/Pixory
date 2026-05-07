@@ -10,6 +10,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
+import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
 import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -21,6 +22,7 @@ interface GlobalGroupsScreenProps {
   refreshToken: number;
   footer?: ReactNode;
   onCreateFirstIp?: () => void;
+  onOpenCoverPicker: (ipId: number, groupId: number) => void;
   onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
 }
@@ -30,6 +32,7 @@ export function GlobalGroupsScreen({
   refreshToken,
   footer,
   onCreateFirstIp,
+  onOpenCoverPicker,
   onEditGroup,
   onOpenGroup,
 }: GlobalGroupsScreenProps) {
@@ -52,6 +55,11 @@ export function GlobalGroupsScreen({
     ...option,
     items: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
+
+  function getGroupCoverBlurRadius(group: GlobalGroupListItem): number | undefined {
+    return space === 'personal' && (group.ipCoverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(group.ipCoverBlurRadius) : undefined;
+  }
+
   function confirmDeleteGroup() {
     if (!deleteGroup) {
       return;
@@ -107,7 +115,7 @@ export function GlobalGroupsScreen({
                 >
                   <View style={styles.coverWrap}>
                     {group.coverThumbnailFileUri ? (
-                      <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                      <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
                     ) : (
                       <View style={styles.coverEmpty}>
                         <Ionicons color={colors.primary.default} name="images-outline" size={22} />
@@ -125,6 +133,7 @@ export function GlobalGroupsScreen({
     <AppActionSheet
       items={actionGroup ? [
         { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.ipId, actionGroup.id) },
+        { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.ipId, actionGroup.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.ipId, actionGroup.id) },
         {
           key: 'pin',

@@ -714,6 +714,28 @@ export async function importEncryptedPersonalPack({
         importedImageCount += 1;
       }
 
+      for (const ip of exportData?.ips ?? []) {
+        const nextIpId = ipIdMap.get(ip.id);
+        if (!nextIpId) {
+          continue;
+        }
+        await ipRepository.update(db, nextIpId, {
+          coverImageAssetId: ip.coverImageAssetId != null ? imageIdMap.get(ip.coverImageAssetId) ?? null : null,
+          coverBlurEnabled: ip.coverBlurEnabled,
+          coverBlurRadius: ip.coverBlurRadius,
+        });
+      }
+
+      for (const group of exportData?.groups ?? []) {
+        const nextGroupId = groupIdMap.get(group.id);
+        if (!nextGroupId) {
+          continue;
+        }
+        await groupRepository.update(db, nextGroupId, {
+          coverImageAssetId: group.coverImageAssetId != null ? imageIdMap.get(group.coverImageAssetId) ?? null : null,
+        });
+      }
+
       for (const batch of exportData?.importBatches ?? []) {
         const nextBatchId = importBatchIdMap.get(batch.id);
         if (!nextBatchId) {
