@@ -1127,6 +1127,14 @@ export const imageRepository = {
     return this.findById(db, id);
   },
 
+  async clearRecentViewed(db: SQLiteDatabase): Promise<number> {
+    const result = await db.runAsync(
+      'UPDATE image_assets SET lastViewedAt = NULL WHERE deletedAt IS NULL AND lastViewedAt IS NOT NULL'
+    );
+
+    return result.changes;
+  },
+
   async updateManyGroup(db: SQLiteDatabase, imageIds: number[], groupId: number | null): Promise<number> {
     if (imageIds.length === 0) {
       return 0;

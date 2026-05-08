@@ -205,8 +205,9 @@ export function VideoPlayerScreen({
     if (externalSource) {
       setVideo(null);
       setQueue([]);
-      currentTimeRef.current = 0;
-      setCurrentTime(0);
+      const initialDisplayTime = 0;
+      currentTimeRef.current = initialDisplayTime;
+      setCurrentTime(initialDisplayTime);
       setDuration(0);
       return;
     }
@@ -251,9 +252,14 @@ export function VideoPlayerScreen({
     const loadVersion = sourceLoadVersionRef.current + 1;
     sourceLoadVersionRef.current = loadVersion;
     safePausePlayer();
-    currentTimeRef.current = 0;
-    setCurrentTime(0);
+    const initialDisplayTime = !externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000
+      ? video.lastPlaybackPositionMs / 1000
+      : 0;
+    currentTimeRef.current = initialDisplayTime;
+    setCurrentTime(initialDisplayTime);
     setDuration(0);
+    committedSeekTargetRef.current = initialDisplayTime > 0 ? initialDisplayTime : null;
+    committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
     void player.replaceAsync({ uri: sourceUri }).then(() => {
       if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
@@ -262,9 +268,9 @@ export function VideoPlayerScreen({
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
       player.loop = true;
-      if (!externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000) {
-        player.currentTime = video.lastPlaybackPositionMs / 1000;
-        currentTimeRef.current = video.lastPlaybackPositionMs / 1000;
+      if (initialDisplayTime > 0) {
+        player.currentTime = initialDisplayTime;
+        currentTimeRef.current = initialDisplayTime;
       }
       safePlayPlayer();
     }).catch((error) => {
@@ -1191,6 +1197,15 @@ export function VideoPlayerScreen({
           ) : null}
 
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[2] }]}>
+            <View style={styles.progressInfoRow}>
+              <Text style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+              {isScrubbing ? (
+                <View style={styles.scrubBubble}>
+                  <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
+                  <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
+                </View>
+              ) : null}
+            </View>
             <View
               {...seekPanResponder.panHandlers}
               onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
@@ -1201,12 +1216,6 @@ export function VideoPlayerScreen({
                 <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
               </View>
             </View>
-            {isScrubbing ? (
-              <View style={styles.scrubBubble}>
-                <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
-                <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
-              </View>
-            ) : null}
             <View style={styles.controlRow}>
               {isLandscape ? (
                 <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
@@ -1221,7 +1230,6 @@ export function VideoPlayerScreen({
                   <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
                 </Pressable>
               ) : null}
-              <Text style={styles.timeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
               <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
                 <Text style={styles.pillButtonText}>{speed}x</Text>
               </Pressable>
@@ -1468,6 +1476,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
   },
+  progressInfoRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 30,
+  },
+  progressInfoText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    flex: 1,
+    fontWeight: '800',
+    minWidth: 0,
+  },
   progressTrack: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: radius.pill,
@@ -1494,14 +1515,12 @@ const styles = StyleSheet.create({
   },
   scrubBubble: {
     alignItems: 'center',
-    alignSelf: 'center',
     backgroundColor: 'rgba(12, 15, 13, 0.86)',
     borderColor: 'rgba(255,255,255,0.16)',
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing[2],
-    marginTop: -spacing[1],
     maxWidth: 300,
     minHeight: 30,
     paddingHorizontal: spacing[3],

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View, type ScrollView } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ScrollView } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -8,6 +9,7 @@ import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type ImageSortOrder, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { useToast } from '../components/AppToast';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
@@ -32,7 +34,10 @@ export function RecentViewedScreen({
   onOpenImageDetail,
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
+  const { showToast } = useToast();
   const [sortOrder, setSortOrder] = useState<ImageSortOrder>('lastViewedAtDesc');
+  const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
+  const [isClearingRecentViewed, setIsClearingRecentViewed] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
     () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db, 60, { mediaType: 'all', orderBy: sortOrder })),
@@ -77,6 +82,22 @@ export function RecentViewedScreen({
     swipeSelection.beginSwipeSelection(image.id);
   }
 
+  async function handleConfirmClearRecentViewed() {
+    setIsClearingRecentViewed(true);
+    try {
+      const clearedCount = await runWithDatabaseSpace(space, (db) => imageRepository.clearRecentViewed(db));
+      multiSelect.clearSelection();
+      setClearConfirmVisible(false);
+      reload();
+      showToast(clearedCount > 0 ? `已清除 ${clearedCount} 条最近查看记录` : '没有需要清除的最近查看记录');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`清除记录失败：${message}`);
+    } finally {
+      setIsClearingRecentViewed(false);
+    }
+  }
+
   const footer = multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
       onChanged={reload}
@@ -99,13 +120,26 @@ export function RecentViewedScreen({
       scrollable
       title="最近查看"
     >
-      <View style={styles.summary}>
-        <Text numberOfLines={1} style={styles.subtitle}>
-          最近打开
-        </Text>
-        <Text numberOfLines={1} style={styles.countText}>
-          {images.length} 张
-        </Text>
+      <View style={styles.summaryRow}>
+        <View style={styles.summary}>
+          <Text numberOfLines={1} style={styles.subtitle}>
+            最近打开
+          </Text>
+          <Text numberOfLines={1} style={styles.countText}>
+            {images.length} 个
+          </Text>
+        </View>
+        <Pressable
+          disabled={images.length === 0 || isClearingRecentViewed}
+          onPress={() => setClearConfirmVisible(true)}
+          style={({ pressed }) => [
+            styles.clearRecentButton,
+            (images.length === 0 || isClearingRecentViewed) ? styles.disabled : null,
+            pressed && images.length > 0 && !isClearingRecentViewed ? styles.pressed : null,
+          ]}
+        >
+          <Text style={styles.clearRecentText}>清除记录</Text>
+        </Pressable>
       </View>
 
       <PageStateBlock
@@ -138,11 +172,32 @@ export function RecentViewedScreen({
           ))}
         </View>
       </PageStateBlock>
+      <AppDialog
+        message="只会清除最近查看时间，不会删除图片、视频、原图、缩略图、分组、标签或备注。"
+        onClose={() => {
+          if (!isClearingRecentViewed) {
+            setClearConfirmVisible(false);
+          }
+        }}
+        onPrimary={() => {
+          void handleConfirmClearRecentViewed();
+        }}
+        primaryDisabled={isClearingRecentViewed}
+        primaryLabel={isClearingRecentViewed ? '清除中…' : '确认清除'}
+        title="清除最近查看记录"
+        visible={clearConfirmVisible}
+      />
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  summaryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
   summary: {
     alignItems: 'center',
     alignSelf: 'flex-start',
@@ -166,6 +221,21 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '500',
   },
+  clearRecentButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  clearRecentText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -180,5 +250,11 @@ const styles = StyleSheet.create({
   gridTitle: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
+  },
+  disabled: {
+    opacity: 0.44,
+  },
+  pressed: {
+    opacity: 0.78,
   },
 });

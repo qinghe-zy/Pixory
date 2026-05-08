@@ -36,7 +36,6 @@ interface MeStats {
   favoriteImageCount: number;
   deletedImageCount: number;
   profileAvatarUri: string | null;
-  totalOriginalBytes: number;
   imageOriginalBytes: number;
   videoOriginalBytes: number;
 }
@@ -103,7 +102,6 @@ export function MeScreen({
         recentViewedCount,
         favoriteImageCount,
         deletedImageCount,
-        totalOriginalBytes,
         imageOriginalBytes,
         videoOriginalBytes,
         profileAvatarUri,
@@ -113,7 +111,6 @@ export function MeScreen({
         imageRepository.countRecentViewed(db),
         imageRepository.countFavorites(db),
         imageRepository.countDeleted(db),
-        imageRepository.sumFileSize(db, { includeDeleted: true }),
         imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'image' }),
         imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'video' }),
         settingsRepository.getProfileAvatarUri(db),
@@ -126,7 +123,6 @@ export function MeScreen({
         favoriteImageCount,
         deletedImageCount,
         profileAvatarUri,
-        totalOriginalBytes,
         imageOriginalBytes,
         videoOriginalBytes,
       };
@@ -226,7 +222,6 @@ export function MeScreen({
     }
   }
 
-  const totalBytes = data?.totalOriginalBytes ?? 0;
   const imageBytes = data?.imageOriginalBytes ?? 0;
   const videoBytes = data?.videoOriginalBytes ?? 0;
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
@@ -256,16 +251,12 @@ export function MeScreen({
         <View style={styles.storageBlock}>
           <View style={styles.storageHeader}>
             <View style={styles.storageInlineRow}>
-              <Text numberOfLines={1} style={styles.storageLabel}>本地原图存储</Text>
-              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
-            </View>
-            <View style={styles.storageInlineRow}>
               <Text numberOfLines={1} style={styles.storageLabel}>图片原图</Text>
-              <Text numberOfLines={1} style={styles.storageValueSmall}>{formatFileSize(imageBytes)}</Text>
+              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(imageBytes)}</Text>
             </View>
             <View style={styles.storageInlineRow}>
               <Text numberOfLines={1} style={styles.storageLabel}>视频存储</Text>
-              <Text numberOfLines={1} style={styles.storageValueSmall}>{formatFileSize(videoBytes)}</Text>
+              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(videoBytes)}</Text>
             </View>
           </View>
           <View style={styles.libraryStatsRow}>
@@ -451,26 +442,23 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   storageHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: spacing[2],
   },
   storageLabel: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
   },
   storageInlineRow: {
-    alignItems: 'flex-end',
+    alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
+    justifyContent: 'space-between',
+    minHeight: 28,
   },
   storageValue: {
     ...typography.textStyles.statNumber,
-  },
-  storageValueSmall: {
-    ...typography.textStyles.caption,
-    color: colors.text.body,
-    fontWeight: '700',
   },
   entryList: {
     gap: spacing[3],

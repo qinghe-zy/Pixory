@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Platform, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppScreen } from './src/components/AppScreen';
@@ -1260,11 +1260,7 @@ export default function App() {
           onUnlock={unlockPersonalSpace}
           visible={personalUnlockVisible}
         />
-        {personalSessionState === 'unlocked' ? (
-          <View pointerEvents="none" style={styles.personalBanner}>
-            <Text style={styles.personalBannerText}>隐私模式</Text>
-          </View>
-        ) : null}
+        {personalSessionState === 'unlocked' ? <PersonalModeBanner /> : null}
         {privacyShieldVisible ? (
           <View style={styles.privacyShield}>
             <Text style={styles.privacyShieldText}>Pixory</Text>
@@ -1273,6 +1269,16 @@ export default function App() {
         <StatusBar style="dark" />
       </AppToastProvider>
     </SafeAreaProvider>
+  );
+}
+
+function PersonalModeBanner() {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View pointerEvents="none" style={[styles.personalBanner, { top: insets.top }]}>
+      <Text style={styles.personalBannerText}>隐私模式</Text>
+    </View>
   );
 }
 

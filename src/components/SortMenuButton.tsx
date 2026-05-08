@@ -1,10 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ImageSortOrder } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 
 export const IMAGE_SORT_OPTIONS: Array<{ value: ImageSortOrder; label: string }> = [
+  { value: 'lastViewedAtDesc', label: '最近查看' },
+  { value: 'lastViewedAtAsc', label: '最早查看' },
   { value: 'createdAtDesc', label: '最新导入' },
   { value: 'createdAtAsc', label: '最早导入' },
   { value: 'updatedAtDesc', label: '最近更新' },
@@ -19,11 +22,6 @@ export function getImageSortLabel(orderBy: ImageSortOrder) {
   return IMAGE_SORT_OPTIONS.find((option) => option.value === orderBy)?.label ?? '最新导入';
 }
 
-export function getNextImageSortOrder(orderBy: ImageSortOrder): ImageSortOrder {
-  const currentIndex = IMAGE_SORT_OPTIONS.findIndex((option) => option.value === orderBy);
-  return IMAGE_SORT_OPTIONS[(currentIndex + 1) % IMAGE_SORT_OPTIONS.length]?.value ?? 'createdAtDesc';
-}
-
 export function SortMenuButton({
   orderBy,
   onChange,
@@ -31,19 +29,52 @@ export function SortMenuButton({
   orderBy: ImageSortOrder;
   onChange: (orderBy: ImageSortOrder) => void;
 }) {
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
+
   return (
-    <Pressable
-      accessibilityLabel="切换素材排序"
-      onPress={() => onChange(getNextImageSortOrder(orderBy))}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-    >
-      <Ionicons color={colors.text.secondary} name="swap-vertical-outline" size={14} />
-      <Text numberOfLines={1} style={styles.text}>{getImageSortLabel(orderBy)}</Text>
-    </Pressable>
+    <View style={styles.wrap}>
+      <Pressable
+        accessibilityLabel="选择素材排序"
+        onPress={() => setSortMenuVisible((visible) => !visible)}
+        style={({ pressed }) => [styles.button, sortMenuVisible && styles.buttonActive, pressed && styles.pressed]}
+      >
+        <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="swap-vertical-outline" size={14} />
+        <Text numberOfLines={1} style={[styles.text, sortMenuVisible && styles.textActive]}>{getImageSortLabel(orderBy)}</Text>
+        <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
+      </Pressable>
+      {sortMenuVisible ? (
+        <>
+          <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={styles.dismissLayer} />
+          <View style={styles.menu}>
+            {IMAGE_SORT_OPTIONS.map((option) => {
+              const selected = option.value === orderBy;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={option.value}
+                  onPress={() => {
+                    onChange(option.value);
+                    setSortMenuVisible(false);
+                  }}
+                  style={({ pressed }) => [styles.menuRow, selected ? styles.menuRowActive : null, pressed && styles.pressed]}
+                >
+                  <Text numberOfLines={1} style={[styles.menuText, selected ? styles.menuTextActive : null]}>{option.label}</Text>
+                  <Ionicons color={selected ? colors.primary.active : colors.text.tertiary} name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={15} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    position: 'relative',
+    zIndex: 20,
+  },
   button: {
     alignItems: 'center',
     backgroundColor: colors.background.surface,
@@ -55,10 +86,59 @@ const styles = StyleSheet.create({
     minHeight: 32,
     paddingHorizontal: spacing[2],
   },
+  buttonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
   text: {
     ...typography.textStyles.micro,
     color: colors.text.secondary,
     fontWeight: '700',
+  },
+  textActive: {
+    color: colors.primary.active,
+  },
+  dismissLayer: {
+    bottom: -1000,
+    left: -1000,
+    position: 'absolute',
+    right: -1000,
+    top: -1000,
+    zIndex: 21,
+  },
+  menu: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[1],
+    minWidth: 156,
+    padding: spacing[2],
+    position: 'absolute',
+    right: 0,
+    top: 38,
+    zIndex: 22,
+  },
+  menuRow: {
+    alignItems: 'center',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 34,
+    paddingHorizontal: spacing[2],
+  },
+  menuRowActive: {
+    backgroundColor: colors.primary.weak,
+  },
+  menuText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    flex: 1,
+    fontWeight: '700',
+    minWidth: 0,
+  },
+  menuTextActive: {
+    color: colors.primary.active,
   },
   pressed: {
     opacity: 0.78,
