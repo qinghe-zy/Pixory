@@ -80,6 +80,7 @@ test('video player scrubbing works from both the progress bar and video surface'
 
   assert.match(playerSource, /const \[surfaceWidth, setSurfaceWidth\] = useState\(1\)/);
   assert.match(playerSource, /surfacePanResponder = useMemo/);
+  assert.match(playerSource, /style=\{styles\.videoGestureLayer\}/);
   assert.match(playerSource, /onMoveShouldSetPanResponder:[\s\S]*gestureState\.dx/);
   assert.match(playerSource, /updateScrubFromTrackLocation\(event\.nativeEvent\.locationX\)/);
   assert.match(playerSource, /function updateScrubFromSurfaceDelta\(deltaX: number\)/);
@@ -88,7 +89,33 @@ test('video player scrubbing works from both the progress bar and video surface'
   assert.match(playerSource, /SCRUB_PREVIEW_SEEK_INTERVAL_MS\s*=\s*90/);
   assert.match(playerSource, /SURFACE_SCRUB_ACTIVATION_PX\s*=\s*3/);
   assert.match(playerSource, /scrubDisplayTimeRef\.current/);
-  assert.match(playerSource, /scrubStartTimeRef\.current \+ \(deltaX \/ surfaceWidth\) \* effectiveDuration/);
+  assert.match(playerSource, /function getSurfaceSeekSecondsPerScreen\(effectiveDuration: number\)/);
+  assert.match(playerSource, /SURFACE_SEEK_SHORT_SCREEN_RATIO\s*=\s*0\.5/);
+  assert.match(playerSource, /SURFACE_SEEK_MEDIUM_SCREEN_RATIO\s*=\s*0\.3/);
+  assert.match(playerSource, /SURFACE_SEEK_LONG_SCREEN_RATIO\s*=\s*0\.22/);
+  assert.match(playerSource, /SURFACE_SEEK_EPISODE_SCREEN_RATIO\s*=\s*0\.15/);
+  assert.match(playerSource, /SURFACE_SEEK_SUPER_LONG_MIN_SECONDS_PER_SCREEN\s*=\s*15 \* 60/);
+  assert.match(playerSource, /SURFACE_SEEK_SUPER_LONG_MAX_SECONDS_PER_SCREEN\s*=\s*20 \* 60/);
+  assert.doesNotMatch(playerSource, /SURFACE_SEEK_PERCENT_PER_SCREEN/);
+  assert.match(playerSource, /function getDampedSurfaceDragRatio\(screenRatio: number\)/);
+  assert.match(playerSource, /SURFACE_SEEK_DAMPING_LOW_RATIO\s*=\s*0\.2/);
+  assert.match(playerSource, /SURFACE_SEEK_DAMPING_HIGH_RATIO\s*=\s*0\.55/);
+  assert.match(playerSource, /SURFACE_SEEK_DAMPING_LOW_FACTOR\s*=\s*0\.7/);
+  assert.match(playerSource, /SURFACE_SEEK_DAMPING_HIGH_FACTOR\s*=\s*1\.25/);
+  assert.doesNotMatch(playerSource, /SURFACE_SEEK_DAMPING_EXPONENT/);
+  assert.match(playerSource, /function getSurfaceSeekFineTuneFactor\(deltaY: number\)/);
+  assert.match(playerSource, /SURFACE_SEEK_FINE_LIGHT_PX\s*=\s*60/);
+  assert.match(playerSource, /SURFACE_SEEK_FINE_MEDIUM_PX\s*=\s*120/);
+  assert.match(playerSource, /SURFACE_SEEK_FINE_HIGH_PX\s*=\s*200/);
+  assert.match(playerSource, /SURFACE_SEEK_FINE_HIGH_FACTOR\s*=\s*0\.15/);
+  assert.doesNotMatch(playerSource, /精细拖动 ×/);
+  assert.doesNotMatch(playerSource, /高精度拖动 ×/);
+  assert.match(playerSource, /scrubGestureHint/);
+  assert.match(playerSource, /function getScrubBoundaryHint\(rawTargetTime: number, effectiveDuration: number\)/);
+  assert.match(playerSource, /formatScrubMeta/);
+  assert.match(playerSource, /updateScrubFromSurfaceGesture\(gestureState\.dx, gestureState\.dy\)/);
+  assert.match(playerSource, /rawTargetTime = scrubStartTimeRef\.current \+ dragRatio \* secondsPerScreen \* fineTuneFactor/);
+  assert.doesNotMatch(playerSource, /scrubStartTimeRef\.current \+ \(deltaX \/ surfaceWidth\) \* effectiveDuration/);
   assert.match(playerSource, /getEffectiveDuration\(\)[\s\S]*player\.duration/);
 });
 
@@ -99,6 +126,9 @@ test('video surface exposes compact hold-speed feedback and double-tap play paus
   assert.match(playerSource, /setHoldSpeedVisible\(true\)/);
   assert.match(playerSource, /styles\.holdSpeedBadge/);
   assert.match(playerSource, /DOUBLE_TAP_PAUSE_WINDOW_MS/);
+  assert.match(playerSource, /surfaceGestureModeRef/);
+  assert.match(playerSource, /surfaceGestureModeRef\.current = 'hold'/);
+  assert.match(playerSource, /function finishHoldFastForward\(\)/);
   assert.match(playerSource, /function handleSurfacePress\(\)[\s\S]*togglePlay\(\)/);
-  assert.match(playerSource, /onPress=\{handleSurfacePress\}/);
+  assert.match(playerSource, /surfaceGestureModeRef\.current === 'pending'[\s\S]*handleSurfacePress\(\)/);
 });

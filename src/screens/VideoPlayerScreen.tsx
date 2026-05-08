@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { VolumeManager } from 'react-native-volume-manager';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -13,6 +15,7 @@ import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, t
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
 import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from '../services/videoImportService';
+import { loadVideoPlayerPreferences, saveVideoPlayerPreferences } from '../services/mediaExperiencePreferences';
 import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
@@ -21,6 +24,41 @@ const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
 const SCRUB_PREVIEW_SEEK_INTERVAL_MS = 90;
 const SURFACE_SCRUB_ACTIVATION_PX = 3;
+const GESTURE_DOUBLE_TAP_SEEK_SECONDS = 10;
+const VERTICAL_GESTURE_ACTIVATION_PX = 8;
+const VERTICAL_GESTURE_FULL_HEIGHT_RATIO = 0.58;
+const COMMITTED_SEEK_SETTLE_TIMEOUT_MS = 1400;
+const COMMITTED_SEEK_TOLERANCE_SECONDS = 0.35;
+const SURFACE_SEEK_SHORT_SECONDS = 30;
+const SURFACE_SEEK_MEDIUM_SECONDS = 5 * 60;
+const SURFACE_SEEK_LONG_SECONDS = 30 * 60;
+const SURFACE_SEEK_EPISODE_SECONDS = 120 * 60;
+const SURFACE_SEEK_SHORT_SCREEN_RATIO = 0.5;
+const SURFACE_SEEK_MEDIUM_SCREEN_RATIO = 0.3;
+const SURFACE_SEEK_LONG_SCREEN_RATIO = 0.22;
+const SURFACE_SEEK_EPISODE_SCREEN_RATIO = 0.15;
+const SURFACE_SEEK_SUPER_LONG_MIN_SECONDS_PER_SCREEN = 15 * 60;
+const SURFACE_SEEK_SUPER_LONG_MAX_SECONDS_PER_SCREEN = 20 * 60;
+const SURFACE_SEEK_SUPER_LONG_TARGET_RATIO = 0.08;
+const SURFACE_SEEK_DAMPING_LOW_RATIO = 0.2;
+const SURFACE_SEEK_DAMPING_HIGH_RATIO = 0.55;
+const SURFACE_SEEK_DAMPING_LOW_FACTOR = 0.7;
+const SURFACE_SEEK_DAMPING_MID_FACTOR = 1;
+const SURFACE_SEEK_DAMPING_HIGH_FACTOR = 1.25;
+const SURFACE_SEEK_FINE_LIGHT_PX = 60;
+const SURFACE_SEEK_FINE_MEDIUM_PX = 120;
+const SURFACE_SEEK_FINE_HIGH_PX = 200;
+const SURFACE_SEEK_FINE_LIGHT_FACTOR = 0.6;
+const SURFACE_SEEK_FINE_MEDIUM_FACTOR = 0.35;
+const SURFACE_SEEK_FINE_HIGH_FACTOR = 0.15;
+
+type GestureFeedbackKind = 'seek-backward' | 'seek-forward' | 'play' | 'pause' | 'brightness' | 'volume' | 'locked' | 'unlocked';
+
+interface GestureFeedbackState {
+  kind: GestureFeedbackKind;
+  label: string;
+  value?: number;
+}
 
 interface VideoPlayerScreenProps {
   videoId?: number;
@@ -54,6 +92,10 @@ export function VideoPlayerScreen({
   const [holdSpeedVisible, setHoldSpeedVisible] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubDisplayTime, setScrubDisplayTime] = useState(0);
+  const [scrubGestureHint, setScrubGestureHint] = useState<string | null>(null);
+  const [isPlayerLocked, setIsPlayerLocked] = useState(false);
+  const [gestureFeedback, setGestureFeedback] = useState<GestureFeedbackState | null>(null);
+  const [brightnessOverlayOpacity, setBrightnessOverlayOpacity] = useState(0);
   const [ipPickerVisible, setIpPickerVisible] = useState(false);
   const [normalIps, setNormalIps] = useState<IpListItem[]>([]);
   const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
@@ -62,11 +104,15 @@ export function VideoPlayerScreen({
   const [isLandscape, setIsLandscape] = useState(false);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
+  const [surfaceHeight, setSurfaceHeight] = useState(1);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPreviewSeekTimeRef = useRef<number | null>(null);
   const lastPreviewSeekAtRef = useRef(0);
+  const committedSeekTargetRef = useRef<number | null>(null);
+  const committedSeekStartedAtRef = useRef(0);
   const sourceLoadVersionRef = useRef(0);
   const currentTimeRef = useRef(0);
   const scrubDisplayTimeRef = useRef(0);
@@ -74,8 +120,14 @@ export function VideoPlayerScreen({
   const holdWasPlayingRef = useRef(false);
   const isHoldingFastForwardRef = useRef(false);
   const scrubStartTimeRef = useRef(0);
+  const verticalGestureStartValueRef = useRef(0);
+  const verticalGestureKindRef = useRef<'brightness' | 'volume' | null>(null);
+  const surfaceGestureModeRef = useRef<'pending' | 'scrub' | 'vertical' | 'hold' | null>(null);
   const lastSurfaceTapAtRef = useRef(0);
+  const lastSurfacePressLocationXRef = useRef(0);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const floatingMenuOpacity = useRef(new Animated.Value(0)).current;
+  const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
 
   const sourceUri = externalSource?.uri ?? video?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? video?.originalFilename ?? 'video.mp4';
@@ -93,6 +145,57 @@ export function VideoPlayerScreen({
       useNativeDriver: true,
     }).start();
   }, [controlsOpacity, controlsVisible]);
+
+  useEffect(() => {
+    const isFloatingMenuVisible = speedMenuVisible || queueVisible || moreVisible;
+    if (isFloatingMenuVisible) {
+      floatingMenuTranslateY.setValue(10);
+    }
+    Animated.parallel([
+      Animated.timing(floatingMenuOpacity, {
+        toValue: isFloatingMenuVisible ? 1 : 0,
+        duration: isFloatingMenuVisible ? 150 : 110,
+        useNativeDriver: true,
+      }),
+      Animated.spring(floatingMenuTranslateY, {
+        toValue: isFloatingMenuVisible ? 0 : 8,
+        damping: 18,
+        mass: 0.7,
+        stiffness: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [floatingMenuOpacity, floatingMenuTranslateY, moreVisible, queueVisible, speedMenuVisible]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void loadVideoPlayerPreferences().then((preferences) => {
+      if (!isMounted) {
+        return;
+      }
+      if (SPEED_OPTIONS.includes(preferences.speed as (typeof SPEED_OPTIONS)[number])) {
+        setSpeed(preferences.speed as (typeof SPEED_OPTIONS)[number]);
+      }
+      if (SPEED_OPTIONS.includes(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number])) {
+        setHoldSpeed(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number]);
+      }
+      setIsPlayerLocked(preferences.lockedByDefault);
+      if (preferences.orientationPreference === 'landscape') {
+        setIsLandscape(true);
+        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
+      }
+    });
+    void VolumeManager.showNativeVolumeUI({ enabled: false }).catch(() => undefined);
+    return () => {
+      isMounted = false;
+      if (gestureFeedbackTimerRef.current) {
+        clearTimeout(gestureFeedbackTimerRef.current);
+        gestureFeedbackTimerRef.current = null;
+      }
+      void Brightness.restoreSystemBrightnessAsync().catch(() => undefined);
+      void VolumeManager.showNativeVolumeUI({ enabled: true }).catch(() => undefined);
+    };
+  }, []);
 
   useEffect(() => {
     setActiveVideoId(videoId ?? 0);
@@ -176,11 +279,19 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     player.playbackRate = speed;
+    void saveVideoPlayerPreferences({ speed });
   }, [player, speed]);
+
+  useEffect(() => {
+    void saveVideoPlayerPreferences({ holdSpeed });
+  }, [holdSpeed]);
 
   useEffect(() => {
     const timeSubscription = player.addListener('timeUpdate', (payload) => {
       if (isScrubbingRef.current) {
+        return;
+      }
+      if (shouldIgnoreStaleTimeUpdate(payload.currentTime)) {
         return;
       }
       currentTimeRef.current = payload.currentTime;
@@ -240,6 +351,10 @@ export function VideoPlayerScreen({
   const displayTime = isScrubbing ? scrubDisplayTime : currentTime;
   const progress = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
+  const floatingPanelAnimatedStyle = {
+    opacity: floatingMenuOpacity,
+    transform: [{ translateY: floatingMenuTranslateY }],
+  };
 
   const moreItems: AppActionSheetItem[] = useMemo(
     () => [
@@ -285,22 +400,105 @@ export function VideoPlayerScreen({
   const surfacePanResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_event, gestureState) =>
-          Math.abs(gestureState.dx) > SURFACE_SCRUB_ACTIVATION_PX && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
-        onPanResponderGrant: () => {
-          showControls();
-          beginScrub();
-          scrubStartTimeRef.current = currentTimeRef.current;
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_event, gestureState) => {
+          if (isPlayerLocked) {
+            return false;
+          }
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          return (
+            (absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy) ||
+            (absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx)
+          );
         },
-        onPanResponderMove: (_event, gestureState) => {
-          updateScrubFromSurfaceDelta(gestureState.dx);
+        onPanResponderGrant: (event) => {
+          surfaceGestureModeRef.current = 'pending';
+          lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
+          if (isPlayerLocked) {
+            return;
+          }
+          longPressTimerRef.current = setTimeout(() => {
+            if (surfaceGestureModeRef.current !== 'pending') {
+              return;
+            }
+            surfaceGestureModeRef.current = 'hold';
+            startHoldFastForward();
+          }, 260);
         },
-        onPanResponderRelease: commitScrub,
-        onPanResponderTerminate: cancelScrub,
+        onPanResponderMove: (event, gestureState) => {
+          if (isPlayerLocked) {
+            return;
+          }
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          if (surfaceGestureModeRef.current === 'pending') {
+            const shouldScrub = absDx > SURFACE_SCRUB_ACTIVATION_PX && absDx > absDy;
+            const shouldAdjustVertically = absDy > VERTICAL_GESTURE_ACTIVATION_PX && absDy > absDx;
+            if (!shouldScrub && !shouldAdjustVertically) {
+              return;
+            }
+            clearLongPressTimer();
+            showControls();
+            if (shouldAdjustVertically) {
+              surfaceGestureModeRef.current = 'vertical';
+              void beginVerticalGesture(event);
+              return;
+            }
+            surfaceGestureModeRef.current = 'scrub';
+            beginScrub();
+            scrubStartTimeRef.current = currentTimeRef.current;
+          }
+          if (verticalGestureKindRef.current) {
+            updateVerticalGesture(gestureState.dy);
+            return;
+          }
+          if (surfaceGestureModeRef.current !== 'scrub') {
+            return;
+          }
+          updateScrubFromSurfaceGesture(gestureState.dx, gestureState.dy);
+        },
+        onPanResponderRelease: () => {
+          if (surfaceGestureModeRef.current === 'pending') {
+            surfaceGestureModeRef.current = null;
+            clearLongPressTimer();
+            handleSurfacePress();
+            return;
+          }
+          if (surfaceGestureModeRef.current === 'hold') {
+            surfaceGestureModeRef.current = null;
+            finishHoldFastForward();
+            return;
+          }
+          if (verticalGestureKindRef.current) {
+            surfaceGestureModeRef.current = null;
+            finishVerticalGesture();
+            return;
+          }
+          surfaceGestureModeRef.current = null;
+          commitScrub();
+        },
+        onPanResponderTerminate: () => {
+          if (surfaceGestureModeRef.current === 'hold') {
+            finishHoldFastForward();
+            surfaceGestureModeRef.current = null;
+            return;
+          }
+          if (verticalGestureKindRef.current) {
+            finishVerticalGesture();
+            surfaceGestureModeRef.current = null;
+            return;
+          }
+          if (surfaceGestureModeRef.current === 'scrub') {
+            cancelScrub();
+          } else {
+            clearLongPressTimer();
+          }
+          surfaceGestureModeRef.current = null;
+        },
         onShouldBlockNativeResponder: () => true,
       }),
-    [duration, player, surfaceWidth]
+    [duration, holdSpeed, isPlayerLocked, isPlaying, player, speed, surfaceWidth, surfaceHeight]
   );
 
   async function handleSaveLocal() {
@@ -465,6 +663,15 @@ export function VideoPlayerScreen({
     };
   }
 
+  function finishHoldFastForward() {
+    player.playbackRate = speed;
+    if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
+      safePausePlayer();
+    }
+    isHoldingFastForwardRef.current = false;
+    clearLongPressTimer();
+  }
+
   function togglePlay() {
     showControls();
     if (isPlaying) {
@@ -474,15 +681,130 @@ export function VideoPlayerScreen({
     }
   }
 
+  function showGestureFeedback(nextFeedback: GestureFeedbackState) {
+    if (gestureFeedbackTimerRef.current) {
+      clearTimeout(gestureFeedbackTimerRef.current);
+    }
+    setGestureFeedback(nextFeedback);
+    if (nextFeedback.kind === 'brightness') {
+      setBrightnessOverlayOpacity(Math.max(0, Math.min(0.46, 0.46 - (nextFeedback.value ?? 0.5) * 0.36)));
+    }
+    gestureFeedbackTimerRef.current = setTimeout(() => {
+      setGestureFeedback(null);
+      setBrightnessOverlayOpacity(0);
+      gestureFeedbackTimerRef.current = null;
+    }, 900);
+  }
+
   function handleSurfacePress() {
+    if (isPlayerLocked) {
+      showGestureFeedback({ kind: 'locked', label: '播放器已锁定' });
+      return;
+    }
     const now = Date.now();
     if (now - lastSurfaceTapAtRef.current <= DOUBLE_TAP_PAUSE_WINDOW_MS) {
       lastSurfaceTapAtRef.current = 0;
+      const locationX = lastSurfacePressLocationXRef.current;
+      const leftBoundary = surfaceWidth / 3;
+      const rightBoundary = surfaceWidth * 2 / 3;
+      if (locationX < leftBoundary) {
+        seekByOffset(-GESTURE_DOUBLE_TAP_SEEK_SECONDS);
+        showGestureFeedback({ kind: 'seek-backward', label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+        return;
+      }
+      if (locationX > rightBoundary) {
+        seekByOffset(GESTURE_DOUBLE_TAP_SEEK_SECONDS);
+        showGestureFeedback({ kind: 'seek-forward', label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+        return;
+      }
       togglePlay();
+      showGestureFeedback({ kind: isPlaying ? 'pause' : 'play', label: isPlaying ? '暂停' : '播放' });
       return;
     }
     lastSurfaceTapAtRef.current = now;
     toggleControls();
+  }
+
+  function handlePartitionDoubleTap(locationX: number) {
+    const leftBoundary = surfaceWidth / 3;
+    const rightBoundary = surfaceWidth * 2 / 3;
+    if (locationX < leftBoundary) {
+      seekByOffset(-GESTURE_DOUBLE_TAP_SEEK_SECONDS);
+      showGestureFeedback({ kind: 'seek-backward', label: `后退 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+      return;
+    }
+    if (locationX > rightBoundary) {
+      seekByOffset(GESTURE_DOUBLE_TAP_SEEK_SECONDS);
+      showGestureFeedback({ kind: 'seek-forward', label: `前进 ${GESTURE_DOUBLE_TAP_SEEK_SECONDS}s` });
+      return;
+    }
+    togglePlay();
+    showGestureFeedback({ kind: isPlaying ? 'pause' : 'play', label: isPlaying ? '暂停' : '播放' });
+  }
+
+  function seekByOffset(offsetSeconds: number) {
+    seekToTime(currentTimeRef.current + offsetSeconds);
+    showControls();
+  }
+
+  function togglePlayerLock() {
+    setIsPlayerLocked((locked) => {
+      const nextLocked = !locked;
+      if (nextLocked) {
+        clearHideTimer();
+        setControlsVisible(false);
+        setSpeedMenuVisible(false);
+        setQueueVisible(false);
+        setMoreVisible(false);
+      } else {
+        showControls();
+      }
+      void saveVideoPlayerPreferences({ lockedByDefault: nextLocked });
+      showGestureFeedback({ kind: nextLocked ? 'locked' : 'unlocked', label: nextLocked ? '已锁定' : '已解锁' });
+      return nextLocked;
+    });
+  }
+
+  async function beginVerticalGesture(event: GestureResponderEvent) {
+    const isBrightnessGesture = event.nativeEvent.locationX < surfaceWidth / 2;
+    verticalGestureKindRef.current = isBrightnessGesture ? 'brightness' : 'volume';
+    if (isBrightnessGesture) {
+      const currentBrightness = await Brightness.getBrightnessAsync().catch(() => 0.5);
+      verticalGestureStartValueRef.current = currentBrightness;
+      showGestureFeedback({ kind: 'brightness', label: '亮度', value: currentBrightness });
+      return;
+    }
+    const currentVolume = await VolumeManager.getVolume().catch(() => ({ volume: 0.5 }));
+    verticalGestureStartValueRef.current = currentVolume.volume;
+    showGestureFeedback({ kind: 'volume', label: '音量', value: currentVolume.volume });
+  }
+
+  function updateVerticalGesture(deltaY: number) {
+    const gestureKind = verticalGestureKindRef.current;
+    if (!gestureKind) {
+      return;
+    }
+    const nextValue = clamp01(verticalGestureStartValueRef.current - deltaY / Math.max(1, surfaceHeight * VERTICAL_GESTURE_FULL_HEIGHT_RATIO));
+    if (gestureKind === 'brightness') {
+      void adjustBrightnessFromGesture(nextValue);
+      showGestureFeedback({ kind: 'brightness', label: '亮度', value: nextValue });
+      return;
+    }
+    void adjustVolumeFromGesture(nextValue);
+    showGestureFeedback({ kind: 'volume', label: '音量', value: nextValue });
+  }
+
+  function finishVerticalGesture() {
+    verticalGestureKindRef.current = null;
+    resetHideTimer();
+  }
+
+  async function adjustBrightnessFromGesture(value: number) {
+    await Brightness.setBrightnessAsync(value).catch(() => undefined);
+  }
+
+  async function adjustVolumeFromGesture(value: number) {
+    await VolumeManager.setVolume(value, { type: 'music', showUI: false, playSound: false }).catch(() => undefined);
   }
 
   function toggleControls() {
@@ -514,6 +836,30 @@ export function VideoPlayerScreen({
     setCurrentTime(clampedTime);
   }
 
+  function shouldIgnoreStaleTimeUpdate(nextTime: number) {
+    const targetTime = committedSeekTargetRef.current;
+    if (targetTime == null) {
+      return false;
+    }
+
+    const isSettled = Math.abs(nextTime - targetTime) <= COMMITTED_SEEK_TOLERANCE_SECONDS;
+    if (isSettled) {
+      committedSeekTargetRef.current = null;
+      return false;
+    }
+
+    const isStillSettling = Date.now() - committedSeekStartedAtRef.current < COMMITTED_SEEK_SETTLE_TIMEOUT_MS;
+    if (isStillSettling) {
+      return true;
+    }
+
+    committedSeekTargetRef.current = null;
+    player.currentTime = targetTime;
+    currentTimeRef.current = targetTime;
+    setCurrentTime(targetTime);
+    return true;
+  }
+
   function beginScrub() {
     clearHideTimer();
     clearLongPressTimer();
@@ -521,6 +867,7 @@ export function VideoPlayerScreen({
     isScrubbingRef.current = true;
     scrubDisplayTimeRef.current = currentTimeRef.current;
     setScrubDisplayTime(currentTimeRef.current);
+    setScrubGestureHint(null);
   }
 
   function normalizeScrubTime(nextTime: number) {
@@ -552,7 +899,6 @@ export function VideoPlayerScreen({
     scrubDisplayTimeRef.current = clampedTime;
     setScrubDisplayTime(clampedTime);
     setCurrentTime(clampedTime);
-    schedulePreviewSeek(clampedTime);
   }
 
   function updateScrubFromTrackLocation(locationX: number) {
@@ -560,7 +906,9 @@ export function VideoPlayerScreen({
     if (effectiveDuration <= 0 || trackWidth <= 0) {
       return;
     }
-    updateScrubTime((locationX / trackWidth) * effectiveDuration);
+    const rawTargetTime = (locationX / trackWidth) * effectiveDuration;
+    setScrubGestureHint(getScrubBoundaryHint(rawTargetTime, effectiveDuration));
+    updateScrubTime(rawTargetTime);
   }
 
   function seekFromTrackLocation(locationX: number) {
@@ -568,29 +916,104 @@ export function VideoPlayerScreen({
   }
 
   function updateScrubFromSurfaceDelta(deltaX: number) {
+    updateScrubFromSurfaceGesture(deltaX, 0);
+  }
+
+  function updateScrubFromSurfaceGesture(deltaX: number, deltaY: number) {
     const effectiveDuration = getEffectiveDuration();
     if (effectiveDuration <= 0 || surfaceWidth <= 0) {
       return;
     }
-    updateScrubTime(scrubStartTimeRef.current + (deltaX / surfaceWidth) * effectiveDuration);
+    const secondsPerScreen = getSurfaceSeekSecondsPerScreen(effectiveDuration);
+    const dragRatio = getDampedSurfaceDragRatio(deltaX / surfaceWidth);
+    const fineTuneFactor = getSurfaceSeekFineTuneFactor(deltaY);
+    const rawTargetTime = scrubStartTimeRef.current + dragRatio * secondsPerScreen * fineTuneFactor;
+    setScrubGestureHint(getScrubBoundaryHint(rawTargetTime, effectiveDuration));
+    updateScrubTime(rawTargetTime);
   }
 
   function seekFromSurfaceDelta(deltaX: number) {
     updateScrubFromSurfaceDelta(deltaX);
   }
 
+  function getSurfaceSeekSecondsPerScreen(effectiveDuration: number) {
+    if (effectiveDuration <= SURFACE_SEEK_SHORT_SECONDS) {
+      return effectiveDuration * SURFACE_SEEK_SHORT_SCREEN_RATIO;
+    }
+    if (effectiveDuration <= SURFACE_SEEK_MEDIUM_SECONDS) {
+      return effectiveDuration * SURFACE_SEEK_MEDIUM_SCREEN_RATIO;
+    }
+    if (effectiveDuration <= SURFACE_SEEK_LONG_SECONDS) {
+      return effectiveDuration * SURFACE_SEEK_LONG_SCREEN_RATIO;
+    }
+    if (effectiveDuration <= SURFACE_SEEK_EPISODE_SECONDS) {
+      return effectiveDuration * SURFACE_SEEK_EPISODE_SCREEN_RATIO;
+    }
+    return Math.min(
+      SURFACE_SEEK_SUPER_LONG_MAX_SECONDS_PER_SCREEN,
+      Math.max(SURFACE_SEEK_SUPER_LONG_MIN_SECONDS_PER_SCREEN, effectiveDuration * SURFACE_SEEK_SUPER_LONG_TARGET_RATIO),
+    );
+  }
+
+  function getDampedSurfaceDragRatio(screenRatio: number) {
+    const direction = Math.sign(screenRatio);
+    const ratio = Math.min(1, Math.abs(screenRatio));
+    let dampedRatio = 0;
+    if (ratio <= SURFACE_SEEK_DAMPING_LOW_RATIO) {
+      dampedRatio = ratio * SURFACE_SEEK_DAMPING_LOW_FACTOR;
+    } else if (ratio <= SURFACE_SEEK_DAMPING_HIGH_RATIO) {
+      dampedRatio =
+        SURFACE_SEEK_DAMPING_LOW_RATIO * SURFACE_SEEK_DAMPING_LOW_FACTOR +
+        (ratio - SURFACE_SEEK_DAMPING_LOW_RATIO) * SURFACE_SEEK_DAMPING_MID_FACTOR;
+    } else {
+      dampedRatio =
+        SURFACE_SEEK_DAMPING_LOW_RATIO * SURFACE_SEEK_DAMPING_LOW_FACTOR +
+        (SURFACE_SEEK_DAMPING_HIGH_RATIO - SURFACE_SEEK_DAMPING_LOW_RATIO) * SURFACE_SEEK_DAMPING_MID_FACTOR +
+        (ratio - SURFACE_SEEK_DAMPING_HIGH_RATIO) * SURFACE_SEEK_DAMPING_HIGH_FACTOR;
+    }
+    return direction * Math.min(1, dampedRatio);
+  }
+
+  function getSurfaceSeekFineTuneFactor(deltaY: number) {
+    if (deltaY >= -SURFACE_SEEK_FINE_LIGHT_PX) {
+      return 1;
+    }
+    if (deltaY > -SURFACE_SEEK_FINE_MEDIUM_PX) {
+      return SURFACE_SEEK_FINE_LIGHT_FACTOR;
+    }
+    if (deltaY > -SURFACE_SEEK_FINE_HIGH_PX) {
+      return SURFACE_SEEK_FINE_MEDIUM_FACTOR;
+    }
+    return SURFACE_SEEK_FINE_HIGH_FACTOR;
+  }
+
+  function getScrubBoundaryHint(rawTargetTime: number, effectiveDuration: number) {
+    if (rawTargetTime < 0) {
+      return '已到开头';
+    }
+    if (rawTargetTime > effectiveDuration) {
+      return '已到结尾';
+    }
+    return null;
+  }
+
   function commitScrub() {
     const finalTime = scrubDisplayTimeRef.current;
     clearPreviewSeekTimer();
     seekToTime(finalTime);
+    committedSeekTargetRef.current = finalTime;
+    committedSeekStartedAtRef.current = Date.now();
     setIsScrubbing(false);
+    setScrubGestureHint(null);
     isScrubbingRef.current = false;
     resetHideTimer();
   }
 
   function cancelScrub() {
     clearPreviewSeekTimer();
+    committedSeekTargetRef.current = null;
     setIsScrubbing(false);
+    setScrubGestureHint(null);
     isScrubbingRef.current = false;
     resetHideTimer();
   }
@@ -600,9 +1023,11 @@ export function VideoPlayerScreen({
       if (isLandscape) {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         setIsLandscape(false);
+        void saveVideoPlayerPreferences({ orientationPreference: 'portrait' });
       } else {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         setIsLandscape(true);
+        void saveVideoPlayerPreferences({ orientationPreference: 'landscape' });
       }
       showControls();
     } catch {
@@ -620,6 +1045,17 @@ export function VideoPlayerScreen({
     showControls();
   }
 
+  function switchVideoByOffset(offset: number) {
+    if (queue.length === 0 || currentIndex < 0) {
+      return;
+    }
+    const nextIndex = Math.max(0, Math.min(queue.length - 1, currentIndex + offset));
+    const nextVideo = queue[nextIndex];
+    if (nextVideo && nextVideo.id !== activeVideoId) {
+      switchVideo(nextVideo.id);
+    }
+  }
+
   const title = sourceFileName;
 
   function handleBack() {
@@ -630,26 +1066,41 @@ export function VideoPlayerScreen({
   return (
     <View style={styles.shell}>
       <ExpoStatusBar hidden />
-      <Pressable
-        {...surfacePanResponder.panHandlers}
-        delayLongPress={260}
-        onLongPress={() => {
-          startHoldFastForward();
+      <View
+        onLayout={(event) => {
+          setSurfaceWidth(Math.max(1, event.nativeEvent.layout.width));
+          setSurfaceHeight(Math.max(1, event.nativeEvent.layout.height));
         }}
-        onPress={handleSurfacePress}
-        onPressOut={() => {
-          player.playbackRate = speed;
-          if (isHoldingFastForwardRef.current && !holdWasPlayingRef.current) {
-            safePausePlayer();
-          }
-          isHoldingFastForwardRef.current = false;
-          clearLongPressTimer();
-        }}
-        onLayout={(event) => setSurfaceWidth(Math.max(1, event.nativeEvent.layout.width))}
         style={styles.videoSurface}
       >
-        <VideoView allowsFullscreen={false} contentFit="contain" nativeControls={false} player={player} style={styles.videoView} />
-      </Pressable>
+        <VideoView
+          allowsPictureInPicture={false}
+          contentFit="contain"
+          fullscreenOptions={{ enable: false }}
+          nativeControls={false}
+          player={player}
+          startsPictureInPictureAutomatically={false}
+          style={styles.videoView}
+        />
+        <View
+          {...surfacePanResponder.panHandlers}
+          style={styles.videoGestureLayer}
+        />
+      </View>
+
+      {brightnessOverlayOpacity > 0 ? <View pointerEvents="none" style={[styles.brightnessOverlay, { opacity: brightnessOverlayOpacity }]} /> : null}
+
+      {gestureFeedback ? (
+        <View pointerEvents="none" style={styles.gestureFeedback}>
+          <Ionicons color={colors.text.inverse} name={getGestureFeedbackIcon(gestureFeedback.kind)} size={24} />
+          <Text style={styles.gestureFeedbackText}>{gestureFeedback.label}</Text>
+          {gestureFeedback.value != null ? (
+            <View style={styles.gestureFeedbackBar}>
+              <View style={[styles.gestureFeedbackFill, { width: `${Math.round(gestureFeedback.value * 100)}%` }]} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {holdSpeedVisible ? (
         <View style={[styles.holdSpeedFloatingBadge, { bottom: insets.bottom + 118 }]}>
@@ -658,7 +1109,7 @@ export function VideoPlayerScreen({
         </View>
       ) : null}
 
-      <Animated.View pointerEvents={controlsVisible ? 'auto' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
+      <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'auto' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
           <View style={[styles.topBar, { paddingTop: insets.top + spacing[2] }]}>
             <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
               <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
@@ -679,7 +1130,7 @@ export function VideoPlayerScreen({
           {moreVisible ? (
             <>
               <Pressable accessibilityLabel="关闭视频操作菜单" onPress={() => setMoreVisible(false)} style={styles.menuDismissLayer} />
-              <View style={[styles.moreMenu, { top: insets.top + 58, right: spacing[3] }]}>
+              <Animated.View style={[styles.moreMenu, { top: insets.top + 58, right: spacing[3] }, floatingPanelAnimatedStyle]}>
                 {moreItems.map((item) => (
                   <Pressable
                     accessibilityRole="button"
@@ -694,12 +1145,12 @@ export function VideoPlayerScreen({
                     <Text style={styles.moreMenuText}>{item.label}</Text>
                   </Pressable>
                 ))}
-              </View>
+              </Animated.View>
             </>
           ) : null}
 
           {queueVisible ? (
-            <View style={[styles.queuePanel, { bottom: insets.bottom + 86 }]}>
+            <Animated.View style={[styles.queuePanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
               <Text style={styles.queueTitle}>待播放</Text>
               {queue.slice(Math.max(0, currentIndex - 1), currentIndex + 5).map((item) => (
                 <Pressable key={item.id} onPress={() => switchVideo(item.id)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
@@ -711,14 +1162,15 @@ export function VideoPlayerScreen({
                     )}
                   </View>
                   <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
+                  {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
                   <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
                 </Pressable>
               ))}
-            </View>
+            </Animated.View>
           ) : null}
 
           {speedMenuVisible ? (
-            <View style={[styles.speedPanel, { bottom: insets.bottom + 86 }]}>
+            <Animated.View style={[styles.speedPanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
               <Text style={styles.speedTitle}>播放速度</Text>
               <View style={styles.speedGrid}>
                 {SPEED_OPTIONS.map((option) => (
@@ -735,7 +1187,7 @@ export function VideoPlayerScreen({
                   </Pressable>
                 ))}
               </View>
-            </View>
+            </Animated.View>
           ) : null}
 
           <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[2] }]}>
@@ -752,13 +1204,23 @@ export function VideoPlayerScreen({
             {isScrubbing ? (
               <View style={styles.scrubBubble}>
                 <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
-                <Text style={styles.scrubBubbleMeta}>{Math.round(progress * 100)}%</Text>
+                <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
               </View>
             ) : null}
             <View style={styles.controlRow}>
+              {isLandscape ? (
+                <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
+                </Pressable>
+              ) : null}
               <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                 <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
               </Pressable>
+              {isLandscape ? (
+                <Pressable accessibilityLabel="下一个视频" onPress={() => switchVideoByOffset(1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
+                </Pressable>
+              ) : null}
               <Text style={styles.timeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
               <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
                 <Text style={styles.pillButtonText}>{speed}x</Text>
@@ -770,9 +1232,18 @@ export function VideoPlayerScreen({
                 <Ionicons color={colors.text.inverse} name="list-outline" size={16} />
                 <Text style={styles.pillButtonText}>待播放</Text>
               </Pressable>
+              <Pressable accessibilityLabel="锁定播放器" onPress={togglePlayerLock} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={18} />
+              </Pressable>
             </View>
           </View>
         </Animated.View>
+
+      {isPlayerLocked ? (
+        <Pressable accessibilityLabel="解锁播放器" onPress={togglePlayerLock} style={[styles.unlockButton, { bottom: insets.bottom + spacing[2] }]}>
+          <Ionicons color={colors.text.inverse} name="lock-closed" size={18} />
+        </Pressable>
+      ) : null}
 
       <AppActionSheet
         items={[
@@ -813,6 +1284,33 @@ export function VideoPlayerScreen({
   );
 }
 
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function formatScrubDelta(deltaSeconds: number): string {
+  const absoluteDelta = Math.abs(deltaSeconds);
+  if (absoluteDelta < 0.5) {
+    return '预览中';
+  }
+  return `${deltaSeconds >= 0 ? '快进' : '后退'} ${formatDuration(absoluteDelta * 1000)}`;
+}
+
+function formatScrubMeta(deltaSeconds: number, hint: string | null): string {
+  const deltaLabel = formatScrubDelta(deltaSeconds);
+  return hint ? `${deltaLabel} · ${hint}` : deltaLabel;
+}
+
+function getGestureFeedbackIcon(kind: GestureFeedbackKind) {
+  if (kind === 'seek-backward') return 'play-back';
+  if (kind === 'seek-forward') return 'play-forward';
+  if (kind === 'brightness') return 'sunny-outline';
+  if (kind === 'volume') return 'volume-high-outline';
+  if (kind === 'locked') return 'lock-closed-outline';
+  if (kind === 'unlocked') return 'lock-open-outline';
+  return kind === 'pause' ? 'pause' : 'play';
+}
+
 const styles = StyleSheet.create({
   shell: {
     backgroundColor: '#050607',
@@ -821,9 +1319,60 @@ const styles = StyleSheet.create({
   videoSurface: {
     flex: 1,
   },
+  videoGestureLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
   videoView: {
     height: '100%',
     width: '100%',
+  },
+  brightnessOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+  },
+  gestureFeedback: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.82)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    justifyContent: 'center',
+    minHeight: 104,
+    minWidth: 126,
+    padding: spacing[4],
+    position: 'absolute',
+    top: '42%',
+  },
+  gestureFeedbackText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '800',
+  },
+  gestureFeedbackBar: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: radius.pill,
+    height: 4,
+    overflow: 'hidden',
+    width: 82,
+  },
+  gestureFeedbackFill: {
+    backgroundColor: colors.primary.hover,
+    borderRadius: radius.pill,
+    height: '100%',
+  },
+  unlockButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.76)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 40,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[3],
+    width: 40,
   },
   controlsLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -953,6 +1502,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     marginTop: -spacing[1],
+    maxWidth: 300,
     minHeight: 30,
     paddingHorizontal: spacing[3],
   },
@@ -965,6 +1515,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: 'rgba(255,255,255,0.72)',
     fontWeight: '700',
+    textAlign: 'center',
   },
   controlRow: {
     alignItems: 'center',
@@ -998,15 +1549,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   speedPanel: {
-    backgroundColor: 'rgba(12, 15, 13, 0.9)',
+    backgroundColor: 'rgba(12, 15, 13, 0.84)',
     borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
-    padding: spacing[3],
+    maxWidth: 300,
+    padding: spacing[2],
     position: 'absolute',
     right: spacing[3],
-    width: 210,
+    width: 236,
   },
   speedTitle: {
     ...typography.textStyles.micro,
@@ -1016,14 +1568,14 @@ const styles = StyleSheet.create({
   speedGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: spacing[1],
   },
   speedChip: {
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: radius.pill,
-    minHeight: 30,
-    minWidth: 52,
+    minHeight: 28,
+    minWidth: 48,
     justifyContent: 'center',
     paddingHorizontal: spacing[2],
   },
@@ -1039,13 +1591,13 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   queuePanel: {
-    backgroundColor: 'rgba(12, 15, 13, 0.9)',
+    backgroundColor: 'rgba(12, 15, 13, 0.84)',
     borderColor: 'rgba(255,255,255,0.14)',
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
-    maxHeight: 260,
-    padding: spacing[3],
+    maxHeight: 238,
+    padding: spacing[2],
     position: 'absolute',
     right: spacing[3],
     width: '72%',
@@ -1088,6 +1640,11 @@ const styles = StyleSheet.create({
   queueDuration: {
     ...typography.textStyles.micro,
     color: 'rgba(255,255,255,0.68)',
+  },
+  queueNowPlaying: {
+    ...typography.textStyles.micro,
+    color: colors.primary.hover,
+    fontWeight: '800',
   },
   pressed: {
     opacity: 0.78,

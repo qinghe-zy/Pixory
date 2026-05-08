@@ -357,15 +357,15 @@ export function TagResultScreen({
         </View>
         <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
-              <ThumbnailTile
-                image={image}
-                onLongPress={() => handleImageLongPress(image)}
-                onPress={handleOpenImage}
-                selected={multiSelect.selectedImageIds.includes(image.id)}
-                space={space}
-              />
-            </View>
+            <ThumbnailTile
+              image={image}
+              key={image.id}
+              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+              onLongPress={() => handleImageLongPress(image)}
+              onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
+            />
           ))}
         </View>
       </PageStateBlock>

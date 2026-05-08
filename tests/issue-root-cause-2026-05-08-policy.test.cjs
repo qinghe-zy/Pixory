@@ -69,7 +69,8 @@ test('image lists expose shared sorting and swipe selection beyond batch manage'
     assert.match(source, /SORT_OPTIONS/);
     assert.match(source, /useSwipeGridSelection/);
     assert.match(source, /swipeSelection\.panHandlers/);
-    assert.match(source, /registerItemLayout/);
+    assert.match(source, /<ThumbnailTile[\s\S]*onLayout=\{\(event\) => swipeSelection\.registerItemLayout\(image\.id, event\.nativeEvent\.layout\)\}/);
+    assert.doesNotMatch(source, /<View key=\{image\.id\} onLayout=\{\(event\) => swipeSelection\.registerItemLayout/);
     assert.match(source, /beginSwipeSelection/);
   }
 });

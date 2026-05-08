@@ -423,16 +423,16 @@ export function AllImagesScreen({
         </View>
         <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
-              <ThumbnailTile
-                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-                image={image}
-                onLongPress={handleImageLongPress}
-                onPress={handleOpenImage}
-                selected={multiSelect.selectedImageIds.includes(image.id)}
-                space={space}
-              />
-            </View>
+            <ThumbnailTile
+              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+              image={image}
+              key={image.id}
+              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+              onLongPress={handleImageLongPress}
+              onPress={handleOpenImage}
+              selected={multiSelect.selectedImageIds.includes(image.id)}
+              space={space}
+            />
           ))}
         </View>
       </PageStateBlock>

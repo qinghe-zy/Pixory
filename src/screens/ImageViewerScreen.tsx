@@ -24,11 +24,18 @@ import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { AppActionSheet } from '../components/AppActionSheet';
 import { useToast } from '../components/AppToast';
+import {
+  loadImageViewerPreferences,
+  saveImageViewerPreferences,
+  type ImageFitMode,
+  type ImageReaderMode,
+} from '../services/mediaExperiencePreferences';
 
 const DOUBLE_TAP_ZOOM_SCALE = 2.5;
 const DOUBLE_TAP_INTERVAL_MS = 260;
 const MAX_ZOOM_SCALE = 4;
 const MIN_ZOOM_SCALE = 1;
+const READER_ZONE_EDGE_RATIO = 0.34;
 
 interface ImageViewerScreenProps {
   imageId: number;
@@ -46,6 +53,7 @@ export function ImageViewerScreen({
   onOpenDetail,
 }: ImageViewerScreenProps) {
   const listRef = useRef<FlatList<ImageListItem>>(null);
+  const verticalListRef = useRef<FlatList<ImageListItem>>(null);
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { width, height } = useWindowDimensions();
@@ -58,7 +66,41 @@ export function ImageViewerScreen({
   const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [viewerProgressWidth, setViewerProgressWidth] = useState(1);
+  const [readerMode, setReaderMode] = useState<ImageReaderMode>('horizontal-ltr');
+  const [fitMode, setFitMode] = useState<ImageFitMode>('contain');
+  const [showFilmstrip, setShowFilmstrip] = useState(false);
+  const [readerSettingsVisible, setReaderSettingsVisible] = useState(false);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const filmstripSwitchProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(filmstripSwitchProgress, {
+      toValue: showFilmstrip ? 1 : 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [filmstripSwitchProgress, showFilmstrip]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadImageViewerPreferences()
+      .then((preferences) => {
+        if (!isMounted) {
+          return;
+        }
+        setReaderMode(preferences.readerMode);
+        setFitMode(preferences.fitMode);
+        setShowFilmstrip(preferences.showFilmstrip);
+      })
+      .catch(() => {
+        // Preference files are best-effort; the reader should always open.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -80,6 +122,10 @@ export function ImageViewerScreen({
         if (items.length > 0) {
           requestAnimationFrame(() => {
             listRef.current?.scrollToIndex({
+              animated: false,
+              index: initialIndex,
+            });
+            verticalListRef.current?.scrollToIndex({
               animated: false,
               index: initialIndex,
             });
@@ -106,7 +152,17 @@ export function ImageViewerScreen({
 
   const activeImage = images[activeIndex] ?? null;
   const pageSize = Math.max(1, width);
+  const pageHeight = Math.max(1, height);
+  const isVerticalContinuous = readerMode === 'vertical-continuous';
   const viewerProgress = images.length > 1 ? activeIndex / Math.max(1, images.length - 1) : 0;
+  const filmstripSwitchTrackColor = filmstripSwitchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0.12)', colors.primary.weak],
+  });
+  const filmstripSwitchKnobTranslateX = filmstripSwitchProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 24],
+  });
 
   useEffect(() => {
     Animated.timing(controlsOpacity, {
@@ -136,23 +192,83 @@ export function ImageViewerScreen({
     setIsPagingEnabled(!zoomed);
   }, []);
 
+  const goToRelativeImage = useCallback(
+    (offset: number) => {
+      if (images.length <= 1) {
+        return;
+      }
+      jumpToImageIndex(activeIndex + offset);
+    },
+    [activeIndex, images.length]
+  );
+
+  const handleReaderZonePress = useCallback(
+    (locationX: number) => {
+      const leftBoundary = pageSize * READER_ZONE_EDGE_RATIO;
+      const rightBoundary = pageSize * (1 - READER_ZONE_EDGE_RATIO);
+
+      if (locationX <= leftBoundary) {
+        goToRelativeImage(readerMode === 'horizontal-rtl' ? 1 : -1);
+        return;
+      }
+
+      if (locationX >= rightBoundary) {
+        goToRelativeImage(readerMode === 'horizontal-rtl' ? -1 : 1);
+        return;
+      }
+
+      setControlsVisible((visible) => !visible);
+    },
+    [goToRelativeImage, pageSize, readerMode]
+  );
+
+  const onPanAttemptBlockedByZoom = useCallback(() => {
+    setControlsVisible(false);
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<ImageListItem>) => (
       <ZoomableImage
+        fitMode={fitMode}
         height={height}
         image={item}
         onLongPress={handleImageLongPress}
-        onSingleTap={() => setControlsVisible((visible) => !visible)}
+        onPanAttemptBlockedByZoom={onPanAttemptBlockedByZoom}
+        onSingleTap={handleReaderZonePress}
         onZoomStateChange={handleZoomStateChange}
         space={context.space}
         width={pageSize}
       />
     ),
-    [context.space, handleZoomStateChange, height, pageSize]
+    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, height, onPanAttemptBlockedByZoom, pageSize]
+  );
+
+  const renderVerticalItem = useCallback(
+    ({ item }: ListRenderItemInfo<ImageListItem>) => (
+      <ZoomableImage
+        fitMode={fitMode}
+        height={pageHeight}
+        image={item}
+        onLongPress={handleImageLongPress}
+        onPanAttemptBlockedByZoom={onPanAttemptBlockedByZoom}
+        onSingleTap={handleReaderZonePress}
+        onZoomStateChange={handleZoomStateChange}
+        space={context.space}
+        width={pageSize}
+      />
+    ),
+    [context.space, fitMode, handleReaderZonePress, handleZoomStateChange, onPanAttemptBlockedByZoom, pageHeight, pageSize]
   );
 
   function handleMomentumScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / pageSize);
+    if (nextIndex >= 0 && nextIndex < images.length) {
+      setActiveIndex(nextIndex);
+    }
+  }
+
+  function handleVerticalMomentumScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const nextIndex = Math.round(event.nativeEvent.contentOffset.y / pageHeight);
     if (nextIndex >= 0 && nextIndex < images.length) {
       setActiveIndex(nextIndex);
     }
@@ -173,6 +289,10 @@ export function ImageViewerScreen({
       setActiveIndex(nextIndex);
       requestAnimationFrame(() => {
         listRef.current?.scrollToIndex({
+          animated: false,
+          index: nextIndex,
+        });
+        verticalListRef.current?.scrollToIndex({
           animated: false,
           index: nextIndex,
         });
@@ -215,10 +335,43 @@ export function ImageViewerScreen({
     }
   }
 
+  function persistImageViewerPreferences(nextPreferences: Partial<{
+    readerMode: ImageReaderMode;
+    fitMode: ImageFitMode;
+    showFilmstrip: boolean;
+  }>) {
+    void saveImageViewerPreferences({
+      readerMode,
+      fitMode,
+      showFilmstrip,
+      ...nextPreferences,
+    });
+  }
+
+  function updateReaderMode(nextMode: ImageReaderMode) {
+    setReaderMode(nextMode);
+    persistImageViewerPreferences({ readerMode: nextMode });
+    requestAnimationFrame(() => jumpToImageIndex(activeIndex));
+  }
+
+  function updateFitMode(nextMode: ImageFitMode) {
+    setFitMode(nextMode);
+    persistImageViewerPreferences({ fitMode: nextMode });
+  }
+
+  function updateFilmstripVisibility(nextVisible: boolean) {
+    setShowFilmstrip(nextVisible);
+    persistImageViewerPreferences({ showFilmstrip: nextVisible });
+  }
+
   function jumpToImageIndex(index: number) {
+    if (images.length === 0) {
+      return;
+    }
     const nextIndex = Math.min(images.length - 1, Math.max(0, index));
     setActiveIndex(nextIndex);
     listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
+    verticalListRef.current?.scrollToIndex({ animated: false, index: nextIndex });
   }
 
   function jumpToProgressLocation(locationX: number) {
@@ -254,15 +407,77 @@ export function ImageViewerScreen({
         <Text numberOfLines={1} style={styles.counter}>
           {counterLabel}
         </Text>
-        <Pressable
-          accessibilityLabel="一键逆序"
-          hitSlop={10}
-          onPress={handleReverseOrder}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-        >
-          <Ionicons color={colors.text.inverse} name="swap-horizontal-outline" size={20} />
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable
+            accessibilityLabel="阅读设置"
+            hitSlop={10}
+            onPress={() => setReaderSettingsVisible((visible) => !visible)}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.text.inverse} name="options-outline" size={20} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="一键逆序"
+            hitSlop={10}
+            onPress={handleReverseOrder}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          >
+            <Ionicons color={colors.text.inverse} name="swap-horizontal-outline" size={20} />
+          </Pressable>
+        </View>
       </Animated.View>
+
+      {readerSettingsVisible ? (
+        <Animated.View style={[styles.readerSettingsPanel, { top: insets.top + 74, opacity: controlsOpacity }]}>
+          <Text style={styles.readerSettingsTitle}>阅读设置</Text>
+          <Text style={styles.readerSettingsLabel}>阅读模式</Text>
+          <View style={styles.segmentRow}>
+            {([
+              ['horizontal-ltr', '横向'],
+              ['horizontal-rtl', 'RTL'],
+              ['vertical-continuous', '纵向连续'],
+            ] as const).map(([mode, label]) => (
+              <Pressable
+                key={mode}
+                onPress={() => updateReaderMode(mode)}
+                style={[styles.segmentPill, readerMode === mode && styles.segmentPillActive]}
+              >
+                <Text style={[styles.segmentText, readerMode === mode && styles.segmentTextActive]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.readerSettingsLabel}>适配模式</Text>
+          <View style={styles.segmentRow}>
+            {([
+              ['contain', '完整'],
+              ['width', '填宽'],
+              ['original', '原始'],
+            ] as const).map(([mode, label]) => (
+              <Pressable
+                key={mode}
+                onPress={() => updateFitMode(mode)}
+                style={[styles.segmentPill, fitMode === mode && styles.segmentPillActive]}
+              >
+                <Text style={[styles.segmentText, fitMode === mode && styles.segmentTextActive]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            onPress={() => updateFilmstripVisibility(!showFilmstrip)}
+            style={({ pressed }) => [styles.readerSwitchRow, pressed && styles.pressed]}
+          >
+            <Text style={styles.readerSwitchText}>底部缩略图胶片条</Text>
+            <Animated.View
+              accessibilityLabel={showFilmstrip ? '关闭底部缩略图胶片条' : '打开底部缩略图胶片条'}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: showFilmstrip }}
+              style={[styles.readerSwitchTrack, { backgroundColor: filmstripSwitchTrackColor }]}
+            >
+              <Animated.View style={[styles.readerSwitchKnob, { transform: [{ translateX: filmstripSwitchKnobTranslateX }] }]} />
+            </Animated.View>
+          </Pressable>
+        </Animated.View>
+      ) : null}
 
       {errorMessage ? (
         <View style={styles.stateWrap}>
@@ -276,6 +491,36 @@ export function ImageViewerScreen({
         <View style={styles.stateWrap}>
           <Text style={styles.stateText}>没有可浏览的图片。</Text>
         </View>
+      ) : isVerticalContinuous ? (
+        <FlatList
+          data={images}
+          getItemLayout={(_, index) => ({
+            index,
+            length: pageHeight,
+            offset: pageHeight * index,
+          })}
+          initialNumToRender={3}
+          key="vertical-continuous"
+          keyExtractor={(item) => String(item.id)}
+          onMomentumScrollEnd={handleVerticalMomentumScrollEnd}
+          onScrollToIndexFailed={({ index }) => {
+            if (images.length === 0) {
+              return;
+            }
+
+            requestAnimationFrame(() => {
+              verticalListRef.current?.scrollToIndex({
+                animated: false,
+                index: Math.min(index, images.length - 1),
+              });
+            });
+          }}
+          ref={verticalListRef}
+          renderItem={renderVerticalItem}
+          scrollEnabled={isPagingEnabled}
+          showsVerticalScrollIndicator={false}
+          windowSize={5}
+        />
       ) : (
         <FlatList
           data={images}
@@ -286,6 +531,8 @@ export function ImageViewerScreen({
           })}
           horizontal
           initialNumToRender={3}
+          inverted={readerMode === 'horizontal-rtl'}
+          key={readerMode}
           keyExtractor={(item) => String(item.id)}
           onMomentumScrollEnd={handleMomentumScrollEnd}
           onScrollToIndexFailed={({ index }) => {
@@ -310,34 +557,46 @@ export function ImageViewerScreen({
       )}
 
       {activeImage ? (
-        <Animated.View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[4], opacity: controlsOpacity }]}>
-          <View style={styles.filenameBlock}>
-            <Text numberOfLines={1} style={styles.filename}>
-              {activeImage.originalFilename}
-            </Text>
-            <Text numberOfLines={1} style={styles.metaText}>
-              原图浏览
-            </Text>
-          </View>
-          <View
-            {...viewerProgressPanResponder.panHandlers}
-            onLayout={(event) => setViewerProgressWidth(Math.max(1, event.nativeEvent.layout.width))}
-            style={styles.viewerProgressHitArea}
-          >
-            <View style={styles.viewerProgressTrack}>
-              <View style={[styles.viewerProgressFill, { width: `${viewerProgress * 100}%` }]} />
+        <>
+          {showFilmstrip ? (
+            <Animated.View style={[styles.filmstripDock, { bottom: insets.bottom + 92, opacity: controlsOpacity }]}>
+              <Filmstrip
+                activeIndex={activeIndex}
+                images={images}
+                onSelect={jumpToImageIndex}
+                space={context.space}
+              />
+            </Animated.View>
+          ) : null}
+          <Animated.View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[4], opacity: controlsOpacity }]}>
+            <View style={styles.filenameBlock}>
+              <Text numberOfLines={1} style={styles.filename}>
+                {activeImage.originalFilename}
+              </Text>
+              <Text numberOfLines={1} style={styles.metaText}>
+                {readerMode === 'vertical-continuous' ? '纵向连续阅读' : readerMode === 'horizontal-rtl' ? 'RTL 阅读' : '横向单页阅读'}
+              </Text>
             </View>
-            <Text style={styles.viewerProgressText}>{counterLabel}</Text>
-          </View>
-          <Pressable onPress={() => void toggleFavorite()} style={styles.favoritePill}>
-            <Ionicons
-              color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
-              name={activeImage.isFavorite ? 'star' : 'star-outline'}
-              size={14}
-            />
-            <Text style={styles.favoriteText}>{activeImage.isFavorite ? '已收藏' : '未收藏'}</Text>
-          </Pressable>
-        </Animated.View>
+            <View
+              {...viewerProgressPanResponder.panHandlers}
+              onLayout={(event) => setViewerProgressWidth(Math.max(1, event.nativeEvent.layout.width))}
+              style={styles.viewerProgressHitArea}
+            >
+              <View style={styles.viewerProgressTrack}>
+                <View style={[styles.viewerProgressFill, { width: `${viewerProgress * 100}%` }]} />
+              </View>
+              <Text style={styles.viewerProgressText}>{counterLabel}</Text>
+            </View>
+            <Pressable onPress={() => void toggleFavorite()} style={styles.favoritePill}>
+              <Ionicons
+                color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
+                name={activeImage.isFavorite ? 'star' : 'star-outline'}
+                size={14}
+              />
+              <Text style={styles.favoriteText}>{activeImage.isFavorite ? '已收藏' : '未收藏'}</Text>
+            </Pressable>
+          </Animated.View>
+        </>
       ) : null}
       <AppActionSheet
         items={actionImage ? [
@@ -352,19 +611,54 @@ export function ImageViewerScreen({
   );
 }
 
+function Filmstrip({
+  activeIndex,
+  images,
+  onSelect,
+  space,
+}: {
+  activeIndex: number;
+  images: ImageListItem[];
+  onSelect: (index: number) => void;
+  space: ImageViewerContext['space'];
+}) {
+  return (
+    <FlatList
+      contentContainerStyle={styles.filmstripContent}
+      data={images}
+      horizontal
+      keyExtractor={(item) => `filmstrip-${item.id}`}
+      renderItem={({ item, index }) => (
+        <Pressable
+          accessibilityLabel={`跳到第 ${index + 1} 张`}
+          onPress={() => onSelect(index)}
+          style={[styles.filmstripItem, index === activeIndex && styles.filmstripItemActive]}
+        >
+          <SecureImage contentFit="cover" space={space} style={styles.filmstripImage} uri={item.thumbnailFileUri ?? item.originalFileUri} />
+        </Pressable>
+      )}
+      showsHorizontalScrollIndicator={false}
+    />
+  );
+}
+
 function ZoomableImage({
+  fitMode,
   height,
   image,
   onLongPress,
+  onPanAttemptBlockedByZoom,
   onSingleTap,
   onZoomStateChange,
   space,
   width,
 }: {
+  fitMode: ImageFitMode;
   height: number;
   image: ImageListItem;
   onLongPress: (image: ImageListItem) => void;
-  onSingleTap: () => void;
+  onPanAttemptBlockedByZoom: () => void;
+  onSingleTap: (locationX: number) => void;
   onZoomStateChange: (zoomed: boolean) => void;
   space: ImageViewerContext['space'];
   width: number;
@@ -374,6 +668,8 @@ function ZoomableImage({
   const animatedScale = useRef(new Animated.Value(1)).current;
   const lastTapAtRef = useRef(0);
   const lastTouchPointRef = useRef<{ x: number; y: number } | null>(null);
+  const tapStartLocationRef = useRef<{ x: number; y: number } | null>(null);
+  const didHandleDoubleTapRef = useRef(false);
   const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
 
   useEffect(() => {
@@ -418,9 +714,11 @@ function ZoomableImage({
     if (!touch) {
       return;
     }
+    tapStartLocationRef.current = { x: touch.locationX, y: touch.locationY };
 
     const now = Date.now();
     if (now - lastTapAtRef.current <= DOUBLE_TAP_INTERVAL_MS) {
+      didHandleDoubleTapRef.current = true;
       animateScaleTo(scale > 1.01 ? 1 : DOUBLE_TAP_ZOOM_SCALE);
       lastTapAtRef.current = 0;
       return;
@@ -445,6 +743,7 @@ function ZoomableImage({
       return;
     }
 
+    onPanAttemptBlockedByZoom();
     const deltaX = touch.pageX - lastTouchPointRef.current.x;
     const deltaY = touch.pageY - lastTouchPointRef.current.y;
     lastTouchPointRef.current = { x: touch.pageX, y: touch.pageY };
@@ -457,11 +756,19 @@ function ZoomableImage({
   function handleTouchEnd() {
     pinchStartRef.current = null;
     lastTouchPointRef.current = null;
+    if (didHandleDoubleTapRef.current) {
+      didHandleDoubleTapRef.current = false;
+      tapStartLocationRef.current = null;
+      return;
+    }
     if (scale <= 1.01) {
       updateScale(1);
-      onSingleTap();
+      onSingleTap(tapStartLocationRef.current?.x ?? width / 2);
     }
+    tapStartLocationRef.current = null;
   }
+
+  const imageFit: 'cover' | 'contain' = fitMode === 'width' ? 'cover' : 'contain';
 
   return (
     <Pressable
@@ -486,7 +793,7 @@ function ZoomableImage({
           },
         ]}
       >
-        <SecureImage contentFit="contain" space={space} style={styles.image} uri={image.originalFileUri} />
+        <SecureImage contentFit={imageFit} space={space} style={styles.image} uri={image.originalFileUri} />
       </Animated.View>
     </Pressable>
   );
@@ -608,6 +915,87 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: colors.text.inverse,
   },
+  topActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  readerSettingsPanel: {
+    backgroundColor: 'rgba(20, 24, 30, 0.94)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    left: spacing[4],
+    padding: spacing[3],
+    position: 'absolute',
+    right: spacing[4],
+    zIndex: 3,
+  },
+  readerSettingsTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.inverse,
+  },
+  readerSettingsLabel: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255,255,255,0.58)',
+    fontWeight: '700',
+    marginTop: spacing[1],
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  segmentPill: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    minWidth: 70,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  segmentPillActive: {
+    backgroundColor: colors.primary.weak,
+  },
+  segmentText: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255,255,255,0.78)',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  segmentTextActive: {
+    color: colors.primary.active,
+  },
+  readerSwitchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 40,
+  },
+  readerSwitchText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+  },
+  readerSwitchTrack: {
+    borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center',
+    width: 52,
+  },
+  readerSwitchKnob: {
+    backgroundColor: colors.text.inverse,
+    borderRadius: radius.pill,
+    height: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.24,
+    shadowRadius: 3,
+    width: 22,
+  },
   page: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -617,6 +1005,34 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   zoomLayer: {
+    height: '100%',
+    width: '100%',
+  },
+  filmstripDock: {
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 2,
+  },
+  filmstripContent: {
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+  },
+  filmstripItem: {
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    height: 58,
+    opacity: 0.72,
+    overflow: 'hidden',
+    width: 44,
+  },
+  filmstripItemActive: {
+    borderColor: colors.primary.hover,
+    opacity: 1,
+    transform: [{ translateY: -3 }],
+  },
+  filmstripImage: {
     height: '100%',
     width: '100%',
   },
