@@ -449,16 +449,19 @@ const styles = StyleSheet.create({
   storageLabel: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+    fontWeight: '700',
   },
   storageInlineRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     minHeight: 28,
   },
   storageValue: {
-    ...typography.textStyles.statNumber,
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
   },
   entryList: {
     gap: spacing[3],

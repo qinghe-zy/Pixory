@@ -20,6 +20,14 @@ test('profile storage summary avoids duplicate total original storage and uses r
   assert.match(meSource, /视频存储/);
 });
 
+test('profile storage rows keep the metric close to its label with matching text scale', () => {
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
+
+  assert.doesNotMatch(meSource, /storageInlineRow:\s*\{[\s\S]{0,220}justifyContent:\s*'space-between'/);
+  assert.match(meSource, /storageInlineRow:\s*\{[\s\S]{0,220}justifyContent:\s*'flex-start'/);
+  assert.match(meSource, /storageValue:\s*\{[\s\S]{0,120}\.\.\.typography\.textStyles\.caption/);
+});
+
 test('recent viewed page can clear local viewing history without deleting assets', () => {
   const recentSource = readProjectFile('src/screens/RecentViewedScreen.tsx');
   const repositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
@@ -49,6 +57,16 @@ test('video player keeps progress information above the scrub bar and does not r
   assert.match(playerSource, /committedSeekTargetRef\.current = initialDisplayTime > 0 \? initialDisplayTime : null/);
 });
 
+test('video player bottom controls keep play pause alone on the left', () => {
+  const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
+
+  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,260}accessibilityLabel=\{isPlaying \? '暂停' : '播放'\}/);
+  assert.match(playerSource, /<View style=\{styles\.controlActions\}>[\s\S]{0,900}setSpeedMenuVisible/);
+  assert.match(playerSource, /controlRow:\s*\{[\s\S]{0,180}justifyContent:\s*'space-between'/);
+  assert.match(playerSource, /controlLeft:\s*\{[\s\S]{0,180}flexDirection:\s*'row'/);
+  assert.match(playerSource, /controlActions:\s*\{[\s\S]{0,220}justifyContent:\s*'flex-end'/);
+});
+
 test('sort control opens a selectable menu instead of cycling on every tap', () => {
   const sortSource = readProjectFile('src/components/SortMenuButton.tsx');
 
@@ -57,4 +75,25 @@ test('sort control opens a selectable menu instead of cycling on every tap', () 
   assert.match(sortSource, /sortMenuVisible/);
   assert.match(sortSource, /IMAGE_SORT_OPTIONS\.map/);
   assert.match(sortSource, /checkmark-circle/);
+});
+
+test('IP cards omit empty cover metadata instead of rendering zero counts', () => {
+  const cardSource = readProjectFile('src/components/IPCard.tsx');
+
+  assert.doesNotMatch(cardSource, /const mediaParts = \[`\$\{ip\.imageCount\} 张图片`\]/);
+  assert.match(cardSource, /if \(ip\.imageCount > 0\)[\s\S]{0,120}mediaParts\.push\(`\$\{ip\.imageCount\} 张图片`\)/);
+  assert.match(cardSource, /if \(ip\.videoCount > 0\)[\s\S]{0,120}mediaParts\.push\(`\$\{ip\.videoCount\} 个视频`\)/);
+  assert.match(cardSource, /if \(ip\.totalBytes > 0\)[\s\S]{0,120}mediaParts\.push\(formatFileSize\(ip\.totalBytes\)\)/);
+});
+
+test('global search suggestions stay compact and avoid noisy filename prefix bubbles', () => {
+  const searchSource = readProjectFile('src/screens/GlobalSearchScreen.tsx');
+
+  assert.match(searchSource, /keyword,\s*\n\s*history: searchHistory/);
+  assert.match(searchSource, /history\.filter\(\(item\) => item\.toLowerCase\(\)\.includes\(lowerKeyword\)\)\.slice\(0,\s*2\)/);
+  assert.doesNotMatch(searchSource, /文件名前缀/);
+  assert.doesNotMatch(searchSource, /images\.slice\(0,\s*8\)/);
+  assert.match(searchSource, /return \[\.\.\.suggestions\.values\(\)\]\.slice\(0,\s*6\)/);
+  assert.match(searchSource, /suggestionPill:\s*\{[\s\S]{0,260}minHeight:\s*32/);
+  assert.match(searchSource, /suggestionMeta:\s*\{[\s\S]{0,160}fontWeight:\s*'700'/);
 });

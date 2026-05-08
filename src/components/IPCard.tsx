@@ -45,11 +45,17 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
 }
 
 function CardCaption({ ip }: { ip: IpListItem }) {
-  const mediaParts = [`${ip.imageCount} 张图片`];
+  const mediaParts: string[] = [];
+  if (ip.imageCount > 0) {
+    mediaParts.push(`${ip.imageCount} 张图片`);
+  }
   if (ip.videoCount > 0) {
     mediaParts.push(`${ip.videoCount} 个视频`);
   }
-  mediaParts.push(formatFileSize(ip.totalBytes));
+  if (ip.totalBytes > 0) {
+    mediaParts.push(formatFileSize(ip.totalBytes));
+  }
+  mediaParts.push(formatUpdatedLabel(ip.updatedAt));
 
   return (
     <View style={styles.captionBlock}>
@@ -57,7 +63,7 @@ function CardCaption({ ip }: { ip: IpListItem }) {
         <Text numberOfLines={1} style={styles.title}>
           {ip.name}
         </Text>
-        <Text numberOfLines={1} style={styles.metaText}>{`${mediaParts.join(' · ')} · ${formatUpdatedLabel(ip.updatedAt)}`}</Text>
+        <Text numberOfLines={1} style={styles.metaText}>{mediaParts.join(' · ')}</Text>
       </View>
       {ip.isFavorite ? (
         <View style={styles.favoriteBadge}>

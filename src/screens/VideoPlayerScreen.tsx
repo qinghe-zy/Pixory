@@ -1237,32 +1237,36 @@ export function VideoPlayerScreen({
               </View>
             </View>
             <View style={styles.controlRow}>
-              {isLandscape ? (
-                <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
+              <View style={styles.controlLeft}>
+                <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
                 </Pressable>
-              ) : null}
-              <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
-              </Pressable>
-              {isLandscape ? (
-                <Pressable accessibilityLabel="下一个视频" onPress={() => switchVideoByOffset(1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
+              </View>
+              <View style={styles.controlActions}>
+                {isLandscape ? (
+                  <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                    <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
+                  </Pressable>
+                ) : null}
+                {isLandscape ? (
+                  <Pressable accessibilityLabel="下一个视频" onPress={() => switchVideoByOffset(1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                    <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
+                  </Pressable>
+                ) : null}
+                <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
+                  <Text style={styles.pillButtonText}>{speed}x</Text>
                 </Pressable>
-              ) : null}
-              <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
-                <Text style={styles.pillButtonText}>{speed}x</Text>
-              </Pressable>
-              <Pressable accessibilityLabel="横竖屏" onPress={toggleOrientation} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name={isLandscape ? 'phone-portrait-outline' : 'phone-landscape-outline'} size={19} />
-              </Pressable>
-              <Pressable onPress={() => { setQueueVisible((current) => !current); setSpeedMenuVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name="list-outline" size={16} />
-                <Text style={styles.pillButtonText}>待播放</Text>
-              </Pressable>
-              <Pressable accessibilityLabel="锁定播放器" onPress={togglePlayerLock} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={18} />
-              </Pressable>
+                <Pressable accessibilityLabel="横竖屏" onPress={toggleOrientation} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name={isLandscape ? 'phone-portrait-outline' : 'phone-landscape-outline'} size={19} />
+                </Pressable>
+                <Pressable onPress={() => { setQueueVisible((current) => !current); setSpeedMenuVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name="list-outline" size={16} />
+                  <Text style={styles.pillButtonText}>待播放</Text>
+                </Pressable>
+                <Pressable accessibilityLabel="锁定播放器" onPress={togglePlayerLock} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
+                  <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={18} />
+                </Pressable>
+              </View>
             </View>
           </View>
         </Animated.View>
@@ -1560,6 +1564,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
+    justifyContent: 'space-between',
+  },
+  controlLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 0,
+  },
+  controlActions: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+    justifyContent: 'flex-end',
+    minWidth: 0,
   },
   controlButton: {
     alignItems: 'center',

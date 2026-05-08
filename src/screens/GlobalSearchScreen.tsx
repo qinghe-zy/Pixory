@@ -87,8 +87,8 @@ export function GlobalSearchScreen({
   const showHistory = !keyword && searchHistory.length > 0;
   const suggestions = keyword
     ? buildSearchSuggestions({
+        keyword,
         history: searchHistory,
-        images,
         ips,
         groups,
         tags,
@@ -231,38 +231,33 @@ interface SearchSuggestion {
 }
 
 function buildSearchSuggestions({
+  keyword,
   history,
-  images,
   ips,
   groups,
   tags,
 }: {
+  keyword: string;
   history: string[];
-  images: ImageListItem[];
   ips: IpListItem[];
   groups: GlobalGroupListItem[];
   tags: TagUsageItem[];
 }): SearchSuggestion[] {
   const suggestions = new Map<string, SearchSuggestion>();
-  for (const item of history.slice(0, 4)) {
+  const lowerKeyword = keyword.toLowerCase();
+  for (const item of history.filter((item) => item.toLowerCase().includes(lowerKeyword)).slice(0, 2)) {
     suggestions.set(`history:${item}`, { key: `history:${item}`, label: item, meta: '历史' });
   }
-  for (const ip of ips.slice(0, 4)) {
+  for (const ip of ips.slice(0, 2)) {
     suggestions.set(`ip:${ip.id}`, { key: `ip:${ip.id}`, label: ip.name, meta: 'IP' });
   }
-  for (const group of groups.slice(0, 4)) {
-    suggestions.set(`group:${group.id}`, { key: `group:${group.id}`, label: group.name, meta: `分组 · ${group.ipName}` });
+  for (const group of groups.slice(0, 2)) {
+    suggestions.set(`group:${group.id}`, { key: `group:${group.id}`, label: group.name, meta: '分组' });
   }
-  for (const tag of tags.slice(0, 4)) {
+  for (const tag of tags.slice(0, 2)) {
     suggestions.set(`tag:${tag.id}`, { key: `tag:${tag.id}`, label: `#${tag.name}`, meta: '标签' });
   }
-  for (const image of images.slice(0, 8)) {
-    const prefix = image.originalFilename.split(/[._\-\s]+/).filter(Boolean)[0];
-    if (prefix) {
-      suggestions.set(`file:${prefix}`, { key: `file:${prefix}`, label: prefix, meta: '文件名前缀' });
-    }
-  }
-  return [...suggestions.values()].slice(0, 12);
+  return [...suggestions.values()].slice(0, 6);
 }
 
 function SearchSuggestionList({ onPick, suggestions }: { onPick: (value: string) => void; suggestions: SearchSuggestion[] }) {
@@ -273,7 +268,7 @@ function SearchSuggestionList({ onPick, suggestions }: { onPick: (value: string)
         {suggestions.map((suggestion) => (
           <Pressable key={suggestion.key} onPress={() => onPick(suggestion.label.replace(/^#/, ''))} style={({ pressed }) => [styles.suggestionPill, pressed && styles.pressed]}>
             <Text numberOfLines={1} style={styles.suggestionLabel}>{suggestion.label}</Text>
-            <Text style={styles.suggestionMeta}>{suggestion.meta}</Text>
+            <Text numberOfLines={1} style={styles.suggestionMeta}>{suggestion.meta}</Text>
           </Pressable>
         ))}
       </View>
@@ -397,37 +392,41 @@ const styles = StyleSheet.create({
     ...typography.textStyles.sectionTitle,
   },
   suggestionBlock: {
-    gap: spacing[2],
+    gap: spacing[1],
   },
   suggestionTitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    ...typography.textStyles.micro,
+    color: colors.text.placeholder,
     fontWeight: '700',
   },
   suggestionList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: spacing[1],
   },
   suggestionPill: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
-    minHeight: 36,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
+    flexDirection: 'row',
+    gap: spacing[2],
+    maxWidth: '48%',
+    minHeight: 32,
+    paddingHorizontal: spacing[2],
   },
   suggestionLabel: {
     ...typography.textStyles.caption,
     color: colors.text.title,
     fontWeight: '700',
-    maxWidth: 180,
+    flexShrink: 1,
+    maxWidth: 112,
   },
   suggestionMeta: {
     ...typography.textStyles.micro,
-    color: colors.text.secondary,
+    color: colors.primary.active,
+    fontWeight: '700',
   },
   row: {
     backgroundColor: colors.background.surface,
