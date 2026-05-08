@@ -131,4 +131,6 @@ test('video surface exposes compact hold-speed feedback and double-tap play paus
   assert.match(playerSource, /function finishHoldFastForward\(\)/);
   assert.match(playerSource, /function handleSurfacePress\(\)[\s\S]*togglePlay\(\)/);
   assert.match(playerSource, /surfaceGestureModeRef\.current === 'pending'[\s\S]*handleSurfacePress\(\)/);
+  assert.match(playerSource, /pointerEvents=\{controlsVisible && !isPlayerLocked \? 'box-none' : 'none'\}/);
+  assert.doesNotMatch(playerSource, /pointerEvents=\{controlsVisible && !isPlayerLocked \? 'auto' : 'none'\}/);
 });

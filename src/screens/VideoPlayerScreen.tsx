@@ -1109,7 +1109,7 @@ export function VideoPlayerScreen({
         </View>
       ) : null}
 
-      <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'auto' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
+      <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'box-none' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
           <View style={[styles.topBar, { paddingTop: insets.top + spacing[2] }]}>
             <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
               <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
