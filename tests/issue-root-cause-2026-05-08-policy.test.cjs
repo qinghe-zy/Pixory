@@ -139,6 +139,12 @@ test('global search and image viewer expose confirmable suggestions and immersiv
   assert.match(viewerSource, /viewerProgressPanResponder/);
   assert.match(viewerSource, /jumpToImageIndex/);
   assert.match(viewerSource, /toggleFavorite/);
+  const favoriteBlock = viewerSource.slice(
+    viewerSource.indexOf('async function toggleFavorite()'),
+    viewerSource.indexOf('function persistImageViewerPreferences', viewerSource.indexOf('async function toggleFavorite()'))
+  );
+  assert.doesNotMatch(favoriteBlock, /showToast\(nextFavorite \? '已收藏' : '已取消收藏'\)/);
+  assert.match(favoriteBlock, /showToast\(error instanceof Error \? `更新收藏失败/);
   assert.match(viewerSource, /animateScaleTo/);
   assert.match(viewerSource, /const nextIndex = activeIndex/);
 });

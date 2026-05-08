@@ -14,6 +14,7 @@ import {
   type ListRenderItemInfo,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewToken,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,6 +37,8 @@ const DOUBLE_TAP_INTERVAL_MS = 260;
 const MAX_ZOOM_SCALE = 4;
 const MIN_ZOOM_SCALE = 1;
 const READER_ZONE_EDGE_RATIO = 0.34;
+const FILMSTRIP_ITEM_WIDTH = 44;
+const FILMSTRIP_ITEM_GAP = spacing[2];
 
 interface ImageViewerScreenProps {
   imageId: number;
@@ -163,6 +166,13 @@ export function ImageViewerScreen({
     inputRange: [0, 1],
     outputRange: [2, 24],
   });
+  const viewerViewabilityConfig = useRef({ itemVisiblePercentThreshold: 55 }).current;
+  const handleViewerViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const nextIndex = viewableItems.find((item) => item.isViewable && typeof item.index === 'number')?.index;
+    if (typeof nextIndex === 'number') {
+      setActiveIndex(nextIndex);
+    }
+  }).current;
 
   useEffect(() => {
     Animated.timing(controlsOpacity, {
@@ -328,7 +338,6 @@ export function ImageViewerScreen({
     setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: nextFavorite } : item)));
     try {
       await runWithDatabaseSpace(context.space, (db) => imageRepository.updateFavorite(db, image.id, nextFavorite));
-      showToast(nextFavorite ? '已收藏' : '已取消收藏');
     } catch (error) {
       setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: image.isFavorite } : item)));
       showToast(error instanceof Error ? `更新收藏失败：${error.message}` : '更新收藏失败');
@@ -503,6 +512,7 @@ export function ImageViewerScreen({
           key="vertical-continuous"
           keyExtractor={(item) => String(item.id)}
           onMomentumScrollEnd={handleVerticalMomentumScrollEnd}
+          onViewableItemsChanged={handleViewerViewableItemsChanged}
           onScrollToIndexFailed={({ index }) => {
             if (images.length === 0) {
               return;
@@ -519,6 +529,7 @@ export function ImageViewerScreen({
           renderItem={renderVerticalItem}
           scrollEnabled={isPagingEnabled}
           showsVerticalScrollIndicator={false}
+          viewabilityConfig={viewerViewabilityConfig}
           windowSize={5}
         />
       ) : (
@@ -535,6 +546,7 @@ export function ImageViewerScreen({
           key={readerMode}
           keyExtractor={(item) => String(item.id)}
           onMomentumScrollEnd={handleMomentumScrollEnd}
+          onViewableItemsChanged={handleViewerViewableItemsChanged}
           onScrollToIndexFailed={({ index }) => {
             if (images.length === 0) {
               return;
@@ -552,6 +564,7 @@ export function ImageViewerScreen({
           renderItem={renderItem}
           scrollEnabled={isPagingEnabled}
           showsHorizontalScrollIndicator={false}
+          viewabilityConfig={viewerViewabilityConfig}
           windowSize={3}
         />
       )}
@@ -622,12 +635,41 @@ function Filmstrip({
   onSelect: (index: number) => void;
   space: ImageViewerContext['space'];
 }) {
+  const filmstripRef = useRef<FlatList<ImageListItem>>(null);
+
+  useEffect(() => {
+    if (images.length === 0 || activeIndex < 0 || activeIndex >= images.length) {
+      return;
+    }
+
+    filmstripRef.current?.scrollToIndex({
+      animated: true,
+      index: activeIndex,
+      viewPosition: 0.5,
+    });
+  }, [activeIndex, images.length]);
+
   return (
     <FlatList
       contentContainerStyle={styles.filmstripContent}
       data={images}
+      getItemLayout={(_, index) => ({
+        index,
+        length: FILMSTRIP_ITEM_WIDTH + FILMSTRIP_ITEM_GAP,
+        offset: (FILMSTRIP_ITEM_WIDTH + FILMSTRIP_ITEM_GAP) * index,
+      })}
       horizontal
       keyExtractor={(item) => `filmstrip-${item.id}`}
+      onScrollToIndexFailed={({ index }) => {
+        requestAnimationFrame(() => {
+          filmstripRef.current?.scrollToIndex({
+            animated: true,
+            index: Math.min(index, images.length - 1),
+            viewPosition: 0.5,
+          });
+        });
+      }}
+      ref={filmstripRef}
       renderItem={({ item, index }) => (
         <Pressable
           accessibilityLabel={`跳到第 ${index + 1} 张`}

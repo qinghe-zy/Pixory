@@ -62,5 +62,9 @@ test('image viewer supports reader modes settings filmstrip and zoom-safe paging
   assert.match(viewerSource, /verticalListRef/);
   assert.match(viewerSource, /renderVerticalItem/);
   assert.match(viewerSource, /Filmstrip/);
+  assert.match(viewerSource, /handleViewerViewableItemsChanged/);
+  assert.match(viewerSource, /viewabilityConfig=\{viewerViewabilityConfig\}/);
+  assert.match(viewerSource, /filmstripRef/);
+  assert.match(viewerSource, /viewPosition:\s*0\.5/);
   assert.match(viewerSource, /onPanAttemptBlockedByZoom/);
 });
