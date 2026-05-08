@@ -111,6 +111,9 @@ export function VideoPlayerScreen({
   const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPreviewSeekTimeRef = useRef<number | null>(null);
   const lastPreviewSeekAtRef = useRef(0);
+  const progressTrackRef = useRef<View>(null);
+  const trackPageXRef = useRef(0);
+  const trackWidthRef = useRef(1);
   const committedSeekTargetRef = useRef<number | null>(null);
   const committedSeekStartedAtRef = useRef(0);
   const sourceLoadVersionRef = useRef(0);
@@ -392,10 +395,11 @@ export function VideoPlayerScreen({
         onPanResponderGrant: (event) => {
           showControls();
           beginScrub();
-          updateScrubFromTrackLocation(event.nativeEvent.locationX);
+          measureProgressTrack();
+          updateScrubFromTrackPageX(event.nativeEvent.pageX);
         },
         onPanResponderMove: (event) => {
-          updateScrubFromTrackLocation(event.nativeEvent.locationX);
+          updateScrubFromTrackPageX(event.nativeEvent.pageX);
         },
         onPanResponderRelease: commitScrub,
         onPanResponderTerminate: cancelScrub,
@@ -907,18 +911,33 @@ export function VideoPlayerScreen({
     setCurrentTime(clampedTime);
   }
 
-  function updateScrubFromTrackLocation(locationX: number) {
+  function updateScrubFromTrackPageX(pageX: number) {
     const effectiveDuration = getEffectiveDuration();
-    if (effectiveDuration <= 0 || trackWidth <= 0) {
+    const measuredWidth = trackWidthRef.current;
+    if (effectiveDuration <= 0 || measuredWidth <= 0) {
       return;
     }
-    const rawTargetTime = (locationX / trackWidth) * effectiveDuration;
+    const rawTargetTime = ((pageX - trackPageXRef.current) / measuredWidth) * effectiveDuration;
     setScrubGestureHint(getScrubBoundaryHint(rawTargetTime, effectiveDuration));
     updateScrubTime(rawTargetTime);
   }
 
-  function seekFromTrackLocation(locationX: number) {
-    updateScrubFromTrackLocation(locationX);
+  function measureProgressTrack() {
+    progressTrackRef.current?.measure((_x, _y, width, _height, pageX) => {
+      if (Number.isFinite(width) && width > 0) {
+        trackWidthRef.current = width;
+      }
+      if (Number.isFinite(pageX)) {
+        trackPageXRef.current = pageX;
+      }
+    });
+  }
+
+  function handleProgressTrackLayout(width: number) {
+    const measuredWidth = Math.max(1, width);
+    trackWidthRef.current = measuredWidth;
+    setTrackWidth(measuredWidth);
+    requestAnimationFrame(measureProgressTrack);
   }
 
   function updateScrubFromSurfaceDelta(deltaX: number) {
@@ -1208,7 +1227,8 @@ export function VideoPlayerScreen({
             </View>
             <View
               {...seekPanResponder.panHandlers}
-              onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+              ref={progressTrackRef}
+              onLayout={(event) => handleProgressTrackLayout(event.nativeEvent.layout.width)}
               style={styles.progressHitArea}
             >
               <View style={styles.progressTrack}>

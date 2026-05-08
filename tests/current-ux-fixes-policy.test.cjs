@@ -25,6 +25,7 @@ test('recent viewed page can clear local viewing history without deleting assets
   const repositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
 
   assert.match(recentSource, /清除记录/);
+  assert.match(recentSource, /summaryRow:\s*\{[\s\S]{0,180}flexWrap:\s*'wrap'[\s\S]{0,180}marginBottom:\s*spacing\[4\]/);
   assert.match(recentSource, /clearRecentViewed/);
   assert.match(repositorySource, /async clearRecentViewed/);
   assert.match(repositorySource, /SET lastViewedAt = NULL/);

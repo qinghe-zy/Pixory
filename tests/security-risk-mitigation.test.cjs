@@ -82,7 +82,10 @@ test('video player scrubbing works from both the progress bar and video surface'
   assert.match(playerSource, /surfacePanResponder = useMemo/);
   assert.match(playerSource, /style=\{styles\.videoGestureLayer\}/);
   assert.match(playerSource, /onMoveShouldSetPanResponder:[\s\S]*gestureState\.dx/);
-  assert.match(playerSource, /updateScrubFromTrackLocation\(event\.nativeEvent\.locationX\)/);
+  assert.match(playerSource, /updateScrubFromTrackPageX\(event\.nativeEvent\.pageX\)/);
+  assert.match(playerSource, /trackPageXRef/);
+  assert.match(playerSource, /measureProgressTrack/);
+  assert.doesNotMatch(playerSource, /updateScrubFromTrackLocation\(event\.nativeEvent\.locationX\)/);
   assert.match(playerSource, /function updateScrubFromSurfaceDelta\(deltaX: number\)/);
   assert.match(playerSource, /function schedulePreviewSeek/);
   assert.match(playerSource, /function commitScrub/);

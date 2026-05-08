@@ -195,8 +195,10 @@ const styles = StyleSheet.create({
   summaryRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing[2],
     justifyContent: 'space-between',
+    marginBottom: spacing[4],
   },
   summary: {
     alignItems: 'center',
@@ -206,8 +208,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    flexGrow: 1,
+    flexShrink: 1,
     gap: spacing[2],
     maxWidth: '100%',
+    minWidth: 148,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
   },
@@ -223,6 +228,7 @@ const styles = StyleSheet.create({
   },
   clearRecentButton: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
