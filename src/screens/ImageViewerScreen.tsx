@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   FlatList,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -20,6 +22,8 @@ import { SecureImage } from '../components/SecureImage';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
+import { AppActionSheet } from '../components/AppActionSheet';
+import { useToast } from '../components/AppToast';
 
 const DOUBLE_TAP_ZOOM_SCALE = 2.5;
 const DOUBLE_TAP_INTERVAL_MS = 260;
@@ -52,6 +56,9 @@ export function ImageViewerScreen({
   const [isPagingEnabled, setIsPagingEnabled] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [viewerProgressWidth, setViewerProgressWidth] = useState(1);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let isMounted = true;
@@ -99,6 +106,15 @@ export function ImageViewerScreen({
 
   const activeImage = images[activeIndex] ?? null;
   const pageSize = Math.max(1, width);
+  const viewerProgress = images.length > 1 ? activeIndex / Math.max(1, images.length - 1) : 0;
+
+  useEffect(() => {
+    Animated.timing(controlsOpacity, {
+      toValue: controlsVisible ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [controlsOpacity, controlsVisible]);
 
   useEffect(() => {
     if (!activeImage) {
@@ -126,6 +142,7 @@ export function ImageViewerScreen({
         height={height}
         image={item}
         onLongPress={handleImageLongPress}
+        onSingleTap={() => setControlsVisible((visible) => !visible)}
         onZoomStateChange={handleZoomStateChange}
         space={context.space}
         width={pageSize}
@@ -151,9 +168,8 @@ export function ImageViewerScreen({
         return currentImages;
       }
 
-      const currentImageId = currentImages[activeIndex]?.id;
       const nextImages = [...currentImages].reverse();
-      const nextIndex = Math.max(0, nextImages.findIndex((image) => image.id === currentImageId));
+      const nextIndex = activeIndex;
       setActiveIndex(nextIndex);
       requestAnimationFrame(() => {
         listRef.current?.scrollToIndex({
@@ -183,10 +199,50 @@ export function ImageViewerScreen({
     }
   }
 
+  async function toggleFavorite() {
+    const image = activeImage;
+    if (!image) {
+      return;
+    }
+    const nextFavorite = !image.isFavorite;
+    setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: nextFavorite } : item)));
+    try {
+      await runWithDatabaseSpace(context.space, (db) => imageRepository.updateFavorite(db, image.id, nextFavorite));
+      showToast(nextFavorite ? '已收藏' : '已取消收藏');
+    } catch (error) {
+      setImages((current) => current.map((item) => (item.id === image.id ? { ...item, isFavorite: image.isFavorite } : item)));
+      showToast(error instanceof Error ? `更新收藏失败：${error.message}` : '更新收藏失败');
+    }
+  }
+
+  function jumpToImageIndex(index: number) {
+    const nextIndex = Math.min(images.length - 1, Math.max(0, index));
+    setActiveIndex(nextIndex);
+    listRef.current?.scrollToIndex({ animated: false, index: nextIndex });
+  }
+
+  function jumpToProgressLocation(locationX: number) {
+    if (images.length <= 1 || viewerProgressWidth <= 0) {
+      return;
+    }
+    jumpToImageIndex(Math.round((locationX / viewerProgressWidth) * (images.length - 1)));
+  }
+
+  const viewerProgressPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => jumpToProgressLocation(event.nativeEvent.locationX),
+        onPanResponderMove: (event) => jumpToProgressLocation(event.nativeEvent.locationX),
+      }),
+    [images.length, viewerProgressWidth]
+  );
+
   return (
     <View style={styles.shell}>
       <ExpoStatusBar backgroundColor="#05070A" style="light" translucent />
-      <View style={[styles.topBar, { paddingTop: insets.top + spacing[3] }]}>
+      <Animated.View style={[styles.topBar, { paddingTop: insets.top + spacing[3], opacity: controlsOpacity }]}>
         <Pressable
           accessibilityLabel="返回"
           hitSlop={10}
@@ -206,7 +262,7 @@ export function ImageViewerScreen({
         >
           <Ionicons color={colors.text.inverse} name="swap-horizontal-outline" size={20} />
         </Pressable>
-      </View>
+      </Animated.View>
 
       {errorMessage ? (
         <View style={styles.stateWrap}>
@@ -254,7 +310,7 @@ export function ImageViewerScreen({
       )}
 
       {activeImage ? (
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[4] }]}>
+        <Animated.View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[4], opacity: controlsOpacity }]}>
           <View style={styles.filenameBlock}>
             <Text numberOfLines={1} style={styles.filename}>
               {activeImage.originalFilename}
@@ -263,15 +319,25 @@ export function ImageViewerScreen({
               原图浏览
             </Text>
           </View>
-          <View style={styles.favoritePill}>
+          <View
+            {...viewerProgressPanResponder.panHandlers}
+            onLayout={(event) => setViewerProgressWidth(Math.max(1, event.nativeEvent.layout.width))}
+            style={styles.viewerProgressHitArea}
+          >
+            <View style={styles.viewerProgressTrack}>
+              <View style={[styles.viewerProgressFill, { width: `${viewerProgress * 100}%` }]} />
+            </View>
+            <Text style={styles.viewerProgressText}>{counterLabel}</Text>
+          </View>
+          <Pressable onPress={() => void toggleFavorite()} style={styles.favoritePill}>
             <Ionicons
               color={activeImage.isFavorite ? colors.semantic.favorite : colors.text.inverse}
               name={activeImage.isFavorite ? 'star' : 'star-outline'}
               size={14}
             />
             <Text style={styles.favoriteText}>{activeImage.isFavorite ? '已收藏' : '未收藏'}</Text>
-          </View>
-        </View>
+          </Pressable>
+        </Animated.View>
       ) : null}
       <AppActionSheet
         items={actionImage ? [
@@ -290,6 +356,7 @@ function ZoomableImage({
   height,
   image,
   onLongPress,
+  onSingleTap,
   onZoomStateChange,
   space,
   width,
@@ -297,18 +364,21 @@ function ZoomableImage({
   height: number;
   image: ImageListItem;
   onLongPress: (image: ImageListItem) => void;
+  onSingleTap: () => void;
   onZoomStateChange: (zoomed: boolean) => void;
   space: ImageViewerContext['space'];
   width: number;
 }) {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const animatedScale = useRef(new Animated.Value(1)).current;
   const lastTapAtRef = useRef(0);
   const lastTouchPointRef = useRef<{ x: number; y: number } | null>(null);
   const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
 
   useEffect(() => {
     setScale(1);
+    animatedScale.setValue(1);
     setTranslate({ x: 0, y: 0 });
     onZoomStateChange(false);
   }, [image.id, onZoomStateChange]);
@@ -316,12 +386,22 @@ function ZoomableImage({
   function updateScale(nextScale: number) {
     const clampedScale = clamp(nextScale, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
     setScale(clampedScale);
+    animatedScale.setValue(clampedScale);
     if (clampedScale <= 1.01) {
       setTranslate({ x: 0, y: 0 });
       onZoomStateChange(false);
       return;
     }
     onZoomStateChange(true);
+  }
+
+  function animateScaleTo(nextScale: number) {
+    const clampedScale = clamp(nextScale, MIN_ZOOM_SCALE, MAX_ZOOM_SCALE);
+    Animated.timing(animatedScale, {
+      toValue: clampedScale,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => updateScale(clampedScale));
   }
 
   function handleTouchStart(event: GestureResponderEvent) {
@@ -341,7 +421,7 @@ function ZoomableImage({
 
     const now = Date.now();
     if (now - lastTapAtRef.current <= DOUBLE_TAP_INTERVAL_MS) {
-      updateScale(scale > 1.01 ? 1 : DOUBLE_TAP_ZOOM_SCALE);
+      animateScaleTo(scale > 1.01 ? 1 : DOUBLE_TAP_ZOOM_SCALE);
       lastTapAtRef.current = 0;
       return;
     }
@@ -379,6 +459,7 @@ function ZoomableImage({
     lastTouchPointRef.current = null;
     if (scale <= 1.01) {
       updateScale(1);
+      onSingleTap();
     }
   }
 
@@ -392,7 +473,7 @@ function ZoomableImage({
       onTouchStart={handleTouchStart}
       style={[styles.page, { height, width }]}
     >
-      <View
+      <Animated.View
         pointerEvents="none"
         style={[
           styles.zoomLayer,
@@ -400,13 +481,13 @@ function ZoomableImage({
             transform: [
               { translateX: translate.x },
               { translateY: translate.y },
-              { scale },
+              { scale: animatedScale },
             ],
           },
         ]}
       >
         <SecureImage contentFit="contain" space={space} style={styles.image} uri={image.originalFileUri} />
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -551,8 +632,30 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
-  filenameBlock: {
+  viewerProgressHitArea: {
     flex: 1,
+    gap: spacing[1],
+    justifyContent: 'center',
+    minHeight: 36,
+  },
+  viewerProgressTrack: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: radius.pill,
+    height: 3,
+    overflow: 'hidden',
+  },
+  viewerProgressFill: {
+    backgroundColor: colors.primary.hover,
+    borderRadius: radius.pill,
+    height: '100%',
+  },
+  viewerProgressText: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255,255,255,0.72)',
+    textAlign: 'right',
+  },
+  filenameBlock: {
+    flex: 0.9,
     gap: spacing[1],
     minWidth: 0,
   },
@@ -598,5 +701,3 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
-import { AppActionSheet } from '../components/AppActionSheet';
-import { useToast } from '../components/AppToast';

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ReactNode } from 'react';
 
+import { AppDialog } from '../components/AppDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
@@ -40,6 +41,8 @@ export function GlobalSearchScreen({
 }: GlobalSearchScreenProps) {
   const keyword = query.trim();
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<string | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ips: IpListItem[];
     groups: GlobalGroupListItem[];
@@ -82,6 +85,15 @@ export function GlobalSearchScreen({
   const totalCount = ips.length + groups.length + tags.length + images.length;
   const isEmpty = !isLoading && totalCount === 0;
   const showHistory = !keyword && searchHistory.length > 0;
+  const suggestions = keyword
+    ? buildSearchSuggestions({
+        history: searchHistory,
+        images,
+        ips,
+        groups,
+        tags,
+      })
+    : [];
 
   useEffect(() => {
     let isMounted = true;
@@ -115,65 +127,157 @@ export function GlobalSearchScreen({
   }
 
   function deleteHistoryItem(value: string) {
+    setDeleteConfirmItem(value);
+  }
+
+  function confirmDeleteHistoryItem() {
+    if (!deleteConfirmItem) {
+      return;
+    }
+    const value = deleteConfirmItem;
+    setDeleteConfirmItem(null);
     void removeSearchHistoryItem(space, value).then(setSearchHistory);
   }
 
   function deleteAllHistory() {
+    setClearConfirmVisible(true);
+  }
+
+  function confirmDeleteAllHistory() {
     setSearchHistory([]);
+    setClearConfirmVisible(false);
     void clearSearchHistory(space);
   }
 
   return (
-    <ScreenScaffold backgroundVariant="search" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
-      <SearchBar onChangeText={onChangeQuery} placeholder="搜 IP / 分组 / 标签 / 文件名 / 备注" value={query} />
-      <PageStateBlock
-        emptyDescription=""
-        emptyIconName="search-outline"
-        emptyTitle=""
-        errorMessage={errorMessage}
-        isEmpty={false}
-        loading={isLoading && Boolean(keyword)}
-        loadingDescription="正在搜索本地 SQLite 数据。"
-        loadingTitle="搜索中"
-        onRetry={reload}
-      >
-        {showHistory ? (
-          <SearchHistoryList
-            history={searchHistory}
-            onClearAll={deleteAllHistory}
-            onDeleteItem={deleteHistoryItem}
-            onUseItem={useHistoryItem}
-          />
-        ) : isEmpty ? (
-          <View style={styles.emptySpace} />
-        ) : (
-          <View style={styles.content}>
-            <ResultSection title="IP" count={ips.length}>
-              {ips.map((ip) => (
-                <ResultRow key={ip.id} label={ip.name} meta={`${ip.imageCount} 张图片 · ${ip.groupCount} 个分组`} onPress={() => onOpenIp(ip.id)} />
-              ))}
-            </ResultSection>
-            <ResultSection title="分组" count={groups.length}>
-              {groups.map((group) => (
-                <ResultRow key={group.id} label={group.name} meta={`${group.ipName} · ${group.imageCount} 张`} onPress={() => onOpenGroup(group.ipId, group.id)} />
-              ))}
-            </ResultSection>
-            <ResultSection title="标签" count={tags.length}>
-              {tags.map((tag) => (
-                <ResultRow key={tag.id} label={`#${tag.name}`} meta={`${tag.imageCount} 张图片`} onPress={() => onOpenTag(tag.id)} />
-              ))}
-            </ResultSection>
-            <ResultSection title="图片" count={images.length}>
-              <View style={styles.grid}>
-                {images.map((image) => (
-                  <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
+    <>
+      <ScreenScaffold backgroundVariant="search" decorativeTitle="Search" onBack={onBack} scrollable title="全局搜索">
+        <SearchBar onChangeText={onChangeQuery} placeholder="搜 IP / 分组 / 标签 / 文件名 / 备注" value={query} />
+        <PageStateBlock
+          emptyDescription=""
+          emptyIconName="search-outline"
+          emptyTitle=""
+          errorMessage={errorMessage}
+          isEmpty={false}
+          loading={isLoading && Boolean(keyword)}
+          loadingDescription="正在搜索本地 SQLite 数据。"
+          loadingTitle="搜索中"
+          onRetry={reload}
+        >
+          {showHistory ? (
+            <SearchHistoryList
+              history={searchHistory}
+              onClearAll={deleteAllHistory}
+              onDeleteItem={deleteHistoryItem}
+              onUseItem={useHistoryItem}
+            />
+          ) : isEmpty ? (
+            <View style={styles.emptySpace} />
+          ) : (
+            <View style={styles.content}>
+              {suggestions.length > 0 ? <SearchSuggestionList onPick={onChangeQuery} suggestions={suggestions} /> : null}
+              <ResultSection title="IP" count={ips.length}>
+                {ips.map((ip) => (
+                  <ResultRow key={ip.id} label={ip.name} meta={`${ip.imageCount} 张图片 · ${ip.groupCount} 个分组`} onPress={() => onOpenIp(ip.id)} />
                 ))}
-              </View>
-            </ResultSection>
-          </View>
-        )}
-      </PageStateBlock>
-    </ScreenScaffold>
+              </ResultSection>
+              <ResultSection title="分组" count={groups.length}>
+                {groups.map((group) => (
+                  <ResultRow key={group.id} label={group.name} meta={`${group.ipName} · ${group.imageCount} 张`} onPress={() => onOpenGroup(group.ipId, group.id)} />
+                ))}
+              </ResultSection>
+              <ResultSection title="标签" count={tags.length}>
+                {tags.map((tag) => (
+                  <ResultRow key={tag.id} label={`#${tag.name}`} meta={`${tag.imageCount} 张图片`} onPress={() => onOpenTag(tag.id)} />
+                ))}
+              </ResultSection>
+              <ResultSection title="图片" count={images.length}>
+                <View style={styles.grid}>
+                  {images.map((image) => (
+                    <ThumbnailTile image={image} key={image.id} onPress={onOpenImageDetail} space={space} />
+                  ))}
+                </View>
+              </ResultSection>
+            </View>
+          )}
+        </PageStateBlock>
+      </ScreenScaffold>
+      <AppDialog
+        danger
+        message="清空后不会影响本地素材，只会移除搜索历史。"
+        onClose={() => setClearConfirmVisible(false)}
+        onPrimary={confirmDeleteAllHistory}
+        primaryLabel="清空"
+        title="清空搜索历史"
+        visible={clearConfirmVisible}
+      />
+      <AppDialog
+        danger
+        message={deleteConfirmItem ? `删除「${deleteConfirmItem}」这条搜索记录？` : ''}
+        onClose={() => setDeleteConfirmItem(null)}
+        onPrimary={confirmDeleteHistoryItem}
+        primaryLabel="删除"
+        title="删除搜索记录"
+        visible={deleteConfirmItem != null}
+      />
+    </>
+  );
+}
+
+interface SearchSuggestion {
+  key: string;
+  label: string;
+  meta: string;
+}
+
+function buildSearchSuggestions({
+  history,
+  images,
+  ips,
+  groups,
+  tags,
+}: {
+  history: string[];
+  images: ImageListItem[];
+  ips: IpListItem[];
+  groups: GlobalGroupListItem[];
+  tags: TagUsageItem[];
+}): SearchSuggestion[] {
+  const suggestions = new Map<string, SearchSuggestion>();
+  for (const item of history.slice(0, 4)) {
+    suggestions.set(`history:${item}`, { key: `history:${item}`, label: item, meta: '历史' });
+  }
+  for (const ip of ips.slice(0, 4)) {
+    suggestions.set(`ip:${ip.id}`, { key: `ip:${ip.id}`, label: ip.name, meta: 'IP' });
+  }
+  for (const group of groups.slice(0, 4)) {
+    suggestions.set(`group:${group.id}`, { key: `group:${group.id}`, label: group.name, meta: `分组 · ${group.ipName}` });
+  }
+  for (const tag of tags.slice(0, 4)) {
+    suggestions.set(`tag:${tag.id}`, { key: `tag:${tag.id}`, label: `#${tag.name}`, meta: '标签' });
+  }
+  for (const image of images.slice(0, 8)) {
+    const prefix = image.originalFilename.split(/[._\-\s]+/).filter(Boolean)[0];
+    if (prefix) {
+      suggestions.set(`file:${prefix}`, { key: `file:${prefix}`, label: prefix, meta: '文件名前缀' });
+    }
+  }
+  return [...suggestions.values()].slice(0, 12);
+}
+
+function SearchSuggestionList({ onPick, suggestions }: { onPick: (value: string) => void; suggestions: SearchSuggestion[] }) {
+  return (
+    <View style={styles.suggestionBlock}>
+      <Text style={styles.suggestionTitle}>建议</Text>
+      <View style={styles.suggestionList}>
+        {suggestions.map((suggestion) => (
+          <Pressable key={suggestion.key} onPress={() => onPick(suggestion.label.replace(/^#/, ''))} style={({ pressed }) => [styles.suggestionPill, pressed && styles.pressed]}>
+            <Text numberOfLines={1} style={styles.suggestionLabel}>{suggestion.label}</Text>
+            <Text style={styles.suggestionMeta}>{suggestion.meta}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -291,6 +395,39 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
+  },
+  suggestionBlock: {
+    gap: spacing[2],
+  },
+  suggestionTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  suggestionList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  suggestionPill: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[1],
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  suggestionLabel: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
+    maxWidth: 180,
+  },
+  suggestionMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   row: {
     backgroundColor: colors.background.surface,

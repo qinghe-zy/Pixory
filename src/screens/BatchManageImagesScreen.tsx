@@ -9,12 +9,13 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SortMenuButton } from '../components/SortMenuButton';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type ImportTemplateRecord, type IpRecord, type PixorySpace } from '../database';
+import { groupRepository, imageRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type ImageSortOrder, type ImportTemplateRecord, type IpRecord, type PixorySpace } from '../database';
 import { colors, metrics, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -73,6 +74,7 @@ export function BatchManageImagesScreen({
 }: BatchManageImagesScreenProps) {
   const { showToast, showUndoSnackbar } = useToast();
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
@@ -88,18 +90,18 @@ export function BatchManageImagesScreen({
         importTemplateRepository.findAll(db),
         tagRepository.findUsageOverviewByIpId(db, ipId),
         scopeImageIds != null
-          ? imageRepository.findByIds(db, scopeImageIds)
+          ? imageRepository.findByIds(db, scopeImageIds, { orderBy: sortOrder })
           : importBatchId != null
-          ? imageRepository.findByImportBatchId(db, importBatchId)
+          ? imageRepository.findByImportBatchId(db, importBatchId, { orderBy: sortOrder })
           : groupId != null
-            ? imageRepository.findByGroupId(db, groupId)
-            : imageRepository.findByIpId(db, ipId),
+            ? imageRepository.findByGroupId(db, groupId, { orderBy: sortOrder })
+            : imageRepository.findByIpId(db, ipId, { orderBy: sortOrder }),
       ]);
 
       return { ip, groups, importTemplates, tags, images };
       });
     },
-    [groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? '', space],
+    [groupId, importBatchId, ipId, refreshToken, scopeImageIds?.join(',') ?? '', sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -672,6 +674,7 @@ export function BatchManageImagesScreen({
       >
         <View style={styles.topBar}>
           <Text style={styles.selectionText}>已选择 {selectedCount} 张</Text>
+          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
           <Pressable onPress={handleSelectAllToggle} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
             <Text style={styles.linkText}>{allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>

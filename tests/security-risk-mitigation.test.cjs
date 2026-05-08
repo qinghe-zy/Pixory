@@ -46,7 +46,7 @@ test('video and archive safety paths avoid known OOM and stale-temp regressions'
   assert.match(appSource, /cleanupOldTempFiles\('personal', 0\)/);
 });
 
-test('video player cannot auto-start or keep playing after lifecycle transitions', () => {
+test('video player auto-starts loaded videos but still pauses after lifecycle transitions', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
   const sourceLoadBlock = playerSource.slice(
@@ -54,8 +54,8 @@ test('video player cannot auto-start or keep playing after lifecycle transitions
     playerSource.indexOf('}).catch((error)', playerSource.indexOf('void player.replaceAsync'))
   );
 
-  assert.doesNotMatch(sourceLoadBlock, /player\.play\(\)|safePlayPlayer\(\)/);
-  assert.match(sourceLoadBlock, /safePausePlayer\(\)/);
+  assert.match(sourceLoadBlock, /safePlayPlayer\(\)/);
+  assert.match(sourceLoadBlock, /player\.loop\s*=\s*true/);
   assert.match(playerSource, /const \[isPlaying, setIsPlaying\] = useState\(false\)/);
   assert.match(playerSource, /AppState\.addEventListener\('change'[\s\S]*safePausePlayer\(\)/);
   assert.match(playerSource, /function handleBack\(\)[\s\S]*safePausePlayer\(\)[\s\S]*onBack\(\)/);
@@ -81,8 +81,13 @@ test('video player scrubbing works from both the progress bar and video surface'
   assert.match(playerSource, /const \[surfaceWidth, setSurfaceWidth\] = useState\(1\)/);
   assert.match(playerSource, /surfacePanResponder = useMemo/);
   assert.match(playerSource, /onMoveShouldSetPanResponder:[\s\S]*gestureState\.dx/);
-  assert.match(playerSource, /seekFromTrackLocation\(event\.nativeEvent\.locationX\)/);
-  assert.match(playerSource, /function seekFromSurfaceDelta\(deltaX: number\)/);
+  assert.match(playerSource, /updateScrubFromTrackLocation\(event\.nativeEvent\.locationX\)/);
+  assert.match(playerSource, /function updateScrubFromSurfaceDelta\(deltaX: number\)/);
+  assert.match(playerSource, /function schedulePreviewSeek/);
+  assert.match(playerSource, /function commitScrub/);
+  assert.match(playerSource, /SCRUB_PREVIEW_SEEK_INTERVAL_MS\s*=\s*90/);
+  assert.match(playerSource, /SURFACE_SCRUB_ACTIVATION_PX\s*=\s*3/);
+  assert.match(playerSource, /scrubDisplayTimeRef\.current/);
   assert.match(playerSource, /scrubStartTimeRef\.current \+ \(deltaX \/ surfaceWidth\) \* effectiveDuration/);
   assert.match(playerSource, /getEffectiveDuration\(\)[\s\S]*player\.duration/);
 });

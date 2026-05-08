@@ -3,11 +3,12 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { SecureImage } from '../components/SecureImage';
 import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, type ImageDetailRecord, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
@@ -15,9 +16,11 @@ import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from 
 import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
-const CONTROL_HIDE_DELAY_MS = 3000;
+const CONTROL_HIDE_DELAY_MS = 5000;
 const PLAYBACK_PROGRESS_SAVE_INTERVAL_MS = 10000;
 const DOUBLE_TAP_PAUSE_WINDOW_MS = 280;
+const SCRUB_PREVIEW_SEEK_INTERVAL_MS = 90;
+const SURFACE_SCRUB_ACTIVATION_PX = 3;
 
 interface VideoPlayerScreenProps {
   videoId?: number;
@@ -49,6 +52,8 @@ export function VideoPlayerScreen({
   const [queueVisible, setQueueVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [holdSpeedVisible, setHoldSpeedVisible] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubDisplayTime, setScrubDisplayTime] = useState(0);
   const [ipPickerVisible, setIpPickerVisible] = useState(false);
   const [normalIps, setNormalIps] = useState<IpListItem[]>([]);
   const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
@@ -59,12 +64,18 @@ export function VideoPlayerScreen({
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewSeekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPreviewSeekTimeRef = useRef<number | null>(null);
+  const lastPreviewSeekAtRef = useRef(0);
   const sourceLoadVersionRef = useRef(0);
   const currentTimeRef = useRef(0);
+  const scrubDisplayTimeRef = useRef(0);
+  const isScrubbingRef = useRef(false);
   const holdWasPlayingRef = useRef(false);
   const isHoldingFastForwardRef = useRef(false);
   const scrubStartTimeRef = useRef(0);
   const lastSurfaceTapAtRef = useRef(0);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
 
   const sourceUri = externalSource?.uri ?? video?.originalFileUri ?? null;
   const sourceFileName = externalSource?.fileName ?? video?.originalFilename ?? 'video.mp4';
@@ -72,7 +83,16 @@ export function VideoPlayerScreen({
   const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
     instance.playbackRate = speed;
+    instance.loop = true;
   });
+
+  useEffect(() => {
+    Animated.timing(controlsOpacity, {
+      toValue: controlsVisible ? 1 : 0,
+      duration: controlsVisible ? 140 : 180,
+      useNativeDriver: true,
+    }).start();
+  }, [controlsOpacity, controlsVisible]);
 
   useEffect(() => {
     setActiveVideoId(videoId ?? 0);
@@ -138,12 +158,12 @@ export function VideoPlayerScreen({
       }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
+      player.loop = true;
       if (!externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000) {
         player.currentTime = video.lastPlaybackPositionMs / 1000;
         currentTimeRef.current = video.lastPlaybackPositionMs / 1000;
       }
-      safePausePlayer();
-      setIsPlaying(false);
+      safePlayPlayer();
     }).catch((error) => {
       if (isActive) {
         showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
@@ -160,6 +180,9 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     const timeSubscription = player.addListener('timeUpdate', (payload) => {
+      if (isScrubbingRef.current) {
+        return;
+      }
       currentTimeRef.current = payload.currentTime;
       setCurrentTime(payload.currentTime);
       setDuration(Number.isFinite(player.duration) && player.duration > 0 ? player.duration : duration);
@@ -183,6 +206,7 @@ export function VideoPlayerScreen({
     return () => {
       clearHideTimer();
       clearLongPressTimer();
+      clearPreviewSeekTimer();
       safePausePlayer();
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
       if (!externalSource && video) {
@@ -213,7 +237,8 @@ export function VideoPlayerScreen({
     };
   }, [externalSource, player, space, video]);
 
-  const progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+  const displayTime = isScrubbing ? scrubDisplayTime : currentTime;
+  const progress = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
 
   const moreItems: AppActionSheetItem[] = useMemo(
@@ -245,13 +270,14 @@ export function VideoPlayerScreen({
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
           showControls();
-          seekFromTrackLocation(event.nativeEvent.locationX);
+          beginScrub();
+          updateScrubFromTrackLocation(event.nativeEvent.locationX);
         },
         onPanResponderMove: (event) => {
-          seekFromTrackLocation(event.nativeEvent.locationX);
+          updateScrubFromTrackLocation(event.nativeEvent.locationX);
         },
-        onPanResponderRelease: resetHideTimer,
-        onPanResponderTerminate: resetHideTimer,
+        onPanResponderRelease: commitScrub,
+        onPanResponderTerminate: cancelScrub,
       }),
     [duration, player, trackWidth]
   );
@@ -260,16 +286,19 @@ export function VideoPlayerScreen({
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_event, gestureState) => Math.abs(gestureState.dx) > 8 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          Math.abs(gestureState.dx) > SURFACE_SCRUB_ACTIVATION_PX && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
         onPanResponderGrant: () => {
           showControls();
+          beginScrub();
           scrubStartTimeRef.current = currentTimeRef.current;
         },
         onPanResponderMove: (_event, gestureState) => {
-          seekFromSurfaceDelta(gestureState.dx);
+          updateScrubFromSurfaceDelta(gestureState.dx);
         },
-        onPanResponderRelease: resetHideTimer,
-        onPanResponderTerminate: resetHideTimer,
+        onPanResponderRelease: commitScrub,
+        onPanResponderTerminate: cancelScrub,
+        onShouldBlockNativeResponder: () => true,
       }),
     [duration, player, surfaceWidth]
   );
@@ -380,6 +409,24 @@ export function VideoPlayerScreen({
     setHoldSpeedVisible(false);
   }
 
+  function clearPreviewSeekTimer() {
+    if (previewSeekTimerRef.current) {
+      clearTimeout(previewSeekTimerRef.current);
+      previewSeekTimerRef.current = null;
+    }
+    pendingPreviewSeekTimeRef.current = null;
+  }
+
+  function flushPreviewSeek() {
+    const pendingTime = pendingPreviewSeekTimeRef.current;
+    pendingPreviewSeekTimeRef.current = null;
+    if (pendingTime == null) {
+      return;
+    }
+    player.currentTime = pendingTime;
+    lastPreviewSeekAtRef.current = Date.now();
+  }
+
   function safePausePlayer() {
     try {
       player.pause();
@@ -435,7 +482,21 @@ export function VideoPlayerScreen({
       return;
     }
     lastSurfaceTapAtRef.current = now;
-    showControls();
+    toggleControls();
+  }
+
+  function toggleControls() {
+    setControlsVisible((visible) => {
+      const nextVisible = !visible;
+      if (nextVisible) {
+        resetHideTimer();
+      } else {
+        clearHideTimer();
+        setSpeedMenuVisible(false);
+        setQueueVisible(false);
+      }
+      return nextVisible;
+    });
   }
 
   function getEffectiveDuration() {
@@ -453,20 +514,85 @@ export function VideoPlayerScreen({
     setCurrentTime(clampedTime);
   }
 
-  function seekFromTrackLocation(locationX: number) {
+  function beginScrub() {
+    clearHideTimer();
+    clearLongPressTimer();
+    setIsScrubbing(true);
+    isScrubbingRef.current = true;
+    scrubDisplayTimeRef.current = currentTimeRef.current;
+    setScrubDisplayTime(currentTimeRef.current);
+  }
+
+  function normalizeScrubTime(nextTime: number) {
+    const effectiveDuration = getEffectiveDuration();
+    return effectiveDuration > 0 ? Math.min(effectiveDuration, Math.max(0, nextTime)) : 0;
+  }
+
+  function schedulePreviewSeek(nextTime: number) {
+    pendingPreviewSeekTimeRef.current = nextTime;
+    const now = Date.now();
+    if (now - lastPreviewSeekAtRef.current >= SCRUB_PREVIEW_SEEK_INTERVAL_MS) {
+      clearPreviewSeekTimer();
+      pendingPreviewSeekTimeRef.current = nextTime;
+      flushPreviewSeek();
+      return;
+    }
+    if (previewSeekTimerRef.current) {
+      return;
+    }
+    previewSeekTimerRef.current = setTimeout(() => {
+      previewSeekTimerRef.current = null;
+      flushPreviewSeek();
+    }, SCRUB_PREVIEW_SEEK_INTERVAL_MS);
+  }
+
+  function updateScrubTime(nextTime: number) {
+    const clampedTime = normalizeScrubTime(nextTime);
+    currentTimeRef.current = clampedTime;
+    scrubDisplayTimeRef.current = clampedTime;
+    setScrubDisplayTime(clampedTime);
+    setCurrentTime(clampedTime);
+    schedulePreviewSeek(clampedTime);
+  }
+
+  function updateScrubFromTrackLocation(locationX: number) {
     const effectiveDuration = getEffectiveDuration();
     if (effectiveDuration <= 0 || trackWidth <= 0) {
       return;
     }
-    seekToTime((locationX / trackWidth) * effectiveDuration);
+    updateScrubTime((locationX / trackWidth) * effectiveDuration);
   }
 
-  function seekFromSurfaceDelta(deltaX: number) {
+  function seekFromTrackLocation(locationX: number) {
+    updateScrubFromTrackLocation(locationX);
+  }
+
+  function updateScrubFromSurfaceDelta(deltaX: number) {
     const effectiveDuration = getEffectiveDuration();
     if (effectiveDuration <= 0 || surfaceWidth <= 0) {
       return;
     }
-    seekToTime(scrubStartTimeRef.current + (deltaX / surfaceWidth) * effectiveDuration);
+    updateScrubTime(scrubStartTimeRef.current + (deltaX / surfaceWidth) * effectiveDuration);
+  }
+
+  function seekFromSurfaceDelta(deltaX: number) {
+    updateScrubFromSurfaceDelta(deltaX);
+  }
+
+  function commitScrub() {
+    const finalTime = scrubDisplayTimeRef.current;
+    clearPreviewSeekTimer();
+    seekToTime(finalTime);
+    setIsScrubbing(false);
+    isScrubbingRef.current = false;
+    resetHideTimer();
+  }
+
+  function cancelScrub() {
+    clearPreviewSeekTimer();
+    setIsScrubbing(false);
+    isScrubbingRef.current = false;
+    resetHideTimer();
   }
 
   async function toggleOrientation() {
@@ -525,19 +651,19 @@ export function VideoPlayerScreen({
         <VideoView allowsFullscreen={false} contentFit="contain" nativeControls={false} player={player} style={styles.videoView} />
       </Pressable>
 
-      {controlsVisible ? (
-        <>
+      {holdSpeedVisible ? (
+        <View style={[styles.holdSpeedFloatingBadge, { bottom: insets.bottom + 118 }]}>
+          <Ionicons color={colors.primary.hover} name="play-forward" size={13} />
+          <Text style={styles.holdSpeedBadgeText}>{holdSpeed}x 快进</Text>
+        </View>
+      ) : null}
+
+      <Animated.View pointerEvents={controlsVisible ? 'auto' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
           <View style={[styles.topBar, { paddingTop: insets.top + spacing[2] }]}>
             <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
               <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
             </Pressable>
             <Text numberOfLines={1} style={styles.playerTitle}>{title}</Text>
-            {holdSpeedVisible ? (
-              <View style={styles.holdSpeedBadge}>
-                <Ionicons color={colors.primary.hover} name="play-forward" size={13} />
-                <Text style={styles.holdSpeedBadgeText}>{holdSpeed}x</Text>
-              </View>
-            ) : null}
             <Pressable
               accessibilityLabel="更多"
               onPress={() => {
@@ -577,7 +703,13 @@ export function VideoPlayerScreen({
               <Text style={styles.queueTitle}>待播放</Text>
               {queue.slice(Math.max(0, currentIndex - 1), currentIndex + 5).map((item) => (
                 <Pressable key={item.id} onPress={() => switchVideo(item.id)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
-                  <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
+                  <View style={styles.queueCover}>
+                    {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
+                      <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
+                    ) : (
+                      <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
+                    )}
+                  </View>
                   <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
                   <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
                 </Pressable>
@@ -610,16 +742,24 @@ export function VideoPlayerScreen({
             <View
               {...seekPanResponder.panHandlers}
               onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-              style={styles.progressTrack}
+              style={styles.progressHitArea}
             >
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-              <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
+              </View>
             </View>
+            {isScrubbing ? (
+              <View style={styles.scrubBubble}>
+                <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
+                <Text style={styles.scrubBubbleMeta}>{Math.round(progress * 100)}%</Text>
+              </View>
+            ) : null}
             <View style={styles.controlRow}>
               <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                 <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
               </Pressable>
-              <Text style={styles.timeText}>{formatDuration(currentTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+              <Text style={styles.timeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
               <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
                 <Text style={styles.pillButtonText}>{speed}x</Text>
               </Pressable>
@@ -632,8 +772,7 @@ export function VideoPlayerScreen({
               </Pressable>
             </View>
           </View>
-        </>
-      ) : null}
+        </Animated.View>
 
       <AppActionSheet
         items={[
@@ -685,6 +824,9 @@ const styles = StyleSheet.create({
   videoView: {
     height: '100%',
     width: '100%',
+  },
+  controlsLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   topBar: {
     alignItems: 'center',
@@ -749,6 +891,19 @@ const styles = StyleSheet.create({
     minHeight: 28,
     paddingHorizontal: spacing[2],
   },
+  holdSpeedFloatingBadge: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.78)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 30,
+    paddingHorizontal: spacing[3],
+    position: 'absolute',
+  },
   holdSpeedBadgeText: {
     ...typography.textStyles.micro,
     color: colors.text.inverse,
@@ -767,8 +922,12 @@ const styles = StyleSheet.create({
   progressTrack: {
     backgroundColor: 'rgba(255,255,255,0.22)',
     borderRadius: radius.pill,
-    height: 6,
+    height: 3,
     position: 'relative',
+  },
+  progressHitArea: {
+    justifyContent: 'center',
+    minHeight: 34,
   },
   progressFill: {
     backgroundColor: colors.primary.hover,
@@ -778,11 +937,34 @@ const styles = StyleSheet.create({
   progressKnob: {
     backgroundColor: colors.text.inverse,
     borderRadius: radius.pill,
-    height: 14,
-    marginLeft: -7,
+    height: 8,
+    marginLeft: -4,
     position: 'absolute',
-    top: -4,
-    width: 14,
+    top: -2.5,
+    width: 8,
+  },
+  scrubBubble: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.86)',
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginTop: -spacing[1],
+    minHeight: 30,
+    paddingHorizontal: spacing[3],
+  },
+  scrubBubbleTime: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '800',
+  },
+  scrubBubbleMeta: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '700',
   },
   controlRow: {
     alignItems: 'center',
@@ -883,6 +1065,19 @@ const styles = StyleSheet.create({
   },
   queueRowActive: {
     backgroundColor: 'rgba(213, 228, 202, 0.18)',
+  },
+  queueCover: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: radius.sm,
+    height: 30,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 44,
+  },
+  queueCoverImage: {
+    height: '100%',
+    width: '100%',
   },
   queueName: {
     ...typography.textStyles.micro,

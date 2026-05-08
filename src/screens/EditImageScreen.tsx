@@ -35,9 +35,9 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
     tags: TagRecord[];
   }>(
     async () => {
-      const detail = await runWithDatabaseSpace(space, (db) => imageRepository.findDetailById(db, imageId, { includeDeleted: true }));
+      const detail = await runWithDatabaseSpace(space, (db) => imageRepository.findDetailById(db, imageId, { includeDeleted: true, mediaType: 'all' }));
       if (!detail) {
-        throw new Error('没有找到这张图片。');
+        throw new Error('没有找到这个素材。');
       }
 
       const [groups, tags, groupIds] = await runWithDatabaseSpace(space, (db) => Promise.all([
@@ -52,7 +52,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
-        return `读取图片编辑信息失败：${message}`;
+        return `读取素材编辑信息失败：${message}`;
       },
       initialData: { image: null, groups: [], tags: [] },
     }
@@ -65,6 +65,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
   const [note, setNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const image = data?.image ?? null;
+  const mediaLabel = image?.mediaType === 'video' ? '视频' : '图片';
   const groups = data?.groups ?? [];
 
   useEffect(() => {
@@ -171,9 +172,9 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
           </View>
           <View style={styles.previewMeta}>
             <Text numberOfLines={2} style={styles.previewTitle}>
-              {image?.originalFilename ?? '当前图片'}
+              {image?.originalFilename ?? `当前${mediaLabel}`}
             </Text>
-            <Text numberOfLines={2} style={styles.previewCaption}>仅更新元数据，不改动原图文件。</Text>
+            <Text numberOfLines={2} style={styles.previewCaption}>仅更新 Pixory 展示文件名和元数据，不改动{mediaLabel}原始文件。</Text>
           </View>
         </View>
 
@@ -189,7 +190,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
             autoCorrect={false}
             editable={!isSubmitting}
             errorMessage={submitError}
-            label="文件名"
+            label="Pixory 展示文件名"
             maxLength={80}
             onChangeText={(value) => {
               setOriginalFilename(value);
@@ -197,7 +198,7 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
                 clearSubmitError();
               }
             }}
-            placeholder="输入图片文件名"
+            placeholder={`输入${mediaLabel}展示文件名`}
             value={originalFilename}
           />
 

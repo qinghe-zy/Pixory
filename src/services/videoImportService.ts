@@ -1,5 +1,5 @@
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
@@ -79,8 +79,6 @@ interface ImportSingleVideoParams {
   isFavorite?: boolean;
   pickedAsset: PickedVideoAsset;
 }
-
-const VIDEO_MIME_TYPES = ['video/*'];
 
 function getFileNameFromUri(fileUri: string): string {
   const [cleanUri] = fileUri.split('?');
@@ -252,10 +250,17 @@ async function importSingleVideo({
 }
 
 export async function pickVideosForImport(): Promise<PickVideosForImportResult> {
-  const result = await DocumentPicker.getDocumentAsync({
-    copyToCacheDirectory: false,
-    multiple: true,
-    type: VIDEO_MIME_TYPES,
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) {
+    throw new Error('Media library permission is required to import videos.');
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['videos'],
+    allowsMultipleSelection: true,
+    allowsEditing: false,
+    quality: 1,
+    preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
   });
 
   if (result.canceled) {
@@ -269,9 +274,9 @@ export async function pickVideosForImport(): Promise<PickVideosForImportResult> 
     canceled: false,
     pickedAssets: result.assets.map((asset) => ({
       uri: asset.uri,
-      fileName: asset.name ?? getFileNameFromUri(asset.uri),
-      mimeType: asset.mimeType ?? null,
-      fileSize: asset.size ?? null,
+      fileName: asset.fileName ?? getFileNameFromUri(asset.uri),
+      mimeType: asset.mimeType ?? 'video/mp4',
+      fileSize: asset.fileSize ?? null,
     })),
   };
 }

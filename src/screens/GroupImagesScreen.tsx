@@ -1,17 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
-import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type ImageSortOrder, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { getFilenamePrefix } from '../utils/batchSelectionRules';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
@@ -57,6 +59,7 @@ const EMPTY_GROUP_RESULT_FILTERS: GroupResultFilterState = {
 };
 
 type GroupResultFilterDropdown = 'status' | 'tag' | 'size';
+const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
 
 export function GroupImagesScreen({
   ipId,
@@ -71,6 +74,8 @@ export function GroupImagesScreen({
 }: GroupImagesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<GroupResultFilterState>(EMPTY_GROUP_RESULT_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<GroupResultFilterDropdown | null>(null);
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     group: GroupRecord | null;
@@ -86,7 +91,7 @@ export function GroupImagesScreen({
           mediaType: hasImageOnlyFilter(activeFilters) ? 'image' : 'all',
           aspectRatio: activeFilters.aspectRatio ?? undefined,
           favoritesOnly: activeFilters.favorite || undefined,
-          orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : undefined,
+          orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : sortOrder,
           recentlyViewedOnly: activeFilters.recentViewed || undefined,
           tagIds: activeFilters.tagIds,
           untaggedOnly: activeFilters.untagged || undefined,
@@ -100,7 +105,7 @@ export function GroupImagesScreen({
       return { ip, group, images, tags };
       });
     },
-    [activeFilters, groupId, ipId, refreshToken, space],
+    [activeFilters, groupId, ipId, refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -131,6 +136,12 @@ export function GroupImagesScreen({
   const filterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
   const hasActiveFilters = activeFilterLabels.length > 0;
   const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: multiSelect.selectedImageIds,
+    setSelectedIds: multiSelect.setSelectedImageIds,
+    scrollViewRef,
+  });
   const selectedImages = useMemo(
     () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableImages, multiSelect.selectedImageIds]
@@ -161,7 +172,7 @@ export function GroupImagesScreen({
       onOpenImageDetail(imageId);
       return;
     }
-    multiSelect.enterSelection(imageId);
+    swipeSelection.beginSwipeSelection(imageId);
   }
 
   const footer = multiSelect.isSelectionMode ? (
@@ -222,7 +233,16 @@ export function GroupImagesScreen({
   }
 
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} scrollable title="分组图片">
+    <ScreenScaffold
+      backgroundVariant="gallery"
+      decorativeTitle="Gallery"
+      footer={footer}
+      onBack={onBack}
+      onScroll={swipeSelection.onScroll}
+      scrollViewRef={scrollViewRef}
+      scrollable
+      title="分组图片"
+    >
       {group ? (
         <View style={styles.summary}>
           <View style={styles.summaryCopy}>
@@ -315,24 +335,26 @@ export function GroupImagesScreen({
       >
         <View style={styles.gridHeader}>
           <Text style={styles.gridTitle}>图片</Text>
+          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
           <Pressable
-            disabled={images.length === 0}
+            disabled={selectableImages.length === 0}
             onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, images.length === 0 ? styles.disabled : null, pressed && images.length > 0 ? styles.pressed : null]}
+            style={({ pressed }) => [styles.selectAllButton, selectableImages.length === 0 ? styles.disabled : null, pressed && selectableImages.length > 0 ? styles.pressed : null]}
           >
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
         </View>
-        <View style={styles.grid}>
+        <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile
-              image={image}
-              key={image.id}
-              onLongPress={handleImageLongPress}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
+            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
+              <ThumbnailTile
+                image={image}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            </View>
           ))}
         </View>
       </PageStateBlock>

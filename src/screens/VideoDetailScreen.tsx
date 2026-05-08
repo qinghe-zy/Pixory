@@ -20,6 +20,7 @@ interface VideoDetailScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
+  onEdit: (videoId: number) => void;
   onPlay: (videoId: number) => void;
   onDeleted: () => void;
   onRefreshed: () => void;
@@ -30,6 +31,7 @@ export function VideoDetailScreen({
   space = 'normal',
   refreshToken,
   onBack,
+  onEdit,
   onPlay,
   onDeleted,
   onRefreshed,
@@ -96,6 +98,16 @@ export function VideoDetailScreen({
         onPress: handleSaveLocal,
       },
       {
+        key: 'edit',
+        label: '编辑信息 / 重命名',
+        icon: 'create-outline',
+        onPress: () => {
+          if (video) {
+            onEdit(video.id);
+          }
+        },
+      },
+      {
         key: 'delete',
         label: '移入回收站',
         icon: 'trash-outline',
@@ -103,7 +115,7 @@ export function VideoDetailScreen({
         onPress: handleSoftDelete,
       },
     ],
-    [video, isBusy]
+    [video, isBusy, onEdit]
   );
 
   async function handleSaveLocal() {

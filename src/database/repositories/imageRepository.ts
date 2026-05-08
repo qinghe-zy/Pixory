@@ -54,12 +54,44 @@ function resolveMediaTypeFilter(mediaType?: AssetMediaTypeFilter): AssetMediaTyp
 }
 
 function buildOrderByClause(orderBy?: ImageListQueryOptions['orderBy']): string {
+  if (orderBy === 'createdAtAsc') {
+    return 'ORDER BY image_assets.createdAt ASC, image_assets.id ASC';
+  }
+
+  if (orderBy === 'updatedAtDesc') {
+    return 'ORDER BY image_assets.updatedAt DESC, image_assets.id DESC';
+  }
+
+  if (orderBy === 'updatedAtAsc') {
+    return 'ORDER BY image_assets.updatedAt ASC, image_assets.id ASC';
+  }
+
   if (orderBy === 'lastViewedAtDesc') {
     return 'ORDER BY image_assets.lastViewedAt DESC, image_assets.id DESC';
   }
 
+  if (orderBy === 'lastViewedAtAsc') {
+    return 'ORDER BY image_assets.lastViewedAt ASC, image_assets.id ASC';
+  }
+
   if (orderBy === 'deletedAtDesc') {
     return 'ORDER BY image_assets.deletedAt DESC, image_assets.id DESC';
+  }
+
+  if (orderBy === 'filenameAsc') {
+    return 'ORDER BY image_assets.originalFilename COLLATE NOCASE ASC, image_assets.id ASC';
+  }
+
+  if (orderBy === 'filenameDesc') {
+    return 'ORDER BY image_assets.originalFilename COLLATE NOCASE DESC, image_assets.id DESC';
+  }
+
+  if (orderBy === 'fileSizeDesc') {
+    return 'ORDER BY image_assets.fileSize DESC, image_assets.id DESC';
+  }
+
+  if (orderBy === 'fileSizeAsc') {
+    return 'ORDER BY image_assets.fileSize ASC, image_assets.id ASC';
   }
 
   return 'ORDER BY image_assets.createdAt DESC, image_assets.id DESC';
@@ -708,7 +740,7 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findByIds(db: SQLiteDatabase, ids: number[], options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
+  async findByIds(db: SQLiteDatabase, ids: number[], options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     if (ids.length === 0) {
       return [];
     }
@@ -718,7 +750,7 @@ export const imageRepository = {
       `${IMAGE_LIST_SELECT}
        WHERE image_assets.id IN (${inClause.placeholders})${deletedFilter ? ` AND ${deletedFilter}` : ''}
        GROUP BY image_assets.id
-       ORDER BY image_assets.createdAt DESC, image_assets.id DESC`,
+       ${buildOrderByClause(options?.orderBy)}`,
       ...inClause.values
     );
 
@@ -774,14 +806,18 @@ export const imageRepository = {
     return rows.map(mapImageListItemRow);
   },
 
-  async findRecentViewed(db: SQLiteDatabase, limit = 60, options?: ImageAssetQueryOptions): Promise<ImageListItem[]> {
-    const deletedFilter = buildDeletedFilter('image_assets', options);
+  async findRecentViewed(db: SQLiteDatabase, limit = 60, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const queryParts = buildImageListQueryParts(['image_assets.lastViewedAt IS NOT NULL'], [], {
+      ...options,
+      orderBy: options?.orderBy ?? 'lastViewedAtDesc',
+    });
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
-       WHERE ${deletedFilter} AND image_assets.lastViewedAt IS NOT NULL
+       ${queryParts.whereClause}
        GROUP BY image_assets.id
-       ORDER BY image_assets.lastViewedAt DESC, image_assets.id DESC
+       ${queryParts.orderByClause}
        LIMIT ?`,
+      ...queryParts.values,
       limit
     );
 
@@ -987,7 +1023,7 @@ export const imageRepository = {
       isFavorite?: boolean;
     }
   ): Promise<ImageAssetRecord | null> {
-    const current = await this.findById(db, id, { includeDeleted: true });
+    const current = await this.findById(db, id, { includeDeleted: true, mediaType: 'all' });
     if (!current) {
       return null;
     }

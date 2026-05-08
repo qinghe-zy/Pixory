@@ -1,18 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { getFilenamePrefix } from '../utils/batchSelectionRules';
-import type { ImageAspectRatioFilter } from '../database';
+import type { ImageAspectRatioFilter, ImageSortOrder } from '../database';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 type FileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
@@ -77,6 +79,9 @@ export function AllImagesScreen({
 }: AllImagesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<AllImagesFilterState>(EMPTY_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<AllImagesFilterDropdown | null>(null);
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     images: ImageListItem[];
@@ -97,7 +102,7 @@ export function AllImagesScreen({
         ungroupedOnly: activeFilters.ungrouped || undefined,
         untaggedOnly: activeFilters.untagged || undefined,
         recentlyViewedOnly: activeFilters.recentViewed || undefined,
-        orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : undefined,
+        orderBy: activeFilters.recentViewed ? 'lastViewedAtDesc' : sortOrder,
         mimeType: activeFilters.mimeType ?? undefined,
         aspectRatio: activeFilters.aspectRatio ?? undefined,
         minFileSize: activeFilters.size?.minFileSize,
@@ -110,7 +115,7 @@ export function AllImagesScreen({
       return { ip, images, groups, tags };
       });
     },
-    [activeFilters, ipId, refreshToken, space],
+    [activeFilters, ipId, refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -144,6 +149,12 @@ export function AllImagesScreen({
   const activeFilterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
   const hasActiveFilters = activeFilterLabels.length > 0;
   const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: multiSelect.selectedImageIds,
+    setSelectedIds: multiSelect.setSelectedImageIds,
+    scrollViewRef,
+  });
   const selectedImages = useMemo(
     () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableImages, multiSelect.selectedImageIds]
@@ -185,7 +196,7 @@ export function AllImagesScreen({
       onOpenImageDetail(imageId);
       return;
     }
-    multiSelect.enterSelection(imageId);
+    swipeSelection.beginSwipeSelection(imageId);
   }
 
   function toggleBooleanFilter(key: 'favorite' | 'ungrouped' | 'untagged' | 'recentViewed') {
@@ -271,7 +282,17 @@ export function AllImagesScreen({
     />
   ) : undefined;
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Gallery" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="素材库">
+    <ScreenScaffold
+      backgroundVariant="gallery"
+      decorativeTitle="Gallery"
+      footer={footer}
+      onBack={onBack}
+      onScroll={swipeSelection.onScroll}
+      rightAction={rightAction}
+      scrollViewRef={scrollViewRef}
+      scrollable
+      title="素材库"
+    >
       <View style={styles.summaryPanel}>
         <View style={styles.summaryTopLine}>
           <Text numberOfLines={1} style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
@@ -390,6 +411,7 @@ export function AllImagesScreen({
           <Text style={styles.galleryTitle}>素材</Text>
           <View style={styles.galleryActions}>
             <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
+            <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
             <Pressable
               disabled={selectableImages.length === 0}
               onPress={multiSelect.toggleSelectAll}
@@ -399,17 +421,18 @@ export function AllImagesScreen({
             </Pressable>
           </View>
         </View>
-        <View style={styles.grid}>
+        <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile
-              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-              image={image}
-              key={image.id}
-              onLongPress={handleImageLongPress}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
+            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
+              <ThumbnailTile
+                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                image={image}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            </View>
           ))}
         </View>
       </PageStateBlock>

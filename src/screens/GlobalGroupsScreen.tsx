@@ -25,6 +25,8 @@ interface GlobalGroupsScreenProps {
   onOpenCoverPicker: (ipId: number, groupId: number) => void;
   onEditGroup: (ipId: number, groupId: number) => void;
   onOpenGroup: (ipId: number, groupId: number) => void;
+  onImportImagesToGroup?: (ipId: number, groupId: number) => void;
+  onImportVideosToGroup?: (ipId: number, groupId: number) => void;
 }
 
 export function GlobalGroupsScreen({
@@ -35,10 +37,14 @@ export function GlobalGroupsScreen({
   onOpenCoverPicker,
   onEditGroup,
   onOpenGroup,
+  onImportImagesToGroup,
+  onImportVideosToGroup,
 }: GlobalGroupsScreenProps) {
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
+  const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
+  const [scopeMenuVisible, setScopeMenuVisible] = useState(false);
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
     () => runWithDatabaseSpace(space, (db) => groupRepository.findOverview(db)),
     [refreshToken, space],
@@ -51,9 +57,12 @@ export function GlobalGroupsScreen({
     }
   );
 
+  const ipScopes = [...new Map(groups.map((group) => [group.ipId, { id: group.ipId, name: group.ipName }])).values()];
+  const visibleGroups = selectedIpId == null ? groups : groups.filter((group) => group.ipId === selectedIpId);
+  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? '当前 IP';
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
-    items: groups.filter((group) => group.type === option.value),
+    items: visibleGroups.filter((group) => group.type === option.value),
   })).filter((section) => section.items.length > 0);
 
   function getGroupCoverBlurRadius(group: GlobalGroupListItem): number | undefined {
@@ -99,7 +108,10 @@ export function GlobalGroupsScreen({
         onRetry={reload}
       >
         <View style={styles.list}>
-          <Text style={styles.scopePill}>全部 IP</Text>
+          <Pressable onPress={() => setScopeMenuVisible(true)} style={({ pressed }) => [styles.scopePill, pressed && styles.pressed]}>
+            <Text numberOfLines={1} style={styles.scopePillText}>{selectedIpName}</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
+          </Pressable>
           {groupedSections.map((section) => (
             <View key={section.value} style={styles.sectionBlock}>
               <View style={styles.sectionHeader}>
@@ -133,6 +145,8 @@ export function GlobalGroupsScreen({
     <AppActionSheet
       items={actionGroup ? [
         { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.ipId, actionGroup.id) },
+        ...(onImportImagesToGroup ? [{ key: 'add-images', label: '添加图片', icon: 'image-outline' as const, onPress: () => onImportImagesToGroup(actionGroup.ipId, actionGroup.id) }] : []),
+        ...(onImportVideosToGroup ? [{ key: 'add-videos', label: '添加视频', icon: 'videocam-outline' as const, onPress: () => onImportVideosToGroup(actionGroup.ipId, actionGroup.id) }] : []),
         { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.ipId, actionGroup.id) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.ipId, actionGroup.id) },
         {
@@ -153,6 +167,20 @@ export function GlobalGroupsScreen({
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
       visible={Boolean(actionGroup)}
+    />
+    <AppActionSheet
+      items={[
+        { key: 'all', label: '全部 IP', icon: 'albums-outline', onPress: () => setSelectedIpId(null) },
+        ...ipScopes.map((ip) => ({
+          key: String(ip.id),
+          label: ip.name,
+          icon: 'folder-outline' as const,
+          onPress: () => setSelectedIpId(ip.id),
+        })),
+      ]}
+      onClose={() => setScopeMenuVisible(false)}
+      title="筛选 IP"
+      visible={scopeMenuVisible}
     />
     <AppDialog
       danger
@@ -197,6 +225,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   scopePill: {
+    alignItems: 'center',
     ...typography.textStyles.caption,
     alignSelf: 'flex-start',
     backgroundColor: colors.background.input,
@@ -204,9 +233,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.primary,
+    flexDirection: 'row',
+    gap: spacing[1],
     overflow: 'hidden',
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
+  },
+  scopePillText: {
+    ...typography.textStyles.caption,
+    color: colors.text.primary,
+    maxWidth: 220,
   },
   sectionBlock: {
     gap: spacing[2],

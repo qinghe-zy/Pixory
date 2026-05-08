@@ -35,6 +35,7 @@ export function PersonalUnlockModal({
   const [changePasswordErrorMessage, setChangePasswordErrorMessage] = useState<string | null>(null);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const [resetConfirmVisible, setResetConfirmVisible] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -46,6 +47,7 @@ export function PersonalUnlockModal({
       setChangePasswordErrorMessage(null);
       setChangePasswordVisible(false);
       setResetConfirmVisible(false);
+      setShowPassword(false);
     }
   }, [visible]);
 
@@ -110,22 +112,22 @@ export function PersonalUnlockModal({
             </Pressable>
           </View>
 
-          <TextInput
+          <PasswordInput
             onChangeText={setSecret}
             placeholder={needsSetup ? '设置密码' : '输入隐私模式密码'}
-            placeholderTextColor={colors.text.placeholder}
-            secureTextEntry
-            style={styles.input}
+            secureTextEntry={!showPassword}
+            showPassword={showPassword}
+            onToggleShowPassword={() => setShowPassword((current) => !current)}
             value={secret}
           />
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
           {needsSetup ? (
-            <TextInput
+            <PasswordInput
               onChangeText={setConfirmSecret}
               placeholder="再次输入密码"
-              placeholderTextColor={colors.text.placeholder}
-              secureTextEntry
-              style={styles.input}
+              secureTextEntry={!showPassword}
+              showPassword={showPassword}
+              onToggleShowPassword={() => setShowPassword((current) => !current)}
               value={confirmSecret}
             />
           ) : null}
@@ -177,20 +179,20 @@ export function PersonalUnlockModal({
       title="更新隐私模式密码"
       visible={changePasswordVisible}
     >
-      <TextInput
+      <PasswordInput
         onChangeText={setCurrentSecret}
         placeholder="当前密码"
-        placeholderTextColor={colors.text.placeholder}
-        secureTextEntry
-        style={styles.input}
+        secureTextEntry={!showPassword}
+        showPassword={showPassword}
+        onToggleShowPassword={() => setShowPassword((current) => !current)}
         value={currentSecret}
       />
-      <TextInput
+      <PasswordInput
         onChangeText={setNextSecret}
         placeholder="新密码"
-        placeholderTextColor={colors.text.placeholder}
-        secureTextEntry
-        style={styles.input}
+        secureTextEntry={!showPassword}
+        showPassword={showPassword}
+        onToggleShowPassword={() => setShowPassword((current) => !current)}
         value={nextSecret}
       />
       {changePasswordErrorMessage ? <Text style={styles.errorText}>{changePasswordErrorMessage}</Text> : null}
@@ -210,6 +212,38 @@ export function PersonalUnlockModal({
       visible={resetConfirmVisible}
     />
     </>
+  );
+}
+
+function PasswordInput({
+  onChangeText,
+  onToggleShowPassword,
+  placeholder,
+  secureTextEntry,
+  showPassword,
+  value,
+}: {
+  onChangeText: (value: string) => void;
+  onToggleShowPassword: () => void;
+  placeholder: string;
+  secureTextEntry: boolean;
+  showPassword: boolean;
+  value: string;
+}) {
+  return (
+    <View style={styles.passwordInputWrap}>
+      <TextInput
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.text.placeholder}
+        secureTextEntry={secureTextEntry}
+        style={styles.passwordInput}
+        value={value}
+      />
+      <Pressable accessibilityLabel={showPassword ? '隐藏密码' : '显示密码'} hitSlop={8} onPress={onToggleShowPassword} style={styles.passwordToggle}>
+        <Ionicons color={colors.text.secondary} name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -271,6 +305,28 @@ const styles = StyleSheet.create({
     color: colors.text.title,
     minHeight: 44,
     paddingHorizontal: spacing[3],
+  },
+  passwordInputWrap: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 44,
+  },
+  passwordInput: {
+    ...typography.textStyles.body,
+    color: colors.text.title,
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  passwordToggle: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   textActions: {
     alignItems: 'center',

@@ -14,6 +14,8 @@ import {
   joinStoragePath,
 } from './fileStorageService';
 import { importSingleImage, type ImportedImageResult, type PickedImageAsset } from './imageImportService';
+import { importPlainBackupPackage, type ImportPlainBackupPackageResult } from './backupService';
+import { importVideosToIp, type ImportedVideoResult, type PickedVideoAsset } from './videoImportService';
 
 export const MAX_PACKAGE_BYTES = 200 * 1024 * 1024;
 export const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
@@ -23,6 +25,11 @@ const MIN_FREE_STORAGE_AFTER_IMPORT_BYTES = 64 * 1024 * 1024;
 const MAGIC_BYTE_READ_LENGTH = 16;
 
 type SupportedPackageImageType = {
+  mimeType: string;
+  extension: string;
+};
+
+type SupportedPackageVideoType = {
   mimeType: string;
   extension: string;
 };
@@ -43,10 +50,18 @@ export interface PackageImportError {
 export interface PackageImportResult {
   importBatchId: number | null;
   successCount: number;
+  imageSuccessCount: number;
+  videoSuccessCount: number;
   failedCount: number;
+  imageFailedCount: number;
+  videoFailedCount: number;
   importedImages: ImportedImageResult[];
+  importedVideos: ImportedVideoResult[];
   errors: PackageImportError[];
   skippedCount: number;
+  imageSkippedCount: number;
+  videoSkippedCount: number;
+  plainBackupImport: ImportPlainBackupPackageResult | null;
   items: ImportBatchItemRecord[];
 }
 
@@ -189,6 +204,62 @@ async function detectImageTypeFromMagicBytes(fileUri: string): Promise<Supported
   return null;
 }
 
+async function detectVideoTypeFromMagicBytes(fileUri: string): Promise<SupportedPackageVideoType | null> {
+  const base64Header = await FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+    position: 0,
+    length: MAGIC_BYTE_READ_LENGTH,
+  });
+
+  if (base64Header.includes('ZnR5c')) {
+    return { mimeType: 'video/mp4', extension: 'mp4' };
+  }
+
+  if (base64Header.startsWith('AAAA') || base64Header.startsWith('GkXf')) {
+    return { mimeType: 'video/mp4', extension: 'mp4' };
+  }
+
+  return null;
+}
+
+function looksLikePixoryManifest(files: ExtractedPackageFile[]): boolean {
+  return files.some((file) => file.relativePath === 'manifest.json' || file.relativePath.endsWith('/manifest.json'));
+}
+
+async function importSingleVideoFromPackage(params: {
+  space: PixorySpace;
+  ipId: number;
+  groupIds: number[];
+  tagNames?: string[];
+  note?: string | null;
+  isFavorite?: boolean;
+  file: ExtractedPackageFile;
+  videoType: SupportedPackageVideoType;
+}): Promise<ImportedVideoResult> {
+  const fileName = params.file.name.includes('.') ? params.file.name : `${params.file.name}.${params.videoType.extension}`;
+  const pickedAsset: PickedVideoAsset = {
+    uri: params.file.uri,
+    fileName,
+    mimeType: params.videoType.mimeType,
+    fileSize: (await getFileInfo(params.file.uri)).size ?? null,
+  };
+  const result = await importVideosToIp({
+    space: params.space,
+    ipId: params.ipId,
+    groupIds: params.groupIds,
+    tagNames: params.tagNames,
+    note: params.note,
+    isFavorite: params.isFavorite,
+    pickedAssets: [pickedAsset],
+    title: '资源包视频导入',
+  });
+  const importedVideo = result.importedVideos[0];
+  if (!importedVideo) {
+    throw new Error(result.errors[0]?.message ?? '视频导入失败。');
+  }
+  return importedVideo;
+}
+
 function resolvePackageGroupName(relativePath: string): string | null {
   const parts = relativePath.split('/').filter(Boolean);
   if (parts.length <= 1) {
@@ -287,21 +358,52 @@ export async function importPackageToIp(params: {
       await validatePackageFile(copiedPackageUri, params.packageName);
       extractDir = await unzipPackageToPrivateTemp(copiedPackageUri, space);
       const files = await scanExtractedFiles(extractDir);
+      if (looksLikePixoryManifest(files)) {
+        const plainBackupImport = await importPlainBackupPackage({
+          space,
+          extractedDirectoryUri: extractDir,
+          mode: 'merge',
+        });
+        return {
+          importBatchId: null,
+          successCount: plainBackupImport.importedImageCount,
+          imageSuccessCount: plainBackupImport.importedImageCount,
+          videoSuccessCount: 0,
+          failedCount: 0,
+          imageFailedCount: 0,
+          videoFailedCount: 0,
+          importedImages: [],
+          importedVideos: [],
+          errors: [],
+          skippedCount: 0,
+          imageSkippedCount: 0,
+          videoSkippedCount: 0,
+          plainBackupImport,
+          items: [],
+        };
+      }
       const importBatch = await importBatchRepository.create(db, {
         ipId: params.ipId,
         name: `${params.packageName} 资源包导入`,
         totalCount: files.length,
       });
       const importedImages: ImportedImageResult[] = [];
+      const importedVideos: ImportedVideoResult[] = [];
       const errors: PackageImportError[] = [];
       const items: ImportBatchItemRecord[] = [];
       let skippedCount = 0;
+      let imageSkippedCount = 0;
+      let videoSkippedCount = 0;
+      let imageFailedCount = 0;
+      let videoFailedCount = 0;
 
       for (const file of files) {
         try {
           const imageType = await detectImageTypeFromMagicBytes(file.uri);
-          if (!imageType) {
+          const videoType = imageType ? null : await detectVideoTypeFromMagicBytes(file.uri);
+          if (!imageType && !videoType) {
             skippedCount += 1;
+            imageSkippedCount += 1;
             items.push(
               await importBatchRepository.createItem(db, {
                 importBatchId: importBatch.id,
@@ -316,6 +418,34 @@ export async function importPackageToIp(params: {
 
           const group = await getOrCreatePackageGroup(db, params.ipId, resolvePackageGroupName(file.relativePath));
           const groupIds = mergePackageGroupIds(params.groupIds, group?.id ?? null);
+          if (videoType) {
+            const importedVideo = await importSingleVideoFromPackage({
+              space,
+              ipId: params.ipId,
+              groupIds,
+              tagNames: params.tagNames,
+              note: params.note,
+              isFavorite: params.isFavorite,
+              file,
+              videoType,
+            });
+            importedVideos.push(importedVideo);
+            items.push(
+              await importBatchRepository.createItem(db, {
+                importBatchId: importBatch.id,
+                sourcePath: file.relativePath,
+                originalFilename: file.name,
+                status: 'success',
+                imageAssetId: importedVideo.video.id,
+              })
+            );
+            continue;
+          }
+
+          if (!imageType) {
+            continue;
+          }
+
           const fileName = file.name.includes('.') ? file.name : `${file.name}.${imageType.extension}`;
           const pickedAsset: PickedImageAsset = {
             uri: file.uri,
@@ -358,6 +488,11 @@ export async function importPackageToIp(params: {
             message: error instanceof Error ? error.message : '未知导入错误。',
           };
           errors.push(importError);
+          if (/\.(mp4|mov|mkv|webm|avi)$/i.test(file.name)) {
+            videoFailedCount += 1;
+          } else {
+            imageFailedCount += 1;
+          }
           items.push(
             await importBatchRepository.createItem(db, {
               importBatchId: importBatch.id,
@@ -370,15 +505,23 @@ export async function importPackageToIp(params: {
         }
       }
 
-      await importBatchRepository.complete(db, importBatch.id, importedImages.length, errors.length);
+      await importBatchRepository.complete(db, importBatch.id, importedImages.length + importedVideos.length, errors.length);
 
       return {
         importBatchId: importBatch.id,
-        successCount: importedImages.length,
+        successCount: importedImages.length + importedVideos.length,
+        imageSuccessCount: importedImages.length,
+        videoSuccessCount: importedVideos.length,
         failedCount: errors.length,
+        imageFailedCount,
+        videoFailedCount,
         importedImages,
+        importedVideos,
         errors,
         skippedCount,
+        imageSkippedCount,
+        videoSkippedCount,
+        plainBackupImport: null,
         items,
       };
     } finally {

@@ -1,14 +1,16 @@
-import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, View, type ScrollView } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
+import { imageRepository, runWithDatabaseSpace, type ImageListItem, type ImageSortOrder, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface RecentViewedScreenProps {
@@ -20,6 +22,8 @@ interface RecentViewedScreenProps {
   onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
+const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
+
 export function RecentViewedScreen({
   space = 'normal',
   refreshToken,
@@ -28,9 +32,11 @@ export function RecentViewedScreen({
   onOpenImageDetail,
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('lastViewedAtDesc');
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { data: images = [], isLoading, errorMessage, reload } = useScreenLoad<ImageListItem[]>(
-    () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db, 60, { mediaType: 'all' })),
-    [refreshToken, space],
+    () => runWithDatabaseSpace(space, (db) => imageRepository.findRecentViewed(db, 60, { mediaType: 'all', orderBy: sortOrder })),
+    [refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -41,6 +47,12 @@ export function RecentViewedScreen({
   );
   const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
   const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: multiSelect.selectedImageIds,
+    setSelectedIds: multiSelect.setSelectedImageIds,
+    scrollViewRef,
+  });
   const selectedImages = useMemo(
     () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableImages, multiSelect.selectedImageIds]
@@ -65,7 +77,7 @@ export function RecentViewedScreen({
       onOpenImageDetail(image.id);
       return;
     }
-    multiSelect.enterSelection(image.id);
+    swipeSelection.beginSwipeSelection(image.id);
   }
 
   const footer = multiSelect.isSelectionMode ? (
@@ -80,7 +92,16 @@ export function RecentViewedScreen({
   ) : undefined;
 
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Recent" footer={footer} onBack={onBack} scrollable title="最近查看">
+    <ScreenScaffold
+      backgroundVariant="gallery"
+      decorativeTitle="Recent"
+      footer={footer}
+      onBack={onBack}
+      onScroll={swipeSelection.onScroll}
+      scrollViewRef={scrollViewRef}
+      scrollable
+      title="最近查看"
+    >
       <View style={styles.summary}>
         <Text numberOfLines={1} style={styles.subtitle}>
           最近打开
@@ -102,16 +123,21 @@ export function RecentViewedScreen({
         loadingTitle="正在读取最近查看"
         onRetry={reload}
       >
-        <View style={styles.grid}>
+        <View style={styles.gridHeader}>
+          <Text style={styles.gridTitle}>素材</Text>
+          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+        </View>
+        <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile
-              image={image}
-              key={image.id}
-              onLongPress={() => handleImageLongPress(image)}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
+            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
+              <ThumbnailTile
+                image={image}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            </View>
           ))}
         </View>
       </PageStateBlock>
@@ -147,5 +173,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
+  },
+  gridHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
+  gridTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
   },
 });

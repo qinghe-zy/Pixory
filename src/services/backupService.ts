@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { EncryptionMethods, unzipWithPassword, zipWithPassword } from 'react-native-zip-archive';
+import { EncryptionMethods, unzip, unzipWithPassword, zipWithPassword } from 'react-native-zip-archive';
 
 import {
   DATABASE_NAME,
@@ -67,6 +67,18 @@ export interface ImportEncryptedPersonalPackParams {
 }
 
 export interface ImportEncryptedPersonalPackResult {
+  importedIpCount: number;
+  importedImageCount: number;
+}
+
+export interface ImportPlainBackupPackageParams {
+  space?: PixorySpace;
+  packageUri?: string;
+  extractedDirectoryUri?: string;
+  mode: 'merge';
+}
+
+export interface ImportPlainBackupPackageResult {
   importedIpCount: number;
   importedImageCount: number;
 }
@@ -562,6 +574,241 @@ async function findManifestUri(directoryUri: string): Promise<string> {
 function resolveBackupRelativeFile(rootManifestUri: string, role: 'originals' | 'thumbnails', ipId: number, fileName: string): string {
   const backupDir = rootManifestUri.slice(0, rootManifestUri.lastIndexOf('/') + 1);
   return joinStoragePath(`${joinStoragePath(`${joinStoragePath(backupDir, role)}/`, `ip_${ipId}`)}/`, fileName);
+}
+
+async function copyPlainBackupAssetFiles(params: {
+  manifestUri: string;
+  sourceImage: ExportData['images'][number];
+  destinationSpace: PixorySpace;
+  destinationIpId: number;
+  internalFilename: string;
+}): Promise<{
+  originalDestinationUri: string;
+  thumbnailDestinationUri: string | null;
+  coverDestinationUri: string | null;
+}> {
+  const originalSourceUri = resolveBackupRelativeFile(
+    params.manifestUri,
+    'originals',
+    params.sourceImage.ipId,
+    params.sourceImage.internalFilename
+  );
+  const thumbnailName = params.sourceImage.thumbnailFileUri?.split('/').pop() ?? null;
+  const thumbnailSourceUri = thumbnailName
+    ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, thumbnailName)
+    : null;
+  const coverName = params.sourceImage.coverThumbnailFileUri?.split('/').pop() ?? null;
+  const coverSourceUri = coverName
+    ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, coverName)
+    : null;
+  const originalDestinationDir = `${joinStoragePath(getOriginalsDir(params.destinationSpace), `ip_${params.destinationIpId}`)}/`;
+  const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir(params.destinationSpace), `ip_${params.destinationIpId}`)}/`;
+  await ensureLocalDirectory(originalDestinationDir);
+  await ensureLocalDirectory(thumbnailDestinationDir);
+
+  const originalDestinationUri = joinStoragePath(originalDestinationDir, params.internalFilename);
+  await copyLocalFile(originalSourceUri, originalDestinationUri);
+
+  const thumbnailDestinationUri =
+    thumbnailSourceUri && thumbnailName ? joinStoragePath(thumbnailDestinationDir, thumbnailName) : null;
+  if (thumbnailSourceUri && thumbnailDestinationUri) {
+    await copyLocalFile(thumbnailSourceUri, thumbnailDestinationUri);
+  }
+
+  const coverDestinationUri =
+    coverSourceUri && coverName ? joinStoragePath(thumbnailDestinationDir, coverName) : null;
+  if (coverSourceUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
+    await copyLocalFile(coverSourceUri, coverDestinationUri);
+  }
+
+  return {
+    originalDestinationUri,
+    thumbnailDestinationUri,
+    coverDestinationUri: coverDestinationUri ?? thumbnailDestinationUri,
+  };
+}
+
+export async function importPlainBackupPackage({
+  extractedDirectoryUri,
+  mode,
+  packageUri,
+  space = 'normal',
+}: ImportPlainBackupPackageParams): Promise<ImportPlainBackupPackageResult> {
+  if (mode !== 'merge') {
+    throw new Error('Plain backup import only supports merge mode.');
+  }
+
+  const createdAt = new Date().toISOString();
+  const tempDir =
+    extractedDirectoryUri ??
+    `${joinStoragePath(getTempDir(space), `plain_backup_import_${timestampForPath(createdAt)}`)}/`;
+  const shouldCleanupTempDir = !extractedDirectoryUri;
+  const stagedDestinationUris: string[] = [];
+  let importedIpCount = 0;
+  let importedImageCount = 0;
+
+  try {
+    if (!extractedDirectoryUri) {
+      if (!packageUri) {
+        throw new Error('缺少要导入的备份包。');
+      }
+      await ensureLocalDirectory(tempDir);
+      await unzip(packageUri, tempDir);
+    }
+
+    const manifestUri = await findManifestUri(tempDir);
+    const manifest = JSON.parse(await FileSystem.readAsStringAsync(manifestUri, { encoding: FileSystem.EncodingType.UTF8 })) as {
+      type?: string;
+      space?: PixorySpace;
+      exportData?: ExportData;
+    };
+
+    if (!manifest.exportData || !['full', 'ip', 'personal'].includes(manifest.type ?? '')) {
+      throw new Error('这不是标准 Pixory 备份包。');
+    }
+
+    if (manifest.space === 'personal' && space !== 'personal') {
+      throw new Error('隐私备份不能导入普通空间。');
+    }
+
+    await runWithDatabaseSpace(space, async (db) => db.withTransactionAsync(async () => {
+      const exportData = manifest.exportData;
+      const ipIdMap = new Map<number, number>();
+      const groupIdMap = new Map<number, number>();
+      const importBatchIdMap = new Map<number, number>();
+      const imageIdMap = new Map<number, number>();
+
+      for (const ip of exportData?.ips ?? []) {
+        const createdIp = await ipRepository.create(db, {
+          name: ip.name,
+          description: ip.description,
+          isFavorite: ip.isFavorite,
+        });
+        ipIdMap.set(ip.id, createdIp.id);
+        importedIpCount += 1;
+      }
+
+      for (const group of exportData?.groups ?? []) {
+        const nextIpId = ipIdMap.get(group.ipId);
+        if (!nextIpId) continue;
+        const createdGroup = await groupRepository.create(db, {
+          ipId: nextIpId,
+          name: group.name,
+          type: group.type,
+          sortOrder: group.sortOrder,
+          isPinned: group.isPinned,
+          description: group.description,
+        });
+        groupIdMap.set(group.id, createdGroup.id);
+      }
+
+      for (const batch of exportData?.importBatches ?? []) {
+        const nextIpId = ipIdMap.get(batch.ipId);
+        if (!nextIpId) continue;
+        const createdBatch = await importBatchRepository.create(db, {
+          ipId: nextIpId,
+          name: batch.name,
+          templateKey: batch.templateKey,
+          totalCount: batch.totalCount,
+        });
+        importBatchIdMap.set(batch.id, createdBatch.id);
+      }
+
+      for (const image of exportData?.images ?? []) {
+        const nextIpId = ipIdMap.get(image.ipId);
+        if (!nextIpId) continue;
+        const groupIds = image.groupIds
+          .map((groupId) => groupIdMap.get(groupId))
+          .filter((groupId): groupId is number => groupId != null);
+        const nextInternalFilename = generateInternalFilename(image.originalFilename);
+        const copied = await copyPlainBackupAssetFiles({
+          destinationIpId: nextIpId,
+          destinationSpace: space,
+          internalFilename: nextInternalFilename,
+          manifestUri,
+          sourceImage: image,
+        });
+        stagedDestinationUris.push(
+          copied.originalDestinationUri,
+          ...(copied.thumbnailDestinationUri ? [copied.thumbnailDestinationUri] : []),
+          ...(copied.coverDestinationUri ? [copied.coverDestinationUri] : [])
+        );
+
+        const createdImage = await imageRepository.create(db, {
+          mediaType: image.mediaType ?? 'image',
+          ipId: nextIpId,
+          importBatchId: image.importBatchId != null ? importBatchIdMap.get(image.importBatchId) ?? null : null,
+          groupId: groupIds[0] ?? null,
+          groupIds,
+          originalFileUri: copied.originalDestinationUri,
+          thumbnailFileUri: copied.thumbnailDestinationUri,
+          coverThumbnailFileUri: copied.coverDestinationUri,
+          originalFilename: image.originalFilename,
+          internalFilename: nextInternalFilename,
+          width: image.width,
+          height: image.height,
+          durationMs: image.durationMs ?? null,
+          mimeType: image.mimeType,
+          fileSize: image.fileSize,
+          isFavorite: image.isFavorite,
+          note: image.note,
+          previewStatus: image.previewStatus ?? 'ready',
+        });
+        imageIdMap.set(image.id, createdImage.id);
+        const tagIds = [];
+        for (const tagName of image.tagNames) {
+          const existingTag = await tagRepository.findByName(db, tagName);
+          const tag = existingTag ?? (await tagRepository.create(db, { name: tagName }));
+          tagIds.push(tag.id);
+        }
+        await tagRepository.replaceImageTags(db, createdImage.id, tagIds);
+        importedImageCount += 1;
+      }
+
+      for (const ip of exportData?.ips ?? []) {
+        const nextIpId = ipIdMap.get(ip.id);
+        if (!nextIpId) continue;
+        await ipRepository.update(db, nextIpId, {
+          coverImageAssetId: ip.coverImageAssetId != null ? imageIdMap.get(ip.coverImageAssetId) ?? null : null,
+          coverBlurEnabled: ip.coverBlurEnabled,
+          coverBlurRadius: ip.coverBlurRadius,
+        });
+      }
+
+      for (const group of exportData?.groups ?? []) {
+        const nextGroupId = groupIdMap.get(group.id);
+        if (!nextGroupId) continue;
+        await groupRepository.update(db, nextGroupId, {
+          coverImageAssetId: group.coverImageAssetId != null ? imageIdMap.get(group.coverImageAssetId) ?? null : null,
+        });
+      }
+
+      for (const batch of exportData?.importBatches ?? []) {
+        const nextBatchId = importBatchIdMap.get(batch.id);
+        if (!nextBatchId) continue;
+        for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
+          await importBatchRepository.createItem(db, {
+            importBatchId: nextBatchId,
+            sourcePath: item.sourcePath,
+            originalFilename: item.originalFilename,
+            status: item.status,
+            imageAssetId: item.imageAssetId != null ? imageIdMap.get(item.imageAssetId) ?? null : null,
+            reason: item.reason,
+          });
+        }
+        await importBatchRepository.complete(db, nextBatchId, batch.successCount, batch.failedCount);
+      }
+    }));
+
+    return { importedIpCount, importedImageCount };
+  } catch (error) {
+    await Promise.allSettled([...new Set(stagedDestinationUris)].map((uri) => deleteLocalFile(uri)));
+    throw error;
+  } finally {
+    if (shouldCleanupTempDir) {
+      await deleteLocalFile(tempDir);
+    }
+  }
 }
 
 export async function importEncryptedPersonalPack({

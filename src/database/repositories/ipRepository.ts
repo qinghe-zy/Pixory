@@ -33,8 +33,10 @@ const IP_LIBRARY_SELECT = `
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
-    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
+    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
+    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
     COUNT(DISTINCT groups.id) AS groupCount,
+    COALESCE(SUM(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.fileSize ELSE 0 END), 0) AS totalBytes,
     COALESCE(
       (
         SELECT customCover.thumbnailFileUri
@@ -81,9 +83,11 @@ const IP_DETAIL_SELECT = `
     ips.deletedAt,
     ips.createdAt,
     ips.updatedAt,
-    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.id END) AS imageCount,
+    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
+    COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
     COUNT(DISTINCT groups.id) AS groupCount,
     COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.tagId END) AS tagCount,
+    COALESCE(SUM(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.fileSize ELSE 0 END), 0) AS totalBytes,
     MAX(
       MAX(
         COALESCE(image_assets.updatedAt, ips.updatedAt),
@@ -241,8 +245,10 @@ export const ipRepository = {
     const row = await db.getFirstAsync<
       IpRow & {
         imageCount: number;
+        videoCount: number;
         groupCount: number;
         tagCount: number;
+        totalBytes: number | null;
         recentUpdatedAt: string | null;
         coverThumbnailFileUri: string | null;
         coverSource: 'custom' | 'default' | null;

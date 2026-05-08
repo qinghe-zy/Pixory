@@ -37,6 +37,8 @@ interface MeStats {
   deletedImageCount: number;
   profileAvatarUri: string | null;
   totalOriginalBytes: number;
+  imageOriginalBytes: number;
+  videoOriginalBytes: number;
 }
 
 const ENTRY_ITEMS = [
@@ -102,6 +104,8 @@ export function MeScreen({
         favoriteImageCount,
         deletedImageCount,
         totalOriginalBytes,
+        imageOriginalBytes,
+        videoOriginalBytes,
         profileAvatarUri,
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.count(db),
@@ -110,6 +114,8 @@ export function MeScreen({
         imageRepository.countFavorites(db),
         imageRepository.countDeleted(db),
         imageRepository.sumFileSize(db, { includeDeleted: true }),
+        imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'image' }),
+        imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'video' }),
         settingsRepository.getProfileAvatarUri(db),
       ]));
 
@@ -121,6 +127,8 @@ export function MeScreen({
         deletedImageCount,
         profileAvatarUri,
         totalOriginalBytes,
+        imageOriginalBytes,
+        videoOriginalBytes,
       };
     },
     [refreshToken, space],
@@ -219,6 +227,8 @@ export function MeScreen({
   }
 
   const totalBytes = data?.totalOriginalBytes ?? 0;
+  const imageBytes = data?.imageOriginalBytes ?? 0;
+  const videoBytes = data?.videoOriginalBytes ?? 0;
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
 
   return (
@@ -248,6 +258,14 @@ export function MeScreen({
             <View style={styles.storageInlineRow}>
               <Text numberOfLines={1} style={styles.storageLabel}>本地原图存储</Text>
               <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(totalBytes)}</Text>
+            </View>
+            <View style={styles.storageInlineRow}>
+              <Text numberOfLines={1} style={styles.storageLabel}>图片原图</Text>
+              <Text numberOfLines={1} style={styles.storageValueSmall}>{formatFileSize(imageBytes)}</Text>
+            </View>
+            <View style={styles.storageInlineRow}>
+              <Text numberOfLines={1} style={styles.storageLabel}>视频存储</Text>
+              <Text numberOfLines={1} style={styles.storageValueSmall}>{formatFileSize(videoBytes)}</Text>
             </View>
           </View>
           <View style={styles.libraryStatsRow}>
@@ -448,6 +466,11 @@ const styles = StyleSheet.create({
   },
   storageValue: {
     ...typography.textStyles.statNumber,
+  },
+  storageValueSmall: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    fontWeight: '700',
   },
   entryList: {
     gap: spacing[3],

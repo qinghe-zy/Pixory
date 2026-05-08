@@ -86,6 +86,7 @@ type AppRoute =
   | { name: 'edit-ip'; ipId: number; space: PixorySpace }
   | { name: 'edit-group'; ipId: number; groupId: number; space: PixorySpace }
   | { name: 'edit-image'; imageId: number; space: PixorySpace }
+  | { name: 'edit-media'; imageId: number; space: PixorySpace }
   | { name: 'group-overview'; ipId: number; space: PixorySpace }
   | { name: 'create-group'; ipId: number; space: PixorySpace }
   | { name: 'group-images'; ipId: number; groupId: number; space: PixorySpace }
@@ -100,7 +101,7 @@ type AppRoute =
       initialSelectedImageIds?: number[];
       initialMode?: BatchInitialMode;
     }
-  | { name: 'import-images'; ipId: number; groupId?: number | null; space: PixorySpace }
+  | { name: 'import-images'; ipId: number; groupId?: number | null; initialMediaPicker?: 'images' | 'videos'; space: PixorySpace }
   | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null; space: PixorySpace }
   | { name: 'import-batch-history'; ipId: number; space: PixorySpace }
   | { name: 'duplicate-review'; ipId: number; importBatchId: number; space: PixorySpace }
@@ -869,6 +870,7 @@ export default function App() {
     content = (
       <ImportImagesScreen
         defaultGroupId={currentRoute.groupId ?? null}
+        initialMediaPicker={currentRoute.initialMediaPicker}
         ipId={currentRoute.ipId}
         space={currentRoute.space}
         taskToken={currentRoute.space === 'personal' ? personalSession?.taskToken ?? null : null}
@@ -988,9 +990,20 @@ export default function App() {
         space={currentRoute.space}
         onBack={popRoute}
         onDeleted={popAndRefresh}
+        onEdit={(videoId) => pushRoute({ name: 'edit-media', imageId: videoId, space: currentRoute.space })}
         onPlay={(videoId) => pushRoute({ name: 'video-player', videoId, space: currentRoute.space })}
         onRefreshed={refreshLibrary}
         refreshToken={libraryRefreshToken}
+      />
+    );
+  } else if (currentRoute.name === 'edit-media') {
+    content = (
+      <EditImageScreen
+        imageId={currentRoute.imageId}
+        space={currentRoute.space}
+        refreshToken={libraryRefreshToken}
+        onBack={popRoute}
+        onSaved={popAndRefresh}
       />
     );
   } else if (currentRoute.name === 'video-player') {
@@ -1138,6 +1151,8 @@ export default function App() {
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: currentRoute.space })}
         onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: currentRoute.space })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: currentRoute.space })}
+        onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: currentRoute.space })}
+        onImportVideosToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'videos', space: currentRoute.space })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
       />
@@ -1181,6 +1196,8 @@ export default function App() {
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
         onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: activeSpace })}
         onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
+        onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: activeSpace })}
+        onImportVideosToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'videos', space: activeSpace })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
         refreshToken={libraryRefreshToken}
       />
@@ -1286,11 +1303,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary.active,
     borderRadius: 999,
-    bottom: spacing[3],
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[1],
     position: 'absolute',
     right: spacing[3],
+    top: spacing[3],
   },
   personalBannerText: {
     ...typography.textStyles.micro,

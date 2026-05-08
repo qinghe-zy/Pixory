@@ -56,6 +56,7 @@ export function useImageMultiSelect(visibleImageIds: number[]) {
     isSelectionMode,
     selectedCount,
     selectedImageIds,
+    setSelectedImageIds,
     toggleSelectAll,
     toggleSelection,
   };

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { IpListItem, PixorySpace } from '../database';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
-import { formatUpdatedLabel, getIpInitials } from '../utils/formatters';
+import { formatFileSize, formatUpdatedLabel, getIpInitials } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
 
 interface IPCardProps {
@@ -45,13 +45,19 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
 }
 
 function CardCaption({ ip }: { ip: IpListItem }) {
+  const mediaParts = [`${ip.imageCount} 张图片`];
+  if (ip.videoCount > 0) {
+    mediaParts.push(`${ip.videoCount} 个视频`);
+  }
+  mediaParts.push(formatFileSize(ip.totalBytes));
+
   return (
     <View style={styles.captionBlock}>
       <View style={styles.captionText}>
         <Text numberOfLines={1} style={styles.title}>
           {ip.name}
         </Text>
-        <Text numberOfLines={1} style={styles.metaText}>{`${ip.imageCount} 张图片 · ${formatUpdatedLabel(ip.updatedAt)}`}</Text>
+        <Text numberOfLines={1} style={styles.metaText}>{`${mediaParts.join(' · ')} · ${formatUpdatedLabel(ip.updatedAt)}`}</Text>
       </View>
       {ip.isFavorite ? (
         <View style={styles.favoriteBadge}>

@@ -1,5 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppDialog } from '../components/AppDialog';
@@ -35,6 +35,7 @@ interface ImportImagesScreenProps {
   taskToken?: PersonalTaskToken | null;
   ipId: number;
   defaultGroupId?: number | null;
+  initialMediaPicker?: 'images' | 'videos';
   onBack: () => void;
   onImported: (imageIds: number[], importBatchId: number | null) => void;
 }
@@ -44,6 +45,7 @@ export function ImportImagesScreen({
   taskToken = null,
   ipId,
   defaultGroupId = null,
+  initialMediaPicker,
   onBack,
   onImported,
 }: ImportImagesScreenProps) {
@@ -97,6 +99,7 @@ export function ImportImagesScreen({
   const [templateTagsInput, setTemplateTagsInput] = useState('');
   const [templateNote, setTemplateNote] = useState('');
   const [templateFavorite, setTemplateFavorite] = useState(false);
+  const initialMediaPickerHandledRef = useRef(false);
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
   const canImport = useMemo(
     () => (pickedAssets.length > 0 || pickedVideos.length > 0) && !isSubmitting,
@@ -115,6 +118,18 @@ export function ImportImagesScreen({
     const idSet = new Set(recentGroups.map((group) => group.id));
     return groups.filter((group) => !idSet.has(group.id));
   }, [groups, recentGroups]);
+
+  useEffect(() => {
+    if (!initialMediaPicker || initialMediaPickerHandledRef.current) {
+      return;
+    }
+    initialMediaPickerHandledRef.current = true;
+    if (initialMediaPicker === 'videos') {
+      void handlePickVideos();
+      return;
+    }
+    void handlePickImages();
+  }, [initialMediaPicker]);
 
   async function handlePickImages() {
     setIsPicking(true);
@@ -427,12 +442,18 @@ export function ImportImagesScreen({
       setPackageImportResult(result);
 
       if (result.successCount === 0) {
-        throw new Error(`没有成功导入图片，失败 ${result.failedCount} 张，跳过 ${result.skippedCount} 个文件。`);
+        throw new Error(`没有成功导入素材，失败 ${result.failedCount} 个，跳过 ${result.skippedCount} 个文件。`);
       }
 
       await runWithDatabaseSpace(space, (db) => settingsRepository.rememberImportGroupIds(db, selectedGroupIds));
-      showToast(`资源包导入 ${result.successCount} 张，跳过 ${result.skippedCount} 个文件`);
-      onImported(result.importedImages.map((item) => item.image.id), result.importBatchId);
+      showToast(`资源包导入：图片 ${result.imageSuccessCount} · 视频 ${result.videoSuccessCount} · 跳过 ${result.skippedCount}`);
+      onImported(
+        [
+          ...result.importedImages.map((item) => item.image.id),
+          ...result.importedVideos.map((item) => item.video.id),
+        ],
+        result.importBatchId
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`资源包导入失败：${message}`);
@@ -544,7 +565,7 @@ export function ImportImagesScreen({
           </Pressable>
           {packageImportResult ? (
             <Text style={styles.packageResult}>
-              成功 {packageImportResult.successCount} · 失败 {packageImportResult.failedCount} · 跳过 {packageImportResult.skippedCount}
+              图片 {packageImportResult.imageSuccessCount} · 视频 {packageImportResult.videoSuccessCount} · 失败 {packageImportResult.failedCount} · 跳过 {packageImportResult.skippedCount}
             </Text>
           ) : null}
         </LightFormSection>

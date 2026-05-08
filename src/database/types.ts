@@ -42,14 +42,18 @@ export interface IpLibraryQuery {
 
 export interface IpListItem extends IpRecord {
   imageCount: number;
+  videoCount: number;
   groupCount: number;
+  totalBytes: number;
   coverThumbnailFileUri: string | null;
   coverSource: 'custom' | 'default';
 }
 
 export interface IpListItemRow extends IpRow {
   imageCount: number;
+  videoCount: number;
   groupCount: number;
+  totalBytes: number | null;
   coverThumbnailFileUri: string | null;
   coverSource: 'custom' | 'default' | null;
 }
@@ -93,8 +97,10 @@ export interface UpdateGroupInput {
 
 export interface IpDetailRecord extends IpRecord {
   imageCount: number;
+  videoCount: number;
   groupCount: number;
   tagCount: number;
+  totalBytes: number;
   recentUpdatedAt: string;
   coverThumbnailFileUri: string | null;
   coverSource: 'custom' | 'default';
@@ -272,7 +278,18 @@ export interface AppSettingRecord {
   updatedAt: string;
 }
 
-export type ImageSortOrder = 'createdAtDesc' | 'lastViewedAtDesc' | 'deletedAtDesc';
+export type ImageSortOrder =
+  | 'createdAtDesc'
+  | 'createdAtAsc'
+  | 'updatedAtDesc'
+  | 'updatedAtAsc'
+  | 'lastViewedAtDesc'
+  | 'lastViewedAtAsc'
+  | 'deletedAtDesc'
+  | 'filenameAsc'
+  | 'filenameDesc'
+  | 'fileSizeDesc'
+  | 'fileSizeAsc';
 export type ImageAspectRatioFilter = 'landscape' | 'portrait' | 'square' | 'panorama';
 
 export interface ImageListQueryOptions extends ImageAssetQueryOptions {

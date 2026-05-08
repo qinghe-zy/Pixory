@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { EmptyState } from '../components/EmptyState';
 import { OptionSelectRow } from '../components/OptionSelectRow';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SecureImage } from '../components/SecureImage';
 import { useToast } from '../components/AppToast';
-import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupRecord, type IpRecord } from '../database';
+import { ipRepository, runWithDatabaseSpace, type IpRecord } from '../database';
 import { colors, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { finishNativeShareActivity, type NativeShareItem } from '../native/pixoryMediaModule';
 import { importSingleImage, type PickedImageAsset } from '../services/imageImportService';
@@ -37,10 +38,6 @@ function inferKind(item: NativeShareItem): ShareMediaKind {
   return 'file';
 }
 
-function splitTagInput(value: string): string[] {
-  return [...new Set(value.split(/[\s,#，、]+/).map((tag) => tag.trim()).filter(Boolean))];
-}
-
 function buildImagePickedAsset(item: ShareCollectItem): PickedImageAsset {
   const pickedAsset = {
     uri: item.uri,
@@ -67,10 +64,10 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
   const { showToast } = useToast();
   const shareItems = useMemo<ShareCollectItem[]>(() => items.map((item) => ({ ...item, kind: inferKind(item) })), [items]);
   const [ips, setIps] = useState<IpRecord[]>([]);
-  const [groups, setGroups] = useState<GroupRecord[]>([]);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-  const [tagInput, setTagInput] = useState('');
+  const [newIpDialogVisible, setNewIpDialogVisible] = useState(false);
+  const [newIpName, setNewIpName] = useState('');
+  const [previewModalItem, setPreviewModalItem] = useState<ShareCollectItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusText, setStatusText] = useState('准备保存分享素材');
   const unsupportedCount = shareItems.filter((item) => item.kind === 'file').length;
@@ -94,31 +91,6 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
     };
   }, [showToast]);
 
-  useEffect(() => {
-    if (selectedIpId == null) {
-      setGroups([]);
-      setSelectedGroupId(null);
-      return;
-    }
-
-    let mounted = true;
-    void runWithDatabaseSpace('normal', async (db) => groupRepository.findByIpId(db, selectedIpId))
-      .then((nextGroups) => {
-        if (!mounted) {
-          return;
-        }
-        setGroups(nextGroups);
-        setSelectedGroupId((current) => (current != null && nextGroups.some((group) => group.id === current) ? current : null));
-      })
-      .catch((error) => {
-        showToast(error instanceof Error ? `读取分组失败：${error.message}` : '读取分组失败');
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [selectedIpId, showToast]);
-
   async function finishShareEntry() {
     try {
       await finishNativeShareActivity();
@@ -127,8 +99,8 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
     }
   }
 
-  async function handleSave() {
-    if (selectedIpId == null) {
+  async function saveToIp(targetIpId: number | null) {
+    if (targetIpId == null) {
       showToast('请先创建一个普通模式 IP');
       return;
     }
@@ -140,7 +112,6 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
     }
 
     setIsSaving(true);
-    const tagNames = splitTagInput(tagInput);
     let successCount = 0;
     let failedCount = unsupportedCount;
 
@@ -150,9 +121,9 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
         if (item.kind === 'image') {
           await importSingleImage({
             space: 'normal',
-            ipId: selectedIpId,
-            groupIds: selectedGroupId != null ? [selectedGroupId] : [],
-            tagNames,
+            ipId: targetIpId,
+            groupIds: [],
+            tagNames: [],
             pickedAsset: buildImagePickedAsset({
               ...item,
               sourceUri: item.uri,
@@ -161,9 +132,9 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
         } else {
           await importVideosToIp({
             space: 'normal',
-            ipId: selectedIpId,
-            groupIds: selectedGroupId != null ? [selectedGroupId] : [],
-            tagNames,
+            ipId: targetIpId,
+            groupIds: [],
+            tagNames: [],
             pickedAssets: [buildVideoPickedAsset(item)],
             title: '分享视频保存',
           });
@@ -189,6 +160,32 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
     showToast('保存失败，请回到 Pixory 后重试');
   }
 
+  async function handleSave() {
+    await saveToIp(selectedIpId);
+  }
+
+  async function createIpAndSave() {
+    const name = newIpName.trim();
+    if (!name) {
+      showToast('请输入新 IP 名称');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const ip = await runWithDatabaseSpace('normal', (db) => ipRepository.create(db, { name }));
+      setIps((current) => [ip, ...current]);
+      setSelectedIpId(ip.id);
+      setNewIpName('');
+      setNewIpDialogVisible(false);
+      setIsSaving(false);
+      await saveToIp(ip.id);
+    } catch (error) {
+      setIsSaving(false);
+      showToast(error instanceof Error ? `创建 IP 失败：${error.message}` : '创建 IP 失败');
+    }
+  }
+
   return (
     <View style={styles.overlay}>
       <Pressable disabled={isSaving} onPress={finishShareEntry} style={styles.backdrop} />
@@ -206,9 +203,9 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
           </Pressable>
         </View>
 
-        <View style={styles.previewRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewRow}>
           {shareItems.slice(0, 6).map((item, index) => (
-            <View key={`${item.uri}-${index}`} style={styles.previewTile}>
+            <Pressable key={`${item.uri}-${index}`} onPress={() => setPreviewModalItem(item)} style={({ pressed }) => [styles.previewTile, pressed && styles.pressed]}>
               {item.kind === 'image' ? (
                 <SecureImage contentFit="cover" space="normal" style={styles.previewImage} uri={item.uri} />
               ) : (
@@ -216,9 +213,9 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
                   <Ionicons color={item.kind === 'video' ? colors.primary.default : colors.text.secondary} name={item.kind === 'video' ? 'play-circle-outline' : 'document-outline'} size={22} />
                 </View>
               )}
-            </View>
+            </Pressable>
           ))}
-        </View>
+        </ScrollView>
 
         {ips.length === 0 ? (
           <EmptyState
@@ -232,42 +229,54 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>目标 IP</Text>
+              <Pressable disabled={isSaving} onPress={() => setNewIpDialogVisible(true)} style={({ pressed }) => [styles.createIpButton, pressed && styles.pressed]}>
+                <Ionicons color={colors.primary.active} name="add-circle-outline" size={16} />
+                <Text style={styles.createIpText}>新建 IP 并保存</Text>
+              </Pressable>
               <View style={styles.optionList}>
                 {ips.slice(0, 6).map((ip) => (
                   <OptionSelectRow key={ip.id} label={ip.name} meta="普通模式" onPress={() => setSelectedIpId(ip.id)} selected={selectedIpId === ip.id} />
                 ))}
               </View>
             </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Group</Text>
-              <View style={styles.optionList}>
-                <OptionSelectRow label="暂不分组" meta="保存到当前 IP" onPress={() => setSelectedGroupId(null)} selected={selectedGroupId == null} />
-                {groups.map((group) => (
-                  <OptionSelectRow key={group.id} label={group.name} meta={group.type} onPress={() => setSelectedGroupId(group.id)} selected={selectedGroupId === group.id} />
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>标签</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!isSaving}
-                onChangeText={setTagInput}
-                placeholder="用空格分隔，例如 reference outfit"
-                placeholderTextColor={colors.text.placeholder}
-                selectionColor={colors.primary.default}
-                style={styles.input}
-                value={tagInput}
-              />
-            </View>
             <Text style={styles.status}>{statusText}</Text>
             <PrimaryButton label={isSaving ? '保存中' : '保存'} loading={isSaving} onPress={handleSave} />
           </>
         )}
       </View>
+      {previewModalItem ? (
+        <Pressable onPress={() => setPreviewModalItem(null)} style={styles.previewModalBackdrop}>
+          <View style={styles.previewModalCard}>
+            {previewModalItem.kind === 'image' ? (
+              <SecureImage contentFit="contain" space="normal" style={styles.previewModalImage} uri={previewModalItem.uri} />
+            ) : (
+              <View style={styles.previewModalFile}>
+                <Ionicons color={colors.primary.default} name={previewModalItem.kind === 'video' ? 'play-circle-outline' : 'document-outline'} size={42} />
+                <Text numberOfLines={2} style={styles.previewModalName}>{previewModalItem.name ?? '分享素材'}</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+      ) : null}
+      <AppDialog
+        message="新建后会直接把这次分享素材保存到该 IP。"
+        onClose={() => setNewIpDialogVisible(false)}
+        onPrimary={createIpAndSave}
+        primaryLabel="创建并保存"
+        title="新建 IP"
+        visible={newIpDialogVisible}
+      >
+        <TextInput
+          autoFocus
+          editable={!isSaving}
+          onChangeText={setNewIpName}
+          placeholder="例如：角色设定参考"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.input}
+          value={newIpName}
+        />
+      </AppDialog>
     </View>
   );
 }
@@ -320,6 +329,7 @@ const styles = StyleSheet.create({
     width: 34,
   },
   previewRow: {
+    paddingRight: spacing[2],
     flexDirection: 'row',
     gap: spacing[2],
   },
@@ -353,6 +363,21 @@ const styles = StyleSheet.create({
     gap: spacing[2],
     maxHeight: 168,
   },
+  createIpButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  createIpText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
   input: {
     ...typography.textStyles.body,
     backgroundColor: colors.background.surface,
@@ -366,6 +391,36 @@ const styles = StyleSheet.create({
   status: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+  },
+  previewModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: 'rgba(28, 31, 26, 0.74)',
+    justifyContent: 'center',
+    padding: spacing[5],
+  },
+  previewModalCard: {
+    backgroundColor: colors.background.page,
+    borderRadius: radius.lg,
+    maxHeight: '80%',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  previewModalImage: {
+    aspectRatio: 1,
+    width: '100%',
+  },
+  previewModalFile: {
+    alignItems: 'center',
+    gap: spacing[3],
+    minHeight: 220,
+    justifyContent: 'center',
+    padding: spacing[5],
+  },
+  previewModalName: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+    textAlign: 'center',
   },
   pressed: {
     opacity: 0.72,

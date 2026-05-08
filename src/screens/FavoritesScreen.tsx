@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useRef } from 'react';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,11 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type ImageSortOrder, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
+import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface FavoritesScreenProps {
@@ -43,6 +45,7 @@ const EMPTY_FAVORITE_FILTERS: FavoriteFilterState = {
 };
 
 type FavoriteFilterDropdown = 'ip' | 'size' | 'group' | 'tag';
+const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
 
 export function FavoritesScreen({
   space = 'normal',
@@ -54,6 +57,8 @@ export function FavoritesScreen({
 }: FavoritesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<FavoriteFilterState>(EMPTY_FAVORITE_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<FavoriteFilterDropdown | null>(null);
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     images: ImageListItem[];
     ips: IpRecord[];
@@ -70,6 +75,7 @@ export function FavoritesScreen({
           aspectRatio: activeFilters.aspectRatio ?? undefined,
           minFileSize: activeFilters.size?.minFileSize,
           maxFileSize: activeFilters.size?.maxFileSize,
+          orderBy: sortOrder,
         }),
         ipRepository.findAll(db),
         groupRepository.findAll(db),
@@ -77,7 +83,7 @@ export function FavoritesScreen({
       ]));
       return { images, ips, groups, tags };
     },
-    [activeFilters, refreshToken, space],
+    [activeFilters, refreshToken, sortOrder, space],
     {
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
@@ -92,6 +98,12 @@ export function FavoritesScreen({
   const groups = data?.groups ?? [];
   const tags = data?.tags ?? [];
   const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const swipeSelection = useSwipeGridSelection({
+    items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
+    selectedIds: multiSelect.selectedImageIds,
+    setSelectedIds: multiSelect.setSelectedImageIds,
+    scrollViewRef,
+  });
   const selectedImages = useMemo(
     () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableImages, multiSelect.selectedImageIds]
@@ -132,7 +144,7 @@ export function FavoritesScreen({
       onOpenImageDetail(image.id);
       return;
     }
-    multiSelect.enterSelection(image.id);
+    swipeSelection.beginSwipeSelection(image.id);
   }
 
   function toggleIpFilter(ipId: number) {
@@ -193,7 +205,16 @@ export function FavoritesScreen({
     />
   ) : undefined;
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Favorites" footer={footer} onBack={onBack} scrollable title="收藏">
+    <ScreenScaffold
+      backgroundVariant="gallery"
+      decorativeTitle="Favorites"
+      footer={footer}
+      onBack={onBack}
+      onScroll={swipeSelection.onScroll}
+      scrollViewRef={scrollViewRef}
+      scrollable
+      title="收藏"
+    >
       <View style={styles.summary}>
         <Text numberOfLines={1} style={styles.subtitle}>
           {hasActiveFilters ? '筛选结果' : '全部收藏'}
@@ -278,24 +299,26 @@ export function FavoritesScreen({
       >
         <View style={styles.gridHeader}>
           <Text style={styles.gridTitle}>图片</Text>
+          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
           <Pressable
-            disabled={images.length === 0}
+            disabled={selectableImages.length === 0}
             onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, images.length === 0 ? styles.disabled : null, pressed && images.length > 0 ? styles.pressed : null]}
+            style={({ pressed }) => [styles.selectAllButton, selectableImages.length === 0 ? styles.disabled : null, pressed && selectableImages.length > 0 ? styles.pressed : null]}
           >
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
         </View>
-        <View style={styles.grid}>
+        <View {...swipeSelection.panHandlers} style={styles.grid}>
           {images.map((image) => (
-            <ThumbnailTile
-              image={image}
-              key={image.id}
-              onLongPress={() => handleImageLongPress(image)}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
+            <View key={image.id} onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}>
+              <ThumbnailTile
+                image={image}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            </View>
           ))}
         </View>
       </PageStateBlock>

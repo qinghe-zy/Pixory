@@ -122,7 +122,9 @@ export function mapIpListItemRow(row: IpListItemRow): IpListItem {
   return {
     ...mapIpRow(row),
     imageCount: row.imageCount ?? 0,
+    videoCount: row.videoCount ?? 0,
     groupCount: row.groupCount ?? 0,
+    totalBytes: row.totalBytes ?? 0,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
     coverSource: row.coverSource === 'custom' ? 'custom' : 'default',
   };
@@ -131,8 +133,10 @@ export function mapIpListItemRow(row: IpListItemRow): IpListItem {
 export function mapIpDetailRow(
   row: IpRow & {
     imageCount: number;
+    videoCount: number;
     groupCount: number;
     tagCount: number;
+    totalBytes: number | null;
     recentUpdatedAt: string | null;
     coverThumbnailFileUri: string | null;
     coverSource: 'custom' | 'default' | null;
@@ -141,8 +145,10 @@ export function mapIpDetailRow(
   return {
     ...mapIpRow(row),
     imageCount: row.imageCount ?? 0,
+    videoCount: row.videoCount ?? 0,
     groupCount: row.groupCount ?? 0,
     tagCount: row.tagCount ?? 0,
+    totalBytes: row.totalBytes ?? 0,
     recentUpdatedAt: row.recentUpdatedAt ?? row.updatedAt,
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
     coverSource: row.coverSource === 'custom' ? 'custom' : 'default',
