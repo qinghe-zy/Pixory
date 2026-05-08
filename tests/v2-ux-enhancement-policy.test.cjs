@@ -101,15 +101,32 @@ test('app startup routes share, external video, archive, and unsupported package
   assert.match(appSource, /Pixory 资源包暂时需要在应用内导入/);
 });
 
-test('swipe grid selection only selects images and supports edge autoscroll', () => {
+test('swipe grid selection supports media tiles while batch image management can stay image-only', () => {
   const hookSource = readProjectFile('src/hooks/useSwipeGridSelection.ts');
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
+  const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
+  const favoritesSource = readProjectFile('src/screens/FavoritesScreen.tsx');
+  const recentSource = readProjectFile('src/screens/RecentViewedScreen.tsx');
+  const groupSource = readProjectFile('src/screens/GroupImagesScreen.tsx');
+  const tagSource = readProjectFile('src/screens/TagResultScreen.tsx');
 
-  assert.match(hookSource, /mediaType === 'image'/);
+  assert.match(hookSource, /selectableMediaTypes/);
   assert.match(hookSource, /AUTO_SCROLL_EDGE_SIZE/);
   assert.match(hookSource, /scrollTo/);
   assert.match(hookSource, /onMoveShouldSetPanResponder/);
+  for (const source of [allImagesSource, favoritesSource, recentSource, groupSource, tagSource]) {
+    assert.match(source, /selectableMediaTypes:\s*\['image', 'video'\]/);
+    assert.match(source, /selectedAssets/);
+    assert.match(source, /if \(multiSelect\.isSelectionMode\) \{[\s\S]{0,120}multiSelect\.toggleSelection\(imageId\);[\s\S]{0,120}return;[\s\S]{0,160}if \(asset\?\.mediaType === 'video'\)/);
+    const longPressBlock = source.slice(
+      source.indexOf('function handleImageLongPress'),
+      source.indexOf('const footer = multiSelect.isSelectionMode', source.indexOf('function handleImageLongPress'))
+    );
+    assert.doesNotMatch(longPressBlock, /mediaType === 'video'/);
+    assert.match(longPressBlock, /beginSwipeSelection/);
+  }
   assert.match(batchSource, /useSwipeGridSelection/);
+  assert.match(batchSource, /selectableMediaTypes:\s*\['image'\]/);
   assert.match(batchSource, /swipeSelection\.panHandlers/);
   assert.match(batchSource, /registerItemLayout/);
 });

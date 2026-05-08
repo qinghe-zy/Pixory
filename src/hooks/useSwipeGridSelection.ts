@@ -21,6 +21,7 @@ interface UseSwipeGridSelectionParams {
   selectedIds: number[];
   setSelectedIds: (updater: (current: number[]) => number[]) => void;
   scrollViewRef: RefObject<ScrollView | null>;
+  selectableMediaTypes?: AssetMediaType[];
 }
 
 export const AUTO_SCROLL_EDGE_SIZE = 72;
@@ -32,9 +33,11 @@ export function useSwipeGridSelection({
   selectedIds,
   setSelectedIds,
   scrollViewRef,
+  selectableMediaTypes = ['image'],
 }: UseSwipeGridSelectionParams) {
   const itemLayoutsRef = useRef(new Map<number, SwipeGridLayout>());
-  const selectableIdSet = useMemo(() => new Set(items.filter((item) => item.mediaType === 'image').map((item) => item.id)), [items]);
+  const selectableTypeSet = useMemo(() => new Set(selectableMediaTypes), [selectableMediaTypes]);
+  const selectableIdSet = useMemo(() => new Set(items.filter((item) => selectableTypeSet.has(item.mediaType)).map((item) => item.id)), [items, selectableTypeSet]);
   const selectedIdsRef = useRef(selectedIds);
   const dragVisitedIdsRef = useRef(new Set<number>());
   const isDraggingRef = useRef(false);
@@ -48,19 +51,19 @@ export function useSwipeGridSelection({
     itemLayoutsRef.current.set(imageId, layout);
   }
 
-  function addImageToSelection(imageId: number | null) {
-    if (imageId == null || !selectableIdSet.has(imageId) || dragVisitedIdsRef.current.has(imageId)) {
+  function addItemToSelection(itemId: number | null) {
+    if (itemId == null || !selectableIdSet.has(itemId) || dragVisitedIdsRef.current.has(itemId)) {
       return;
     }
 
-    dragVisitedIdsRef.current.add(imageId);
-    setSelectedIds((current) => (current.includes(imageId) ? current : [...current, imageId]));
+    dragVisitedIdsRef.current.add(itemId);
+    setSelectedIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
   }
 
-  function findImageIdAtLocation(x: number, y: number): number | null {
-    for (const [imageId, layout] of itemLayoutsRef.current.entries()) {
+  function findItemIdAtLocation(x: number, y: number): number | null {
+    for (const [itemId, layout] of itemLayoutsRef.current.entries()) {
       if (x >= layout.x && x <= layout.x + layout.width && y >= layout.y && y <= layout.y + layout.height) {
-        return imageId;
+        return itemId;
       }
     }
     return null;
@@ -113,11 +116,11 @@ export function useSwipeGridSelection({
         onMoveShouldSetPanResponder: (_event, gestureState) => isDraggingRef.current && Math.abs(gestureState.dy) + Math.abs(gestureState.dx) > 2,
         onPanResponderGrant: (event) => {
           const location = event.nativeEvent;
-          addImageToSelection(findImageIdAtLocation(location.locationX, location.locationY));
+          addItemToSelection(findItemIdAtLocation(location.locationX, location.locationY));
         },
         onPanResponderMove: (event) => {
           const location = event.nativeEvent;
-          addImageToSelection(findImageIdAtLocation(location.locationX, location.locationY));
+          addItemToSelection(findItemIdAtLocation(location.locationX, location.locationY));
           updateAutoScroll(event);
         },
         onPanResponderRelease: () => {
@@ -134,13 +137,13 @@ export function useSwipeGridSelection({
     [selectableIdSet]
   );
 
-  function beginSwipeSelection(imageId: number) {
-    if (!selectableIdSet.has(imageId)) {
+  function beginSwipeSelection(itemId: number) {
+    if (!selectableIdSet.has(itemId)) {
       return;
     }
     isDraggingRef.current = true;
-    dragVisitedIdsRef.current = new Set([imageId]);
-    setSelectedIds((current) => (current.includes(imageId) ? current : [imageId]));
+    dragVisitedIdsRef.current = new Set([itemId]);
+    setSelectedIds((current) => (current.includes(itemId) ? current : [itemId]));
   }
 
   return {

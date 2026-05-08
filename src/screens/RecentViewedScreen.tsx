@@ -45,27 +45,28 @@ export function RecentViewedScreen({
       initialData: [],
     }
   );
-  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
-  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const selectableAssets = images;
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableAssets.map((image) => image.id), [selectableAssets]));
   const swipeSelection = useSwipeGridSelection({
     items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
     selectedIds: multiSelect.selectedImageIds,
     setSelectedIds: multiSelect.setSelectedImageIds,
     scrollViewRef,
+    selectableMediaTypes: ['image', 'video'],
   });
-  const selectedImages = useMemo(
-    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [selectableImages, multiSelect.selectedImageIds]
+  const selectedAssets = useMemo(
+    () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableAssets, multiSelect.selectedImageIds]
   );
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
-    if (asset?.mediaType === 'video') {
-      onOpenImageDetail(imageId);
-      return;
-    }
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
+      return;
+    }
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
       return;
     }
 
@@ -73,10 +74,6 @@ export function RecentViewedScreen({
   }
 
   function handleImageLongPress(image: ImageListItem) {
-    if (image.mediaType === 'video') {
-      onOpenImageDetail(image.id);
-      return;
-    }
     swipeSelection.beginSwipeSelection(image.id);
   }
 
@@ -85,9 +82,9 @@ export function RecentViewedScreen({
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
-      selectedImages={selectedImages}
+      selectedImages={selectedAssets}
       space={space}
-      totalCount={selectableImages.length}
+      totalCount={selectableAssets.length}
     />
   ) : undefined;
 

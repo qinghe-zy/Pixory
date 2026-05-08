@@ -116,7 +116,8 @@ export function TagResultScreen({
 
   const tag = data?.tag ?? null;
   const images = data?.images ?? [];
-  const selectableImages = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const imageAssets = useMemo(() => images.filter((image) => image.mediaType !== 'video'), [images]);
+  const selectableAssets = images;
   const ips = data?.ips ?? [];
   const groups = data?.groups ?? [];
   const activeFilterLabels = useMemo(() => {
@@ -135,42 +136,39 @@ export function TagResultScreen({
   }, [activeFilters, groups, ips]);
   const filterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部';
   const hasActiveFilters = activeFilterLabels.length > 0;
-  const multiSelect = useImageMultiSelect(useMemo(() => selectableImages.map((image) => image.id), [selectableImages]));
+  const multiSelect = useImageMultiSelect(useMemo(() => selectableAssets.map((image) => image.id), [selectableAssets]));
   const swipeSelection = useSwipeGridSelection({
     items: images.map((image) => ({ id: image.id, mediaType: image.mediaType })),
     selectedIds: multiSelect.selectedImageIds,
     setSelectedIds: multiSelect.setSelectedImageIds,
     scrollViewRef,
+    selectableMediaTypes: ['image', 'video'],
   });
-  const selectedImages = useMemo(
-    () => selectableImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [selectableImages, multiSelect.selectedImageIds]
+  const selectedAssets = useMemo(
+    () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [selectableAssets, multiSelect.selectedImageIds]
   );
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
-    if (asset?.mediaType === 'video') {
-      onOpenImageDetail(imageId);
-      return;
-    }
     if (multiSelect.isSelectionMode) {
       multiSelect.toggleSelection(imageId);
+      return;
+    }
+    if (asset?.mediaType === 'video') {
+      onOpenImageDetail(imageId);
       return;
     }
 
     onOpenImage(
       imageId,
       hasActiveFilters
-        ? { type: 'image-scope', imageIds: selectableImages.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
+        ? { type: 'image-scope', imageIds: imageAssets.map((image) => image.id), label: `#${tag?.name ?? '标签'} · ${filterLabel}`, space }
         : { type: 'tag', tagId, space }
     );
   }
 
   function handleImageLongPress(image: ImageListItem) {
-    if (image.mediaType === 'video') {
-      onOpenImageDetail(image.id);
-      return;
-    }
     swipeSelection.beginSwipeSelection(image.id);
   }
 
@@ -179,9 +177,9 @@ export function TagResultScreen({
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
       onDeleted={reload}
-      selectedImages={selectedImages}
+      selectedImages={selectedAssets}
       space={space}
-      totalCount={selectableImages.length}
+      totalCount={selectableAssets.length}
     />
   ) : undefined;
 
@@ -348,9 +346,9 @@ export function TagResultScreen({
           <Text style={styles.gridTitle}>图片</Text>
           <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
           <Pressable
-            disabled={selectableImages.length === 0}
+            disabled={selectableAssets.length === 0}
             onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, selectableImages.length === 0 ? styles.disabled : null, pressed && selectableImages.length > 0 ? styles.pressed : null]}
+            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
           >
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>

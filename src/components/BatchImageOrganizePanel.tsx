@@ -53,6 +53,8 @@ export function BatchImageOrganizePanel({
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
   const selectedCount = selectedImages.length;
+  const selectedVideoCount = useMemo(() => selectedImages.filter((image) => image.mediaType === 'video').length, [selectedImages]);
+  const hasSelectedVideos = selectedVideoCount > 0;
   const selectedIpIds = useMemo(() => [...new Set(selectedImages.map((image) => image.ipId))], [selectedImages]);
   const singleIpId = selectedIpIds.length === 1 ? selectedIpIds[0] : null;
   const canUseGroupActions = singleIpId != null;
@@ -110,7 +112,11 @@ export function BatchImageOrganizePanel({
 
   function handleSaveToAlbum() {
     if (selectedCount === 0) {
-      showToast('请先选择至少一张图片');
+      showToast('请先选择至少一个素材');
+      return;
+    }
+    if (hasSelectedVideos) {
+      showToast('当前选择包含视频，暂只支持保存图片到相册');
       return;
     }
 
@@ -174,7 +180,7 @@ export function BatchImageOrganizePanel({
   function handleGroupUpdate() {
     void runAction(async () => {
       if (selectedCount === 0) {
-        throw new Error('请先选择至少一张图片。');
+        throw new Error('请先选择至少一个素材。');
       }
 
       if (!canUseGroupActions) {
@@ -199,7 +205,7 @@ export function BatchImageOrganizePanel({
       });
 
       if (changedCount === 0) {
-        throw new Error('没有需要更新的图片。');
+        throw new Error('没有需要更新的素材。');
       }
 
       if (mode === 'add-group') {
@@ -216,7 +222,7 @@ export function BatchImageOrganizePanel({
     void runAction(async () => {
       const preparedTags = mergeDraftTagNames(draftTags, tagInput);
       if (selectedCount === 0) {
-        throw new Error('请先选择至少一张图片。');
+        throw new Error('请先选择至少一个素材。');
       }
       if (preparedTags.length === 0) {
         throw new Error('请至少输入一个标签。');
@@ -234,12 +240,12 @@ export function BatchImageOrganizePanel({
   function handleFavoriteUpdate(isFavorite: boolean) {
     void runAction(async () => {
       if (selectedCount === 0) {
-        throw new Error('请先选择至少一张图片。');
+        throw new Error('请先选择至少一个素材。');
       }
 
       const changedCount = await runWithDatabaseSpace(space, (db) => imageRepository.updateManyFavorite(db, selectedImageIds, isFavorite));
       if (changedCount === 0) {
-        throw new Error('没有可更新的图片。');
+        throw new Error('没有可更新的素材。');
       }
 
       return isFavorite ? '已收藏' : '已取消收藏';
@@ -254,7 +260,7 @@ export function BatchImageOrganizePanel({
       async () => {
         const deletedCount = await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, idsToDelete));
         if (deletedCount === 0) {
-          throw new Error('没有可删除的图片。');
+          throw new Error('没有可删除的素材。');
         }
         return '';
       },
@@ -288,8 +294,8 @@ export function BatchImageOrganizePanel({
       <View style={styles.panel}>
         <View style={styles.header}>
           <View style={styles.headerCopy}>
-            <Text style={styles.title}>已选择 {selectedCount} 张</Text>
-            <Text style={styles.meta}>共 {totalCount} 张{canUseGroupActions ? '' : ' · 跨 IP 仅支持标签、收藏、删除'}</Text>
+            <Text style={styles.title}>已选择 {selectedCount} 个素材</Text>
+            <Text style={styles.meta}>共 {totalCount} 个素材{canUseGroupActions ? '' : ' · 跨 IP 仅支持标签、收藏、删除'}</Text>
           </View>
           <Pressable onPress={onClearSelection} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
             <Ionicons color={colors.text.secondary} name="close" size={18} />
@@ -338,7 +344,7 @@ export function BatchImageOrganizePanel({
           </View>
         ) : mode === 'add-tags' ? (
           <View style={styles.inlinePanel}>
-            <LightFormSection title="添加标签" hint="追加到已选图片，不覆盖原有标签。">
+            <LightFormSection title="添加标签" hint="追加到已选素材，不覆盖原有标签。">
               <TagMultiSelectPanel
                 availableTags={availableTags}
                 inputValue={tagInput}
@@ -366,14 +372,14 @@ export function BatchImageOrganizePanel({
               label={allFavorite ? '取消收藏' : '收藏'}
               onPress={() => handleFavoriteUpdate(!allFavorite)}
             />
-            <PanelAction disabled={isSubmitting || isSavingToAlbum} icon="download-outline" label={isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} />
+            <PanelAction disabled={isSubmitting || isSavingToAlbum || hasSelectedVideos} icon="download-outline" label={hasSelectedVideos ? '仅图片可保存' : isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} />
             <PanelAction danger disabled={isSubmitting} icon="trash-outline" label="删除到回收站" onPress={() => setIsDeleteDialogVisible(true)} />
           </View>
         )}
       </View>
       <AppDialog
         danger
-        message={`选中的 ${selectedCount} 张图片会进入回收站，原图和缩略图仍保留在本地。清空回收站前都可以恢复。`}
+        message={`选中的 ${selectedCount} 个素材会进入回收站，原文件和缩略图仍保留在本地。清空回收站前都可以恢复。`}
         onClose={() => setIsDeleteDialogVisible(false)}
         onPrimary={confirmSoftDelete}
         primaryLabel="删除到回收站"
@@ -478,12 +484,12 @@ function getGroupModeTitle(mode: OrganizeMode): string {
 
 function getGroupModeHint(mode: OrganizeMode): string {
   if (mode === 'add-group') {
-    return '给已选图片追加一个分组，保留原有分组。';
+    return '给已选素材追加一个分组，保留原有分组。';
   }
   if (mode === 'remove-group') {
-    return '直接从当前分组移出，或从已选图片中移除指定分组。';
+    return '直接从当前分组移出，或从已选素材中移除指定分组。';
   }
-  return '用选中的分组替换已选图片当前分组。';
+  return '用选中的分组替换已选素材当前分组。';
 }
 
 const styles = StyleSheet.create({

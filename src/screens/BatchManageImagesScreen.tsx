@@ -146,6 +146,7 @@ export function BatchManageImagesScreen({
       setSelectedImageIds(updater);
     },
     scrollViewRef,
+    selectableMediaTypes: ['image'],
   });
 
   useEffect(() => {
