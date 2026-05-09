@@ -70,6 +70,8 @@ interface PixoryMediaNativeModule {
   getVideoMetadata(sourceUri: string): Promise<NativeVideoMetadata>;
   createVideoThumbnail(sourceUri: string, destinationUri: string): Promise<NativeCopyResult>;
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
+  computeFileSha256(sourceUri: string): Promise<string>;
+  computeImageDHash(sourceUri: string): Promise<string>;
   getInitialExternalOpen(): Promise<NativeExternalOpen>;
   getInitialShareIntent(): Promise<NativeShareIntent>;
   finishShareActivity(): Promise<boolean>;
@@ -141,6 +143,14 @@ export function createNativeVideoThumbnail(sourceUri: string, destinationUri: st
 
 export function saveNativeVideoToMediaStore(sourceUri: string, displayName: string): Promise<string> {
   return requireNativeModule().saveVideoToMediaStore(sourceUri, displayName);
+}
+
+export function computeFileSha256(sourceUri: string): Promise<string> {
+  return requireNativeModule().computeFileSha256(sourceUri);
+}
+
+export function computeImageDHash(sourceUri: string): Promise<string> {
+  return requireNativeModule().computeImageDHash(sourceUri);
 }
 
 export function getInitialExternalOpen(): Promise<NativeExternalOpen> {

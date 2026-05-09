@@ -1,18 +1,21 @@
 import { useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View, type ScrollView } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
+import { AssetDetailRow } from '../components/AssetDetailRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { imageRepository, runWithDatabaseSpace, type ImageListItem, type ImageSortOrder, type PixorySpace } from '../database';
+import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
+import { useAssetListPreferences } from '../services/assetListPreferences';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface RecentViewedScreenProps {
@@ -35,7 +38,7 @@ export function RecentViewedScreen({
   onStartBatchManagement,
 }: RecentViewedScreenProps) {
   const { showToast } = useToast();
-  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('lastViewedAtDesc');
+  const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'lastViewedAtDesc');
   const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
   const [isClearingRecentViewed, setIsClearingRecentViewed] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -157,20 +160,43 @@ export function RecentViewedScreen({
         <View style={styles.gridHeader}>
           <Text style={styles.gridTitle}>素材</Text>
           <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+          <Pressable
+            accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
+            onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
+            style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
+          >
+            <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
+          </Pressable>
         </View>
-        <View {...swipeSelection.panHandlers} style={styles.grid}>
-          {images.map((image) => (
-            <ThumbnailTile
-              image={image}
-              key={image.id}
-              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
-              onLongPress={() => handleImageLongPress(image)}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
-          ))}
-        </View>
+        {viewMode === 'detail' ? (
+          <View {...swipeSelection.panHandlers} style={styles.detailList}>
+            {images.map((image) => (
+              <AssetDetailRow
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        ) : (
+          <View {...swipeSelection.panHandlers} style={styles.grid}>
+            {images.map((image) => (
+              <ThumbnailTile
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        )}
       </PageStateBlock>
       <AppDialog
         message="只会清除最近查看时间，不会删除图片、视频、原图、缩略图、分组、标签或备注。"
@@ -247,6 +273,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing[2],
   },
+  detailList: {
+    gap: spacing[2],
+  },
   gridHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -256,6 +285,20 @@ const styles = StyleSheet.create({
   gridTitle: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
+  },
+  viewModeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
   },
   disabled: {
     opacity: 0.44,

@@ -11,6 +11,7 @@ import type {
   ImageListQueryOptions,
   ImageListItem,
   ImageListItemRow,
+  DuplicateImageGroup,
   GroupRecord,
   GroupRow,
   IpOrganizationProgress,
@@ -524,8 +525,10 @@ export const imageRepository = {
         updatedAt,
         lastViewedAt,
         lastPlaybackPositionMs,
-        previewStatus
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        previewStatus,
+        contentHash,
+        visualHash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.ipId,
       input.importBatchId ?? null,
       primaryGroupId,
@@ -547,7 +550,9 @@ export const imageRepository = {
       now,
       input.lastViewedAt ?? null,
       input.lastPlaybackPositionMs ?? null,
-      input.previewStatus ?? 'ready'
+      input.previewStatus ?? 'ready',
+      normalizeOptionalText(input.contentHash) ?? null,
+      normalizeOptionalText(input.visualHash) ?? null
     );
 
     if (groupIds.length > 0) {
@@ -628,6 +633,8 @@ export const imageRepository = {
       lastViewedAt: input.lastViewedAt,
       lastPlaybackPositionMs: input.lastPlaybackPositionMs,
       previewStatus: input.previewStatus,
+      contentHash: normalizeOptionalText(input.contentHash),
+      visualHash: normalizeOptionalText(input.visualHash),
       updatedAt: createTimestamp(),
     });
 
@@ -994,6 +1001,101 @@ export const imageRepository = {
       }))
       .filter((group) => group.images.length > 1)
       .sort((left, right) => right.images.length - left.images.length || right.fileSize - left.fileSize);
+  },
+
+  async findByContentHash(db: SQLiteDatabase, contentHash: string, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const normalizedHash = normalizeOptionalText(contentHash);
+    if (!normalizedHash) {
+      return [];
+    }
+
+    const queryParts = buildImageListQueryParts(['image_assets.contentHash = ?'], [normalizedHash], {
+      ...options,
+      mediaType: options?.mediaType ?? 'all',
+    });
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findByVisualHash(db: SQLiteDatabase, visualHash: string, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
+    const normalizedHash = normalizeOptionalText(visualHash);
+    if (!normalizedHash) {
+      return [];
+    }
+
+    const queryParts = buildImageListQueryParts(['image_assets.visualHash = ?', "image_assets.mediaType = 'image'"], [normalizedHash], options);
+    const rows = await db.getAllAsync<ImageListItemRow>(
+      `${IMAGE_LIST_SELECT}
+       ${queryParts.whereClause}
+       GROUP BY image_assets.id
+       ${queryParts.orderByClause}`,
+      ...queryParts.values
+    );
+
+    return rows.map(mapImageListItemRow);
+  },
+
+  async findExactDuplicateGroups(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<DuplicateImageGroup[]> {
+    const images = await this.findFiltered(db, {
+      ...options,
+      includeDeleted: false,
+      mediaType: options?.mediaType ?? 'all',
+    });
+    const groups = new Map<string, ImageListItem[]>();
+
+    for (const image of images) {
+      if (!image.contentHash) {
+        continue;
+      }
+      groups.set(image.contentHash, [...(groups.get(image.contentHash) ?? []), image]);
+    }
+
+    return [...groups.entries()]
+      .filter(([, duplicateImages]) => duplicateImages.length > 1)
+      .map(([key, duplicateImages]) => ({
+        key,
+        kind: 'exact' as const,
+        confidence: 'exact' as const,
+        contentHash: key,
+        visualHash: null,
+        images: duplicateImages,
+      }))
+      .sort((left, right) => right.images.length - left.images.length || left.key.localeCompare(right.key));
+  },
+
+  async findSimilarImageGroups(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<DuplicateImageGroup[]> {
+    const images = await this.findFiltered(db, {
+      ...options,
+      includeDeleted: false,
+      mediaType: 'image',
+    });
+    const groups = new Map<string, ImageListItem[]>();
+
+    for (const image of images) {
+      if (!image.visualHash) {
+        continue;
+      }
+      groups.set(image.visualHash, [...(groups.get(image.visualHash) ?? []), image]);
+    }
+
+    return [...groups.entries()]
+      .filter(([, duplicateImages]) => duplicateImages.length > 1)
+      .map(([key, duplicateImages]) => ({
+        key,
+        kind: 'similar' as const,
+        confidence: 'review' as const,
+        contentHash: null,
+        visualHash: key,
+        images: duplicateImages,
+      }))
+      .sort((left, right) => right.images.length - left.images.length || left.key.localeCompare(right.key));
   },
 
   async softDelete(db: SQLiteDatabase, id: number): Promise<ImageAssetRecord | null> {

@@ -4,7 +4,7 @@ import * as Brightness from 'expo-brightness';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, PanResponder, Pressable, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
+import { Animated, AppState, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VolumeManager } from 'react-native-volume-manager';
 
@@ -1135,7 +1135,7 @@ export function VideoPlayerScreen({
       ) : null}
 
       <Animated.View pointerEvents={controlsVisible && !isPlayerLocked ? 'box-none' : 'none'} style={[styles.controlsLayer, { opacity: controlsOpacity }]}>
-          <View style={[styles.topBar, { paddingTop: insets.top + spacing[2] }]}>
+          <View style={[styles.topBar, isLandscape ? styles.landscapeTopBar : null, { paddingTop: insets.top + spacing[2] }]}>
             <Pressable accessibilityLabel="返回" onPress={handleBack} style={({ pressed }) => [styles.iconButtonBare, pressed && styles.pressed]}>
               <Ionicons color={colors.text.inverse} name="chevron-back" size={26} />
             </Pressable>
@@ -1177,20 +1177,22 @@ export function VideoPlayerScreen({
           {queueVisible ? (
             <Animated.View style={[styles.queuePanel, { bottom: insets.bottom + 152 }, floatingPanelAnimatedStyle]}>
               <Text style={styles.queueTitle}>待播放</Text>
-              {queue.slice(Math.max(0, currentIndex - 1), currentIndex + 5).map((item) => (
-                <Pressable key={item.id} onPress={() => switchVideo(item.id)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
-                  <View style={styles.queueCover}>
-                    {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
-                      <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
-                    ) : (
-                      <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
-                    )}
-                  </View>
-                  <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
-                  {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
-                  <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
-                </Pressable>
-              ))}
+              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.queueScroll} contentContainerStyle={styles.queueScrollContent}>
+                {queue.map((item) => (
+                  <Pressable key={item.id} onPress={() => switchVideo(item.id)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
+                    <View style={styles.queueCover}>
+                      {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
+                        <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
+                      ) : (
+                        <Ionicons color={item.id === activeVideoId ? colors.primary.active : colors.text.inverse} name="play-circle-outline" size={18} />
+                      )}
+                    </View>
+                    <Text numberOfLines={1} style={styles.queueName}>{item.originalFilename}</Text>
+                    {item.id === activeVideoId ? <Text style={styles.queueNowPlaying}>当前视频</Text> : null}
+                    <Text style={styles.queueDuration}>{formatDuration(item.durationMs)}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </Animated.View>
           ) : null}
 
@@ -1215,34 +1217,42 @@ export function VideoPlayerScreen({
             </Animated.View>
           ) : null}
 
-          <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing[2] }]}>
-            <View style={styles.progressInfoRow}>
-              <Text style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
-              {isScrubbing ? (
+          <View style={[styles.bottomBar, isLandscape ? styles.landscapeBottomBar : null, { paddingBottom: insets.bottom + (isLandscape ? spacing[1] : spacing[2]) }]}>
+            {!isLandscape ? (
+              <View style={styles.progressInfoRow}>
+                <Text style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+                {isScrubbing ? (
+                  <View style={styles.scrubBubble}>
+                    <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
+                    <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+            {isLandscape && isScrubbing ? (
+              <View style={styles.landscapeScrubBubbleRow}>
                 <View style={styles.scrubBubble}>
                   <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
                   <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
                 </View>
-              ) : null}
-            </View>
+              </View>
+            ) : null}
             <View
               {...seekPanResponder.panHandlers}
               ref={progressTrackRef}
               onLayout={(event) => handleProgressTrackLayout(event.nativeEvent.layout.width)}
-              style={styles.progressHitArea}
+              style={[styles.progressHitArea, isLandscape ? styles.landscapeProgressHitArea : null]}
             >
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
                 <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
               </View>
             </View>
-            <View style={styles.controlRow}>
+            <View style={[styles.controlRow, isLandscape ? styles.landscapeControlRow : null]}>
               <View style={styles.controlLeft}>
                 <Pressable accessibilityLabel={isPlaying ? '暂停' : '播放'} onPress={togglePlay} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                   <Ionicons color={colors.text.inverse} name={isPlaying ? 'pause' : 'play'} size={20} />
                 </Pressable>
-              </View>
-              <View style={styles.controlActions}>
                 {isLandscape ? (
                   <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                     <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
@@ -1253,6 +1263,11 @@ export function VideoPlayerScreen({
                     <Ionicons color={colors.text.inverse} name="play-skip-forward" size={18} />
                   </Pressable>
                 ) : null}
+                {isLandscape ? (
+                  <Text numberOfLines={1} style={styles.landscapeTimeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+                ) : null}
+              </View>
+              <View style={styles.controlActions}>
                 <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
                   <Text style={styles.pillButtonText}>{speed}x</Text>
                 </Pressable>
@@ -1421,6 +1436,10 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  landscapeTopBar: {
+    backgroundColor: 'transparent',
+    paddingBottom: spacing[1],
+  },
   iconButtonBare: {
     alignItems: 'center',
     height: 42,
@@ -1500,6 +1519,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
   },
+  landscapeBottomBar: {
+    gap: spacing[1],
+    paddingTop: spacing[1],
+  },
   progressInfoRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -1522,6 +1545,9 @@ const styles = StyleSheet.create({
   progressHitArea: {
     justifyContent: 'center',
     minHeight: 34,
+  },
+  landscapeProgressHitArea: {
+    minHeight: 24,
   },
   progressFill: {
     backgroundColor: colors.primary.hover,
@@ -1560,16 +1586,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  landscapeScrubBubbleRow: {
+    alignItems: 'flex-start',
+    minHeight: 30,
+  },
   controlRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
     justifyContent: 'space-between',
   },
+  landscapeControlRow: {
+    minHeight: 38,
+  },
   controlLeft: {
     alignItems: 'center',
     flexDirection: 'row',
     flexShrink: 0,
+  },
+  landscapeTimeText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '800',
+    marginLeft: spacing[1],
+    minWidth: 86,
   },
   controlActions: {
     alignItems: 'center',
@@ -1664,6 +1704,13 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.inverse,
     fontWeight: '800',
+  },
+  queueScroll: {
+    maxHeight: 190,
+  },
+  queueScrollContent: {
+    gap: spacing[1],
+    paddingBottom: spacing[1],
   },
   queueRow: {
     alignItems: 'center',

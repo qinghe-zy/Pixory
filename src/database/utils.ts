@@ -76,6 +76,8 @@ export function mapImageAssetRow(row: ImageAssetRow): ImageAssetRecord {
     isFavorite: sqliteToBoolean(row.isFavorite),
     lastPlaybackPositionMs: row.lastPlaybackPositionMs ?? null,
     previewStatus: normalizePreviewStatus(row.previewStatus),
+    contentHash: row.contentHash ?? null,
+    visualHash: row.visualHash ?? null,
   };
 }
 

@@ -35,6 +35,7 @@ import { verifyPersonalPassword } from './personalSystemService';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 
 export type BackupScope = 'normal' | 'personal' | 'all';
+export type IpNameConflictStrategy = 'ask' | 'mergeExisting' | 'createRenamed' | 'cancelImport';
 const NORMAL_BACKUP_SCOPE = { space: 'normal' as const };
 
 export interface BackupResult {
@@ -63,6 +64,7 @@ export interface ImportEncryptedPersonalPackParams {
   packageUri: string;
   secret: string;
   mode: 'merge';
+  ipNameConflictStrategy?: IpNameConflictStrategy;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -76,6 +78,7 @@ export interface ImportPlainBackupPackageParams {
   packageUri?: string;
   extractedDirectoryUri?: string;
   mode: 'merge';
+  ipNameConflictStrategy?: IpNameConflictStrategy;
 }
 
 export interface ImportPlainBackupPackageResult {
@@ -576,6 +579,46 @@ function resolveBackupRelativeFile(rootManifestUri: string, role: 'originals' | 
   return joinStoragePath(`${joinStoragePath(`${joinStoragePath(backupDir, role)}/`, `ip_${ipId}`)}/`, fileName);
 }
 
+async function createRenamedIp(db: SQLiteDatabase, name: string, input: { description?: string | null; isFavorite?: boolean }): Promise<Awaited<ReturnType<typeof ipRepository.create>>> {
+  let suffix = 2;
+  let nextName = `${name} ${suffix}`;
+  while (await ipRepository.findByName(db, nextName)) {
+    suffix += 1;
+    nextName = `${name} ${suffix}`;
+  }
+  return ipRepository.create(db, { ...input, name: nextName });
+}
+
+async function resolveImportedIp(
+  db: SQLiteDatabase,
+  sourceIp: ExportData['ips'][number],
+  strategy: IpNameConflictStrategy
+): Promise<{ ipId: number; created: boolean }> {
+  const existingIp = await ipRepository.findByName(db, sourceIp.name);
+  if (!existingIp) {
+    const createdIp = await ipRepository.create(db, {
+      name: sourceIp.name,
+      description: sourceIp.description,
+      isFavorite: sourceIp.isFavorite,
+    });
+    return { ipId: createdIp.id, created: true };
+  }
+
+  if (strategy === 'mergeExisting') {
+    return { ipId: existingIp.id, created: false };
+  }
+
+  if (strategy === 'ask' || strategy === 'cancelImport') {
+    throw new Error(`同名 IP「${sourceIp.name}」已存在，请选择合并到已有 IP 或创建新 IP 后再导入。`);
+  }
+
+  const renamedIp = await createRenamedIp(db, sourceIp.name, {
+    description: sourceIp.description,
+    isFavorite: sourceIp.isFavorite,
+  });
+  return { ipId: renamedIp.id, created: true };
+}
+
 async function copyPlainBackupAssetFiles(params: {
   manifestUri: string;
   sourceImage: ExportData['images'][number];
@@ -630,6 +673,7 @@ async function copyPlainBackupAssetFiles(params: {
 
 export async function importPlainBackupPackage({
   extractedDirectoryUri,
+  ipNameConflictStrategy = 'createRenamed',
   mode,
   packageUri,
   space = 'normal',
@@ -679,27 +723,26 @@ export async function importPlainBackupPackage({
       const imageIdMap = new Map<number, number>();
 
       for (const ip of exportData?.ips ?? []) {
-        const createdIp = await ipRepository.create(db, {
-          name: ip.name,
-          description: ip.description,
-          isFavorite: ip.isFavorite,
-        });
-        ipIdMap.set(ip.id, createdIp.id);
-        importedIpCount += 1;
+        const resolvedIp = await resolveImportedIp(db, ip, ipNameConflictStrategy);
+        ipIdMap.set(ip.id, resolvedIp.ipId);
+        if (resolvedIp.created) {
+          importedIpCount += 1;
+        }
       }
 
       for (const group of exportData?.groups ?? []) {
         const nextIpId = ipIdMap.get(group.ipId);
         if (!nextIpId) continue;
-        const createdGroup = await groupRepository.create(db, {
+        const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
+        const resolvedGroup = existingGroup ?? (await groupRepository.create(db, {
           ipId: nextIpId,
           name: group.name,
           type: group.type,
           sortOrder: group.sortOrder,
           isPinned: group.isPinned,
           description: group.description,
-        });
-        groupIdMap.set(group.id, createdGroup.id);
+        }));
+        groupIdMap.set(group.id, resolvedGroup.id);
       }
 
       for (const batch of exportData?.importBatches ?? []) {
@@ -753,6 +796,8 @@ export async function importPlainBackupPackage({
           isFavorite: image.isFavorite,
           note: image.note,
           previewStatus: image.previewStatus ?? 'ready',
+          contentHash: image.contentHash,
+          visualHash: image.visualHash,
         });
         imageIdMap.set(image.id, createdImage.id);
         const tagIds = [];
@@ -812,6 +857,7 @@ export async function importPlainBackupPackage({
 }
 
 export async function importEncryptedPersonalPack({
+  ipNameConflictStrategy = 'createRenamed',
   packageUri,
   secret,
   mode,
@@ -856,13 +902,11 @@ export async function importEncryptedPersonalPack({
 
       for (const ip of exportData?.ips ?? []) {
         assertPersonalTaskActive(taskToken);
-        const createdIp = await ipRepository.create(db, {
-          name: ip.name,
-          description: ip.description,
-          isFavorite: ip.isFavorite,
-        });
-        ipIdMap.set(ip.id, createdIp.id);
-        importedIpCount += 1;
+        const resolvedIp = await resolveImportedIp(db, ip, ipNameConflictStrategy);
+        ipIdMap.set(ip.id, resolvedIp.ipId);
+        if (resolvedIp.created) {
+          importedIpCount += 1;
+        }
       }
 
       for (const group of exportData?.groups ?? []) {
@@ -870,15 +914,16 @@ export async function importEncryptedPersonalPack({
         if (!nextIpId) {
           continue;
         }
-        const createdGroup = await groupRepository.create(db, {
+        const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
+        const resolvedGroup = existingGroup ?? (await groupRepository.create(db, {
           ipId: nextIpId,
           name: group.name,
           type: group.type,
           sortOrder: group.sortOrder,
           isPinned: group.isPinned,
           description: group.description,
-        });
-        groupIdMap.set(group.id, createdGroup.id);
+        }));
+        groupIdMap.set(group.id, resolvedGroup.id);
       }
 
       for (const batch of exportData?.importBatches ?? []) {
@@ -949,6 +994,8 @@ export async function importEncryptedPersonalPack({
           isFavorite: image.isFavorite,
           note: image.note,
           previewStatus: image.previewStatus ?? 'ready',
+          contentHash: image.contentHash,
+          visualHash: image.visualHash,
         });
         imageIdMap.set(image.id, createdImage.id);
         const tagIds = [];

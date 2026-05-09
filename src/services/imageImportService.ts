@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Image } from 'react-native';
 
@@ -15,8 +16,11 @@ import {
 import { generateThumbnail } from './thumbnailService';
 import { devLog } from '../utils/dev';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
+import { computeFileSha256, computeImageDHash } from '../native/pixoryMediaModule';
+import type { ImageImportSourceMode } from '../database/repositories/settingsRepository';
 
 export type PickedImageAsset = ImagePicker.ImagePickerAsset;
+export type DuplicateImportDecision = 'importAll' | 'skipExact' | 'skipSimilar' | 'cancelImport';
 
 export interface PickImagesForImportResult {
   canceled: boolean;
@@ -33,6 +37,8 @@ export interface ImportImagesToIpParams {
   isFavorite?: boolean;
   templateKey?: string | null;
   pickedAssets: PickedImageAsset[];
+  duplicateDecision?: DuplicateImportDecision;
+  imageImportSourceMode?: ImageImportSourceMode;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -45,6 +51,8 @@ export interface BuildImageAssetFromPickedFileParams {
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedImageAsset;
+  duplicateDecision?: DuplicateImportDecision;
+  imageImportSourceMode?: ImageImportSourceMode;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -58,6 +66,8 @@ export interface ImportSingleImageParams {
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedImageAsset;
+  duplicateDecision?: DuplicateImportDecision;
+  imageImportSourceMode?: ImageImportSourceMode;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -74,6 +84,9 @@ export interface PendingImageAssetImport {
   height: number;
   mimeType: string;
   fileSize: number;
+  sourceAssetId: string | null;
+  duplicateDecision: DuplicateImportDecision;
+  imageImportSourceMode: ImageImportSourceMode;
   isFavorite: boolean;
   note: string | null;
   taskToken?: PersonalTaskToken | null;
@@ -109,14 +122,29 @@ export interface ImageImportError {
   sourceUri: string;
   originalFilename: string;
   message: string;
+  skipped?: boolean;
 }
 
 export interface ImportImagesToIpResult {
   successCount: number;
+  skippedCount: number;
   failedCount: number;
   importBatch: ImportBatchRecord | null;
   importedImages: ImportedImageResult[];
   errors: ImageImportError[];
+}
+
+class DuplicateImportSkippedError extends Error {
+  skipped = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicateImportSkippedError';
+  }
+}
+
+function isDuplicateImportSkippedError(error: unknown): error is DuplicateImportSkippedError {
+  return error instanceof DuplicateImportSkippedError || Boolean((error as { skipped?: boolean } | null)?.skipped);
 }
 
 export interface ImageImportDevelopmentCheckResult {
@@ -295,6 +323,7 @@ function formatImportError(pickedAsset: PickedImageAsset, error: unknown): Image
     sourceUri: pickedAsset.uri,
     originalFilename,
     message,
+    skipped: isDuplicateImportSkippedError(error),
   };
 }
 
@@ -346,6 +375,15 @@ async function performSingleImageImport(
     assertPersonalTaskActive(pendingImageAsset.taskToken);
 
     const originalFileInfo = await getFileInfo(originalFileUri);
+    const contentHash = await computeFileSha256(originalFileUri);
+    const visualHash = await computeImageDHash(originalFileUri).catch(() => null);
+    const shouldSkip = await shouldSkipDuplicateImport(db, pendingImageAsset, contentHash, visualHash);
+    if (shouldSkip) {
+      await deleteLocalFile(originalFileUri);
+      originalFileUri = null;
+      throw new DuplicateImportSkippedError(shouldSkip);
+    }
+
     thumbnailFileUri = await generateThumbnail(
       originalFileUri,
       pendingImageAsset.ipId,
@@ -367,6 +405,8 @@ async function performSingleImageImport(
       height: pendingImageAsset.height,
       mimeType: pendingImageAsset.mimeType,
       fileSize: originalFileInfo.size ?? pendingImageAsset.fileSize,
+      contentHash,
+      visualHash,
       isFavorite: pendingImageAsset.isFavorite,
       note: pendingImageAsset.note,
     });
@@ -391,6 +431,10 @@ async function performSingleImageImport(
       tagCount: persistedImageTags.length,
     });
 
+    if (pendingImageAsset.imageImportSourceMode === 'move') {
+      await deleteImportedSourceAsset(pendingImageAsset);
+    }
+
     return {
       image: createdImage,
       tags: resolvedTags,
@@ -399,6 +443,46 @@ async function performSingleImageImport(
     await cleanupFailedImport(db, createdImageId, originalFileUri, thumbnailFileUri);
     throw error;
   }
+}
+
+async function shouldSkipDuplicateImport(
+  db: SQLiteDatabase,
+  pendingImageAsset: PendingImageAssetImport,
+  contentHash: string | null,
+  visualHash: string | null
+): Promise<string | null> {
+  if (pendingImageAsset.duplicateDecision === 'cancelImport') {
+    return '用户取消导入。';
+  }
+
+  const skipExact = pendingImageAsset.duplicateDecision === 'skipExact' || pendingImageAsset.duplicateDecision === 'skipSimilar';
+  if (skipExact && contentHash) {
+    const exactMatches = await imageRepository.findByContentHash(db, contentHash, { mediaType: 'all' });
+    if (exactMatches.length > 0) {
+      return '已跳过精确重复素材。';
+    }
+  }
+
+  const skipSimilar = pendingImageAsset.duplicateDecision === 'skipSimilar';
+  if (skipSimilar && visualHash) {
+    const similarMatches = await imageRepository.findByVisualHash(db, visualHash);
+    if (similarMatches.length > 0) {
+      return '已跳过相似图片。';
+    }
+  }
+
+  return null;
+}
+
+export async function deleteImportedSourceAsset(pendingImageAsset: PendingImageAssetImport): Promise<void> {
+  if (!pendingImageAsset.sourceAssetId) {
+    console.warn('Pixory move import could not delete source asset because assetId is unavailable.', {
+      sourceUri: pendingImageAsset.sourceUri,
+    });
+    return;
+  }
+
+  await MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
 }
 
 export async function pickImagesForImport(): Promise<PickImagesForImportResult> {
@@ -459,6 +543,9 @@ export async function buildImageAssetFromPickedFile(
     height,
     mimeType: resolveMimeType(pickedAsset, originalFilename),
     fileSize,
+    sourceAssetId: typeof pickedAsset.assetId === 'string' ? pickedAsset.assetId : null,
+    duplicateDecision: params.duplicateDecision ?? 'importAll',
+    imageImportSourceMode: params.imageImportSourceMode ?? 'copy',
     isFavorite: Boolean(isFavorite),
     note: normalizeOptionalText(note) ?? null,
     taskToken: params.taskToken ?? null,
@@ -487,6 +574,8 @@ export async function importSingleImage(
     note: params.note,
     isFavorite: params.isFavorite,
     pickedAsset,
+    duplicateDecision: params.duplicateDecision,
+    imageImportSourceMode: params.imageImportSourceMode,
     taskToken: params.taskToken ?? null,
   });
 
@@ -508,6 +597,7 @@ export async function importImagesToIp(
     return {
       successCount: 0,
       failedCount: 0,
+      skippedCount: 0,
       importBatch: null,
       importedImages: [],
       errors: [],
@@ -524,6 +614,7 @@ export async function importImagesToIp(
   const resolvedTags = await resolveTags(db, params.tagNames);
   const importedImages: ImportedImageResult[] = [];
   const errors: ImageImportError[] = [];
+  let skippedCount = 0;
 
   for (const pickedAsset of params.pickedAssets) {
     try {
@@ -536,11 +627,18 @@ export async function importImagesToIp(
         note: params.note,
         isFavorite: params.isFavorite,
         pickedAsset,
+        duplicateDecision: params.duplicateDecision,
+        imageImportSourceMode: params.imageImportSourceMode,
         taskToken: params.taskToken ?? null,
       });
       importedImages.push(await performSingleImageImport(db, pendingImageAsset, resolvedTags));
     } catch (error) {
-      errors.push(formatImportError(pickedAsset, error));
+      const formattedError = formatImportError(pickedAsset, error);
+      if (formattedError.skipped) {
+        skippedCount += 1;
+      } else {
+        errors.push(formattedError);
+      }
     }
   }
 
@@ -548,6 +646,7 @@ export async function importImagesToIp(
 
   return {
     successCount: importedImages.length,
+    skippedCount,
     failedCount: errors.length,
     importBatch: completedBatch ?? importBatch,
     importedImages,
@@ -633,6 +732,7 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
       createdDevelopmentIp,
       result: {
         successCount: 0,
+        skippedCount: 0,
         failedCount: 0,
         importBatch: null,
         importedImages: [],

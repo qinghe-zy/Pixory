@@ -47,24 +47,27 @@ test('personal mode badge sits below the status bar inset instead of hardcoding 
   assert.match(appSource, /top:\s*insets\.top/);
 });
 
-test('video player keeps progress information above the scrub bar and does not reset saved progress to zero while loading', () => {
+test('video player keeps portrait progress information above the scrub bar and does not reset saved progress to zero while loading', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
   assert.match(playerSource, /progressInfoRow/);
   assert.match(playerSource, /progressInfoText/);
+  assert.match(playerSource, /\{!isLandscape \? \(\s*<View style=\{styles\.progressInfoRow\}>/);
   assert.match(playerSource, /const initialDisplayTime/);
   assert.doesNotMatch(playerSource, /currentTimeRef\.current = 0;\s*\n\s*setCurrentTime\(0\);\s*\n\s*setDuration\(0\);/);
   assert.match(playerSource, /committedSeekTargetRef\.current = initialDisplayTime > 0 \? initialDisplayTime : null/);
 });
 
-test('video player bottom controls keep play pause alone on the left', () => {
+test('video player landscape controls group previous next with play pause and move time below progress', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
-  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,260}accessibilityLabel=\{isPlaying \? '暂停' : '播放'\}/);
+  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,1200}accessibilityLabel="上一个视频"[\s\S]{0,360}accessibilityLabel="下一个视频"[\s\S]{0,360}styles\.landscapeTimeText/);
   assert.match(playerSource, /<View style=\{styles\.controlActions\}>[\s\S]{0,900}setSpeedMenuVisible/);
   assert.match(playerSource, /controlRow:\s*\{[\s\S]{0,180}justifyContent:\s*'space-between'/);
   assert.match(playerSource, /controlLeft:\s*\{[\s\S]{0,180}flexDirection:\s*'row'/);
   assert.match(playerSource, /controlActions:\s*\{[\s\S]{0,220}justifyContent:\s*'flex-end'/);
+  assert.match(playerSource, /landscapeBottomBar:\s*\{[\s\S]{0,120}paddingTop:\s*spacing\[1\]/);
+  assert.match(playerSource, /landscapeTopBar:\s*\{[\s\S]{0,120}backgroundColor:\s*'transparent'/);
 });
 
 test('sort control opens a selectable menu instead of cycling on every tap', () => {

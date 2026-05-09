@@ -217,6 +217,14 @@ export const ipRepository = {
     return row ? mapIpRow(row) : null;
   },
 
+  async findByName(db: SQLiteDatabase, name: string): Promise<IpRecord | null> {
+    const row = await db.getFirstAsync<IpRow>(
+      'SELECT * FROM ips WHERE name = ? COLLATE NOCASE AND deletedAt IS NULL ORDER BY updatedAt DESC, id DESC LIMIT 1',
+      requireNonEmptyText(name, 'IP name')
+    );
+    return row ? mapIpRow(row) : null;
+  },
+
   async findAll(db: SQLiteDatabase): Promise<IpRecord[]> {
     const rows = await db.getAllAsync<IpRow>('SELECT * FROM ips WHERE deletedAt IS NULL ORDER BY updatedAt DESC, id DESC');
     return rows.map(mapIpRow);

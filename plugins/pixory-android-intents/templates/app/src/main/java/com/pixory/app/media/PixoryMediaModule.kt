@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -24,6 +25,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.zip.ZipFile
@@ -186,6 +188,47 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
         resolver.update(destinationUri, values, null, null)
       }
       promise.resolve(destinationUri.toString())
+    }
+  }
+
+  @ReactMethod
+  fun computeFileSha256(sourceUri: String, promise: Promise) {
+    runOnIo(promise, "PIXORY_HASH_FAILED") {
+      val digest = MessageDigest.getInstance("SHA-256")
+      val buffer = ByteArray(STREAM_BUFFER_SIZE)
+      openInput(Uri.parse(sourceUri)).use { input ->
+        while (true) {
+          val read = input.read(buffer)
+          if (read < 0) break
+          digest.update(buffer, 0, read)
+        }
+      }
+      promise.resolve(bytesToHex(digest.digest()))
+    }
+  }
+
+  @ReactMethod
+  fun computeImageDHash(sourceUri: String, promise: Promise) {
+    runOnIo(promise, "PIXORY_DHASH_FAILED") {
+      val bitmap = openInput(Uri.parse(sourceUri)).use { input ->
+        BitmapFactory.decodeStream(input)
+      } ?: throw IllegalArgumentException("Unable to decode image for visual hash.")
+      val scaled = Bitmap.createScaledBitmap(bitmap, 9, 8, true)
+      var hash = 0UL
+      for (y in 0 until 8) {
+        for (x in 0 until 8) {
+          val left = gray(scaled.getPixel(x, y))
+          val right = gray(scaled.getPixel(x + 1, y))
+          if (left > right) {
+            hash = hash or (1UL shl (y * 8 + x))
+          }
+        }
+      }
+      if (scaled !== bitmap) {
+        scaled.recycle()
+      }
+      bitmap.recycle()
+      promise.resolve(hash.toString(16).padStart(16, '0'))
     }
   }
 
@@ -455,6 +498,17 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
 
   private fun metadataLong(retriever: MediaMetadataRetriever, key: Int): Long {
     return retriever.extractMetadata(key)?.toLongOrNull() ?: 0L
+  }
+
+  private fun bytesToHex(bytes: ByteArray): String {
+    return bytes.joinToString("") { byte -> "%02x".format(byte) }
+  }
+
+  private fun gray(color: Int): Int {
+    val red = (color shr 16) and 0xff
+    val green = (color shr 8) and 0xff
+    val blue = color and 0xff
+    return (red * 299 + green * 587 + blue * 114) / 1000
   }
 
   private fun isExternalOpenIntent(intent: Intent?): Boolean {

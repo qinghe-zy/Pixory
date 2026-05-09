@@ -3,6 +3,7 @@ import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
+import { AssetDetailRow } from '../components/AssetDetailRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
@@ -13,8 +14,9 @@ import { colors, componentTokens, radius, spacing, typography } from '../design/
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
+import { useAssetListPreferences } from '../services/assetListPreferences';
 import { getFilenamePrefix } from '../utils/batchSelectionRules';
-import type { ImageAspectRatioFilter, ImageSortOrder } from '../database';
+import type { ImageAspectRatioFilter } from '../database';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 type FileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
@@ -79,7 +81,7 @@ export function AllImagesScreen({
 }: AllImagesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<AllImagesFilterState>(EMPTY_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<AllImagesFilterDropdown | null>(null);
-  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const SORT_OPTIONS = IMAGE_SORT_OPTIONS;
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -409,6 +411,13 @@ export function AllImagesScreen({
             <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
             <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
             <Pressable
+              accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
+              onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
+              style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
+            >
+              <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
+            </Pressable>
+            <Pressable
               disabled={selectableAssets.length === 0}
               onPress={multiSelect.toggleSelectAll}
               style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
@@ -417,20 +426,36 @@ export function AllImagesScreen({
             </Pressable>
           </View>
         </View>
-        <View {...swipeSelection.panHandlers} style={styles.grid}>
-          {images.map((image) => (
-            <ThumbnailTile
-              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
-              image={image}
-              key={image.id}
-              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
-              onLongPress={handleImageLongPress}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
-          ))}
-        </View>
+        {viewMode === 'detail' ? (
+          <View {...swipeSelection.panHandlers} style={styles.detailList}>
+            {images.map((image) => (
+              <AssetDetailRow
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        ) : (
+          <View {...swipeSelection.panHandlers} style={styles.grid}>
+            {images.map((image) => (
+              <ThumbnailTile
+                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={handleImageLongPress}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        )}
       </PageStateBlock>
     </ScreenScaffold>
   );
@@ -807,8 +832,25 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '700',
   },
+  viewModeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
   disabled: {
     opacity: 0.45,
+  },
+  detailList: {
+    gap: spacing[2],
   },
   grid: {
     flexDirection: 'row',

@@ -9,10 +9,10 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
 }
 
-test('personal mode uses a 30 second background grace period without resetting normal routes', () => {
+test('personal mode uses a 60 second background grace period without resetting normal routes', () => {
   const appSource = readProjectFile('App.tsx');
 
-  assert.match(appSource, /PERSONAL_BACKGROUND_LOCK_GRACE_MS\s*=\s*30\s*\*\s*1000/);
+  assert.match(appSource, /PERSONAL_BACKGROUND_LOCK_GRACE_MS\s*=\s*60\s*\*\s*1000/);
   assert.match(appSource, /backgroundLockTimerRef/);
   assert.match(appSource, /setTimeout\([\s\S]{0,500}lockPersonalSpace\('background'\)[\s\S]{0,120}PERSONAL_BACKGROUND_LOCK_GRACE_MS/);
   assert.match(appSource, /clearPendingPersonalBackgroundLock/);
@@ -39,7 +39,7 @@ test('IP cover metadata supports custom cover and personal blur fallback', () =>
   const ipRepositorySource = readProjectFile('src/database/repositories/ipRepository.ts');
   const secureImageSource = readProjectFile('src/components/SecureImage.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION = 14/);
+  assert.match(schemaSource, /DATABASE_VERSION = 15/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverImageAssetId INTEGER/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurEnabled INTEGER/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurRadius INTEGER/);

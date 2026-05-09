@@ -33,7 +33,9 @@ import {
   createNativeVideoThumbnail,
   getNativeVideoMetadata,
   saveNativeVideoToMediaStore,
+  computeFileSha256,
 } from '../native/pixoryMediaModule';
+import type { VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
 export interface PickedVideoAsset {
   uri: string;
@@ -78,6 +80,7 @@ interface ImportSingleVideoParams {
   note?: string | null;
   isFavorite?: boolean;
   pickedAsset: PickedVideoAsset;
+  videoImportNamingMode: VideoImportNamingMode;
 }
 
 function getFileNameFromUri(fileUri: string): string {
@@ -134,7 +137,10 @@ async function resolveTags(db: SQLiteDatabase, tagNames?: string[]): Promise<Tag
   return tags;
 }
 
-function buildFallbackFilename(asset: PickedVideoAsset): string {
+function buildFallbackFilename(asset: PickedVideoAsset, videoImportNamingMode: VideoImportNamingMode = 'preserveOriginal'): string {
+  if (videoImportNamingMode === 'generated') {
+    return `video-${Date.now()}${getExtension(asset.fileName || getFileNameFromUri(asset.uri) || 'video.mp4')}`;
+  }
   return asset.fileName?.trim() || getFileNameFromUri(asset.uri) || 'video.mp4';
 }
 
@@ -165,8 +171,9 @@ async function importSingleVideo({
   space,
   tags,
   taskId,
+  videoImportNamingMode,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
-  const originalFilename = buildFallbackFilename(pickedAsset);
+  const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
   const internalFilename = generateInternalFilename(originalFilename.endsWith(getExtension(originalFilename)) ? originalFilename : `${originalFilename}.mp4`);
   const { coverUri, originalUri, tempUri } = await buildVideoPaths(space, ipId, internalFilename);
   let createdVideoId: number | null = null;
@@ -195,6 +202,7 @@ async function importSingleVideo({
     }
 
     const metadata = await getNativeVideoMetadata(originalUri);
+    const contentHash = await computeFileSha256(originalUri);
     let coverThumbnailFileUri: string | null = null;
     let previewStatus: 'ready' | 'failed' = 'ready';
     try {
@@ -227,6 +235,8 @@ async function importSingleVideo({
       durationMs: metadata.durationMs,
       mimeType: metadata.mimeType ?? pickedAsset.mimeType ?? 'video/mp4',
       fileSize: originalInfo.size ?? metadata.fileSize ?? pickedAsset.fileSize ?? 0,
+      contentHash,
+      visualHash: null,
       isFavorite,
       note: normalizeOptionalText(note) ?? null,
       previewStatus,
@@ -290,6 +300,7 @@ export async function importVideosToIp(params: {
   isFavorite?: boolean;
   pickedAssets: PickedVideoAsset[];
   title?: string;
+  videoImportNamingMode?: VideoImportNamingMode;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
   await ensureAppDirectories(space);
@@ -350,12 +361,13 @@ export async function importVideosToIp(params: {
             space,
             tags,
             taskId: task.id,
+            videoImportNamingMode: params.videoImportNamingMode ?? 'preserveOriginal',
           });
           importedVideos.push(importedVideo);
           await importBatchRepository.createItem(db, {
             importBatchId: importBatch.id,
             sourcePath: pickedAsset.uri,
-            originalFilename: buildFallbackFilename(pickedAsset),
+            originalFilename: buildFallbackFilename(pickedAsset, params.videoImportNamingMode ?? 'preserveOriginal'),
             status: 'success',
             imageAssetId: importedVideo.video.id,
           });
@@ -366,7 +378,7 @@ export async function importVideosToIp(params: {
         } catch (error) {
           const importError = {
             sourceUri: pickedAsset.uri,
-            originalFilename: buildFallbackFilename(pickedAsset),
+            originalFilename: buildFallbackFilename(pickedAsset, params.videoImportNamingMode ?? 'preserveOriginal'),
             message: error instanceof Error ? error.message : '未知视频导入错误。',
           };
           errors.push(importError);

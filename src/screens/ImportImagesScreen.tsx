@@ -21,6 +21,7 @@ import { useSubmitState } from '../hooks/useSubmitState';
 import {
   importImagesToIp,
   pickImagesForImport,
+  type DuplicateImportDecision,
   type PickedImageAsset,
 } from '../services/imageImportService';
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
@@ -29,6 +30,7 @@ import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDra
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
 import type { PersonalTaskToken } from '../services/personalTaskToken';
+import type { ImageImportSourceMode, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
 interface ImportImagesScreenProps {
   space?: PixorySpace;
@@ -54,21 +56,23 @@ export function ImportImagesScreen({
     data: screenData,
     errorMessage: loadErrorMessage,
     reload,
-  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[] }>(
+  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[]; imageImportSourceMode: ImageImportSourceMode; videoImportNamingMode: VideoImportNamingMode }>(
     async () => {
-      const [ip, groups, importTemplates, recentGroupIds, recentTags] = await runWithDatabaseSpace(space, (db) => Promise.all([
+      const [ip, groups, importTemplates, recentGroupIds, recentTags, imageImportSourceMode, videoImportNamingMode] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findById(db, ipId),
         groupRepository.findByIpId(db, ipId),
         importTemplateRepository.findAll(db),
         settingsRepository.getRecentImportGroupIds(db),
         tagRepository.findRecentlyUsed(db, 8),
+        settingsRepository.getImageImportSourceMode(db),
+        settingsRepository.getVideoImportNamingMode(db),
       ]));
 
-      return { ip, groups, importTemplates, recentGroupIds, recentTags };
+      return { ip, groups, importTemplates, recentGroupIds, recentTags, imageImportSourceMode, videoImportNamingMode };
     },
     [ipId, space],
     {
-      initialData: { ip: null, groups: [], importTemplates: [], recentGroupIds: [], recentTags: [] },
+      initialData: { ip: null, groups: [], importTemplates: [], recentGroupIds: [], recentTags: [], imageImportSourceMode: 'copy', videoImportNamingMode: 'preserveOriginal' },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取导入配置失败：${message}`;
@@ -90,6 +94,10 @@ export function ImportImagesScreen({
   const [isPickingVideos, setIsPickingVideos] = useState(false);
   const [isPickingPackage, setIsPickingPackage] = useState(false);
   const [packageImportResult, setPackageImportResult] = useState<PackageImportResult | null>(null);
+  const [duplicateDecision, setDuplicateDecision] = useState<DuplicateImportDecision>('importAll');
+  const [imageImportSourceMode, setImageImportSourceMode] = useState<ImageImportSourceMode>('copy');
+  const [videoImportNamingMode, setVideoImportNamingMode] = useState<VideoImportNamingMode>('preserveOriginal');
+  const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
   const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplateRecord | null>(null);
@@ -118,6 +126,21 @@ export function ImportImagesScreen({
     const idSet = new Set(recentGroups.map((group) => group.id));
     return groups.filter((group) => !idSet.has(group.id));
   }, [groups, recentGroups]);
+
+  useEffect(() => {
+    setImageImportSourceMode(screenData?.imageImportSourceMode ?? 'copy');
+    setVideoImportNamingMode(screenData?.videoImportNamingMode ?? 'preserveOriginal');
+  }, [screenData?.imageImportSourceMode, screenData?.videoImportNamingMode]);
+
+  function updateImageImportSourceMode(nextMode: ImageImportSourceMode) {
+    setImageImportSourceMode(nextMode);
+    void runWithDatabaseSpace(space, (db) => settingsRepository.setImageImportSourceMode(db, nextMode));
+  }
+
+  function updateVideoImportNamingMode(nextMode: VideoImportNamingMode) {
+    setVideoImportNamingMode(nextMode);
+    void runWithDatabaseSpace(space, (db) => settingsRepository.setVideoImportNamingMode(db, nextMode));
+  }
 
   useEffect(() => {
     if (!initialMediaPicker || initialMediaPickerHandledRef.current) {
@@ -348,6 +371,8 @@ export function ImportImagesScreen({
           isFavorite,
           templateKey: selectedTemplateKey,
           pickedAssets,
+          duplicateDecision,
+          imageImportSourceMode,
           taskToken,
         });
 
@@ -379,6 +404,7 @@ export function ImportImagesScreen({
           note: preparedNote,
           isFavorite,
           pickedAssets: pickedVideos,
+          videoImportNamingMode,
         });
 
         videoSuccessCount = videoResult.successCount;
@@ -438,6 +464,7 @@ export function ImportImagesScreen({
         tagNames: preparedTags,
         note: note.trim(),
         isFavorite,
+        ipNameConflictStrategy: 'ask',
       });
       setPackageImportResult(result);
 
@@ -456,6 +483,9 @@ export function ImportImagesScreen({
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
+      if (message.includes('同名 IP')) {
+        setIsIpConflictDialogVisible(true);
+      }
       showToast(`资源包导入失败：${message}`);
     } finally {
       setIsPickingPackage(false);
@@ -568,6 +598,44 @@ export function ImportImagesScreen({
               图片 {packageImportResult.imageSuccessCount} · 视频 {packageImportResult.videoSuccessCount} · 失败 {packageImportResult.failedCount} · 跳过 {packageImportResult.skippedCount}
             </Text>
           ) : null}
+        </LightFormSection>
+
+        <LightFormSection title="导入策略">
+          <SwitchSettingRow
+            disabled={isSubmitting}
+            hint="复制会保留系统相册文件；移动会在 Pixory 写入并校验成功后删除相册源资产。"
+            label="图片导入使用移动模式"
+            onValueChange={(enabled) => updateImageImportSourceMode(enabled ? 'move' : 'copy')}
+            value={imageImportSourceMode === 'move'}
+          />
+          <SwitchSettingRow
+            disabled={isSubmitting}
+            hint="关闭后使用 Pixory 自动编号文件名。"
+            label="视频保留原文件名"
+            onValueChange={(enabled) => updateVideoImportNamingMode(enabled ? 'preserveOriginal' : 'generated')}
+            value={videoImportNamingMode === 'preserveOriginal'}
+          />
+          <View style={styles.duplicateDecisionList}>
+            <Text style={styles.inlineLabel}>重复/相似素材</Text>
+            <OptionSelectRow
+              label="全部导入"
+              meta="即使发现重复也写入素材库"
+              onPress={() => setDuplicateDecision('importAll')}
+              selected={duplicateDecision === 'importAll'}
+            />
+            <OptionSelectRow
+              label="跳过精确重复"
+              meta="contentHash 完全一致时跳过"
+              onPress={() => setDuplicateDecision('skipExact')}
+              selected={duplicateDecision === 'skipExact'}
+            />
+            <OptionSelectRow
+              label="跳过精确重复和相似图片"
+              meta="同时跳过 visualHash 命中的相似图片"
+              onPress={() => setDuplicateDecision('skipSimilar')}
+              selected={duplicateDecision === 'skipSimilar'}
+            />
+          </View>
         </LightFormSection>
 
         <LightFormSection title="目标归属">
@@ -845,6 +913,14 @@ export function ImportImagesScreen({
         title="删除模板"
         visible={Boolean(deleteTemplate)}
       />
+      <AppDialog
+        message="导入隐私备份、普通备份或 .pixorypack 时遇到同名 IP，需要选择合并到已有 IP、创建新 IP 或取消导入。合并时会复用同名分组和标签，不会删除目标 IP 原有素材。"
+        onClose={() => setIsIpConflictDialogVisible(false)}
+        onPrimary={() => setIsIpConflictDialogVisible(false)}
+        primaryLabel="合并到已有 IP"
+        title="同名 IP"
+        visible={isIpConflictDialogVisible}
+      />
     </FormScreenScaffold>
   );
 }
@@ -972,6 +1048,10 @@ const styles = StyleSheet.create({
   optionList: {
     gap: spacing[1],
     paddingVertical: spacing[2],
+  },
+  duplicateDecisionList: {
+    gap: spacing[1],
+    paddingTop: spacing[1],
   },
   inlineLabel: {
     ...typography.textStyles.micro,

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
-import { imageRepository, runWithDatabaseSpace, type PixorySpace, type SuspectedDuplicateGroup } from '../database';
+import { imageRepository, runWithDatabaseSpace, type DuplicateImageGroup, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatFileSize } from '../utils/formatters';
@@ -17,19 +19,48 @@ interface DuplicateReviewScreenProps {
 }
 
 export function DuplicateReviewScreen({ importBatchId, space = 'normal', refreshToken, onBack }: DuplicateReviewScreenProps) {
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<SuspectedDuplicateGroup[]>(
-    () => runWithDatabaseSpace(space, (db) => imageRepository.findSuspectedDuplicateGroupsByImportBatchId(db, importBatchId)),
+  const [activeTab, setActiveTab] = useState<'exact' | 'similar'>('exact');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ exact: DuplicateImageGroup[]; similar: DuplicateImageGroup[] }>(
+    () => runWithDatabaseSpace(space, (db) => Promise.all([
+      imageRepository.findExactDuplicateGroups(db, { importBatchId }),
+      imageRepository.findSimilarImageGroups(db, { importBatchId }),
+    ]).then(([exact, similar]) => ({ exact, similar }))),
     [importBatchId, refreshToken, space],
     {
-      initialData: [],
+      initialData: { exact: [], similar: [] },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取疑似重复失败：${message}`;
       },
     }
   );
-  const groups = data ?? [];
+  const groups = data?.[activeTab] ?? [];
   const duplicateCount = groups.reduce((total, group) => total + group.images.length, 0);
+  const selectedCount = selectedIds.length;
+
+  function toggleSelected(imageId: number) {
+    setSelectedIds((current) => (current.includes(imageId) ? current.filter((id) => id !== imageId) : [...current, imageId]));
+  }
+
+  async function softDeleteSelected() {
+    if (selectedIds.length === 0) {
+      return;
+    }
+    await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, selectedIds));
+    setSelectedIds([]);
+    reload();
+  }
+
+  async function keepFirstAndSoftDeleteRest(group: DuplicateImageGroup) {
+    const [, ...rest] = group.images;
+    const restIds = rest.map((image) => image.id);
+    if (restIds.length === 0) {
+      return;
+    }
+    await runWithDatabaseSpace(space, (db) => imageRepository.softDeleteMany(db, restIds));
+    reload();
+  }
 
   return (
     <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title="疑似重复">
@@ -38,19 +69,29 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
           <Ionicons color={colors.primary.active} name="copy-outline" size={20} />
         </View>
         <View style={styles.heroCopy}>
-          <Text style={styles.heroTitle}>本批疑似重复 {duplicateCount} 张</Text>
-          <Text style={styles.heroMeta}>依据：同尺寸 + 同文件大小。这里只提示，不自动删除或合并。</Text>
+          <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
+          <Text style={styles.heroMeta}>复核只会软删除到回收站，不会物理删除原图。</Text>
         </View>
       </View>
+      <View style={styles.tabs}>
+        <TabButton active={activeTab === 'exact'} label="精确重复" onPress={() => { setActiveTab('exact'); setSelectedIds([]); }} />
+        <TabButton active={activeTab === 'similar'} label="相似图片" onPress={() => { setActiveTab('similar'); setSelectedIds([]); }} />
+      </View>
+      {selectedCount > 0 ? (
+        <View style={styles.reviewActions}>
+          <Text style={styles.reviewActionMeta}>已选择 {selectedCount} 张</Text>
+          <PrimaryButton label="软删除选中" onPress={() => void softDeleteSelected()} />
+        </View>
+      ) : null}
 
       <PageStateBlock
-        emptyDescription="当前导入批次内没有发现同尺寸且同文件大小的图片。"
+        emptyDescription={activeTab === 'exact' ? '没有发现 contentHash 完全一致的素材。' : '没有发现 visualHash 相同的相似图片。'}
         emptyIconName="checkmark-circle-outline"
         emptyTitle="没有疑似重复"
         errorMessage={errorMessage}
         isEmpty={!isLoading && groups.length === 0}
         loading={isLoading}
-        loadingDescription="正在按本批次内的尺寸和文件大小做本地检查。"
+        loadingDescription="正在按本地 hash 索引扫描重复素材。"
         loadingTitle="读取疑似重复"
         onRetry={reload}
       >
@@ -58,12 +99,19 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
           {groups.map((group) => (
             <View key={group.key} style={styles.groupCard}>
               <View style={styles.groupHeader}>
-                <Text style={styles.groupTitle}>{group.images.length} 张疑似重复</Text>
-                <Text style={styles.groupMeta}>{group.width} x {group.height} · {formatFileSize(group.fileSize)}</Text>
+                <View style={styles.groupTitleRow}>
+                  <Text style={styles.groupTitle}>{group.images.length} 张{activeTab === 'exact' ? '精确重复' : '相似图片'}</Text>
+                  {activeTab === 'exact' ? (
+                    <Pressable onPress={() => void keepFirstAndSoftDeleteRest(group)} style={({ pressed }) => [styles.keepButton, pressed && styles.pressed]}>
+                      <Text style={styles.keepButtonText}>保留一张</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Text style={styles.groupMeta}>{group.confidence === 'exact' ? '可信度：精确' : '可信度：需复核'}</Text>
               </View>
               <View style={styles.imageList}>
                 {group.images.map((image) => (
-                  <View key={image.id} style={styles.imageRow}>
+                  <Pressable key={image.id} onPress={() => toggleSelected(image.id)} style={({ pressed }) => [styles.imageRow, selectedIds.includes(image.id) ? styles.imageRowSelected : null, pressed && styles.pressed]}>
                     <View style={styles.thumb}>
                       {image.thumbnailFileUri ? (
                         <SecureImage contentFit="cover" space={space} style={styles.thumbImage} uri={image.thumbnailFileUri} />
@@ -73,9 +121,10 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
                     </View>
                     <View style={styles.imageCopy}>
                       <Text numberOfLines={1} style={styles.filename}>{image.originalFilename}</Text>
-                      <Text numberOfLines={1} style={styles.imageMeta}>{image.mimeType} · {formatFileSize(image.fileSize)}</Text>
+                      <Text numberOfLines={1} style={styles.imageMeta}>{image.ipName} · {image.groupName ?? '未分组'} · {image.width} x {image.height} · {formatFileSize(image.fileSize)}</Text>
                     </View>
-                  </View>
+                    <Ionicons color={selectedIds.includes(image.id) ? colors.primary.active : colors.text.tertiary} name={selectedIds.includes(image.id) ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
+                  </Pressable>
                 ))}
               </View>
             </View>
@@ -83,6 +132,14 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+  );
+}
+
+function TabButton({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.tabButton, active ? styles.tabButtonActive : null, pressed && styles.pressed]}>
+      <Text style={[styles.tabText, active ? styles.tabTextActive : null]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -131,6 +188,12 @@ const styles = StyleSheet.create({
   groupHeader: {
     gap: spacing[1],
   },
+  groupTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
   groupTitle: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
@@ -144,8 +207,14 @@ const styles = StyleSheet.create({
   },
   imageRow: {
     alignItems: 'center',
+    borderRadius: radius.md,
     flexDirection: 'row',
     gap: spacing[2],
+    minHeight: 52,
+    padding: spacing[1],
+  },
+  imageRowSelected: {
+    backgroundColor: colors.primary.weak,
   },
   thumb: {
     alignItems: 'center',
@@ -173,5 +242,56 @@ const styles = StyleSheet.create({
   imageMeta: {
     ...typography.textStyles.micro,
     color: colors.text.secondary,
+  },
+  tabs: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  tabButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
+  },
+  tabText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  tabTextActive: {
+    color: colors.primary.active,
+  },
+  reviewActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'space-between',
+  },
+  reviewActionMeta: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  keepButton: {
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  keepButtonText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '800',
+  },
+  pressed: {
+    opacity: 0.78,
   },
 });

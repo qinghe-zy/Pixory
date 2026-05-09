@@ -140,7 +140,7 @@ type SpaceSession = {
 };
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
-const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 30 * 1000;
+const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 60 * 1000;
 
 function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
@@ -226,6 +226,7 @@ export default function App() {
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
+  const personalBackgroundedAtRef = useRef<number | null>(null);
   const backgroundLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundMemoryCacheTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -349,12 +350,20 @@ export default function App() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
+        const backgroundedAt = personalBackgroundedAtRef.current;
+        const elapsedMs = backgroundedAt == null ? 0 : Date.now() - personalBackgroundedAtRef.current!;
+        personalBackgroundedAtRef.current = null;
         clearPendingPersonalBackgroundLock();
         clearPendingBackgroundMemoryCacheCleanup();
+        if (personalSessionStateRef.current === 'unlocked' && elapsedMs >= PERSONAL_BACKGROUND_LOCK_GRACE_MS) {
+          void lockPersonalSpace('background');
+          return;
+        }
         setPrivacyShieldVisible(false);
         return;
       }
 
+      personalBackgroundedAtRef.current = Date.now();
       schedulePersonalBackgroundLock();
       scheduleBackgroundMemoryCacheCleanup();
     });

@@ -4,15 +4,17 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
+import { AssetDetailRow } from '../components/AssetDetailRow';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
-import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type ImageSortOrder, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
+import { useAssetListPreferences } from '../services/assetListPreferences';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 interface FavoritesScreenProps {
@@ -57,7 +59,7 @@ export function FavoritesScreen({
 }: FavoritesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<FavoriteFilterState>(EMPTY_FAVORITE_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<FavoriteFilterDropdown | null>(null);
-  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     images: ImageListItem[];
@@ -299,6 +301,13 @@ export function FavoritesScreen({
           <Text style={styles.gridTitle}>图片</Text>
           <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
           <Pressable
+            accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
+            onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
+            style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
+          >
+            <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
+          </Pressable>
+          <Pressable
             disabled={selectableAssets.length === 0}
             onPress={multiSelect.toggleSelectAll}
             style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
@@ -306,19 +315,35 @@ export function FavoritesScreen({
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
         </View>
-        <View {...swipeSelection.panHandlers} style={styles.grid}>
-          {images.map((image) => (
-            <ThumbnailTile
-              image={image}
-              key={image.id}
-              onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
-              onLongPress={() => handleImageLongPress(image)}
-              onPress={handleOpenImage}
-              selected={multiSelect.selectedImageIds.includes(image.id)}
-              space={space}
-            />
-          ))}
-        </View>
+        {viewMode === 'detail' ? (
+          <View {...swipeSelection.panHandlers} style={styles.detailList}>
+            {images.map((image) => (
+              <AssetDetailRow
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        ) : (
+          <View {...swipeSelection.panHandlers} style={styles.grid}>
+            {images.map((image) => (
+              <ThumbnailTile
+                image={image}
+                key={image.id}
+                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLongPress={() => handleImageLongPress(image)}
+                onPress={handleOpenImage}
+                selected={multiSelect.selectedImageIds.includes(image.id)}
+                space={space}
+              />
+            ))}
+          </View>
+        )}
       </PageStateBlock>
     </ScreenScaffold>
   );
@@ -406,6 +431,9 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  detailList: {
     gap: spacing[2],
   },
   filterBarWrap: {
@@ -573,6 +601,7 @@ const styles = StyleSheet.create({
   gridHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing[2],
     justifyContent: 'space-between',
     marginBottom: spacing[1],
   },
@@ -590,6 +619,20 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.primary.active,
     fontWeight: '700',
+  },
+  viewModeButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
   },
   disabled: {
     opacity: 0.45,

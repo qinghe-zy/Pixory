@@ -1,0 +1,121 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const rootDir = path.resolve(__dirname, '..');
+
+function readProjectFile(relativePath) {
+  return fs.readFileSync(path.join(rootDir, relativePath), 'utf8');
+}
+
+test('asset list display mode and sort order are persisted through settings', () => {
+  const settingsSource = readProjectFile('src/database/repositories/settingsRepository.ts');
+  const preferencesSource = readProjectFile('src/services/assetListPreferences.ts');
+  const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
+  const detailRowSource = readProjectFile('src/components/AssetDetailRow.tsx');
+
+  assert.match(settingsSource, /ASSET_LIST_VIEW_MODE_KEY/);
+  assert.match(settingsSource, /ASSET_LIST_SORT_ORDER_KEY/);
+  assert.match(settingsSource, /getAssetListViewMode/);
+  assert.match(settingsSource, /setAssetListViewMode/);
+  assert.match(settingsSource, /getAssetListSortOrder/);
+  assert.match(settingsSource, /setAssetListSortOrder/);
+  assert.match(preferencesSource, /useAssetListPreferences/);
+  assert.match(allImagesSource, /viewMode === 'detail'/);
+  assert.match(allImagesSource, /AssetDetailRow/);
+  assert.match(detailRowSource, /formatFileSize/);
+  assert.match(detailRowSource, /formatDuration/);
+});
+
+test('personal background lock uses one minute elapsed-time fallback', () => {
+  const appSource = readProjectFile('App.tsx');
+
+  assert.match(appSource, /PERSONAL_BACKGROUND_LOCK_GRACE_MS\s*=\s*60\s*\*\s*1000/);
+  assert.match(appSource, /personalBackgroundedAtRef/);
+  assert.match(appSource, /Date\.now\(\)\s*-\s*personalBackgroundedAtRef\.current/);
+  assert.match(appSource, /elapsedMs\s*>=\s*PERSONAL_BACKGROUND_LOCK_GRACE_MS/);
+  assert.match(appSource, /lockPersonalSpace\('background'\)/);
+});
+
+test('video queue panel scrolls within the panel instead of rendering a fixed slice', () => {
+  const source = readProjectFile('src/screens/VideoPlayerScreen.tsx');
+
+  assert.match(source, /queueScroll/);
+  assert.match(source, /nestedScrollEnabled/);
+  assert.doesNotMatch(source, /queue\.slice\(/);
+});
+
+test('duplicate detection schema and native bridge expose content and visual hashes', () => {
+  const schemaSource = readProjectFile('src/database/schema.ts');
+  const typesSource = readProjectFile('src/database/types.ts');
+  const nativeBridgeSource = readProjectFile('src/native/pixoryMediaModule.ts');
+  const androidSource = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
+
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*15/);
+  assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN contentHash TEXT/);
+  assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN visualHash TEXT/);
+  assert.match(schemaSource, /idx_image_assets_content_hash/);
+  assert.match(schemaSource, /idx_image_assets_visual_hash/);
+  assert.match(typesSource, /contentHash: string \| null/);
+  assert.match(typesSource, /visualHash: string \| null/);
+  assert.match(nativeBridgeSource, /computeFileSha256/);
+  assert.match(nativeBridgeSource, /computeImageDHash/);
+  assert.match(androidSource, /MessageDigest\.getInstance\("SHA-256"\)/);
+  assert.match(androidSource, /computeImageDHash/);
+});
+
+test('import flow supports duplicate review skip modes and source move preferences', () => {
+  const imageImportSource = readProjectFile('src/services/imageImportService.ts');
+  const videoImportSource = readProjectFile('src/services/videoImportService.ts');
+  const importScreenSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
+
+  assert.match(imageImportSource, /DuplicateImportDecision/);
+  assert.match(imageImportSource, /skipExact/);
+  assert.match(imageImportSource, /skipSimilar/);
+  assert.match(imageImportSource, /deleteImportedSourceAsset/);
+  assert.match(videoImportSource, /videoImportNamingMode/);
+  assert.match(videoImportSource, /contentHash/);
+  assert.match(importScreenSource, /重复\/相似素材/);
+  assert.match(importScreenSource, /跳过精确重复和相似图片/);
+  assert.match(importScreenSource, /imageImportSourceMode/);
+  assert.match(importScreenSource, /videoImportNamingMode/);
+});
+
+test('duplicate review screen supports exact and similar tabs with soft delete only', () => {
+  const appSource = readProjectFile('App.tsx');
+  const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
+  const repoSource = readProjectFile('src/database/repositories/imageRepository.ts');
+
+  assert.match(appSource, /duplicate-review/);
+  assert.match(screenSource, /exact/);
+  assert.match(screenSource, /similar/);
+  assert.match(screenSource, /softDeleteMany/);
+  assert.doesNotMatch(screenSource, /deleteLocalFile|FileSystem\.deleteAsync/);
+  assert.match(repoSource, /findExactDuplicateGroups/);
+  assert.match(repoSource, /findSimilarImageGroups/);
+});
+
+test('backup import asks how to handle same-name IPs before merging', () => {
+  const backupSource = readProjectFile('src/services/backupService.ts');
+  const importScreenSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
+
+  assert.match(backupSource, /IpNameConflictStrategy/);
+  assert.match(backupSource, /findByName/);
+  assert.match(backupSource, /mergeExisting/);
+  assert.match(backupSource, /createRenamed/);
+  assert.match(importScreenSource, /同名 IP/);
+  assert.match(importScreenSource, /合并到已有 IP/);
+});
+
+test('batch panel can move videos only to another existing IP and preserves group names', () => {
+  const panelSource = readProjectFile('src/components/BatchImageOrganizePanel.tsx');
+  const serviceSource = readProjectFile('src/services/videoMoveService.ts');
+
+  assert.match(panelSource, /移动到 IP/);
+  assert.match(panelSource, /targetIpId/);
+  assert.match(serviceSource, /moveVideosToIp/);
+  assert.match(serviceSource, /targetIpId !== sourceVideo\.ipId/);
+  assert.match(serviceSource, /findByIpIdAndName/);
+  assert.match(serviceSource, /softDeleteMany/);
+});

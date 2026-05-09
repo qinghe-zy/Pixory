@@ -186,6 +186,8 @@ export interface ImageAssetRecord {
   lastViewedAt: string | null;
   lastPlaybackPositionMs: number | null;
   previewStatus: AssetPreviewStatus;
+  contentHash: string | null;
+  visualHash: string | null;
 }
 
 export type AssetMediaType = 'image' | 'video';
@@ -214,6 +216,8 @@ export interface CreateImageAssetInput {
   lastViewedAt?: string | null;
   lastPlaybackPositionMs?: number | null;
   previewStatus?: AssetPreviewStatus;
+  contentHash?: string | null;
+  visualHash?: string | null;
 }
 
 export interface UpdateImageAssetInput {
@@ -238,6 +242,8 @@ export interface UpdateImageAssetInput {
   lastViewedAt?: string | null;
   lastPlaybackPositionMs?: number | null;
   previewStatus?: AssetPreviewStatus;
+  contentHash?: string | null;
+  visualHash?: string | null;
 }
 
 export interface TagRecord {
@@ -310,6 +316,15 @@ export interface ImageListQueryOptions extends ImageAssetQueryOptions {
   maxFileSize?: number;
   searchText?: string;
   orderBy?: ImageSortOrder;
+}
+
+export interface DuplicateImageGroup {
+  key: string;
+  kind: 'exact' | 'similar';
+  confidence: 'exact' | 'review';
+  contentHash: string | null;
+  visualHash: string | null;
+  images: ImageListItem[];
 }
 
 export interface NeedsOrganizingScope {

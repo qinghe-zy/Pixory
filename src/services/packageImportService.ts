@@ -14,7 +14,7 @@ import {
   joinStoragePath,
 } from './fileStorageService';
 import { importSingleImage, type ImportedImageResult, type PickedImageAsset } from './imageImportService';
-import { importPlainBackupPackage, type ImportPlainBackupPackageResult } from './backupService';
+import { importPlainBackupPackage, type ImportPlainBackupPackageResult, type IpNameConflictStrategy } from './backupService';
 import { importVideosToIp, type ImportedVideoResult, type PickedVideoAsset } from './videoImportService';
 
 export const MAX_PACKAGE_BYTES = 200 * 1024 * 1024;
@@ -345,6 +345,7 @@ export async function importPackageToIp(params: {
   groupIds?: number[];
   note?: string | null;
   isFavorite?: boolean;
+  ipNameConflictStrategy?: IpNameConflictStrategy;
 }): Promise<PackageImportResult> {
   const space = params.space ?? 'normal';
   await ensureAppDirectories(space);
@@ -363,6 +364,7 @@ export async function importPackageToIp(params: {
           space,
           extractedDirectoryUri: extractDir,
           mode: 'merge',
+          ipNameConflictStrategy: params.ipNameConflictStrategy ?? 'ask',
         });
         return {
           importBatchId: null,

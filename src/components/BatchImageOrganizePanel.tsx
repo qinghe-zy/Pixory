@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
-import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type PixorySpace } from '../database';
+import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
+import { moveVideosToIp } from '../services/videoMoveService';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 import { AppDialog } from './AppDialog';
 import { AlbumSaveDialog } from './AlbumSaveDialog';
@@ -15,7 +16,7 @@ import { PrimaryButton } from './PrimaryButton';
 import { TagMultiSelectPanel } from './TagMultiSelectPanel';
 import { useToast } from './AppToast';
 
-type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags';
+type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'move-video-ip';
 
 interface BatchImageOrganizePanelProps {
   selectedImages: ImageListItem[];
@@ -38,6 +39,7 @@ export function BatchImageOrganizePanel({
 }: BatchImageOrganizePanelProps) {
   const { showToast } = useToast();
   const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const [ips, setIps] = useState<IpRecord[]>([]);
   const [availableTags, setAvailableTags] = useState<Awaited<ReturnType<typeof tagRepository.findUsageOverviewByIpId>>>([]);
   const [mode, setMode] = useState<OrganizeMode>('idle');
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(currentGroupId);
@@ -51,6 +53,7 @@ export function BatchImageOrganizePanel({
   const [newGroupType, setNewGroupType] = useState<GroupTypeValue | null>(null);
   const [isAlbumDialogVisible, setIsAlbumDialogVisible] = useState(false);
   const [isSavingToAlbum, setIsSavingToAlbum] = useState(false);
+  const [targetIpId, setTargetIpId] = useState<number | null>(null);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
   const selectedCount = selectedImages.length;
   const selectedVideoCount = useMemo(() => selectedImages.filter((image) => image.mediaType === 'video').length, [selectedImages]);
@@ -93,6 +96,32 @@ export function BatchImageOrganizePanel({
   }, [singleIpId]);
 
   useEffect(() => {
+    let isMounted = true;
+    if (!hasSelectedVideos) {
+      setIps([]);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void runWithDatabaseSpace(space, (db) => ipRepository.findAll(db))
+      .then((nextIps) => {
+        if (isMounted) {
+          setIps(nextIps);
+        }
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setErrorMessage(error instanceof Error ? error.message : '读取 IP 失败');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasSelectedVideos, space]);
+
+  useEffect(() => {
     if (selectedCount === 0) {
       resetMode();
     }
@@ -107,6 +136,9 @@ export function BatchImageOrganizePanel({
     }
     if (!isGroupMode(nextMode)) {
       setSelectedGroupId(currentGroupId);
+    }
+    if (nextMode !== 'move-video-ip') {
+      setTargetIpId(null);
     }
   }
 
@@ -252,6 +284,23 @@ export function BatchImageOrganizePanel({
     });
   }
 
+  function handleMoveVideosToIp() {
+    void runAction(
+      async () => {
+        if (targetIpId == null) {
+          throw new Error('请选择目标 IP。');
+        }
+        const videoIds = selectedImages.filter((image) => image.mediaType === 'video').map((image) => image.id);
+        const result = await moveVideosToIp({ space, videoIds, targetIpId });
+        if (result.movedCount === 0) {
+          throw new Error('没有可移动的视频。');
+        }
+        return '已移动到目标 IP';
+      },
+      onClearSelection
+    );
+  }
+
   function confirmSoftDelete() {
     const idsToDelete = [...selectedImageIds];
     setIsDeleteDialogVisible(false);
@@ -360,6 +409,30 @@ export function BatchImageOrganizePanel({
               <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
           </View>
+        ) : mode === 'move-video-ip' ? (
+          <View style={styles.inlinePanel}>
+            <LightFormSection title="移动到 IP" hint="目标必须是另一个已有 IP；分组会按名称自动映射或创建。">
+              <View style={styles.optionList}>
+                {ips
+                  .filter((ip) => !selectedIpIds.includes(ip.id))
+                  .map((ip) => (
+                    <OptionSelectRow
+                      key={ip.id}
+                      label={ip.name}
+                      meta="已有 IP"
+                      onPress={() => setTargetIpId(ip.id)}
+                      selected={targetIpId === ip.id}
+                    />
+                  ))}
+              </View>
+            </LightFormSection>
+            <View style={styles.inlineActions}>
+              <View style={styles.primaryGrow}>
+                <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动视频" loading={isSubmitting} onPress={handleMoveVideosToIp} />
+              </View>
+              <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
+            </View>
+          </View>
         ) : (
           <View style={styles.actions}>
             <PanelAction disabled={!canUseGroupActions || isSubmitting} icon="folder-open-outline" label="加入分组" onPress={() => resetMode('add-group')} />
@@ -373,6 +446,7 @@ export function BatchImageOrganizePanel({
               onPress={() => handleFavoriteUpdate(!allFavorite)}
             />
             <PanelAction disabled={isSubmitting || isSavingToAlbum || hasSelectedVideos} icon="download-outline" label={hasSelectedVideos ? '仅图片可保存' : isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} />
+            <PanelAction disabled={isSubmitting || !hasSelectedVideos || ips.filter((ip) => !selectedIpIds.includes(ip.id)).length === 0} icon="trail-sign-outline" label="移动到 IP" onPress={() => resetMode('move-video-ip')} />
             <PanelAction danger disabled={isSubmitting} icon="trash-outline" label="删除到回收站" onPress={() => setIsDeleteDialogVisible(true)} />
           </View>
         )}
@@ -538,7 +612,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
     justifyContent: 'center',
     paddingHorizontal: spacing[2],
-    width: '31.6%',
+    width: '48%',
   },
   actionLabel: {
     ...typography.textStyles.micro,
