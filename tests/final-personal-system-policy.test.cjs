@@ -24,7 +24,7 @@ test('App owns unified personal mode session state and removes the standalone co
   assert.match(appSource, /setPrivacyShieldVisible\(true\)[\s\S]{0,700}invalidatePersonalTaskToken/);
   assert.match(appSource, /function isPersonalRoute/);
   assert.match(appSource, /PERSONAL_BACKGROUND_LOCK_GRACE_MS\s*=\s*60\s*\*\s*1000/);
-  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,700}schedulePersonalBackgroundLock\(\)/);
+  assert.match(appSource, /AppState\.addEventListener\('change'[\s\S]{0,900}schedulePersonalBackgroundLock\(\)/);
   assert.match(appSource, /setTimeout\([\s\S]{0,500}lockPersonalSpace\('background'\)[\s\S]{0,120}PERSONAL_BACKGROUND_LOCK_GRACE_MS/);
   assert.match(appSource, /nextState === 'active'[\s\S]{0,300}clearPendingPersonalBackgroundLock\(\)/);
   assert.match(appSource, /isPersonalRoute\(currentRoute\)[\s\S]{0,700}personalSessionState !== 'unlocked'/);

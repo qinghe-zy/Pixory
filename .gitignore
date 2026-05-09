@@ -37,6 +37,7 @@ yarn-error.*
 .local/
 /credentials.json
 /output/builds/*.apk
+/output/release/*.apk
 
 # typescript
 *.tsbuildinfo
