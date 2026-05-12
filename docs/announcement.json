@@ -1,11 +1,10 @@
 {
   "enabled": true,
-  "id": "storage-dashboard-20260512",
-  "title": "存储占用已上线",
-  "message": "可以在“我的 → 存储占用”查看本地空间使用情况。",
+  "id": "test-announcement-20260512-01",
+  "title": "测试公告",
+  "message": "这是一条 Pixory 远程公告测试。",
   "detailLines": [
-    "查看原始素材、预览缓存、临时缓存、备份导出和回收站占用。",
-    "临时缓存清理不会影响已导入素材。"
+    "如果你看到这条消息，说明公告通道已经生效。"
   ],
   "actionLabel": "知道了"
 }
