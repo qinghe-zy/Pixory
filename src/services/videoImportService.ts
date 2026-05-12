@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
@@ -38,9 +39,11 @@ import {
 } from '../native/pixoryMediaModule';
 import type { VideoImportNamingMode } from '../database/repositories/settingsRepository';
 import type { DuplicateImportDecision } from './imageImportService';
+import type { ImageImportSourceMode } from '../database/repositories/settingsRepository';
 
 export interface PickedVideoAsset {
   uri: string;
+  assetId?: string | null;
   fileName: string;
   mimeType: string | null;
   fileSize: number | null;
@@ -86,6 +89,7 @@ interface ImportSingleVideoParams {
   isFavorite?: boolean;
   pickedAsset: PickedVideoAsset;
   videoImportNamingMode: VideoImportNamingMode;
+  imageImportSourceMode: ImageImportSourceMode;
   duplicateDecision?: DuplicateImportDecision;
 }
 
@@ -194,6 +198,17 @@ async function shouldSkipVideoDuplicateImport(
   return exactMatches.length > 0 ? '已跳过精确重复视频。' : null;
 }
 
+async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Promise<void> {
+  if (!pickedAsset.assetId) {
+    console.warn('Pixory video move import could not delete source asset because assetId is unavailable.', {
+      sourceUri: pickedAsset.uri,
+    });
+    return;
+  }
+
+  await MediaLibrary.deleteAssetsAsync([pickedAsset.assetId]);
+}
+
 async function buildVideoPaths(space: PixorySpace, ipId: number, internalFilename: string) {
   const tempDir = `${joinStoragePath(getTempDir(space), 'importing')}/`;
   const originalsDir = `${joinStoragePath(getOriginalsDir(space), `ip_${ipId}`)}/`;
@@ -222,6 +237,7 @@ async function importSingleVideo({
   tags,
   taskId,
   videoImportNamingMode,
+  imageImportSourceMode,
   duplicateDecision,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
@@ -300,6 +316,10 @@ async function importSingleVideo({
     createdVideoId = createdVideo.id;
     await tagRepository.replaceImageTags(db, createdVideo.id, tags.map((tag) => tag.id));
 
+    if (imageImportSourceMode === 'move') {
+      await deleteImportedSourceVideoAsset(pickedAsset);
+    }
+
     return {
       video: createdVideo,
       tags,
@@ -339,6 +359,7 @@ export async function pickVideosForImport(): Promise<PickVideosForImportResult> 
   return {
     canceled: false,
     pickedAssets: result.assets.map((asset) => ({
+      assetId: asset.assetId ?? null,
       uri: asset.uri,
       fileName: asset.fileName ?? getFileNameFromUri(asset.uri),
       mimeType: asset.mimeType ?? 'video/mp4',
@@ -357,6 +378,7 @@ export async function importVideosToIp(params: {
   pickedAssets: PickedVideoAsset[];
   title?: string;
   duplicateDecision?: DuplicateImportDecision;
+  imageImportSourceMode?: ImageImportSourceMode;
   videoImportNamingMode?: VideoImportNamingMode;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
@@ -408,6 +430,7 @@ export async function importVideosToIp(params: {
     const skippedItems: VideoImportError[] = [];
     let skippedCount = 0;
     const videoImportNamingMode = params.videoImportNamingMode ?? 'preserveOriginal';
+    const imageImportSourceMode = params.imageImportSourceMode ?? 'copy';
 
     try {
       for (const pickedAsset of params.pickedAssets) {
@@ -424,6 +447,7 @@ export async function importVideosToIp(params: {
             tags,
             taskId: task.id,
             duplicateDecision: params.duplicateDecision,
+            imageImportSourceMode,
             videoImportNamingMode,
           });
           importedVideos.push(importedVideo);

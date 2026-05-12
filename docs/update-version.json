@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.0.10",
-  "versionCode": 210,
+  "version": "2.0.11",
+  "versionCode": 211,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.0.10 已发布，素材导入选择和存储弹窗体验更稳定。",
+  "message": "Pixory 2.0.11 已发布，素材选择和移动导入更完整。",
   "releaseNotes": [
-    "继续导入图片或视频时会保留已选素材，可在原有选择上追加。",
-    "已选图片和视频支持单项移除，也可以清空到 0 项后重新选择。",
-    "修复预览缓存弹窗按钮位置错位的问题。"
+    "再次打开导入选择时会保留当前已选素材，可继续勾选或取消。",
+    "导入选择支持清空到 0 项后重新确认。",
+    "视频导入接入移动模式，成功保存后会按设置移除源相册素材。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

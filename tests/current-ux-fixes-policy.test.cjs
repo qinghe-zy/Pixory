@@ -124,14 +124,15 @@ test('global search suggestions stay compact and avoid noisy filename prefix bub
 test('import picker keeps existing selections and supports removing down to zero items', () => {
   const source = readProjectFile('src/screens/ImportImagesScreen.tsx');
 
-  assert.match(source, /mergePickedImages/);
-  assert.match(source, /setPickedAssets\(\(current\) => mergePickedImages\(current,\s*result\.pickedAssets\)\)/);
+  assert.match(source, /MediaLibrary\.getAssetsAsync/);
+  assert.match(source, /setMediaPickerSelectedIds\(kind === 'images' \? getPickedImageAssetIds\(\) : getPickedVideoAssetIds\(\)\)/);
+  assert.match(source, /mediaPickerSelectedIds\.includes\(asset\.id\)/);
+  assert.match(source, /setMediaPickerSelectedIds\(\[\]\)/);
+  assert.match(source, /confirmMediaLibraryPicker/);
   assert.doesNotMatch(source, /setPickedAssets\(result\.pickedAssets\)/);
   assert.match(source, /previewRemoveButton/);
   assert.match(source, /setPickedAssets\(\(current\) => current\.filter\(\(_, itemIndex\) => itemIndex !== index\)\)/);
 
-  assert.match(source, /mergePickedVideos/);
-  assert.match(source, /setPickedVideos\(\(current\) => mergePickedVideos\(current,\s*result\.pickedAssets\)\)/);
   assert.doesNotMatch(source, /setPickedVideos\(result\.pickedAssets\)/);
   assert.match(source, /videoRemoveButton/);
   assert.match(source, /setPickedVideos\(\(current\) => current\.filter\(\(_, itemIndex\) => itemIndex !== index\)\)/);

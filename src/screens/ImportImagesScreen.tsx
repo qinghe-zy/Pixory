@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -20,17 +21,20 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import {
   importImagesToIp,
-  pickImagesForImport,
   type DuplicateImportDecision,
   type PickedImageAsset,
 } from '../services/imageImportService';
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
-import { importVideosToIp, pickVideosForImport, type PickedVideoAsset } from '../services/videoImportService';
+import { importVideosToIp, type PickedVideoAsset } from '../services/videoImportService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
 import type { PersonalTaskToken } from '../services/personalTaskToken';
 import type { ImageImportSourceMode, VideoImportNamingMode } from '../database/repositories/settingsRepository';
+
+type ImportMediaPickerKind = 'images' | 'videos';
+
+const MEDIA_PICKER_PAGE_SIZE = 80;
 
 interface ImportImagesScreenProps {
   space?: PixorySpace;
@@ -93,6 +97,13 @@ export function ImportImagesScreen({
   const [isPicking, setIsPicking] = useState(false);
   const [isPickingVideos, setIsPickingVideos] = useState(false);
   const [isPickingPackage, setIsPickingPackage] = useState(false);
+  const [mediaPickerKind, setMediaPickerKind] = useState<ImportMediaPickerKind | null>(null);
+  const [mediaPickerAssets, setMediaPickerAssets] = useState<MediaLibrary.Asset[]>([]);
+  const [mediaPickerSelectedIds, setMediaPickerSelectedIds] = useState<string[]>([]);
+  const [mediaPickerEndCursor, setMediaPickerEndCursor] = useState<string | null>(null);
+  const [mediaPickerHasNextPage, setMediaPickerHasNextPage] = useState(false);
+  const [isMediaPickerLoading, setIsMediaPickerLoading] = useState(false);
+  const [isMediaPickerLoadingMore, setIsMediaPickerLoadingMore] = useState(false);
   const [packageImportResult, setPackageImportResult] = useState<PackageImportResult | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateImportDecision>('importAll');
   const [imageImportSourceMode, setImageImportSourceMode] = useState<ImageImportSourceMode>('copy');
@@ -132,7 +143,7 @@ export function ImportImagesScreen({
   }
 
   function getPickedVideoKey(asset: PickedVideoAsset): string {
-    return asset.uri;
+    return asset.assetId ?? asset.uri;
   }
 
   function mergePickedImages(current: PickedImageAsset[], incoming: PickedImageAsset[]): PickedImageAsset[] {
@@ -161,6 +172,147 @@ export function ImportImagesScreen({
     return next;
   }
 
+  function getPickedImageAssetIds(): string[] {
+    return pickedAssets.map((asset) => asset.assetId).filter((assetId): assetId is string => Boolean(assetId));
+  }
+
+  function getPickedVideoAssetIds(): string[] {
+    return pickedVideos.map((asset) => asset.assetId).filter((assetId): assetId is string => Boolean(assetId));
+  }
+
+  function buildPickedImageFromLibraryAsset(asset: MediaLibrary.Asset): PickedImageAsset {
+    return {
+      assetId: asset.id,
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+      type: 'image',
+      fileName: asset.filename,
+      fileSize: undefined,
+    };
+  }
+
+  function buildPickedVideoFromLibraryAsset(asset: MediaLibrary.Asset): PickedVideoAsset {
+    return {
+      assetId: asset.id,
+      uri: asset.uri,
+      fileName: asset.filename,
+      mimeType: 'video/mp4',
+      fileSize: null,
+    };
+  }
+
+  async function loadMediaLibraryAssets(kind: ImportMediaPickerKind, after?: string | null): Promise<MediaLibrary.PagedInfo<MediaLibrary.Asset>> {
+    return MediaLibrary.getAssetsAsync({
+      after: after ?? undefined,
+      first: MEDIA_PICKER_PAGE_SIZE,
+      mediaType: kind === 'images' ? MediaLibrary.MediaType.photo : MediaLibrary.MediaType.video,
+      resolveWithFullInfo: kind === 'images',
+      sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+    });
+  }
+
+  async function openMediaLibraryPicker(kind: ImportMediaPickerKind) {
+    const setPickingState = kind === 'images' ? setIsPicking : setIsPickingVideos;
+    setPickingState(true);
+    if (submitError) {
+      clearSubmitError();
+    }
+
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync(false, [kind === 'images' ? 'photo' : 'video']);
+      if (!permission.granted) {
+        throw new Error(kind === 'images' ? '需要相册图片权限才能选择图片。' : '需要相册视频权限才能选择视频。');
+      }
+
+      setMediaPickerKind(kind);
+      setMediaPickerSelectedIds(kind === 'images' ? getPickedImageAssetIds() : getPickedVideoAssetIds());
+      setMediaPickerAssets([]);
+      setMediaPickerEndCursor(null);
+      setMediaPickerHasNextPage(false);
+      setIsMediaPickerLoading(true);
+      const page = await loadMediaLibraryAssets(kind);
+      setMediaPickerAssets(page.assets);
+      setMediaPickerEndCursor(page.endCursor);
+      setMediaPickerHasNextPage(page.hasNextPage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`${kind === 'images' ? '选择图片' : '选择视频'}失败：${message}`);
+      setMediaPickerKind(null);
+    } finally {
+      setIsMediaPickerLoading(false);
+      setPickingState(false);
+    }
+  }
+
+  async function loadMoreMediaPickerAssets() {
+    if (!mediaPickerKind || !mediaPickerHasNextPage || isMediaPickerLoadingMore) {
+      return;
+    }
+
+    setIsMediaPickerLoadingMore(true);
+    try {
+      const page = await loadMediaLibraryAssets(mediaPickerKind, mediaPickerEndCursor);
+      setMediaPickerAssets((current) => {
+        const seen = new Set(current.map((asset) => asset.id));
+        return [...current, ...page.assets.filter((asset) => !seen.has(asset.id))];
+      });
+      setMediaPickerEndCursor(page.endCursor);
+      setMediaPickerHasNextPage(page.hasNextPage);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`读取更多素材失败：${message}`);
+    } finally {
+      setIsMediaPickerLoadingMore(false);
+    }
+  }
+
+  function toggleMediaPickerAsset(assetId: string) {
+    setMediaPickerSelectedIds((current) => (
+      current.includes(assetId)
+        ? current.filter((item) => item !== assetId)
+        : [...current, assetId]
+    ));
+  }
+
+  function closeMediaLibraryPicker() {
+    setMediaPickerKind(null);
+    setMediaPickerAssets([]);
+    setMediaPickerSelectedIds([]);
+    setMediaPickerEndCursor(null);
+    setMediaPickerHasNextPage(false);
+  }
+
+  function confirmMediaLibraryPicker() {
+    if (!mediaPickerKind) {
+      return;
+    }
+
+    const assetMap = new Map(mediaPickerAssets.map((asset) => [asset.id, asset]));
+    if (mediaPickerKind === 'images') {
+      const currentMap = new Map(pickedAssets.filter((asset) => asset.assetId).map((asset) => [asset.assetId as string, asset]));
+      setPickedAssets(mediaPickerSelectedIds.flatMap((assetId) => {
+        const currentAsset = currentMap.get(assetId);
+        if (currentAsset) {
+          return [currentAsset];
+        }
+        const libraryAsset = assetMap.get(assetId);
+        return libraryAsset ? [buildPickedImageFromLibraryAsset(libraryAsset)] : [];
+      }));
+    } else {
+      const currentMap = new Map(pickedVideos.filter((asset) => asset.assetId).map((asset) => [asset.assetId as string, asset]));
+      setPickedVideos(mediaPickerSelectedIds.flatMap((assetId) => {
+        const currentAsset = currentMap.get(assetId);
+        if (currentAsset) {
+          return [currentAsset];
+        }
+        const libraryAsset = assetMap.get(assetId);
+        return libraryAsset ? [buildPickedVideoFromLibraryAsset(libraryAsset)] : [];
+      }));
+    }
+    closeMediaLibraryPicker();
+  }
+
   useEffect(() => {
     setImageImportSourceMode(screenData?.imageImportSourceMode ?? 'copy');
     setVideoImportNamingMode(screenData?.videoImportNamingMode ?? 'preserveOriginal');
@@ -182,10 +334,10 @@ export function ImportImagesScreen({
     }
     initialMediaPickerHandledRef.current = true;
     if (initialMediaPicker === 'videos') {
-      void handlePickVideos();
+      void openMediaLibraryPicker('videos');
       return;
     }
-    void handlePickImages();
+    void openMediaLibraryPicker('images');
   }, [initialMediaPicker]);
 
   async function handlePickImages() {
@@ -195,10 +347,7 @@ export function ImportImagesScreen({
     }
 
     try {
-      const result = await pickImagesForImport();
-      if (!result.canceled) {
-        setPickedAssets((current) => mergePickedImages(current, result.pickedAssets));
-      }
+      await openMediaLibraryPicker('images');
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`选择图片失败：${message}`);
@@ -214,10 +363,7 @@ export function ImportImagesScreen({
     }
 
     try {
-      const result = await pickVideosForImport();
-      if (!result.canceled) {
-        setPickedVideos((current) => mergePickedVideos(current, result.pickedAssets));
-      }
+      await openMediaLibraryPicker('videos');
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`选择视频失败：${message}`);
@@ -447,6 +593,7 @@ export function ImportImagesScreen({
           isFavorite,
           pickedAssets: pickedVideos,
           duplicateDecision,
+          imageImportSourceMode,
           videoImportNamingMode,
         });
 
@@ -673,7 +820,7 @@ export function ImportImagesScreen({
         <LightFormSection title="导入策略">
           <SwitchSettingRow
             disabled={isSubmitting}
-            label="图片导入使用移动模式"
+            label="素材导入使用移动模式"
             onValueChange={(enabled) => updateImageImportSourceMode(enabled ? 'move' : 'copy')}
             value={imageImportSourceMode === 'move'}
           />
@@ -917,6 +1064,74 @@ export function ImportImagesScreen({
           <PrimaryButton label="应用回归测试预设" onPress={applyRegressionPreset} variant="outline" />
         </DevOnlyCard>
       </View>
+      <Modal animationType="fade" onRequestClose={closeMediaLibraryPicker} transparent visible={mediaPickerKind != null}>
+        <View style={styles.mediaPickerOverlay}>
+          <Pressable onPress={closeMediaLibraryPicker} style={StyleSheet.absoluteFill} />
+          <View style={styles.mediaPickerSheet}>
+            <View style={styles.mediaPickerHeader}>
+              <View style={styles.mediaPickerTitleBlock}>
+                <Text style={styles.mediaPickerTitle}>{mediaPickerKind === 'videos' ? '选择视频' : '选择图片'}</Text>
+                <Text style={styles.mediaPickerCount}>已选择 {mediaPickerSelectedIds.length} 项</Text>
+              </View>
+              <Pressable accessibilityLabel="关闭选择面板" hitSlop={8} onPress={closeMediaLibraryPicker} style={({ pressed }) => [styles.mediaPickerCloseButton, pressed && styles.pressed]}>
+                <Ionicons color={colors.text.secondary} name="close" size={20} />
+              </Pressable>
+            </View>
+
+            {isMediaPickerLoading ? (
+              <View style={styles.mediaPickerLoading}>
+                <ActivityIndicator color={colors.primary.default} />
+                <Text style={styles.pickHint}>正在读取本地素材</Text>
+              </View>
+            ) : (
+              <ScrollView contentContainerStyle={styles.mediaPickerGrid} showsVerticalScrollIndicator={false}>
+                {mediaPickerAssets.map((asset) => {
+                  const selected = mediaPickerSelectedIds.includes(asset.id);
+                  const isVideo = mediaPickerKind === 'videos';
+                  return (
+                    <Pressable
+                      accessibilityLabel={`${selected ? '取消选择' : '选择'}${isVideo ? '视频' : '图片'}：${asset.filename}`}
+                      accessibilityRole="imagebutton"
+                      accessibilityState={{ selected }}
+                      key={asset.id}
+                      onPress={() => toggleMediaPickerAsset(asset.id)}
+                      style={({ pressed }) => [styles.mediaPickerTile, selected && styles.mediaPickerTileSelected, pressed && styles.pressed]}
+                    >
+                      {isVideo ? (
+                        <View style={styles.mediaPickerVideoTile}>
+                          <Ionicons color={colors.primary.default} name="play-circle-outline" size={26} />
+                          <Text numberOfLines={2} style={styles.mediaPickerVideoName}>{asset.filename}</Text>
+                        </View>
+                      ) : (
+                        <Image resizeMode="cover" source={{ uri: asset.uri }} style={styles.mediaPickerImage} />
+                      )}
+                      {selected ? (
+                        <View style={styles.mediaPickerCheck}>
+                          <Ionicons color={colors.text.inverse} name="checkmark" size={12} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                {mediaPickerHasNextPage ? (
+                  <Pressable disabled={isMediaPickerLoadingMore} onPress={loadMoreMediaPickerAssets} style={({ pressed }) => [styles.mediaPickerLoadMore, isMediaPickerLoadingMore && styles.disabled, pressed && styles.pressed]}>
+                    <Text style={styles.mediaPickerLoadMoreText}>{isMediaPickerLoadingMore ? '读取中…' : '加载更多'}</Text>
+                  </Pressable>
+                ) : null}
+              </ScrollView>
+            )}
+
+            <View style={styles.mediaPickerActions}>
+              <Pressable onPress={() => setMediaPickerSelectedIds([])} style={({ pressed }) => [styles.mediaPickerGhostButton, pressed && styles.pressed]}>
+                <Text style={styles.mediaPickerGhostText}>清空</Text>
+              </Pressable>
+              <Pressable onPress={confirmMediaLibraryPicker} style={({ pressed }) => [styles.mediaPickerPrimaryButton, pressed && styles.pressed]}>
+                <Text style={styles.mediaPickerPrimaryText}>确认选择</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <AppDialog
         onClose={() => {
           setIsTemplateDialogVisible(false);
@@ -1087,6 +1302,150 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  mediaPickerOverlay: {
+    backgroundColor: 'rgba(22, 30, 40, 0.34)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  mediaPickerSheet: {
+    backgroundColor: colors.background.page,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    gap: spacing[3],
+    maxHeight: '82%',
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[5],
+  },
+  mediaPickerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing[3],
+  },
+  mediaPickerTitleBlock: {
+    flex: 1,
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  mediaPickerTitle: {
+    ...typography.textStyles.sectionTitle,
+    color: colors.text.title,
+  },
+  mediaPickerCount: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  mediaPickerCloseButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 38,
+    justifyContent: 'center',
+    width: 38,
+  },
+  mediaPickerLoading: {
+    alignItems: 'center',
+    gap: spacing[3],
+    minHeight: 220,
+    justifyContent: 'center',
+  },
+  mediaPickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  mediaPickerTile: {
+    aspectRatio: 1,
+    backgroundColor: colors.background.empty,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    position: 'relative',
+    width: '31.6%',
+  },
+  mediaPickerTileSelected: {
+    borderColor: colors.primary.default,
+    borderWidth: 1,
+  },
+  mediaPickerImage: {
+    height: '100%',
+    width: '100%',
+  },
+  mediaPickerVideoTile: {
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing[2],
+    justifyContent: 'center',
+    padding: spacing[2],
+  },
+  mediaPickerVideoName: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  mediaPickerCheck: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderColor: colors.overlay.softSurface,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 22,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[1],
+    top: spacing[1],
+    width: 22,
+  },
+  mediaPickerLoadMore: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 42,
+    justifyContent: 'center',
+    width: '100%',
+  },
+  mediaPickerLoadMoreText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '700',
+  },
+  mediaPickerActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  mediaPickerGhostButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderRadius: radius.md,
+    flex: 1,
+    minHeight: 46,
+    justifyContent: 'center',
+  },
+  mediaPickerPrimaryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.md,
+    flex: 1,
+    minHeight: 46,
+    justifyContent: 'center',
+  },
+  mediaPickerGhostText: {
+    ...typography.textStyles.caption,
+    color: colors.text.body,
+    fontWeight: '700',
+  },
+  mediaPickerPrimaryText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   progressPanel: {
     alignItems: 'center',

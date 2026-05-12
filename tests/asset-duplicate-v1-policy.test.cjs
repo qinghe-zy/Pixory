@@ -75,6 +75,9 @@ test('import flow supports duplicate review skip modes and source move preferenc
   assert.match(imageImportSource, /skipSimilar/);
   assert.match(imageImportSource, /deleteImportedSourceAsset/);
   assert.match(videoImportSource, /videoImportNamingMode/);
+  assert.match(videoImportSource, /deleteImportedSourceVideoAsset/);
+  assert.match(videoImportSource, /MediaLibrary\.deleteAssetsAsync/);
+  assert.match(videoImportSource, /imageImportSourceMode === 'move'/);
   assert.match(videoImportSource, /contentHash/);
   assert.match(importScreenSource, /重复素材/);
   assert.match(importScreenSource, /跳过重复和相似图片/);
@@ -98,7 +101,7 @@ test('duplicate skip import reports skipped counts and applies exact skip to vid
   assert.match(importScreenSource, /imageSkippedCount/);
   assert.match(importScreenSource, /videoSkippedCount/);
   assert.match(importScreenSource, /跳过 \$\{skippedCount\}/);
-  assert.match(importScreenSource, /duplicateDecision,\s*[\r\n\s]*videoImportNamingMode/);
+  assert.match(importScreenSource, /duplicateDecision,\s*[\r\n\s]*imageImportSourceMode,\s*[\r\n\s]*videoImportNamingMode/);
   assert.match(importScreenSource, /没有导入新素材，已跳过/);
 });
 
