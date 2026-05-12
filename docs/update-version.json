@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.0.11",
-  "versionCode": 211,
+  "version": "2.0.12",
+  "versionCode": 212,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.0.11 已发布，素材选择和移动导入更完整。",
+  "message": "Pixory 2.0.12 已发布，导入选择路径更稳定。",
   "releaseNotes": [
-    "再次打开导入选择时会保留当前已选素材，可继续勾选或取消。",
-    "导入选择支持清空到 0 项后重新确认。",
-    "视频导入接入移动模式，成功保存后会按设置移除源相册素材。"
+    "图片和视频导入恢复使用系统选择器原路径，避免相册路径不可复制导致失败。",
+    "再次选择素材会合并到当前已选列表，不会覆盖之前已选项。",
+    "已选素材仍可在导入页逐项移除，支持清空到 0 项。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

@@ -124,11 +124,11 @@ test('global search suggestions stay compact and avoid noisy filename prefix bub
 test('import picker keeps existing selections and supports removing down to zero items', () => {
   const source = readProjectFile('src/screens/ImportImagesScreen.tsx');
 
-  assert.match(source, /MediaLibrary\.getAssetsAsync/);
-  assert.match(source, /setMediaPickerSelectedIds\(kind === 'images' \? getPickedImageAssetIds\(\) : getPickedVideoAssetIds\(\)\)/);
-  assert.match(source, /mediaPickerSelectedIds\.includes\(asset\.id\)/);
-  assert.match(source, /setMediaPickerSelectedIds\(\[\]\)/);
-  assert.match(source, /confirmMediaLibraryPicker/);
+  assert.match(source, /pickImagesForImport/);
+  assert.match(source, /pickVideosForImport/);
+  assert.match(source, /mergePickedImages\(current,\s*result\.pickedAssets\)/);
+  assert.match(source, /mergePickedVideos\(current,\s*result\.pickedAssets\)/);
+  assert.doesNotMatch(source, /MediaLibrary\.getAssetsAsync/);
   assert.doesNotMatch(source, /setPickedAssets\(result\.pickedAssets\)/);
   assert.match(source, /previewRemoveButton/);
   assert.match(source, /setPickedAssets\(\(current\) => current\.filter\(\(_, itemIndex\) => itemIndex !== index\)\)/);
