@@ -120,3 +120,19 @@ test('global search suggestions stay compact and avoid noisy filename prefix bub
   assert.match(searchSource, /suggestionPill:\s*\{[\s\S]{0,260}minHeight:\s*32/);
   assert.match(searchSource, /suggestionMeta:\s*\{[\s\S]{0,160}fontWeight:\s*'700'/);
 });
+
+test('import picker keeps existing selections and supports removing down to zero items', () => {
+  const source = readProjectFile('src/screens/ImportImagesScreen.tsx');
+
+  assert.match(source, /mergePickedImages/);
+  assert.match(source, /setPickedAssets\(\(current\) => mergePickedImages\(current,\s*result\.pickedAssets\)\)/);
+  assert.doesNotMatch(source, /setPickedAssets\(result\.pickedAssets\)/);
+  assert.match(source, /previewRemoveButton/);
+  assert.match(source, /setPickedAssets\(\(current\) => current\.filter\(\(_, itemIndex\) => itemIndex !== index\)\)/);
+
+  assert.match(source, /mergePickedVideos/);
+  assert.match(source, /setPickedVideos\(\(current\) => mergePickedVideos\(current,\s*result\.pickedAssets\)\)/);
+  assert.doesNotMatch(source, /setPickedVideos\(result\.pickedAssets\)/);
+  assert.match(source, /videoRemoveButton/);
+  assert.match(source, /setPickedVideos\(\(current\) => current\.filter\(\(_, itemIndex\) => itemIndex !== index\)\)/);
+});

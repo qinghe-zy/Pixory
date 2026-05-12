@@ -341,8 +341,8 @@ function TemporaryCachePanel({
             <Text style={styles.cacheKind}>图片显示缓存</Text>
           </View>
           <View style={styles.sheetActions}>
-            <PanelButton label="取消" onPress={onClose} variant="ghost" />
-            <PanelButton disabled={disabled} label={disabled ? '清理中…' : '清理'} onPress={onClean} />
+            <PanelButton fill label="取消" onPress={onClose} variant="ghost" />
+            <PanelButton disabled={disabled} fill label={disabled ? '清理中…' : '清理'} onPress={onClean} />
           </View>
         </View>
       </View>
@@ -373,8 +373,8 @@ function PreviewRebuildConfirmPanel({
             <Text style={styles.confirmText}>可能需要一些时间。</Text>
           </View>
           <View style={styles.sheetActions}>
-            <PanelButton disabled={disabled} label="取消" onPress={onClose} variant="ghost" />
-            <PanelButton disabled={disabled} label={disabled ? '处理中…' : '重建'} onPress={onRebuild} />
+            <PanelButton disabled={disabled} fill label="取消" onPress={onClose} variant="ghost" />
+            <PanelButton disabled={disabled} fill label={disabled ? '处理中…' : '重建'} onPress={onRebuild} />
           </View>
         </View>
       </View>
@@ -391,12 +391,12 @@ function MetricLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PanelButton({ disabled, label, onPress, variant = 'default' }: { disabled?: boolean; label: string; onPress: () => void; variant?: 'default' | 'ghost' }) {
+function PanelButton({ disabled, fill = false, label, onPress, variant = 'default' }: { disabled?: boolean; fill?: boolean; label: string; onPress: () => void; variant?: 'default' | 'ghost' }) {
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.panelButton, variant === 'ghost' && styles.panelButtonGhost, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
+      style={({ pressed }) => [styles.panelButton, fill && styles.panelButtonFill, variant === 'ghost' && styles.panelButtonGhost, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
     >
       <Text style={[styles.panelButtonText, variant === 'ghost' && styles.panelButtonGhostText]}>{label}</Text>
     </Pressable>
@@ -586,10 +586,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary.default,
     borderRadius: radius.md,
-    flex: 1,
     justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: spacing[3],
+  },
+  panelButtonFill: {
+    flex: 1,
   },
   panelButtonGhost: {
     backgroundColor: colors.background.input,

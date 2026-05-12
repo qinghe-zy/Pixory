@@ -1,14 +1,13 @@
 {
   "enabled": true,
-  "version": "2.0.9",
-  "versionCode": 209,
+  "version": "2.0.10",
+  "versionCode": 210,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.0.9 已发布，重复检测、导入去重和相册保存更稳定。",
+  "message": "Pixory 2.0.10 已发布，素材导入选择和存储弹窗体验更稳定。",
   "releaseNotes": [
-    "优化重复检测页面布局，统一相似图片筛选和批量管理疑似重复逻辑。",
-    "图片保存到相册改为 Android 原生 MediaStore 写入。",
-    "导入图片和视频时，重复跳过会正确汇总成功、跳过和失败数量。",
-    "跳过的重复素材会写入导入批次明细，便于后续追踪。"
+    "继续导入图片或视频时会保留已选素材，可在原有选择上追加。",
+    "已选图片和视频支持单项移除，也可以清空到 0 项后重新选择。",
+    "修复预览缓存弹窗按钮位置错位的问题。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

@@ -54,6 +54,17 @@ test('storage actions keep deletion scoped to allowed roots', () => {
   assert.doesNotMatch(storageSource, /delete.*getOriginalsDir|delete.*getTempDir|delete.*getThumbnailsDir/);
 });
 
+test('preview cache sheet uses non-growing stacked buttons', () => {
+  const source = readProjectFile('src/screens/StorageUsageScreen.tsx');
+
+  assert.match(source, /function PanelButton\(\{ disabled, fill = false/);
+  assert.match(source, /fill && styles\.panelButtonFill/);
+  assert.match(source, /panelButtonFill:\s*\{\s*flex:\s*1/);
+  assert.match(source, /<View style=\{styles\.previewActions\}>[\s\S]{0,240}<PanelButton disabled=\{disabled\} label="重新生成缺失预览"/);
+  assert.match(source, /<View style=\{styles\.sheetActions\}>[\s\S]{0,180}<PanelButton fill label="取消"/);
+  assert.doesNotMatch(source, /panelButton:\s*\{[^}]*flex:\s*1/);
+});
+
 test('storage screens keep the dashboard compact and expose the required navigation targets', () => {
   const dashboard = readProjectFile('src/screens/StorageUsageScreen.tsx');
   const originals = readProjectFile('src/screens/OriginalStorageScreen.tsx');

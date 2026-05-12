@@ -127,6 +127,40 @@ export function ImportImagesScreen({
     return groups.filter((group) => !idSet.has(group.id));
   }, [groups, recentGroups]);
 
+  function getPickedImageKey(asset: PickedImageAsset): string {
+    return asset.assetId ?? asset.uri;
+  }
+
+  function getPickedVideoKey(asset: PickedVideoAsset): string {
+    return asset.uri;
+  }
+
+  function mergePickedImages(current: PickedImageAsset[], incoming: PickedImageAsset[]): PickedImageAsset[] {
+    const seen = new Set(current.map(getPickedImageKey));
+    const next = [...current];
+    for (const asset of incoming) {
+      const key = getPickedImageKey(asset);
+      if (!seen.has(key)) {
+        seen.add(key);
+        next.push(asset);
+      }
+    }
+    return next;
+  }
+
+  function mergePickedVideos(current: PickedVideoAsset[], incoming: PickedVideoAsset[]): PickedVideoAsset[] {
+    const seen = new Set(current.map(getPickedVideoKey));
+    const next = [...current];
+    for (const asset of incoming) {
+      const key = getPickedVideoKey(asset);
+      if (!seen.has(key)) {
+        seen.add(key);
+        next.push(asset);
+      }
+    }
+    return next;
+  }
+
   useEffect(() => {
     setImageImportSourceMode(screenData?.imageImportSourceMode ?? 'copy');
     setVideoImportNamingMode(screenData?.videoImportNamingMode ?? 'preserveOriginal');
@@ -163,7 +197,7 @@ export function ImportImagesScreen({
     try {
       const result = await pickImagesForImport();
       if (!result.canceled) {
-        setPickedAssets(result.pickedAssets);
+        setPickedAssets((current) => mergePickedImages(current, result.pickedAssets));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
@@ -182,7 +216,7 @@ export function ImportImagesScreen({
     try {
       const result = await pickVideosForImport();
       if (!result.canceled) {
-        setPickedVideos(result.pickedAssets);
+        setPickedVideos((current) => mergePickedVideos(current, result.pickedAssets));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
@@ -542,14 +576,23 @@ export function ImportImagesScreen({
                 <Text numberOfLines={1} style={styles.pickTitle}>
                   {isPicking ? '正在打开相册…' : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张` : '选择图片'}
                 </Text>
-                <Text numberOfLines={1} style={styles.pickHint}>{pickedAssets.length > 0 ? '点击可重新选择' : '从系统相册批量选择原图'}</Text>
+                <Text numberOfLines={1} style={styles.pickHint}>{pickedAssets.length > 0 ? '继续选择，或移除下方已选项' : '从系统相册批量选择原图'}</Text>
               </View>
             </Pressable>
             {pickedAssets.length > 0 ? (
               <View style={styles.previewRow}>
                 {pickedAssets.map((asset, index) => (
-                  <View key={`${asset.uri}-${index}`} style={styles.previewCard}>
+                  <View key={`${getPickedImageKey(asset)}-${index}`} style={styles.previewCard}>
                     <Image resizeMode="cover" source={{ uri: asset.uri }} style={styles.previewImage} />
+                    <Pressable
+                      accessibilityLabel={`移除第 ${index + 1} 张已选图片`}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() => setPickedAssets((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      style={({ pressed }) => [styles.previewRemoveButton, pressed && styles.pressed]}
+                    >
+                      <Ionicons color={colors.text.inverse} name="close" size={13} />
+                    </Pressable>
                   </View>
                 ))}
               </View>
@@ -578,15 +621,24 @@ export function ImportImagesScreen({
               <Text numberOfLines={1} style={styles.pickTitle}>
                 {isPickingVideos ? '正在打开文件选择…' : pickedVideos.length > 0 ? `已选择 ${pickedVideos.length} 个视频` : '选择视频'}
               </Text>
-              <Text numberOfLines={1} style={styles.pickHint}>{pickedVideos.length > 0 ? '点击可重新选择' : '从系统文件中选择视频'}</Text>
+              <Text numberOfLines={1} style={styles.pickHint}>{pickedVideos.length > 0 ? '继续选择，或移除下方已选项' : '从系统文件中选择视频'}</Text>
             </View>
           </Pressable>
           {pickedVideos.length > 0 ? (
             <View style={styles.videoPreviewList}>
               {pickedVideos.slice(0, 5).map((video, index) => (
-                <View key={`${video.uri}-${index}`} style={styles.videoPreviewRow}>
+                <View key={`${getPickedVideoKey(video)}-${index}`} style={styles.videoPreviewRow}>
                   <Ionicons color={colors.primary.default} name="play-circle-outline" size={18} />
                   <Text numberOfLines={1} style={styles.videoPreviewName}>{video.fileName}</Text>
+                  <Pressable
+                    accessibilityLabel={`移除视频：${video.fileName}`}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => setPickedVideos((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                    style={({ pressed }) => [styles.videoRemoveButton, pressed && styles.pressed]}
+                  >
+                    <Ionicons color={colors.text.tertiary} name="close-circle" size={18} />
+                  </Pressable>
                 </View>
               ))}
               {pickedVideos.length > 5 ? <Text style={styles.pickHint}>另有 {pickedVideos.length - 5} 个视频</Text> : null}
@@ -986,17 +1038,28 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   previewCard: {
+    aspectRatio: 1,
     backgroundColor: colors.background.empty,
     borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    aspectRatio: 1,
     width: '23.3%',
   },
   previewImage: {
     height: '100%',
     width: '100%',
+  },
+  previewRemoveButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(22, 30, 40, 0.72)',
+    borderRadius: radius.pill,
+    height: 24,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[1],
+    top: spacing[1],
+    width: 24,
   },
   videoPreviewList: {
     gap: spacing[2],
@@ -1018,6 +1081,12 @@ const styles = StyleSheet.create({
     color: colors.text.body,
     flex: 1,
     minWidth: 0,
+  },
+  videoRemoveButton: {
+    alignItems: 'center',
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
   },
   progressPanel: {
     alignItems: 'center',
