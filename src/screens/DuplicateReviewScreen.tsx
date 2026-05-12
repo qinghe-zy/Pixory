@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { imageRepository, runWithDatabaseSpace, type DuplicateImageGroup, type PixorySpace } from '../database';
@@ -82,78 +81,80 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
 
   return (
     <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title={importBatchId != null ? '疑似重复' : '重复检测'}>
-      <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <Ionicons color={colors.primary.active} name="copy-outline" size={20} />
+      <View style={styles.contentStack}>
+        <View style={styles.hero}>
+          <View style={styles.heroIcon}>
+            <Ionicons color={colors.primary.active} name="copy-outline" size={20} />
+          </View>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
+          </View>
+          <Pressable disabled={isScanning} onPress={() => void scanDuplicateHashes()} style={({ pressed }) => [styles.scanButton, isScanning && styles.scanButtonBusy, pressed && !isScanning && styles.pressed]}>
+            <Ionicons color={colors.primary.active} name="scan-outline" size={14} />
+            <Text style={styles.scanButtonText}>{isScanning ? '扫描中' : '扫描重复素材'}</Text>
+          </Pressable>
         </View>
-        <View style={styles.heroCopy}>
-          <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
-          <Text style={styles.heroMeta}>复核只会软删除到回收站，不会物理删除原图。</Text>
+        {scanMessage ? <Text style={styles.scanMessage}>{scanMessage}</Text> : null}
+        <View style={styles.tabs}>
+          <TabButton active={activeTab === 'exact'} label="精确重复" onPress={() => { setActiveTab('exact'); setSelectedIds([]); }} />
+          <TabButton active={activeTab === 'similar'} label="相似图片" onPress={() => { setActiveTab('similar'); setSelectedIds([]); }} />
         </View>
-        <Pressable disabled={isScanning} onPress={() => void scanDuplicateHashes()} style={({ pressed }) => [styles.scanButton, isScanning && styles.scanButtonBusy, pressed && !isScanning && styles.pressed]}>
-          <Ionicons color={colors.primary.active} name="scan-outline" size={16} />
-          <Text style={styles.scanButtonText}>{isScanning ? '扫描中' : '扫描重复素材'}</Text>
-        </Pressable>
-      </View>
-      {scanMessage ? <Text style={styles.scanMessage}>{scanMessage}</Text> : null}
-      <View style={styles.tabs}>
-        <TabButton active={activeTab === 'exact'} label="精确重复" onPress={() => { setActiveTab('exact'); setSelectedIds([]); }} />
-        <TabButton active={activeTab === 'similar'} label="相似图片" onPress={() => { setActiveTab('similar'); setSelectedIds([]); }} />
-      </View>
-      {selectedCount > 0 ? (
-        <View style={styles.reviewActions}>
-          <Text style={styles.reviewActionMeta}>已选择 {selectedCount} 张</Text>
-          <PrimaryButton label="软删除选中" onPress={() => void softDeleteSelected()} />
-        </View>
-      ) : null}
+        {selectedCount > 0 ? (
+          <View style={styles.reviewActions}>
+            <Text style={styles.reviewActionMeta}>已选择 {selectedCount} 张</Text>
+            <Pressable onPress={() => void softDeleteSelected()} style={({ pressed }) => [styles.deleteSelectedButton, pressed && styles.pressed]}>
+              <Text style={styles.deleteSelectedText}>软删除选中</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-      <PageStateBlock
-        emptyDescription={activeTab === 'exact' ? '没有发现 contentHash 完全一致的素材。' : '没有发现 visualHash 相同的相似图片。'}
-        emptyIconName="checkmark-circle-outline"
-        emptyTitle="没有疑似重复"
-        errorMessage={errorMessage}
-        isEmpty={!isLoading && groups.length === 0}
-        loading={isLoading}
-        loadingDescription="正在按本地 hash 索引扫描重复素材。"
-        loadingTitle="读取疑似重复"
-        onRetry={reload}
-      >
-        <View style={styles.groupList}>
-          {groups.map((group) => (
-            <View key={group.key} style={styles.groupCard}>
-              <View style={styles.groupHeader}>
-                <View style={styles.groupTitleRow}>
-                  <Text style={styles.groupTitle}>{group.images.length} 张{activeTab === 'exact' ? '精确重复' : '相似图片'}</Text>
-                  {activeTab === 'exact' ? (
-                    <Pressable onPress={() => void keepFirstAndSoftDeleteRest(group)} style={({ pressed }) => [styles.keepButton, pressed && styles.pressed]}>
-                      <Text style={styles.keepButtonText}>保留一张</Text>
-                    </Pressable>
-                  ) : null}
+        <PageStateBlock
+          emptyDescription={activeTab === 'exact' ? '暂时没有完全相同的素材。' : '暂时没有需要复核的相似图片。'}
+          emptyIconName="checkmark-circle-outline"
+          emptyTitle="没有疑似重复"
+          errorMessage={errorMessage}
+          isEmpty={!isLoading && groups.length === 0}
+          loading={isLoading}
+          loadingDescription="正在读取重复素材。"
+          loadingTitle="读取疑似重复"
+          onRetry={reload}
+        >
+          <View style={styles.groupList}>
+            {groups.map((group) => (
+              <View key={group.key} style={styles.groupCard}>
+                <View style={styles.groupHeader}>
+                  <View style={styles.groupTitleRow}>
+                    <Text style={styles.groupTitle}>{group.images.length} 张{activeTab === 'exact' ? '精确重复' : '相似图片'}</Text>
+                    {activeTab === 'exact' ? (
+                      <Pressable onPress={() => void keepFirstAndSoftDeleteRest(group)} style={({ pressed }) => [styles.keepButton, pressed && styles.pressed]}>
+                        <Text style={styles.keepButtonText}>保留一张</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
-                <Text style={styles.groupMeta}>{group.confidence === 'exact' ? '可信度：精确' : '可信度：需复核'}</Text>
+                <View style={styles.imageList}>
+                  {group.images.map((image) => (
+                    <Pressable key={image.id} onPress={() => toggleSelected(image.id)} style={({ pressed }) => [styles.imageRow, selectedIds.includes(image.id) ? styles.imageRowSelected : null, pressed && styles.pressed]}>
+                      <View style={styles.thumb}>
+                        {image.thumbnailFileUri ? (
+                          <SecureImage contentFit="cover" space={space} style={styles.thumbImage} uri={image.thumbnailFileUri} />
+                        ) : (
+                          <Ionicons color={colors.text.tertiary} name="image-outline" size={16} />
+                        )}
+                      </View>
+                      <View style={styles.imageCopy}>
+                        <Text numberOfLines={1} style={styles.filename}>{image.originalFilename}</Text>
+                        <Text numberOfLines={1} style={styles.imageMeta}>{image.ipName} · {image.groupName ?? '未分组'} · {image.width} x {image.height} · {formatFileSize(image.fileSize)}</Text>
+                      </View>
+                      <Ionicons color={selectedIds.includes(image.id) ? colors.primary.active : colors.text.tertiary} name={selectedIds.includes(image.id) ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-              <View style={styles.imageList}>
-                {group.images.map((image) => (
-                  <Pressable key={image.id} onPress={() => toggleSelected(image.id)} style={({ pressed }) => [styles.imageRow, selectedIds.includes(image.id) ? styles.imageRowSelected : null, pressed && styles.pressed]}>
-                    <View style={styles.thumb}>
-                      {image.thumbnailFileUri ? (
-                        <SecureImage contentFit="cover" space={space} style={styles.thumbImage} uri={image.thumbnailFileUri} />
-                      ) : (
-                        <Ionicons color={colors.text.tertiary} name="image-outline" size={16} />
-                      )}
-                    </View>
-                    <View style={styles.imageCopy}>
-                      <Text numberOfLines={1} style={styles.filename}>{image.originalFilename}</Text>
-                      <Text numberOfLines={1} style={styles.imageMeta}>{image.ipName} · {image.groupName ?? '未分组'} · {image.width} x {image.height} · {formatFileSize(image.fileSize)}</Text>
-                    </View>
-                    <Ionicons color={selectedIds.includes(image.id) ? colors.primary.active : colors.text.tertiary} name={selectedIds.includes(image.id) ? 'checkmark-circle' : 'ellipse-outline'} size={18} />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ))}
-        </View>
-      </PageStateBlock>
+            ))}
+          </View>
+        </PageStateBlock>
+      </View>
     </ScreenScaffold>
   );
 }
@@ -167,6 +168,9 @@ function TabButton({ active, label, onPress }: { active: boolean; label: string;
 }
 
 const styles = StyleSheet.create({
+  contentStack: {
+    gap: spacing[4],
+  },
   hero: {
     alignItems: 'center',
     backgroundColor: colors.background.surface,
@@ -174,16 +178,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
-    padding: spacing[3],
+    gap: spacing[2],
+    padding: spacing[2],
   },
   heroIcon: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
-    height: 42,
+    height: 38,
     justifyContent: 'center',
-    width: 42,
+    width: 38,
   },
   heroCopy: {
     flex: 1,
@@ -191,12 +195,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   heroTitle: {
-    ...typography.textStyles.bodyStrong,
+    ...typography.textStyles.body,
     color: colors.text.title,
-  },
-  heroMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    fontSize: 19,
+    lineHeight: 24,
   },
   scanButton: {
     alignItems: 'center',
@@ -204,8 +206,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     flexDirection: 'row',
     gap: spacing[1],
-    minHeight: 34,
-    paddingHorizontal: spacing[3],
+    minHeight: 30,
+    paddingHorizontal: spacing[2],
   },
   scanButtonBusy: {
     opacity: 0.72,
@@ -220,7 +222,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   groupList: {
-    gap: spacing[4],
+    gap: spacing[5],
   },
   groupCard: {
     backgroundColor: colors.background.surface,
@@ -243,19 +245,15 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
-  groupMeta: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
   imageList: {
-    gap: spacing[3],
+    gap: spacing[4],
   },
   imageRow: {
     alignItems: 'center',
     borderRadius: radius.md,
     flexDirection: 'row',
-    gap: spacing[2],
-    minHeight: 52,
+    gap: spacing[3],
+    minHeight: 62,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[2],
   },
@@ -300,7 +298,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flex: 1,
-    minHeight: 36,
+    minHeight: 32,
     justifyContent: 'center',
   },
   tabButtonActive: {
@@ -318,12 +316,25 @@ const styles = StyleSheet.create({
   reviewActions: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: spacing[3],
     justifyContent: 'space-between',
   },
   reviewActionMeta: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+  },
+  deleteSelectedButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.active,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[5],
+  },
+  deleteSelectedText: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '700',
   },
   keepButton: {
     backgroundColor: colors.primary.weak,

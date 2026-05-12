@@ -15,20 +15,17 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
 import { useAssetListPreferences } from '../services/assetListPreferences';
-import { getFilenamePrefix } from '../utils/batchSelectionRules';
+import { filterSimilarImages } from '../utils/batchSelectionRules';
 import type { ImageAspectRatioFilter } from '../database';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
 
 type FileSizeFilter = { label: string; minFileSize?: number; maxFileSize?: number };
-type SimilarFilterKey = 'similarSameSize' | 'similarFilenamePrefix' | 'similarDuplicate';
 
 interface AllImagesFilterState {
   favorite: boolean;
   ungrouped: boolean;
   untagged: boolean;
   recentViewed: boolean;
-  similarSameSize: boolean;
-  similarFilenamePrefix: boolean;
   similarDuplicate: boolean;
   mimeType: string | null;
   mimeLabel: string | null;
@@ -44,8 +41,6 @@ const EMPTY_FILTERS: AllImagesFilterState = {
   ungrouped: false,
   untagged: false,
   recentViewed: false,
-  similarSameSize: false,
-  similarFilenamePrefix: false,
   similarDuplicate: false,
   mimeType: null,
   mimeLabel: null,
@@ -139,9 +134,7 @@ export function AllImagesScreen({
     if (activeFilters.ungrouped) labels.push('未分组');
     if (activeFilters.untagged) labels.push('无标签');
     if (activeFilters.recentViewed) labels.push('最近查看');
-    if (activeFilters.similarSameSize) labels.push('同尺寸');
-    if (activeFilters.similarFilenamePrefix) labels.push('文件名前缀');
-    if (activeFilters.similarDuplicate) labels.push('疑似重复');
+    if (activeFilters.similarDuplicate) labels.push('相似图片');
     if (activeFilters.mimeLabel) labels.push(activeFilters.mimeLabel);
     if (activeFilters.aspectLabel) labels.push(activeFilters.aspectLabel);
     if (activeFilters.size) labels.push(activeFilters.size.label);
@@ -201,8 +194,8 @@ export function AllImagesScreen({
     setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
   }
 
-  function toggleSimilarFilter(key: SimilarFilterKey) {
-    setActiveFilters((current) => ({ ...current, [key]: !current[key] }));
+  function toggleSimilarFilter() {
+    setActiveFilters((current) => ({ ...current, similarDuplicate: !current.similarDuplicate }));
   }
 
   function toggleMimeFilter(mimeType: string, label: string) {
@@ -253,8 +246,6 @@ export function AllImagesScreen({
         favorite: false,
         recentViewed: false,
         similarDuplicate: false,
-        similarFilenamePrefix: false,
-        similarSameSize: false,
         ungrouped: false,
         untagged: false,
       }));
@@ -311,7 +302,7 @@ export function AllImagesScreen({
 
       <View style={styles.filterBarWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-          <FilterMenuButton active={activeFilters.favorite || activeFilters.ungrouped || activeFilters.untagged || activeFilters.recentViewed || activeFilters.similarSameSize || activeFilters.similarFilenamePrefix || activeFilters.similarDuplicate} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
+          <FilterMenuButton active={activeFilters.favorite || activeFilters.ungrouped || activeFilters.untagged || activeFilters.recentViewed || activeFilters.similarDuplicate} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
           <FilterMenuButton active={activeFilters.aspectRatio != null} label="画幅" onPress={() => setActiveFilterDropdown((current) => (current === 'aspect' ? null : 'aspect'))} />
           <FilterMenuButton active={activeFilters.mimeType != null || activeFilters.size != null} label="文件" onPress={() => setActiveFilterDropdown((current) => (current === 'file' ? null : 'file'))} />
           <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
@@ -340,11 +331,8 @@ export function AllImagesScreen({
                   <FilterOptionChip label="无标签" selected={activeFilters.untagged} onPress={() => toggleBooleanFilter('untagged')} />
                   <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
                 </View>
-                <Text style={styles.drawerSectionTitle}>相似 · 多选</Text>
                 <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="同尺寸" selected={activeFilters.similarSameSize} onPress={() => toggleSimilarFilter('similarSameSize')} />
-                  <FilterOptionChip label="文件名前缀" selected={activeFilters.similarFilenamePrefix} onPress={() => toggleSimilarFilter('similarFilenamePrefix')} />
-                  <FilterOptionChip label="疑似重复" selected={activeFilters.similarDuplicate} onPress={() => toggleSimilarFilter('similarDuplicate')} />
+                  <FilterOptionChip label="相似图片" selected={activeFilters.similarDuplicate} onPress={toggleSimilarFilter} />
                 </View>
               </View>
             ) : null}
@@ -518,50 +506,15 @@ function getAllImagesFilterMode(filter: AllImagesFilterDropdown): '多选' | '�
 }
 
 function filterImagesBySimilarity(images: ImageListItem[], filters: AllImagesFilterState): ImageListItem[] {
-  if (!filters.similarSameSize && !filters.similarFilenamePrefix && !filters.similarDuplicate) {
-    return images;
-  }
-
-  const sameSizeCounts = countBy(images, (image) => `${image.width}x${image.height}`);
-  const duplicateCounts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
-  const prefixCounts = countBy(images, (image) => getFilenamePrefix(image.originalFilename) ?? '');
-
-  return images.filter((image) => {
-    if (filters.similarSameSize && (sameSizeCounts.get(`${image.width}x${image.height}`) ?? 0) <= 1) {
-      return false;
-    }
-    if (filters.similarDuplicate && (duplicateCounts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) <= 1) {
-      return false;
-    }
-    if (filters.similarFilenamePrefix) {
-      const prefix = getFilenamePrefix(image.originalFilename);
-      if (!prefix || (prefixCounts.get(prefix) ?? 0) <= 1) {
-        return false;
-      }
-    }
-    return true;
-  });
+  return filters.similarDuplicate ? filterSimilarImages(images) : images;
 }
 
 function hasImageOnlyFilter(filters: AllImagesFilterState): boolean {
   return Boolean(
     filters.aspectRatio ||
     filters.mimeType?.startsWith('image/') ||
-    filters.similarDuplicate ||
-    filters.similarFilenamePrefix ||
-    filters.similarSameSize
+    filters.similarDuplicate
   );
-}
-
-function countBy<T>(items: T[], getKey: (item: T) => string): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const key = getKey(item);
-    if (key) {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return counts;
 }
 
 const styles = StyleSheet.create({

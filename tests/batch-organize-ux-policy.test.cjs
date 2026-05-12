@@ -110,6 +110,8 @@ test('batch rule selection supports multi-rule intersection with selected chips'
   assert.match(batchSource, /activeRuleKeys/);
   assert.match(batchSource, /selected=\{activeRuleKeys\.includes/);
   assert.match(batchSource, /规则模式/);
+  assert.match(batchSource, /label=\{option\.label\}/);
+  assert.doesNotMatch(batchSource, /option\.key === 'filename-prefix'/);
   assert.doesNotMatch(batchSource, /更多选择/);
   assert.doesNotMatch(panelSource, /智能分堆/);
   assert.doesNotMatch(panelSource, /activeRuleKeys/);
@@ -120,10 +122,11 @@ test('batch rule selection supports multi-rule intersection with selected chips'
   assert.match(allImagesSource, /activeFilterDropdown/);
   assert.match(allImagesSource, /FilterMenuButton/);
   assert.match(allImagesSource, /FilterDrawer/);
-  assert.match(allImagesSource, /相似 · 多选/);
-  assert.match(allImagesSource, /同尺寸/);
-  assert.match(allImagesSource, /文件名前缀/);
-  assert.match(allImagesSource, /疑似重复/);
+  assert.match(allImagesSource, /label="相似图片"/);
+  assert.match(allImagesSource, /filterSimilarImages/);
+  assert.doesNotMatch(allImagesSource, /相似 · 多选/);
+  assert.doesNotMatch(allImagesSource, /label="同尺寸"/);
+  assert.doesNotMatch(allImagesSource, /label="文件名前缀"/);
   assert.match(allImagesSource, /maxHeight: 250/);
   assert.match(allImagesSource, /多选/);
   assert.match(allImagesSource, /单选/);
@@ -257,9 +260,11 @@ test('tag and group result pages expose dedicated secondary filters', () => {
   assert.match(groupSource, /收藏/);
   assert.match(groupSource, /无标签/);
   assert.match(groupSource, /最近查看/);
-  assert.match(groupSource, /同尺寸/);
-  assert.match(groupSource, /文件名前缀/);
-  assert.match(groupSource, /疑似重复/);
+  assert.match(groupSource, /label="相似图片"/);
+  assert.match(groupSource, /filterSimilarImages/);
+  assert.doesNotMatch(groupSource, /相似 · 多选/);
+  assert.doesNotMatch(groupSource, /label="同尺寸"/);
+  assert.doesNotMatch(groupSource, /label="文件名前缀"/);
 });
 
 test('tag multi select keeps long existing tag lists compact with an internal scroll strategy', () => {

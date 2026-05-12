@@ -76,8 +76,9 @@ test('import flow supports duplicate review skip modes and source move preferenc
   assert.match(imageImportSource, /deleteImportedSourceAsset/);
   assert.match(videoImportSource, /videoImportNamingMode/);
   assert.match(videoImportSource, /contentHash/);
-  assert.match(importScreenSource, /重复\/相似素材/);
-  assert.match(importScreenSource, /跳过精确重复和相似图片/);
+  assert.match(importScreenSource, /重复素材/);
+  assert.match(importScreenSource, /跳过重复和相似图片/);
+  assert.doesNotMatch(importScreenSource, /contentHash|visualHash/);
   assert.match(importScreenSource, /imageImportSourceMode/);
   assert.match(importScreenSource, /videoImportNamingMode/);
 });
@@ -110,6 +111,9 @@ test('duplicate review screen supports exact and similar tabs with soft delete o
   assert.match(screenSource, /exact/);
   assert.match(screenSource, /similar/);
   assert.match(screenSource, /softDeleteMany/);
+  assert.doesNotMatch(screenSource, /contentHash|visualHash|本地 hash|可信度/);
+  assert.match(screenSource, /fontSize:\s*19/);
+  assert.doesNotMatch(screenSource, /PrimaryButton label="软删除选中"/);
   assert.doesNotMatch(screenSource, /deleteLocalFile|FileSystem\.deleteAsync/);
   assert.match(repoSource, /findExactDuplicateGroups/);
   assert.match(repoSource, /findSimilarImageGroups/);
@@ -118,10 +122,11 @@ test('duplicate review screen supports exact and similar tabs with soft delete o
 test('duplicate review cards keep breathing room between groups and rows', () => {
   const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
 
-  assert.match(screenSource, /groupList:\s*\{[\s\S]*gap:\s*spacing\[4\]/);
+  assert.match(screenSource, /groupList:\s*\{[\s\S]*gap:\s*spacing\[5\]/);
   assert.match(screenSource, /groupCard:\s*\{[\s\S]*padding:\s*spacing\[4\]/);
-  assert.match(screenSource, /imageList:\s*\{[\s\S]*gap:\s*spacing\[3\]/);
+  assert.match(screenSource, /imageList:\s*\{[\s\S]*gap:\s*spacing\[4\]/);
   assert.match(screenSource, /imageRow:\s*\{[\s\S]*paddingVertical:\s*spacing\[2\]/);
+  assert.match(screenSource, /deleteSelectedButton:\s*\{[\s\S]*minHeight:\s*34/);
 });
 
 test('duplicate roadmap uses hamming-distance visual groups and a manual library scan task', () => {

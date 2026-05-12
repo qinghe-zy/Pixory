@@ -65,6 +65,7 @@ export const BATCH_SELECTION_RULE_MUTEX_GROUPS: BatchSelectionRuleKey[][] = [
 ];
 
 const WEAK_FILENAME_PREFIXES = new Set(['img', 'image', 'screenshot', 'screen', 'photo', 'pic', 'dsc']);
+const VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD = 6;
 
 export function normalizeSelectionRuleKeys(rules: BatchSelectionRuleKey[]): BatchSelectionRuleKey[] {
   const normalizedRules: BatchSelectionRuleKey[] = [];
@@ -175,6 +176,53 @@ export function getFilenamePrefix(filename: string): string | null {
   return normalized;
 }
 
+function isVisualHash(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{16}$/i.test(value);
+}
+
+function countBits(value: number): number {
+  let count = 0;
+  let remaining = value;
+  while (remaining > 0) {
+    count += remaining & 1;
+    remaining >>>= 1;
+  }
+  return count;
+}
+
+export function getVisualHashDistance(left: string | null | undefined, right: string | null | undefined): number | null {
+  if (!isVisualHash(left) || !isVisualHash(right)) {
+    return null;
+  }
+
+  let distance = 0;
+  for (let index = 0; index < left.length; index += 8) {
+    const leftPart = Number.parseInt(left.slice(index, index + 8), 16);
+    const rightPart = Number.parseInt(right.slice(index, index + 8), 16);
+    distance += countBits((leftPart ^ rightPart) >>> 0);
+  }
+
+  return distance;
+}
+
+export function hasSimilarImagePeer(image: ImageListItem, images: ImageListItem[]): boolean {
+  if (!isVisualHash(image.visualHash)) {
+    return false;
+  }
+
+  return images.some((candidate) => {
+    if (candidate.id === image.id) {
+      return false;
+    }
+    const distance = getVisualHashDistance(image.visualHash, candidate.visualHash);
+    return distance != null && distance <= VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD;
+  });
+}
+
+export function filterSimilarImages(images: ImageListItem[]): ImageListItem[] {
+  return images.filter((image) => hasSimilarImagePeer(image, images));
+}
+
 export function filterImagesBySelectionRule(
   images: ImageListItem[],
   rule: BatchSelectionRuleKey,
@@ -203,8 +251,7 @@ export function filterImagesBySelectionRule(
     return batchId != null ? images.filter((image) => image.importBatchId === batchId) : [];
   }
   if (rule === 'suspected-duplicate') {
-    const counts = countBy(images, (image) => `${image.width}x${image.height}:${image.fileSize}`);
-    return images.filter((image) => (counts.get(`${image.width}x${image.height}:${image.fileSize}`) ?? 0) > 1);
+    return filterSimilarImages(images);
   }
   return images;
 }
@@ -230,15 +277,4 @@ function getSelectionRuleDescription(
   }
 
   return `${getSelectionRuleLabel(rule)}，结果 ${matchedImages.length} 张。`;
-}
-
-function countBy<T>(items: T[], getKey: (item: T) => string): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const key = getKey(item);
-    if (key) {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return counts;
 }

@@ -690,10 +690,14 @@ export function BatchManageImagesScreen({
         </View>
         {isRuleMode ? (
           <View style={styles.ruleModePanel}>
-            {BATCH_SELECTION_RULE_OPTIONS.filter((option) => !(source === 'group-images' && option.key === 'ungrouped')).map((option) => (
+            {BATCH_SELECTION_RULE_OPTIONS.filter((option) =>
+              option.key !== 'same-size' &&
+              option.key !== 'filename-prefix' &&
+              !(source === 'group-images' && option.key === 'ungrouped')
+            ).map((option) => (
               <RuleChip
                 key={option.key}
-                label={option.key === 'filename-prefix' ? '文件名前缀' : option.label}
+                label={option.label}
                 onPress={() => selectByRule(option.key)}
                 selected={activeRuleKeys.includes(option.key)}
               />

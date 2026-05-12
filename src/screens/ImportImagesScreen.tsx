@@ -621,35 +621,33 @@ export function ImportImagesScreen({
         <LightFormSection title="导入策略">
           <SwitchSettingRow
             disabled={isSubmitting}
-            hint="复制会保留系统相册文件；移动会在 Pixory 写入并校验成功后删除相册源资产。"
             label="图片导入使用移动模式"
             onValueChange={(enabled) => updateImageImportSourceMode(enabled ? 'move' : 'copy')}
             value={imageImportSourceMode === 'move'}
           />
           <SwitchSettingRow
             disabled={isSubmitting}
-            hint="关闭后使用 Pixory 自动编号文件名。"
             label="视频保留原文件名"
             onValueChange={(enabled) => updateVideoImportNamingMode(enabled ? 'preserveOriginal' : 'generated')}
             value={videoImportNamingMode === 'preserveOriginal'}
           />
           <View style={styles.duplicateDecisionList}>
-            <Text style={styles.inlineLabel}>重复/相似素材</Text>
+            <Text style={styles.inlineLabel}>重复素材</Text>
             <OptionSelectRow
               label="全部导入"
-              meta="即使发现重复也写入素材库"
+              meta="不跳过已存在素材"
               onPress={() => setDuplicateDecision('importAll')}
               selected={duplicateDecision === 'importAll'}
             />
             <OptionSelectRow
               label="跳过精确重复"
-              meta="contentHash 完全一致时跳过"
+              meta="发现完全相同的素材时跳过"
               onPress={() => setDuplicateDecision('skipExact')}
               selected={duplicateDecision === 'skipExact'}
             />
             <OptionSelectRow
-              label="跳过精确重复和相似图片"
-              meta="同时跳过 visualHash 命中的相似图片"
+              label="跳过重复和相似图片"
+              meta="发现重复或相似图片时跳过"
               onPress={() => setDuplicateDecision('skipSimilar')}
               selected={duplicateDecision === 'skipSimilar'}
             />
