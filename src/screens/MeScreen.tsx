@@ -175,12 +175,13 @@ export function MeScreen({
   async function handleConfirmCacheCleanup() {
     setIsCleaningCache(true);
     try {
-      await cleanupAppCache({
+      const result = await cleanupAppCache({
         includeDiskImageCache: true,
+        includeExpoCacheDirectory: true,
         tempMaxAgeMs: 0,
       });
       setCacheCleanupConfirmVisible(false);
-      showToast('已清理缓存，不影响已导入素材');
+      showToast(`已清理缓存，释放 ${formatFileSize(result.deletedBytes)}，不影响已导入素材`);
     } catch (error) {
       const message = error instanceof Error ? error.message : '未知错误';
       showToast(`清理缓存失败：${message}`);
@@ -333,7 +334,7 @@ export function MeScreen({
         </Text>
       ) : null}
       <AppDialog
-        message="将清理图片显示缓存和临时文件，不会删除原图、缩略图、标签、分组、备注和隐私数据。"
+        message="将清理图片显示缓存、导入临时文件和资源包选择缓存；不会删除已导入素材、缩略图、备份包、标签、分组、备注和隐私数据。"
         onClose={() => {
           if (!isCleaningCache) {
             setCacheCleanupConfirmVisible(false);

@@ -19,7 +19,18 @@ export interface CacheCleanupResult {
 
 export interface CleanupAppCacheOptions {
   includeDiskImageCache?: boolean;
+  includeExpoCacheDirectory?: boolean;
   tempMaxAgeMs?: number;
+}
+
+export interface CleanupDirectoryChildrenOptions {
+  directoryUri: string | null | undefined;
+  maxAgeMs?: number;
+  shouldDeleteEntry?: (entryUri: string) => boolean;
+}
+
+export interface CleanupExpoCacheDirectoryOptions {
+  maxAgeMs?: number;
 }
 
 function emptyCleanupResult(): CacheCleanupResult {
@@ -51,7 +62,11 @@ function isOlderThan(modificationTime: number | null | undefined, maxAgeMs: numb
   return now - modificationTime * 1000 > maxAgeMs;
 }
 
-async function getLocalEntrySize(uri: string): Promise<number> {
+function normalizeDirectoryUri(directoryUri: string): string {
+  return directoryUri.endsWith('/') ? directoryUri : `${directoryUri}/`;
+}
+
+export async function getLocalEntrySize(uri: string): Promise<number> {
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) {
     return 0;
@@ -66,29 +81,30 @@ async function getLocalEntrySize(uri: string): Promise<number> {
   return childSizes.reduce((sum, size) => sum + size, 0);
 }
 
-export async function clearImageMemoryCache(): Promise<void> {
-  await Image.clearMemoryCache();
-}
-
-export async function clearImageDiskCache(): Promise<void> {
-  await Image.clearDiskCache();
-}
-
-export async function cleanupOldTempFiles(
-  space: PixorySpace,
-  maxAgeMs = TEMP_FILE_MAX_AGE_MS
-): Promise<CacheCleanupResult> {
-  const tempDir = getTempDir(space);
-  const tempInfo = await FileSystem.getInfoAsync(tempDir);
-  if (!tempInfo.exists || !tempInfo.isDirectory) {
+export async function cleanupDirectoryChildren({
+  directoryUri,
+  maxAgeMs = TEMP_FILE_MAX_AGE_MS,
+  shouldDeleteEntry,
+}: CleanupDirectoryChildrenOptions): Promise<CacheCleanupResult> {
+  if (!directoryUri) {
     return emptyCleanupResult();
   }
 
-  const entryNames = await FileSystem.readDirectoryAsync(tempDir);
+  const normalizedDirectoryUri = normalizeDirectoryUri(directoryUri);
+  const directoryInfo = await FileSystem.getInfoAsync(normalizedDirectoryUri);
+  if (!directoryInfo.exists || !directoryInfo.isDirectory) {
+    return emptyCleanupResult();
+  }
+
+  const entryNames = await FileSystem.readDirectoryAsync(normalizedDirectoryUri);
   const results: CacheCleanupResult[] = [];
 
   for (const entryName of entryNames) {
-    const entryUri = `${tempDir}${entryName}`;
+    const entryUri = `${normalizedDirectoryUri}${entryName}`;
+    if (shouldDeleteEntry && !shouldDeleteEntry(entryUri)) {
+      continue;
+    }
+
     const entryInfo = await FileSystem.getInfoAsync(entryUri);
     if (!entryInfo.exists || !isOlderThan(entryInfo.modificationTime, maxAgeMs)) {
       continue;
@@ -105,6 +121,37 @@ export async function cleanupOldTempFiles(
   return mergeCleanupResults(results);
 }
 
+export async function clearImageMemoryCache(): Promise<void> {
+  await Image.clearMemoryCache();
+}
+
+export async function clearImageDiskCache(): Promise<void> {
+  await Image.clearDiskCache();
+}
+
+export async function cleanupOldTempFiles(
+  space: PixorySpace,
+  maxAgeMs = TEMP_FILE_MAX_AGE_MS
+): Promise<CacheCleanupResult> {
+  const tempDir = getTempDir(space);
+  return cleanupDirectoryChildren({ directoryUri: tempDir, maxAgeMs });
+}
+
+export async function cleanupExpoCacheDirectory(
+  options: CleanupExpoCacheDirectoryOptions = {}
+): Promise<CacheCleanupResult> {
+  const cacheDirectory = FileSystem.cacheDirectory;
+  if (!cacheDirectory) {
+    return emptyCleanupResult();
+  }
+
+  return cleanupDirectoryChildren({
+    directoryUri: cacheDirectory,
+    maxAgeMs: options.maxAgeMs ?? TEMP_FILE_MAX_AGE_MS,
+    shouldDeleteEntry: (entryUri) => entryUri.startsWith(cacheDirectory),
+  });
+}
+
 export async function cleanupDailyAppTempCache(): Promise<CacheCleanupResult> {
   const lastTempCleanupAt = await SecureStore.getItemAsync(LAST_TEMP_CLEANUP_KEY);
   const lastCleanupTime = lastTempCleanupAt ? Date.parse(lastTempCleanupAt) : 0;
@@ -118,12 +165,19 @@ export async function cleanupDailyAppTempCache(): Promise<CacheCleanupResult> {
 }
 
 export async function cleanupAppCache(options: CleanupAppCacheOptions = {}): Promise<CacheCleanupResult> {
-  const { includeDiskImageCache = false, tempMaxAgeMs = TEMP_FILE_MAX_AGE_MS } = options;
+  const {
+    includeDiskImageCache = false,
+    includeExpoCacheDirectory = false,
+    tempMaxAgeMs = TEMP_FILE_MAX_AGE_MS,
+  } = options;
   await clearImageMemoryCache();
   if (includeDiskImageCache) {
     await clearImageDiskCache();
   }
 
-  const results = await Promise.all(CLEANUP_SPACES.map((space) => cleanupOldTempFiles(space, tempMaxAgeMs)));
+  const results = await Promise.all([
+    ...CLEANUP_SPACES.map((space) => cleanupOldTempFiles(space, tempMaxAgeMs)),
+    ...(includeExpoCacheDirectory ? [cleanupExpoCacheDirectory({ maxAgeMs: tempMaxAgeMs })] : []),
+  ]);
   return mergeCleanupResults(results);
 }

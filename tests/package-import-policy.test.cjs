@@ -18,6 +18,9 @@ test('package import service uses document picker and native unzip into private 
   assert.match(source, /unzipPackageToPrivateTemp/);
   assert.match(source, /getTempDir\(space\)/);
   assert.match(source, /space:\s*PixorySpace/);
+  assert.match(source, /deleteDocumentPickerCachePackage/);
+  assert.match(source, /packageUri\.startsWith\(FileSystem\.cacheDirectory\)/);
+  assert.match(source, /deleteDocumentPickerCachePackage\(params\.packageUri\)/);
 });
 
 test('package import rejects zip slip and conservative package limits before importing assets', () => {

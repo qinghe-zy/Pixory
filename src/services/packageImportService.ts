@@ -123,6 +123,18 @@ async function unzipPackageToPrivateTemp(packageUri: string, space: PixorySpace)
   return targetDir;
 }
 
+async function deleteDocumentPickerCachePackage(packageUri: string): Promise<void> {
+  if (
+    !FileSystem.cacheDirectory ||
+    packageUri === FileSystem.cacheDirectory ||
+    !packageUri.startsWith(FileSystem.cacheDirectory)
+  ) {
+    return;
+  }
+
+  await FileSystem.deleteAsync(packageUri, { idempotent: true });
+}
+
 function assertSafeExtractedPath(rootDir: string, candidateUri: string): void {
   const normalizedRoot = normalizeDirectoryUri(rootDir);
   const normalizedCandidate = candidateUri.replace(/\\/g, '/');
@@ -527,12 +539,15 @@ export async function importPackageToIp(params: {
         items,
       };
     } finally {
+      const cleanupTasks: Promise<void>[] = [];
       if (extractDir) {
-        await FileSystem.deleteAsync(extractDir, { idempotent: true });
+        cleanupTasks.push(FileSystem.deleteAsync(extractDir, { idempotent: true }));
       }
       if (copiedPackageUri) {
-        await deleteLocalFile(copiedPackageUri);
+        cleanupTasks.push(deleteLocalFile(copiedPackageUri));
       }
+      cleanupTasks.push(deleteDocumentPickerCachePackage(params.packageUri));
+      await Promise.allSettled(cleanupTasks);
     }
   });
 }
