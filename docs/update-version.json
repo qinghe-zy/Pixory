@@ -1,14 +1,14 @@
 {
   "enabled": true,
-  "version": "2.0.8",
-  "versionCode": 208,
+  "version": "2.0.9",
+  "versionCode": 209,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.0.8 已发布，重复检测和隐私模式入口更完整。",
+  "message": "Pixory 2.0.9 已发布，重复检测、导入去重和相册保存更稳定。",
   "releaseNotes": [
-    "新增全库重复检测入口，可手动扫描旧素材并补算本地 hash。",
-    "精确重复使用原文件 SHA-256，视觉相似使用保守 dHash 距离分组。",
-    "重复复核只软删除到回收站，不会物理删除原图。",
-    "隐私模式入口改为本地空间卡片右上角锁图标，切换后保留在我的页面。"
+    "优化重复检测页面布局，统一相似图片筛选和批量管理疑似重复逻辑。",
+    "图片保存到相册改为 Android 原生 MediaStore 写入。",
+    "导入图片和视频时，重复跳过会正确汇总成功、跳过和失败数量。",
+    "跳过的重复素材会写入导入批次明细，便于后续追踪。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
