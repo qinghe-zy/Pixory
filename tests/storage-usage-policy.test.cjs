@@ -71,14 +71,19 @@ test('storage screens keep the dashboard compact and expose the required navigat
   assert.match(dashboard, /回收站/);
   assert.match(dashboard, /TemporaryCachePanel/);
   assert.match(dashboard, /PreviewCachePanel/);
+  assert.match(dashboard, /PreviewRebuildConfirmPanel/);
+  assert.match(dashboard, /function PreviewRebuildConfirmPanel[\s\S]{0,1400}styles\.sheetActions/);
+  assert.match(dashboard, /function TemporaryCachePanel[\s\S]{0,1400}styles\.sheetActions/);
 
   assert.match(originals, /素材占用/);
   assert.match(originals, /onOpenIp/);
   assert.doesNotMatch(originals, /未归档素材/);
   assert.match(detail, /fileSizeDesc/);
-  assert.match(detail, /按大小/);
-  assert.match(detail, /按时间/);
-  assert.match(detail, /按分组/);
+  assert.match(detail, /label:\s*'大小'[\s\S]{0,80}direction:\s*'降序'/);
+  assert.match(detail, /label:\s*'时间'[\s\S]{0,80}direction:\s*'降序'/);
+  assert.match(detail, /label:\s*'分组'[\s\S]{0,80}direction:\s*'升序'/);
+  assert.match(detail, /accessibilityState=\{\{\s*selected:\s*sortMode === option\.key\s*\}\}/);
+  assert.match(detail, /checkmark-circle/);
   assert.match(backups, /备份与导出/);
   assert.match(backups, /删除这个备份/);
   assert.match(backups, /filesSection/);

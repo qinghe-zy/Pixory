@@ -68,6 +68,16 @@ interface VideoPlayerScreenProps {
   onBack: () => void;
 }
 
+function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orientation): boolean | null {
+  if (orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT) {
+    return true;
+  }
+  if (orientation === ScreenOrientation.Orientation.PORTRAIT_UP || orientation === ScreenOrientation.Orientation.PORTRAIT_DOWN) {
+    return false;
+  }
+  return null;
+}
+
 export function VideoPlayerScreen({
   videoId,
   externalSource,
@@ -172,6 +182,18 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     let isMounted = true;
+    const syncLandscapeState = (orientation: ScreenOrientation.Orientation) => {
+      const nextIsLandscape = getLandscapeStateFromOrientation(orientation);
+      if (isMounted && nextIsLandscape != null) {
+        setIsLandscape(nextIsLandscape);
+      }
+    };
+
+    void ScreenOrientation.getOrientationAsync().then(syncLandscapeState).catch(() => undefined);
+    const orientationSubscription = ScreenOrientation.addOrientationChangeListener((event) => {
+      syncLandscapeState(event.orientationInfo.orientation);
+    });
+
     void loadVideoPlayerPreferences().then((preferences) => {
       if (!isMounted) {
         return;
@@ -191,6 +213,7 @@ export function VideoPlayerScreen({
     void VolumeManager.showNativeVolumeUI({ enabled: false }).catch(() => undefined);
     return () => {
       isMounted = false;
+      ScreenOrientation.removeOrientationChangeListener(orientationSubscription);
       if (gestureFeedbackTimerRef.current) {
         clearTimeout(gestureFeedbackTimerRef.current);
         gestureFeedbackTimerRef.current = null;

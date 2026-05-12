@@ -21,10 +21,10 @@ interface IpStorageDetailScreenProps {
   onOpenImage: (imageId: number) => void;
 }
 
-const SORT_OPTIONS: Array<{ key: StorageSortMode; label: string }> = [
-  { key: 'fileSizeDesc', label: '按大小' },
-  { key: 'createdAtDesc', label: '按时间' },
-  { key: 'groupNameAsc', label: '按分组' },
+const SORT_OPTIONS: Array<{ key: StorageSortMode; label: string; direction: string }> = [
+  { key: 'fileSizeDesc', label: '大小', direction: '降序' },
+  { key: 'createdAtDesc', label: '时间', direction: '降序' },
+  { key: 'groupNameAsc', label: '分组', direction: '升序' },
 ];
 
 export function IpStorageDetailScreen({ space = 'normal', ipId, refreshToken, onBack, onOpenImage }: IpStorageDetailScreenProps) {
@@ -54,6 +54,7 @@ export function IpStorageDetailScreen({ space = 'normal', ipId, refreshToken, on
       <View style={styles.segmented}>
         {SORT_OPTIONS.map((option) => (
           <Pressable
+            accessibilityState={{ selected: sortMode === option.key }}
             key={option.key}
             onPress={() => setSortMode(option.key)}
             style={({ pressed }) => [
@@ -62,7 +63,11 @@ export function IpStorageDetailScreen({ space = 'normal', ipId, refreshToken, on
               pressed && styles.pressed,
             ]}
           >
-            <Text style={[styles.segmentText, sortMode === option.key && styles.segmentTextActive]}>{option.label}</Text>
+            <View style={styles.segmentLabelRow}>
+              {sortMode === option.key ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={13} /> : null}
+              <Text style={[styles.segmentText, sortMode === option.key && styles.segmentTextActive]}>{option.label}</Text>
+            </View>
+            <Text style={[styles.segmentDirectionText, sortMode === option.key && styles.segmentTextActive]}>{option.direction}</Text>
           </Pressable>
         ))}
       </View>
@@ -173,12 +178,25 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 34,
     justifyContent: 'center',
+    gap: 2,
   },
   segmentButtonActive: {
-    backgroundColor: colors.background.surface,
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.active,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  segmentLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 3,
   },
   segmentText: {
     ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  segmentDirectionText: {
+    ...typography.textStyles.micro,
     color: colors.text.secondary,
     fontWeight: '700',
   },

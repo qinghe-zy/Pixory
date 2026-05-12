@@ -30,7 +30,7 @@ type PersonalSessionState = 'locked' | 'unlocking' | 'unlocked' | 'locking';
 
 interface MeStats {
   ipCount: number;
-  activeImageCount: number;
+  activeAssetCount: number;
   recentViewedCount: number;
   favoriteImageCount: number;
   deletedImageCount: number;
@@ -96,7 +96,7 @@ export function MeScreen({
     async () => {
       const [
         ipCount,
-        activeImageCount,
+        activeAssetCount,
         recentViewedCount,
         favoriteImageCount,
         deletedImageCount,
@@ -105,7 +105,7 @@ export function MeScreen({
         profileAvatarUri,
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.count(db),
-        imageRepository.count(db),
+        imageRepository.count(db, { mediaType: 'all' }),
         imageRepository.countRecentViewed(db),
         imageRepository.countFavorites(db),
         imageRepository.countDeleted(db),
@@ -116,7 +116,7 @@ export function MeScreen({
 
       return {
         ipCount,
-        activeImageCount,
+        activeAssetCount,
         recentViewedCount,
         favoriteImageCount,
         deletedImageCount,
@@ -242,7 +242,7 @@ export function MeScreen({
           </View>
           <View style={styles.libraryStatsRow}>
             <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
-            <StatBlock label="图片总数" value={String(data?.activeImageCount ?? 0)} />
+            <StatBlock label="素材总数" value={String(data?.activeAssetCount ?? 0)} />
             <StatBlock label="收藏数" value={String(data?.favoriteImageCount ?? 0)} />
             <StatBlock label="回收站" value={String(data?.deletedImageCount ?? 0)} />
           </View>

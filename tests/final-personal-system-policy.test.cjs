@@ -52,6 +52,20 @@ test('Settings area owns personal setup unlock reset and mode toggle without a d
   assert.match(appSource, /resetPersonalDataFromSettings[\s\S]{0,700}resetPersonalSystemData\(\)[\s\S]{0,700}lockPersonalSpace\('manual'\)/);
 });
 
+test('personal unlock failures keep the unlock modal open for retry', () => {
+  const appSource = readProjectFile('App.tsx');
+  const unlockBlock = appSource.slice(
+    appSource.indexOf('async function unlockPersonalSpace'),
+    appSource.indexOf('async function setupPersonalSpace')
+  );
+  const catchBlock = unlockBlock.slice(unlockBlock.indexOf('} catch (error)'));
+
+  assert.match(catchBlock, /setPersonalSessionState\('locked'\)/);
+  assert.match(catchBlock, /personalSessionStateRef\.current = 'locked'/);
+  assert.doesNotMatch(catchBlock, /lockPersonalSpace\('error'\)/);
+  assert.doesNotMatch(catchBlock, /setPersonalUnlockVisible\(false\)/);
+});
+
 test('root entry surfaces use the active authenticated space and deletion service accepts space', () => {
   const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
   const meSource = readProjectFile('src/screens/MeScreen.tsx');

@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppDialog } from '../components/AppDialog';
 import { useToast } from '../components/AppToast';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -86,6 +85,11 @@ export function StorageUsageScreen({
     } finally {
       setIsCleaningTemporary(false);
     }
+  }
+
+  function requestPreviewAction(mode: 'missing' | 'all') {
+    setPreviewPanelVisible(false);
+    setPreviewConfirmMode(mode);
   }
 
   async function handlePreviewAction() {
@@ -191,8 +195,8 @@ export function StorageUsageScreen({
       <PreviewCachePanel
         disabled={isPreviewWorking}
         onClose={() => setPreviewPanelVisible(false)}
-        onRebuildAll={() => setPreviewConfirmMode('all')}
-        onRegenerateMissing={() => setPreviewConfirmMode('missing')}
+        onRebuildAll={() => requestPreviewAction('all')}
+        onRegenerateMissing={() => requestPreviewAction('missing')}
         summary={summary}
         visible={previewPanelVisible}
       />
@@ -203,17 +207,14 @@ export function StorageUsageScreen({
         summary={summary}
         visible={temporaryPanelVisible}
       />
-      <AppDialog
-        message="可能需要一些时间。"
+      <PreviewRebuildConfirmPanel
+        disabled={isPreviewWorking}
         onClose={() => {
           if (!isPreviewWorking) {
             setPreviewConfirmMode(null);
           }
         }}
-        onPrimary={handlePreviewAction}
-        primaryDisabled={isPreviewWorking}
-        primaryLabel={isPreviewWorking ? '处理中…' : '重建'}
-        title="重建预览缓存？"
+        onRebuild={handlePreviewAction}
         visible={previewConfirmMode != null}
       />
     </>
@@ -342,6 +343,38 @@ function TemporaryCachePanel({
           <View style={styles.sheetActions}>
             <PanelButton label="取消" onPress={onClose} variant="ghost" />
             <PanelButton disabled={disabled} label={disabled ? '清理中…' : '清理'} onPress={onClean} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function PreviewRebuildConfirmPanel({
+  disabled,
+  onClose,
+  onRebuild,
+  visible,
+}: {
+  disabled: boolean;
+  onClose: () => void;
+  onRebuild: () => void;
+  visible: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.sheetOverlay}>
+        <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.confirmCopy}>
+            <Text style={styles.sheetTitle}>重建预览缓存？</Text>
+            <Text style={styles.confirmText}>可能需要一些时间。</Text>
+          </View>
+          <View style={styles.sheetActions}>
+            <PanelButton disabled={disabled} label="取消" onPress={onClose} variant="ghost" />
+            <PanelButton disabled={disabled} label={disabled ? '处理中…' : '重建'} onPress={onRebuild} />
           </View>
         </View>
       </View>

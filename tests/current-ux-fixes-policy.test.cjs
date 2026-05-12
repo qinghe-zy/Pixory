@@ -28,6 +28,16 @@ test('profile storage rows keep the metric close to its label with matching text
   assert.match(meSource, /storageValue:\s*\{[\s\S]{0,120}\.\.\.typography\.textStyles\.caption/);
 });
 
+test('profile total count uses all local assets instead of images only', () => {
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
+
+  assert.match(meSource, /activeAssetCount/);
+  assert.match(meSource, /imageRepository\.count\(db,\s*\{\s*mediaType:\s*'all'\s*\}\)/);
+  assert.match(meSource, /StatBlock label="素材总数"/);
+  assert.doesNotMatch(meSource, /StatBlock label="图片总数"/);
+  assert.doesNotMatch(meSource, /activeImageCount/);
+});
+
 test('recent viewed page can clear local viewing history without deleting assets', () => {
   const recentSource = readProjectFile('src/screens/RecentViewedScreen.tsx');
   const repositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
@@ -68,6 +78,16 @@ test('video player landscape controls group previous next with play pause and mo
   assert.match(playerSource, /controlActions:\s*\{[\s\S]{0,220}justifyContent:\s*'flex-end'/);
   assert.match(playerSource, /landscapeBottomBar:\s*\{[\s\S]{0,120}paddingTop:\s*spacing\[1\]/);
   assert.match(playerSource, /landscapeTopBar:\s*\{[\s\S]{0,120}backgroundColor:\s*'transparent'/);
+});
+
+test('video player syncs landscape UI with actual screen orientation changes', () => {
+  const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
+
+  assert.match(playerSource, /getLandscapeStateFromOrientation/);
+  assert.match(playerSource, /ScreenOrientation\.getOrientationAsync\(\)\.then\(syncLandscapeState\)/);
+  assert.match(playerSource, /ScreenOrientation\.addOrientationChangeListener/);
+  assert.match(playerSource, /syncLandscapeState\(event\.orientationInfo\.orientation\)/);
+  assert.match(playerSource, /ScreenOrientation\.removeOrientationChangeListener\(orientationSubscription\)/);
 });
 
 test('sort control opens a selectable menu instead of cycling on every tap', () => {

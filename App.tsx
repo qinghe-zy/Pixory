@@ -564,7 +564,9 @@ export default function App() {
         }
       }, 1400);
     } catch (error) {
-      await lockPersonalSpace('error');
+      setPersonalSessionState('locked');
+      personalSessionStateRef.current = 'locked';
+      setPrivacyShieldVisible(false);
       throw error;
     } finally {
       setPersonalAuthBusy(false);
