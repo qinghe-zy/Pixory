@@ -16,7 +16,7 @@ import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
 import { colors, spacing, typography } from './src/design/tokens';
-import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, type IpLibraryFilter, type PixorySpace } from './src/database';
+import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, settingsRepository, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
 import { CreateGroupScreen } from './src/screens/CreateGroupScreen';
@@ -62,6 +62,7 @@ import {
 import { clearExpiredTrashOnIdle } from './src/services/trashService';
 import { ensureAppDirectories } from './src/services/fileStorageService';
 import { checkForAppUpdate, type AppUpdateInfo } from './src/services/updateCheckService';
+import { checkForRemoteAnnouncement, type RemoteAnnouncementInfo } from './src/services/announcementService';
 import {
   changePersonalPassword,
   hasPersonalPassword,
@@ -218,6 +219,10 @@ function resolveShareRoute(shareIntent: NativeShareIntent | null | undefined): A
   return { name: 'share-collect', items: shareIntent.items };
 }
 
+function getUpdateVersionKey(update: AppUpdateInfo): string {
+  return update.versionCode != null ? `code:${update.versionCode}` : `version:${update.version}`;
+}
+
 export default function App() {
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
@@ -234,6 +239,7 @@ export default function App() {
   const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
   const [privacyShieldVisible, setPrivacyShieldVisible] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
+  const [availableAnnouncement, setAvailableAnnouncement] = useState<RemoteAnnouncementInfo | null>(null);
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
@@ -310,12 +316,35 @@ export default function App() {
     }
 
     let isMounted = true;
-    void checkForAppUpdate().then((updateInfo) => {
+    void (async () => {
       const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
-      if (isMounted && updateInfo && !isExternalEntryRoute(activeRoute)) {
-        setAvailableUpdate(updateInfo);
+      if (!isMounted || isExternalEntryRoute(activeRoute)) {
+        return;
       }
-    });
+
+      const updateInfo = await checkForAppUpdate();
+      if (!isMounted) {
+        return;
+      }
+      if (updateInfo) {
+        const skippedUpdateVersionKey = await runWithDatabaseSpace('normal', (db) => settingsRepository.getSkippedUpdateVersionKey(db)).catch(() => null);
+        if (skippedUpdateVersionKey !== getUpdateVersionKey(updateInfo)) {
+          setAvailableAnnouncement(null);
+          setAvailableUpdate(updateInfo);
+          return;
+        }
+      }
+
+      const announcement = await checkForRemoteAnnouncement();
+      if (!isMounted || !announcement) {
+        return;
+      }
+      const activeRouteAfterAnnouncement = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
+      const dismissedAnnouncementId = await runWithDatabaseSpace('normal', (db) => settingsRepository.getDismissedAnnouncementId(db)).catch(() => null);
+      if (isMounted && !isExternalEntryRoute(activeRouteAfterAnnouncement) && announcement.id !== dismissedAnnouncementId) {
+        setAvailableAnnouncement(announcement);
+      }
+    })().catch(() => undefined);
 
     return () => {
       isMounted = false;
@@ -721,6 +750,34 @@ export default function App() {
     void Linking.openURL(downloadUrl).catch((error) => {
       console.warn('Pixory update link open failed.', {
         message: error instanceof Error ? error.message : 'unknown link error',
+      });
+    });
+  }
+
+  function skipAvailableUpdate() {
+    const update = availableUpdate;
+    setAvailableUpdate(null);
+    if (!update) {
+      return;
+    }
+
+    void runWithDatabaseSpace('normal', (db) => settingsRepository.setSkippedUpdateVersionKey(db, getUpdateVersionKey(update))).catch((error) => {
+      console.warn('Pixory update skip save failed.', {
+        message: error instanceof Error ? error.message : 'unknown update skip error',
+      });
+    });
+  }
+
+  function dismissAvailableAnnouncement() {
+    const announcement = availableAnnouncement;
+    setAvailableAnnouncement(null);
+    if (!announcement) {
+      return;
+    }
+
+    void runWithDatabaseSpace('normal', (db) => settingsRepository.setDismissedAnnouncementId(db, announcement.id)).catch((error) => {
+      console.warn('Pixory announcement dismiss save failed.', {
+        message: error instanceof Error ? error.message : 'unknown announcement dismiss error',
       });
     });
   }
@@ -1357,6 +1414,8 @@ export default function App() {
           onPrimary={openAvailableUpdate}
           primaryLabel="去更新"
           secondaryLabel="稍后"
+          tertiaryLabel="跳过此版本"
+          onTertiary={skipAvailableUpdate}
           title={availableUpdate?.title ?? '发现 Pixory 新版本'}
           visible={Boolean(availableUpdate)}
         >
@@ -1371,6 +1430,25 @@ export default function App() {
             </View>
           ) : availableUpdate ? (
             <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
+          ) : null}
+        </AppDialog>
+        <AppDialog
+          message={availableAnnouncement?.message}
+          onClose={dismissAvailableAnnouncement}
+          onPrimary={dismissAvailableAnnouncement}
+          primaryLabel={availableAnnouncement?.actionLabel ?? '知道了'}
+          secondaryLabel="关闭"
+          title={availableAnnouncement?.title ?? '公告'}
+          visible={Boolean(availableAnnouncement) && !availableUpdate}
+        >
+          {availableAnnouncement?.detailLines.length ? (
+            <View style={styles.updateNotes}>
+              {availableAnnouncement.detailLines.map((line) => (
+                <Text key={line} style={styles.updateNote}>
+                  {line}
+                </Text>
+              ))}
+            </View>
           ) : null}
         </AppDialog>
         {personalSessionState === 'unlocked' ? <PersonalModeBanner /> : null}

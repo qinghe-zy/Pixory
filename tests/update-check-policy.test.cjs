@@ -18,6 +18,19 @@ test('update check is configured as a passive version file lookup', () => {
   assert.equal(updateConfig.timeoutMs, 5000);
 });
 
+test('announcement check is configured as a passive remote notice lookup', () => {
+  const appConfig = JSON.parse(readProjectFile('app.json'));
+  const announcementConfig = appConfig.expo.extra.announcement;
+  const announcementJson = JSON.parse(readProjectFile('docs/announcement.json'));
+
+  assert.equal(announcementConfig.enabled, true);
+  assert.equal(announcementConfig.url, 'https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/announcement.json');
+  assert.equal(announcementConfig.timeoutMs, 5000);
+  assert.equal(announcementJson.enabled, true);
+  assert.equal(typeof announcementJson.id, 'string');
+  assert.ok(announcementJson.id.length > 0);
+});
+
 test('update check service stays read-only and offline tolerant', () => {
   const serviceSource = readProjectFile('src/services/updateCheckService.ts');
 
@@ -30,14 +43,34 @@ test('update check service stays read-only and offline tolerant', () => {
   assert.doesNotMatch(serviceSource, /POST|PUT|PATCH|DELETE|SecureStore|SQLite|FileSystem/);
 });
 
-test('App shows update prompt without adding push notification behavior', () => {
+test('announcement check service stays read-only and offline tolerant', () => {
+  const serviceSource = readProjectFile('src/services/announcementService.ts');
+
+  assert.match(serviceSource, /Constants\.expoConfig\?\.extra/);
+  assert.match(serviceSource, /fetchWithTimeout/);
+  assert.match(serviceSource, /cache:\s*'no-store'/);
+  assert.match(serviceSource, /catch\s*\{\s*return null;\s*\}/);
+  assert.match(serviceSource, /normalizeRemoteAnnouncement/);
+  assert.doesNotMatch(serviceSource, /POST|PUT|PATCH|DELETE|SecureStore|SQLite|FileSystem/);
+});
+
+test('App shows update and announcement prompts without adding push notification behavior', () => {
   const appSource = readProjectFile('App.tsx');
   const packageJson = JSON.parse(readProjectFile('package.json'));
+  const settingsRepositorySource = readProjectFile('src/database/repositories/settingsRepository.ts');
 
   assert.equal(packageJson.dependencies['expo-constants'], '~18.0.13');
   assert.match(appSource, /checkForAppUpdate\(\)/);
   assert.match(appSource, /setAvailableUpdate\(updateInfo\)/);
   assert.match(appSource, /<AppDialog[\s\S]{0,500}primaryLabel="去更新"/);
+  assert.match(appSource, /tertiaryLabel="跳过此版本"/);
+  assert.match(appSource, /setSkippedUpdateVersionKey/);
+  assert.match(appSource, /checkForRemoteAnnouncement\(\)/);
+  assert.match(appSource, /setAvailableAnnouncement\(announcement\)/);
+  assert.match(appSource, /setDismissedAnnouncementId/);
+  assert.match(appSource, /visible=\{Boolean\(availableAnnouncement\) && !availableUpdate\}/);
   assert.match(appSource, /Linking\.openURL\(downloadUrl\)/);
+  assert.match(settingsRepositorySource, /SKIPPED_UPDATE_VERSION_KEY/);
+  assert.match(settingsRepositorySource, /DISMISSED_ANNOUNCEMENT_ID_KEY/);
   assert.doesNotMatch(appSource, /Notifications|expo-notifications|getExpoPushToken|FCM|pushToken/);
 });

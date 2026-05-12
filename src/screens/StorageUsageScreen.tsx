@@ -290,7 +290,7 @@ function PreviewCachePanel({
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.sheetOverlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[8] }]}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>预览缓存</Text>
           <Text style={styles.sheetValue}>{formatFileSize(summary?.previewBytes ?? 0)}</Text>
@@ -298,8 +298,10 @@ function PreviewCachePanel({
             <MetricLine label="图片缩略图" value={formatFileSize(summary?.previewImageBytes ?? 0)} />
             <MetricLine label="视频封面" value={formatFileSize(summary?.previewVideoBytes ?? 0)} />
           </View>
-          <PanelButton disabled={disabled} label="重新生成缺失预览" onPress={onRegenerateMissing} />
-          <PanelButton disabled={disabled} label="清空并重建预览" onPress={onRebuildAll} />
+          <View style={styles.previewActions}>
+            <PanelButton disabled={disabled} label="重新生成缺失预览" onPress={onRegenerateMissing} />
+            <PanelButton disabled={disabled} label="清空并重建预览" onPress={onRebuildAll} />
+          </View>
         </View>
       </View>
     </Modal>
@@ -324,7 +326,7 @@ function TemporaryCachePanel({
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.sheetOverlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[8] }]}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>临时缓存</Text>
           <Text style={styles.sheetValue}>{formatFileSize(summary?.temporaryBytes ?? 0)} 可释放</Text>
@@ -540,6 +542,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     marginTop: spacing[2],
+    marginBottom: spacing[2],
+  },
+  previewActions: {
+    gap: spacing[2],
+    marginTop: spacing[2],
+    marginBottom: spacing[2],
   },
   panelButton: {
     alignItems: 'center',

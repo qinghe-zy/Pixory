@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.0.6",
+    "version": "2.0.7",
     "orientation": "portrait",
     "icon": "./assets/pixory-icon.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 206,
+      "versionCode": 207,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/pixory-icon.png",
@@ -68,6 +68,11 @@
       "updateCheck": {
         "enabled": true,
         "url": "https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/update-version.json",
+        "timeoutMs": 5000
+      },
+      "announcement": {
+        "enabled": true,
+        "url": "https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/announcement.json",
         "timeoutMs": 5000
       },
       "eas": {

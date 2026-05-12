@@ -6,6 +6,8 @@ const PROFILE_AVATAR_KEY = 'profileAvatarUri';
 const RECENT_IMPORT_GROUP_IDS_KEY = 'recentImportGroupIds';
 const LAST_BACKUP_AT_KEY = 'lastBackupAt';
 const BACKUP_EXPORT_DIRECTORY_URI_KEY = 'backupExportDirectoryUri';
+const SKIPPED_UPDATE_VERSION_KEY = 'skippedUpdateVersionKey';
+const DISMISSED_ANNOUNCEMENT_ID_KEY = 'dismissedAnnouncementId';
 export const ASSET_LIST_VIEW_MODE_KEY = 'assetListViewMode';
 export const ASSET_LIST_SORT_ORDER_KEY = 'assetListSortOrder';
 export const IMAGE_IMPORT_SOURCE_MODE_KEY = 'imageImportSourceMode';
@@ -97,6 +99,22 @@ export const settingsRepository = {
 
   async setBackupExportDirectoryUri(db: SQLiteDatabase, uri: string | null): Promise<void> {
     await this.setValue(db, BACKUP_EXPORT_DIRECTORY_URI_KEY, uri);
+  },
+
+  async getSkippedUpdateVersionKey(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, SKIPPED_UPDATE_VERSION_KEY);
+  },
+
+  async setSkippedUpdateVersionKey(db: SQLiteDatabase, value: string | null): Promise<void> {
+    await this.setValue(db, SKIPPED_UPDATE_VERSION_KEY, value);
+  },
+
+  async getDismissedAnnouncementId(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, DISMISSED_ANNOUNCEMENT_ID_KEY);
+  },
+
+  async setDismissedAnnouncementId(db: SQLiteDatabase, value: string | null): Promise<void> {
+    await this.setValue(db, DISMISSED_ANNOUNCEMENT_ID_KEY, value);
   },
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {

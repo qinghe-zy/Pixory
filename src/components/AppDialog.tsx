@@ -12,6 +12,8 @@ interface AppDialogProps {
   onPrimary: () => void;
   onClose: () => void;
   secondaryLabel?: string;
+  tertiaryLabel?: string;
+  onTertiary?: () => void;
   danger?: boolean;
   children?: ReactNode;
   primaryDisabled?: boolean;
@@ -25,6 +27,8 @@ export function AppDialog({
   onPrimary,
   onClose,
   secondaryLabel = '取消',
+  tertiaryLabel,
+  onTertiary,
   danger = false,
   children,
   primaryDisabled = false,
@@ -41,6 +45,7 @@ export function AppDialog({
           {children ? <View style={styles.body}>{children}</View> : null}
           <View style={styles.actions}>
             <PrimaryButton disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} />
+            {tertiaryLabel && onTertiary ? <PrimaryButton label={tertiaryLabel} onPress={onTertiary} variant="outline" /> : null}
             <PrimaryButton label={secondaryLabel} onPress={onClose} variant="ghost" />
           </View>
         </View>
