@@ -39,15 +39,16 @@ test('App clears memory cache only after a delayed background timer and runs dai
   assert.doesNotMatch(appSource, /AppState\.addEventListener\('change'[\s\S]{0,500}clearImageDiskCache\(\)/);
 });
 
-test('Me screen exposes manual cache cleanup with clear wording and disk cache only behind user action', () => {
+test('manual cache cleanup moved behind the storage usage dashboard', () => {
   const meSource = readProjectFile('src/screens/MeScreen.tsx');
+  const storageSource = readProjectFile('src/screens/StorageUsageScreen.tsx');
 
-  assert.match(meSource, /清理缓存/);
-  assert.match(meSource, /资源包选择缓存/);
-  assert.match(meSource, /不会删除已导入素材、缩略图、备份包、标签、分组、备注和隐私数据/);
-  assert.match(meSource, /cleanupAppCache\(\{[\s\S]{0,250}includeDiskImageCache:\s*true/);
-  assert.match(meSource, /includeExpoCacheDirectory:\s*true/);
-  assert.match(meSource, /释放/);
-  assert.match(meSource, /AppDialog/);
+  assert.match(meSource, /存储占用/);
+  assert.doesNotMatch(meSource, /清理缓存|cleanupAppCache|cacheCleanupConfirmVisible/);
+  assert.match(storageSource, /临时缓存/);
+  assert.match(storageSource, /资源包选择缓存/);
+  assert.match(storageSource, /cleanupAppCache\(\{[\s\S]{0,250}includeDiskImageCache:\s*true/);
+  assert.match(storageSource, /includeExpoCacheDirectory:\s*true/);
+  assert.match(storageSource, /已释放/);
   assert.doesNotMatch(meSource, /deleteLocalFile|deleteDatabase|resetPersonalSystemData/);
 });

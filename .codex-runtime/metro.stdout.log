@@ -1,0 +1,19 @@
+Starting project at D:\Project\Pixory\pixory
+Metro is running in CI mode, reloads are disabled. Remove CI=true to enable watch mode.
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ░░░░░░░░░░░░░░░░  1.0% (1/1)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.0% (  6/105)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.0% ( 46/260)
+Android .\index.ts ▓▓░░░░░░░░░░░░░░ 17.0% (155/398)
+Android .\index.ts ▓▓▓▓░░░░░░░░░░░░ 26.1% (244/492)
+Android .\index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 45.6% (414/613)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 67.1% (584/727)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 82.9% (754/828)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 88.1% (811/864)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.7% (923/942)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (1000/1001)
+Android Bundled 54306ms index.ts (1001 modules)

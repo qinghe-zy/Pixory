@@ -38,8 +38,12 @@ test('every ID-bearing AppRoute carries PixorySpace as part of route identity', 
     ['recent-viewed', 'space: PixorySpace'],
     ['quick-organize', 'ipId\\?: number; importBatchId\\?: number \\| null; space: PixorySpace'],
     ['global-search', 'query\\?: string; space: PixorySpace'],
-    ['trash', 'space: PixorySpace'],
+    ['trash', 'space: PixorySpace; storageMode\\?: boolean'],
     ['backup', 'space: PixorySpace'],
+    ['storage-usage', 'space: PixorySpace'],
+    ['original-storage', 'space: PixorySpace'],
+    ['ip-storage-detail', 'ipId: number; space: PixorySpace'],
+    ['backup-export-manager', 'space: PixorySpace'],
   ];
 
   for (const [routeName, routeBody] of requiredRoutes) {

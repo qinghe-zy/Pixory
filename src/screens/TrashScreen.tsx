@@ -12,7 +12,7 @@ import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/trashService';
-import { formatDateTime, formatDuration } from '../utils/formatters';
+import { formatDateTime, formatDuration, formatFileSize } from '../utils/formatters';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useToast } from '../components/AppToast';
 
@@ -21,9 +21,10 @@ interface TrashScreenProps {
   refreshToken: number;
   onBack: () => void;
   onChanged: () => void;
+  storageMode?: boolean;
 }
 
-export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged }: TrashScreenProps) {
+export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged, storageMode = false }: TrashScreenProps) {
   const { showToast } = useToast();
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
@@ -47,11 +48,17 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
     }
   );
   const images = data?.images ?? [];
+  const storageSortMode = storageMode ? 'fileSizeDesc' : 'deletedAtDesc';
+  const visibleImages = useMemo(
+    () => storageSortMode === 'fileSizeDesc' ? [...images].sort((left, right) => right.fileSize - left.fileSize || left.id - right.id) : images,
+    [images, storageSortMode]
+  );
   const ips = data?.ips ?? [];
-  const multiSelect = useImageMultiSelect(useMemo(() => images.map((image) => image.id), [images]));
+  const trashBytes = images.reduce((sum, image) => sum + image.fileSize, 0);
+  const multiSelect = useImageMultiSelect(useMemo(() => visibleImages.map((image) => image.id), [visibleImages]));
   const selectedImages = useMemo(
-    () => images.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
-    [images, multiSelect.selectedImageIds]
+    () => visibleImages.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
+    [visibleImages, multiSelect.selectedImageIds]
   );
 
   function handleRestore(imageId: number) {
@@ -160,6 +167,11 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
       </Pressable>
+      {storageMode ? (
+        <View style={styles.storageNotice}>
+          <Text style={styles.storageNoticeTitle}>{formatFileSize(trashBytes)} · {images.length} 项</Text>
+        </View>
+      ) : null}
 
       <PageStateBlock
         emptyActionLabel={undefined}
@@ -174,7 +186,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
         onRetry={reload}
       >
         <View style={styles.list}>
-          {images.map((image) => (
+          {visibleImages.map((image) => (
             <Pressable
               key={image.id}
               onLongPress={() => multiSelect.enterSelection(image.id)}
@@ -204,7 +216,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged 
                   {image.originalFilename}
                 </Text>
                 <Text style={styles.itemMeta}>
-                  {image.mediaType === 'video' ? '视频' : '图片'} · {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
+                  {formatFileSize(image.fileSize)} · {image.deletedAt ? formatDateTime(image.deletedAt) : '未知时间'}
                 </Text>
                 <Pressable onPress={() => handleRestore(image.id)} style={({ pressed }) => [styles.restoreChip, pressed && styles.pressed]}>
                   <Text style={styles.restoreText}>恢复</Text>
@@ -281,6 +293,22 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing[2],
+  },
+  storageNotice: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  storageNoticeTitle: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    fontWeight: '700',
   },
   filterButton: {
     alignItems: 'center',

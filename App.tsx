@@ -9,6 +9,7 @@ import { AppDialog } from './src/components/AppDialog';
 import { AppScreen } from './src/components/AppScreen';
 import { AppToastProvider } from './src/components/AppToast';
 import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
+import { BackupExportManagerScreen } from './src/screens/BackupExportManagerScreen';
 import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
@@ -39,8 +40,10 @@ import { ImportBatchReviewScreen, type BatchInitialMode } from './src/screens/Im
 import { ImportImagesScreen } from './src/screens/ImportImagesScreen';
 import { IpDetailScreen } from './src/screens/IpDetailScreen';
 import { IpCoverPickerScreen } from './src/screens/IpCoverPickerScreen';
+import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
+import { OriginalStorageScreen } from './src/screens/OriginalStorageScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
 import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
@@ -78,6 +81,7 @@ import {
   type NativeShareItem,
 } from './src/native/pixoryMediaModule';
 import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
+import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
@@ -124,8 +128,12 @@ type AppRoute =
   | { name: 'global-search'; query?: string; space: PixorySpace }
   | { name: 'global-groups'; space: PixorySpace }
   | { name: 'tags-overview'; space: PixorySpace }
-  | { name: 'trash'; space: PixorySpace }
+  | { name: 'trash'; space: PixorySpace; storageMode?: boolean }
   | { name: 'backup'; space: PixorySpace }
+  | { name: 'storage-usage'; space: PixorySpace }
+  | { name: 'original-storage'; space: PixorySpace }
+  | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
+  | { name: 'backup-export-manager'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -1210,7 +1218,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} />;
+    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} />;
   } else if (currentRoute.name === 'backup') {
     content = (
       <BackupScreen
@@ -1218,6 +1226,44 @@ export default function App() {
         refreshToken={libraryRefreshToken}
         space={currentRoute.space}
         taskToken={currentRoute.space === 'personal' ? personalSession?.taskToken ?? null : null}
+      />
+    );
+  } else if (currentRoute.name === 'storage-usage') {
+    content = (
+      <StorageUsageScreen
+        onBack={popRoute}
+        onOpenBackups={() => pushRoute({ name: 'backup-export-manager', space: currentRoute.space })}
+        onOpenOriginals={() => pushRoute({ name: 'original-storage', space: currentRoute.space })}
+        onOpenTrash={() => pushRoute({ name: 'trash', space: currentRoute.space, storageMode: true })}
+        refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'original-storage') {
+    content = (
+      <OriginalStorageScreen
+        onBack={popRoute}
+        onOpenIp={(ipId) => pushRoute({ name: 'ip-storage-detail', ipId, space: currentRoute.space })}
+        refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ip-storage-detail') {
+    content = (
+      <IpStorageDetailScreen
+        ipId={currentRoute.ipId}
+        onBack={popRoute}
+        onOpenImage={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
+        refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'backup-export-manager') {
+    content = (
+      <BackupExportManagerScreen
+        onBack={popRoute}
+        refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
       />
     );
   } else if (currentRoute.name === 'placeholder') {
@@ -1261,6 +1307,7 @@ export default function App() {
         footer={rootFooter}
         onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
         onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
+        onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
         onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
         onLockPersonalSpace={() => {
           void lockPersonalSpace('manual');

@@ -3,14 +3,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppDialog } from '../components/AppDialog';
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
-import { colors, layout, radius, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
-import { cleanupAppCache } from '../services/cacheCleanupService';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
 
@@ -23,6 +21,7 @@ interface MeScreenProps {
   onOpenRecentViewed: () => void;
   onOpenTrash: () => void;
   onOpenBackup: () => void;
+  onOpenStorageUsage: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -67,9 +66,9 @@ const ENTRY_ITEMS = [
     icon: 'lock-closed-outline',
   },
   {
-    key: 'clear-cache',
-    label: '清理缓存',
-    icon: 'sparkles-outline',
+    key: 'storage-usage',
+    label: '存储占用',
+    icon: 'pie-chart-outline',
   },
   {
     key: 'settings',
@@ -87,13 +86,12 @@ export function MeScreen({
   onOpenRecentViewed,
   onOpenTrash,
   onOpenBackup,
+  onOpenStorageUsage,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
-  const [cacheCleanupConfirmVisible, setCacheCleanupConfirmVisible] = useState(false);
-  const [isCleaningCache, setIsCleaningCache] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
       const [
@@ -167,26 +165,8 @@ export function MeScreen({
       return;
     }
 
-    if (key === 'clear-cache') {
-      setCacheCleanupConfirmVisible(true);
-    }
-  }
-
-  async function handleConfirmCacheCleanup() {
-    setIsCleaningCache(true);
-    try {
-      const result = await cleanupAppCache({
-        includeDiskImageCache: true,
-        includeExpoCacheDirectory: true,
-        tempMaxAgeMs: 0,
-      });
-      setCacheCleanupConfirmVisible(false);
-      showToast(`已清理缓存，释放 ${formatFileSize(result.deletedBytes)}，不影响已导入素材`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
-      showToast(`清理缓存失败：${message}`);
-    } finally {
-      setIsCleaningCache(false);
+    if (key === 'storage-usage') {
+      onOpenStorageUsage();
     }
   }
 
@@ -281,11 +261,15 @@ export function MeScreen({
           const entryContent = (
             <>
               <View style={[styles.entryIconWrap, item.key === 'trash' && styles.trashIconWrap]}>
-                <Ionicons
-                  color={item.key === 'trash' ? colors.semantic.danger : colors.primary.active}
-                  name={item.icon}
-                  size={21}
-                />
+                {item.key === 'storage-usage' ? (
+                  <StorageUsageGlyph />
+                ) : (
+                  <Ionicons
+                    color={item.key === 'trash' ? colors.semantic.danger : colors.primary.active}
+                    name={item.icon}
+                    size={21}
+                  />
+                )}
               </View>
               <View style={styles.entryCopy}>
                 <Text style={styles.entryTitle}>{entryTitle}</Text>
@@ -300,8 +284,8 @@ export function MeScreen({
                       ? data?.recentViewedCount ?? 0
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
-                        : item.key === 'clear-cache'
-                          ? '清理'
+                        : item.key === 'storage-usage'
+                          ? '查看'
                           : data?.ipCount ?? 0}
                 </Text>
               )}
@@ -333,21 +317,6 @@ export function MeScreen({
           重新加载
         </Text>
       ) : null}
-      <AppDialog
-        message="将清理图片显示缓存、导入临时文件和资源包选择缓存；不会删除已导入素材、缩略图、备份包、标签、分组、备注和隐私数据。"
-        onClose={() => {
-          if (!isCleaningCache) {
-            setCacheCleanupConfirmVisible(false);
-          }
-        }}
-        onPrimary={() => {
-          void handleConfirmCacheCleanup();
-        }}
-        primaryDisabled={isCleaningCache}
-        primaryLabel={isCleaningCache ? '清理中…' : '确认清理'}
-        title="清理缓存"
-        visible={cacheCleanupConfirmVisible}
-      />
     </ScreenScaffold>
   );
 }
@@ -359,6 +328,23 @@ function StatBlock({ label, value }: { label: string; value: string }) {
         {value}
       </Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function StorageUsageGlyph() {
+  return (
+    <View style={styles.storageGlyph}>
+      <View style={styles.storageGlyphTop}>
+        <View style={[styles.storageGlyphSlice, styles.storageGlyphSlicePrimary]} />
+        <View style={[styles.storageGlyphSlice, styles.storageGlyphSliceGold]} />
+        <View style={[styles.storageGlyphSlice, styles.storageGlyphSliceSoft]} />
+      </View>
+      <View style={styles.storageGlyphFace}>
+        <View style={[styles.storageGlyphBar, styles.storageGlyphBarTall]} />
+        <View style={[styles.storageGlyphBar, styles.storageGlyphBarMid]} />
+        <View style={[styles.storageGlyphBar, styles.storageGlyphBarShort]} />
+      </View>
     </View>
   );
 }
@@ -478,6 +464,7 @@ const styles = StyleSheet.create({
     padding: spacing[4],
   },
   entryIconWrap: {
+    ...shadows.xs,
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
@@ -487,6 +474,81 @@ const styles = StyleSheet.create({
   },
   trashIconWrap: {
     backgroundColor: colors.semantic.dangerBackground,
+  },
+  storageGlyph: {
+    alignItems: 'center',
+    height: 27,
+    justifyContent: 'center',
+    transform: [{ rotateZ: '-6deg' }],
+    width: 28,
+  },
+  storageGlyphTop: {
+    alignItems: 'flex-end',
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 2,
+    height: 13,
+    justifyContent: 'center',
+    paddingBottom: 2,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    top: 1,
+    transform: [{ skewX: '-12deg' }],
+    width: 23,
+  },
+  storageGlyphFace: {
+    alignItems: 'flex-end',
+    backgroundColor: colors.primary.default,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 7,
+    borderColor: colors.primary.dark,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 2,
+    height: 17,
+    justifyContent: 'center',
+    paddingBottom: 3,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    top: 8,
+    width: 25,
+  },
+  storageGlyphSlice: {
+    borderRadius: 2,
+    width: 4,
+  },
+  storageGlyphSlicePrimary: {
+    backgroundColor: colors.primary.default,
+    height: 8,
+  },
+  storageGlyphSliceGold: {
+    backgroundColor: colors.semantic.warning,
+    height: 6,
+  },
+  storageGlyphSliceSoft: {
+    backgroundColor: colors.support.sky300,
+    height: 9,
+  },
+  storageGlyphBar: {
+    borderRadius: 2,
+    width: 4,
+  },
+  storageGlyphBarTall: {
+    backgroundColor: colors.background.surface,
+    height: 10,
+  },
+  storageGlyphBarMid: {
+    backgroundColor: colors.semantic.warningBackground,
+    height: 7,
+  },
+  storageGlyphBarShort: {
+    backgroundColor: colors.support.sky100,
+    height: 5,
   },
   entryCopy: {
     flex: 1,

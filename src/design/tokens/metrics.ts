@@ -5,7 +5,7 @@ export const metrics = {
   chipPaddingHorizontal: 12,
   cardPadding: 18,
   formFieldGap: 14,
-  sectionGap: 22,
+  sectionGap: 28,
   bottomActionHeight: 52,
   bottomActionInset: 12,
   bottomTabHeight: 86,
