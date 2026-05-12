@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.0.5",
+    "version": "2.0.6",
     "orientation": "portrait",
     "icon": "./assets/pixory-icon.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 205,
+      "versionCode": 206,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/pixory-icon.png",

@@ -1,9 +1,14 @@
 {
   "enabled": true,
-  "version": "2.0.5",
-  "versionCode": 205,
+  "version": "2.0.6",
+  "versionCode": 206,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 已发布新版本，建议更新后继续使用。",
-  "releaseNotes": [],
+  "message": "Pixory 2.0.6 已发布，新增存储占用仪表盘与更安全的缓存清理。",
+  "releaseNotes": [
+    "新增“存储占用”入口，集中查看原始素材、预览缓存、临时缓存、备份导出和回收站占用。",
+    "临时缓存清理会覆盖导入临时文件、资源包选择缓存和图片显示缓存，并显示释放空间。",
+    "备份与导出增加文件占用、详情、分享、删除和批量删除管理。",
+    "原始素材支持按 IP 查看占用，并可按大小、时间和分组浏览明细。"
+  ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
