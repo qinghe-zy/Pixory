@@ -192,6 +192,45 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   }
 
   @ReactMethod
+  fun saveImageToMediaStore(sourceUri: String, displayName: String, albumName: String?, promise: Promise) {
+    runOnIo(promise, "PIXORY_SAVE_IMAGE_FAILED") {
+      val resolver = reactContext.contentResolver
+      val source = Uri.parse(sourceUri)
+      val safeName = displayName.ifBlank { resolveDisplayName(source) ?: "pixory-image.jpg" }
+      val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, safeName)
+        put(MediaStore.Images.Media.MIME_TYPE, resolveMimeType(source) ?: "image/jpeg")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/" + sanitizeAlbumName(albumName))
+          put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+      }
+      val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+      } else {
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+      }
+      val destinationUri = resolver.insert(collection, values) ?: throw IllegalStateException("Unable to create system image item.")
+      try {
+        openInput(source).use { input ->
+          resolver.openOutputStream(destinationUri)?.use { output ->
+            copyStream(input, output, null, resolveSize(source))
+          } ?: throw IllegalStateException("Unable to open system image output.")
+        }
+      } catch (error: Exception) {
+        resolver.delete(destinationUri, null, null)
+        throw error
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        resolver.update(destinationUri, values, null, null)
+      }
+      promise.resolve(destinationUri.toString())
+    }
+  }
+
+  @ReactMethod
   fun computeFileSha256(sourceUri: String, promise: Promise) {
     runOnIo(promise, "PIXORY_HASH_FAILED") {
       val digest = MessageDigest.getInstance("SHA-256")
@@ -617,6 +656,11 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   private fun resolveMimeType(uri: Uri): String? {
     return reactContext.contentResolver.getType(uri)
       ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(uri.lastPathSegment?.substringAfterLast('.', "")?.lowercase(Locale.ROOT))
+  }
+
+  private fun sanitizeAlbumName(albumName: String?): String {
+    val prepared = albumName?.trim()?.takeIf { it.isNotEmpty() } ?: "Pixory"
+    return prepared.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(48).ifBlank { "Pixory" }
   }
 
   private fun isSupportedImageName(name: String): Boolean {

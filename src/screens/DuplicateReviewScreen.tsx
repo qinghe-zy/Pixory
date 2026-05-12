@@ -220,15 +220,15 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   groupList: {
-    gap: spacing[3],
+    gap: spacing[4],
   },
   groupCard: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
-    padding: spacing[3],
+    gap: spacing[3],
+    padding: spacing[4],
   },
   groupHeader: {
     gap: spacing[1],
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   imageList: {
-    gap: spacing[2],
+    gap: spacing[3],
   },
   imageRow: {
     alignItems: 'center',
@@ -256,7 +256,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     minHeight: 52,
-    padding: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
   },
   imageRowSelected: {
     backgroundColor: colors.primary.weak,

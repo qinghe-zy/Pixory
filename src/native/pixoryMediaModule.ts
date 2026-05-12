@@ -69,6 +69,7 @@ interface PixoryMediaNativeModule {
   ): Promise<NativeCopyResult>;
   getVideoMetadata(sourceUri: string): Promise<NativeVideoMetadata>;
   createVideoThumbnail(sourceUri: string, destinationUri: string): Promise<NativeCopyResult>;
+  saveImageToMediaStore(sourceUri: string, displayName: string, albumName?: string | null): Promise<string>;
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
   computeFileSha256(sourceUri: string): Promise<string>;
   computeImageDHash(sourceUri: string): Promise<string>;
@@ -139,6 +140,14 @@ export function getNativeVideoMetadata(sourceUri: string): Promise<NativeVideoMe
 
 export function createNativeVideoThumbnail(sourceUri: string, destinationUri: string): Promise<NativeCopyResult> {
   return requireNativeModule().createVideoThumbnail(sourceUri, destinationUri);
+}
+
+export function saveNativeImageToMediaStore(
+  sourceUri: string,
+  displayName: string,
+  albumName?: string | null
+): Promise<string> {
+  return requireNativeModule().saveImageToMediaStore(sourceUri, displayName, albumName ?? null);
 }
 
 export function saveNativeVideoToMediaStore(sourceUri: string, displayName: string): Promise<string> {

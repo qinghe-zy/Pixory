@@ -6,6 +6,7 @@ import {
   assetRepository,
   backgroundTaskRepository,
   groupRepository,
+  imageRepository,
   importBatchRepository,
   ipRepository,
   runWithDatabaseSpace,
@@ -36,6 +37,7 @@ import {
   computeFileSha256,
 } from '../native/pixoryMediaModule';
 import type { VideoImportNamingMode } from '../database/repositories/settingsRepository';
+import type { DuplicateImportDecision } from './imageImportService';
 
 export interface PickedVideoAsset {
   uri: string;
@@ -53,6 +55,7 @@ export interface VideoImportError {
   sourceUri: string;
   originalFilename: string;
   message: string;
+  skipped?: boolean;
 }
 
 export interface ImportedVideoResult {
@@ -65,8 +68,10 @@ export interface ImportVideosToIpResult {
   importBatch: ImportBatchRecord | null;
   importedVideos: ImportedVideoResult[];
   successCount: number;
+  skippedCount: number;
   failedCount: number;
   errors: VideoImportError[];
+  skippedItems: VideoImportError[];
 }
 
 interface ImportSingleVideoParams {
@@ -81,6 +86,20 @@ interface ImportSingleVideoParams {
   isFavorite?: boolean;
   pickedAsset: PickedVideoAsset;
   videoImportNamingMode: VideoImportNamingMode;
+  duplicateDecision?: DuplicateImportDecision;
+}
+
+class DuplicateVideoImportSkippedError extends Error {
+  skipped = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicateVideoImportSkippedError';
+  }
+}
+
+function isDuplicateVideoImportSkippedError(error: unknown): error is DuplicateVideoImportSkippedError {
+  return error instanceof DuplicateVideoImportSkippedError || Boolean((error as { skipped?: boolean } | null)?.skipped);
 }
 
 function getFileNameFromUri(fileUri: string): string {
@@ -144,6 +163,37 @@ function buildFallbackFilename(asset: PickedVideoAsset, videoImportNamingMode: V
   return asset.fileName?.trim() || getFileNameFromUri(asset.uri) || 'video.mp4';
 }
 
+function formatVideoImportError(
+  pickedAsset: PickedVideoAsset,
+  error: unknown,
+  videoImportNamingMode: VideoImportNamingMode
+): VideoImportError {
+  return {
+    sourceUri: pickedAsset.uri,
+    originalFilename: buildFallbackFilename(pickedAsset, videoImportNamingMode),
+    message: error instanceof Error ? error.message : '未知视频导入错误。',
+    skipped: isDuplicateVideoImportSkippedError(error),
+  };
+}
+
+async function shouldSkipVideoDuplicateImport(
+  db: SQLiteDatabase,
+  duplicateDecision: DuplicateImportDecision | undefined,
+  contentHash: string | null
+): Promise<string | null> {
+  if (duplicateDecision === 'cancelImport') {
+    return '用户取消导入。';
+  }
+
+  const skipExact = duplicateDecision === 'skipExact' || duplicateDecision === 'skipSimilar';
+  if (!skipExact || !contentHash) {
+    return null;
+  }
+
+  const exactMatches = await imageRepository.findByContentHash(db, contentHash, { mediaType: 'all' });
+  return exactMatches.length > 0 ? '已跳过精确重复视频。' : null;
+}
+
 async function buildVideoPaths(space: PixorySpace, ipId: number, internalFilename: string) {
   const tempDir = `${joinStoragePath(getTempDir(space), 'importing')}/`;
   const originalsDir = `${joinStoragePath(getOriginalsDir(space), `ip_${ipId}`)}/`;
@@ -172,6 +222,7 @@ async function importSingleVideo({
   tags,
   taskId,
   videoImportNamingMode,
+  duplicateDecision,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
   const internalFilename = generateInternalFilename(originalFilename.endsWith(getExtension(originalFilename)) ? originalFilename : `${originalFilename}.mp4`);
@@ -195,6 +246,12 @@ async function importSingleVideo({
       completedBytes: copiedInfo.size ?? 0,
       currentLabel: originalFilename,
     });
+    const contentHash = await computeFileSha256(tempUri);
+    const shouldSkip = await shouldSkipVideoDuplicateImport(db, duplicateDecision, contentHash);
+    if (shouldSkip) {
+      throw new DuplicateVideoImportSkippedError(shouldSkip);
+    }
+
     await FileSystem.moveAsync({ from: tempUri, to: originalUri });
     const originalInfo = await getFileInfo(originalUri);
     if (!originalInfo.exists || originalInfo.isDirectory || (originalInfo.size ?? 0) <= 0) {
@@ -202,7 +259,6 @@ async function importSingleVideo({
     }
 
     const metadata = await getNativeVideoMetadata(originalUri);
-    const contentHash = await computeFileSha256(originalUri);
     let coverThumbnailFileUri: string | null = null;
     let previewStatus: 'ready' | 'failed' = 'ready';
     try {
@@ -300,6 +356,7 @@ export async function importVideosToIp(params: {
   isFavorite?: boolean;
   pickedAssets: PickedVideoAsset[];
   title?: string;
+  duplicateDecision?: DuplicateImportDecision;
   videoImportNamingMode?: VideoImportNamingMode;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
@@ -315,8 +372,10 @@ export async function importVideosToIp(params: {
         importBatch: null,
         importedVideos: [],
         successCount: 0,
+        skippedCount: 0,
         failedCount: 0,
         errors: [],
+        skippedItems: [],
       };
     }
 
@@ -346,6 +405,9 @@ export async function importVideosToIp(params: {
     const tags = await resolveTags(db, params.tagNames);
     const importedVideos: ImportedVideoResult[] = [];
     const errors: VideoImportError[] = [];
+    const skippedItems: VideoImportError[] = [];
+    let skippedCount = 0;
+    const videoImportNamingMode = params.videoImportNamingMode ?? 'preserveOriginal';
 
     try {
       for (const pickedAsset of params.pickedAssets) {
@@ -361,13 +423,14 @@ export async function importVideosToIp(params: {
             space,
             tags,
             taskId: task.id,
-            videoImportNamingMode: params.videoImportNamingMode ?? 'preserveOriginal',
+            duplicateDecision: params.duplicateDecision,
+            videoImportNamingMode,
           });
           importedVideos.push(importedVideo);
           await importBatchRepository.createItem(db, {
             importBatchId: importBatch.id,
             sourcePath: pickedAsset.uri,
-            originalFilename: buildFallbackFilename(pickedAsset, params.videoImportNamingMode ?? 'preserveOriginal'),
+            originalFilename: buildFallbackFilename(pickedAsset, videoImportNamingMode),
             status: 'success',
             imageAssetId: importedVideo.video.id,
           });
@@ -376,23 +439,24 @@ export async function importVideosToIp(params: {
             failedCount: errors.length,
           });
         } catch (error) {
-          const importError = {
-            sourceUri: pickedAsset.uri,
-            originalFilename: buildFallbackFilename(pickedAsset, params.videoImportNamingMode ?? 'preserveOriginal'),
-            message: error instanceof Error ? error.message : '未知视频导入错误。',
-          };
-          errors.push(importError);
+          const importError = formatVideoImportError(pickedAsset, error, videoImportNamingMode);
+          if (importError.skipped) {
+            skippedCount += 1;
+            skippedItems.push(importError);
+          } else {
+            errors.push(importError);
+          }
           await importBatchRepository.createItem(db, {
             importBatchId: importBatch.id,
             sourcePath: pickedAsset.uri,
             originalFilename: importError.originalFilename,
-            status: 'failed',
+            status: importError.skipped ? 'skipped' : 'failed',
             reason: importError.message,
           });
           await backgroundTaskRepository.update(db, task.id, {
             successCount: importedVideos.length,
             failedCount: errors.length,
-            errorMessage: importError.message,
+            errorMessage: importError.skipped ? null : importError.message,
           });
         }
       }
@@ -402,7 +466,7 @@ export async function importVideosToIp(params: {
         status: errors.length > 0 && importedVideos.length === 0 ? 'failed' : 'completed',
         successCount: importedVideos.length,
         failedCount: errors.length,
-        resultJson: JSON.stringify({ importBatchId: importBatch.id, importedVideoIds: importedVideos.map((item) => item.video.id) }),
+        resultJson: JSON.stringify({ importBatchId: importBatch.id, importedVideoIds: importedVideos.map((item) => item.video.id), skippedCount }),
       });
 
       return {
@@ -410,8 +474,10 @@ export async function importVideosToIp(params: {
         importBatch: completedBatch ?? importBatch,
         importedVideos,
         successCount: importedVideos.length,
+        skippedCount,
         failedCount: errors.length,
         errors,
+        skippedItems,
       };
     } finally {
       progressSubscription.remove();

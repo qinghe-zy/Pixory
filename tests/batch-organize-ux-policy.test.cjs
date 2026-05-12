@@ -290,13 +290,17 @@ test('batch panel exposes original-file save to album and grid pages expose sele
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
   const albumDialogSource = readProjectFile('src/components/AlbumSaveDialog.tsx');
   const mediaLibrarySource = readProjectFile('src/services/mediaLibraryService.ts');
+  const nativeBridgeSource = readProjectFile('src/native/pixoryMediaModule.ts');
+  const androidSource = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
 
   assert.match(mediaLibrarySource, /getSystemAlbums/);
   assert.match(mediaLibrarySource, /saveImagesToSystemAlbum/);
-  assert.match(mediaLibrarySource, /createAssetAsync/);
-  assert.match(mediaLibrarySource, /createAlbumAsync/);
+  assert.match(mediaLibrarySource, /saveNativeImageToMediaStore/);
+  assert.match(nativeBridgeSource, /saveImageToMediaStore/);
+  assert.match(androidSource, /MediaStore\.Images\.Media/);
   assert.match(mediaLibrarySource, /requestMediaLibrarySavePermission/);
   assert.match(albumDialogSource, /saveImagesToSystemAlbum/);
+  assert.match(albumDialogSource, /albumTitle/);
   assert.match(albumDialogSource, /正在保存/);
   assert.match(panelSource, /isAlbumDialogVisible/);
   assert.match(panelSource, /AlbumSaveDialog/);

@@ -78,6 +78,7 @@ export function AlbumSaveDialog({
     try {
       const result = await saveImagesToSystemAlbum(imageUris, {
         albumId: targetMode === 'existing' ? selectedAlbumId : null,
+        albumTitle: targetMode === 'existing' ? selectedAlbum?.title ?? null : null,
         newAlbumName: targetMode === 'new' ? newAlbumName : null,
         onProgress: (completed, total) => setProgress({ completed, total }),
       });

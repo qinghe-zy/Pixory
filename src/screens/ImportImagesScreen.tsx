@@ -358,6 +358,8 @@ export function ImportImagesScreen({
       let importBatchId: number | null = null;
       let imageSuccessCount = 0;
       let videoSuccessCount = 0;
+      let imageSkippedCount = 0;
+      let videoSkippedCount = 0;
       let failedCount = 0;
 
       if (pickedAssets.length > 0) {
@@ -377,13 +379,19 @@ export function ImportImagesScreen({
         });
 
         imageSuccessCount = imageResult.successCount;
+        imageSkippedCount = imageResult.skippedCount;
         failedCount += imageResult.failedCount;
         importedAssetIds.push(...imageResult.importedImages.map((item) => item.image.id));
         importBatchId = imageResult.importBatch?.id ?? importBatchId;
 
         devLog('Pixory image import result readback:', {
           successCount: imageResult.successCount,
+          skippedCount: imageResult.skippedCount,
           failedCount: imageResult.failedCount,
+          skippedItems: imageResult.skippedItems.map((item) => ({
+            filename: item.originalFilename,
+            message: item.message,
+          })),
           importedImages: imageResult.importedImages.map((item) => ({
             imageId: item.image.id,
             groupId: item.image.groupId,
@@ -404,10 +412,12 @@ export function ImportImagesScreen({
           note: preparedNote,
           isFavorite,
           pickedAssets: pickedVideos,
+          duplicateDecision,
           videoImportNamingMode,
         });
 
         videoSuccessCount = videoResult.successCount;
+        videoSkippedCount = videoResult.skippedCount;
         failedCount += videoResult.failedCount;
         importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
         importBatchId = pickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
@@ -415,16 +425,24 @@ export function ImportImagesScreen({
 
       setImportProgressLabel(null);
 
+      const skippedCount = imageSkippedCount + videoSkippedCount;
+      const successCount = imageSuccessCount + videoSuccessCount;
+
       if (importedAssetIds.length === 0) {
-        throw new Error(`没有成功导入素材，失败 ${failedCount} 个。`);
+        if (skippedCount > 0 && failedCount === 0) {
+          showToast(`没有导入新素材，已跳过 ${skippedCount} 个重复素材。`);
+          return;
+        }
+        throw new Error(`没有成功导入素材，成功 0 个，跳过 ${skippedCount} 个，失败 ${failedCount} 个。`);
       }
 
       await runWithDatabaseSpace(space, (db) => settingsRepository.rememberImportGroupIds(db, selectedGroupIds));
       const toastParts = [
-        imageSuccessCount > 0 ? `${imageSuccessCount} 张图片` : null,
-        videoSuccessCount > 0 ? `${videoSuccessCount} 个视频` : null,
+        `成功 ${successCount}`,
+        skippedCount > 0 ? `跳过 ${skippedCount}` : null,
+        failedCount > 0 ? `失败 ${failedCount}` : null,
       ].filter(Boolean);
-        showToast(`成功导入 ${toastParts.join('、')}`);
+        showToast(`导入完成：${toastParts.join(' · ')}`);
         onImported(importedAssetIds, importBatchId);
       } finally {
         setImportProgressLabel(null);

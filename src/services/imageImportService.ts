@@ -132,6 +132,7 @@ export interface ImportImagesToIpResult {
   importBatch: ImportBatchRecord | null;
   importedImages: ImportedImageResult[];
   errors: ImageImportError[];
+  skippedItems: ImageImportError[];
 }
 
 class DuplicateImportSkippedError extends Error {
@@ -601,6 +602,7 @@ export async function importImagesToIp(
       importBatch: null,
       importedImages: [],
       errors: [],
+      skippedItems: [],
     };
   }
 
@@ -614,11 +616,13 @@ export async function importImagesToIp(
   const resolvedTags = await resolveTags(db, params.tagNames);
   const importedImages: ImportedImageResult[] = [];
   const errors: ImageImportError[] = [];
+  const skippedItems: ImageImportError[] = [];
   let skippedCount = 0;
 
   for (const pickedAsset of params.pickedAssets) {
+    let pendingImageAsset: PendingImageAssetImport | null = null;
     try {
-      const pendingImageAsset = await buildImageAssetFromPickedFile({
+      pendingImageAsset = await buildImageAssetFromPickedFile({
         ipId: params.ipId,
         space,
         importBatchId: importBatch.id,
@@ -631,13 +635,36 @@ export async function importImagesToIp(
         imageImportSourceMode: params.imageImportSourceMode,
         taskToken: params.taskToken ?? null,
       });
-      importedImages.push(await performSingleImageImport(db, pendingImageAsset, resolvedTags));
+      const importedImage = await performSingleImageImport(db, pendingImageAsset, resolvedTags);
+      importedImages.push(importedImage);
+      await importBatchRepository.createItem(db, {
+        importBatchId: importBatch.id,
+        sourcePath: pendingImageAsset.sourceUri,
+        originalFilename: pendingImageAsset.originalFilename,
+        status: 'success',
+        imageAssetId: importedImage.image.id,
+      });
     } catch (error) {
       const formattedError = formatImportError(pickedAsset, error);
       if (formattedError.skipped) {
         skippedCount += 1;
+        skippedItems.push(formattedError);
+        await importBatchRepository.createItem(db, {
+          importBatchId: importBatch.id,
+          sourcePath: pendingImageAsset?.sourceUri ?? pickedAsset.uri,
+          originalFilename: pendingImageAsset?.originalFilename ?? formattedError.originalFilename,
+          status: 'skipped',
+          reason: formattedError.message,
+        });
       } else {
         errors.push(formattedError);
+        await importBatchRepository.createItem(db, {
+          importBatchId: importBatch.id,
+          sourcePath: pendingImageAsset?.sourceUri ?? pickedAsset.uri,
+          originalFilename: pendingImageAsset?.originalFilename ?? formattedError.originalFilename,
+          status: 'failed',
+          reason: formattedError.message,
+        });
       }
     }
   }
@@ -651,6 +678,7 @@ export async function importImagesToIp(
     importBatch: completedBatch ?? importBatch,
     importedImages,
     errors,
+    skippedItems,
   };
   });
 }
@@ -737,6 +765,7 @@ export async function runImageImportDevelopmentCheck(): Promise<ImageImportDevel
         importBatch: null,
         importedImages: [],
         errors: [],
+        skippedItems: [],
       },
       verification: {
         verifiedCount: 0,

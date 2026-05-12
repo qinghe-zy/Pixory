@@ -82,6 +82,25 @@ test('import flow supports duplicate review skip modes and source move preferenc
   assert.match(importScreenSource, /videoImportNamingMode/);
 });
 
+test('duplicate skip import reports skipped counts and applies exact skip to videos', () => {
+  const imageImportSource = readProjectFile('src/services/imageImportService.ts');
+  const videoImportSource = readProjectFile('src/services/videoImportService.ts');
+  const importScreenSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
+
+  assert.match(imageImportSource, /skippedItems/);
+  assert.match(imageImportSource, /status:\s*'skipped'/);
+  assert.match(videoImportSource, /duplicateDecision\?:\s*DuplicateImportDecision/);
+  assert.match(videoImportSource, /shouldSkipVideoDuplicateImport/);
+  assert.match(videoImportSource, /findByContentHash\(db,\s*contentHash,\s*\{\s*mediaType:\s*'all'\s*\}/);
+  assert.match(videoImportSource, /skippedCount/);
+  assert.match(videoImportSource, /status:\s*importError\.skipped\s*\?\s*'skipped'\s*:\s*'failed'/);
+  assert.match(importScreenSource, /imageSkippedCount/);
+  assert.match(importScreenSource, /videoSkippedCount/);
+  assert.match(importScreenSource, /跳过 \$\{skippedCount\}/);
+  assert.match(importScreenSource, /duplicateDecision,\s*[\r\n\s]*videoImportNamingMode/);
+  assert.match(importScreenSource, /没有导入新素材，已跳过/);
+});
+
 test('duplicate review screen supports exact and similar tabs with soft delete only', () => {
   const appSource = readProjectFile('App.tsx');
   const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
@@ -94,6 +113,15 @@ test('duplicate review screen supports exact and similar tabs with soft delete o
   assert.doesNotMatch(screenSource, /deleteLocalFile|FileSystem\.deleteAsync/);
   assert.match(repoSource, /findExactDuplicateGroups/);
   assert.match(repoSource, /findSimilarImageGroups/);
+});
+
+test('duplicate review cards keep breathing room between groups and rows', () => {
+  const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
+
+  assert.match(screenSource, /groupList:\s*\{[\s\S]*gap:\s*spacing\[4\]/);
+  assert.match(screenSource, /groupCard:\s*\{[\s\S]*padding:\s*spacing\[4\]/);
+  assert.match(screenSource, /imageList:\s*\{[\s\S]*gap:\s*spacing\[3\]/);
+  assert.match(screenSource, /imageRow:\s*\{[\s\S]*paddingVertical:\s*spacing\[2\]/);
 });
 
 test('duplicate roadmap uses hamming-distance visual groups and a manual library scan task', () => {

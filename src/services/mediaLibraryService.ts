@@ -1,6 +1,7 @@
 import * as MediaLibrary from 'expo-media-library';
 
 import { getFileInfo } from './fileStorageService';
+import { saveNativeImageToMediaStore } from '../native/pixoryMediaModule';
 
 let hasMediaLibrarySavePermission = false;
 
@@ -12,6 +13,7 @@ export interface SystemAlbumOption {
 
 export interface SaveImagesToSystemAlbumOptions {
   albumId?: string | null;
+  albumTitle?: string | null;
   newAlbumName?: string | null;
   onProgress?: (completedCount: number, totalCount: number) => void;
 }
@@ -47,15 +49,30 @@ export async function getSystemAlbums(): Promise<SystemAlbumOption[]> {
     .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 }
 
-export async function saveImageToSystemAlbum(originalFileUri: string, albumId?: string | null): Promise<void> {
-  await requestMediaLibrarySavePermission();
+function getDisplayNameFromUri(fileUri: string): string {
+  const [cleanUri] = fileUri.split('?');
+  const rawName = cleanUri.split('/').pop() ?? '';
+  const decodedName = (() => {
+    try {
+      return decodeURIComponent(rawName).trim();
+    } catch {
+      return rawName.trim();
+    }
+  })();
+  return decodedName || `pixory-image-${Date.now()}.jpg`;
+}
 
+export async function saveImageToSystemAlbum(
+  originalFileUri: string,
+  _albumId?: string | null,
+  albumTitle?: string | null
+): Promise<void> {
   const fileInfo = await getFileInfo(originalFileUri);
   if (!fileInfo.exists || fileInfo.isDirectory) {
     throw new Error('原图文件不存在，无法保存到系统相册。');
   }
 
-  await MediaLibrary.createAssetAsync(originalFileUri, albumId ?? undefined);
+  await saveNativeImageToMediaStore(originalFileUri, getDisplayNameFromUri(originalFileUri), albumTitle?.trim() || null);
 }
 
 export interface SaveImagesToSystemAlbumResult {
@@ -77,8 +94,6 @@ export async function saveImagesToSystemAlbum(
     options.onProgress?.(completedCount, uniqueUris.length);
   }
 
-  await requestMediaLibrarySavePermission();
-
   const validUris: string[] = [];
   for (const originalFileUri of uniqueUris) {
     const fileInfo = await getFileInfo(originalFileUri);
@@ -91,35 +106,14 @@ export async function saveImagesToSystemAlbum(
   }
 
   const newAlbumName = options.newAlbumName?.trim();
-  if (newAlbumName && validUris.length > 0) {
-    const [firstUri, ...remainingUris] = validUris;
+  const targetAlbumTitle = newAlbumName || options.albumTitle?.trim() || null;
+  for (const originalFileUri of validUris) {
     try {
-      const album = await MediaLibrary.createAlbumAsync(newAlbumName, undefined, false, firstUri);
-      reportProgress();
-      for (const originalFileUri of remainingUris) {
-        try {
-          await MediaLibrary.createAssetAsync(originalFileUri, album.id);
-        } catch {
-          failedUris.push(originalFileUri);
-        } finally {
-          reportProgress();
-        }
-      }
+      await saveImageToSystemAlbum(originalFileUri, options.albumId, targetAlbumTitle);
     } catch {
-      failedUris.push(...validUris);
-      while (completedCount < uniqueUris.length) {
-        reportProgress();
-      }
-    }
-  } else {
-    for (const originalFileUri of validUris) {
-      try {
-        await MediaLibrary.createAssetAsync(originalFileUri, options.albumId ?? undefined);
-      } catch {
-        failedUris.push(originalFileUri);
-      } finally {
-        reportProgress();
-      }
+      failedUris.push(originalFileUri);
+    } finally {
+      reportProgress();
     }
   }
 
