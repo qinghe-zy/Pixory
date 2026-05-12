@@ -111,7 +111,7 @@ type AppRoute =
   | { name: 'import-images'; ipId: number; groupId?: number | null; initialMediaPicker?: 'images' | 'videos'; space: PixorySpace }
   | { name: 'import-result'; ipId: number; imageIds: number[]; importBatchId: number | null; space: PixorySpace }
   | { name: 'import-batch-history'; ipId: number; space: PixorySpace }
-  | { name: 'duplicate-review'; ipId: number; importBatchId: number; space: PixorySpace }
+  | { name: 'duplicate-review'; ipId?: number; importBatchId?: number | null; space: PixorySpace }
   | { name: 'all-images'; ipId: number; space: PixorySpace }
   | { name: 'image-viewer'; imageId: number; space: PixorySpace; context: ImageViewerContext }
   | { name: 'image-detail'; imageId: number; space: PixorySpace; context?: ImageViewerContext }
@@ -548,7 +548,6 @@ export default function App() {
       setPersonalSessionState('unlocked');
       personalSessionStateRef.current = 'unlocked';
       setPersonalUnlockVisible(false);
-      setRouteStack([INITIAL_ROUTE]);
       setLibraryRefreshToken((current) => current + 1);
       setTimeout(() => {
         if (taskToken.isActive()) {
@@ -1042,7 +1041,7 @@ export default function App() {
   } else if (currentRoute.name === 'duplicate-review') {
     content = (
       <DuplicateReviewScreen
-        importBatchId={currentRoute.importBatchId}
+        importBatchId={currentRoute.importBatchId ?? null}
         space={currentRoute.space}
         onBack={popRoute}
         refreshToken={libraryRefreshToken}
@@ -1366,6 +1365,7 @@ export default function App() {
         footer={rootFooter}
         onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
         onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
+        onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
         onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
         onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
         onLockPersonalSpace={() => {

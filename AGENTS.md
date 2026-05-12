@@ -228,6 +228,59 @@ Local reliability
 
 Do not sacrifice original image safety or local data consistency for faster UI completion.
 
+## Release And Packaging Workflow
+
+When the user says `打包`, `发布`, `上线`, `推送更新`, or asks to package the current Pixory build without adding more qualifiers, treat it as permission to complete the full Android release workflow automatically.
+
+Default release workflow:
+
+1. Inspect `git status --short --branch`, recent commits, version files, and relevant release config before editing.
+2. Keep user-made unrelated changes. Do not revert unrelated modified files.
+3. Decide the next patch version unless the user specifies a version.
+4. Update all release version sources together:
+   - `package.json`
+   - `app.json`
+   - `src/services/updateCheckService.ts`
+   - `docs/update-version.json`
+   - local Android Gradle release fields/output name when present
+5. Keep remote update JSON and release notes short, concrete, and user-facing.
+6. Do not switch signing certificates, keystores, aliases, or Gradle signing config. The release certificate is local and must stay the existing Pixory local release certificate unless the user explicitly requests a certificate migration.
+7. Run verification before packaging:
+   - `pnpm typecheck`
+   - `pnpm test`
+   - `git diff --check`
+8. Build the Android release APK from `android` with the existing Gradle config:
+   - `.\gradlew.bat assembleRelease`
+9. Copy the generated release APK to `output/release/` with the matching versioned filename.
+10. Verify the APK signature with `apksigner verify --print-certs`. Expected current local release certificate:
+    - `CN=Pixory, OU=Local Release, O=Pixory, L=Local, ST=Local, C=CN`
+    - SHA-256 `b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e`
+11. Do Android validation:
+    - Use `D:\Develop\Android\Sdk\platform-tools\adb.exe devices`.
+    - If a compatible emulator/device is available, install and launch.
+    - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
+12. Commit the release changes with a concise release commit.
+13. Push `main`.
+14. Create and push the version tag.
+15. Create a GitHub Release and upload the APK.
+16. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, and local/remote branch sync.
+17. Report:
+    - version
+    - commit
+    - tag
+    - release URL
+    - APK path and size
+    - verification performed
+    - any unverified device checks or signature-install caveats
+
+For remote announcements:
+
+- The announcement file is `docs/announcement.json`.
+- To publish a new announcement, change `id`, `title`, `message`, optional `detailLines`, and keep `enabled: true`.
+- Use a new unique `id` whenever the same installed app should show the announcement again after users dismissed an older one.
+- To stop announcements, set `enabled: false` and push `main`.
+- Announcement changes do not require a new APK for app versions that already support the remote announcement feature.
+
 ## Final Direction
 
 Pixory should stay focused on:

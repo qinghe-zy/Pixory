@@ -33,6 +33,8 @@ import {
 } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+const VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD = 6;
+
 function buildDeletedFilter(columnPrefix = '', options?: ImageAssetQueryOptions): string {
   const filters: string[] = [];
   const deletedColumn = columnPrefix ? `${columnPrefix}.deletedAt` : 'deletedAt';
@@ -297,6 +299,42 @@ function buildInClause(ids: number[]): { placeholders: string; values: number[] 
     placeholders: values.map(() => '?').join(', '),
     values,
   };
+}
+
+function isVisualHash(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{16}$/i.test(value);
+}
+
+function countBits(value: number): number {
+  let count = 0;
+  let next = value;
+  while (next > 0) {
+    count += next & 1;
+    next >>= 1;
+  }
+  return count;
+}
+
+function getVisualHashDistance(left: string | null | undefined, right: string | null | undefined): number | null {
+  if (!isVisualHash(left) || !isVisualHash(right)) {
+    return null;
+  }
+
+  let distance = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftNibble = Number.parseInt(left[index], 16);
+    const rightNibble = Number.parseInt(right[index], 16);
+    distance += countBits(leftNibble ^ rightNibble);
+  }
+
+  return distance;
+}
+
+function belongsToVisualGroup(image: ImageListItem, groupImages: ImageListItem[]): boolean {
+  return groupImages.some((groupImage) => {
+    const distance = getVisualHashDistance(image.visualHash, groupImage.visualHash);
+    return distance != null && distance <= VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD;
+  });
 }
 
 async function loadImagesByIds(db: SQLiteDatabase, ids: number[]): Promise<ImageAssetRecord[]> {
@@ -1026,11 +1064,11 @@ export const imageRepository = {
 
   async findByVisualHash(db: SQLiteDatabase, visualHash: string, options?: ImageListQueryOptions): Promise<ImageListItem[]> {
     const normalizedHash = normalizeOptionalText(visualHash);
-    if (!normalizedHash) {
+    if (!isVisualHash(normalizedHash)) {
       return [];
     }
 
-    const queryParts = buildImageListQueryParts(['image_assets.visualHash = ?', "image_assets.mediaType = 'image'"], [normalizedHash], options);
+    const queryParts = buildImageListQueryParts(["image_assets.visualHash IS NOT NULL", "image_assets.mediaType = 'image'"], [], options);
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        ${queryParts.whereClause}
@@ -1039,7 +1077,12 @@ export const imageRepository = {
       ...queryParts.values
     );
 
-    return rows.map(mapImageListItemRow);
+    return rows
+      .map(mapImageListItemRow)
+      .filter((image) => {
+        const distance = getVisualHashDistance(normalizedHash, image.visualHash);
+        return distance != null && distance <= VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD;
+      });
   },
 
   async findExactDuplicateGroups(db: SQLiteDatabase, options?: ImageListQueryOptions): Promise<DuplicateImageGroup[]> {
@@ -1076,26 +1119,75 @@ export const imageRepository = {
       includeDeleted: false,
       mediaType: 'image',
     });
-    const groups = new Map<string, ImageListItem[]>();
+    const groups: ImageListItem[][] = [];
 
     for (const image of images) {
-      if (!image.visualHash) {
+      if (!isVisualHash(image.visualHash)) {
         continue;
       }
-      groups.set(image.visualHash, [...(groups.get(image.visualHash) ?? []), image]);
+      const existingGroup = groups.find((groupImages) => belongsToVisualGroup(image, groupImages));
+      if (existingGroup) {
+        existingGroup.push(image);
+      } else {
+        groups.push([image]);
+      }
     }
 
-    return [...groups.entries()]
-      .filter(([, duplicateImages]) => duplicateImages.length > 1)
-      .map(([key, duplicateImages]) => ({
-        key,
+    return groups
+      .filter((duplicateImages) => duplicateImages.length > 1)
+      .map((duplicateImages) => ({
+        key: duplicateImages[0]?.visualHash ?? 'similar',
         kind: 'similar' as const,
         confidence: 'review' as const,
         contentHash: null,
-        visualHash: key,
+        visualHash: duplicateImages[0]?.visualHash ?? null,
         images: duplicateImages,
       }))
       .sort((left, right) => right.images.length - left.images.length || left.key.localeCompare(right.key));
+  },
+
+  async findAssetsMissingDuplicateHashes(db: SQLiteDatabase, limit = 50): Promise<ImageAssetRecord[]> {
+    const rows = await db.getAllAsync<ImageAssetRow>(
+      `SELECT *
+       FROM image_assets
+       WHERE deletedAt IS NULL
+         AND (
+           contentHash IS NULL
+           OR (mediaType = 'image' AND visualHash IS NULL)
+         )
+       ORDER BY updatedAt ASC, id ASC
+       LIMIT ?`,
+      limit
+    );
+
+    return rows.map(mapImageAssetRow);
+  },
+
+  async updateDuplicateHashes(
+    db: SQLiteDatabase,
+    id: number,
+    hashes: { contentHash?: string | null; visualHash?: string | null }
+  ): Promise<ImageAssetRecord | null> {
+    const updates = buildUpdateStatement({
+      contentHash: normalizeOptionalText(hashes.contentHash),
+      visualHash: normalizeOptionalText(hashes.visualHash),
+      updatedAt: createTimestamp(),
+    });
+
+    if (!updates.setClause) {
+      return this.findById(db, id, { includeDeleted: true, mediaType: 'all' });
+    }
+
+    const result = await db.runAsync(
+      `UPDATE image_assets SET ${updates.setClause} WHERE id = ?`,
+      ...updates.values,
+      id
+    );
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return this.findById(db, id, { includeDeleted: true, mediaType: 'all' });
   },
 
   async softDelete(db: SQLiteDatabase, id: number): Promise<ImageAssetRecord | null> {

@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 15;
+export const DATABASE_VERSION = 16;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -257,4 +257,68 @@ ALTER TABLE image_assets ADD COLUMN contentHash TEXT;
 ALTER TABLE image_assets ADD COLUMN visualHash TEXT;
 CREATE INDEX IF NOT EXISTS idx_image_assets_content_hash ON image_assets(contentHash);
 CREATE INDEX IF NOT EXISTS idx_image_assets_visual_hash ON image_assets(visualHash);
+`;
+
+export const MIGRATION_STATEMENTS_V16 = `
+CREATE TABLE IF NOT EXISTS background_tasks_v16 (
+  id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('image-import', 'video-import', 'package-import', 'archive-temp-read', 'duplicate-scan', 'backup', 'restore', 'ip-space-migration', 'trash-clear')),
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'preparing', 'copying', 'verifying', 'generatingPreview', 'writingDatabase', 'completed', 'failed', 'cancelled')),
+  title TEXT NOT NULL,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  successCount INTEGER NOT NULL DEFAULT 0,
+  failedCount INTEGER NOT NULL DEFAULT 0,
+  totalBytes INTEGER,
+  completedBytes INTEGER NOT NULL DEFAULT 0,
+  currentLabel TEXT,
+  errorMessage TEXT,
+  resultJson TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT
+);
+
+INSERT OR IGNORE INTO background_tasks_v16 (
+  id,
+  type,
+  space,
+  status,
+  title,
+  totalCount,
+  successCount,
+  failedCount,
+  totalBytes,
+  completedBytes,
+  currentLabel,
+  errorMessage,
+  resultJson,
+  createdAt,
+  updatedAt,
+  completedAt
+)
+SELECT
+  id,
+  type,
+  space,
+  status,
+  title,
+  totalCount,
+  successCount,
+  failedCount,
+  totalBytes,
+  completedBytes,
+  currentLabel,
+  errorMessage,
+  resultJson,
+  createdAt,
+  updatedAt,
+  completedAt
+FROM background_tasks;
+
+DROP TABLE background_tasks;
+ALTER TABLE background_tasks_v16 RENAME TO background_tasks;
+
+CREATE INDEX IF NOT EXISTS idx_background_tasks_space_updated_at ON background_tasks(space, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_background_tasks_status_updated_at ON background_tasks(status, updatedAt);
 `;

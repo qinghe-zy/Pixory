@@ -9,10 +9,11 @@ import { SecureImage } from '../components/SecureImage';
 import { imageRepository, runWithDatabaseSpace, type DuplicateImageGroup, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
+import { runDuplicateDetectionScan } from '../services/duplicateDetectionService';
 import { formatFileSize } from '../utils/formatters';
 
 interface DuplicateReviewScreenProps {
-  importBatchId: number;
+  importBatchId?: number | null;
   space?: PixorySpace;
   refreshToken: number;
   onBack: () => void;
@@ -21,10 +22,12 @@ interface DuplicateReviewScreenProps {
 export function DuplicateReviewScreen({ importBatchId, space = 'normal', refreshToken, onBack }: DuplicateReviewScreenProps) {
   const [activeTab, setActiveTab] = useState<'exact' | 'similar'>('exact');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ exact: DuplicateImageGroup[]; similar: DuplicateImageGroup[] }>(
     () => runWithDatabaseSpace(space, (db) => Promise.all([
-      imageRepository.findExactDuplicateGroups(db, { importBatchId }),
-      imageRepository.findSimilarImageGroups(db, { importBatchId }),
+      imageRepository.findExactDuplicateGroups(db, importBatchId != null ? { importBatchId } : undefined),
+      imageRepository.findSimilarImageGroups(db, importBatchId != null ? { importBatchId } : undefined),
     ]).then(([exact, similar]) => ({ exact, similar }))),
     [importBatchId, refreshToken, space],
     {
@@ -62,8 +65,23 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
     reload();
   }
 
+  async function scanDuplicateHashes() {
+    setIsScanning(true);
+    setScanMessage(null);
+    try {
+      const result = await runDuplicateDetectionScan(space);
+      setScanMessage(`已处理 ${result.processedCount} 个素材，精确重复 ${result.exactGroupCount} 组，相似图片 ${result.similarGroupCount} 组。`);
+      reload();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      setScanMessage(`扫描失败：${message}`);
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
   return (
-    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title="疑似重复">
+    <ScreenScaffold backgroundVariant="gallery" decorativeTitle="Duplicate" onBack={onBack} scrollable title={importBatchId != null ? '疑似重复' : '重复检测'}>
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
           <Ionicons color={colors.primary.active} name="copy-outline" size={20} />
@@ -72,7 +90,12 @@ export function DuplicateReviewScreen({ importBatchId, space = 'normal', refresh
           <Text style={styles.heroTitle}>{activeTab === 'exact' ? '精确重复' : '相似图片'} {duplicateCount} 张</Text>
           <Text style={styles.heroMeta}>复核只会软删除到回收站，不会物理删除原图。</Text>
         </View>
+        <Pressable disabled={isScanning} onPress={() => void scanDuplicateHashes()} style={({ pressed }) => [styles.scanButton, isScanning && styles.scanButtonBusy, pressed && !isScanning && styles.pressed]}>
+          <Ionicons color={colors.primary.active} name="scan-outline" size={16} />
+          <Text style={styles.scanButtonText}>{isScanning ? '扫描中' : '扫描重复素材'}</Text>
+        </Pressable>
       </View>
+      {scanMessage ? <Text style={styles.scanMessage}>{scanMessage}</Text> : null}
       <View style={styles.tabs}>
         <TabButton active={activeTab === 'exact'} label="精确重复" onPress={() => { setActiveTab('exact'); setSelectedIds([]); }} />
         <TabButton active={activeTab === 'similar'} label="相似图片" onPress={() => { setActiveTab('similar'); setSelectedIds([]); }} />
@@ -165,12 +188,34 @@ const styles = StyleSheet.create({
   heroCopy: {
     flex: 1,
     gap: spacing[1],
+    minWidth: 0,
   },
   heroTitle: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
   },
   heroMeta: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  scanButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  scanButtonBusy: {
+    opacity: 0.72,
+  },
+  scanButtonText: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '800',
+  },
+  scanMessage: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
   },

@@ -52,7 +52,7 @@ test('duplicate detection schema and native bridge expose content and visual has
   const nativeBridgeSource = readProjectFile('src/native/pixoryMediaModule.ts');
   const androidSource = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*15/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*16/);
   assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN contentHash TEXT/);
   assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN visualHash TEXT/);
   assert.match(schemaSource, /idx_image_assets_content_hash/);
@@ -94,6 +94,33 @@ test('duplicate review screen supports exact and similar tabs with soft delete o
   assert.doesNotMatch(screenSource, /deleteLocalFile|FileSystem\.deleteAsync/);
   assert.match(repoSource, /findExactDuplicateGroups/);
   assert.match(repoSource, /findSimilarImageGroups/);
+});
+
+test('duplicate roadmap uses hamming-distance visual groups and a manual library scan task', () => {
+  const appSource = readProjectFile('App.tsx');
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
+  const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
+  const repoSource = readProjectFile('src/database/repositories/imageRepository.ts');
+  const typesSource = readProjectFile('src/database/types.ts');
+  const serviceSource = readProjectFile('src/services/duplicateDetectionService.ts');
+
+  assert.match(repoSource, /VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD\s*=\s*6/);
+  assert.match(repoSource, /getVisualHashDistance/);
+  assert.match(repoSource, /belongsToVisualGroup[\s\S]*distance <= VISUAL_HASH_REVIEW_DISTANCE_THRESHOLD/);
+  assert.match(repoSource, /findSimilarImageGroups[\s\S]*belongsToVisualGroup/);
+  assert.match(repoSource, /findAssetsMissingDuplicateHashes/);
+  assert.match(repoSource, /updateDuplicateHashes/);
+  assert.match(typesSource, /'duplicate-scan'/);
+  assert.match(serviceSource, /runDuplicateDetectionScan/);
+  assert.match(serviceSource, /backgroundTaskRepository\.create/);
+  assert.match(serviceSource, /computeFileSha256/);
+  assert.match(serviceSource, /computeImageDHash/);
+  assert.match(serviceSource, /findAssetsMissingDuplicateHashes/);
+  assert.match(screenSource, /importBatchId\?: number \| null/);
+  assert.match(screenSource, /runDuplicateDetectionScan/);
+  assert.match(screenSource, /扫描重复素材/);
+  assert.match(appSource, /onOpenDuplicateReview/);
+  assert.match(meSource, /重复检测/);
 });
 
 test('backup import asks how to handle same-name IPs before merging', () => {

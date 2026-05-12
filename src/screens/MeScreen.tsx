@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { type ReactNode, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -22,6 +22,7 @@ interface MeScreenProps {
   onOpenTrash: () => void;
   onOpenBackup: () => void;
   onOpenStorageUsage: () => void;
+  onOpenDuplicateReview: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -61,9 +62,9 @@ const ENTRY_ITEMS = [
     icon: 'archive-outline',
   },
   {
-    key: 'personal',
-    label: '隐私系统',
-    icon: 'lock-closed-outline',
+    key: 'duplicate-review',
+    label: '重复检测',
+    icon: 'copy-outline',
   },
   {
     key: 'storage-usage',
@@ -87,11 +88,16 @@ export function MeScreen({
   onOpenTrash,
   onOpenBackup,
   onOpenStorageUsage,
+  onOpenDuplicateReview,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
+  const isPersonalMode = space === 'personal';
+  const isPersonalSwitchBusy = personalSessionState === 'unlocking' || personalSessionState === 'locking';
+  const lockTransition = useRef(new Animated.Value(isPersonalMode ? 1 : 0)).current;
+  const lockPulse = useRef(new Animated.Value(1)).current;
   const { data, isLoading, errorMessage, reload } = useScreenLoad<MeStats>(
     async () => {
       const [
@@ -155,19 +161,27 @@ export function MeScreen({
       return;
     }
 
-    if (key === 'personal') {
-      if (space === 'personal') {
-        onLockPersonalSpace();
-        return;
-      }
-
-      onRequestPersonalUnlock();
+    if (key === 'duplicate-review') {
+      onOpenDuplicateReview();
       return;
     }
 
     if (key === 'storage-usage') {
       onOpenStorageUsage();
     }
+  }
+
+  function handlePersonalToggle() {
+    if (isPersonalSwitchBusy) {
+      return;
+    }
+
+    if (space === 'personal') {
+      onLockPersonalSpace();
+      return;
+    }
+
+    onRequestPersonalUnlock();
   }
 
   async function handleAvatarPress() {
@@ -206,10 +220,67 @@ export function MeScreen({
   const imageBytes = data?.imageOriginalBytes ?? 0;
   const videoBytes = data?.videoOriginalBytes ?? 0;
   const avatarUri = avatarOverrideUri ?? data?.profileAvatarUri ?? null;
+  const lockOpenOpacity = lockTransition.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const lockClosedOpacity = lockTransition;
+  const lockRotate = lockTransition.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-12deg', '0deg'],
+  });
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(lockTransition, {
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        toValue: isPersonalMode ? 1 : 0,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.timing(lockPulse, {
+          duration: 90,
+          easing: Easing.out(Easing.cubic),
+          toValue: 0.9,
+          useNativeDriver: true,
+        }),
+        Animated.spring(lockPulse, {
+          friction: 5,
+          tension: 140,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [isPersonalMode, lockPulse, lockTransition]);
 
   return (
     <ScreenScaffold backgroundVariant="profile" decorativeTitle={space === 'personal' ? 'Private' : 'Me'} errorMessage={errorMessage} footer={footer} scrollable title="我的">
       <ContentCard style={styles.heroCard}>
+        <Pressable
+          accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}
+          accessibilityRole="button"
+          accessibilityState={{ busy: isPersonalSwitchBusy, selected: isPersonalMode }}
+          disabled={isPersonalSwitchBusy}
+          hitSlop={12}
+          onPress={handlePersonalToggle}
+          style={({ pressed }) => [
+            styles.personalLockButton,
+            isPersonalMode && styles.personalLockButtonActive,
+            isPersonalSwitchBusy && styles.personalLockButtonBusy,
+            pressed && !isPersonalSwitchBusy && styles.pressed,
+          ]}
+        >
+          <Animated.View style={[styles.personalLockIconStage, { transform: [{ scale: lockPulse }, { rotate: lockRotate }] }]}>
+            <Animated.View style={[styles.personalLockIconLayer, { opacity: lockOpenOpacity }]}>
+              <Ionicons color={colors.primary.active} name="lock-open-outline" size={19} />
+            </Animated.View>
+            <Animated.View style={[styles.personalLockIconLayer, { opacity: lockClosedOpacity }]}>
+              <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={19} />
+            </Animated.View>
+          </Animated.View>
+        </Pressable>
         <View style={styles.profileRow}>
           <Pressable onPress={handleAvatarPress} style={({ pressed }) => [styles.avatarButton, pressed && styles.pressed]}>
             <View style={styles.avatar}>
@@ -252,11 +323,7 @@ export function MeScreen({
       <View style={styles.entryList}>
         {ENTRY_ITEMS.map((item) => {
           const isSettings = item.key === 'settings';
-          const entryTitle = item.key === 'personal'
-            ? space === 'personal'
-              ? '返回普通模式'
-              : '进入隐私模式'
-            : item.label;
+          const entryTitle = item.label;
           const entryAccessibilityLabel = isSettings ? '设置，未开放' : entryTitle;
           const entryContent = (
             <>
@@ -276,7 +343,7 @@ export function MeScreen({
               </View>
               {isSettings ? (
                 <Text style={styles.unavailableBadge}>未开放</Text>
-              ) : item.key === 'personal' ? null : (
+              ) : (
                 <Text style={styles.entryCount}>
                   {item.key === 'favorites'
                     ? data?.favoriteImageCount ?? 0
@@ -284,6 +351,8 @@ export function MeScreen({
                       ? data?.recentViewedCount ?? 0
                       : item.key === 'trash'
                         ? data?.deletedImageCount ?? 0
+                        : item.key === 'duplicate-review'
+                          ? '扫描'
                         : item.key === 'storage-usage'
                           ? '查看'
                           : data?.ipCount ?? 0}
@@ -362,7 +431,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[4],
+    paddingRight: 50,
     zIndex: 1,
+  },
+  personalLockButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 42,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: spacing[4],
+    top: spacing[4],
+    width: 42,
+    zIndex: 2,
+  },
+  personalLockButtonActive: {
+    backgroundColor: colors.primary.active,
+    borderColor: colors.primary.dark,
+  },
+  personalLockButtonBusy: {
+    opacity: 0.7,
+  },
+  personalLockIconStage: {
+    alignItems: 'center',
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  personalLockIconLayer: {
+    position: 'absolute',
   },
   avatarButton: {
     position: 'relative',

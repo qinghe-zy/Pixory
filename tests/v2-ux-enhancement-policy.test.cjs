@@ -149,7 +149,7 @@ test('trash cleanup keeps a 30 day DB driven policy with persisted failure recor
   const appSource = readProjectFile('App.tsx');
   const trashScreenSource = readProjectFile('src/screens/TrashScreen.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*15/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*16/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS trash_cleanup_failures/);
   assert.match(trashSource, /TRASH_RETENTION_DAYS\s*=\s*30/);
   assert.match(trashSource, /findExpiredTrashItems/);

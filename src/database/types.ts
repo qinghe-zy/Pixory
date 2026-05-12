@@ -495,6 +495,7 @@ export type BackgroundTaskType =
   | 'video-import'
   | 'package-import'
   | 'archive-temp-read'
+  | 'duplicate-scan'
   | 'backup'
   | 'restore'
   | 'ip-space-migration'
