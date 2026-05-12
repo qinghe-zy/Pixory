@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "version": "2.0.5",
+  "versionCode": 205,
+  "title": "发现 Pixory 新版本",
+  "message": "Pixory 已发布新版本，建议更新后继续使用。",
+  "releaseNotes": [],
+  "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
+}

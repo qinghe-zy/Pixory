@@ -1,10 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Platform, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { AppDialog } from './src/components/AppDialog';
 import { AppScreen } from './src/components/AppScreen';
 import { AppToastProvider } from './src/components/AppToast';
 import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
@@ -57,6 +58,7 @@ import {
 } from './src/services/cacheCleanupService';
 import { clearExpiredTrashOnIdle } from './src/services/trashService';
 import { ensureAppDirectories } from './src/services/fileStorageService';
+import { checkForAppUpdate, type AppUpdateInfo } from './src/services/updateCheckService';
 import {
   changePersonalPassword,
   hasPersonalPassword,
@@ -223,6 +225,7 @@ export default function App() {
   const [personalUnlockVisible, setPersonalUnlockVisible] = useState(false);
   const [personalAuthBusy, setPersonalAuthBusy] = useState(false);
   const [privacyShieldVisible, setPrivacyShieldVisible] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
   const personalGenerationRef = useRef(0);
   const personalTaskTokenRef = useRef<PersonalTaskToken | null>(null);
   const personalSessionStateRef = useRef(personalSessionState);
@@ -292,6 +295,24 @@ export default function App() {
       isMounted = false;
     };
   }, [initializationKey]);
+
+  useEffect(() => {
+    if (!isReady) {
+      return;
+    }
+
+    let isMounted = true;
+    void checkForAppUpdate().then((updateInfo) => {
+      const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
+      if (isMounted && updateInfo && !isExternalEntryRoute(activeRoute)) {
+        setAvailableUpdate(updateInfo);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReady]);
 
   useEffect(() => {
     if (!isReady) {
@@ -680,6 +701,20 @@ export default function App() {
 
   function replaceCurrentRoute(route: AppRoute) {
     setRouteStack((current) => [...current.slice(0, -1), route]);
+  }
+
+  function openAvailableUpdate() {
+    const downloadUrl = availableUpdate?.downloadUrl;
+    setAvailableUpdate(null);
+    if (!downloadUrl) {
+      return;
+    }
+
+    void Linking.openURL(downloadUrl).catch((error) => {
+      console.warn('Pixory update link open failed.', {
+        message: error instanceof Error ? error.message : 'unknown link error',
+      });
+    });
   }
 
   if (!isReady) {
@@ -1269,6 +1304,28 @@ export default function App() {
           onUnlock={unlockPersonalSpace}
           visible={personalUnlockVisible}
         />
+        <AppDialog
+          message={availableUpdate?.message}
+          onClose={() => setAvailableUpdate(null)}
+          onPrimary={openAvailableUpdate}
+          primaryLabel="去更新"
+          secondaryLabel="稍后"
+          title={availableUpdate?.title ?? '发现 Pixory 新版本'}
+          visible={Boolean(availableUpdate)}
+        >
+          {availableUpdate?.releaseNotes.length ? (
+            <View style={styles.updateNotes}>
+              <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
+              {availableUpdate.releaseNotes.map((note) => (
+                <Text key={note} style={styles.updateNote}>
+                  {note}
+                </Text>
+              ))}
+            </View>
+          ) : availableUpdate ? (
+            <Text style={styles.updateVersion}>最新版本 {availableUpdate.version}</Text>
+          ) : null}
+        </AppDialog>
         {personalSessionState === 'unlocked' ? <PersonalModeBanner /> : null}
         {privacyShieldVisible ? (
           <View style={styles.privacyShield}>
@@ -1338,5 +1395,17 @@ const styles = StyleSheet.create({
   privacyShieldText: {
     ...typography.textStyles.navTitle,
     color: colors.text.title,
+  },
+  updateNotes: {
+    gap: spacing[2],
+  },
+  updateVersion: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  updateNote: {
+    ...typography.textStyles.body,
+    color: colors.text.body,
+    lineHeight: 22,
   },
 });

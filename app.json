@@ -65,6 +65,11 @@
       "./plugins/withPixoryAndroidIntents"
     ],
     "extra": {
+      "updateCheck": {
+        "enabled": true,
+        "url": "https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/update-version.json",
+        "timeoutMs": 5000
+      },
       "eas": {
         "projectId": "f9528887-4f8b-451d-a851-aa1a45e9abae"
       }
