@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
@@ -74,6 +75,7 @@ export function IpDetailScreen({
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
   const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
+  const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpDetailRecord;
     groups: GroupListItem[];
@@ -436,6 +438,7 @@ export function IpDetailScreen({
       items={actionGroup ? [
         { key: 'view', label: '查看素材', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
         { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenGroupCoverPicker(actionGroup.id) },
+        { key: 'rename', label: '重命名', icon: 'text-outline', onPress: () => setRenameGroup(actionGroup) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
         {
           key: 'pin',
@@ -455,6 +458,16 @@ export function IpDetailScreen({
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
       visible={Boolean(actionGroup)}
+    />
+    <GroupRenameDialog
+      group={renameGroup}
+      onClose={() => setRenameGroup(null)}
+      onRenamed={() => {
+        reload();
+        onChanged();
+      }}
+      space={space}
+      visible={Boolean(renameGroup)}
     />
     <AppActionSheet
       items={actionImage ? [

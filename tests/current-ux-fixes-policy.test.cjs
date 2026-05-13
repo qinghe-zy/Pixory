@@ -57,12 +57,12 @@ test('personal mode badge sits below the status bar inset instead of hardcoding 
   assert.match(appSource, /top:\s*insets\.top/);
 });
 
-test('video player keeps portrait progress information above the scrub bar and does not reset saved progress to zero while loading', () => {
+test('video player keeps portrait progress information below the scrub bar and does not reset saved progress to zero while loading', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
   assert.match(playerSource, /progressInfoRow/);
   assert.match(playerSource, /progressInfoText/);
-  assert.match(playerSource, /\{!isLandscape \? \(\s*<View style=\{styles\.progressInfoRow\}>/);
+  assert.match(playerSource, /style=\{\[styles\.progressHitArea,\s*isLandscape \? styles\.landscapeProgressHitArea : null\]\}[\s\S]{0,520}\{!isLandscape \? \(\s*<View style=\{styles\.progressInfoRow\}>/);
   assert.match(playerSource, /const initialDisplayTime/);
   assert.doesNotMatch(playerSource, /currentTimeRef\.current = 0;\s*\n\s*setCurrentTime\(0\);\s*\n\s*setDuration\(0\);/);
   assert.match(playerSource, /committedSeekTargetRef\.current = initialDisplayTime > 0 \? initialDisplayTime : null/);
@@ -71,13 +71,39 @@ test('video player keeps portrait progress information above the scrub bar and d
 test('video player landscape controls group previous next with play pause and move time below progress', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
-  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,1200}accessibilityLabel="上一个视频"[\s\S]{0,360}accessibilityLabel="下一个视频"[\s\S]{0,360}styles\.landscapeTimeText/);
+  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,520}accessibilityLabel="上一个视频"[\s\S]{0,520}accessibilityLabel=\{isPlaying \? '暂停' : '播放'\}[\s\S]{0,520}accessibilityLabel="下一个视频"[\s\S]{0,360}styles\.landscapeTimeText/);
   assert.match(playerSource, /<View style=\{styles\.controlActions\}>[\s\S]{0,900}setSpeedMenuVisible/);
   assert.match(playerSource, /controlRow:\s*\{[\s\S]{0,180}justifyContent:\s*'space-between'/);
   assert.match(playerSource, /controlLeft:\s*\{[\s\S]{0,180}flexDirection:\s*'row'/);
   assert.match(playerSource, /controlActions:\s*\{[\s\S]{0,220}justifyContent:\s*'flex-end'/);
   assert.match(playerSource, /landscapeBottomBar:\s*\{[\s\S]{0,120}paddingTop:\s*spacing\[1\]/);
   assert.match(playerSource, /landscapeTopBar:\s*\{[\s\S]{0,120}backgroundColor:\s*'transparent'/);
+});
+
+test('video player queue panel prevents automatic immersive hiding while open', () => {
+  const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
+
+  assert.match(playerSource, /queueVisibleRef/);
+  assert.match(playerSource, /queueVisibleRef\.current = queueVisible/);
+  assert.match(playerSource, /if \(queueVisible\) \{\s*setControlsVisible\(true\);\s*clearHideTimer\(\);/);
+  assert.match(playerSource, /function resetHideTimer\(\)[\s\S]{0,180}if \(queueVisibleRef\.current\) \{\s*return;\s*\}/);
+  assert.match(playerSource, /hideTimerRef\.current = setTimeout\(\(\) => \{\s*if \(queueVisibleRef\.current\) \{/);
+});
+
+test('video player portrait center vertical zone switches videos without stealing side gestures', () => {
+  const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
+
+  assert.match(playerSource, /CENTER_VIDEO_SWITCH_LEFT_RATIO\s*=\s*0\.28/);
+  assert.match(playerSource, /CENTER_VIDEO_SWITCH_RIGHT_RATIO\s*=\s*0\.72/);
+  assert.match(playerSource, /CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX\s*=\s*72/);
+  assert.match(playerSource, /surfaceGestureModeRef = useRef<'pending' \| 'scrub' \| 'vertical' \| 'video-switch' \| 'hold' \| null>/);
+  assert.match(playerSource, /function shouldSwitchVideoFromCenterVerticalGesture/);
+  assert.match(playerSource, /if \(isLandscape \|\| externalSource \|\| queue\.length <= 1\) \{/);
+  assert.match(playerSource, /locationX >= centerLeft && locationX <= centerRight && absDy > absDx \* CENTER_VIDEO_SWITCH_DOMINANCE_RATIO/);
+  assert.match(playerSource, /surfaceGestureModeRef\.current = 'video-switch'/);
+  assert.match(playerSource, /function finishCenterVideoSwitchGesture\(deltaY: number\)/);
+  assert.match(playerSource, /switchVideoByOffset\(deltaY < 0 \? 1 : -1\)/);
+  assert.match(playerSource, /void beginVerticalGesture\(event\)/);
 });
 
 test('video player syncs landscape UI with actual screen orientation changes', () => {
@@ -90,6 +116,19 @@ test('video player syncs landscape UI with actual screen orientation changes', (
   assert.match(playerSource, /ScreenOrientation\.removeOrientationChangeListener\(orientationSubscription\)/);
 });
 
+test('video detail supports horizontal swipe navigation within the IP video queue', () => {
+  const detailSource = readProjectFile('src/screens/VideoDetailScreen.tsx');
+
+  assert.match(detailSource, /DETAIL_SWIPE_MIN_DISTANCE_PX\s*=\s*64/);
+  assert.match(detailSource, /const \[activeVideoId, setActiveVideoId\] = useState\(videoId\)/);
+  assert.match(detailSource, /assetRepository\.findQueueVideosByIpId\(db,\s*detail\.ipId\)/);
+  assert.match(detailSource, /const detailPanResponder = useMemo/);
+  assert.match(detailSource, /onMoveShouldSetPanResponder:[\s\S]{0,420}absDx > DETAIL_SWIPE_MIN_DISTANCE_PX && absDx > absDy \* DETAIL_SWIPE_DOMINANCE_RATIO/);
+  assert.match(detailSource, /gestureState\.dx <= -DETAIL_SWIPE_MIN_DISTANCE_PX[\s\S]{0,160}navigateVideoBySwipe\(nextVideo/);
+  assert.match(detailSource, /gestureState\.dx >= DETAIL_SWIPE_MIN_DISTANCE_PX[\s\S]{0,160}navigateVideoBySwipe\(previousVideo/);
+  assert.match(detailSource, /<View \{\.\.\.detailPanResponder\.panHandlers\} style=\{styles\.content\}>/);
+});
+
 test('sort control opens a selectable menu instead of cycling on every tap', () => {
   const sortSource = readProjectFile('src/components/SortMenuButton.tsx');
 
@@ -98,6 +137,23 @@ test('sort control opens a selectable menu instead of cycling on every tap', () 
   assert.match(sortSource, /sortMenuVisible/);
   assert.match(sortSource, /IMAGE_SORT_OPTIONS\.map/);
   assert.match(sortSource, /checkmark-circle/);
+});
+
+test('group action menus expose direct rename without forcing full edit flow', () => {
+  const renameDialogSource = readProjectFile('src/components/GroupRenameDialog.tsx');
+  const ipDetailSource = readProjectFile('src/screens/IpDetailScreen.tsx');
+  const groupOverviewSource = readProjectFile('src/screens/GroupOverviewScreen.tsx');
+  const globalGroupsSource = readProjectFile('src/screens/GlobalGroupsScreen.tsx');
+
+  assert.match(renameDialogSource, /title="重命名分组"/);
+  assert.match(renameDialogSource, /GROUP_NAME_MAX_LENGTH/);
+  assert.match(renameDialogSource, /groupRepository\.update\(db,\s*group\.id,\s*\{\s*name:\s*trimmedName\s*\}\)/);
+  assert.doesNotMatch(renameDialogSource, /type:\s*trimmedName/);
+  for (const source of [ipDetailSource, groupOverviewSource, globalGroupsSource]) {
+    assert.match(source, /GroupRenameDialog/);
+    assert.match(source, /const \[renameGroup, setRenameGroup\]/);
+    assert.match(source, /key: 'rename', label: '重命名'/);
+  }
 });
 
 test('IP cards omit empty cover metadata instead of rendering zero counts', () => {

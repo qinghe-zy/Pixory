@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
+import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
@@ -43,6 +44,7 @@ export function GlobalGroupsScreen({
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GlobalGroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
+  const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
   const [scopeMenuVisible, setScopeMenuVisible] = useState(false);
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
@@ -148,6 +150,7 @@ export function GlobalGroupsScreen({
         ...(onImportImagesToGroup ? [{ key: 'add-images', label: '添加图片', icon: 'image-outline' as const, onPress: () => onImportImagesToGroup(actionGroup.ipId, actionGroup.id) }] : []),
         ...(onImportVideosToGroup ? [{ key: 'add-videos', label: '添加视频', icon: 'videocam-outline' as const, onPress: () => onImportVideosToGroup(actionGroup.ipId, actionGroup.id) }] : []),
         { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.ipId, actionGroup.id) },
+        { key: 'rename', label: '重命名', icon: 'text-outline', onPress: () => setRenameGroup(actionGroup) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.ipId, actionGroup.id) },
         {
           key: 'pin',
@@ -167,6 +170,13 @@ export function GlobalGroupsScreen({
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
       visible={Boolean(actionGroup)}
+    />
+    <GroupRenameDialog
+      group={renameGroup}
+      onClose={() => setRenameGroup(null)}
+      onRenamed={reload}
+      space={space}
+      visible={Boolean(renameGroup)}
     />
     <AppActionSheet
       items={[

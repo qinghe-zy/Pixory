@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -8,12 +8,15 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { TagChip } from '../components/TagChip';
-import { assetRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type PixorySpace, type TagRecord } from '../database';
+import { assetRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type PixorySpace, type TagRecord } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
 import { getFileInfo } from '../services/fileStorageService';
 import { saveVideoToSystemAlbum } from '../services/videoImportService';
 import { formatDateTime, formatDuration, formatFileSize, formatImageDimensions } from '../utils/formatters';
+
+const DETAIL_SWIPE_MIN_DISTANCE_PX = 64;
+const DETAIL_SWIPE_DOMINANCE_RATIO = 1.35;
 
 interface VideoDetailScreenProps {
   videoId: number;
@@ -37,14 +40,20 @@ export function VideoDetailScreen({
   onRefreshed,
 }: VideoDetailScreenProps) {
   const { showToast } = useToast();
+  const [activeVideoId, setActiveVideoId] = useState(videoId);
   const [video, setVideo] = useState<ImageDetailRecord | null>(null);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [groups, setGroups] = useState<GroupRecord[]>([]);
+  const [queueVideos, setQueueVideos] = useState<ImageListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isMoreVisible, setIsMoreVisible] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const coverUri = video?.coverThumbnailFileUri ?? video?.thumbnailFileUri ?? null;
+
+  useEffect(() => {
+    setActiveVideoId(videoId);
+  }, [videoId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,9 +63,9 @@ export function VideoDetailScreen({
       setErrorMessage(null);
       try {
         const [detail, tagItems, groupItems] = await runWithDatabaseSpace(space, (db) => Promise.all([
-          assetRepository.findVideoDetailById(db, videoId),
-          tagRepository.findByImageId(db, videoId),
-          imageRepository.findGroupsByImageId(db, videoId),
+          assetRepository.findVideoDetailById(db, activeVideoId),
+          tagRepository.findByImageId(db, activeVideoId),
+          imageRepository.findGroupsByImageId(db, activeVideoId),
         ]));
 
         if (!isMounted) {
@@ -66,10 +75,17 @@ export function VideoDetailScreen({
           throw new Error('没有找到这个视频。');
         }
 
+        const queueItems = await runWithDatabaseSpace(space, (db) => assetRepository.findQueueVideosByIpId(db, detail.ipId));
+
+        if (!isMounted) {
+          return;
+        }
+
         setVideo(detail);
         setTags(tagItems);
         setGroups(groupItems);
-        void runWithDatabaseSpace(space, (db) => imageRepository.touchLastViewedAt(db, videoId));
+        setQueueVideos(queueItems);
+        void runWithDatabaseSpace(space, (db) => imageRepository.touchLastViewedAt(db, activeVideoId));
       } catch (error) {
         if (isMounted) {
           const message = error instanceof Error ? error.message : '未知错误';
@@ -87,7 +103,44 @@ export function VideoDetailScreen({
     return () => {
       isMounted = false;
     };
-  }, [refreshToken, space, videoId]);
+  }, [activeVideoId, refreshToken, space]);
+
+  const currentQueueIndex = queueVideos.findIndex((item) => item.id === activeVideoId);
+  const previousVideo = currentQueueIndex > 0 ? queueVideos[currentQueueIndex - 1] : null;
+  const nextVideo = currentQueueIndex >= 0 && currentQueueIndex < queueVideos.length - 1 ? queueVideos[currentQueueIndex + 1] : null;
+
+  const detailPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) => {
+          if (isMoreVisible || isBusy || queueVideos.length <= 1) {
+            return false;
+          }
+          const absDx = Math.abs(gestureState.dx);
+          const absDy = Math.abs(gestureState.dy);
+          return absDx > DETAIL_SWIPE_MIN_DISTANCE_PX && absDx > absDy * DETAIL_SWIPE_DOMINANCE_RATIO;
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          if (gestureState.dx <= -DETAIL_SWIPE_MIN_DISTANCE_PX) {
+            navigateVideoBySwipe(nextVideo, '已经是最后一个视频');
+            return;
+          }
+          if (gestureState.dx >= DETAIL_SWIPE_MIN_DISTANCE_PX) {
+            navigateVideoBySwipe(previousVideo, '已经是第一个视频');
+          }
+        },
+      }),
+    [isBusy, isMoreVisible, nextVideo, previousVideo, queueVideos.length]
+  );
+
+  function navigateVideoBySwipe(targetVideo: ImageListItem | null, edgeMessage: string) {
+    if (!targetVideo) {
+      showToast(edgeMessage);
+      return;
+    }
+    setIsMoreVisible(false);
+    setActiveVideoId(targetVideo.id);
+  }
 
   const actionItems: AppActionSheetItem[] = useMemo(
     () => [
@@ -191,7 +244,7 @@ export function VideoDetailScreen({
           loadingTitle="读取视频"
         >
           {video ? (
-            <View style={styles.content}>
+            <View {...detailPanResponder.panHandlers} style={styles.content}>
               <Pressable onPress={handlePlay} style={({ pressed }) => [styles.coverWrap, pressed && styles.pressed]}>
                 {coverUri ? (
                   <SecureImage contentFit="cover" space={space} style={styles.cover} uri={coverUri} />

@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { ContentCard } from '../components/ContentCard';
+import { GroupRenameDialog } from '../components/GroupRenameDialog';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
@@ -42,6 +43,7 @@ export function GroupOverviewScreen({
   const { showToast } = useToast();
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
+  const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
     async () => {
       const [ip, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
@@ -167,6 +169,7 @@ export function GroupOverviewScreen({
       items={actionGroup ? [
         { key: 'view', label: '查看图片', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
         { key: 'cover', label: actionGroup.coverSource === 'custom' ? '更换封面' : '选择封面', icon: 'image-outline', onPress: () => onOpenCoverPicker(actionGroup.id) },
+        { key: 'rename', label: '重命名', icon: 'text-outline', onPress: () => setRenameGroup(actionGroup) },
         { key: 'edit', label: '编辑分组', icon: 'create-outline', onPress: () => onEditGroup(actionGroup.id) },
         {
           key: 'pin',
@@ -186,6 +189,13 @@ export function GroupOverviewScreen({
       onClose={() => setActionGroup(null)}
       title={actionGroup?.name ?? '分组操作'}
       visible={Boolean(actionGroup)}
+    />
+    <GroupRenameDialog
+      group={renameGroup}
+      onClose={() => setRenameGroup(null)}
+      onRenamed={reload}
+      space={space}
+      visible={Boolean(renameGroup)}
     />
     <AppDialog
       danger
