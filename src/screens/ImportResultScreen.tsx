@@ -6,7 +6,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, runWithDatabaseSpace, type ImageListItem, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface ImportResultScreenProps {
@@ -130,6 +130,6 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
 });

@@ -9,7 +9,7 @@ import { SecureImage } from '../components/SecureImage';
 import { TagMultiSelectPanel } from '../components/TagMultiSelectPanel';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { mergeDelimitedDraftTagNames } from '../utils/tagDrafts';
@@ -450,12 +450,12 @@ function areSameTagNames(left: string[], right: string[]): boolean {
 
 const styles = StyleSheet.create({
   queue: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   queueHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   counter: {
     backgroundColor: colors.background.input,
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   gestureHintRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: -spacing[2],
+    marginTop: rhythm.microGap,
     paddingHorizontal: spacing[1],
   },
   gestureHint: {
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -spacing[1],
   },
   queueStripContent: {
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
     paddingHorizontal: spacing[1],
   },
   queueTile: {
@@ -533,10 +533,10 @@ const styles = StyleSheet.create({
   },
   continuityPanel: {
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   section: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
@@ -544,14 +544,14 @@ const styles = StyleSheet.create({
   groupGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   groupChip: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minHeight: 48,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
   tagInputRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   tagInput: {
     ...typography.textStyles.body,
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.default,
     borderRadius: radius.pill,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     height: 42,
     justifyContent: 'center',
     paddingHorizontal: spacing[4],
@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: spacing[2],
+    rowGap: rhythm.listCardGap,
   },
   actionCard: {
     alignItems: 'center',
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'center',
     minHeight: 46,
     paddingHorizontal: spacing[2],

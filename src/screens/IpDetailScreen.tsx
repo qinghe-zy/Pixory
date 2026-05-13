@@ -15,7 +15,7 @@ import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { PERSONAL_COVER_BLUR_OPTIONS, resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type ImageListItem, type ImportBatchSummary, type IpDetailRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import type { ImageViewerContext } from '../navigation/imageViewerContext';
@@ -700,20 +700,20 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
   batchSection: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   managementSummary: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
-    marginTop: spacing[4],
+    gap: rhythm.listCardGap,
+    marginTop: rhythm.entryCardGap,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[4],
   },
   batchList: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   batchRow: {
     alignItems: 'center',
@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: spacing[3],
+    rowGap: rhythm.listCardGap,
   },
   quickCard: {
     alignItems: 'center',
@@ -784,10 +784,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   groupSection: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   groupEntryList: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   groupEntry: {
     alignItems: 'center',
@@ -847,6 +847,6 @@ const styles = StyleSheet.create({
   recentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
 });

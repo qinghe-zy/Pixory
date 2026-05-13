@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { PrimaryButton } from './PrimaryButton';
 
 interface EmptyStateProps {
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   description: {
     ...typography.textStyles.emptyDescription,
     marginBottom: componentTokens.emptyState.descriptionGap,
-    marginTop: spacing[2],
+    marginTop: rhythm.cardContentGap,
     textAlign: 'center',
   },
 });

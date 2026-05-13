@@ -11,7 +11,7 @@ import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
 import { DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupRecord, type IpRecord, type PixorySpace } from '../database';
-import { colors, spacing, typography } from '../design/tokens';
+import { colors, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
@@ -214,7 +214,7 @@ export function EditGroupScreen({ ipId, groupId, space = 'normal', onBack, onDel
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   optionList: {
     gap: spacing[1],

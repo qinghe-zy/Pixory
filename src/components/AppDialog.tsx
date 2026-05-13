@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { PrimaryButton } from './PrimaryButton';
 
 interface AppDialogProps {
@@ -68,13 +68,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[5],
+    gap: rhythm.entryCardGap,
     maxWidth: 360,
     padding: spacing[5],
     width: '100%',
   },
   copy: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   title: {
     ...typography.textStyles.navTitle,
@@ -89,9 +89,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   actions: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   body: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
 });

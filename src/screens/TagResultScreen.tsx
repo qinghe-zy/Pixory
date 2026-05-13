@@ -9,7 +9,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
@@ -501,16 +501,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     justifyContent: 'space-between',
-    marginBottom: spacing[1],
+    marginBottom: rhythm.microGap,
     maxWidth: '100%',
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
   },
   summaryCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   subtitle: {
@@ -527,11 +527,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   filterBarWrap: {
-    gap: spacing[2],
-    marginTop: spacing[1],
+    gap: rhythm.cardContentGap,
+    marginTop: rhythm.microGap,
   },
   filterBar: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingRight: spacing[2],
     paddingTop: spacing[1],
   },
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minHeight: 34,
     paddingHorizontal: spacing[3],
   },
@@ -568,20 +568,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
   filterDrawerHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
   },
   filterDrawerTitleRow: {
     alignItems: 'center',
     flex: 1,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minWidth: 0,
   },
   filterDrawerTitle: {
@@ -606,7 +606,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   drawerSections: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   drawerSectionTitle: {
     ...typography.textStyles.micro,
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   filterOptionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   filterOptionChip: {
     alignItems: 'center',
@@ -625,7 +625,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minHeight: 32,
     paddingHorizontal: spacing[3],
   },
@@ -651,9 +651,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
-    marginBottom: spacing[2],
+    marginBottom: rhythm.cardContentGap,
     minHeight: 42,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
@@ -686,19 +686,19 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
-    marginTop: spacing[1],
+    gap: rhythm.compactGridGap,
+    marginTop: rhythm.microGap,
   },
   detailList: {
-    gap: spacing[2],
-    marginTop: spacing[1],
+    gap: rhythm.listCardGap,
+    marginTop: rhythm.microGap,
   },
   gridHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
-    marginBottom: spacing[1],
+    marginBottom: rhythm.microGap,
   },
   gridTitle: {
     ...typography.textStyles.sectionTitle,

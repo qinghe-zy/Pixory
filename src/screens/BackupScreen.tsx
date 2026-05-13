@@ -8,7 +8,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ipRepository, runWithDatabaseSpace, settingsRepository, type IpRecord, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import {
   createEncryptedAllPack,
@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     padding: spacing[3],
   },
   statusLabel: {
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[3],
   },
   exportDirectoryHeader: {
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
   },
   exportDirectoryCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   exportDirectoryTitle: {
@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     padding: spacing[3],
   },
   ipResultPanel: {
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   },
   resultHeaderCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   resultDivider: {
@@ -584,7 +584,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[3],
   },
   secretInput: {
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   ipList: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   ipExportItem: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   ipRow: {
     alignItems: 'center',
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
   },
   ipCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   ipName: {

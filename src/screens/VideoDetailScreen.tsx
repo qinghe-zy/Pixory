@@ -9,7 +9,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { TagChip } from '../components/TagChip';
 import { assetRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type PixorySpace, type TagRecord } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
 import { getFileInfo } from '../services/fileStorageService';
 import { saveVideoToSystemAlbum } from '../services/videoImportService';
@@ -303,7 +303,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   content: {
-    gap: spacing[4],
+    gap: rhythm.screenSectionGap,
   },
   headerButton: {
     alignItems: 'center',
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   titleBlock: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   title: {
     ...typography.textStyles.pageTitle,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[3],
   },
   infoRow: {
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
   tagsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   pressed: {
     opacity: 0.84,

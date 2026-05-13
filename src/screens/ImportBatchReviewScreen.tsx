@@ -17,7 +17,7 @@ import {
   type ImportBatchSummary,
   type PixorySpace,
 } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
 
@@ -539,13 +539,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[3],
   },
   heroTop: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   heroIcon: {
     alignItems: 'center',
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   },
   heroCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   heroTitle: {
@@ -592,7 +592,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
   itemDetailsMeta: {
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
   itemDetailRow: {
     borderTopColor: colors.border.subtle,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingTop: spacing[2],
   },
   itemDetailName: {
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   metric: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     width: '19%',
   },
   metricValue: {
@@ -628,18 +628,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actions: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   secondaryActions: {
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   secondaryAction: {
     flex: 1,
   },
   suggestionBlock: {
-    gap: spacing[2],
-    marginBottom: spacing[3],
+    gap: rhythm.cardContentGap,
+    marginBottom: rhythm.listCardGap,
   },
   suggestionCard: {
     alignItems: 'center',
@@ -648,12 +648,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
   suggestionCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   suggestionTitle: {
@@ -666,11 +666,11 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   filterBlock: {
-    gap: spacing[2],
-    marginBottom: spacing[3],
+    gap: rhythm.cardContentGap,
+    marginBottom: rhythm.listCardGap,
   },
   pileOverview: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   pilePreviewRow: {
     alignItems: 'center',
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minHeight: 58,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
@@ -689,7 +689,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary.hover,
   },
   pilePreviewCopy: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     width: 72,
   },
   pilePreviewTitle: {
@@ -707,7 +707,7 @@ const styles = StyleSheet.create({
   pilePreviewImages: {
     flex: 1,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     justifyContent: 'flex-end',
     minWidth: 0,
   },
@@ -754,7 +754,7 @@ const styles = StyleSheet.create({
   pileWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   pileChip: {
     alignItems: 'center',
@@ -763,7 +763,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minHeight: 32,
     paddingHorizontal: spacing[3],
   },
@@ -784,7 +784,7 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
   },
   prefixPanel: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingTop: spacing[1],
   },
   prefixTitle: {
@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
   prefixWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   prefixChip: {
     backgroundColor: colors.background.tag,
@@ -822,7 +822,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing[2],
+    marginBottom: rhythm.cardContentGap,
   },
   textButton: {
     paddingHorizontal: spacing[2],
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   pressed: {
     opacity: 0.82,

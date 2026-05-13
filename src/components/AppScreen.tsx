@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
-import { colors, layout, radius, shadows, spacing } from '../design/tokens';
+import { colors, layout, radius, rhythm, shadows, spacing } from '../design/tokens';
 import { PageBackground } from './PageBackground';
 
 interface AppScreenProps {
@@ -123,12 +123,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: layout.sectionGap,
+    gap: rhythm.screenSectionGap,
   },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: layout.pagePaddingHorizontal,
-    gap: layout.sectionGap,
+    gap: rhythm.screenSectionGap,
   },
   footer: {
     backgroundColor: colors.background.page,

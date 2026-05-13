@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.0.12",
-  "versionCode": 212,
+  "version": "2.0.13",
+  "versionCode": 213,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.0.12 已发布，导入选择路径更稳定。",
+  "message": "Pixory 2.0.13 已发布，页面节奏与播放器体验更统一。",
   "releaseNotes": [
-    "图片和视频导入恢复使用系统选择器原路径，避免相册路径不可复制导致失败。",
-    "再次选择素材会合并到当前已选列表，不会覆盖之前已选项。",
-    "已选素材仍可在导入页逐项移除，支持清空到 0 项。"
+    "统一页面、卡片、列表和网格的垂直间距规则，后续微调可集中修改。",
+    "优化播放器竖屏和横屏控制布局，待播放面板打开时不再自动沉浸。",
+    "分组支持直接重命名，视频详情支持左右滑动切换。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

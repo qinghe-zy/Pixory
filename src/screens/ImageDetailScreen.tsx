@@ -14,7 +14,7 @@ import { SecureImage } from '../components/SecureImage';
 import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
 import { imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type ImageListItem, type PixorySpace, type TagRecord } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { getFileInfo } from '../services/fileStorageService';
 import { saveImageToSystemAlbum } from '../services/mediaLibraryService';
 import { devLog } from '../utils/dev';
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
   tagsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   safetyPanel: {
     alignItems: 'center',
@@ -748,12 +748,12 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   navActions: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
   },
   navButton: {

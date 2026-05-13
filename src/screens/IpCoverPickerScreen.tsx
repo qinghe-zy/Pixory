@@ -6,7 +6,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpDetailRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
     paddingTop: spacing[3],
   },
 });

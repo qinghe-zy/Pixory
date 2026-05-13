@@ -1,7 +1,7 @@
 import { Children, type ReactNode } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 
 interface LightFormSectionProps {
   title?: string;
@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   header: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingHorizontal: spacing[4],
     paddingTop: spacing[3],
     paddingBottom: spacing[2],

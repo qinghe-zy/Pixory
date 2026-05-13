@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { importBatchRepository, runWithDatabaseSpace, type ImportBatchItemStatus, type ImportBatchSummary, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { formatDateTime } from '../utils/formatters';
 
@@ -110,7 +110,7 @@ export function ImportBatchHistoryScreen({ ipId, space = 'normal', refreshToken,
 
 const styles = StyleSheet.create({
   list: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   row: {
     alignItems: 'center',

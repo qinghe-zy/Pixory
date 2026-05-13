@@ -15,7 +15,7 @@ import { TagChip } from '../components/TagChip';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageDetailRecord, type PixorySpace, type TagRecord } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { mergeDraftTagNames, normalizeDraftTagNames } from '../utils/tagDrafts';
@@ -331,10 +331,10 @@ export function EditImageScreen({ imageId, space = 'normal', refreshToken, onBac
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   previewPanel: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[3],
     backgroundColor: colors.background.input,
     borderColor: colors.border.subtle,
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   previewMeta: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingHorizontal: spacing[1],
     minWidth: 0,
   },
@@ -369,11 +369,11 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
   },
   optionList: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingVertical: spacing[3],
   },
   inlineCopy: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   inlineLabel: {
     ...typography.textStyles.bodyStrong,
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   tagRow: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingVertical: spacing[3],
   },
   tagInputRow: {
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   tagsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   helperText: {
     ...typography.textStyles.caption,

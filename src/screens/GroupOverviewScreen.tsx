@@ -14,7 +14,7 @@ import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type IpRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
@@ -227,18 +227,17 @@ const styles = StyleSheet.create({
   subhead: {
     ...typography.textStyles.caption,
     color: colors.text.body,
-    marginTop: -spacing[4],
   },
   list: {
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
   },
   sectionBlock: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   groupCard: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     minHeight: 98,
     padding: spacing[3],
   },
@@ -256,7 +255,7 @@ const styles = StyleSheet.create({
   },
   coverEmpty: {
     alignItems: 'center',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     height: '100%',
     justifyContent: 'center',
     padding: spacing[3],
@@ -267,13 +266,13 @@ const styles = StyleSheet.create({
   },
   groupBody: {
     flex: 1,
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minWidth: 0,
   },
   groupHeader: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
   },
   groupName: {
@@ -296,7 +295,7 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   metaText: {
     ...typography.textStyles.caption,

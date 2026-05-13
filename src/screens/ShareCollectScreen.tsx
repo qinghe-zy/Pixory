@@ -9,7 +9,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { SecureImage } from '../components/SecureImage';
 import { useToast } from '../components/AppToast';
 import { ipRepository, runWithDatabaseSpace, type IpRecord } from '../database';
-import { colors, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { finishNativeShareActivity, type NativeShareItem } from '../native/pixoryMediaModule';
 import { importSingleImage, type PickedImageAsset } from '../services/imageImportService';
 import { importVideosToIp, type PickedVideoAsset } from '../services/videoImportService';
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.page,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
     maxHeight: '86%',
     paddingBottom: spacing[6],
     paddingHorizontal: layout.pagePaddingHorizontal,
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
   previewRow: {
     paddingRight: spacing[2],
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   previewTile: {
     backgroundColor: colors.background.empty,
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   section: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   sectionTitle: {
     ...typography.textStyles.caption,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   optionList: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
     maxHeight: 168,
   },
   createIpButton: {

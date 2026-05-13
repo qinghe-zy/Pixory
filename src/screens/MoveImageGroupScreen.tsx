@@ -7,7 +7,7 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, runWithDatabaseSpace, type GroupRecord, type ImageDetailRecord, type PixorySpace } from '../database';
-import { metrics, spacing } from '../design/tokens';
+import { rhythm, spacing } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 
@@ -142,10 +142,10 @@ export function MoveImageGroupScreen({ imageId, space = 'normal', refreshToken, 
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: metrics.formFieldGap,
+    gap: rhythm.listCardGap,
   },
   optionList: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingVertical: spacing[2],
   },
 });

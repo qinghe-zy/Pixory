@@ -7,7 +7,7 @@ import { useToast } from '../components/AppToast';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import type { PixorySpace } from '../database';
-import { colors, layout, radius, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { cleanupAppCache } from '../services/cacheCleanupService';
 import { rebuildAllPreviews, regenerateMissingPreviews } from '../services/previewMaintenanceService';
@@ -405,10 +405,10 @@ function PanelButton({ disabled, fill = false, label, onPress, variant = 'defaul
 
 const styles = StyleSheet.create({
   pageBody: {
-    gap: spacing[5],
+    gap: rhythm.screenSectionGap,
   },
   overview: {
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
     paddingTop: spacing[1],
   },
   metricRow: {
@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.page,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[2],
   },
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   sheetRows: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   confirmCopy: {
     gap: 2,
@@ -573,14 +573,14 @@ const styles = StyleSheet.create({
   },
   sheetActions: {
     flexDirection: 'row',
-    gap: spacing[2],
-    marginTop: spacing[2],
-    marginBottom: spacing[2],
+    gap: rhythm.cardContentGap,
+    marginTop: rhythm.cardContentGap,
+    marginBottom: rhythm.cardContentGap,
   },
   previewActions: {
-    gap: spacing[2],
-    marginTop: spacing[2],
-    marginBottom: spacing[2],
+    gap: rhythm.cardContentGap,
+    marginTop: rhythm.cardContentGap,
+    marginBottom: rhythm.cardContentGap,
   },
   panelButton: {
     alignItems: 'center',

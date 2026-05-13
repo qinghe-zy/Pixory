@@ -10,7 +10,7 @@ import { SearchBar } from '../components/SearchBar';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { runWithDatabaseSpace, tagRepository, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 
@@ -466,10 +466,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   content: {
-    gap: spacing[5],
+    gap: rhythm.screenSectionGap,
   },
   section: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
   },
   resultCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   resultTitle: {
@@ -517,8 +517,8 @@ const styles = StyleSheet.create({
   popularGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing[2],
-    rowGap: spacing[2],
+    columnGap: rhythm.compactGridGap,
+    rowGap: rhythm.compactGridGap,
   },
   renamePanel: {
     alignItems: 'center',
@@ -582,8 +582,8 @@ const styles = StyleSheet.create({
   allTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: spacing[2],
-    rowGap: spacing[2],
+    columnGap: rhythm.compactGridGap,
+    rowGap: rhythm.compactGridGap,
   },
   tagPill: {
     alignItems: 'center',

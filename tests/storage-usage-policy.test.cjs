@@ -112,6 +112,6 @@ test('page section spacing keeps state cards and lists separated from summaries'
   const backups = readProjectFile('src/screens/BackupExportManagerScreen.tsx');
 
   assert.match(metrics, /sectionGap:\s*28/);
-  assert.match(backups, /marginTop:\s*spacing\[6\]/);
+  assert.match(backups, /marginTop:\s*rhythm\.screenSectionGap/);
   assert.match(backups, /emptyContainerStyle=\{styles\.emptyStateWrap\}/);
 });

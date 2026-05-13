@@ -9,7 +9,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import type { PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { deleteBackupExportEntry, listBackupExportEntries, type BackupExportEntry } from '../services/storageUsageService';
 import { formatDateTime, formatFileSize } from '../utils/formatters';
@@ -256,10 +256,10 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   summary: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   filesSection: {
-    marginTop: spacing[6],
+    marginTop: rhythm.screenSectionGap,
     paddingBottom: spacing[4],
   },
   emptyStateWrap: {
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: spacing[3],
-    rowGap: spacing[3],
+    rowGap: rhythm.listCardGap,
   },
   metric: {
     gap: 3,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   list: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   entryRow: {
     alignItems: 'center',
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   selectionBar: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   selectionTitle: {
     ...typography.textStyles.bodyStrong,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   selectionActions: {
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   selectionActionSlot: {
     flex: 1,

@@ -13,7 +13,7 @@ import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
-import { colors, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   list: {
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
   },
   emptyGuideOffset: {
     paddingTop: spacing[8],
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   sectionBlock: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   sectionHeader: {
     alignItems: 'center',

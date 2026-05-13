@@ -125,9 +125,9 @@ test('duplicate review screen supports exact and similar tabs with soft delete o
 test('duplicate review cards keep breathing room between groups and rows', () => {
   const screenSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
 
-  assert.match(screenSource, /groupList:\s*\{[\s\S]*gap:\s*spacing\[5\]/);
+  assert.match(screenSource, /groupList:\s*\{[\s\S]*gap:\s*rhythm\.screenSectionGap/);
   assert.match(screenSource, /groupCard:\s*\{[\s\S]*padding:\s*spacing\[4\]/);
-  assert.match(screenSource, /imageList:\s*\{[\s\S]*gap:\s*spacing\[4\]/);
+  assert.match(screenSource, /imageList:\s*\{[\s\S]*gap:\s*rhythm\.entryCardGap/);
   assert.match(screenSource, /imageRow:\s*\{[\s\S]*paddingVertical:\s*spacing\[2\]/);
   assert.match(screenSource, /deleteSelectedButton:\s*\{[\s\S]*minHeight:\s*34/);
 });

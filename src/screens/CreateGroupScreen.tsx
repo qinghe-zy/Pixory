@@ -9,7 +9,7 @@ import { OptionSelectRow } from '../components/OptionSelectRow';
 import { ReadonlyInfoRow } from '../components/ReadonlyInfoRow';
 import { GROUP_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from '../constants/limits';
 import { GROUP_TYPE_OPTIONS, type GroupTypeValue } from '../constants/groups';
-import { spacing } from '../design/tokens';
+import { rhythm, spacing } from '../design/tokens';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -139,7 +139,7 @@ export function CreateGroupScreen({ ipId, space = 'normal', ipName, onBack, onCr
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   optionList: {
     gap: spacing[1],

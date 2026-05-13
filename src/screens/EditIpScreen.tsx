@@ -8,7 +8,7 @@ import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
 import { SwitchSettingRow } from '../components/SwitchSettingRow';
 import { IP_NAME_MAX_LENGTH } from '../constants/limits';
-import { colors, spacing, typography } from '../design/tokens';
+import { colors, rhythm, typography } from '../design/tokens';
 import { ipRepository, runWithDatabaseSpace, type IpRecord, type PixorySpace } from '../database';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
@@ -150,7 +150,7 @@ export function EditIpScreen({ ipId, space = 'normal', onBack, onSaved }: EditIp
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   hint: {
     ...typography.textStyles.body,

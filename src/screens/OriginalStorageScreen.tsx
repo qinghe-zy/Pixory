@@ -5,7 +5,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import type { PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { listIpStorageUsage, type IpStorageUsageItem } from '../services/storageUsageService';
 import { formatFileSize } from '../utils/formatters';
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.subtle,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     minHeight: 72,
     padding: spacing[3],
   },
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   ipMainLine: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
   },
   ipName: {

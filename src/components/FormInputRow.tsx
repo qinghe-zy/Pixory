@@ -1,7 +1,7 @@
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
 
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface FormInputRowProps extends Omit<TextInputProps, 'multiline'> {
   label: string;
@@ -34,11 +34,11 @@ export function FormInputRow({
 
 const styles = StyleSheet.create({
   row: {
-    gap: spacing[2],
+    gap: rhythm.fieldContentGap,
     paddingVertical: spacing[3],
   },
   copy: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   label: {

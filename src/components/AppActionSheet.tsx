@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 
 export interface AppActionSheetItem {
   key: string;
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.page,
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[2],
   },
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     width: 38,
   },
   copy: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingTop: spacing[1],
   },
   title: {
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   list: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   row: {
     alignItems: 'center',
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     minHeight: 54,
     paddingHorizontal: spacing[3],
   },

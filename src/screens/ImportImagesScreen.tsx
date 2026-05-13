@@ -15,7 +15,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { NOTE_MAX_LENGTH, TAG_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, settingsRepository, tagRepository, type GroupRecord, type ImportTemplateRecord, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import {
@@ -996,10 +996,10 @@ export function ImportImagesScreen({
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   pickRow: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     paddingVertical: spacing[3],
   },
   pickZone: {
@@ -1010,7 +1010,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderWidth: 1,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     minHeight: 64,
     padding: spacing[3],
   },
@@ -1024,7 +1024,7 @@ const styles = StyleSheet.create({
   },
   pickCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   pickTitle: {
     ...typography.textStyles.bodyStrong,
@@ -1036,7 +1036,7 @@ const styles = StyleSheet.create({
   previewRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   previewCard: {
     aspectRatio: 1,
@@ -1063,7 +1063,7 @@ const styles = StyleSheet.create({
     width: 24,
   },
   videoPreviewList: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
     paddingTop: spacing[2],
   },
   videoPreviewRow: {
@@ -1073,7 +1073,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minHeight: 38,
     paddingHorizontal: spacing[3],
   },
@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minHeight: 44,
     paddingHorizontal: spacing[3],
   },
@@ -1109,7 +1109,7 @@ const styles = StyleSheet.create({
   currentIpRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingBottom: spacing[2],
   },
   currentIpLabel: {
@@ -1132,11 +1132,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   optionList: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingVertical: spacing[2],
   },
   duplicateDecisionList: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
     paddingTop: spacing[1],
   },
   inlineLabel: {
@@ -1148,7 +1148,7 @@ const styles = StyleSheet.create({
   createGroupRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingBottom: spacing[2],
   },
   optionalToggle: {
@@ -1158,7 +1158,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minHeight: 54,
     paddingHorizontal: spacing[3],
   },
@@ -1172,7 +1172,7 @@ const styles = StyleSheet.create({
   },
   optionalCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   optionalTitle: {
@@ -1201,7 +1201,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     height: 40,
     justifyContent: 'center',
     paddingHorizontal: spacing[3],
@@ -1215,7 +1215,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   templateGrid: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
     paddingVertical: spacing[2],
   },
   packageZone: {
@@ -1225,7 +1225,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     minHeight: 62,
     padding: spacing[3],
   },
@@ -1238,14 +1238,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   templateCreateButton: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
     borderRadius: radius.pill,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minHeight: 30,
     paddingHorizontal: spacing[3],
   },
@@ -1261,14 +1261,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
     minHeight: 48,
     padding: spacing[2],
   },
   templateApplyArea: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
     paddingHorizontal: spacing[1],
     paddingVertical: spacing[1],
@@ -1288,7 +1288,7 @@ const styles = StyleSheet.create({
   },
   templateActions: {
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   templateIconButton: {
     alignItems: 'center',
@@ -1301,7 +1301,7 @@ const styles = StyleSheet.create({
     width: 32,
   },
   templateDialogBody: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
   dialogInput: {
     ...typography.textStyles.body,
@@ -1319,7 +1319,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   quickTags: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingTop: spacing[2],
   },
   quickTagChip: {
@@ -1337,13 +1337,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tagRow: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     paddingVertical: spacing[3],
   },
   tagInputRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
   },
   tagInput: {
     ...typography.textStyles.body,
@@ -1365,7 +1365,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     height: 40,
     flexDirection: 'row',
-    gap: spacing[1],
+    gap: rhythm.microGap,
     justifyContent: 'center',
     paddingHorizontal: spacing[3],
   },
@@ -1377,7 +1377,7 @@ const styles = StyleSheet.create({
   tagsWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   pressed: {
     opacity: 0.82,

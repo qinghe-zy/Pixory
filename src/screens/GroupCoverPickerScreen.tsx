@@ -7,7 +7,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 
 interface GroupCoverPickerScreenProps {
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
     paddingTop: spacing[3],
   },
 });

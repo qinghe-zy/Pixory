@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
-import { colors, layout, metrics, spacing, typography } from '../design/tokens';
+import { colors, layout, metrics, rhythm, spacing, typography } from '../design/tokens';
 import { PrimaryButton } from './PrimaryButton';
 import { ScreenScaffold } from './ScreenScaffold';
 
@@ -90,7 +90,7 @@ export function FormScreenScaffold({
 
 const styles = StyleSheet.create({
   footerWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     paddingTop: spacing[2],
   },
   errorText: {
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     color: colors.semantic.danger,
   },
   actions: {
-    gap: spacing[2],
+    gap: rhythm.cardContentGap,
     minHeight: metrics.bottomActionHeight + layout.stickyFooterBottomOffset,
   },
   scrollContent: {

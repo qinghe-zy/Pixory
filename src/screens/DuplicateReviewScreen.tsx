@@ -6,7 +6,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { imageRepository, runWithDatabaseSpace, type DuplicateImageGroup, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { runDuplicateDetectionScan } from '../services/duplicateDetectionService';
 import { formatFileSize } from '../utils/formatters';
@@ -169,7 +169,7 @@ function TabButton({ active, label, onPress }: { active: boolean; label: string;
 
 const styles = StyleSheet.create({
   contentStack: {
-    gap: spacing[4],
+    gap: rhythm.screenSectionGap,
   },
   hero: {
     alignItems: 'center',
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   heroCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   heroTitle: {
@@ -222,18 +222,18 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   groupList: {
-    gap: spacing[5],
+    gap: rhythm.screenSectionGap,
   },
   groupCard: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     padding: spacing[4],
   },
   groupHeader: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   groupTitleRow: {
     alignItems: 'center',
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     color: colors.text.title,
   },
   imageList: {
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
   },
   imageRow: {
     alignItems: 'center',
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   },
   imageCopy: {
     flex: 1,
-    gap: spacing[1],
+    gap: rhythm.microGap,
     minWidth: 0,
   },
   filename: {

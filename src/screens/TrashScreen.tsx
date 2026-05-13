@@ -9,7 +9,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { clearTrash, clearTrashItems, TRASH_RETENTION_DAYS } from '../services/trashService';
 import { formatDateTime, formatDuration, formatFileSize } from '../utils/formatters';
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   list: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   storageNotice: {
     alignItems: 'center',

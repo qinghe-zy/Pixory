@@ -9,7 +9,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GlobalGroupListItem, type ImageListItem, type IpListItem, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import {
   addSearchHistoryItem,
@@ -340,13 +340,13 @@ function ResultRow({ label, meta, onPress }: { label: string; meta: string; onPr
 
 const styles = StyleSheet.create({
   content: {
-    gap: spacing[5],
+    gap: rhythm.screenSectionGap,
   },
   emptySpace: {
     minHeight: 360,
   },
   historyBlock: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
     paddingTop: spacing[1],
   },
   historyHeader: {
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
   historyList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   historyPill: {
     alignItems: 'center',
@@ -386,13 +386,13 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
   section: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
   },
   suggestionBlock: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   suggestionTitle: {
     ...typography.textStyles.micro,
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   suggestionList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   suggestionPill: {
     alignItems: 'center',
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[2],
+    gap: rhythm.compactGridGap,
   },
   pressed: {
     opacity: 0.78,

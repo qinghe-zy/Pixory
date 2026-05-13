@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../design/tokens';
+import { colors, rhythm, typography } from '../design/tokens';
 
 interface FormFieldProps {
   label: string;
@@ -23,10 +23,10 @@ export function FormField({ label, hint, children }: FormFieldProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: spacing[3],
+    gap: rhythm.fieldContentGap,
   },
   copy: {
-    gap: spacing[1],
+    gap: rhythm.microGap,
   },
   label: {
     ...typography.textStyles.bodyStrong,

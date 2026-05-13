@@ -12,7 +12,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing[8],
   },
   grid: {
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
   },
   passwordInput: {
     ...typography.textStyles.body,

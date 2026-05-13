@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { DESCRIPTION_MAX_LENGTH, IP_NAME_MAX_LENGTH } from '../constants/limits';
 import { ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import { spacing } from '../design/tokens';
+import { rhythm } from '../design/tokens';
 import { FormInputRow } from '../components/FormInputRow';
 import { FormScreenScaffold } from '../components/FormScreenScaffold';
 import { FormTextareaRow } from '../components/FormTextareaRow';
@@ -103,6 +103,6 @@ export function CreateIpScreen({ space = 'normal', onCancel, onCreated }: Create
 
 const styles = StyleSheet.create({
   formWrap: {
-    gap: spacing[3],
+    gap: rhythm.listCardGap,
   },
 });

@@ -5,7 +5,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '../components/AppScreen';
 import { Header } from '../components/Header';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { colors, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { runImageImportDevelopmentCheck } from '../services/imageImportService';
 
 interface ImportDevelopmentScreenProps {
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing[4],
+    gap: rhythm.entryCardGap,
     padding: spacing[6],
   },
   title: {

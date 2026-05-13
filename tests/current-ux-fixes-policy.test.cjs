@@ -156,6 +156,86 @@ test('group action menus expose direct rename without forcing full edit flow', (
   }
 });
 
+test('global card spacing rhythm is centralized and used by core surfaces', () => {
+  const rhythmSource = readProjectFile('src/design/tokens/rhythm.ts');
+  const tokenIndexSource = readProjectFile('src/design/tokens/index.ts');
+  const appScreenSource = readProjectFile('src/components/AppScreen.tsx');
+  const contentCardSource = readProjectFile('src/components/ContentCard.tsx');
+  const meSource = readProjectFile('src/screens/MeScreen.tsx');
+  const groupOverviewSource = readProjectFile('src/screens/GroupOverviewScreen.tsx');
+  const globalGroupsSource = readProjectFile('src/screens/GlobalGroupsScreen.tsx');
+  const ipDetailSource = readProjectFile('src/screens/IpDetailScreen.tsx');
+  const allImagesSource = readProjectFile('src/screens/AllImagesScreen.tsx');
+  const tagsOverviewSource = readProjectFile('src/screens/TagsOverviewScreen.tsx');
+  const storageUsageSource = readProjectFile('src/screens/StorageUsageScreen.tsx');
+  const importImagesSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
+  const quickOrganizeSource = readProjectFile('src/screens/QuickOrganizeScreen.tsx');
+  const duplicateReviewSource = readProjectFile('src/screens/DuplicateReviewScreen.tsx');
+  const videoDetailSource = readProjectFile('src/screens/VideoDetailScreen.tsx');
+  const originalStorageSource = readProjectFile('src/screens/OriginalStorageScreen.tsx');
+  const moveImageGroupSource = readProjectFile('src/screens/MoveImageGroupScreen.tsx');
+  const docsSource = readProjectFile('.impeccable.md');
+  const agentsSource = readProjectFile('AGENTS.md');
+
+  for (const [name, spacingIndex] of [
+    ['screenSectionGap', 7],
+    ['heroToListGap', 7],
+    ['entryCardGap', 4],
+    ['listCardGap', 3],
+    ['compactGridGap', 2],
+    ['cardContentGap', 2],
+    ['fieldContentGap', 2],
+    ['inlineGap', 2],
+    ['microGap', 1],
+  ]) {
+    assert.match(rhythmSource, new RegExp(`${name}:\\s*spacing\\[${spacingIndex}\\]`));
+  }
+
+  assert.match(tokenIndexSource, /export \{ rhythm \} from '\.\/rhythm'/);
+  assert.match(appScreenSource, /gap:\s*rhythm\.screenSectionGap/);
+  assert.match(contentCardSource, /gap:\s*rhythm\.cardContentGap/);
+  assert.match(meSource, /marginBottom:\s*rhythm\.heroToListGap/);
+  assert.match(meSource, /entryList:\s*\{[\s\S]{0,80}gap:\s*rhythm\.entryCardGap/);
+  assert.match(groupOverviewSource, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.entryCardGap/);
+  assert.match(groupOverviewSource, /sectionBlock:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(globalGroupsSource, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.entryCardGap/);
+  assert.match(globalGroupsSource, /sectionBlock:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(ipDetailSource, /groupEntryList:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(ipDetailSource, /recentGrid:\s*\{[\s\S]{0,120}gap:\s*rhythm\.compactGridGap/);
+  assert.match(allImagesSource, /detailList:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(allImagesSource, /rowGap:\s*rhythm\.compactGridGap/);
+  assert.match(tagsOverviewSource, /popularGrid:\s*\{[\s\S]{0,180}rowGap:\s*rhythm\.compactGridGap/);
+  assert.match(tagsOverviewSource, /allTags:\s*\{[\s\S]{0,180}rowGap:\s*rhythm\.compactGridGap/);
+  assert.match(storageUsageSource, /pageBody:\s*\{[\s\S]{0,80}gap:\s*rhythm\.screenSectionGap/);
+  assert.match(importImagesSource, /formWrap:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(importImagesSource, /previewRow:\s*\{[\s\S]{0,120}gap:\s*rhythm\.compactGridGap/);
+  assert.match(quickOrganizeSource, /groupGrid:\s*\{[\s\S]{0,120}gap:\s*rhythm\.compactGridGap/);
+  assert.match(duplicateReviewSource, /contentStack:\s*\{[\s\S]{0,80}gap:\s*rhythm\.screenSectionGap/);
+  assert.match(videoDetailSource, /content:\s*\{[\s\S]{0,80}gap:\s*rhythm\.screenSectionGap/);
+  assert.match(originalStorageSource, /ipRow:\s*\{[\s\S]{0,180}gap:\s*rhythm\.listCardGap/);
+  assert.match(moveImageGroupSource, /formWrap:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.doesNotMatch(
+    [
+      meSource,
+      groupOverviewSource,
+      globalGroupsSource,
+      ipDetailSource,
+      allImagesSource,
+      tagsOverviewSource,
+      storageUsageSource,
+      importImagesSource,
+      quickOrganizeSource,
+      duplicateReviewSource,
+      originalStorageSource,
+      moveImageGroupSource,
+    ].join('\n'),
+    /margin(?:Top|Bottom):\s*-spacing\[/
+  );
+  assert.match(docsSource, /### Spacing Rhythm/);
+  assert.match(docsSource, /src\/design\/tokens\/rhythm\.ts/);
+  assert.match(agentsSource, /src\/design\/tokens\/rhythm\.ts/);
+});
+
 test('IP cards omit empty cover metadata instead of rendering zero counts', () => {
   const cardSource = readProjectFile('src/components/IPCard.tsx');
 

@@ -6,7 +6,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import type { ImageListItem, PixorySpace } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { getIpStorageDetail, type IpStorageDetail } from '../services/storageUsageService';
 import { formatDateTime, formatDuration, formatFileSize } from '../utils/formatters';
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
   },
   list: {
-    gap: spacing[2],
+    gap: rhythm.listCardGap,
   },
   assetRow: {
     alignItems: 'center',

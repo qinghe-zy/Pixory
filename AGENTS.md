@@ -165,6 +165,7 @@ Default expectation:
 - optimize one page around one primary visual focus
 - reduce visual weight before adding decoration
 - prefer token-level fixes before page-level one-offs
+- use `src/design/tokens/rhythm.ts` for new page/component vertical rhythm before adding ad-hoc `gap`, `rowGap`, `marginTop`, or `marginBottom`
 - validate on Android screenshots with real data, not empty state only
 
 ## Empty States

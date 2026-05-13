@@ -6,7 +6,7 @@ import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'reac
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { imageRepository, ipRepository, runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
-import { colors, layout, radius, shadows, spacing, typography } from '../design/tokens';
+import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     minHeight: 202,
     padding: spacing[4],
     overflow: 'hidden',
-    marginBottom: layout.sectionGap,
+    marginBottom: rhythm.heroToListGap,
   },
   profileRow: {
     alignItems: 'center',
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   entryList: {
-    gap: spacing[3],
+    gap: rhythm.entryCardGap,
   },
   entryCard: {
     alignItems: 'center',
