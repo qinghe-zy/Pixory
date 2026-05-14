@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { listRecentMaterials } from '../ai/aiDocumentService';
+import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -47,6 +50,19 @@ export function AiHomeScreen({
 }: AiHomeScreenProps) {
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
+  const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void listRecentMaterials(space).then((items) => {
+      if (isMounted) {
+        setRecentMaterials(items);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [space]);
 
   return (
     <ScreenScaffold
@@ -92,6 +108,18 @@ export function AiHomeScreen({
         <QuickLink icon="document-text-outline" label="材料库" onPress={onOpenMaterials} />
         <QuickLink icon="key-outline" label="模型设置" onPress={onOpenProviderSettings} />
       </View>
+
+      <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.recentMaterials, pressed && styles.pressed]}>
+        <View style={styles.recentHeader}>
+          <Text style={styles.entryTitle}>最近材料</Text>
+          <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
+        </View>
+        <Text style={styles.entryDescription}>
+          {recentMaterials.length
+            ? recentMaterials.slice(0, 3).map((item) => item.title).join(' / ')
+            : '导入角色 notes、研究记录或标签体系后会显示在这里。'}
+        </Text>
+      </Pressable>
     </ScreenScaffold>
   );
 }
@@ -193,5 +221,18 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.body,
     textAlign: 'center',
+  },
+  recentMaterials: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    padding: spacing[3],
+  },
+  recentHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 });

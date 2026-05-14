@@ -164,8 +164,8 @@ type AppRoute =
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
-  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: number }
-  | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: number }
+  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string }
+  | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string }
   | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }

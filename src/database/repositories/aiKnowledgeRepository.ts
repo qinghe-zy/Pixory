@@ -258,6 +258,18 @@ export const aiKnowledgeRepository = {
     );
   },
 
+  async deleteDocument(db: SQLiteDatabase, documentId: string): Promise<number> {
+    const chunkRows = await db.getAllAsync<{ id: string }>('SELECT id FROM ai_chunks WHERE documentId = ?', documentId);
+    const chunkIds = chunkRows.map((row) => row.id);
+    for (const chunkId of chunkIds) {
+      await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId = ?', chunkId);
+      await db.runAsync('DELETE FROM ai_message_citations WHERE sourceId = ?', chunkId);
+    }
+    await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);
+    const result = await db.runAsync('DELETE FROM ai_documents WHERE id = ?', documentId);
+    return result.changes;
+  },
+
   async replaceChunks(db: SQLiteDatabase, documentId: string, chunks: ReplaceChunkInput[]): Promise<void> {
     const now = createTimestamp();
     await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);

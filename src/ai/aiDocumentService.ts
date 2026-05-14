@@ -12,6 +12,7 @@ import {
 } from '../database';
 import type {
   AiDocumentRecord,
+  AiKnowledgeBaseRecord,
   CreateDocumentInput,
 } from '../database/repositories/aiKnowledgeRepository';
 import type {
@@ -64,6 +65,13 @@ export interface GenerateIpMaterialInput {
 export interface ParseAndChunkDocumentInput {
   space: PixorySpace;
   documentId: string;
+}
+
+export interface CreateKnowledgeBaseMaterialInput {
+  space: PixorySpace;
+  name: string;
+  category?: string;
+  description?: string | null;
 }
 
 function createAiId(prefix: string): string {
@@ -168,6 +176,26 @@ async function parseDocumentText(document: AiDocumentRecord, space: PixorySpace)
 
 async function createDocumentRecord(input: CreateDocumentInput): Promise<AiDocumentRecord> {
   return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.createDocument(db, input));
+}
+
+export async function createKnowledgeBase(input: CreateKnowledgeBaseMaterialInput): Promise<AiKnowledgeBaseRecord> {
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('请输入知识库名称。');
+  }
+  return runWithDatabaseSpace(input.space, (db) =>
+    aiKnowledgeRepository.createKnowledgeBase(db, {
+      id: createAiId('aikb'),
+      space: input.space,
+      name,
+      category: input.category?.trim() || 'general',
+      description: input.description ?? null,
+    })
+  );
+}
+
+export async function listKnowledgeBases(space: PixorySpace): Promise<AiKnowledgeBaseRecord[]> {
+  return runWithDatabaseSpace(space, (db) => aiKnowledgeRepository.listKnowledgeBases(db, space));
 }
 
 export async function importManualTextMaterial(input: ImportManualTextMaterialInput): Promise<AiDocumentRecord> {
@@ -337,4 +365,25 @@ export async function parseAndChunkDocument(input: ParseAndChunkDocumentInput): 
 
 export async function listRecentMaterials(space: PixorySpace): Promise<AiDocumentRecord[]> {
   return runWithDatabaseSpace(space, (db) => aiKnowledgeRepository.listRecentDocuments(db, space, 6));
+}
+
+export async function listMaterials(input: {
+  space: PixorySpace;
+  knowledgeBaseId?: string | null;
+}): Promise<AiDocumentRecord[]> {
+  return runWithDatabaseSpace(input.space, (db) =>
+    aiKnowledgeRepository.listDocuments(db, {
+      ownerId: input.knowledgeBaseId ?? undefined,
+      ownerType: input.knowledgeBaseId ? 'knowledge_base' : undefined,
+      space: input.space,
+    })
+  );
+}
+
+export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): Promise<void> {
+  await parseAndChunkDocument(input);
+}
+
+export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise<number> {
+  return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.deleteDocument(db, input.documentId));
 }
