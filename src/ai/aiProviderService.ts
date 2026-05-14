@@ -75,6 +75,26 @@ function syncedModelRecord(provider: AiProviderRecord, modelId: string): AiProvi
   };
 }
 
+function manualModelRecord(provider: AiProviderRecord, modelId: string): AiProviderModelRecord {
+  const now = createTimestamp();
+  return {
+    id: `${provider.id}:${modelId}`,
+    providerId: provider.id,
+    modelId,
+    displayName: modelId,
+    supportsChat: true,
+    supportsEmbedding: false,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: false,
+    contextWindowTokens: undefined,
+    labels: ['Chat', 'Manual'],
+    source: 'manual',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function ensureBuiltInProviders(space: PixorySpace): Promise<void> {
   await runWithDatabaseSpace(space, async (db) => {
     for (const preset of BUILT_IN_PROVIDERS) {
@@ -102,6 +122,21 @@ export async function saveProviderDefaultModels(
   defaults: { defaultChatModelId?: string | null; defaultEmbeddingModelId?: string | null }
 ): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, defaults));
+}
+
+export async function saveManualChatModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
+  const trimmedModelId = modelId.trim();
+  if (!trimmedModelId) {
+    throw new Error('请输入模型 ID。');
+  }
+  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
+  if (!provider) {
+    throw new Error('AI provider is not configured.');
+  }
+  await runWithDatabaseSpace(space, async (db) => {
+    await aiProviderRepository.upsertModels(db, provider.id, [manualModelRecord(provider, trimmedModelId)]);
+    await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultChatModelId: trimmedModelId });
+  });
 }
 
 export async function testProvider(providerId: string, space: PixorySpace = 'normal'): Promise<void> {

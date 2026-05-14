@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { listProviderCards, saveProviderDefaultModels } from '../ai/aiProviderService';
+import { listProviderCards, saveManualChatModel, saveProviderDefaultModels } from '../ai/aiProviderService';
 import type { AiProviderModelRecord } from '../ai/types';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -20,6 +21,7 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
   const [cards, setCards] = useState<ProviderCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [manualModelId, setManualModelId] = useState('');
 
   const loadModels = useCallback(async () => {
     setLoading(true);
@@ -57,6 +59,18 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
     await loadModels();
   }
 
+  async function saveManualModel() {
+    const targetProviderId = providerId ?? cards[0]?.provider.id;
+    if (!targetProviderId) {
+      setStatus('请先配置一个提供商。');
+      return;
+    }
+    await saveManualChatModel(space, targetProviderId, manualModelId);
+    setManualModelId('');
+    setStatus('手动模型 ID 已保存为默认聊天模型。');
+    await loadModels();
+  }
+
   return (
     <ScreenScaffold
       backgroundVariant="search"
@@ -68,6 +82,22 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
       title="选择模型"
     >
       {status ? <Text style={styles.status}>{status}</Text> : null}
+
+      <View style={styles.manualPanel}>
+        <Text style={styles.modelName}>手动模型 ID</Text>
+        <Text style={styles.providerName}>用于兼容提供商或同步列表暂未返回的新模型。</Text>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setManualModelId}
+          placeholder="例如 deepseek-chat 或 custom-model"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.input}
+          value={manualModelId}
+        />
+        <PrimaryButton disabled={!manualModelId.trim()} label="保存手动模型" onPress={() => void saveManualModel()} variant="outline" />
+      </View>
 
       <View style={styles.list}>
         {rows.map(({ model, providerDisplayName, selectedChat, selectedEmbedding }) => (
@@ -183,5 +213,24 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
+  },
+  manualPanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.fieldContentGap,
+    padding: spacing[4],
+  },
+  input: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
 });
