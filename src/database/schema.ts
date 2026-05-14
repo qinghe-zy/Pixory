@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 16;
+export const DATABASE_VERSION = 17;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -321,4 +321,175 @@ ALTER TABLE background_tasks_v16 RENAME TO background_tasks;
 
 CREATE INDEX IF NOT EXISTS idx_background_tasks_space_updated_at ON background_tasks(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_background_tasks_status_updated_at ON background_tasks(status, updatedAt);
+`;
+
+export const MIGRATION_STATEMENTS_V17 = `
+CREATE TABLE IF NOT EXISTS ai_providers (
+  id TEXT PRIMARY KEY NOT NULL,
+  providerType TEXT NOT NULL CHECK (providerType IN ('deepseek', 'openai', 'gemini', 'claude', 'openai_compatible', 'custom')),
+  displayName TEXT NOT NULL,
+  baseUrl TEXT,
+  protocol TEXT NOT NULL CHECK (protocol IN ('openai_compatible', 'gemini', 'anthropic')),
+  chatEnabled INTEGER NOT NULL DEFAULT 1,
+  embeddingEnabled INTEGER NOT NULL DEFAULT 0,
+  visionEnabled INTEGER NOT NULL DEFAULT 0,
+  defaultChatModelId TEXT,
+  defaultEmbeddingModelId TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_provider_models (
+  id TEXT PRIMARY KEY NOT NULL,
+  providerId TEXT NOT NULL,
+  modelId TEXT NOT NULL,
+  displayName TEXT NOT NULL,
+  supportsChat INTEGER NOT NULL DEFAULT 1,
+  supportsEmbedding INTEGER NOT NULL DEFAULT 0,
+  supportsThinking INTEGER NOT NULL DEFAULT 0,
+  supportsVision INTEGER NOT NULL DEFAULT 0,
+  supportsTools INTEGER NOT NULL DEFAULT 0,
+  contextWindowTokens INTEGER,
+  capabilityJson TEXT NOT NULL DEFAULT '{}',
+  source TEXT NOT NULL CHECK (source IN ('built_in', 'synced', 'manual')),
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE (providerId, modelId),
+  FOREIGN KEY (providerId) REFERENCES ai_providers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_role_cards (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  name TEXT NOT NULL,
+  description TEXT,
+  prompt TEXT NOT NULL,
+  defaultLanguage TEXT,
+  defaultModelId TEXT,
+  boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
+  tagsJson TEXT NOT NULL DEFAULT '[]',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  archivedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ai_knowledge_bases (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'general',
+  description TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  archivedAt TEXT
+);
+
+CREATE TABLE IF NOT EXISTS ai_threads (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  contextType TEXT NOT NULL CHECK (contextType IN ('normal', 'ip', 'knowledge_base')),
+  boundIpId INTEGER,
+  boundKnowledgeBaseId TEXT,
+  includeIpDocuments INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL,
+  titleStatus TEXT NOT NULL DEFAULT 'fallback' CHECK (titleStatus IN ('fallback', 'generated', 'custom')),
+  providerId TEXT,
+  modelId TEXT,
+  modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  roleCardId TEXT,
+  roleSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  systemPrompt TEXT NOT NULL DEFAULT '',
+  materialRulesSnapshot TEXT,
+  boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
+  summary TEXT,
+  lastMessagePreview TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  archivedAt TEXT,
+  FOREIGN KEY (boundKnowledgeBaseId) REFERENCES ai_knowledge_bases(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  threadId TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'queued', 'generating', 'completed', 'failed', 'stopped')),
+  content TEXT NOT NULL DEFAULT '',
+  reasoningText TEXT,
+  errorMessage TEXT,
+  providerId TEXT,
+  modelId TEXT,
+  modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  promptSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_documents (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  ownerType TEXT NOT NULL CHECK (ownerType IN ('knowledge_base', 'ip', 'thread')),
+  ownerId TEXT NOT NULL,
+  sourceType TEXT NOT NULL CHECK (sourceType IN ('manual_text', 'txt', 'markdown', 'pdf', 'docx', 'ip_generated')),
+  title TEXT NOT NULL,
+  originalFilename TEXT,
+  localUri TEXT,
+  mimeType TEXT,
+  fileSize INTEGER,
+  parserStatus TEXT NOT NULL CHECK (parserStatus IN ('pending', 'parsing', 'parsed', 'chunked', 'searchable', 'embedding_pending', 'embedding_ready', 'failed')),
+  parserError TEXT,
+  metadataJson TEXT NOT NULL DEFAULT '{}',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_chunks (
+  id TEXT PRIMARY KEY NOT NULL,
+  documentId TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  ownerType TEXT NOT NULL,
+  ownerId TEXT NOT NULL,
+  chunkIndex INTEGER NOT NULL,
+  text TEXT NOT NULL,
+  normalizedText TEXT NOT NULL,
+  sourceLabel TEXT NOT NULL,
+  locatorJson TEXT NOT NULL DEFAULT '{}',
+  tokenEstimate INTEGER,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (documentId) REFERENCES ai_documents(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_embeddings (
+  id TEXT PRIMARY KEY NOT NULL,
+  chunkId TEXT NOT NULL,
+  providerId TEXT NOT NULL,
+  modelId TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  vectorJson TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (chunkId) REFERENCES ai_chunks(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_message_citations (
+  id TEXT PRIMARY KEY NOT NULL,
+  messageId TEXT NOT NULL,
+  sourceType TEXT NOT NULL CHECK (sourceType IN ('document_chunk', 'ip_metadata', 'image_note')),
+  sourceId TEXT NOT NULL,
+  label TEXT NOT NULL,
+  locatorJson TEXT NOT NULL DEFAULT '{}',
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_threads_space_updated_at ON ai_threads(space, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextType, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
+CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
+CREATE INDEX IF NOT EXISTS idx_ai_chunks_owner ON ai_chunks(space, ownerType, ownerId);
+CREATE INDEX IF NOT EXISTS idx_ai_chunks_document_index ON ai_chunks(documentId, chunkIndex);
+CREATE INDEX IF NOT EXISTS idx_ai_embeddings_chunk ON ai_embeddings(chunkId);
+CREATE INDEX IF NOT EXISTS idx_ai_citations_message ON ai_message_citations(messageId);
 `;

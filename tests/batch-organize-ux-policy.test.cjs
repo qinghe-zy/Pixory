@@ -347,7 +347,7 @@ test('import templates are local user-managed records used by import and batch f
   const importScreenSource = readProjectFile('src/screens/ImportImagesScreen.tsx');
   const batchSource = readProjectFile('src/screens/BatchManageImagesScreen.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*16/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*17/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS import_templates/);
   assert.match(schemaSource, /seedDefaultImportTemplates/);
   assert.match(dbSource, /ensureImportTemplatesSchema/);

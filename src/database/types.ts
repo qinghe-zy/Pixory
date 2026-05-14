@@ -1,5 +1,24 @@
 import type { PixorySpace } from './db';
 
+export type {
+  AiBoundaryMode,
+  AiCitationRecord,
+  AiCitationSourceType,
+  AiContextType,
+  AiDocumentOwnerType,
+  AiDocumentSourceType,
+  AiDocumentStatus,
+  AiMessageRole,
+  AiMessageStatus,
+  AiModelCapabilities,
+  AiModelSource,
+  AiProviderModelRecord,
+  AiProviderProtocol,
+  AiProviderRecord,
+  AiProviderType,
+  AiThreadRecord,
+} from '../ai/types';
+
 export interface IpRecord {
   id: number;
   name: string;

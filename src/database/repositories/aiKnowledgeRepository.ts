@@ -1,0 +1,322 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
+import type {
+  AiDocumentOwnerType,
+  AiDocumentSourceType,
+  AiDocumentStatus,
+} from '../types';
+import type { PixorySpace } from '../db';
+import { createTimestamp, normalizeOptionalText } from '../utils';
+
+export interface AiKnowledgeBaseRecord {
+  id: string;
+  space: PixorySpace;
+  name: string;
+  category: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
+export interface AiDocumentRecord {
+  id: string;
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  sourceType: AiDocumentSourceType;
+  title: string;
+  originalFilename: string | null;
+  localUri: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  parserStatus: AiDocumentStatus;
+  parserError: string | null;
+  metadataJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiChunkRecord {
+  id: string;
+  documentId: string;
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  chunkIndex: number;
+  text: string;
+  normalizedText: string;
+  sourceLabel: string;
+  locatorJson: string;
+  tokenEstimate: number | null;
+  createdAt: string;
+}
+
+export interface AiEmbeddingRecord {
+  id: string;
+  chunkId: string;
+  providerId: string;
+  modelId: string;
+  dimensions: number;
+  vectorJson: string;
+  createdAt: string;
+}
+
+export interface CreateKnowledgeBaseInput {
+  id: string;
+  space: PixorySpace;
+  name: string;
+  category?: string;
+  description?: string | null;
+}
+
+export interface CreateDocumentInput {
+  id: string;
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  sourceType: AiDocumentSourceType;
+  title: string;
+  originalFilename?: string | null;
+  localUri?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  parserStatus?: AiDocumentStatus;
+  metadataJson?: string;
+}
+
+export interface DocumentListQuery {
+  space: PixorySpace;
+  ownerType?: AiDocumentOwnerType;
+  ownerId?: string;
+  status?: AiDocumentStatus;
+}
+
+export interface ReplaceChunkInput {
+  id: string;
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  chunkIndex: number;
+  text: string;
+  normalizedText: string;
+  sourceLabel: string;
+  locatorJson?: string;
+  tokenEstimate?: number | null;
+}
+
+export interface KeywordChunkQuery {
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  keyword: string;
+  limit?: number;
+}
+
+export interface ReplaceEmbeddingInput {
+  id: string;
+  chunkId: string;
+  providerId: string;
+  modelId: string;
+  dimensions: number;
+  vectorJson: string;
+}
+
+export const aiKnowledgeRepository = {
+  async createKnowledgeBase(db: SQLiteDatabase, input: CreateKnowledgeBaseInput): Promise<AiKnowledgeBaseRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_knowledge_bases (
+        id,
+        space,
+        name,
+        category,
+        description,
+        createdAt,
+        updatedAt,
+        archivedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+      input.id,
+      input.space,
+      input.name,
+      input.category ?? 'general',
+      normalizeOptionalText(input.description) ?? null,
+      now,
+      now
+    );
+    const row = await db.getFirstAsync<AiKnowledgeBaseRecord>('SELECT * FROM ai_knowledge_bases WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error(`AI knowledge base ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async listKnowledgeBases(db: SQLiteDatabase, space: PixorySpace): Promise<AiKnowledgeBaseRecord[]> {
+    return db.getAllAsync<AiKnowledgeBaseRecord>(
+      `SELECT * FROM ai_knowledge_bases
+       WHERE space = ? AND archivedAt IS NULL
+       ORDER BY updatedAt DESC, name ASC`,
+      space
+    );
+  },
+
+  async createDocument(db: SQLiteDatabase, input: CreateDocumentInput): Promise<AiDocumentRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_documents (
+        id,
+        space,
+        ownerType,
+        ownerId,
+        sourceType,
+        title,
+        originalFilename,
+        localUri,
+        mimeType,
+        fileSize,
+        parserStatus,
+        parserError,
+        metadataJson,
+        createdAt,
+        updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      input.id,
+      input.space,
+      input.ownerType,
+      input.ownerId,
+      input.sourceType,
+      input.title,
+      input.originalFilename ?? null,
+      input.localUri ?? null,
+      input.mimeType ?? null,
+      input.fileSize ?? null,
+      input.parserStatus ?? 'pending',
+      input.metadataJson ?? '{}',
+      now,
+      now
+    );
+    const row = await db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error(`AI document ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async updateDocumentStatus(
+    db: SQLiteDatabase,
+    documentId: string,
+    status: AiDocumentStatus,
+    parserError?: string | null
+  ): Promise<AiDocumentRecord | null> {
+    await db.runAsync(
+      `UPDATE ai_documents
+       SET parserStatus = ?, parserError = ?, updatedAt = ?
+       WHERE id = ?`,
+      status,
+      normalizeOptionalText(parserError) ?? null,
+      createTimestamp(),
+      documentId
+    );
+    return db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', documentId);
+  },
+
+  async listDocuments(db: SQLiteDatabase, query: DocumentListQuery): Promise<AiDocumentRecord[]> {
+    const clauses = ['space = ?'];
+    const values: string[] = [query.space];
+    if (query.ownerType) {
+      clauses.push('ownerType = ?');
+      values.push(query.ownerType);
+    }
+    if (query.ownerId) {
+      clauses.push('ownerId = ?');
+      values.push(query.ownerId);
+    }
+    if (query.status) {
+      clauses.push('parserStatus = ?');
+      values.push(query.status);
+    }
+    return db.getAllAsync<AiDocumentRecord>(
+      `SELECT * FROM ai_documents
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY updatedAt DESC, title ASC`,
+      ...values
+    );
+  },
+
+  async replaceChunks(db: SQLiteDatabase, documentId: string, chunks: ReplaceChunkInput[]): Promise<void> {
+    const now = createTimestamp();
+    await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);
+    for (const chunk of chunks) {
+      await db.runAsync(
+        `INSERT INTO ai_chunks (
+          id,
+          documentId,
+          space,
+          ownerType,
+          ownerId,
+          chunkIndex,
+          text,
+          normalizedText,
+          sourceLabel,
+          locatorJson,
+          tokenEstimate,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        chunk.id,
+        documentId,
+        chunk.space,
+        chunk.ownerType,
+        chunk.ownerId,
+        chunk.chunkIndex,
+        chunk.text,
+        chunk.normalizedText,
+        chunk.sourceLabel,
+        chunk.locatorJson ?? '{}',
+        chunk.tokenEstimate ?? null,
+        now
+      );
+    }
+  },
+
+  async searchChunksByKeyword(db: SQLiteDatabase, query: KeywordChunkQuery): Promise<AiChunkRecord[]> {
+    const keyword = `%${query.keyword.trim().toLowerCase()}%`;
+    return db.getAllAsync<AiChunkRecord>(
+      `SELECT * FROM ai_chunks
+       WHERE space = ? AND ownerType = ? AND ownerId = ? AND normalizedText LIKE ?
+       ORDER BY chunkIndex ASC
+       LIMIT ?`,
+      query.space,
+      query.ownerType,
+      query.ownerId,
+      keyword,
+      query.limit ?? 8
+    );
+  },
+
+  async replaceEmbeddings(db: SQLiteDatabase, chunkEmbeddings: ReplaceEmbeddingInput[]): Promise<void> {
+    const now = createTimestamp();
+    for (const embedding of chunkEmbeddings) {
+      await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId = ? AND providerId = ? AND modelId = ?', embedding.chunkId, embedding.providerId, embedding.modelId);
+      await db.runAsync(
+        `INSERT INTO ai_embeddings (
+          id,
+          chunkId,
+          providerId,
+          modelId,
+          dimensions,
+          vectorJson,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        embedding.id,
+        embedding.chunkId,
+        embedding.providerId,
+        embedding.modelId,
+        embedding.dimensions,
+        embedding.vectorJson,
+        now
+      );
+    }
+  },
+};
+
+export default aiKnowledgeRepository;
