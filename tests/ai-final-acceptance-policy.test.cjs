@@ -16,6 +16,16 @@ test('AI final failure paths keep local records recoverable', () => {
   assert.match(chat, /fallbackAiThreadTitle/);
 });
 
+test('new AI chats snapshot the last selected chat provider and model', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  assert.match(chat, /resolveDefaultThreadProvider/);
+  assert.match(chat, /aiProviderRepository\.listProviders\(db\)\)\)\[0\]/);
+  assert.match(chat, /provider\.defaultChatModelId/);
+  assert.match(chat, /item\.supportsChat/);
+  assert.match(chat, /providerId: provider\?\.id \?\? null/);
+  assert.match(chat, /modelId: model\?\.modelId \?\? null/);
+});
+
 test('AI documents are copied locally and parse failures remain recoverable', () => {
   const documentService = read('src/ai/aiDocumentService.ts');
   const materialList = read('src/screens/AiMaterialListScreen.tsx');
@@ -39,9 +49,9 @@ test('AI retrieval and history stay bounded and space scoped', () => {
 test('AI provider setup supports SecureStore keys and manual model IDs', () => {
   const secureSettings = read('src/ai/secureAiSettingsService.ts');
   const providerService = read('src/ai/aiProviderService.ts');
-  const modelPicker = read('src/screens/AiModelPickerScreen.tsx');
+  const providerSettings = read('src/screens/AiProviderSettingsScreen.tsx');
   assert.match(secureSettings, /expo-secure-store/);
   assert.match(providerService, /saveManualChatModel/);
   assert.match(providerService, /source: 'manual'/);
-  assert.match(modelPicker, /手动模型 ID/);
+  assert.match(providerSettings, /自定义模型/);
 });

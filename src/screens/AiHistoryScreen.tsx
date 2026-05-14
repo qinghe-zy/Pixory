@@ -37,6 +37,24 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
   const isSelecting = selectedIds.length > 0;
+  const selectionFooter = isSelecting ? (
+    <View style={styles.selectionFooter}>
+      <Text style={styles.selectionText}>已选 {selectedIds.length}</Text>
+      <View style={styles.selectionActions}>
+        <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+          <Ionicons color={colors.primary.active} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
+          <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
+          <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
+          <Text style={styles.dangerText}>删除</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+          <Ionicons color={colors.text.secondary} name="close" size={18} />
+        </Pressable>
+      </View>
+    </View>
+  ) : undefined;
 
   const reload = useCallback(async () => {
     setItems(await listAiHistoryThreads({ filter, space }));
@@ -116,38 +134,20 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       <ScreenScaffold
         backgroundVariant="search"
         decorativeTitle="AI"
+        footer={selectionFooter}
         onBack={onBack}
         scrollable
         subtitle={spaceLabel}
         title="历史会话"
       >
-        {isSelecting ? (
-          <View style={styles.selectionBar}>
-            <Text style={styles.selectionText}>已选 {selectedIds.length}</Text>
-            <View style={styles.selectionActions}>
-              <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.primary.active} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
-                <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
-                <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
-                <Text style={styles.dangerText}>删除</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
-                <Ionicons color={colors.text.secondary} name="close" size={18} />
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.filterRow}>
-            {FILTERS.map((item) => (
-              <FilterChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
-            ))}
-          </View>
-        )}
+        <View style={styles.filterRow}>
+          {FILTERS.map((item) => (
+            <FilterChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
+          ))}
+        </View>
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
-        <View style={styles.list}>
+        <View style={[styles.list, styles.threadList]}>
           {items.length ? (
             items.map((thread) => {
               const selected = selectedIds.includes(thread.id);
@@ -268,6 +268,9 @@ const styles = StyleSheet.create({
   list: {
     gap: rhythm.listCardGap,
   },
+  threadList: {
+    paddingTop: rhythm.listCardGap,
+  },
   row: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
@@ -313,13 +316,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing[4],
   },
-  selectionBar: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+  selectionFooter: {
     gap: rhythm.cardContentGap,
-    padding: spacing[3],
   },
   selectionText: {
     ...typography.textStyles.bodyStrong,

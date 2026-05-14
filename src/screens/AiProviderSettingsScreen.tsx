@@ -1,69 +1,144 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
+  getSavedProviderApiKey,
   listProviderCards,
+  saveManualChatModel,
   saveProviderApiKey,
   saveProviderBaseUrl,
-  syncProviderModels,
-  testProvider,
+  saveProviderDefaultModels,
+  selectProvider,
 } from '../ai/aiProviderService';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import type { AiProviderModelRecord } from '../ai/types';
 import type { PixorySpace } from '../database';
 
 interface AiProviderSettingsScreenProps {
   space: PixorySpace;
   onBack: () => void;
-  onOpenModelPicker: (providerId?: string) => void;
 }
 
 type ProviderCard = Awaited<ReturnType<typeof listProviderCards>>[number];
 
-export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: AiProviderSettingsScreenProps) {
+function isOtherProvider(card: ProviderCard): boolean {
+  return card.provider.providerType === 'openai_compatible' || card.provider.providerType === 'custom';
+}
+
+export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsScreenProps) {
   const [cards, setCards] = useState<ProviderCard[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [providerSheetVisible, setProviderSheetVisible] = useState(false);
+  const [modelSheetVisible, setModelSheetVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
-  const [baseUrlDrafts, setBaseUrlDrafts] = useState<Record<string, string>>({});
-  const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
-  const [statusByProvider, setStatusByProvider] = useState<Record<string, string>>({});
+  const [apiDraft, setApiDraft] = useState('');
+  const [baseUrlDraft, setBaseUrlDraft] = useState('');
+  const [manualModelDraft, setManualModelDraft] = useState('');
+  const [visibleKey, setVisibleKey] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
+  const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
+  const selectedIsOtherProvider = selectedCard ? isOtherProvider(selectedCard) : false;
+  const chatModels = selectedCard?.models.filter((model) => model.supportsChat) ?? [];
+  const selectedModel = chatModels.find((model) => model.modelId === selectedCard?.provider.defaultChatModelId) ?? null;
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
     try {
       const nextCards = await listProviderCards(space);
       setCards(nextCards);
-      setBaseUrlDrafts((current) => {
-        const next = { ...current };
-        for (const card of nextCards) {
-          next[card.provider.id] = next[card.provider.id] ?? card.provider.baseUrl ?? '';
-        }
-        return next;
-      });
+      setSelectedProviderId((current) => current ?? nextCards[0]?.provider.id ?? null);
+      setBaseUrlDraft((current) => current || nextCards.find((card) => card.provider.id === selectedProviderId)?.provider.baseUrl || '');
     } finally {
       setLoading(false);
     }
-  }, [space]);
+  }, [selectedProviderId, space]);
 
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
 
-  async function runProviderAction(providerId: string, action: () => Promise<string>) {
-    setStatusByProvider((current) => ({ ...current, [providerId]: '处理中...' }));
+  useEffect(() => {
+    if (!selectedProviderId) {
+      setApiDraft('');
+      return;
+    }
+    let active = true;
+    void getSavedProviderApiKey(selectedProviderId).then((apiKey) => {
+      if (active) {
+        setApiDraft(apiKey ?? '');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedProviderId]);
+
+  async function chooseProvider(providerId: string) {
+    const nextCard = orderedCards.find((card) => card.provider.id === providerId) ?? null;
+    setSelectedProviderId(providerId);
+    setProviderSheetVisible(false);
+    setModelSheetVisible(false);
+    setApiDraft('');
+    setBaseUrlDraft(nextCard?.provider.baseUrl ?? '');
+    setManualModelDraft('');
+    setStatus(null);
+    await selectProvider(space, providerId);
+    await loadProviders();
+  }
+
+  async function saveSelectedApiKey() {
+    if (!selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim())) {
+      return;
+    }
+    setStatus('处理中...');
     try {
-      const message = await action();
-      setStatusByProvider((current) => ({ ...current, [providerId]: message }));
+      if (selectedIsOtherProvider) {
+        await saveProviderBaseUrl(space, selectedCard.provider.id, baseUrlDraft);
+      }
+      const apiKey = apiDraft.trim();
+      await saveProviderApiKey(selectedCard.provider.id, apiKey);
+      setApiDraft(apiKey);
+      setStatus('已保存。');
       await loadProviders();
     } catch (error) {
-      const message = error instanceof Error ? error.message : '操作失败';
-      setStatusByProvider((current) => ({ ...current, [providerId]: message }));
+      setStatus(error instanceof Error ? error.message : '保存失败');
+    }
+  }
+
+  async function selectModel(model: AiProviderModelRecord) {
+    setStatus('处理中...');
+    try {
+      await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
+      setModelSheetVisible(false);
+      setStatus('已选择。');
+      await loadProviders();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '选择失败');
+    }
+  }
+
+  async function saveManualModel() {
+    if (!selectedCard || !manualModelDraft.trim()) {
+      return;
+    }
+    setStatus('处理中...');
+    try {
+      await saveManualChatModel(space, selectedCard.provider.id, manualModelDraft);
+      setManualModelDraft('');
+      setStatus('已保存。');
+      await loadProviders();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败');
     }
   }
 
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const saveDisabled = !selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim());
 
   return (
     <ScreenScaffold
@@ -75,147 +150,155 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
       subtitle={spaceLabel}
       title="模型账号"
     >
-      {cards.map((card) => {
-        const providerId = card.provider.id;
-        const keyDraft = keyDrafts[providerId] ?? '';
-        const baseUrlDraft = baseUrlDrafts[providerId] ?? '';
-        const hasEmbedding = card.provider.embeddingEnabled || card.models.some((model) => model.supportsEmbedding);
-
-        return (
-          <View key={providerId} style={styles.providerCard}>
-            <View style={styles.providerHeader}>
-              <View style={styles.providerTitleWrap}>
-                <Text style={styles.providerTitle}>{card.provider.displayName}</Text>
-                <Text style={styles.providerMeta}>{card.hasApiKey ? '已保存' : '未保存'}</Text>
-              </View>
-              <Ionicons color={colors.primary.active} name="server-outline" size={22} />
+      <View style={styles.accountCard}>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>模型商</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setProviderSheetVisible((current) => !current);
+              setModelSheetVisible(false);
+            }}
+            style={({ pressed }) => [styles.selectBox, providerSheetVisible && styles.activeSelectBox, pressed && styles.pressed]}
+          >
+            <Text numberOfLines={1} style={styles.selectText}>{selectedCard?.provider.displayName ?? '选择模型商'}</Text>
+            <Ionicons color={colors.text.tertiary} name={providerSheetVisible ? 'chevron-up' : 'chevron-down'} size={18} />
+          </Pressable>
+          {providerSheetVisible ? (
+            <View style={styles.dropdownPanel}>
+              {orderedCards.map((card) => {
+                const selected = card.provider.id === selectedCard?.provider.id;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={card.provider.id}
+                    onPress={() => {
+                      void chooseProvider(card.provider.id);
+                    }}
+                    style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{card.provider.displayName}</Text>
+                    {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={18} /> : null}
+                  </Pressable>
+                );
+              })}
             </View>
+          ) : null}
+        </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>密钥</Text>
-              <View style={styles.inputRow}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={(value) => setKeyDrafts((current) => ({ ...current, [providerId]: value }))}
-                  placeholder={card.hasApiKey ? '已保存，输入新密钥可替换' : '输入密钥'}
-                  placeholderTextColor={colors.text.placeholder}
-                  secureTextEntry={!visibleKeys[providerId]}
-                  selectionColor={colors.primary.default}
-                  style={styles.input}
-                  value={keyDraft}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setVisibleKeys((current) => ({ ...current, [providerId]: !current[providerId] }))}
-                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-                >
-                  <Ionicons color={colors.text.secondary} name={visibleKeys[providerId] ? 'eye-off-outline' : 'eye-outline'} size={18} />
-                </Pressable>
-              </View>
-              <PrimaryButton
-                disabled={!keyDraft.trim()}
-                label="保存密钥"
-                onPress={() =>
-                  runProviderAction(providerId, async () => {
-                    await saveProviderApiKey(providerId, keyDraft.trim());
-                    setKeyDrafts((current) => ({ ...current, [providerId]: '' }));
-                    return '已保存。';
-                  })
-                }
-                variant="outline"
-              />
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>接口地址</Text>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={(value) => setBaseUrlDrafts((current) => ({ ...current, [providerId]: value }))}
-                placeholder="https://api.example.com/v1"
-                placeholderTextColor={colors.text.placeholder}
-                selectionColor={colors.primary.default}
-                style={styles.input}
-                value={baseUrlDraft}
-              />
-              <PrimaryButton
-                label="保存"
-                onPress={() =>
-                  runProviderAction(providerId, async () => {
-                    await saveProviderBaseUrl(space, providerId, baseUrlDraft);
-                    return '已保存。';
-                  })
-                }
-                variant="outline"
-              />
-            </View>
-
-            <View style={styles.modelRows}>
-              <ModelSettingRow
-                label="聊天模型"
-                value={card.provider.defaultChatModelId ?? '未选择'}
-                onPress={() => onOpenModelPicker(providerId)}
-              />
-              {hasEmbedding ? (
-                <ModelSettingRow
-                  label="资料模型"
-                  value={card.provider.defaultEmbeddingModelId ?? '未选择'}
-                  onPress={() => onOpenModelPicker(providerId)}
-                />
-              ) : null}
-            </View>
-
-            <View style={styles.actions}>
-              <PrimaryButton
-                label="测试连接"
-                onPress={() =>
-                  runProviderAction(providerId, async () => {
-                    await testProvider(providerId, space);
-                    return '可用。';
-                  })
-                }
-                variant="outline"
-              />
-              <PrimaryButton
-                label="更新列表"
-                onPress={() =>
-                  runProviderAction(providerId, async () => {
-                    const result = await syncProviderModels(providerId, space);
-                    return result.synced > 0 ? `已更新 ${result.synced} 个。` : `已更新 ${result.fallback} 个。`;
-                  })
-                }
-              />
-            </View>
-
-            {statusByProvider[providerId] ? <Text style={styles.status}>{statusByProvider[providerId]}</Text> : null}
+        {selectedIsOtherProvider ? (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>地址</Text>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setBaseUrlDraft}
+              placeholder="https://api.example.com/v1"
+              placeholderTextColor={colors.text.placeholder}
+              selectionColor={colors.primary.default}
+              style={styles.input}
+              value={baseUrlDraft}
+            />
           </View>
-        );
-      })}
+        ) : null}
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>API</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setApiDraft}
+              placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API'}
+              placeholderTextColor={colors.text.placeholder}
+              secureTextEntry={!visibleKey}
+              selectionColor={colors.primary.default}
+              style={styles.input}
+              value={apiDraft}
+            />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setVisibleKey((current) => !current)}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+            >
+              <Ionicons color={colors.text.secondary} name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={18} />
+            </Pressable>
+          </View>
+          <PrimaryButton disabled={saveDisabled} label="保存" onPress={() => void saveSelectedApiKey()} variant="outline" />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>模型</Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={chatModels.length === 0}
+            onPress={() => {
+              setModelSheetVisible((current) => !current);
+              setProviderSheetVisible(false);
+            }}
+            style={({ pressed }) => [
+              styles.selectBox,
+              modelSheetVisible && styles.activeSelectBox,
+              chatModels.length === 0 && styles.disabledSelect,
+              pressed && chatModels.length > 0 && styles.pressed,
+            ]}
+          >
+            <Text numberOfLines={1} style={[styles.selectText, chatModels.length === 0 && styles.disabledSelectText]}>
+              {selectedModel?.displayName ?? (chatModels.length > 0 ? '选择模型' : '暂无可用模型')}
+            </Text>
+            <Ionicons
+              color={chatModels.length > 0 ? colors.text.tertiary : colors.text.placeholder}
+              name={modelSheetVisible ? 'chevron-up' : 'chevron-down'}
+              size={18}
+            />
+          </Pressable>
+          {modelSheetVisible ? (
+            <View style={styles.dropdownPanel}>
+              {chatModels.map((model) => {
+                const selected = model.modelId === selectedCard?.provider.defaultChatModelId;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={model.id}
+                    onPress={() => {
+                      void selectModel(model);
+                    }}
+                    style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                    {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={18} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+
+        {selectedIsOtherProvider ? (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>自定义模型</Text>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setManualModelDraft}
+              placeholder="模型名称"
+              placeholderTextColor={colors.text.placeholder}
+              selectionColor={colors.primary.default}
+              style={styles.input}
+              value={manualModelDraft}
+            />
+            <PrimaryButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} variant="outline" />
+          </View>
+        ) : null}
+
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+      </View>
     </ScreenScaffold>
   );
 }
 
-interface ModelSettingRowProps {
-  label: string;
-  value: string;
-  onPress: () => void;
-}
-
-function ModelSettingRow({ label, value, onPress }: ModelSettingRowProps) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.modelRow, pressed && styles.pressed]}>
-      <View style={styles.providerTitleWrap}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        <Text style={styles.providerMeta}>{value}</Text>
-      </View>
-      <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  providerCard: {
+  accountCard: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
@@ -223,21 +306,56 @@ const styles = StyleSheet.create({
     gap: rhythm.cardContentGap,
     padding: spacing[4],
   },
-  providerHeader: {
+  selectBox: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  activeSelectBox: {
+    borderColor: colors.primary.light,
+  },
+  selectText: {
+    ...typography.textStyles.body,
+    color: colors.text.title,
+    flex: 1,
+  },
+  disabledSelect: {
+    opacity: 0.62,
+  },
+  disabledSelectText: {
+    color: colors.text.placeholder,
+  },
+  dropdownPanel: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  dropdownRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
   },
-  providerTitleWrap: {
+  selectedDropdownRow: {
+    backgroundColor: colors.primary.weak,
+  },
+  dropdownText: {
+    ...typography.textStyles.body,
+    color: colors.text.title,
     flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
   },
-  providerTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  providerMeta: {
-    ...typography.textStyles.caption,
+  selectedDropdownText: {
+    color: colors.primary.active,
+    fontWeight: '600',
   },
   fieldGroup: {
     gap: rhythm.fieldContentGap,
@@ -274,22 +392,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78,
-  },
-  modelRows: {
-    gap: rhythm.listCardGap,
-  },
-  modelRow: {
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 58,
-    padding: spacing[3],
-  },
-  actions: {
-    gap: rhythm.inlineGap,
   },
   status: {
     ...typography.textStyles.caption,

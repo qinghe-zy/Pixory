@@ -112,6 +112,10 @@ export async function saveProviderApiKey(providerId: string, apiKey: string): Pr
   await setProviderApiKey(providerId, apiKey);
 }
 
+export async function getSavedProviderApiKey(providerId: string): Promise<string | null> {
+  return getProviderApiKey(providerId);
+}
+
 export async function saveProviderBaseUrl(space: PixorySpace, providerId: string, baseUrl: string | null): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderBaseUrl(db, providerId, baseUrl?.trim() || null));
 }
@@ -122,6 +126,10 @@ export async function saveProviderDefaultModels(
   defaults: { defaultChatModelId?: string | null; defaultEmbeddingModelId?: string | null }
 ): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, defaults));
+}
+
+export async function selectProvider(space: PixorySpace, providerId: string): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, {}));
 }
 
 export async function saveManualChatModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {

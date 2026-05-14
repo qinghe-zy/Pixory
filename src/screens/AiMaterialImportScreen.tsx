@@ -133,50 +133,57 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       subtitle={spaceLabel}
       title="导入材料"
     >
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>手动文本</Text>
-        <TextInput
-          onChangeText={setTitle}
-          placeholder="材料标题"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={styles.input}
-          value={title}
-        />
-        <TextInput
-          multiline
-          onChangeText={setText}
-          placeholder="粘贴角色资料、研究记录或标签体系"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={[styles.input, styles.textarea]}
-          textAlignVertical="top"
-          value={text}
-        />
-        <PrimaryButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
-      </View>
+      <View style={styles.contentStack}>
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>手动文本</Text>
+          <TextInput
+            onChangeText={setTitle}
+            placeholder="材料标题"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.input}
+            value={title}
+          />
+          <TextInput
+            multiline
+            onChangeText={setText}
+            placeholder="粘贴角色资料、研究记录或标签体系"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={[styles.input, styles.textarea]}
+            textAlignVertical="top"
+            value={text}
+          />
+          <PrimaryButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
+        </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>文件材料</Text>
-        <PrimaryButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
-      </View>
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>文件材料</Text>
+          <PrimaryButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
+        </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>从已有 IP 生成</Text>
-        {ips.map((ip) => (
-          <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
-            {selectedIpId === ip.id ? '● ' : '○ '}{ip.name}
-          </Text>
-        ))}
-        <PrimaryButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
-      </View>
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>从已有 IP 生成</Text>
+          <View style={styles.ipChoiceList}>
+            {ips.map((ip) => (
+              <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
+                {selectedIpId === ip.id ? '● ' : '○ '}{ip.name}
+              </Text>
+            ))}
+          </View>
+          <PrimaryButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
+        </View>
 
-      {status ? <Text style={styles.status}>{status}</Text> : null}
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+      </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  contentStack: {
+    gap: rhythm.entryCardGap,
+  },
   panel: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
@@ -201,6 +208,9 @@ const styles = StyleSheet.create({
   },
   textarea: {
     minHeight: 150,
+  },
+  ipChoiceList: {
+    gap: rhythm.compactGridGap,
   },
   ipChoice: {
     ...typography.textStyles.body,

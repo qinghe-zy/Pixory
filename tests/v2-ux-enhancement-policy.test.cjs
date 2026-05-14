@@ -60,15 +60,19 @@ test('native intent parsing exposes action names plus URI metadata for both open
 
 test('expo config persists Android intent entry patches through a local config plugin template', () => {
   const appConfig = readProjectFile('app.json');
+  const manifest = readProjectFile('android/app/src/main/AndroidManifest.xml');
   const pluginSource = readProjectFile('plugins/withPixoryAndroidIntents.js');
   const manifestTemplate = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/AndroidManifest.xml');
   const activityTemplate = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/MainActivity.kt');
   const moduleTemplate = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
 
   assert.match(appConfig, /\.\/plugins\/withPixoryAndroidIntents/);
+  assert.match(appConfig, /"softwareKeyboardLayoutMode": "resize"/);
+  assert.match(manifest, /android:windowSoftInputMode="adjustResize"/);
   assert.match(pluginSource, /AndroidManifest\.xml/);
   assert.match(pluginSource, /MainActivity\.kt/);
   assert.match(pluginSource, /PixoryMediaModule\.kt/);
+  assert.match(manifestTemplate, /android:windowSoftInputMode="adjustResize"/);
   assert.match(manifestTemplate, /android:pathSuffix="\.pixorypack"/);
   assert.match(activityTemplate, /PixoryMediaModule\.dispatchIntent/);
   assert.match(moduleTemplate, /PixoryMediaIntentReceived/);

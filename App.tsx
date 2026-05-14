@@ -39,7 +39,6 @@ import { AiIpPickerScreen } from './src/screens/AiIpPickerScreen';
 import { AiKnowledgeBaseScreen } from './src/screens/AiKnowledgeBaseScreen';
 import { AiMaterialImportScreen } from './src/screens/AiMaterialImportScreen';
 import { AiMaterialListScreen } from './src/screens/AiMaterialListScreen';
-import { AiModelPickerScreen } from './src/screens/AiModelPickerScreen';
 import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
@@ -161,7 +160,6 @@ type AppRoute =
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-provider-settings'; space: PixorySpace }
-  | { name: 'ai-model-picker'; space: PixorySpace; providerId?: string }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
@@ -1387,7 +1385,6 @@ export default function App() {
         contextTitle={currentRoute.contextTitle}
         contextType={currentRoute.contextType}
         onBack={popRoute}
-        onOpenModelPicker={() => pushRoute({ name: 'ai-model-picker', space: currentRoute.space })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
         onStartChat={popRoute}
@@ -1396,9 +1393,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'ai-provider-settings') {
-    content = <AiProviderSettingsScreen onBack={popRoute} onOpenModelPicker={(providerId) => pushRoute({ name: 'ai-model-picker', providerId, space: currentRoute.space })} space={currentRoute.space} />;
-  } else if (currentRoute.name === 'ai-model-picker') {
-    content = <AiModelPickerScreen onBack={popRoute} providerId={currentRoute.providerId} space={currentRoute.space} />;
+    content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-card-editor') {
     content = <AiRoleCardEditorScreen onApplyToSession={popRoute} onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-ip-picker') {

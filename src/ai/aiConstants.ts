@@ -69,7 +69,7 @@ export const BUILT_IN_PROVIDERS: BuiltInProvider[] = [
   },
   {
     providerType: 'openai_compatible',
-    displayName: 'OpenAI-compatible',
+    displayName: '其他模型',
     protocol: 'openai_compatible',
     baseUrl: '',
     chatEnabled: true,

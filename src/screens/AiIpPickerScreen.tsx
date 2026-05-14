@@ -68,69 +68,71 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
       subtitle={spaceLabel}
       title="选择 IP"
     >
-      <View style={styles.searchWrap}>
-        <SearchBar onChangeText={setSearchText} placeholder="搜索 IP" value={searchText} />
-      </View>
-
-      <View style={styles.optionPanel}>
-        <OptionRow
-          fixed
-          label="基础 IP 资料"
-          value
-        />
-        <OptionRow
-          label="IP 文档"
-          onValueChange={setIncludeIpDocuments}
-          value={includeIpDocuments}
-        />
-      </View>
-
-      <PageStateBlock
-        emptyActionLabel="返回"
-        emptyDescription=""
-        emptyIconName="albums-outline"
-        emptyTitle="没有可选择的 IP"
-        errorMessage={errorMessage}
-        isEmpty={!loading && filteredItems.length === 0}
-        loading={loading}
-        loadingDescription=""
-        loadingTitle="正在加载 IP"
-        onEmptyAction={onBack}
-      >
-        <View style={styles.list}>
-          {filteredItems.map((item) => {
-            const selected = item.id === selectedIpId;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                key={item.id}
-                onPress={() => setSelectedIpId(item.id)}
-                style={({ pressed }) => [styles.ipRow, selected && styles.selectedIpRow, pressed && styles.pressed]}
-              >
-                <View style={styles.ipIcon}>
-                  <Ionicons color={colors.primary.active} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
-                </View>
-                <View style={styles.ipCopy}>
-                  <Text style={styles.ipName}>{item.name}</Text>
-                  <Text style={styles.ipMeta}>
-                    {item.imageCount} 图 · {item.videoCount} 视频 · {item.groupCount} 分组
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
+      <View style={styles.contentStack}>
+        <View style={styles.searchWrap}>
+          <SearchBar onChangeText={setSearchText} placeholder="搜索 IP" value={searchText} />
         </View>
-      </PageStateBlock>
 
-      <PrimaryButton
-        disabled={!selectedIp}
-        label="用这个 IP 开始聊天"
-        onPress={() => {
-          if (selectedIp) {
-            onSelectIp(selectedIp.id, `${selectedIp.name} IP`, includeIpDocuments);
-          }
-        }}
-      />
+        <View style={styles.optionPanel}>
+          <OptionRow
+            fixed
+            label="基础 IP 资料"
+            value
+          />
+          <OptionRow
+            label="IP 文档"
+            onValueChange={setIncludeIpDocuments}
+            value={includeIpDocuments}
+          />
+        </View>
+
+        <PageStateBlock
+          emptyActionLabel="返回"
+          emptyDescription=""
+          emptyIconName="albums-outline"
+          emptyTitle="没有可选择的 IP"
+          errorMessage={errorMessage}
+          isEmpty={!loading && filteredItems.length === 0}
+          loading={loading}
+          loadingDescription=""
+          loadingTitle="正在加载 IP"
+          onEmptyAction={onBack}
+        >
+          <View style={styles.list}>
+            {filteredItems.map((item) => {
+              const selected = item.id === selectedIpId;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={item.id}
+                  onPress={() => setSelectedIpId(item.id)}
+                  style={({ pressed }) => [styles.ipRow, selected && styles.selectedIpRow, pressed && styles.pressed]}
+                >
+                  <View style={styles.ipIcon}>
+                    <Ionicons color={colors.primary.active} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
+                  </View>
+                  <View style={styles.ipCopy}>
+                    <Text style={styles.ipName}>{item.name}</Text>
+                    <Text style={styles.ipMeta}>
+                      {item.imageCount} 图 · {item.videoCount} 视频 · {item.groupCount} 分组
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </PageStateBlock>
+
+        <PrimaryButton
+          disabled={!selectedIp}
+          label="用这个 IP 开始聊天"
+          onPress={() => {
+            if (selectedIp) {
+              onSelectIp(selectedIp.id, `${selectedIp.name} IP`, includeIpDocuments);
+            }
+          }}
+        />
+      </View>
     </ScreenScaffold>
   );
 }
@@ -163,6 +165,9 @@ function OptionRow({ label, value, fixed = false, onValueChange }: OptionRowProp
 }
 
 const styles = StyleSheet.create({
+  contentStack: {
+    gap: rhythm.entryCardGap,
+  },
   searchWrap: {
     gap: rhythm.fieldContentGap,
   },

@@ -42,6 +42,16 @@ export interface RetryAssistantMessageInput {
   space: PixorySpace;
   threadId: string;
   assistantMessageId: string;
+  onUpdated?: () => void;
+}
+
+export interface RewriteUserMessageInput {
+  space: PixorySpace;
+  threadId: string;
+  userMessageId: string;
+  content: string;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  onUpdated?: () => void;
 }
 
 export interface StopStreamingMessageInput {
@@ -106,6 +116,22 @@ async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord)
   };
 }
 
+async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: string | null, modelId?: string | null) {
+  const provider = providerId
+    ? await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId))
+    : (await runWithDatabaseSpace(space, (db) => aiProviderRepository.listProviders(db)))[0] ?? null;
+  if (!provider) {
+    return { provider: null, model: null };
+  }
+  const models = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listModels(db, provider.id));
+  const model = (
+    modelId ? models.find((item) => item.modelId === modelId && item.supportsChat) : null
+  ) ?? (
+    provider.defaultChatModelId ? models.find((item) => item.modelId === provider.defaultChatModelId && item.supportsChat) : null
+  ) ?? models.find((item) => item.supportsChat) ?? null;
+  return { provider, model };
+}
+
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
   if (thread.contextType === 'normal') {
     return {
@@ -142,12 +168,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
 
 export async function createThreadFromContext(input: CreateThreadFromContextInput): Promise<AiThreadRecord> {
   await ensureBuiltInProviders(input.space);
-  const provider = input.providerId
-    ? await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findProviderById(db, input.providerId ?? ''))
-    : null;
-  const model = provider && input.modelId
-    ? await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findModel(db, provider.id, input.modelId ?? ''))
-    : null;
+  const { provider, model } = await resolveDefaultThreadProvider(input.space, input.providerId, input.modelId);
 
   return runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.createThread(db, {
@@ -159,14 +180,25 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       includeIpDocuments: input.includeIpDocuments ?? false,
       title: fallbackTitle(input),
       titleStatus: input.title.trim() ? 'custom' : 'fallback',
-      providerId: provider?.id ?? input.providerId ?? null,
-      modelId: model?.modelId ?? input.modelId ?? null,
+      providerId: provider?.id ?? null,
+      modelId: model?.modelId ?? null,
       modelSnapshotJson: JSON.stringify(model ?? {}),
       systemPrompt: input.systemPrompt ?? DEFAULT_AI_ROLE_PROMPT,
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
     })
   );
+}
+
+export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: string | null): Promise<string> {
+  await ensureBuiltInProviders(space);
+  const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
+  const { provider, model } = await resolveDefaultThreadProvider(space, thread?.providerId ?? null, thread?.modelId ?? null);
+  if (!provider) {
+    return '未选择模型';
+  }
+  const modelName = model?.displayName ?? thread?.modelId ?? provider.defaultChatModelId ?? null;
+  return modelName ? `${provider.displayName} · ${modelName}` : provider.displayName;
 }
 
 export async function listThreadMessages(space: PixorySpace, threadId: string): Promise<AiMessageWithCitations[]> {
@@ -261,10 +293,158 @@ async function markAssistantFailed(space: PixorySpace, assistantMessageId: strin
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateMessage(db, assistantMessageId, {
       status: 'failed',
+      content: '',
+      reasoningText: null,
       errorMessage: message,
       completedAt: new Date().toISOString(),
     })
   );
+}
+
+function buildChatHistory(messages: AiMessageRecord[], userMessageId: string) {
+  const userIndex = messages.findIndex((message) => message.id === userMessageId);
+  const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
+  return previousMessages
+    .filter((message) => message.role !== 'system' && message.status === 'completed')
+    .slice(-8)
+    .map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
+      content: message.content,
+    }));
+}
+
+async function streamAssistantReply(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
+  assistantMessageId: string;
+  onUpdated?: () => void;
+}): Promise<void> {
+  stoppedMessageIds.delete(input.assistantMessageId);
+  await runWithDatabaseSpace(input.space, async (db) => {
+    await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+      status: 'generating',
+      content: '',
+      reasoningText: null,
+      errorMessage: null,
+      providerId: null,
+      modelId: null,
+      modelSnapshotJson: '{}',
+      promptSnapshotJson: '{}',
+      completedAt: null,
+    });
+    await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
+  });
+  input.onUpdated?.();
+
+  const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, input.thread);
+  if (!provider || !modelId) {
+    await markAssistantFailed(input.space, input.assistantMessageId, '请先选择可用的 AI provider 和模型。');
+    input.onUpdated?.();
+    return;
+  }
+  if (!apiKey) {
+    await markAssistantFailed(input.space, input.assistantMessageId, '请先在 AI 设置中填写 API key。');
+    input.onUpdated?.();
+    return;
+  }
+
+  const { prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content);
+  const messages = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listMessages(db, input.thread.id));
+  const history = buildChatHistory(messages, input.userMessage.id);
+
+  let answerText = '';
+  let reasoningText = '';
+  let streamFailed = false;
+  const adapter = getAdapterForProvider(provider);
+
+  try {
+    await adapter.streamChat(
+      {
+        apiKey,
+        baseUrl: provider.baseUrl ?? '',
+        modelId,
+        systemPrompt: prompt.system,
+        userPrompt: prompt.user,
+        history,
+      },
+      async (event: AiStreamEvent) => {
+        if (stoppedMessageIds.has(input.assistantMessageId)) {
+          return;
+        }
+        if (event.type === 'answer_delta') {
+          answerText += event.text;
+        }
+        if (event.type === 'reasoning_delta') {
+          reasoningText += event.text;
+        }
+        if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
+          await runWithDatabaseSpace(input.space, (db) =>
+            aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+              content: answerText,
+              reasoningText: reasoningText || null,
+            })
+          );
+          input.onUpdated?.();
+        }
+        if (event.type === 'error') {
+          streamFailed = true;
+          await markAssistantFailed(input.space, input.assistantMessageId, event.message);
+          input.onUpdated?.();
+        }
+      }
+    );
+  } catch (error) {
+    streamFailed = true;
+    await markAssistantFailed(input.space, input.assistantMessageId, error instanceof Error ? error.message : 'AI 回复失败。');
+    input.onUpdated?.();
+  }
+
+  if (stoppedMessageIds.has(input.assistantMessageId)) {
+    stoppedMessageIds.delete(input.assistantMessageId);
+    await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+        status: 'stopped',
+        content: answerText,
+        reasoningText: reasoningText || null,
+        completedAt: new Date().toISOString(),
+      })
+    );
+    input.onUpdated?.();
+    return;
+  }
+
+  if (streamFailed) {
+    return;
+  }
+
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const current = await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+      status: answerText ? 'completed' : 'failed',
+      content: answerText,
+      reasoningText: reasoningText || null,
+      errorMessage: answerText ? null : 'AI 没有返回可用内容。',
+      providerId: provider.id,
+      modelId,
+      modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
+      promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
+      completedAt: new Date().toISOString(),
+    });
+    if (current?.status === 'completed' && snippets.length > 0) {
+      await aiThreadRepository.replaceCitations(
+        db,
+        input.assistantMessageId,
+        snippets.map((snippet) => ({
+          id: createAiId('aicite'),
+          sourceType: snippet.sourceType ?? 'document_chunk',
+          sourceId: snippet.sourceId ?? snippet.chunkId,
+          label: snippet.label,
+          locator: snippet.locator,
+        }))
+      );
+    }
+  });
+  input.onUpdated?.();
 }
 
 export async function sendUserMessage(
@@ -304,117 +484,114 @@ export async function sendUserMessage(
   input.onCreated?.({ userMessageId, assistantMessageId });
   input.onUpdated?.();
 
-  const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, thread);
-  if (!provider || !modelId) {
-    await markAssistantFailed(input.space, assistantMessageId, '请先选择可用的 AI provider 和模型。');
-    input.onUpdated?.();
-    return { userMessageId, assistantMessageId };
-  }
-  if (!apiKey) {
-    await markAssistantFailed(input.space, assistantMessageId, '请先在 AI 设置中填写 API key。');
-    input.onUpdated?.();
-    return { userMessageId, assistantMessageId };
-  }
-
-  const { prompt, snippets } = await buildPromptForThread(thread, input.content);
-  const previousMessages = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listMessages(db, thread.id));
-  const history = previousMessages
-    .filter((message) => message.id !== userMessageId && message.role !== 'system' && message.status === 'completed')
-    .slice(-8)
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
-      content: message.content,
-    }));
-
-  let answerText = '';
-  let reasoningText = '';
-  const adapter = getAdapterForProvider(provider);
-  await adapter.streamChat(
-    {
-      apiKey,
-      baseUrl: provider.baseUrl ?? '',
-      modelId,
-      systemPrompt: prompt.system,
-      userPrompt: prompt.user,
-      history,
-    },
-    async (event: AiStreamEvent) => {
-      if (stoppedMessageIds.has(assistantMessageId)) {
-        return;
-      }
-      if (event.type === 'answer_delta') {
-        answerText += event.text;
-      }
-      if (event.type === 'reasoning_delta') {
-        reasoningText += event.text;
-      }
-      if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
-        await runWithDatabaseSpace(input.space, (db) =>
-          aiThreadRepository.updateMessage(db, assistantMessageId, {
-            content: answerText,
-            reasoningText: reasoningText || null,
-          })
-        );
-        input.onUpdated?.();
-      }
-      if (event.type === 'error') {
-        await markAssistantFailed(input.space, assistantMessageId, event.message);
-      }
-    }
-  );
-
-  if (stoppedMessageIds.has(assistantMessageId)) {
-    stoppedMessageIds.delete(assistantMessageId);
-    await runWithDatabaseSpace(input.space, (db) =>
-      aiThreadRepository.updateMessage(db, assistantMessageId, {
-        status: 'stopped',
-        content: answerText,
-        reasoningText: reasoningText || null,
-        completedAt: new Date().toISOString(),
-      })
-    );
-    input.onUpdated?.();
-    return { userMessageId, assistantMessageId };
-  }
-
-  await runWithDatabaseSpace(input.space, async (db) => {
-    const current = await aiThreadRepository.updateMessage(db, assistantMessageId, {
-      status: answerText ? 'completed' : 'failed',
-      content: answerText,
-      reasoningText: reasoningText || null,
-      errorMessage: answerText ? null : 'AI 没有返回可用内容。',
-      providerId: provider.id,
-      modelId,
-      modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-      promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
-      completedAt: new Date().toISOString(),
-    });
-    if (current?.status === 'completed' && snippets.length > 0) {
-      await aiThreadRepository.replaceCitations(
-        db,
-        assistantMessageId,
-        snippets.map((snippet) => ({
-          id: createAiId('aicite'),
-          sourceType: snippet.sourceType ?? 'document_chunk',
-          sourceId: snippet.sourceId ?? snippet.chunkId,
-          label: snippet.label,
-          locator: snippet.locator,
-        }))
-      );
-    }
+  await streamAssistantReply({
+    assistantMessageId,
+    onUpdated: input.onUpdated,
+    space: input.space,
+    thread,
+    userMessage: { id: userMessageId, content: input.content },
   });
-  input.onUpdated?.();
 
   return { userMessageId, assistantMessageId };
 }
 
+export async function regenerateAssistantMessage(input: RetryAssistantMessageInput): Promise<void> {
+  const thread = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.findThreadById(db, input.threadId));
+  if (!thread || thread.space !== input.space) {
+    throw new Error('AI thread was not found.');
+  }
+
+  const userMessage = await runWithDatabaseSpace(input.space, async (db) => {
+    const messages = await aiThreadRepository.listMessages(db, thread.id);
+    const assistantIndex = messages.findIndex((message) => message.id === input.assistantMessageId);
+    const assistantMessage = messages[assistantIndex];
+    if (!assistantMessage || assistantMessage.role !== 'assistant') {
+      throw new Error('AI assistant message was not found.');
+    }
+    const previousUserMessage = [...messages.slice(0, assistantIndex)].reverse().find((message) => message.role === 'user');
+    if (!previousUserMessage) {
+      throw new Error('没有可用于重新生成的用户消息。');
+    }
+    const trailingIds = messages.slice(assistantIndex + 1).map((message) => message.id);
+    await db.withTransactionAsync(async () => {
+      if (trailingIds.length > 0) {
+        await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
+      }
+      await aiThreadRepository.updateThread(db, thread.id, {
+        lastMessagePreview: previousUserMessage.content.slice(0, 80),
+      });
+    });
+    return previousUserMessage;
+  });
+
+  await streamAssistantReply({
+    assistantMessageId: input.assistantMessageId,
+    onUpdated: input.onUpdated,
+    space: input.space,
+    thread,
+    userMessage,
+  });
+}
+
 export async function retryAssistantMessage(input: RetryAssistantMessageInput): Promise<void> {
-  await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.updateMessage(db, input.assistantMessageId, {
-      status: 'queued',
-      errorMessage: null,
-    })
-  );
+  await regenerateAssistantMessage(input);
+}
+
+export async function rewriteUserMessage(input: RewriteUserMessageInput): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  const content = input.content.trim();
+  if (!content) {
+    throw new Error('消息不能为空。');
+  }
+
+  const thread = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.findThreadById(db, input.threadId));
+  if (!thread || thread.space !== input.space) {
+    throw new Error('AI thread was not found.');
+  }
+
+  const assistantMessageId = createAiId('aimsg');
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const messages = await aiThreadRepository.listMessages(db, thread.id);
+    const userIndex = messages.findIndex((message) => message.id === input.userMessageId);
+    const userMessage = messages[userIndex];
+    if (!userMessage || userMessage.role !== 'user') {
+      throw new Error('AI user message was not found.');
+    }
+    const trailingIds = messages.slice(userIndex + 1).map((message) => message.id);
+    await db.withTransactionAsync(async () => {
+      await aiThreadRepository.updateMessage(db, input.userMessageId, {
+        status: 'completed',
+        content,
+        errorMessage: null,
+        completedAt: new Date().toISOString(),
+      });
+      if (trailingIds.length > 0) {
+        await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
+      }
+      await aiThreadRepository.createMessage(db, {
+        id: assistantMessageId,
+        threadId: thread.id,
+        role: 'assistant',
+        status: 'generating',
+        content: '',
+      });
+      await aiThreadRepository.updateThread(db, thread.id, {
+        lastMessagePreview: content.slice(0, 80),
+      });
+    });
+  });
+
+  input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId });
+  input.onUpdated?.();
+
+  await streamAssistantReply({
+    assistantMessageId,
+    onUpdated: input.onUpdated,
+    space: input.space,
+    thread,
+    userMessage: { id: input.userMessageId, content },
+  });
+
+  return { userMessageId: input.userMessageId, assistantMessageId };
 }
 
 export async function stopStreamingMessage(input: StopStreamingMessageInput): Promise<void> {

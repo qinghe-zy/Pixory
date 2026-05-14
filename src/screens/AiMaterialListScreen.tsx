@@ -68,34 +68,36 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
       subtitle={`${spaceLabel} · ${knowledgeBaseId ? '当前知识库' : '最近材料'}`}
       title="材料列表"
     >
-      {status ? <Text style={styles.status}>{status}</Text> : null}
-      <View style={styles.list}>
-        {items.length ? (
-          items.map((item) => (
-            <View key={item.id} style={styles.row}>
-              <Pressable accessibilityRole="button" onPress={() => onOpenDocument(item.id, item.title)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}>
-                <View style={styles.iconWrap}>
-                  <Ionicons color={colors.primary.active} name={iconForStatus(item.parserStatus)} size={20} />
-                </View>
-                <View style={styles.copy}>
-                  <Text style={styles.title}>{item.title}</Text>
-                  <Text style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
-                  {item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
-                </View>
-              </Pressable>
-              {item.parserStatus === 'failed' ? (
-                <View style={styles.failedActions}>
-                  <PrimaryButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
-                  <PrimaryButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
-                </View>
-              ) : null}
+      <View style={styles.contentStack}>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+        <View style={styles.list}>
+          {items.length ? (
+            items.map((item) => (
+              <View key={item.id} style={styles.row}>
+                <Pressable accessibilityRole="button" onPress={() => onOpenDocument(item.id, item.title)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}>
+                  <View style={styles.iconWrap}>
+                    <Ionicons color={colors.primary.active} name={iconForStatus(item.parserStatus)} size={20} />
+                  </View>
+                  <View style={styles.copy}>
+                    <Text style={styles.title}>{item.title}</Text>
+                    <Text style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
+                    {item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
+                  </View>
+                </Pressable>
+                {item.parserStatus === 'failed' ? (
+                  <View style={styles.failedActions}>
+                    <PrimaryButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
+                    <PrimaryButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
+                  </View>
+                ) : null}
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.title}>还没有材料</Text>
             </View>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.title}>还没有材料</Text>
-          </View>
-        )}
+          )}
+        </View>
       </View>
     </ScreenScaffold>
   );
@@ -112,6 +114,9 @@ function iconForStatus(status: AiDocumentStatus): keyof typeof Ionicons.glyphMap
 }
 
 const styles = StyleSheet.create({
+  contentStack: {
+    gap: rhythm.entryCardGap,
+  },
   status: {
     ...typography.textStyles.caption,
     color: colors.primary.active,

@@ -17,7 +17,6 @@ interface AiSessionConfigScreenProps {
   contextType?: AiContextType;
   onBack: () => void;
   onOpenProviderSettings: () => void;
-  onOpenModelPicker: () => void;
   onOpenRoleCardEditor: () => void;
   onStartChat: () => void;
 }
@@ -35,7 +34,6 @@ export function AiSessionConfigScreen({
   contextType = 'normal',
   onBack,
   onOpenProviderSettings,
-  onOpenModelPicker,
   onOpenRoleCardEditor,
   onStartChat,
 }: AiSessionConfigScreenProps) {
@@ -53,56 +51,55 @@ export function AiSessionConfigScreen({
       subtitle={`${spaceLabel}${threadId != null ? ` · 会话 ${threadId}` : ''}`}
       title="会话设置"
     >
-      <ContentCard>
-        <Text style={styles.sectionTitle}>当前对话</Text>
-        <Text style={styles.body}>{contextTitle ?? '普通聊天'}</Text>
-      </ContentCard>
+      <View style={styles.content}>
+        <ContentCard>
+          <Text style={styles.sectionTitle}>当前对话</Text>
+          <Text style={styles.body}>{contextTitle ?? '普通聊天'}</Text>
+        </ContentCard>
 
-      <FormTextareaRow
-        label="角色指令"
-        minHeight={132}
-        onChangeText={setSystemPrompt}
-        placeholder="输入角色指令"
-        value={systemPrompt}
-      />
+        <FormTextareaRow
+          label="角色指令"
+          minHeight={132}
+          onChangeText={setSystemPrompt}
+          placeholder="输入角色指令"
+          value={systemPrompt}
+        />
 
-      <ContentCard>
-        <Text style={styles.sectionTitle}>角色卡</Text>
-        <Text style={styles.body}>{roleCardSummary}</Text>
-        <View style={styles.inlineButtons}>
-          <PrimaryButton label="选择或编辑角色卡" onPress={onOpenRoleCardEditor} variant="outline" />
-          <PrimaryButton label="跳过角色卡" onPress={() => setRoleCardSummary('默认角色')} variant="ghost" />
+        <ContentCard>
+          <Text style={styles.sectionTitle}>角色卡</Text>
+          <Text style={styles.body}>{roleCardSummary}</Text>
+          <View style={styles.inlineButtons}>
+            <PrimaryButton label="选择或编辑角色卡" onPress={onOpenRoleCardEditor} variant="outline" />
+          </View>
+        </ContentCard>
+
+        <ContentCard>
+          <Text style={styles.sectionTitle}>回答范围</Text>
+          <View style={styles.chips}>
+            {BOUNDARY_MODES.map((mode) => (
+              <FilterChip
+                active={boundaryMode === mode.value}
+                key={mode.value}
+                label={mode.label}
+                onPress={() => setBoundaryMode(mode.value)}
+              />
+            ))}
+          </View>
+        </ContentCard>
+
+        <View style={styles.actions}>
+          <PrimaryButton label="模型账号" onPress={onOpenProviderSettings} variant="outline" />
+          <PrimaryButton label="开始聊天" onPress={onStartChat} />
         </View>
-      </ContentCard>
-
-      <ContentCard>
-        <Text style={styles.sectionTitle}>模型</Text>
-        <View style={styles.inlineButtons}>
-          <PrimaryButton label="选择模型" onPress={onOpenModelPicker} variant="outline" />
-          <PrimaryButton label="账号" onPress={onOpenProviderSettings} variant="ghost" />
-        </View>
-      </ContentCard>
-
-      <ContentCard>
-        <Text style={styles.sectionTitle}>回答范围</Text>
-        <View style={styles.chips}>
-          {BOUNDARY_MODES.map((mode) => (
-            <FilterChip
-              active={boundaryMode === mode.value}
-              key={mode.value}
-              label={mode.label}
-              onPress={() => setBoundaryMode(mode.value)}
-            />
-          ))}
-        </View>
-      </ContentCard>
-
-      <PrimaryButton label="开始聊天" onPress={onStartChat} />
+      </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    gap: rhythm.listCardGap,
+  },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
   },
@@ -111,6 +108,9 @@ const styles = StyleSheet.create({
   },
   inlineButtons: {
     gap: rhythm.inlineGap,
+  },
+  actions: {
+    gap: rhythm.listCardGap,
   },
   chips: {
     flexDirection: 'row',

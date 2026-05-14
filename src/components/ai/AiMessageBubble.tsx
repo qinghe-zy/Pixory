@@ -11,29 +11,35 @@ interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
   streaming?: boolean;
   onOpenCitation: (citation: AiCitationRecord) => void;
-  onRetry: (messageId: string) => void;
+  onEditUser: (messageId: string, content: string) => void;
+  onRegenerate: (messageId: string) => void;
 }
 
-export function AiMessageBubble({ message, streaming = false, onOpenCitation, onRetry }: AiMessageBubbleProps) {
+export function AiMessageBubble({ message, streaming = false, onEditUser, onOpenCitation, onRegenerate }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
-  const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : '');
+  const canRegenerate = !isUser && !streaming && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
+  const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
 
   return (
     <View style={[styles.row, isUser ? styles.userRow : styles.assistantRow]}>
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
         <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
-        {!isUser ? (
+        {isUser ? (
+          <Pressable accessibilityLabel="重写" accessibilityRole="button" onPress={() => onEditUser(message.id, message.content)} style={({ pressed }) => [styles.userActionButton, pressed && styles.pressed]}>
+            <Ionicons color={colors.text.inverse} name="create-outline" size={15} />
+          </Pressable>
+        ) : (
           <>
             <AiThinkingBlock label={message.modelSnapshotJson.includes('reasoning') ? '思路' : '摘要'} reasoningText={message.reasoningText} />
             <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} />
-            {isFailed ? (
-              <Pressable accessibilityRole="button" onPress={() => onRetry(message.id)} style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+            {canRegenerate ? (
+              <Pressable accessibilityLabel="刷新回复" accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
                 <Ionicons color={colors.primary.active} name="refresh-outline" size={16} />
               </Pressable>
             ) : null}
           </>
-        ) : null}
+        )}
       </View>
     </View>
   );
@@ -83,6 +89,17 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     width: 32,
+  },
+  userActionButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    borderColor: colors.overlay.heroSurface,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 28,
+    justifyContent: 'center',
+    opacity: 0.86,
+    width: 28,
   },
   pressed: {
     opacity: 0.78,

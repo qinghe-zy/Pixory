@@ -39,6 +39,98 @@ test('AI chat screen exposes context title, settings, streaming, thinking, and c
   }
 });
 
+test('AI chat header shows the current model below the chat title', () => {
+  const content = chat();
+  const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  assert.match(content, /getCurrentChatModelLabel/);
+  assert.match(content, /modelLabel/);
+  assert.match(content, /styles\.modelSubtitle/);
+  assert.match(service, /getCurrentChatModelLabel/);
+  assert.match(service, /provider\.displayName/);
+  assert.match(service, /model\?\.displayName/);
+});
+
+test('AI chat keeps the top bar fixed while only messages scroll', () => {
+  const content = chat();
+  assert.match(content, /<ScrollView/);
+  assert.match(content, /style=\{styles\.messageScroller\}/);
+  assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
+  assert.match(content, /styles\.composerPanel/);
+  assert.doesNotMatch(content, /scrollable\s*\n\s*>/);
+  assert.doesNotMatch(content, /footer=\{/);
+});
+
+test('AI chat supports stopping, regenerating replies, and rewriting user messages', () => {
+  const content = chat();
+  const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
+  const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
+
+  for (const expected of ['stopStreamingMessage', 'regenerateAssistantMessage', 'rewriteUserMessage']) {
+    assert.match(content, new RegExp(expected));
+    assert.match(service, new RegExp(expected));
+  }
+  assert.match(bubble, /onEditUser/);
+  assert.match(bubble, /onRegenerate/);
+  assert.match(composer, /onCancelEdit/);
+  assert.match(composer, /停止回复/);
+});
+
+test('AI custom top bars use safe status-bar spacing and compact workbench layout', () => {
+  const homeContent = home();
+  const chatContent = chat();
+  for (const content of [homeContent, chatContent]) {
+    assert.match(content, /useSafeAreaInsets/);
+    assert.match(content, /StatusBar\.currentHeight/);
+    assert.match(content, /layout\.pageTopOffset/);
+  }
+  assert.match(homeContent, /rhythm\.entryCardGap/);
+  assert.doesNotMatch(homeContent, /知识库与资料/);
+});
+
+test('AI provider and model screens keep preset providers simple and custom address scoped to other models', () => {
+  const providerSettings = fs.readFileSync(path.join(root, 'src/screens/AiProviderSettingsScreen.tsx'), 'utf8');
+  const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
+  const constants = fs.readFileSync(path.join(root, 'src/ai/aiConstants.ts'), 'utf8');
+  const providerService = fs.readFileSync(path.join(root, 'src/ai/aiProviderService.ts'), 'utf8');
+
+  assert.match(providerSettings, /accountCard/);
+  assert.match(providerSettings, /dropdownPanel/);
+  assert.match(providerSettings, /providerSheetVisible/);
+  assert.match(providerSettings, /modelSheetVisible/);
+  assert.match(providerSettings, /选择模型商/);
+  assert.match(providerSettings, /selectedProviderId/);
+  assert.match(providerSettings, /saveProviderApiKey/);
+  assert.match(providerSettings, /saveProviderBaseUrl/);
+  assert.match(providerSettings, /saveProviderDefaultModels/);
+  assert.match(providerSettings, /saveManualChatModel/);
+  assert.match(providerSettings, /supportsChat/);
+  assert.match(providerSettings, /chatModels\.map/);
+  assert.match(providerSettings, /暂无可用模型/);
+  assert.match(providerSettings, /selectedIsOtherProvider/);
+  assert.doesNotMatch(providerSettings, /testProvider/);
+  assert.doesNotMatch(providerSettings, /syncProviderModels/);
+  assert.match(providerService, /selectProvider/);
+  assert.doesNotMatch(app, /ai-model-picker/);
+  assert.doesNotMatch(sessionConfig, /跳过角色卡/);
+  assert.doesNotMatch(sessionConfig, /选择模型/);
+  assert.match(constants, /displayName: '其他模型'/);
+});
+
+test('AI material and IP selection screens keep vertical rhythm explicit', () => {
+  const ipPicker = fs.readFileSync(path.join(root, 'src/screens/AiIpPickerScreen.tsx'), 'utf8');
+  const materialImport = fs.readFileSync(path.join(root, 'src/screens/AiMaterialImportScreen.tsx'), 'utf8');
+  const materialList = fs.readFileSync(path.join(root, 'src/screens/AiMaterialListScreen.tsx'), 'utf8');
+
+  for (const content of [ipPicker, materialImport, materialList]) {
+    assert.match(content, /contentStack/);
+    assert.match(content, /gap:\s*rhythm\.entryCardGap/);
+  }
+  assert.match(ipPicker, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(materialImport, /ipChoiceList:\s*\{[\s\S]{0,80}gap:\s*rhythm\.compactGridGap/);
+  assert.match(materialList, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+});
+
 test('AI history supports long-press batch delete and private-space moves', () => {
   const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
@@ -47,6 +139,8 @@ test('AI history supports long-press batch delete and private-space moves', () =
   for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
     assert.match(history, new RegExp(expected));
   }
+  assert.match(history, /footer={selectionFooter}/);
+  assert.match(history, /gap: rhythm\.listCardGap/);
   assert.match(service, /verifyPersonalPassword/);
   assert.match(repository, /exportThread/);
   assert.match(repository, /importThread/);

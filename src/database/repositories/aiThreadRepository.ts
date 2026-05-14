@@ -528,6 +528,15 @@ export const aiThreadRepository = {
     return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
   },
 
+  async deleteMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<number> {
+    let deletedCount = 0;
+    for (const messageId of messageIds) {
+      const result = await db.runAsync('DELETE FROM ai_messages WHERE id = ?', messageId);
+      deletedCount += result.changes;
+    }
+    return deletedCount;
+  },
+
   async listMessages(db: SQLiteDatabase, threadId: string): Promise<AiMessageRecord[]> {
     return db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM ai_messages

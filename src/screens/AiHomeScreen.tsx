@@ -1,13 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen } from '../components/AppScreen';
-import { listRecentMaterials } from '../ai/aiDocumentService';
 import { listAiHistoryThreads } from '../ai/aiChatService';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
-import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -52,21 +51,16 @@ export function AiHomeScreen({
   onStartKnowledgeBase,
   onOpenHistory,
   onOpenThread,
-  onOpenMaterials,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
-  const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
 
   useEffect(() => {
     let isMounted = true;
-    void listRecentMaterials(space).then((items) => {
-      if (isMounted) {
-        setRecentMaterials(items);
-      }
-    });
     void listAiHistoryThreads({ limit: 3, space }).then((items) => {
       if (isMounted) {
         setRecentThreads(items);
@@ -80,7 +74,7 @@ export function AiHomeScreen({
   return (
     <AppScreen
       backgroundVariant="search"
-      contentStyle={styles.screenContent}
+      contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
       footer={footer}
       scrollable
     >
@@ -103,17 +97,6 @@ export function AiHomeScreen({
             <View style={styles.statusPill}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>{spaceLabel}</Text>
-            </View>
-          </View>
-
-          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.heroVisual}>
-            <View style={styles.orbitWide} />
-            <View style={styles.orbitTall} />
-            <View style={styles.cube}>
-              <Text style={styles.cubeText}>AI</Text>
-            </View>
-            <View style={styles.sparkSmall}>
-              <Ionicons color={colors.primary.light} name="sparkles" size={13} />
             </View>
           </View>
         </View>
@@ -180,38 +163,6 @@ export function AiHomeScreen({
           )}
         </View>
       </View>
-
-      <View style={styles.section}>
-        <SectionTitle title="知识库与资料" />
-        <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.materialCard, pressed && styles.pressed]}>
-          <View style={styles.materialMain}>
-            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.materialArt}>
-              <View style={styles.folderBack} />
-              <View style={styles.folderFront}>
-                <Ionicons color={colors.primary.active} name="document-text-outline" size={32} />
-                <View style={styles.materialPlus}>
-                  <Ionicons color={colors.text.inverse} name="add" size={22} />
-                </View>
-              </View>
-            </View>
-            <View style={styles.materialCopy}>
-              <Text style={styles.materialTitle}>给 AI 添加资料</Text>
-            </View>
-            <View style={styles.materialArrow}>
-              <Ionicons color={colors.primary.active} name="arrow-forward" size={24} />
-            </View>
-          </View>
-
-          <View style={styles.materialRecent}>
-            <Ionicons color={colors.text.tertiary} name="time-outline" size={18} />
-            <Text numberOfLines={1} style={styles.materialRecentText}>
-              {recentMaterials.length ? `最近添加：${recentMaterials.slice(0, 3).map((item) => item.title).join(' / ')}` : '暂无资料'}
-            </Text>
-            <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
-          </View>
-        </Pressable>
-      </View>
-
     </AppScreen>
   );
 }
@@ -279,12 +230,11 @@ function formatRecentTime(value: string) {
 
 const styles = StyleSheet.create({
   screenContent: {
-    gap: rhythm.screenSectionGap,
+    gap: rhythm.entryCardGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   hero: {
-    gap: rhythm.screenSectionGap,
-    paddingTop: spacing[5],
+    gap: rhythm.cardContentGap,
   },
   topBar: {
     alignItems: 'center',
@@ -328,7 +278,7 @@ const styles = StyleSheet.create({
   heroBody: {
     alignItems: 'center',
     flexDirection: 'row',
-    minHeight: 174,
+    minHeight: 120,
   },
   heroCopy: {
     flex: 1,
@@ -369,56 +319,6 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     fontWeight: '500',
   },
-  heroVisual: {
-    alignItems: 'center',
-    height: 150,
-    justifyContent: 'center',
-    width: 128,
-  },
-  orbitWide: {
-    borderColor: colors.support.sky300,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 54,
-    opacity: 0.5,
-    position: 'absolute',
-    transform: [{ rotate: '-16deg' }],
-    width: 124,
-  },
-  orbitTall: {
-    borderColor: colors.primary.light,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 102,
-    opacity: 0.35,
-    position: 'absolute',
-    transform: [{ rotate: '64deg' }],
-    width: 52,
-  },
-  cube: {
-    alignItems: 'center',
-    backgroundColor: colors.support.sky100,
-    borderColor: colors.background.surface,
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    height: 82,
-    justifyContent: 'center',
-    transform: [{ rotate: '-8deg' }],
-    width: 82,
-    ...shadows.sm,
-  },
-  cubeText: {
-    color: colors.primary.active,
-    fontFamily: typography.family.display,
-    fontSize: 28,
-    fontWeight: '600',
-    lineHeight: 34,
-  },
-  sparkSmall: {
-    position: 'absolute',
-    right: spacing[1],
-    top: spacing[1],
-  },
   entryRow: {
     flexDirection: 'row',
     gap: rhythm.compactGridGap,
@@ -426,7 +326,7 @@ const styles = StyleSheet.create({
   entry: {
     flex: 1,
     justifyContent: 'space-between',
-    minHeight: 128,
+    minHeight: 116,
     borderRadius: radius.md,
     padding: spacing[3],
     ...shadows.xs,
@@ -546,91 +446,5 @@ const styles = StyleSheet.create({
   threadTime: {
     ...typography.textStyles.caption,
     color: colors.text.tertiary,
-  },
-  materialCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[4],
-    ...shadows.xs,
-  },
-  materialMain: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 110,
-  },
-  materialArt: {
-    height: 96,
-    width: 112,
-  },
-  folderBack: {
-    backgroundColor: colors.support.sky100,
-    borderRadius: radius.sm,
-    height: 54,
-    left: spacing[3],
-    position: 'absolute',
-    top: spacing[1],
-    transform: [{ rotate: '-8deg' }],
-    width: 40,
-  },
-  folderFront: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.lg,
-    bottom: 0,
-    height: 70,
-    justifyContent: 'center',
-    left: 0,
-    position: 'absolute',
-    width: 88,
-    ...shadows.sm,
-  },
-  materialPlus: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.active,
-    borderRadius: radius.pill,
-    bottom: -8,
-    height: 38,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: -8,
-    width: 38,
-  },
-  materialCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-  },
-  materialTitle: {
-    ...typography.textStyles.sectionTitle,
-    fontSize: 18,
-    lineHeight: 25,
-  },
-  materialArrow: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 52,
-    justifyContent: 'center',
-    width: 52,
-    ...shadows.xs,
-  },
-  materialRecent: {
-    alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.sm,
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 48,
-    paddingHorizontal: spacing[3],
-  },
-  materialRecentText: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    flex: 1,
   },
 });
