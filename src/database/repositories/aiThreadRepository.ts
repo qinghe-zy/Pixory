@@ -242,6 +242,11 @@ export const aiThreadRepository = {
     return row ? mapThreadRow(row) : null;
   },
 
+  async findThreadById(db: SQLiteDatabase, threadId: string): Promise<AiThreadRecord | null> {
+    const row = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', threadId);
+    return row ? mapThreadRow(row) : null;
+  },
+
   async listRecentThreads(db: SQLiteDatabase, space: PixorySpace, limit = 5): Promise<AiThreadRecord[]> {
     const rows = await db.getAllAsync<AiThreadRow>(
       `SELECT * FROM ai_threads
