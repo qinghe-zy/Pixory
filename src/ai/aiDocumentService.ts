@@ -15,6 +15,7 @@ import type {
   AiKnowledgeBaseRecord,
   CreateDocumentInput,
 } from '../database/repositories/aiKnowledgeRepository';
+import type { AiReadableDocument } from './readers/readerTypes';
 import type {
   AiDocumentOwnerType,
   AiDocumentSourceType,
@@ -386,4 +387,19 @@ export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): P
 
 export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise<number> {
   return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.deleteDocument(db, input.documentId));
+}
+
+export async function readDocumentForReader(input: ParseAndChunkDocumentInput): Promise<AiReadableDocument> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const document = await aiKnowledgeRepository.findDocumentById(db, input.documentId);
+    if (!document || document.space !== input.space) {
+      throw new Error('未找到要阅读的 AI 文档。');
+    }
+    const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, input.documentId);
+    return {
+      document,
+      chunks,
+      text: chunks.map((chunk) => chunk.text).join('\n\n'),
+    };
+  });
 }

@@ -96,6 +96,7 @@ import {
 } from './src/native/pixoryMediaModule';
 import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
 import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
+import type { AiDocumentReaderLocator } from './src/ai/readers/readerTypes';
 
 type AppRoute =
   | { name: 'root'; tab: RootTabKey; initialFilter?: IpLibraryFilter }
@@ -166,7 +167,7 @@ type AppRoute =
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string }
   | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string }
-  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string }
+  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
   | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
@@ -1375,7 +1376,7 @@ export default function App() {
             threadId: currentRoute.threadId,
           })
         }
-        onOpenSource={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
+        onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />
@@ -1447,7 +1448,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'ai-document-reader') {
-    content = <AiDocumentReaderScreen documentId={currentRoute.documentId} onBack={popRoute} space={currentRoute.space} title={currentRoute.title} />;
+    content = <AiDocumentReaderScreen documentId={currentRoute.documentId} locator={currentRoute.locator} onBack={popRoute} space={currentRoute.space} title={currentRoute.title} />;
   } else if (currentRoute.name === 'ai-history') {
     content = (
       <AiHistoryScreen

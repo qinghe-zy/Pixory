@@ -320,6 +320,15 @@ export const aiKnowledgeRepository = {
     );
   },
 
+  async listChunksByDocumentId(db: SQLiteDatabase, documentId: string): Promise<AiChunkRecord[]> {
+    return db.getAllAsync<AiChunkRecord>(
+      `SELECT * FROM ai_chunks
+       WHERE documentId = ?
+       ORDER BY chunkIndex ASC`,
+      documentId
+    );
+  },
+
   async replaceEmbeddings(db: SQLiteDatabase, chunkEmbeddings: ReplaceEmbeddingInput[]): Promise<void> {
     const now = createTimestamp();
     for (const embedding of chunkEmbeddings) {

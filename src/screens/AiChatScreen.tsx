@@ -14,6 +14,7 @@ import {
   type AiMessageWithCitations,
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
+import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -27,7 +28,7 @@ interface AiChatScreenProps {
   threadId?: string;
   onBack: () => void;
   onOpenSessionConfig: () => void;
-  onOpenSource: (documentId: string, title: string) => void;
+  onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
 }
 
 export function AiChatScreen({
@@ -140,10 +141,10 @@ export function AiChatScreen({
 
   function openCitation(citation: AiCitationRecord) {
     if (citation.sourceType === 'document_chunk') {
-      onOpenSource(citation.sourceId, citation.label);
+      onOpenSource(citation.sourceId, citation.label, citation.locator as AiDocumentReaderLocator);
       return;
     }
-    onOpenSource(citation.sourceId, citation.label);
+    onOpenSource(citation.sourceId, citation.label, citation.locator as AiDocumentReaderLocator);
   }
 
   return (

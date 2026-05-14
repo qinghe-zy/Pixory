@@ -56,6 +56,7 @@ export interface RetrieveForThreadInput {
 
 interface ChunkSearchRow {
   id: string;
+  documentId: string;
   text: string;
   normalizedText: string;
   sourceLabel: string;
@@ -109,7 +110,7 @@ async function keywordSearch(input: RetrieveForThreadInput): Promise<RetrievedSn
     const likeTerms = terms.length > 0 ? terms : [normalizedQuery];
     const clauses = likeTerms.map(() => 'normalizedText LIKE ?');
     const rows = await db.getAllAsync<ChunkSearchRow>(
-      `SELECT id, text, normalizedText, sourceLabel, locatorJson
+      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
        FROM ai_chunks
        WHERE space = ?
          AND ownerType = ?
@@ -126,10 +127,10 @@ async function keywordSearch(input: RetrieveForThreadInput): Promise<RetrievedSn
       .map((row) => ({
         chunkId: row.id,
         sourceType: 'document_chunk' as const,
-        sourceId: row.id,
+        sourceId: row.documentId,
         label: row.sourceLabel,
         text: row.text,
-        locator: parseLocator(row.locatorJson),
+        locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
         score: keywordScore(row, normalizedQuery, likeTerms),
       }))
       .filter((snippet) => snippet.score > 0)
