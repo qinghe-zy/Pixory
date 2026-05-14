@@ -202,6 +202,10 @@ export const aiKnowledgeRepository = {
     return row;
   },
 
+  async findDocumentById(db: SQLiteDatabase, documentId: string): Promise<AiDocumentRecord | null> {
+    return db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', documentId);
+  },
+
   async updateDocumentStatus(
     db: SQLiteDatabase,
     documentId: string,
@@ -240,6 +244,17 @@ export const aiKnowledgeRepository = {
        WHERE ${clauses.join(' AND ')}
        ORDER BY updatedAt DESC, title ASC`,
       ...values
+    );
+  },
+
+  async listRecentDocuments(db: SQLiteDatabase, space: PixorySpace, limit = 6): Promise<AiDocumentRecord[]> {
+    return db.getAllAsync<AiDocumentRecord>(
+      `SELECT * FROM ai_documents
+       WHERE space = ?
+       ORDER BY updatedAt DESC, createdAt DESC
+       LIMIT ?`,
+      space,
+      limit
     );
   },
 

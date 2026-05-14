@@ -9,6 +9,7 @@ const THUMBNAILS_DIR_NAME = 'thumbnails';
 const EXPORTS_DIR_NAME = 'exports';
 const TEMP_DIR_NAME = 'temp';
 const PROFILE_DIR_NAME = 'profile';
+const AI_DOCUMENTS_DIR_NAME = 'ai_documents';
 
 export interface ManagedFileInfo {
   uri: string;
@@ -126,6 +127,7 @@ export async function ensureAppDirectories(space: PixorySpace = 'normal'): Promi
     getThumbnailsDir(space),
     getExportsDir(space),
     getTempDir(space),
+    getAiDocumentsDir(space),
     ...(space === 'normal' ? [getProfileDir()] : []),
   ];
 
@@ -152,6 +154,18 @@ export function getTempDir(space: PixorySpace = 'normal'): string {
 
 export function getProfileDir(): string {
   return normalizeDirectoryUri(joinPath(getAppStorageRootDir(), PROFILE_DIR_NAME));
+}
+
+export function getAiDocumentsDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), AI_DOCUMENTS_DIR_NAME));
+}
+
+export function getAiKnowledgeBaseDocumentsDir(space: PixorySpace, knowledgeBaseId: string): string {
+  return normalizeDirectoryUri(joinPath(getAiDocumentsDir(space), `kb_${knowledgeBaseId}`));
+}
+
+export function getAiIpDocumentsDir(space: PixorySpace, ipId: number): string {
+  return normalizeDirectoryUri(joinPath(getAiDocumentsDir(space), `ip_${ipId}`));
 }
 
 export function generateInternalFilename(originalFilename: string): string {
