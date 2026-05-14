@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiChatComposer } from '../components/ai/AiChatComposer';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
-import { ScreenScaffold } from '../components/ScreenScaffold';
+import { AppScreen } from '../components/AppScreen';
 import {
   createThreadFromContext,
   listThreadMessages,
@@ -15,7 +15,7 @@ import {
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiChatScreenProps {
@@ -50,8 +50,8 @@ export function AiChatScreen({
   const [generating, setGenerating] = useState(false);
   const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
-  const thinkingStatus = generating ? 'thinking 生成中' : 'thinking 待命';
+  const thinking = generating;
+  const citations = messages.some((message) => message.citations.length > 0);
   const failedAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant' && message.status === 'failed'), [messages]);
 
   const reloadMessages = useCallback(
@@ -148,9 +148,9 @@ export function AiChatScreen({
   }
 
   return (
-    <ScreenScaffold
+    <AppScreen
       backgroundVariant="search"
-      decorativeTitle="AI"
+      contentStyle={styles.screenContent}
       footer={
         <AiChatComposer
           generating={generating}
@@ -168,23 +168,26 @@ export function AiChatScreen({
           value={composerText}
         />
       }
-      onBack={onBack}
-      rightAction={
-        <Pressable accessibilityRole="button" onPress={onOpenSessionConfig} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
-          <Ionicons color={colors.primary.active} name="options-outline" size={18} />
-          <Text style={styles.headerButtonText}>会话设置</Text>
-        </Pressable>
-      }
+      footerStyle={styles.footer}
       scrollable
-      subtitle={`${spaceLabel} · ${generating ? 'stream 生成中' : 'stream 就绪'} · ${thinkingStatus}`}
-      title={resolvedContextTitle}
     >
-      <View style={styles.notice}>
-        <Text style={styles.noticeTitle}>本地上下文</Text>
-        <Text style={styles.noticeText}>当前会话会绑定 contextTitle、模型快照和 citations 引用；图片内容不会被读取或识别。</Text>
-        {activeThreadId ? <Text style={styles.meta}>Thread {activeThreadId}</Text> : null}
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+      <View style={styles.header}>
+        <Pressable accessibilityLabel="返回" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+          <Ionicons color={colors.text.heading} name="chevron-back" size={22} />
+        </Pressable>
+        <View style={styles.titleBlock}>
+          <Text numberOfLines={1} style={styles.title}>
+            {resolvedContextTitle}
+          </Text>
+          {thinking ? <View style={styles.liveDot} /> : null}
+        </View>
+        <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={onOpenSessionConfig} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+          <Ionicons color={colors.text.heading} name="options-outline" size={20} />
+        </Pressable>
       </View>
+
+      {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+      {citations ? null : null}
 
       <View style={styles.messageList}>
         {messages.length ? (
@@ -201,76 +204,80 @@ export function AiChatScreen({
           ))
         ) : (
           <View style={styles.emptyState}>
-            <Ionicons color={colors.primary.active} name="chatbubble-ellipses-outline" size={22} />
-            <Text style={styles.emptyTitle}>开始一段本地 AI 会话</Text>
-            <Text style={styles.emptyText}>普通聊天不会附加 Pixory 材料规则；IP 与知识库会话会在后续步骤绑定本地上下文和引用。</Text>
+            <Ionicons color={colors.primary.active} name="sparkles-outline" size={28} />
+            <Text style={styles.emptyTitle}>开始对话</Text>
           </View>
         )}
       </View>
-    </ScreenScaffold>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerButton: {
+  screenContent: {
+    gap: rhythm.listCardGap,
+    paddingHorizontal: layout.pagePaddingHorizontal,
+    paddingTop: spacing[2],
+  },
+  footer: {
+    backgroundColor: colors.overlay.softSurface,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: spacing[2],
+    ...shadows.none,
+  },
+  header: {
     alignItems: 'center',
-    backgroundColor: colors.background.elevated,
-    borderColor: colors.border.default,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: rhythm.microGap,
-    minHeight: 36,
-    paddingHorizontal: spacing[3],
+    gap: rhythm.inlineGap,
+    minHeight: 52,
   },
   pressed: {
     opacity: 0.78,
   },
-  headerButtonText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
+  roundButton: {
+    alignItems: 'center',
+    backgroundColor: colors.overlay.softSurface,
+    borderRadius: radius.pill,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
   },
-  notice: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
+  titleBlock: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
     gap: rhythm.microGap,
-    padding: spacing[4],
+    justifyContent: 'center',
   },
-  noticeTitle: {
-    ...typography.textStyles.sectionTitle,
+  title: {
+    ...typography.textStyles.navTitle,
+    fontSize: 18,
+    lineHeight: 24,
+    maxWidth: '90%',
   },
-  noticeText: {
-    ...typography.textStyles.body,
-    color: colors.text.secondary,
-  },
-  meta: {
-    ...typography.textStyles.caption,
-    color: colors.text.tertiary,
+  liveDot: {
+    backgroundColor: colors.primary.active,
+    borderRadius: radius.pill,
+    height: 7,
+    width: 7,
   },
   error: {
     ...typography.textStyles.caption,
     color: colors.semantic.danger,
+    textAlign: 'center',
   },
   messageList: {
     gap: rhythm.listCardGap,
+    paddingTop: spacing[2],
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[5],
+    paddingTop: spacing[12],
   },
   emptyTitle: {
     ...typography.textStyles.emptyTitle,
-    textAlign: 'center',
-  },
-  emptyText: {
-    ...typography.textStyles.emptyDescription,
     textAlign: 'center',
   },
 });

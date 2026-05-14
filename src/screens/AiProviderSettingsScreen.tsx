@@ -72,8 +72,8 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
       loading={loading}
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel} · API key 使用 SecureStore`}
-      title="模型提供商"
+      subtitle={spaceLabel}
+      title="模型账号"
     >
       {cards.map((card) => {
         const providerId = card.provider.id;
@@ -86,21 +86,19 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
             <View style={styles.providerHeader}>
               <View style={styles.providerTitleWrap}>
                 <Text style={styles.providerTitle}>{card.provider.displayName}</Text>
-                <Text style={styles.providerMeta}>
-                  {card.provider.protocol} · {card.models.length} 个模型 · {card.hasApiKey ? '已保存密钥' : '未保存密钥'}
-                </Text>
+                <Text style={styles.providerMeta}>{card.hasApiKey ? '已保存' : '未保存'}</Text>
               </View>
               <Ionicons color={colors.primary.active} name="server-outline" size={22} />
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>API key</Text>
+              <Text style={styles.fieldLabel}>密钥</Text>
               <View style={styles.inputRow}>
                 <TextInput
                   autoCapitalize="none"
                   autoCorrect={false}
                   onChangeText={(value) => setKeyDrafts((current) => ({ ...current, [providerId]: value }))}
-                  placeholder={card.hasApiKey ? '已保存，输入新密钥可替换' : '输入 API key'}
+                  placeholder={card.hasApiKey ? '已保存，输入新密钥可替换' : '输入密钥'}
                   placeholderTextColor={colors.text.placeholder}
                   secureTextEntry={!visibleKeys[providerId]}
                   selectionColor={colors.primary.default}
@@ -122,7 +120,7 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
                   runProviderAction(providerId, async () => {
                     await saveProviderApiKey(providerId, keyDraft.trim());
                     setKeyDrafts((current) => ({ ...current, [providerId]: '' }));
-                    return '密钥已保存到系统安全存储。';
+                    return '已保存。';
                   })
                 }
                 variant="outline"
@@ -130,7 +128,7 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Base URL</Text>
+              <Text style={styles.fieldLabel}>接口地址</Text>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -142,11 +140,11 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
                 value={baseUrlDraft}
               />
               <PrimaryButton
-                label="保存 Base URL"
+                label="保存"
                 onPress={() =>
                   runProviderAction(providerId, async () => {
                     await saveProviderBaseUrl(space, providerId, baseUrlDraft);
-                    return 'Base URL 已保存。';
+                    return '已保存。';
                   })
                 }
                 variant="outline"
@@ -155,13 +153,13 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
 
             <View style={styles.modelRows}>
               <ModelSettingRow
-                label="默认聊天模型"
+                label="聊天模型"
                 value={card.provider.defaultChatModelId ?? '未选择'}
                 onPress={() => onOpenModelPicker(providerId)}
               />
               {hasEmbedding ? (
                 <ModelSettingRow
-                  label="默认 Embedding 模型"
+                  label="资料模型"
                   value={card.provider.defaultEmbeddingModelId ?? '未选择'}
                   onPress={() => onOpenModelPicker(providerId)}
                 />
@@ -174,17 +172,17 @@ export function AiProviderSettingsScreen({ space, onBack, onOpenModelPicker }: A
                 onPress={() =>
                   runProviderAction(providerId, async () => {
                     await testProvider(providerId, space);
-                    return '连接测试通过。';
+                    return '可用。';
                   })
                 }
                 variant="outline"
               />
               <PrimaryButton
-                label="同步模型"
+                label="更新列表"
                 onPress={() =>
                   runProviderAction(providerId, async () => {
                     const result = await syncProviderModels(providerId, space);
-                    return result.synced > 0 ? `已同步 ${result.synced} 个模型。` : `使用 ${result.fallback} 个内置模型。`;
+                    return result.synced > 0 ? `已更新 ${result.synced} 个。` : `已更新 ${result.fallback} 个。`;
                   })
                 }
               />

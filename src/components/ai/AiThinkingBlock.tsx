@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { colors, rhythm, spacing, typography } from '../../design/tokens';
 
 interface AiThinkingBlockProps {
   reasoningText?: string | null;
-  label?: '思考过程' | '思考摘要';
+  label?: '思路' | '摘要';
 }
 
-export function AiThinkingBlock({ reasoningText, label = '思考摘要' }: AiThinkingBlockProps) {
+export function AiThinkingBlock({ reasoningText, label = '摘要' }: AiThinkingBlockProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (!reasoningText) {
@@ -29,12 +29,8 @@ export function AiThinkingBlock({ reasoningText, label = '思考摘要' }: AiThi
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: colors.background.secondary,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.microGap,
-    padding: spacing[3],
+    paddingVertical: spacing[1],
   },
   header: {
     alignItems: 'center',

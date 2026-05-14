@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { archiveAiThread, listAiHistoryThreads, unarchiveAiThread } from '../ai/aiChatService';
+import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, unarchiveAiThread } from '../ai/aiChatService';
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -29,7 +30,13 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
+  const [personalPassword, setPersonalPassword] = useState('');
+  const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
+  const isSelecting = selectedIds.length > 0;
 
   const reload = useCallback(async () => {
     setItems(await listAiHistoryThreads({ filter, space }));
@@ -38,6 +45,12 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+    setPendingAction(null);
+    setPersonalPassword('');
+  }, [filter, space]);
 
   async function toggleArchive(thread: AiThreadHistoryItem) {
     if (thread.archivedAt) {
@@ -50,55 +63,175 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     await reload();
   }
 
-  return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
-      onBack={onBack}
-      scrollable
-      subtitle={`${spaceLabel} · 历史会话`}
-      title="历史会话"
-    >
-      <View style={styles.filterRow}>
-        {FILTERS.map((item) => (
-          <FilterChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
-        ))}
-      </View>
-      {status ? <Text style={styles.status}>{status}</Text> : null}
+  function toggleSelected(threadId: string) {
+    setSelectedIds((current) => current.includes(threadId) ? current.filter((id) => id !== threadId) : [...current, threadId]);
+  }
 
-      <View style={styles.list}>
-        {items.length ? (
-          items.map((thread) => (
-            <View key={thread.id} style={styles.row}>
-              <Pressable accessibilityRole="button" onPress={() => onOpenThread(thread)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}>
-                <View style={styles.iconWrap}>
-                  <Ionicons color={colors.primary.active} name={iconForContext(thread.contextType)} size={20} />
-                </View>
-                <View style={styles.copy}>
-                  <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
-                  <Text numberOfLines={1} style={styles.meta}>
-                    {labelForContext(thread)} · {thread.updatedAt}
-                  </Text>
-                  {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
-                </View>
+  function handleRowPress(thread: AiThreadHistoryItem) {
+    if (isSelecting) {
+      toggleSelected(thread.id);
+      return;
+    }
+    onOpenThread(thread);
+  }
+
+  async function confirmDeleteSelected() {
+    setBusy(true);
+    try {
+      const count = await deleteAiThreads(space, selectedIds);
+      setStatus(`已删除 ${count} 条。`);
+      setSelectedIds([]);
+      setPendingAction(null);
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '删除失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmMoveSelected() {
+    setBusy(true);
+    try {
+      const count = await moveAiThreadsBetweenSpaces({
+        personalPassword,
+        sourceSpace: space,
+        targetSpace,
+        threadIds: selectedIds,
+      });
+      setStatus(`已移动 ${count} 条。`);
+      setSelectedIds([]);
+      setPendingAction(null);
+      setPersonalPassword('');
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '移动失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <ScreenScaffold
+        backgroundVariant="search"
+        decorativeTitle="AI"
+        onBack={onBack}
+        scrollable
+        subtitle={spaceLabel}
+        title="历史会话"
+      >
+        {isSelecting ? (
+          <View style={styles.selectionBar}>
+            <Text style={styles.selectionText}>已选 {selectedIds.length}</Text>
+            <View style={styles.selectionActions}>
+              <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+                <Ionicons color={colors.primary.active} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
+                <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
               </Pressable>
-              <PrimaryButton
-                label={thread.archivedAt ? '恢复' : '归档'}
-                onPress={() => {
-                  void toggleArchive(thread);
-                }}
-                variant="ghost"
-              />
+              <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
+                <Ionicons color={colors.semantic.danger} name="trash-outline" size={18} />
+                <Text style={styles.dangerText}>删除</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                <Ionicons color={colors.text.secondary} name="close" size={18} />
+              </Pressable>
             </View>
-          ))
+          </View>
         ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.title}>没有历史会话</Text>
-            <Text style={styles.meta}>开始普通聊天、IP 聊天或知识库会话后，会在这里按当前空间显示。</Text>
+          <View style={styles.filterRow}>
+            {FILTERS.map((item) => (
+              <FilterChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
+            ))}
           </View>
         )}
-      </View>
-    </ScreenScaffold>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+
+        <View style={styles.list}>
+          {items.length ? (
+            items.map((thread) => {
+              const selected = selectedIds.includes(thread.id);
+              return (
+                <View key={thread.id} style={[styles.row, selected && styles.selectedRow]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onLongPress={() => toggleSelected(thread.id)}
+                    onPress={() => handleRowPress(thread)}
+                    style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                  >
+                    <View style={styles.iconWrap}>
+                      <Ionicons color={colors.primary.active} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                    </View>
+                    <View style={styles.copy}>
+                      <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
+                      <Text numberOfLines={1} style={styles.meta}>
+                        {labelForContext(thread)} · {thread.updatedAt}
+                      </Text>
+                      {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
+                    </View>
+                  </Pressable>
+                  {!isSelecting ? (
+                    <PrimaryButton
+                      label={thread.archivedAt ? '恢复' : '归档'}
+                      onPress={() => {
+                        void toggleArchive(thread);
+                      }}
+                      variant="ghost"
+                    />
+                  ) : null}
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.title}>没有历史会话</Text>
+            </View>
+          )}
+        </View>
+      </ScreenScaffold>
+
+      <AppDialog
+        danger
+        message={`删除 ${selectedIds.length} 条聊天记录。`}
+        onClose={() => {
+          if (!busy) {
+            setPendingAction(null);
+          }
+        }}
+        onPrimary={() => void confirmDeleteSelected()}
+        primaryLabel={busy ? '正在删除' : '删除'}
+        title="删除聊天记录"
+        visible={pendingAction === 'delete'}
+      />
+
+      <AppDialog
+        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。`}
+        onClose={() => {
+          if (!busy) {
+            setPendingAction(null);
+            setPersonalPassword('');
+          }
+        }}
+        onPrimary={() => void confirmMoveSelected()}
+        primaryDisabled={busy || (targetSpace === 'personal' && !personalPassword.trim())}
+        primaryLabel={busy ? '正在移动' : space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+        title={space === 'normal' ? '移入隐私空间' : '移出隐私空间'}
+        visible={pendingAction === 'move'}
+      >
+        {targetSpace === 'personal' ? (
+          <TextInput
+            editable={!busy}
+            onChangeText={setPersonalPassword}
+            placeholder="隐私密码"
+            placeholderTextColor={colors.text.placeholder}
+            secureTextEntry
+            selectionColor={colors.primary.default}
+            style={styles.passwordInput}
+            value={personalPassword}
+          />
+        ) : null}
+      </AppDialog>
+    </>
   );
 }
 
@@ -143,6 +276,9 @@ const styles = StyleSheet.create({
     gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
+  selectedRow: {
+    borderColor: colors.primary.light,
+  },
   rowMain: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -173,12 +309,66 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.body,
   },
-  emptyCard: {
+  emptyState: {
+    alignItems: 'center',
+    padding: spacing[4],
+  },
+  selectionBar: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  selectionText: {
+    ...typography.textStyles.bodyStrong,
+  },
+  selectionActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  selectionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
     gap: rhythm.microGap,
-    padding: spacing[4],
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+  },
+  selectionButtonText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
+  dangerButton: {
+    backgroundColor: colors.semantic.dangerBackground,
+  },
+  dangerText: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
+    fontWeight: '600',
+  },
+  iconAction: {
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  passwordInput: {
+    ...typography.textStyles.body,
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.title,
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
 });

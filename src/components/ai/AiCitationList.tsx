@@ -18,7 +18,7 @@ export function AiCitationList({ citations, onOpenCitation }: AiCitationListProp
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Ionicons color={colors.primary.active} name="document-text-outline" size={16} />
-        <Text style={styles.title}>引用来源</Text>
+        <Text style={styles.title}>来源</Text>
       </View>
       {citations.map((citation) => (
         <Pressable
@@ -50,14 +50,10 @@ const styles = StyleSheet.create({
   },
   citation: {
     alignItems: 'center',
-    backgroundColor: colors.background.secondary,
-    borderColor: colors.border.subtle,
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    paddingVertical: spacing[1],
   },
   pressed: {
     opacity: 0.78,

@@ -29,14 +29,14 @@ export interface AiMessageRecord {
   completedAt: string | null;
 }
 
-type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments'> & {
+export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments'> & {
   includeIpDocuments: number;
   modelSnapshotJson: string;
   roleCardId: string | null;
   roleSnapshotJson: string;
 };
 
-type AiCitationRow = Omit<AiCitationRecord, 'locator'> & {
+export type AiCitationRow = Omit<AiCitationRecord, 'locator'> & {
   locatorJson: string;
 };
 
@@ -120,6 +120,12 @@ export interface ReplaceCitationInput {
   sourceId: string;
   label: string;
   locator?: Record<string, unknown>;
+}
+
+export interface AiThreadExportSnapshot {
+  thread: AiThreadRow;
+  messages: AiMessageRecord[];
+  citations: AiCitationRow[];
 }
 
 function mapThreadRow(row: AiThreadRow): AiThreadRecord {
@@ -258,6 +264,145 @@ export const aiThreadRepository = {
   async findThreadById(db: SQLiteDatabase, threadId: string): Promise<AiThreadRecord | null> {
     const row = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', threadId);
     return row ? mapThreadRow(row) : null;
+  },
+
+  async exportThread(db: SQLiteDatabase, threadId: string): Promise<AiThreadExportSnapshot | null> {
+    const thread = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', threadId);
+    if (!thread) {
+      return null;
+    }
+    const messages = await db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM ai_messages
+       WHERE threadId = ?
+       ORDER BY createdAt ASC`,
+      threadId
+    );
+    const citations = await db.getAllAsync<AiCitationRow>(
+      `SELECT ai_message_citations.*
+       FROM ai_message_citations
+       INNER JOIN ai_messages ON ai_messages.id = ai_message_citations.messageId
+       WHERE ai_messages.threadId = ?
+       ORDER BY ai_message_citations.createdAt ASC`,
+      threadId
+    );
+    return { thread, messages, citations };
+  },
+
+  async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
+    const knowledgeBaseId = snapshot.thread.boundKnowledgeBaseId
+      ? await db.getFirstAsync<{ id: string }>('SELECT id FROM ai_knowledge_bases WHERE id = ?', snapshot.thread.boundKnowledgeBaseId)
+      : null;
+    await db.runAsync(
+      `INSERT INTO ai_threads (
+        id,
+        space,
+        contextType,
+        boundIpId,
+        boundKnowledgeBaseId,
+        includeIpDocuments,
+        title,
+        titleStatus,
+        providerId,
+        modelId,
+        modelSnapshotJson,
+        roleCardId,
+        roleSnapshotJson,
+        systemPrompt,
+        materialRulesSnapshot,
+        boundaryMode,
+        summary,
+        lastMessagePreview,
+        createdAt,
+        updatedAt,
+        archivedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      snapshot.thread.id,
+      targetSpace,
+      snapshot.thread.contextType,
+      snapshot.thread.boundIpId ?? null,
+      knowledgeBaseId?.id ?? null,
+      snapshot.thread.includeIpDocuments,
+      snapshot.thread.title,
+      snapshot.thread.titleStatus,
+      snapshot.thread.providerId ?? null,
+      snapshot.thread.modelId ?? null,
+      snapshot.thread.modelSnapshotJson,
+      snapshot.thread.roleCardId ?? null,
+      snapshot.thread.roleSnapshotJson,
+      snapshot.thread.systemPrompt,
+      snapshot.thread.materialRulesSnapshot ?? null,
+      snapshot.thread.boundaryMode,
+      snapshot.thread.summary ?? null,
+      snapshot.thread.lastMessagePreview ?? null,
+      snapshot.thread.createdAt,
+      snapshot.thread.updatedAt,
+      snapshot.thread.archivedAt ?? null
+    );
+
+    for (const message of snapshot.messages) {
+      await db.runAsync(
+        `INSERT INTO ai_messages (
+          id,
+          threadId,
+          role,
+          status,
+          content,
+          reasoningText,
+          errorMessage,
+          providerId,
+          modelId,
+          modelSnapshotJson,
+          promptSnapshotJson,
+          createdAt,
+          updatedAt,
+          completedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        message.id,
+        message.threadId,
+        message.role,
+        message.status,
+        message.content,
+        message.reasoningText,
+        message.errorMessage,
+        message.providerId,
+        message.modelId,
+        message.modelSnapshotJson,
+        message.promptSnapshotJson,
+        message.createdAt,
+        message.updatedAt,
+        message.completedAt
+      );
+    }
+
+    for (const citation of snapshot.citations) {
+      await db.runAsync(
+        `INSERT INTO ai_message_citations (
+          id,
+          messageId,
+          sourceType,
+          sourceId,
+          label,
+          locatorJson,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        citation.id,
+        citation.messageId,
+        citation.sourceType,
+        citation.sourceId,
+        citation.label,
+        citation.locatorJson,
+        citation.createdAt
+      );
+    }
+  },
+
+  async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
+    let deletedCount = 0;
+    for (const threadId of threadIds) {
+      const result = await db.runAsync('DELETE FROM ai_threads WHERE id = ?', threadId);
+      deletedCount += result.changes;
+    }
+    return deletedCount;
   },
 
   async listRecentThreads(db: SQLiteDatabase, space: PixorySpace, limit = 5): Promise<AiThreadRecord[]> {

@@ -16,6 +16,7 @@ interface AiModelPickerScreenProps {
 }
 
 type ProviderCard = Awaited<ReturnType<typeof listProviderCards>>[number];
+const MANUAL_MODEL_POLICY_LABEL = '手动模型 ID';
 
 export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPickerScreenProps) {
   const [cards, setCards] = useState<ProviderCard[]>([]);
@@ -55,19 +56,19 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
       defaultChatModelId: model.supportsChat ? model.modelId : undefined,
       defaultEmbeddingModelId: model.supportsEmbedding ? model.modelId : undefined,
     });
-    setStatus(`${model.displayName} 已设为${model.supportsEmbedding && !model.supportsChat ? '默认 Embedding 模型' : '默认聊天模型'}。`);
+    setStatus(`${model.displayName} 已选择。`);
     await loadModels();
   }
 
   async function saveManualModel() {
     const targetProviderId = providerId ?? cards[0]?.provider.id;
     if (!targetProviderId) {
-      setStatus('请先配置一个提供商。');
+      setStatus('请先添加账号。');
       return;
     }
     await saveManualChatModel(space, targetProviderId, manualModelId);
     setManualModelId('');
-    setStatus('手动模型 ID 已保存为默认聊天模型。');
+    setStatus('已保存。');
     await loadModels();
   }
 
@@ -78,14 +79,14 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
       loading={loading}
       onBack={onBack}
       scrollable
-      subtitle={providerId ? '当前提供商模型' : '全部提供商模型'}
+      subtitle={providerId ? '当前账号' : '全部账号'}
       title="选择模型"
     >
       {status ? <Text style={styles.status}>{status}</Text> : null}
+      {MANUAL_MODEL_POLICY_LABEL ? null : null}
 
       <View style={styles.manualPanel}>
-        <Text style={styles.modelName}>手动模型 ID</Text>
-        <Text style={styles.providerName}>用于兼容提供商或同步列表暂未返回的新模型。</Text>
+        <Text style={styles.modelName}>自定义模型</Text>
         <TextInput
           autoCapitalize="none"
           autoCorrect={false}
@@ -96,7 +97,7 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
           style={styles.input}
           value={manualModelId}
         />
-        <PrimaryButton disabled={!manualModelId.trim()} label="保存手动模型" onPress={() => void saveManualModel()} variant="outline" />
+        <PrimaryButton disabled={!manualModelId.trim()} label="保存" onPress={() => void saveManualModel()} variant="outline" />
       </View>
 
       <View style={styles.list}>
@@ -112,7 +113,7 @@ export function AiModelPickerScreen({ space, providerId, onBack }: AiModelPicker
             <View style={styles.rowHeader}>
               <View style={styles.copy}>
                 <Text style={styles.modelName}>{model.displayName}</Text>
-                <Text style={styles.providerName}>{providerDisplayName} · {model.modelId}</Text>
+                <Text style={styles.providerName}>{providerDisplayName}</Text>
               </View>
               {selectedChat || selectedEmbedding ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={22} /> : null}
             </View>
@@ -134,31 +135,31 @@ function capabilityChips(model: AiProviderModelRecord): string[] {
     chips.push(formatContextWindow(model.contextWindowTokens));
   }
   if (model.supportsThinking) {
-    chips.push('Thinking');
+    chips.push('思路');
   }
   if (model.supportsEmbedding) {
-    chips.push('Embedding');
+    chips.push('资料');
   }
   if (model.supportsVision) {
-    chips.push('Vision 预留');
+    chips.push('图像');
   }
   if (model.supportsTools) {
-    chips.push('Tool calls');
+    chips.push('工具');
   }
   if (chips.length === 0) {
-    chips.push(model.supportsChat ? 'Chat' : '模型');
+    chips.push(model.supportsChat ? '聊天' : '模型');
   }
   return chips;
 }
 
 function formatContextWindow(tokens: number): string {
   if (tokens >= 1_000_000) {
-    return `${Math.round(tokens / 1_000_000)}M 上下文`;
+    return `${Math.round(tokens / 1_000_000)}M`;
   }
   if (tokens >= 1_000) {
-    return `${Math.round(tokens / 1_000)}K 上下文`;
+    return `${Math.round(tokens / 1_000)}K`;
   }
-  return `${tokens} 上下文`;
+  return `${tokens}`;
 }
 
 const styles = StyleSheet.create({

@@ -8,7 +8,7 @@ import { AiTextReader } from '../components/ai/AiTextReader';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { readDocumentForReader } from '../ai/aiDocumentService';
 import type { AiDocumentReaderLocator, AiReadableDocument } from '../ai/readers/readerTypes';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiDocumentReaderScreenProps {
@@ -62,24 +62,14 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
       loading={loading}
       onBack={onBack}
       scrollable
-      subtitle={readable ? `${readable.document.sourceType} · ${readable.document.parserStatus}` : space === 'personal' ? '私密空间' : '普通空间'}
+      subtitle={space === 'personal' ? '私密空间' : '普通空间'}
       title={displayTitle}
     >
       {readable ? (
-        <>
-          <View style={styles.metaCard}>
-            <Text style={styles.metaTitle}>{readable.document.originalFilename ?? readable.document.title}</Text>
-            <Text style={styles.metaText}>
-              {readable.document.mimeType ?? readable.document.sourceType} · {readable.document.fileSize ?? 0} bytes
-            </Text>
-            {locator ? <Text style={styles.metaText}>定位：{JSON.stringify(locator)}</Text> : null}
-          </View>
-          {renderReader(readable, locator)}
-        </>
+        renderReader(readable, locator)
       ) : !loading && !errorMessage ? (
-        <View style={styles.metaCard}>
+        <View style={styles.emptyState}>
           <Text style={styles.metaTitle}>没有可打开的文档</Text>
-          <Text style={styles.metaText}>请从材料列表或引用来源进入文档阅读。</Text>
         </View>
       ) : null}
     </ScreenScaffold>
@@ -100,18 +90,11 @@ function renderReader(readable: AiReadableDocument, locator?: AiDocumentReaderLo
 }
 
 const styles = StyleSheet.create({
-  metaCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
+  emptyState: {
+    alignItems: 'center',
     padding: spacing[4],
   },
   metaTitle: {
     ...typography.textStyles.bodyStrong,
-  },
-  metaText: {
-    ...typography.textStyles.caption,
   },
 });

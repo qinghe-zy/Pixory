@@ -14,6 +14,7 @@ import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderServi
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
 import { retrieveForThread } from './aiRetrievalService';
 import { getProviderApiKey } from './secureAiSettingsService';
+import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
 
 export interface CreateThreadFromContextInput {
@@ -46,6 +47,13 @@ export interface RetryAssistantMessageInput {
 export interface StopStreamingMessageInput {
   space: PixorySpace;
   assistantMessageId: string;
+}
+
+export interface MoveAiThreadsInput {
+  sourceSpace: PixorySpace;
+  targetSpace: PixorySpace;
+  threadIds: string[];
+  personalPassword?: string;
 }
 
 const stoppedMessageIds = new Set<string>();
@@ -187,6 +195,66 @@ export async function archiveAiThread(space: PixorySpace, threadId: string): Pro
 
 export async function unarchiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: null }));
+}
+
+export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
+  if (threadIds.length === 0) {
+    return 0;
+  }
+  return runWithDatabaseSpace(space, async (db) => {
+    let deletedCount = 0;
+    await db.withTransactionAsync(async () => {
+      deletedCount = await aiThreadRepository.deleteThreads(db, threadIds);
+    });
+    return deletedCount;
+  });
+}
+
+export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Promise<number> {
+  const uniqueThreadIds = Array.from(new Set(input.threadIds));
+  if (uniqueThreadIds.length === 0) {
+    return 0;
+  }
+  if (input.sourceSpace === input.targetSpace) {
+    return 0;
+  }
+  if (input.targetSpace === 'personal') {
+    const verified = await verifyPersonalPassword(input.personalPassword ?? '');
+    if (!verified.ok) {
+      throw new Error(verified.message ?? '隐私密码不正确。');
+    }
+  }
+
+  const snapshots = await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+    const exported = [];
+    for (const threadId of uniqueThreadIds) {
+      const snapshot = await aiThreadRepository.exportThread(db, threadId);
+      if (snapshot && snapshot.thread.space === input.sourceSpace) {
+        exported.push(snapshot);
+      }
+    }
+    return exported;
+  });
+
+  if (snapshots.length === 0) {
+    return 0;
+  }
+
+  await runWithDatabaseSpace(input.targetSpace, async (db) => {
+    await db.withTransactionAsync(async () => {
+      for (const snapshot of snapshots) {
+        await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
+      }
+    });
+  });
+
+  await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+    await db.withTransactionAsync(async () => {
+      await aiThreadRepository.deleteThreads(db, snapshots.map((snapshot) => snapshot.thread.id));
+    });
+  });
+
+  return snapshots.length;
 }
 
 async function markAssistantFailed(space: PixorySpace, assistantMessageId: string, message: string): Promise<void> {

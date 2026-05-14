@@ -38,3 +38,17 @@ test('AI chat screen exposes context title, settings, streaming, thinking, and c
     assert.match(content, new RegExp(expected));
   }
 });
+
+test('AI history supports long-press batch delete and private-space moves', () => {
+  const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
+  const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
+
+  for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
+    assert.match(history, new RegExp(expected));
+  }
+  assert.match(service, /verifyPersonalPassword/);
+  assert.match(repository, /exportThread/);
+  assert.match(repository, /importThread/);
+  assert.match(repository, /deleteThreads/);
+});

@@ -18,15 +18,17 @@ interface AiMaterialListScreenProps {
 }
 
 const STATUS_LABELS: Record<AiDocumentStatus, string> = {
-  pending: '等待解析',
-  parsing: '解析中',
-  parsed: '已解析',
-  chunked: '已切片',
-  searchable: '可检索',
-  embedding_pending: '等待向量',
-  embedding_ready: '向量可用',
+  pending: '等待',
+  parsing: '处理中',
+  parsed: '可用',
+  chunked: '可用',
+  searchable: '可用',
+  embedding_pending: '处理中',
+  embedding_ready: '可用',
   failed: '失败',
 };
+
+const RECOVERABLE_PARSE_ACTION = '重试解析';
 
 export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDocument }: AiMaterialListScreenProps) {
   const [items, setItems] = useState<AiDocumentRecord[]>([]);
@@ -77,22 +79,21 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
                 </View>
                 <View style={styles.copy}>
                   <Text style={styles.title}>{item.title}</Text>
-                  <Text style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.sourceType} · {item.originalFilename ?? '手动文本'}</Text>
+                  <Text style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
                   {item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
                 </View>
               </Pressable>
               {item.parserStatus === 'failed' ? (
                 <View style={styles.failedActions}>
-                  <PrimaryButton label="重试解析" onPress={() => void retryDocument(item.id)} variant="outline" />
+                  <PrimaryButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
                   <PrimaryButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
                 </View>
               ) : null}
             </View>
           ))
         ) : (
-          <View style={styles.emptyCard}>
+          <View style={styles.emptyState}>
             <Text style={styles.title}>还没有材料</Text>
-            <Text style={styles.meta}>导入文本或文件后，这里会显示解析状态、失败原因和可检索状态。</Text>
           </View>
         )}
       </View>
@@ -159,12 +160,8 @@ const styles = StyleSheet.create({
   failedActions: {
     gap: rhythm.inlineGap,
   },
-  emptyCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
+  emptyState: {
+    alignItems: 'center',
     padding: spacing[4],
   },
 });

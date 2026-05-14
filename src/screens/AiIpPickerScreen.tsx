@@ -65,43 +65,35 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
       decorativeTitle="AI"
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel} · 单 IP 上下文`}
+      subtitle={spaceLabel}
       title="选择 IP"
     >
       <View style={styles.searchWrap}>
-        <SearchBar onChangeText={setSearchText} placeholder="搜索 IP 名称或说明" value={searchText} />
+        <SearchBar onChangeText={setSearchText} placeholder="搜索 IP" value={searchText} />
       </View>
 
       <View style={styles.optionPanel}>
         <OptionRow
-          description="IP 名称、说明、分组、标签、文件名、备注、收藏和导入统计会进入上下文。"
           fixed
           label="基础 IP 资料"
           value
         />
         <OptionRow
-          description="读取当前 IP 下已导入的文本资料；没有资料时会自动退回基础资料。"
           label="IP 文档"
           onValueChange={setIncludeIpDocuments}
           value={includeIpDocuments}
-        />
-        <OptionRow
-          description="第一版不做图片识别、OCR 或视觉理解，只使用用户已有文字元数据。"
-          disabled
-          label="图片识别"
-          value={false}
         />
       </View>
 
       <PageStateBlock
         emptyActionLabel="返回"
-        emptyDescription="当前空间还没有可用于 AI 对话的 IP。请先创建 IP 并导入素材。"
+        emptyDescription=""
         emptyIconName="albums-outline"
         emptyTitle="没有可选择的 IP"
         errorMessage={errorMessage}
         isEmpty={!loading && filteredItems.length === 0}
         loading={loading}
-        loadingDescription="正在读取当前空间的本地 IP 列表。"
+        loadingDescription=""
         loadingTitle="正在加载 IP"
         onEmptyAction={onBack}
       >
@@ -145,25 +137,21 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
 
 interface OptionRowProps {
   label: string;
-  description: string;
   value: boolean;
   fixed?: boolean;
-  disabled?: boolean;
   onValueChange?: (value: boolean) => void;
 }
 
-function OptionRow({ label, description, value, fixed = false, disabled = false, onValueChange }: OptionRowProps) {
+function OptionRow({ label, value, fixed = false, onValueChange }: OptionRowProps) {
   return (
     <View style={styles.optionRow}>
       <View style={styles.optionCopy}>
         <Text style={styles.optionLabel}>{label}</Text>
-        <Text style={styles.optionDescription}>{description}</Text>
       </View>
       {fixed ? (
         <Text style={styles.fixedBadge}>固定</Text>
       ) : (
         <Switch
-          disabled={disabled}
           onValueChange={onValueChange}
           thumbColor={colors.background.surface}
           trackColor={{ false: colors.border.strong, true: colors.primary.default }}
@@ -197,9 +185,6 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     ...typography.textStyles.bodyStrong,
-  },
-  optionDescription: {
-    ...typography.textStyles.caption,
   },
   fixedBadge: {
     ...typography.textStyles.micro,

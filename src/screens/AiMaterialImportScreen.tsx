@@ -21,7 +21,7 @@ interface AiMaterialImportScreenProps {
 }
 
 export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMaterialImportScreenProps) {
-  const [title, setTitle] = useState('角色 notes');
+  const [title, setTitle] = useState('角色资料');
   const [text, setText] = useState('');
   const [targetKnowledgeBaseId, setTargetKnowledgeBaseId] = useState<string | undefined>(knowledgeBaseId);
   const [ips, setIps] = useState<IpListItem[]>([]);
@@ -79,7 +79,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       text,
       title: title.trim() || '手动材料',
     });
-    return `已导入：${document.title}（${document.parserStatus}）`;
+    return `已导入：${document.title}`;
   }
 
   async function pickAndImportDocument() {
@@ -108,7 +108,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       sourceUri: asset.uri,
       space,
     });
-    return `已复制并解析：${document.title}（${document.parserStatus}）`;
+    return `已导入：${document.title}`;
   }
 
   async function importFromIp() {
@@ -120,7 +120,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       space,
       title: title.trim() || 'IP 结构化资料',
     });
-    return `已从 IP 生成材料：${document.title}（${document.parserStatus}）`;
+    return `已生成：${document.title}`;
   }
 
   return (
@@ -130,7 +130,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       loading={busy}
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel} · 文档先复制到 App 私有目录`}
+      subtitle={spaceLabel}
       title="导入材料"
     >
       <View style={styles.panel}>
@@ -146,7 +146,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
         <TextInput
           multiline
           onChangeText={setText}
-          placeholder="粘贴角色 notes、研究记录、标签体系或项目资料"
+          placeholder="粘贴角色资料、研究记录或标签体系"
           placeholderTextColor={colors.text.placeholder}
           selectionColor={colors.primary.default}
           style={[styles.input, styles.textarea]}
@@ -158,13 +158,11 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
 
       <View style={styles.panel}>
         <Text style={styles.sectionTitle}>文件材料</Text>
-        <Text style={styles.caption}>支持 TXT、Markdown、PDF、DOCX。PDF 第一版只解析可提取文本，不做 OCR。</Text>
         <PrimaryButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.sectionTitle}>从已有 IP 生成</Text>
-        <Text style={styles.caption}>将 IP 名称、说明、分组、标签、文件名和备注写成一份本地文本材料。</Text>
         {ips.map((ip) => (
           <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
             {selectedIpId === ip.id ? '● ' : '○ '}{ip.name}
@@ -189,9 +187,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
-  },
-  caption: {
-    ...typography.textStyles.caption,
   },
   input: {
     ...typography.textStyles.body,

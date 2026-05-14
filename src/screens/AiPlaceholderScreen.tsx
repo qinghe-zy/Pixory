@@ -42,9 +42,7 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.description}>{description}</Text>
         </View>
-        <Text style={styles.meta}>资料与会话只写入当前空间，API key 使用系统安全存储。</Text>
       </View>
 
       {children ? <View style={styles.section}>{children}</View> : null}
@@ -63,7 +61,6 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
               </View>
               <View style={styles.actionCopy}>
                 <Text style={styles.actionLabel}>{action.label}</Text>
-                <Text style={styles.actionDescription}>{action.description}</Text>
               </View>
               <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
             </Pressable>
@@ -76,12 +73,8 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
 
 const styles = StyleSheet.create({
   hero: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[4],
+    padding: spacing[2],
   },
   iconWrap: {
     alignItems: 'center',
@@ -96,14 +89,6 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.sectionTitle,
-  },
-  description: {
-    ...typography.textStyles.body,
-    color: colors.text.secondary,
-  },
-  meta: {
-    ...typography.textStyles.caption,
-    color: colors.text.tertiary,
   },
   section: {
     gap: rhythm.listCardGap,
@@ -139,8 +124,5 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     ...typography.textStyles.bodyStrong,
-  },
-  actionDescription: {
-    ...typography.textStyles.caption,
   },
 });

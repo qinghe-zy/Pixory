@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
 import { FormInputRow } from '../components/FormInputRow';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -38,7 +37,7 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
 
   async function saveReusableRoleCard() {
     if (!prompt.trim()) {
-      setStatus('请先填写角色描述。');
+      setStatus('请先填写角色内容。');
       return;
     }
     setSaving(true);
@@ -49,7 +48,7 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
         prompt,
         space,
       });
-      setStatus('角色卡已保存，可在当前空间复用。');
+      setStatus('已保存。');
       await loadCards();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存失败');
@@ -60,11 +59,11 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
 
   function applyCurrentRole() {
     if (!prompt.trim()) {
-      setStatus('未填写角色描述，将继续使用默认角色。');
+      setStatus('使用默认角色。');
       onApplyToSession();
       return;
     }
-    setStatus('已应用到当前会话。');
+    setStatus('已应用。');
     onApplyToSession();
   }
 
@@ -74,47 +73,34 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
       decorativeTitle="AI"
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel}${roleCardId != null ? ` · 角色卡 ${roleCardId}` : ''}`}
-      title="角色卡"
+      subtitle={spaceLabel}
+      title="角色"
     >
-      <ContentCard>
-        <Text style={styles.sectionTitle}>默认角色</Text>
-        <Text style={styles.caption}>不配置角色卡也可以直接聊天；默认角色会保持 Pixory 的本地、安全和资料边界。</Text>
-      </ContentCard>
-
       <FormInputRow
-        label="角色卡名称"
+        label="名称"
         onChangeText={setName}
-        placeholder="例如：品牌设定整理助手"
+        placeholder="品牌设定整理助手"
         value={name}
       />
-      <FormInputRow
-        hint="用于在列表中快速识别，可留空。"
-        label="简短说明"
-        onChangeText={setDescription}
-        placeholder="这个角色卡适合什么场景"
-        value={description}
-      />
       <FormTextareaRow
-        hint="支持粘贴长角色描述、语气要求、禁区、输出格式和素材整理规则。"
-        label="角色描述"
+        label="角色内容"
         minHeight={240}
         onChangeText={setPrompt}
-        placeholder="粘贴或输入完整角色描述"
+        placeholder="粘贴或输入角色内容"
         value={prompt}
       />
 
       <View style={styles.actions}>
-        <PrimaryButton label="应用到当前会话" onPress={applyCurrentRole} />
-        <PrimaryButton label="保存为可复用角色卡" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
-        <PrimaryButton label="跳过，使用默认角色" onPress={onApplyToSession} variant="ghost" />
+        <PrimaryButton label="应用" onPress={applyCurrentRole} />
+        <PrimaryButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
+        <PrimaryButton label="跳过" onPress={onApplyToSession} variant="ghost" />
       </View>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
       {cards.length ? (
         <View style={styles.cardList}>
-          <Text style={styles.sectionTitle}>已保存角色卡</Text>
+          <Text style={styles.sectionTitle}>已保存</Text>
           {cards.map((card) => (
             <Pressable
               accessibilityRole="button"

@@ -21,8 +21,6 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
   const [items, setItems] = useState<AiKnowledgeBaseRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('general');
-  const [description, setDescription] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const selected = items.find((item) => item.id === selectedId);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -39,11 +37,10 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
 
   async function handleCreate() {
     try {
-      const created = await createKnowledgeBase({ category, description, name, space });
+      const created = await createKnowledgeBase({ category: 'general', description: '', name, space });
       setName('');
-      setDescription('');
       setSelectedId(created.id);
-      setStatus('知识库已创建。');
+      setStatus('已创建。');
       await reload();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '创建失败');
@@ -56,38 +53,20 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
       decorativeTitle="AI"
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel} · 本地知识库`}
-      title="知识库"
+      subtitle={spaceLabel}
+      title="资料库"
     >
       <View style={styles.createPanel}>
-        <Text style={styles.sectionTitle}>新建知识库</Text>
+        <Text style={styles.sectionTitle}>新建资料库</Text>
         <TextInput
           onChangeText={setName}
-          placeholder="知识库名称"
+          placeholder="名称"
           placeholderTextColor={colors.text.placeholder}
           selectionColor={colors.primary.default}
           style={styles.input}
           value={name}
         />
-        <TextInput
-          onChangeText={setCategory}
-          placeholder="分类，例如 general / customer_project"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={styles.input}
-          value={category}
-        />
-        <TextInput
-          multiline
-          onChangeText={setDescription}
-          placeholder="说明，可留空"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={[styles.input, styles.textarea]}
-          textAlignVertical="top"
-          value={description}
-        />
-        <PrimaryButton disabled={!name.trim()} label="创建知识库" onPress={() => void handleCreate()} variant="outline" />
+        <PrimaryButton disabled={!name.trim()} label="创建" onPress={() => void handleCreate()} variant="outline" />
         {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
 
@@ -107,15 +86,13 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
                 </View>
                 <View style={styles.kbCopy}>
                   <Text style={styles.kbName}>{item.name}</Text>
-                  <Text style={styles.kbMeta}>{item.category}{item.description ? ` · ${item.description}` : ''}</Text>
                 </View>
               </Pressable>
             );
           })
         ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.sectionTitle}>还没有知识库</Text>
-            <Text style={styles.caption}>创建后可导入手写材料、TXT、Markdown、PDF、DOCX 或从已有 IP 生成资料。</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.sectionTitle}>还没有资料库</Text>
           </View>
         )}
       </View>
@@ -125,10 +102,10 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
         <PrimaryButton label="材料列表" onPress={() => onOpenMaterials(selected?.id)} variant="outline" />
         <PrimaryButton
           disabled={!selected}
-          label="开始知识库会话"
+          label="开始聊天"
           onPress={() => {
             if (selected) {
-              onStartChat(selected.id, `${selected.name} 知识库`);
+              onStartChat(selected.id, selected.name);
             }
           }}
         />
@@ -149,9 +126,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
   },
-  caption: {
-    ...typography.textStyles.caption,
-  },
   status: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
@@ -166,9 +140,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
-  },
-  textarea: {
-    minHeight: 88,
   },
   list: {
     gap: rhythm.listCardGap,
@@ -204,15 +175,8 @@ const styles = StyleSheet.create({
   kbName: {
     ...typography.textStyles.bodyStrong,
   },
-  kbMeta: {
-    ...typography.textStyles.caption,
-  },
-  emptyCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
+  emptyState: {
+    alignItems: 'center',
     padding: spacing[4],
   },
   actions: {

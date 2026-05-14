@@ -25,13 +25,11 @@ export function AiMessageBubble({ message, streaming = false, onOpenCitation, on
         <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
         {!isUser ? (
           <>
-            <AiThinkingBlock label={message.modelSnapshotJson.includes('reasoning') ? '思考过程' : '思考摘要'} reasoningText={message.reasoningText} />
+            <AiThinkingBlock label={message.modelSnapshotJson.includes('reasoning') ? '思路' : '摘要'} reasoningText={message.reasoningText} />
             <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} />
-            {streaming ? <Text style={styles.meta}>stream · thinking</Text> : null}
             {isFailed ? (
               <Pressable accessibilityRole="button" onPress={() => onRetry(message.id)} style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
                 <Ionicons color={colors.primary.active} name="refresh-outline" size={16} />
-                <Text style={styles.retryText}>重试</Text>
               </Pressable>
             ) : null}
           </>
@@ -62,11 +60,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.sm,
   },
   assistantBubble: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: colors.overlay.softSurface,
     borderRadius: radius.lg,
     borderTopLeftRadius: radius.sm,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   content: {
     ...typography.textStyles.body,
@@ -77,20 +73,18 @@ const styles = StyleSheet.create({
   assistantText: {
     color: colors.text.body,
   },
-  meta: {
-    ...typography.textStyles.micro,
-    color: colors.text.tertiary,
-  },
   retryButton: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
     flexDirection: 'row',
     gap: rhythm.microGap,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
   },
   pressed: {
     opacity: 0.78,
-  },
-  retryText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
   },
 });
