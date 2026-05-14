@@ -389,29 +389,119 @@ The first version does not include:
 
 Implementation is not complete until these checks are possible:
 
+### Entry and Session Flow
+
 - AI workbench opens from the bottom AI tab.
 - The three entry paths work: normal chat, IP chat, knowledge base chat.
+- Recent Continue restores existing sessions with their saved context, model, role card, and conversation state.
+- View All opens the full session history.
+- Full history can filter normal chat, IP chat, knowledge base chat, customer-project category, and archived sessions.
+- Conversation titles are generated automatically and remain short and readable.
+
+### Chat Experience
+
+- Normal chat can enter the chat screen, send a message, stream a reply, save the session, and restore it from Recent Continue.
+- The chat screen header shows the current context.
+- The right-side settings entry opens session settings.
 - Session configuration shows an editable system prompt and optional role card before chat starts.
 - Chat screen can stream a response.
+- The user can stop generation while streaming when provider support allows it.
 - Thinking or reasoning content appears separately and can collapse when provided by the model.
 - Normal chat does not inject material-session rules.
+- One conversation can use a specific provider/model independent of other conversations.
+- AI messages store the actual model and prompt snapshot used to generate them.
+
+### Provider and Model Configuration
+
+- Provider setup supports DeepSeek, OpenAI/GPT, Gemini, Claude, and custom compatible providers.
+- Provider setup includes friendly API key entry with hide/show behavior.
+- API keys are stored in secure storage and are not written to SQLite.
+- Provider setup can test connection.
+- Provider setup can sync model lists where the provider supports it.
+- Users can manually add a model ID when sync is unavailable or incomplete.
+- Model selection shows concrete model IDs and capability labels when known.
+- Long-context, thinking, embedding, vision, and tool-call capability labels appear on the specific model variants that support them.
+- Different conversations can select different models from the same provider.
+
+### Role Cards and System Prompts
+
+- Users can chat without configuring a role card.
+- After choosing a chat type, the skippable session configuration screen shows the current system prompt.
+- Normal chat allows the user-editable system prompt to control behavior without Pixory material rules.
+- IP and knowledge base chats show editable role/personality prompt content plus a protected material-rule section.
+- Users can paste a long role description.
+- Users can save the current role prompt as a reusable role card.
+- Role-card changes, model changes, language changes, and system prompt changes affect only future messages.
+
+### IP Chat
+
 - IP chat can use structured IP text and metadata.
+- IP chat can use IP name, notes, groups, tags, image notes, original file names, import timing, favorite state, and asset statistics.
+- IP chat can enable IP-owned documents when available.
+- IP chat does not perform image recognition, OCR, generated image descriptions, or real-time vision chat in the first version.
+- IP citations can point to IP tags, notes, image notes, or IP-owned documents.
+
+### Knowledge Base and Documents
+
 - Knowledge base chat can import TXT, Markdown, PDF, and DOCX.
+- Knowledge base chat can add manual text and generated material from an existing IP.
 - Imported documents are copied to private storage before indexing.
 - Materials progress through parse, chunk, and searchable states.
+- Document parse failures show failure state and allow retry or removal.
 - Documents can be opened in read-only readers.
+- TXT opens in a plain text reader.
+- Markdown opens in a rendered Markdown reader.
+- PDF opens in a reader with page navigation and zoom.
+- DOCX opens in a read-only Word body/text reader.
+- PDF and DOCX images remain part of the original readable document when the reader can display them, but they do not participate in AI visual understanding.
 - Citations can open related document or IP sources when supported.
+- PDF citations open the cited page when possible.
+- DOCX citations open near the cited paragraph when possible.
+- Markdown and TXT citations open near the cited section, line, or paragraph when possible.
+
+### RAG and Citations
+
 - Retrieval works without embeddings.
 - Hybrid retrieval works when embedding provider settings are available.
-- Provider setup supports DeepSeek, OpenAI/GPT, Gemini, Claude, and custom compatible providers.
-- Model selection shows concrete model IDs and capability labels when known.
-- One conversation can use a specific provider/model independent of other conversations.
-- Role-card changes and model changes affect only future messages.
+- Retrieval uses bounded Top-K snippets and does not send whole documents to chat providers.
+- Pixory creates citation records from retrieved sources; the model must not invent citation records.
+- AI replies in material-bound chats display real citation sources when relevant sources were retrieved.
+- If retrieval finds no relevant source, Pixory does not fabricate citations and handles the reply according to the knowledge-boundary mode.
+- Embedding failure degrades to keyword retrieval.
+
+### Context Switching
+
 - Context object switching creates a new session.
-- Recent Continue restores saved context, model, and role configuration.
-- Full history can filter normal chat, IP chat, knowledge base chat, customer-project category, and archived sessions.
-- API keys are not written to SQLite.
+- Normal chat to IP chat creates a new material-bound session and keeps the original normal chat.
+- Normal chat to knowledge base chat creates a new material-bound session and keeps the original normal chat.
+- IP A to IP B creates a new session.
+- Knowledge base A to knowledge base B creates a new session.
+- IP or knowledge base chat back to normal chat creates a new session.
+- Model, role card, language, or system prompt changes stay in the current session and affect only future messages.
+
+### Data Isolation and Safety
+
 - Normal and private spaces remain isolated.
+- Chat records, knowledge bases, documents, chunks, and embeddings are space-scoped.
+- Global provider keys can be shared across spaces, but selected materials and retrieved data cannot cross spaces.
+- Pixory does not send API keys, private local paths, unselected documents, or unselected IP data to model providers.
+- Uploaded documents remain in app-private storage and do not rely on temporary external URIs.
+- The first version does not add cloud sync, accounts, server-side knowledge bases, or AI image generation.
+
+### Failure Paths
+
+- Missing chat API key shows setup guidance without losing typed input.
+- Chat request failure preserves the user message and failed AI placeholder, and allows retry.
+- Streaming disconnect preserves partial content and shows a failed or stopped state.
+- Document parse failure is visible in the material list and recoverable through retry or removal.
+- Embedding failure keeps keyword retrieval available.
+- Retrieval empty state is visible and does not create fake citations.
+- Model list sync failure keeps built-in and manually added models available.
+- Unknown providers can be treated as custom compatible providers when possible.
+
+### Engineering Checks
+
 - `pnpm typecheck` passes.
 - `pnpm test` passes.
 - Android simulator smoke test covers AI workbench, chat, provider setup, material import, reader opening, and citation navigation.
+- Android simulator smoke test also covers normal chat, model switching, IP chat, knowledge base chat, Recent Continue, and the main recoverable failure states.
