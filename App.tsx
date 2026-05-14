@@ -1453,13 +1453,16 @@ export default function App() {
     content = (
       <AiHistoryScreen
         onBack={popRoute}
-        onOpenThread={(threadId, title) =>
+        onOpenThread={(thread) =>
           pushRoute({
             name: 'ai-chat',
-            contextTitle: title,
-            contextType: 'normal',
+            contextTitle: thread.title,
+            contextType: thread.contextType,
+            includeIpDocuments: thread.includeIpDocuments,
+            ipId: thread.boundIpId ?? undefined,
+            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
             space: currentRoute.space,
-            threadId,
+            threadId: thread.id,
           })
         }
         space={currentRoute.space}
@@ -1497,6 +1500,18 @@ export default function App() {
       <AiHomeScreen
         footer={rootFooter}
         onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
+        onOpenThread={(thread) =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: thread.title,
+            contextType: thread.contextType,
+            includeIpDocuments: thread.includeIpDocuments,
+            ipId: thread.boundIpId ?? undefined,
+            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
+            space: activeSpace,
+            threadId: thread.id,
+          })
+        }
         onOpenMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
         onStartKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}

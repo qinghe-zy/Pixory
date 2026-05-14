@@ -5,6 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { listRecentMaterials } from '../ai/aiDocumentService';
+import { listAiHistoryThreads } from '../ai/aiChatService';
+import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -16,6 +18,7 @@ interface AiHomeScreenProps {
   onStartIpChat: () => void;
   onStartKnowledgeBase: () => void;
   onOpenHistory: () => void;
+  onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenMaterials: () => void;
   onOpenProviderSettings: () => void;
 }
@@ -45,18 +48,25 @@ export function AiHomeScreen({
   onStartIpChat,
   onStartKnowledgeBase,
   onOpenHistory,
+  onOpenThread,
   onOpenMaterials,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
   const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
+  const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
 
   useEffect(() => {
     let isMounted = true;
     void listRecentMaterials(space).then((items) => {
       if (isMounted) {
         setRecentMaterials(items);
+      }
+    });
+    void listAiHistoryThreads({ limit: 3, space }).then((items) => {
+      if (isMounted) {
+        setRecentThreads(items);
       }
     });
     return () => {
@@ -109,6 +119,28 @@ export function AiHomeScreen({
         <QuickLink icon="key-outline" label="模型设置" onPress={onOpenProviderSettings} />
       </View>
 
+      <View style={styles.recentMaterials}>
+        <View style={styles.recentHeader}>
+          <Text style={styles.entryTitle}>继续最近会话</Text>
+          <Pressable accessibilityRole="button" onPress={onOpenHistory}>
+            <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
+          </Pressable>
+        </View>
+        {recentThreads.length ? (
+          recentThreads.map((thread) => (
+            <Pressable accessibilityRole="button" key={thread.id} onPress={() => onOpenThread(thread)} style={({ pressed }) => [styles.threadRow, pressed && styles.pressed]}>
+              <Ionicons color={colors.primary.active} name={iconForContext(thread.contextType)} size={18} />
+              <View style={styles.threadCopy}>
+                <Text numberOfLines={1} style={styles.entryTitle}>{thread.title}</Text>
+                <Text numberOfLines={1} style={styles.entryDescription}>{thread.lastMessagePreview ?? thread.updatedAt}</Text>
+              </View>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={styles.entryDescription}>最近会话会显示在这里，可直接继续上下文。</Text>
+        )}
+      </View>
+
       <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.recentMaterials, pressed && styles.pressed]}>
         <View style={styles.recentHeader}>
           <Text style={styles.entryTitle}>最近材料</Text>
@@ -137,6 +169,16 @@ function QuickLink({ icon, label, onPress }: QuickLinkProps) {
       <Text style={styles.quickLabel}>{label}</Text>
     </Pressable>
   );
+}
+
+function iconForContext(contextType: AiThreadHistoryItem['contextType']): keyof typeof Ionicons.glyphMap {
+  if (contextType === 'ip') {
+    return 'albums-outline';
+  }
+  if (contextType === 'knowledge_base') {
+    return 'library-outline';
+  }
+  return 'chatbubble-ellipses-outline';
 }
 
 const styles = StyleSheet.create({
@@ -234,5 +276,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  threadRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
+  threadCopy: {
+    flex: 1,
+    gap: rhythm.microGap,
   },
 });

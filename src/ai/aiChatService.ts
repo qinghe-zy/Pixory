@@ -8,7 +8,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiMessageRecord } from '../database/repositories/aiThreadRepository';
+import type { AiMessageRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
@@ -58,6 +58,14 @@ function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 10);
   return `${prefix}_${timestamp}_${random}`;
+}
+
+export function fallbackAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType }): string {
+  const compact = input.firstUserMessage.replace(/\s+/g, ' ').trim().slice(0, 18);
+  if (input.contextType === 'normal') {
+    return compact || '普通聊天';
+  }
+  return compact ? `${input.contextTitle} / ${compact}` : input.contextTitle;
 }
 
 function fallbackTitle(input: CreateThreadFromContextInput): string {
@@ -165,6 +173,22 @@ export async function listThreadMessages(space: PixorySpace, threadId: string): 
   });
 }
 
+export async function listAiHistoryThreads(input: {
+  space: PixorySpace;
+  filter?: AiThreadHistoryFilter;
+  limit?: number;
+}): Promise<AiThreadHistoryItem[]> {
+  return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItems(db, input.space, input.filter ?? 'all', input.limit ?? 100));
+}
+
+export async function archiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: new Date().toISOString() }));
+}
+
+export async function unarchiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: null }));
+}
+
 async function markAssistantFailed(space: PixorySpace, assistantMessageId: string, message: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateMessage(db, assistantMessageId, {
@@ -202,7 +226,11 @@ export async function sendUserMessage(
       content: '',
     });
     await aiThreadRepository.updateThread(db, thread.id, {
+      title: thread.titleStatus === 'fallback'
+        ? fallbackAiThreadTitle({ contextTitle: thread.title, contextType: thread.contextType, firstUserMessage: input.content })
+        : undefined,
       lastMessagePreview: input.content.slice(0, 80),
+      titleStatus: thread.titleStatus === 'fallback' ? 'generated' : undefined,
     });
   });
   input.onCreated?.({ userMessageId, assistantMessageId });

@@ -68,6 +68,12 @@ export interface AiThreadListQuery {
   limit?: number;
 }
 
+export type AiThreadHistoryFilter = 'all' | AiContextType | 'customer_project' | 'archived';
+
+export interface AiThreadHistoryItem extends AiThreadRecord {
+  knowledgeCategory: string | null;
+}
+
 export type UpdateAiThreadPatch = Partial<
   Pick<
     CreateAiThreadInput,
@@ -136,6 +142,13 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
+  };
+}
+
+function mapThreadHistoryRow(row: AiThreadRow & { knowledgeCategory: string | null }): AiThreadHistoryItem {
+  return {
+    ...mapThreadRow(row),
+    knowledgeCategory: row.knowledgeCategory ?? null,
   };
 }
 
@@ -278,6 +291,35 @@ export const aiThreadRepository = {
       query.limit ?? 100
     );
     return rows.map(mapThreadRow);
+  },
+
+  async listHistoryItems(db: SQLiteDatabase, space: PixorySpace, filter: AiThreadHistoryFilter = 'all', limit = 100): Promise<AiThreadHistoryItem[]> {
+    const clauses = ['ai_threads.space = ?'];
+    const values: (string | number)[] = [space];
+    if (filter === 'archived') {
+      clauses.push('ai_threads.archivedAt IS NOT NULL');
+    } else {
+      clauses.push('ai_threads.archivedAt IS NULL');
+      if (filter === 'normal' || filter === 'ip' || filter === 'knowledge_base') {
+        clauses.push('ai_threads.contextType = ?');
+        values.push(filter);
+      }
+      if (filter === 'customer_project') {
+        clauses.push("ai_threads.contextType = 'knowledge_base'");
+        clauses.push("ai_knowledge_bases.category = 'customer_project'");
+      }
+    }
+    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null }>(
+      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory
+       FROM ai_threads
+       LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY ai_threads.updatedAt DESC, ai_threads.createdAt DESC
+       LIMIT ?`,
+      ...values,
+      limit
+    );
+    return rows.map(mapThreadHistoryRow);
   },
 
   async createMessage(db: SQLiteDatabase, input: CreateAiMessageInput): Promise<AiMessageRecord> {
