@@ -114,6 +114,11 @@ test('video player scrubbing works from both the progress bar and video surface'
   assert.doesNotMatch(playerSource, /精细拖动 ×/);
   assert.doesNotMatch(playerSource, /高精度拖动 ×/);
   assert.match(playerSource, /scrubGestureHint/);
+  assert.match(playerSource, /const \[isSurfaceScrubbing, setIsSurfaceScrubbing\] = useState\(false\)/);
+  assert.match(playerSource, /beginScrub\('surface'\)/);
+  assert.match(playerSource, /setControlsVisible\(false\)/);
+  assert.match(playerSource, /isSurfaceScrubbing && isScrubbing/);
+  assert.match(playerSource, /styles\.surfaceScrubOverlay/);
   assert.match(playerSource, /function getScrubBoundaryHint\(rawTargetTime: number, effectiveDuration: number\)/);
   assert.match(playerSource, /formatScrubMeta/);
   assert.match(playerSource, /updateScrubFromSurfaceGesture\(gestureState\.dx, gestureState\.dy\)/);

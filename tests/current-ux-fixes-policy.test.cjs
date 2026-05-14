@@ -102,7 +102,11 @@ test('video player portrait center vertical zone switches videos without stealin
   assert.match(playerSource, /locationX >= centerLeft && locationX <= centerRight && absDy > absDx \* CENTER_VIDEO_SWITCH_DOMINANCE_RATIO/);
   assert.match(playerSource, /surfaceGestureModeRef\.current = 'video-switch'/);
   assert.match(playerSource, /function finishCenterVideoSwitchGesture\(deltaY: number\)/);
-  assert.match(playerSource, /switchVideoByOffset\(deltaY < 0 \? 1 : -1\)/);
+  assert.match(playerSource, /function switchVideoWithTransition\(nextVideo: ImageListItem, direction: 1 \| -1\)/);
+  assert.match(playerSource, /videoSwitchTranslateY/);
+  assert.match(playerSource, /Animated\.timing\(videoSwitchTranslateY/);
+  assert.match(playerSource, /switchVideo\(nextVideo\.id, nextVideo, \{ showControls: false \}\)/);
+  assert.doesNotMatch(playerSource, /上滑切换下一个|下滑切换上一个/);
   assert.match(playerSource, /void beginVerticalGesture\(event\)/);
 });
 

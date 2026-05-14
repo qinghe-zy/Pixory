@@ -31,6 +31,9 @@ const CENTER_VIDEO_SWITCH_LEFT_RATIO = 0.28;
 const CENTER_VIDEO_SWITCH_RIGHT_RATIO = 0.72;
 const CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX = 72;
 const CENTER_VIDEO_SWITCH_DOMINANCE_RATIO = 1.25;
+const VIDEO_SWITCH_EXIT_DURATION_MS = 170;
+const VIDEO_SWITCH_ENTER_DURATION_MS = 210;
+const VIDEO_SWITCH_CANCEL_DURATION_MS = 140;
 const COMMITTED_SEEK_SETTLE_TIMEOUT_MS = 1400;
 const COMMITTED_SEEK_TOLERANCE_SECONDS = 0.35;
 const SURFACE_SEEK_SHORT_SECONDS = 30;
@@ -105,6 +108,7 @@ export function VideoPlayerScreen({
   const [moreVisible, setMoreVisible] = useState(false);
   const [holdSpeedVisible, setHoldSpeedVisible] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [isSurfaceScrubbing, setIsSurfaceScrubbing] = useState(false);
   const [scrubDisplayTime, setScrubDisplayTime] = useState(0);
   const [scrubGestureHint, setScrubGestureHint] = useState<string | null>(null);
   const [isPlayerLocked, setIsPlayerLocked] = useState(false);
@@ -116,6 +120,8 @@ export function VideoPlayerScreen({
   const [newIpName, setNewIpName] = useState('');
   const [isSavingToIp, setIsSavingToIp] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
+  const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
@@ -146,9 +152,11 @@ export function VideoPlayerScreen({
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const floatingMenuOpacity = useRef(new Animated.Value(0)).current;
   const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
+  const videoSwitchTranslateY = useRef(new Animated.Value(0)).current;
 
-  const sourceUri = externalSource?.uri ?? video?.originalFileUri ?? null;
-  const sourceFileName = externalSource?.fileName ?? video?.originalFilename ?? 'video.mp4';
+  const activeVideoSource = switchPreviewVideo ?? video;
+  const sourceUri = externalSource?.uri ?? activeVideoSource?.originalFileUri ?? null;
+  const sourceFileName = externalSource?.fileName ?? activeVideoSource?.originalFilename ?? 'video.mp4';
 
   const player = useVideoPlayer(null, (instance) => {
     instance.timeUpdateEventInterval = 0.25;
@@ -238,11 +246,13 @@ export function VideoPlayerScreen({
 
   useEffect(() => {
     setActiveVideoId(videoId ?? 0);
+    setSwitchPreviewVideo(null);
   }, [videoId]);
 
   useEffect(() => {
     if (externalSource) {
       setVideo(null);
+      setSwitchPreviewVideo(null);
       setQueue([]);
       const initialDisplayTime = 0;
       currentTimeRef.current = initialDisplayTime;
@@ -266,6 +276,7 @@ export function VideoPlayerScreen({
         return;
       }
       setVideo(detail);
+      setSwitchPreviewVideo((current) => (current?.id === detail.id ? null : current));
       const savedTime = (detail.lastPlaybackPositionMs ?? 0) / 1000;
       currentTimeRef.current = savedTime;
       setCurrentTime(savedTime);
@@ -291,8 +302,8 @@ export function VideoPlayerScreen({
     const loadVersion = sourceLoadVersionRef.current + 1;
     sourceLoadVersionRef.current = loadVersion;
     safePausePlayer();
-    const initialDisplayTime = !externalSource && video?.lastPlaybackPositionMs && video.lastPlaybackPositionMs > 1000
-      ? video.lastPlaybackPositionMs / 1000
+    const initialDisplayTime = !externalSource && activeVideoSource?.lastPlaybackPositionMs && activeVideoSource.lastPlaybackPositionMs > 1000
+      ? activeVideoSource.lastPlaybackPositionMs / 1000
       : 0;
     currentTimeRef.current = initialDisplayTime;
     setCurrentTime(initialDisplayTime);
@@ -320,7 +331,7 @@ export function VideoPlayerScreen({
     return () => {
       isActive = false;
     };
-  }, [externalSource, player, showToast, sourceUri, video?.id]);
+  }, [activeVideoSource?.id, externalSource, player, showToast, sourceUri]);
 
   useEffect(() => {
     player.playbackRate = speed;
@@ -400,6 +411,9 @@ export function VideoPlayerScreen({
     opacity: floatingMenuOpacity,
     transform: [{ translateY: floatingMenuTranslateY }],
   };
+  const videoSwitchAnimatedStyle = {
+    transform: [{ translateY: videoSwitchTranslateY }],
+  };
 
   const moreItems: AppActionSheetItem[] = useMemo(
     () => [
@@ -448,7 +462,7 @@ export function VideoPlayerScreen({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_event, gestureState) => {
-          if (isPlayerLocked) {
+          if (isPlayerLocked || isVideoSwitchTransitioning) {
             return false;
           }
           const absDx = Math.abs(gestureState.dx);
@@ -461,7 +475,7 @@ export function VideoPlayerScreen({
         onPanResponderGrant: (event) => {
           surfaceGestureModeRef.current = 'pending';
           lastSurfacePressLocationXRef.current = event.nativeEvent.locationX;
-          if (isPlayerLocked) {
+          if (isPlayerLocked || isVideoSwitchTransitioning) {
             return;
           }
           longPressTimerRef.current = setTimeout(() => {
@@ -473,7 +487,7 @@ export function VideoPlayerScreen({
           }, 260);
         },
         onPanResponderMove: (event, gestureState) => {
-          if (isPlayerLocked) {
+          if (isPlayerLocked || isVideoSwitchTransitioning) {
             return;
           }
           const absDx = Math.abs(gestureState.dx);
@@ -485,22 +499,19 @@ export function VideoPlayerScreen({
               return;
             }
             clearLongPressTimer();
-            showControls();
             if (shouldAdjustVertically) {
               if (shouldSwitchVideoFromCenterVerticalGesture(event.nativeEvent.locationX, absDx, absDy)) {
                 surfaceGestureModeRef.current = 'video-switch';
-                showGestureFeedback({
-                  kind: gestureState.dy < 0 ? 'seek-forward' : 'seek-backward',
-                  label: gestureState.dy < 0 ? '上滑切换下一个' : '下滑切换上一个',
-                });
+                updateVideoSwitchDrag(gestureState.dy);
                 return;
               }
+              showControls();
               surfaceGestureModeRef.current = 'vertical';
               void beginVerticalGesture(event);
               return;
             }
             surfaceGestureModeRef.current = 'scrub';
-            beginScrub();
+            beginScrub('surface');
             scrubStartTimeRef.current = currentTimeRef.current;
           }
           if (verticalGestureKindRef.current) {
@@ -508,10 +519,7 @@ export function VideoPlayerScreen({
             return;
           }
           if (surfaceGestureModeRef.current === 'video-switch') {
-            showGestureFeedback({
-              kind: gestureState.dy < 0 ? 'seek-forward' : 'seek-backward',
-              label: gestureState.dy < 0 ? '上滑切换下一个' : '下滑切换上一个',
-            });
+            updateVideoSwitchDrag(gestureState.dy);
             return;
           }
           if (surfaceGestureModeRef.current !== 'scrub') {
@@ -557,7 +565,7 @@ export function VideoPlayerScreen({
           }
           if (surfaceGestureModeRef.current === 'video-switch') {
             surfaceGestureModeRef.current = null;
-            resetHideTimer();
+            resetVideoSwitchDrag();
             return;
           }
           if (surfaceGestureModeRef.current === 'scrub') {
@@ -569,7 +577,7 @@ export function VideoPlayerScreen({
         },
         onShouldBlockNativeResponder: () => true,
       }),
-    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, player, queue.length, speed, surfaceWidth, surfaceHeight]
+    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, isVideoSwitchTransitioning, player, queue.length, speed, surfaceWidth, surfaceHeight]
   );
 
   async function handleSaveLocal() {
@@ -887,11 +895,69 @@ export function VideoPlayerScreen({
   }
 
   function finishCenterVideoSwitchGesture(deltaY: number) {
+    const offset = deltaY < 0 ? 1 : -1;
+    const nextVideo = getVideoByOffset(offset);
     if (Math.abs(deltaY) < CENTER_VIDEO_SWITCH_MIN_DISTANCE_PX) {
-      resetHideTimer();
+      resetVideoSwitchDrag();
       return;
     }
-    switchVideoByOffset(deltaY < 0 ? 1 : -1);
+    if (!nextVideo) {
+      resetVideoSwitchDrag();
+      return;
+    }
+    switchVideoWithTransition(nextVideo, offset);
+  }
+
+  function updateVideoSwitchDrag(deltaY: number) {
+    const maxTranslate = Math.max(1, surfaceHeight);
+    videoSwitchTranslateY.setValue(Math.max(-maxTranslate, Math.min(maxTranslate, deltaY)));
+  }
+
+  function resetVideoSwitchDrag() {
+    Animated.timing(videoSwitchTranslateY, {
+      toValue: 0,
+      duration: VIDEO_SWITCH_CANCEL_DURATION_MS,
+      useNativeDriver: true,
+    }).start(() => {
+      resetHideTimer();
+    });
+  }
+
+  function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1) {
+    if (isVideoSwitchTransitioning) {
+      return;
+    }
+    setIsVideoSwitchTransitioning(true);
+    clearHideTimer();
+    clearLongPressTimer();
+    setSpeedMenuVisible(false);
+    setQueueVisible(false);
+    setMoreVisible(false);
+    const transitionHeight = Math.max(1, surfaceHeight);
+    Animated.timing(videoSwitchTranslateY, {
+      toValue: -direction * transitionHeight,
+      duration: VIDEO_SWITCH_EXIT_DURATION_MS,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        videoSwitchTranslateY.setValue(0);
+        setIsVideoSwitchTransitioning(false);
+        resetHideTimer();
+        return;
+      }
+      switchVideo(nextVideo.id, nextVideo, { showControls: false });
+      videoSwitchTranslateY.setValue(direction * transitionHeight);
+      requestAnimationFrame(() => {
+        Animated.timing(videoSwitchTranslateY, {
+          toValue: 0,
+          duration: VIDEO_SWITCH_ENTER_DURATION_MS,
+          useNativeDriver: true,
+        }).start(() => {
+          setIsVideoSwitchTransitioning(false);
+          resetHideTimer();
+        });
+      });
+    });
   }
 
   async function adjustBrightnessFromGesture(value: number) {
@@ -955,9 +1021,17 @@ export function VideoPlayerScreen({
     return true;
   }
 
-  function beginScrub() {
+  function beginScrub(source: 'controls' | 'surface' = 'controls') {
     clearHideTimer();
     clearLongPressTimer();
+    const isSurfaceSource = source === 'surface';
+    setIsSurfaceScrubbing(isSurfaceSource);
+    if (isSurfaceSource) {
+      setControlsVisible(false);
+      setSpeedMenuVisible(false);
+      setQueueVisible(false);
+      setMoreVisible(false);
+    }
     setIsScrubbing(true);
     isScrubbingRef.current = true;
     scrubDisplayTimeRef.current = currentTimeRef.current;
@@ -1114,6 +1188,7 @@ export function VideoPlayerScreen({
     committedSeekTargetRef.current = finalTime;
     committedSeekStartedAtRef.current = Date.now();
     setIsScrubbing(false);
+    setIsSurfaceScrubbing(false);
     setScrubGestureHint(null);
     isScrubbingRef.current = false;
     resetHideTimer();
@@ -1123,6 +1198,7 @@ export function VideoPlayerScreen({
     clearPreviewSeekTimer();
     committedSeekTargetRef.current = null;
     setIsScrubbing(false);
+    setIsSurfaceScrubbing(false);
     setScrubGestureHint(null);
     isScrubbingRef.current = false;
     resetHideTimer();
@@ -1145,24 +1221,34 @@ export function VideoPlayerScreen({
     }
   }
 
-  function switchVideo(nextVideoId: number) {
+  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { showControls?: boolean }) {
     if (!externalSource && video) {
       void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
     }
     safePausePlayer();
+    setSwitchPreviewVideo(nextVideo ?? null);
     setActiveVideoId(nextVideoId);
     setQueueVisible(false);
-    showControls();
+    if (options?.showControls === false) {
+      resetHideTimer();
+    } else {
+      showControls();
+    }
   }
 
-  function switchVideoByOffset(offset: number) {
+  function getVideoByOffset(offset: 1 | -1) {
     if (queue.length === 0 || currentIndex < 0) {
-      return;
+      return null;
     }
     const nextIndex = Math.max(0, Math.min(queue.length - 1, currentIndex + offset));
     const nextVideo = queue[nextIndex];
-    if (nextVideo && nextVideo.id !== activeVideoId) {
-      switchVideo(nextVideo.id);
+    return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
+  }
+
+  function switchVideoByOffset(offset: 1 | -1) {
+    const nextVideo = getVideoByOffset(offset);
+    if (nextVideo) {
+      switchVideo(nextVideo.id, nextVideo);
     }
   }
 
@@ -1176,12 +1262,12 @@ export function VideoPlayerScreen({
   return (
     <View style={styles.shell}>
       <ExpoStatusBar hidden />
-      <View
+      <Animated.View
         onLayout={(event) => {
           setSurfaceWidth(Math.max(1, event.nativeEvent.layout.width));
           setSurfaceHeight(Math.max(1, event.nativeEvent.layout.height));
         }}
-        style={styles.videoSurface}
+        style={[styles.videoSurface, videoSwitchAnimatedStyle]}
       >
         <VideoView
           allowsPictureInPicture={false}
@@ -1196,7 +1282,7 @@ export function VideoPlayerScreen({
           {...surfacePanResponder.panHandlers}
           style={styles.videoGestureLayer}
         />
-      </View>
+      </Animated.View>
 
       {brightnessOverlayOpacity > 0 ? <View pointerEvents="none" style={[styles.brightnessOverlay, { opacity: brightnessOverlayOpacity }]} /> : null}
 
@@ -1209,6 +1295,16 @@ export function VideoPlayerScreen({
               <View style={[styles.gestureFeedbackFill, { width: `${Math.round(gestureFeedback.value * 100)}%` }]} />
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {isSurfaceScrubbing && isScrubbing ? (
+        <View pointerEvents="none" style={styles.surfaceScrubOverlay}>
+          <Text style={styles.surfaceScrubTime}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+          <View style={styles.surfaceScrubTrack}>
+            <View style={[styles.surfaceScrubFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <Text style={styles.surfaceScrubMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
         </View>
       ) : null}
 
@@ -1264,7 +1360,7 @@ export function VideoPlayerScreen({
               <Text style={styles.queueTitle}>待播放</Text>
               <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} style={styles.queueScroll} contentContainerStyle={styles.queueScrollContent}>
                 {queue.map((item) => (
-                  <Pressable key={item.id} onPress={() => switchVideo(item.id)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
+                  <Pressable key={item.id} onPress={() => switchVideo(item.id, item)} style={({ pressed }) => [styles.queueRow, item.id === activeVideoId ? styles.queueRowActive : null, pressed && styles.pressed]}>
                     <View style={styles.queueCover}>
                       {item.coverThumbnailFileUri ?? item.thumbnailFileUri ? (
                         <SecureImage contentFit="cover" space={space} style={styles.queueCoverImage} uri={(item.coverThumbnailFileUri ?? item.thumbnailFileUri) as string} />
@@ -1493,6 +1589,42 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.hover,
     borderRadius: radius.pill,
     height: '100%',
+  },
+  surfaceScrubOverlay: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(12, 15, 13, 0.78)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    minWidth: 180,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    position: 'absolute',
+    top: '42%',
+  },
+  surfaceScrubTime: {
+    ...typography.textStyles.caption,
+    color: colors.text.inverse,
+    fontWeight: '800',
+  },
+  surfaceScrubTrack: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: radius.pill,
+    height: 3,
+    overflow: 'hidden',
+    width: 148,
+  },
+  surfaceScrubFill: {
+    backgroundColor: colors.primary.hover,
+    borderRadius: radius.pill,
+    height: '100%',
+  },
+  surfaceScrubMeta: {
+    ...typography.textStyles.micro,
+    color: 'rgba(255,255,255,0.72)',
+    fontWeight: '700',
   },
   unlockButton: {
     alignItems: 'center',
