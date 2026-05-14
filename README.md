@@ -1,55 +1,57 @@
 # Pixory
 
-Pixory 是一个 Android-first、local-only 的 IP 图片 / 视觉资产管理应用。
+Pixory 是一个 Android-first、local-only 的 IP 图片与视觉资产管理应用。
 
-它的核心定位是帮助个人或小团队在本地离线环境里，用 IP、分组、标签、收藏、备注和回收站来管理视觉素材，同时尽量保证原始文件安全和数据可追溯。
+它用于把个人或小团队的图片素材按 IP、分组、标签、收藏、备注和元数据整理起来，同时尽量保护导入原图的完整性。Pixory 不是云相册、社交应用、在线同步服务、账号系统、AI 生成器或图片编辑器。
 
-## 核心原则
+## 产品定位
 
-- 本地优先：所有核心能力默认离线可用。
-- 无服务器：默认不依赖后端服务。
-- 无云存储：默认不做云同步、云备份、远程图库。
-- 无账号：默认不做登录、鉴权、用户体系。
-- 原始文件无损：导入时复制原文件到应用私有目录，不压缩、不裁剪、不重编码、不覆盖原文件。
-- 预览资源分离：缩略图、视频封面和缓存仅用于预览，单独存储，不替代原始文件。
+- Android 优先的移动端体验。
+- 核心资产管理能力离线可用。
+- 使用 SQLite 保存结构化元数据。
+- 使用本地文件系统保存导入原图和预览文件。
+- 导入原图会复制到应用私有目录，不压缩、不裁剪、不重编码、不覆盖。
+- 缩略图、封面和缓存只作为独立预览文件，不替代原图。
+- 默认软删除，清空回收站前可以恢复。
 
 ## 主要功能
 
-- IP 资产库
-- IP 下分组管理
-- 图片批量导入
-- v2 目标：视频导入、视频封面、视频查看与大容量性能治理
-- 标签总览与标签结果页
-- 图片详情
-- 图片编辑
-- 移动分组
-- 批量管理
-- 收藏页
-- 最近查看页
-- 软删除回收站
-- 回收站恢复与清空
+- IP 资产库：适合角色、视觉身份、主题、品牌形象或创意系列。
+- IP 内分组：支持季节、场景、节日、用途和自定义组织方式。
+- 图片批量导入：复制原图、读取元数据、生成独立缩略图并写入本地数据库。
+- 标签管理：创建、展示、搜索、筛选、添加和移除标签。
+- 图片详情、备注、收藏、最近查看和全局搜索。
+- 全部图片、全局分组、标签总览、标签结果等管理视图。
+- 重复素材检查、快速整理和批量管理流程。
+- 回收站恢复与清空。
+- 本地备份导出和包导入流程。
+- 本地视频导入、封面和查看支持。
+- 面向已发布 Android 版本的远程更新和公告 JSON。
 
 ## 技术栈
 
-- Expo
-- React Native
+- Expo 54
+- React Native 0.81
+- React 19
 - TypeScript
-- Expo Router 风格路由常量
-- expo-sqlite
-- expo-file-system
-- expo-image-picker
-- expo-image-manipulator
+- `expo-sqlite`
+- Expo 本地文件、图片、媒体库、文档选择、视频和安全存储相关模块
+- Pixory Android media intents 的轻量 Expo config plugin
 
-## 本地存储说明
+## 仓库内容
 
-- SQLite 保存结构化元数据。
-- 应用私有文件目录保存 original 文件。
-- 应用私有文件目录保存 thumbnail / preview 文件。
-- `originalFileUri`、`thumbnailFileUri`、视频封面 URI 分离维护。
-- 清空回收站前，软删除资产对应的原始文件和预览文件仍会保留。
-- 列表页只读取元数据和预览资源，原始文件只在详情、查看器、导出或备份时访问。
+这个公开仓库只保留理解、运行和构建 Pixory 所需的内容：
 
-## 运行方式
+- `src/`：页面、组件、服务、数据库访问、设计 token、hooks 和工具函数。
+- `assets/`：应用图标和随包视觉资源。
+- `plugins/`：Android 集成相关的 Expo config plugin。
+- `patches/`：项目所需的依赖补丁。
+- `docs/update-version.json`、`docs/announcement.json`：已发布版本使用的远程更新和公告元数据。
+- `package.json`、`pnpm-lock.yaml`、`app.json`、`eas.json`、`tsconfig.json` 等运行和构建配置。
+
+本地日志、调试截图、生成的 APK、私有规划文档和构建产物不会放在 `main` 分支。
+
+## 本地运行
 
 安装依赖：
 
@@ -57,16 +59,22 @@ Pixory 是一个 Android-first、local-only 的 IP 图片 / 视觉资产管理�
 pnpm install
 ```
 
+启动 Expo：
+
+```bash
+pnpm start
+```
+
 启动 Android：
 
 ```bash
-pnpm exec expo start --android
+pnpm android
 ```
 
-清缓存启动：
+清缓存启动 Android：
 
 ```bash
-pnpm exec expo start --android -c
+pnpm run acceptance:android
 ```
 
 TypeScript 检查：
@@ -75,41 +83,37 @@ TypeScript 检查：
 pnpm run typecheck
 ```
 
-轻量回归测试：
-
-```bash
-pnpm test
-```
-
-依赖检查：
+依赖兼容性检查：
 
 ```bash
 pnpm run doctor
 ```
 
-## Android 启动方式
+## Android 说明
 
-- 先确认 `adb devices` 能看到模拟器或真机
-- 如 8081 被占用，先结束旧 Metro
-- 推荐提测前统一使用 fresh bundle：
+- 使用 Android 模拟器或 Android 真机运行。
+- 启动前可用 `adb devices` 确认设备已连接。
+- 如果 Metro 加载旧页面，使用 `pnpm run acceptance:android` 清缓存启动。
+- Release APK 通过 GitHub Releases 发布，不提交到仓库 `main` 分支。
 
-```bash
-pnpm exec expo start --android -c
-```
+## 下载发布版
 
-- 确认 Expo Go 已加载最新 bundle，而不是旧缓存页面
+最新 Android 发布版：
 
-## 开发约束
+[GitHub Releases](https://github.com/qinghe-zy/Pixory/releases/latest)
 
-- 不在列表页读取原图或原视频。
-- 不在启动时扫描全库文件。
-- 不把大文件放进 SQLite。
-- 不让 UI 页面直接绕过 repository / service 修改数据库或文件。
-- 大批量导入、备份、恢复、清理和视频导入必须按任务化、分批、可校验的方式设计。
+Pixory 的应用内更新和公告读取：
 
-## 文档
+- `docs/update-version.json`
+- `docs/announcement.json`
 
-- [v2 开发规划](./docs/V2_DEVELOPMENT_PLAN.md)
-- [v2 视频与导入规格](./docs/V2_VIDEO_AND_IMPORT_SPEC.md)
-- [v2 验收标准](./docs/V2_ACCEPTANCE_CRITERIA.md)
-- [v2 播放器视觉参考](./docs/assets/v2-video-player-visual-reference.png)
+维护这两个文件时，应保持 JSON 简短、有效，并与最新 GitHub Release 保持一致。
+
+## 开发边界
+
+- 优先保护导入原图。
+- 保持核心流程离线优先。
+- 除非明确需要，不添加后端、云存储、账号、同步或社交功能。
+- 不把大媒体文件写入 SQLite。
+- 缩略图和预览文件必须与原图分离。
+- 优先做小而可验证的改动，避免无关重写。
