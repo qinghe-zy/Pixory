@@ -31,7 +31,18 @@ import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { AiChatScreen } from './src/screens/AiChatScreen';
+import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
+import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
 import { AiHomeScreen } from './src/screens/AiHomeScreen';
+import { AiIpPickerScreen } from './src/screens/AiIpPickerScreen';
+import { AiKnowledgeBaseScreen } from './src/screens/AiKnowledgeBaseScreen';
+import { AiMaterialImportScreen } from './src/screens/AiMaterialImportScreen';
+import { AiMaterialListScreen } from './src/screens/AiMaterialListScreen';
+import { AiModelPickerScreen } from './src/screens/AiModelPickerScreen';
+import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
+import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
+import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
@@ -137,6 +148,17 @@ type AppRoute =
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
   | { name: 'backup-export-manager'; space: PixorySpace }
+  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge'; ipId?: number; knowledgeBaseId?: number; threadId?: number }
+  | { name: 'ai-session-config'; space: PixorySpace; threadId?: number; contextTitle?: string }
+  | { name: 'ai-provider-settings'; space: PixorySpace }
+  | { name: 'ai-model-picker'; space: PixorySpace; providerId?: number }
+  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: number }
+  | { name: 'ai-ip-picker'; space: PixorySpace }
+  | { name: 'ai-knowledge-base'; space: PixorySpace }
+  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: number }
+  | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: number }
+  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: number; title?: string }
+  | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -1326,6 +1348,106 @@ export default function App() {
         space={currentRoute.space}
       />
     );
+  } else if (currentRoute.name === 'ai-chat') {
+    content = (
+      <AiChatScreen
+        contextTitle={currentRoute.contextTitle}
+        contextType={currentRoute.contextType ?? 'normal'}
+        onBack={popRoute}
+        onOpenSessionConfig={() =>
+          pushRoute({
+            name: 'ai-session-config',
+            contextTitle: currentRoute.contextTitle,
+            space: currentRoute.space,
+            threadId: currentRoute.threadId,
+          })
+        }
+        onOpenSource={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
+  } else if (currentRoute.name === 'ai-session-config') {
+    content = (
+      <AiSessionConfigScreen
+        contextTitle={currentRoute.contextTitle}
+        onBack={popRoute}
+        onOpenModelPicker={() => pushRoute({ name: 'ai-model-picker', space: currentRoute.space })}
+        onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
+        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
+  } else if (currentRoute.name === 'ai-provider-settings') {
+    content = <AiProviderSettingsScreen onBack={popRoute} onOpenModelPicker={(providerId) => pushRoute({ name: 'ai-model-picker', providerId, space: currentRoute.space })} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'ai-model-picker') {
+    content = <AiModelPickerScreen onBack={popRoute} providerId={currentRoute.providerId} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'ai-role-card-editor') {
+    content = <AiRoleCardEditorScreen onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'ai-ip-picker') {
+    content = (
+      <AiIpPickerScreen
+        onBack={popRoute}
+        onSelectIp={(ipId, title) =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: title,
+            contextType: 'ip',
+            ipId,
+            space: currentRoute.space,
+          })
+        }
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ai-knowledge-base') {
+    content = (
+      <AiKnowledgeBaseScreen
+        onBack={popRoute}
+        onImportMaterial={(knowledgeBaseId) => pushRoute({ name: 'ai-material-import', knowledgeBaseId, space: currentRoute.space })}
+        onOpenMaterials={(knowledgeBaseId) => pushRoute({ name: 'ai-material-list', knowledgeBaseId, space: currentRoute.space })}
+        onStartChat={(knowledgeBaseId, title) =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: title,
+            contextType: 'knowledge',
+            knowledgeBaseId,
+            space: currentRoute.space,
+          })
+        }
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ai-material-import') {
+    content = <AiMaterialImportScreen knowledgeBaseId={currentRoute.knowledgeBaseId} onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'ai-material-list') {
+    content = (
+      <AiMaterialListScreen
+        knowledgeBaseId={currentRoute.knowledgeBaseId}
+        onBack={popRoute}
+        onOpenDocument={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ai-document-reader') {
+    content = <AiDocumentReaderScreen documentId={currentRoute.documentId} onBack={popRoute} space={currentRoute.space} title={currentRoute.title} />;
+  } else if (currentRoute.name === 'ai-history') {
+    content = (
+      <AiHistoryScreen
+        onBack={popRoute}
+        onOpenThread={(threadId, title) =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: title,
+            contextType: 'normal',
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        space={currentRoute.space}
+      />
+    );
   } else if (currentRoute.name === 'placeholder') {
     content = <PlaceholderScreen description={currentRoute.description} onBack={popRoute} title={currentRoute.title} />;
   } else if (currentRoute.name === 'import-development') {
@@ -1354,7 +1476,25 @@ export default function App() {
       />
     );
   } else if (currentRoute.tab === 'ai') {
-    content = <AiHomeScreen footer={rootFooter} />;
+    content = (
+      <AiHomeScreen
+        footer={rootFooter}
+        onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
+        onOpenMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
+        onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
+        onStartKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
+        onStartNormalChat={() =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: '普通聊天',
+            contextType: 'normal',
+            space: activeSpace,
+          })
+        }
+        onStartIpChat={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
+        space={activeSpace}
+      />
+    );
   } else if (currentRoute.tab === 'me') {
     content = (
       <MeScreen
