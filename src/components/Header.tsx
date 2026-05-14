@@ -7,6 +7,7 @@ import { colors, componentTokens, layout, shadows, spacing, typography } from '.
 
 interface HeaderProps {
   title: string;
+  titleSlot?: ReactNode;
   subtitle?: string;
   titleVariant?: 'page' | 'brand';
   decorativeTitle?: string;
@@ -27,6 +28,7 @@ const DECORATIVE_TITLE_BY_PAGE: Record<string, string> = {
 
 export function Header({
   title,
+  titleSlot,
   subtitle,
   titleVariant = 'page',
   decorativeTitle,
@@ -64,9 +66,11 @@ export function Header({
       </View>
 
       <View style={styles.titleWrap}>
-        <Text numberOfLines={1} style={titleVariant === 'brand' ? typography.textStyles.brandLogo : typography.textStyles.navTitle}>
-          {title}
-        </Text>
+        {titleSlot ?? (
+          <Text numberOfLines={1} style={titleVariant === 'brand' ? typography.textStyles.brandLogo : typography.textStyles.navTitle}>
+            {title}
+          </Text>
+        )}
         {subtitle ? <Text numberOfLines={1} style={typography.textStyles.brandSubtitle}>{subtitle}</Text> : null}
       </View>
 

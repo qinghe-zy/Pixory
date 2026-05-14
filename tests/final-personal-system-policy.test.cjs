@@ -80,8 +80,7 @@ test('root entry surfaces use the active authenticated space and deletion servic
   assert.match(appSource, /const activeSpace = personalSessionState === 'unlocked' \? 'personal' : 'normal'/);
   assert.match(appSource, /<HomeLibraryScreen[\s\S]{0,900}space=\{activeSpace\}/);
   assert.match(appSource, /<MeScreen[\s\S]{0,900}space=\{activeSpace\}/);
-  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{activeSpace\}/);
-  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{activeSpace\}/);
+  assert.match(appSource, /<OrganizeScreen[\s\S]{0,900}space=\{activeSpace\}/);
 });
 
 test('package import has durable per-file item schema, repository methods, and records package outcomes', () => {

@@ -151,6 +151,7 @@ test('remaining global route screens receive route space and scope repository wo
     'src/screens/GlobalGroupsScreen.tsx',
     'src/screens/TagsOverviewScreen.tsx',
   ];
+  const organizeSource = readProjectFile('src/screens/OrganizeScreen.tsx');
 
   for (const file of screenFiles) {
     const source = readProjectFile(file);
@@ -162,8 +163,9 @@ test('remaining global route screens receive route space and scope repository wo
     assert.match(appSource, new RegExp(`<${screenName}[\\s\\S]{0,900}space=\\{currentRoute\\.space\\}`), `${screenName} must receive currentRoute.space`);
   }
 
-  assert.match(appSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Groups tab must use the authenticated active space');
-  assert.match(appSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Tags tab must use the authenticated active space');
+  assert.match(appSource, /<OrganizeScreen[\s\S]{0,900}space=\{activeSpace\}/, 'Organize tab must use the authenticated active space');
+  assert.match(organizeSource, /<GlobalGroupsScreen[\s\S]{0,900}space=\{space\}/, 'Organize groups view must forward active space');
+  assert.match(organizeSource, /<TagsOverviewScreen[\s\S]{0,900}space=\{space\}/, 'Organize tags view must forward active space');
 });
 
 test('Android hardware back uses a synchronous route stack ref instead of updater side effects', () => {

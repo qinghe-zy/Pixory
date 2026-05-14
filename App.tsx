@@ -31,6 +31,7 @@ import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { AiHomeScreen } from './src/screens/AiHomeScreen';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
@@ -44,6 +45,7 @@ import { IpStorageDetailScreen } from './src/screens/IpStorageDetailScreen';
 import { MeScreen } from './src/screens/MeScreen';
 import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { OriginalStorageScreen } from './src/screens/OriginalStorageScreen';
+import { OrganizeScreen } from './src/screens/OrganizeScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
 import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
@@ -1336,9 +1338,9 @@ export default function App() {
         title="开发入口不可用"
       />
     );
-  } else if (currentRoute.tab === 'groups') {
+  } else if (currentRoute.tab === 'organize') {
     content = (
-      <GlobalGroupsScreen
+      <OrganizeScreen
         space={activeSpace}
         footer={rootFooter}
         onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
@@ -1347,18 +1349,12 @@ export default function App() {
         onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: activeSpace })}
         onImportVideosToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'videos', space: activeSpace })}
         onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
-        refreshToken={libraryRefreshToken}
-      />
-    );
-  } else if (currentRoute.tab === 'tags') {
-    content = (
-      <TagsOverviewScreen
-        space={activeSpace}
-        footer={rootFooter}
         onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: activeSpace })}
         refreshToken={libraryRefreshToken}
       />
     );
+  } else if (currentRoute.tab === 'ai') {
+    content = <AiHomeScreen footer={rootFooter} />;
   } else if (currentRoute.tab === 'me') {
     content = (
       <MeScreen

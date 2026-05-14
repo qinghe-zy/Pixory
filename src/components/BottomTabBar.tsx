@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 
-export type RootTabKey = 'home' | 'groups' | 'tags' | 'me';
+export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
 
 interface BottomTabBarProps {
   activeTab: RootTabKey;
@@ -16,8 +16,8 @@ const TAB_ITEMS: Array<{
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
   { key: 'home', label: '首页', icon: 'home-outline' },
-  { key: 'groups', label: '分组', icon: 'folder-open-outline' },
-  { key: 'tags', label: '标签', icon: 'pricetag-outline' },
+  { key: 'organize', label: '整理', icon: 'albums-outline' },
+  { key: 'ai', label: 'AI', icon: 'chatbubble-ellipses-outline' },
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 

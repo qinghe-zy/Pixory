@@ -17,6 +17,7 @@ import { Header } from './Header';
 
 interface ScreenScaffoldProps {
   title: string;
+  titleSlot?: ReactNode;
   subtitle?: string;
   titleVariant?: 'page' | 'brand';
   decorativeTitle?: string;
@@ -36,6 +37,7 @@ interface ScreenScaffoldProps {
 
 export function ScreenScaffold({
   title,
+  titleSlot,
   subtitle,
   titleVariant,
   decorativeTitle,
@@ -68,6 +70,7 @@ export function ScreenScaffold({
         rightSlot={rightAction}
         subtitle={subtitle}
         title={title}
+        titleSlot={titleSlot}
         titleVariant={titleVariant}
       />
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

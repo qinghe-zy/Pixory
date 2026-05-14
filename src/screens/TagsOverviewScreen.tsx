@@ -18,10 +18,11 @@ interface TagsOverviewScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
+  titleSlot?: ReactNode;
   onOpenTag: (tagId: number) => void;
 }
 
-export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onOpenTag }: TagsOverviewScreenProps) {
+export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, titleSlot, onOpenTag }: TagsOverviewScreenProps) {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [actionTag, setActionTag] = useState<TagUsageItem | null>(null);
@@ -217,7 +218,7 @@ export function TagsOverviewScreen({ space = 'normal', refreshToken, footer, onO
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签">
+    <ScreenScaffold backgroundVariant="tags" decorativeTitle="Tags" footer={footer} rightAction={rightAction} scrollable title="标签" titleSlot={titleSlot}>
       <View style={styles.searchBlock}>
         <SearchBar onChangeText={setSearchText} placeholder="搜索标签" value={searchText} />
       </View>

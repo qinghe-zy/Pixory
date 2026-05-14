@@ -22,6 +22,7 @@ interface GlobalGroupsScreenProps {
   space?: PixorySpace;
   refreshToken: number;
   footer?: ReactNode;
+  titleSlot?: ReactNode;
   onCreateFirstIp?: () => void;
   onOpenCoverPicker: (ipId: number, groupId: number) => void;
   onEditGroup: (ipId: number, groupId: number) => void;
@@ -34,6 +35,7 @@ export function GlobalGroupsScreen({
   space = 'normal',
   refreshToken,
   footer,
+  titleSlot,
   onCreateFirstIp,
   onOpenCoverPicker,
   onEditGroup,
@@ -94,7 +96,7 @@ export function GlobalGroupsScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} scrollable title="分组">
+    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} scrollable title="分组" titleSlot={titleSlot}>
       <PageStateBlock
         emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
         emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
