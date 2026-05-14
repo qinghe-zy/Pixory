@@ -29,6 +29,10 @@ test('AI workbench exposes the three first-version starts and no disconnected de
   assert.match(content, /开始普通聊天/);
   assert.match(content, /问问某个 IP/);
   assert.match(content, /连接知识库/);
+  assert.match(content, /pageTitle/);
+  assert.match(content, />AI 工作台</);
+  assert.doesNotMatch(content, />Pixory</);
+  assert.doesNotMatch(content, /brandName/);
   assert.doesNotMatch(content, /当前未连接知识库/);
 });
 
@@ -60,6 +64,15 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   assert.doesNotMatch(content, /footer=\{/);
 });
 
+test('AI chat composer follows the keyboard and messages stay pinned to the latest item', () => {
+  const content = chat();
+  assert.match(content, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.match(content, /keyboardBottomInset/);
+  assert.match(content, /messageScrollRef/);
+  assert.match(content, /scrollToEnd/);
+  assert.match(content, /onContentSizeChange=\{\(\) => scrollToLatestMessage\(\)\}/);
+});
+
 test('AI chat supports stopping, regenerating replies, and rewriting user messages', () => {
   const content = chat();
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
@@ -74,6 +87,20 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
   assert.match(bubble, /onRegenerate/);
   assert.match(composer, /onCancelEdit/);
   assert.match(composer, /停止回复/);
+});
+
+test('AI message thinking and per-message actions stay outside the chat bubble', () => {
+  const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
+  const renderPart = bubble.split('const styles = StyleSheet.create')[0];
+  const thinkingIndex = renderPart.indexOf('styles.thinkingWrap');
+  const bubbleIndex = renderPart.indexOf('styles.bubble');
+  const actionIndex = renderPart.indexOf('styles.messageActionButton');
+  assert.ok(thinkingIndex >= 0 && thinkingIndex < bubbleIndex);
+  assert.ok(actionIndex > bubbleIndex);
+  assert.match(bubble, /userActionRow/);
+  assert.match(bubble, /assistantActionRow/);
+  assert.doesNotMatch(bubble, /userActionButton/);
+  assert.doesNotMatch(bubble, /retryButton/);
 });
 
 test('AI custom top bars use safe status-bar spacing and compact workbench layout', () => {
@@ -121,14 +148,28 @@ test('AI material and IP selection screens keep vertical rhythm explicit', () =>
   const ipPicker = fs.readFileSync(path.join(root, 'src/screens/AiIpPickerScreen.tsx'), 'utf8');
   const materialImport = fs.readFileSync(path.join(root, 'src/screens/AiMaterialImportScreen.tsx'), 'utf8');
   const materialList = fs.readFileSync(path.join(root, 'src/screens/AiMaterialListScreen.tsx'), 'utf8');
+  const knowledgeBase = fs.readFileSync(path.join(root, 'src/screens/AiKnowledgeBaseScreen.tsx'), 'utf8');
 
-  for (const content of [ipPicker, materialImport, materialList]) {
+  for (const content of [ipPicker, materialImport, materialList, knowledgeBase]) {
     assert.match(content, /contentStack/);
     assert.match(content, /gap:\s*rhythm\.entryCardGap/);
   }
   assert.match(ipPicker, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
   assert.match(materialImport, /ipChoiceList:\s*\{[\s\S]{0,80}gap:\s*rhythm\.compactGridGap/);
   assert.match(materialList, /list:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+});
+
+test('AI material import reports file, manual text, IP generation, and PDF parse results visibly', () => {
+  const materialImport = fs.readFileSync(path.join(root, 'src/screens/AiMaterialImportScreen.tsx'), 'utf8');
+  const pdfParser = fs.readFileSync(path.join(root, 'src/ai/documentParsers/pdfParser.ts'), 'utf8');
+
+  assert.match(materialImport, /feedbackCard/);
+  assert.match(materialImport, /正在导入材料/);
+  assert.match(materialImport, /feedbackForDocument/);
+  assert.match(materialImport, /document\.parserStatus === 'failed'/);
+  assert.match(materialImport, /已可用于问答/);
+  assert.match(materialImport, /从选中 IP 生成材料/);
+  assert.match(pdfParser, /当前版本暂不支持从 PDF 提取文本/);
 });
 
 test('AI history supports long-press batch delete and private-space moves', () => {

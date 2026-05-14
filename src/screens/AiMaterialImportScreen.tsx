@@ -12,6 +12,7 @@ import {
   listKnowledgeBases,
 } from '../ai/aiDocumentService';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
+import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiMaterialImportScreenProps {
@@ -20,13 +21,20 @@ interface AiMaterialImportScreenProps {
   onBack: () => void;
 }
 
+type FeedbackTone = 'info' | 'success' | 'warning' | 'error';
+
+interface ImportFeedback {
+  message: string;
+  tone: FeedbackTone;
+}
+
 export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMaterialImportScreenProps) {
   const [title, setTitle] = useState('角色资料');
   const [text, setText] = useState('');
   const [targetKnowledgeBaseId, setTargetKnowledgeBaseId] = useState<string | undefined>(knowledgeBaseId);
   const [ips, setIps] = useState<IpListItem[]>([]);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<ImportFeedback | null>(null);
   const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
@@ -57,20 +65,32 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
     return created.id;
   }
 
-  async function runImport(action: () => Promise<string>) {
+  async function runImport(action: () => Promise<ImportFeedback>) {
     setBusy(true);
-    setStatus('处理中...');
+    setFeedback({ message: '正在导入材料...', tone: 'info' });
     try {
-      const message = await action();
-      setStatus(message);
+      setFeedback(await action());
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '导入失败');
+      setFeedback({ message: error instanceof Error ? error.message : '导入失败', tone: 'error' });
     } finally {
       setBusy(false);
     }
   }
 
-  async function importManualText() {
+  function feedbackForDocument(document: AiDocumentRecord, verb: '已导入' | '已生成'): ImportFeedback {
+    if (document.parserStatus === 'failed') {
+      return {
+        message: `${verb}：${document.title}。${document.parserError ?? '材料已保存，但没有解析出可用于问答的文本。'}`,
+        tone: 'warning',
+      };
+    }
+    return {
+      message: `${verb}：${document.title}，已可用于问答。`,
+      tone: 'success',
+    };
+  }
+
+  async function importManualText(): Promise<ImportFeedback> {
     const ownerId = await ensureKnowledgeBaseId();
     const document = await importManualTextMaterial({
       ownerId,
@@ -79,10 +99,10 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       text,
       title: title.trim() || '手动材料',
     });
-    return `已导入：${document.title}`;
+    return feedbackForDocument(document, '已导入');
   }
 
-  async function pickAndImportDocument() {
+  async function pickAndImportDocument(): Promise<ImportFeedback> {
     const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
       multiple: false,
@@ -95,7 +115,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       ],
     });
     if (result.canceled) {
-      return '已取消选择。';
+      return { message: '已取消选择。', tone: 'info' };
     }
     const asset = result.assets[0];
     const ownerId = await ensureKnowledgeBaseId();
@@ -108,19 +128,19 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       sourceUri: asset.uri,
       space,
     });
-    return `已导入：${document.title}`;
+    return feedbackForDocument(document, '已导入');
   }
 
-  async function importFromIp() {
+  async function importFromIp(): Promise<ImportFeedback> {
     if (selectedIpId == null) {
-      return '请先选择一个 IP。';
+      return { message: '请先选择一个 IP。', tone: 'warning' };
     }
     const document = await generateIpMaterial({
       ipId: selectedIpId,
       space,
       title: title.trim() || 'IP 结构化资料',
     });
-    return `已生成：${document.title}`;
+    return feedbackForDocument(document, '已生成');
   }
 
   return (
@@ -134,6 +154,14 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       title="导入材料"
     >
       <View style={styles.contentStack}>
+        {feedback ? (
+          <View style={[styles.feedbackCard, feedback.tone === 'success' && styles.successFeedbackCard, feedback.tone === 'warning' && styles.warningFeedbackCard, feedback.tone === 'error' && styles.errorFeedbackCard]}>
+            <Text style={[styles.feedbackText, feedback.tone === 'success' && styles.successFeedbackText, feedback.tone === 'warning' && styles.warningFeedbackText, feedback.tone === 'error' && styles.errorFeedbackText]}>
+              {feedback.message}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>手动文本</Text>
           <TextInput
@@ -173,8 +201,6 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
           </View>
           <PrimaryButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
         </View>
-
-        {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
     </ScreenScaffold>
   );
@@ -183,6 +209,36 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
 const styles = StyleSheet.create({
   contentStack: {
     gap: rhythm.entryCardGap,
+  },
+  feedbackCard: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  successFeedbackCard: {
+    borderColor: colors.semantic.success,
+  },
+  warningFeedbackCard: {
+    borderColor: colors.semantic.warning,
+  },
+  errorFeedbackCard: {
+    borderColor: colors.semantic.danger,
+  },
+  feedbackText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  successFeedbackText: {
+    color: colors.semantic.success,
+  },
+  warningFeedbackText: {
+    color: colors.semantic.warning,
+  },
+  errorFeedbackText: {
+    color: colors.semantic.danger,
   },
   panel: {
     backgroundColor: colors.background.surface,
@@ -219,9 +275,5 @@ const styles = StyleSheet.create({
   selectedIpChoice: {
     color: colors.primary.active,
     fontWeight: '600',
-  },
-  status: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
   },
 });

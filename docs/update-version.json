@@ -1,14 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.0",
-  "versionCode": 214,
+  "version": "2.1.1",
+  "versionCode": 215,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.0 已发布，新增本地 AI 工作台与更完整的聊天体验。",
+  "message": "Pixory 2.1.1 已发布，优化 AI 聊天、工作台和资料导入体验。",
   "releaseNotes": [
-    "新增 AI 工作台，支持普通聊天、IP 对话和本地知识库材料问答。",
-    "优化模型账号设置，支持模型商和模型下拉选择，API key 可常态保存。",
-    "聊天支持停止回复、刷新回复、重写用户消息，并显示当前模型。",
-    "历史会话支持长按批量删除和移入或移出隐私空间。"
+    "优化 AI 聊天键盘跟随、自动滚动和消息操作位置。",
+    "调整 AI 工作台标题与资料库页面间距。",
+    "导入材料后显示明确反馈，PDF 解析限制会直接提示。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

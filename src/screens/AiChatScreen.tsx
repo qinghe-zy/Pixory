@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer } from '../components/ai/AiChatComposer';
@@ -49,6 +49,7 @@ export function AiChatScreen({
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
+  const messageScrollRef = useRef<ScrollView | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [composerText, setComposerText] = useState('');
@@ -56,10 +57,17 @@ export function AiChatScreen({
   const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
   const thinking = generating;
   const citations = messages.some((message) => message.citations.length > 0);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+
+  const scrollToLatestMessage = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      messageScrollRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
 
   const reloadMessages = useCallback(
     async (targetThreadId: string | null = activeThreadId) => {
@@ -92,6 +100,30 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadModelLabel(threadId ?? activeThreadId);
   }, [activeThreadId, reloadModelLabel, threadId]);
+
+  useEffect(() => {
+    scrollToLatestMessage(messages.length > 1);
+  }, [messages, scrollToLatestMessage]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardBottomInset(Math.max(0, event.endCoordinates.height - insets.bottom));
+      scrollToLatestMessage();
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardBottomInset(0);
+      scrollToLatestMessage();
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [insets.bottom, scrollToLatestMessage]);
 
   async function ensureThread(): Promise<string> {
     if (activeThreadId) {
@@ -261,8 +293,11 @@ export function AiChatScreen({
       </View>
 
       <ScrollView
+        ref={messageScrollRef}
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => scrollToLatestMessage()}
+        onLayout={() => scrollToLatestMessage(false)}
         showsVerticalScrollIndicator={false}
         style={styles.messageScroller}
         contentContainerStyle={styles.messageScrollContent}
@@ -293,7 +328,7 @@ export function AiChatScreen({
         </View>
       </ScrollView>
 
-      <View style={styles.composerPanel}>
+      <View style={[styles.composerPanel, keyboardBottomInset ? { marginBottom: keyboardBottomInset } : null]}>
         <AiChatComposer
           generating={generating}
           editing={Boolean(editingUserMessageId)}

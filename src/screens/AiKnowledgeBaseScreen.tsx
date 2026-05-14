@@ -56,65 +56,70 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
       subtitle={spaceLabel}
       title="资料库"
     >
-      <View style={styles.createPanel}>
-        <Text style={styles.sectionTitle}>新建资料库</Text>
-        <TextInput
-          onChangeText={setName}
-          placeholder="名称"
-          placeholderTextColor={colors.text.placeholder}
-          selectionColor={colors.primary.default}
-          style={styles.input}
-          value={name}
-        />
-        <PrimaryButton disabled={!name.trim()} label="创建" onPress={() => void handleCreate()} variant="outline" />
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-      </View>
+      <View style={styles.contentStack}>
+        <View style={styles.createPanel}>
+          <Text style={styles.sectionTitle}>新建资料库</Text>
+          <TextInput
+            onChangeText={setName}
+            placeholder="名称"
+            placeholderTextColor={colors.text.placeholder}
+            selectionColor={colors.primary.default}
+            style={styles.input}
+            value={name}
+          />
+          <PrimaryButton disabled={!name.trim()} label="创建" onPress={() => void handleCreate()} variant="outline" />
+          {status ? <Text style={styles.status}>{status}</Text> : null}
+        </View>
 
-      <View style={styles.list}>
-        {items.length ? (
-          items.map((item) => {
-            const selectedItem = item.id === selectedId;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                key={item.id}
-                onPress={() => setSelectedId(item.id)}
-                style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, pressed && styles.pressed]}
-              >
-                <View style={styles.kbIcon}>
-                  <Ionicons color={colors.primary.active} name={selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
-                </View>
-                <View style={styles.kbCopy}>
-                  <Text style={styles.kbName}>{item.name}</Text>
-                </View>
-              </Pressable>
-            );
-          })
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.sectionTitle}>还没有资料库</Text>
-          </View>
-        )}
-      </View>
+        <View style={styles.list}>
+          {items.length ? (
+            items.map((item) => {
+              const selectedItem = item.id === selectedId;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={item.id}
+                  onPress={() => setSelectedId(item.id)}
+                  style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, pressed && styles.pressed]}
+                >
+                  <View style={styles.kbIcon}>
+                    <Ionicons color={colors.primary.active} name={selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
+                  </View>
+                  <View style={styles.kbCopy}>
+                    <Text style={styles.kbName}>{item.name}</Text>
+                  </View>
+                </Pressable>
+              );
+            })
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.sectionTitle}>还没有资料库</Text>
+            </View>
+          )}
+        </View>
 
-      <View style={styles.actions}>
-        <PrimaryButton label="导入材料" onPress={() => onImportMaterial(selected?.id)} variant="outline" />
-        <PrimaryButton label="材料列表" onPress={() => onOpenMaterials(selected?.id)} variant="outline" />
-        <PrimaryButton
-          disabled={!selected}
-          label="开始聊天"
-          onPress={() => {
-            if (selected) {
-              onStartChat(selected.id, selected.name);
-            }
-          }}
-        />
+        <View style={styles.actions}>
+          <PrimaryButton label="导入材料" onPress={() => onImportMaterial(selected?.id)} variant="outline" />
+          <PrimaryButton label="材料列表" onPress={() => onOpenMaterials(selected?.id)} variant="outline" />
+          <PrimaryButton
+            disabled={!selected}
+            label="开始聊天"
+            onPress={() => {
+              if (selected) {
+                onStartChat(selected.id, selected.name);
+              }
+            }}
+          />
+        </View>
       </View>
     </ScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  contentStack: {
+    gap: rhythm.entryCardGap,
+  },
   createPanel: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,

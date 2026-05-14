@@ -80,25 +80,16 @@ export function AiHomeScreen({
     >
       <View style={styles.hero}>
         <View style={styles.topBar}>
-          <View style={styles.brand}>
-            <View style={styles.brandMark}>
-              <Text style={styles.brandMarkText}>P</Text>
-            </View>
-            <Text style={styles.brandName}>Pixory</Text>
-          </View>
-          <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
-            <Ionicons color={colors.text.heading} name="settings-outline" size={22} />
-          </Pressable>
-        </View>
-
-        <View style={styles.heroBody}>
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>AI 工作台</Text>
+          <View style={styles.titleGroup}>
+            <Text style={styles.pageTitle}>AI 工作台</Text>
             <View style={styles.statusPill}>
               <View style={styles.statusDot} />
               <Text style={styles.statusText}>{spaceLabel}</Text>
             </View>
           </View>
+          <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
+            <Ionicons color={colors.text.heading} name="settings-outline" size={22} />
+          </Pressable>
         </View>
       </View>
 
@@ -241,30 +232,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  brand: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
+  titleGroup: {
+    flex: 1,
+    gap: rhythm.microGap,
+    paddingRight: spacing[2],
   },
-  brandMark: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.active,
-    borderRadius: radius.sm,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  brandMarkText: {
-    color: colors.text.inverse,
-    fontFamily: typography.family.brand,
-    fontSize: 24,
-    fontWeight: '600',
-    lineHeight: 28,
-  },
-  brandName: {
-    ...typography.textStyles.sectionTitle,
-    fontSize: 22,
-    lineHeight: 28,
+  pageTitle: {
+    ...typography.textStyles.pageTitle,
   },
   topAction: {
     alignItems: 'center',
@@ -274,27 +248,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 52,
     ...shadows.xs,
-  },
-  heroBody: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    minHeight: 120,
-  },
-  heroCopy: {
-    flex: 1,
-    gap: rhythm.cardContentGap,
-    paddingRight: spacing[2],
-  },
-  heroTitle: {
-    ...typography.textStyles.brandLogo,
-    fontSize: 42,
-    lineHeight: 50,
-  },
-  heroText: {
-    ...typography.textStyles.body,
-    color: colors.text.secondary,
-    fontSize: 15,
-    lineHeight: 22,
   },
   statusPill: {
     alignItems: 'center',
