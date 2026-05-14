@@ -2,12 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import type { AiContextType } from '../ai/types';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiChatScreenProps {
   space: PixorySpace;
-  contextType: 'normal' | 'ip' | 'knowledge';
+  contextType: AiContextType;
   contextTitle?: string;
   threadId?: number;
   onBack: () => void;
@@ -16,7 +17,7 @@ interface AiChatScreenProps {
 }
 
 export function AiChatScreen({ space, contextType, contextTitle, threadId, onBack, onOpenSessionConfig, onOpenSource }: AiChatScreenProps) {
-  const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge' ? '知识库对话' : '普通聊天');
+  const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const streamStatus = 'stream 准备中';
   const thinkingState = 'thinking 待生成';
   const citationsState = 'citations 将在命中材料后显示';

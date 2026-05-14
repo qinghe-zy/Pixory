@@ -15,6 +15,7 @@ export { imageRepository } from './repositories/imageRepository';
 export { importBatchRepository } from './repositories/importBatchRepository';
 export { backgroundTaskRepository } from './repositories/backgroundTaskRepository';
 export { aiProviderRepository } from './repositories/aiProviderRepository';
+export { aiRoleCardRepository } from './repositories/aiRoleCardRepository';
 export { aiThreadRepository } from './repositories/aiThreadRepository';
 export { aiKnowledgeRepository } from './repositories/aiKnowledgeRepository';
 export { importTemplateRepository } from './repositories/importTemplateRepository';

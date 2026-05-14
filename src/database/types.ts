@@ -16,6 +16,7 @@ export type {
   AiProviderProtocol,
   AiProviderRecord,
   AiProviderType,
+  AiRoleCardRecord,
   AiThreadRecord,
 } from '../ai/types';
 

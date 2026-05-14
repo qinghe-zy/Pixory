@@ -55,6 +55,21 @@ export interface AiProviderModelRecord extends AiModelCapabilities {
   updatedAt: string;
 }
 
+export interface AiRoleCardRecord {
+  id: string;
+  space: PixorySpace;
+  name: string;
+  description: string | null;
+  prompt: string;
+  defaultLanguage: string | null;
+  defaultModelId: string | null;
+  boundaryMode: AiBoundaryMode;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
 export interface AiThreadRecord {
   id: string;
   space: PixorySpace;

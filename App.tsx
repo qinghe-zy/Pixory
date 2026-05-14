@@ -148,11 +148,11 @@ type AppRoute =
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
   | { name: 'backup-export-manager'; space: PixorySpace }
-  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge'; ipId?: number; knowledgeBaseId?: number; threadId?: number }
-  | { name: 'ai-session-config'; space: PixorySpace; threadId?: number; contextTitle?: string }
+  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base'; ipId?: number; knowledgeBaseId?: number; threadId?: number }
+  | { name: 'ai-session-config'; space: PixorySpace; threadId?: number; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-provider-settings'; space: PixorySpace }
-  | { name: 'ai-model-picker'; space: PixorySpace; providerId?: number }
-  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: number }
+  | { name: 'ai-model-picker'; space: PixorySpace; providerId?: string }
+  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: number }
@@ -1358,6 +1358,7 @@ export default function App() {
           pushRoute({
             name: 'ai-session-config',
             contextTitle: currentRoute.contextTitle,
+            contextType: currentRoute.contextType,
             space: currentRoute.space,
             threadId: currentRoute.threadId,
           })
@@ -1371,10 +1372,12 @@ export default function App() {
     content = (
       <AiSessionConfigScreen
         contextTitle={currentRoute.contextTitle}
+        contextType={currentRoute.contextType}
         onBack={popRoute}
         onOpenModelPicker={() => pushRoute({ name: 'ai-model-picker', space: currentRoute.space })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
+        onStartChat={popRoute}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />
@@ -1384,7 +1387,7 @@ export default function App() {
   } else if (currentRoute.name === 'ai-model-picker') {
     content = <AiModelPickerScreen onBack={popRoute} providerId={currentRoute.providerId} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-card-editor') {
-    content = <AiRoleCardEditorScreen onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} />;
+    content = <AiRoleCardEditorScreen onApplyToSession={popRoute} onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-ip-picker') {
     content = (
       <AiIpPickerScreen
@@ -1411,7 +1414,7 @@ export default function App() {
           pushRoute({
             name: 'ai-chat',
             contextTitle: title,
-            contextType: 'knowledge',
+            contextType: 'knowledge_base',
             knowledgeBaseId,
             space: currentRoute.space,
           })

@@ -112,6 +112,37 @@ export const aiProviderRepository = {
     return row ? mapProviderRow(row) : null;
   },
 
+  async updateProviderBaseUrl(db: SQLiteDatabase, providerId: string, baseUrl: string | null): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_providers
+       SET baseUrl = ?, updatedAt = ?
+       WHERE id = ?`,
+      baseUrl,
+      createTimestamp(),
+      providerId
+    );
+  },
+
+  async updateProviderDefaults(
+    db: SQLiteDatabase,
+    providerId: string,
+    defaults: { defaultChatModelId?: string | null; defaultEmbeddingModelId?: string | null }
+  ): Promise<void> {
+    const current = await aiProviderRepository.findProviderById(db, providerId);
+    if (!current) {
+      return;
+    }
+    await db.runAsync(
+      `UPDATE ai_providers
+       SET defaultChatModelId = ?, defaultEmbeddingModelId = ?, updatedAt = ?
+       WHERE id = ?`,
+      defaults.defaultChatModelId ?? current.defaultChatModelId,
+      defaults.defaultEmbeddingModelId ?? current.defaultEmbeddingModelId,
+      createTimestamp(),
+      providerId
+    );
+  },
+
   async upsertModels(db: SQLiteDatabase, providerId: string, models: AiProviderModelRecord[]): Promise<void> {
     const now = createTimestamp();
     for (const model of models) {

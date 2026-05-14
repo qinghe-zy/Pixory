@@ -92,8 +92,20 @@ export async function saveProviderApiKey(providerId: string, apiKey: string): Pr
   await setProviderApiKey(providerId, apiKey);
 }
 
-export async function testProvider(providerId: string): Promise<void> {
-  const provider = await runWithDatabaseSpace('normal', (db) => aiProviderRepository.findProviderById(db, providerId));
+export async function saveProviderBaseUrl(space: PixorySpace, providerId: string, baseUrl: string | null): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderBaseUrl(db, providerId, baseUrl?.trim() || null));
+}
+
+export async function saveProviderDefaultModels(
+  space: PixorySpace,
+  providerId: string,
+  defaults: { defaultChatModelId?: string | null; defaultEmbeddingModelId?: string | null }
+): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, defaults));
+}
+
+export async function testProvider(providerId: string, space: PixorySpace = 'normal'): Promise<void> {
+  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
   if (!provider) {
     throw new Error('AI provider is not configured.');
   }
@@ -107,15 +119,15 @@ export async function testProvider(providerId: string): Promise<void> {
   });
 }
 
-export async function syncProviderModels(providerId: string): Promise<{ synced: number; fallback: number }> {
-  const provider = await runWithDatabaseSpace('normal', (db) => aiProviderRepository.findProviderById(db, providerId));
+export async function syncProviderModels(providerId: string, space: PixorySpace = 'normal'): Promise<{ synced: number; fallback: number }> {
+  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
   if (!provider) {
     throw new Error('AI provider is not configured.');
   }
   const apiKey = await getProviderApiKey(providerId);
   const fallbackModels = builtInModelsForProvider(provider.id, provider.providerType);
   if (!apiKey) {
-    await runWithDatabaseSpace('normal', (db) => aiProviderRepository.upsertModels(db, provider.id, fallbackModels));
+    await runWithDatabaseSpace(space, (db) => aiProviderRepository.upsertModels(db, provider.id, fallbackModels));
     return { synced: 0, fallback: fallbackModels.length };
   }
 
@@ -125,12 +137,12 @@ export async function syncProviderModels(providerId: string): Promise<{ synced: 
       baseUrl: provider.baseUrl ?? '',
     });
     const syncedModels = modelIds.map((modelId) => syncedModelRecord(provider, modelId));
-    await runWithDatabaseSpace('normal', (db) =>
+    await runWithDatabaseSpace(space, (db) =>
       aiProviderRepository.upsertModels(db, provider.id, syncedModels.length > 0 ? syncedModels : fallbackModels)
     );
     return { synced: syncedModels.length, fallback: syncedModels.length > 0 ? 0 : fallbackModels.length };
   } catch {
-    await runWithDatabaseSpace('normal', (db) => aiProviderRepository.upsertModels(db, provider.id, fallbackModels));
+    await runWithDatabaseSpace(space, (db) => aiProviderRepository.upsertModels(db, provider.id, fallbackModels));
     return { synced: 0, fallback: fallbackModels.length };
   }
 }
