@@ -1,8 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AiChatComposer } from '../components/ai/AiChatComposer';
+import { AiMessageBubble } from '../components/ai/AiMessageBubble';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import type { AiContextType } from '../ai/types';
+import {
+  createThreadFromContext,
+  listThreadMessages,
+  retryAssistantMessage,
+  sendUserMessage,
+  stopStreamingMessage,
+  type AiMessageWithCitations,
+} from '../ai/aiChatService';
+import type { AiCitationRecord, AiContextType } from '../ai/types';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -10,23 +21,135 @@ interface AiChatScreenProps {
   space: PixorySpace;
   contextType: AiContextType;
   contextTitle?: string;
-  threadId?: number;
+  threadId?: string;
   onBack: () => void;
   onOpenSessionConfig: () => void;
-  onOpenSource: (documentId: number, title: string) => void;
+  onOpenSource: (documentId: string, title: string) => void;
 }
 
 export function AiChatScreen({ space, contextType, contextTitle, threadId, onBack, onOpenSessionConfig, onOpenSource }: AiChatScreenProps) {
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
-  const streamStatus = 'stream 准备中';
-  const thinkingState = 'thinking 待生成';
-  const citationsState = 'citations 将在命中材料后显示';
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
+  const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
+  const [composerText, setComposerText] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const thinkingStatus = generating ? 'thinking 生成中' : 'thinking 待命';
+  const failedAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant' && message.status === 'failed'), [messages]);
+
+  const reloadMessages = useCallback(
+    async (targetThreadId: string | null = activeThreadId) => {
+      if (!targetThreadId) {
+        return;
+      }
+      const nextMessages = await listThreadMessages(space, targetThreadId);
+      setMessages(nextMessages);
+    },
+    [activeThreadId, space]
+  );
+
+  useEffect(() => {
+    setActiveThreadId(threadId ?? null);
+  }, [threadId]);
+
+  useEffect(() => {
+    void reloadMessages(threadId ?? activeThreadId);
+  }, [activeThreadId, reloadMessages, threadId]);
+
+  async function ensureThread(): Promise<string> {
+    if (activeThreadId) {
+      return activeThreadId;
+    }
+    const thread = await createThreadFromContext({
+      contextType,
+      space,
+      title: resolvedContextTitle,
+    });
+    setActiveThreadId(thread.id);
+    return thread.id;
+  }
+
+  async function handleSend() {
+    const content = composerText.trim();
+    if (!content || generating) {
+      return;
+    }
+    setComposerText('');
+    setGenerating(true);
+    setErrorMessage(null);
+    try {
+      const nextThreadId = await ensureThread();
+      await sendUserMessage({
+        content,
+        onCreated: ({ assistantMessageId }) => {
+          setActiveAssistantId(assistantMessageId);
+          void reloadMessages(nextThreadId);
+        },
+        onUpdated: () => {
+          void reloadMessages(nextThreadId);
+        },
+        space,
+        threadId: nextThreadId,
+      });
+      await reloadMessages(nextThreadId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '发送失败');
+    } finally {
+      setGenerating(false);
+      setActiveAssistantId(null);
+    }
+  }
+
+  async function handleStop() {
+    if (!activeAssistantId) {
+      setGenerating(false);
+      return;
+    }
+    await stopStreamingMessage({ assistantMessageId: activeAssistantId, space });
+    setGenerating(false);
+    await reloadMessages();
+  }
+
+  async function handleRetry(messageId?: string) {
+    const targetMessageId = messageId ?? failedAssistantMessage?.id;
+    if (!targetMessageId || !activeThreadId) {
+      return;
+    }
+    await retryAssistantMessage({ assistantMessageId: targetMessageId, space, threadId: activeThreadId });
+    await reloadMessages(activeThreadId);
+  }
+
+  function openCitation(citation: AiCitationRecord) {
+    if (citation.sourceType === 'document_chunk') {
+      onOpenSource(citation.sourceId, citation.label);
+      return;
+    }
+    onOpenSource(citation.sourceId, citation.label);
+  }
 
   return (
     <ScreenScaffold
       backgroundVariant="search"
       decorativeTitle="AI"
+      footer={
+        <AiChatComposer
+          generating={generating}
+          onChangeText={setComposerText}
+          onRetry={() => {
+            void handleRetry();
+          }}
+          onSend={() => {
+            void handleSend();
+          }}
+          onStop={() => {
+            void handleStop();
+          }}
+          retryAvailable={Boolean(failedAssistantMessage)}
+          value={composerText}
+        />
+      }
       onBack={onBack}
       rightAction={
         <Pressable accessibilityRole="button" onPress={onOpenSessionConfig} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}>
@@ -35,31 +158,36 @@ export function AiChatScreen({ space, contextType, contextTitle, threadId, onBac
         </Pressable>
       }
       scrollable
-      subtitle={`${spaceLabel} · ${streamStatus}`}
+      subtitle={`${spaceLabel} · ${generating ? 'stream 生成中' : 'stream 就绪'} · ${thinkingStatus}`}
       title={resolvedContextTitle}
     >
       <View style={styles.notice}>
         <Text style={styles.noticeTitle}>本地上下文</Text>
-        <Text style={styles.noticeText}>当前会话会绑定 contextTitle、模型快照和引用片段；图片内容不会被读取或识别。</Text>
-        {threadId != null ? <Text style={styles.meta}>Thread #{threadId}</Text> : null}
+        <Text style={styles.noticeText}>当前会话会绑定 contextTitle、模型快照和 citations 引用；图片内容不会被读取或识别。</Text>
+        {activeThreadId ? <Text style={styles.meta}>Thread {activeThreadId}</Text> : null}
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       </View>
 
       <View style={styles.messageList}>
-        <View style={styles.assistantBubble}>
-          <Text style={styles.assistantLabel}>{thinkingState}</Text>
-          <Text style={styles.messageText}>配置模型与资料后，这里会显示流式回答、推理摘要和来源引用。</Text>
-        </View>
-        <View style={styles.citationPanel}>
-          <View style={styles.citationHeader}>
-            <Ionicons color={colors.primary.active} name="document-text-outline" size={18} />
-            <Text style={styles.citationTitle}>引用来源</Text>
+        {messages.length ? (
+          messages.map((message) => (
+            <AiMessageBubble
+              key={message.id}
+              message={message}
+              onOpenCitation={openCitation}
+              onRetry={(messageId) => {
+                void handleRetry(messageId);
+              }}
+              streaming={generating && message.id === activeAssistantId}
+            />
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons color={colors.primary.active} name="chatbubble-ellipses-outline" size={22} />
+            <Text style={styles.emptyTitle}>开始一段本地 AI 会话</Text>
+            <Text style={styles.emptyText}>普通聊天不会附加 Pixory 材料规则；IP 与知识库会话会在后续步骤绑定本地上下文和引用。</Text>
           </View>
-          <Text style={styles.citationText}>{citationsState}</Text>
-          <Pressable accessibilityRole="button" onPress={() => onOpenSource(0, '材料预览')} style={({ pressed }) => [styles.sourceButton, pressed && styles.pressed]}>
-            <Text style={styles.sourceButtonText}>打开材料预览</Text>
-            <Ionicons color={colors.primary.active} name="chevron-forward" size={16} />
-          </Pressable>
-        </View>
+        )}
       </View>
     </ScreenScaffold>
   );
@@ -103,52 +231,28 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.tertiary,
   },
+  error: {
+    ...typography.textStyles.caption,
+    color: colors.semantic.danger,
+  },
   messageList: {
     gap: rhythm.listCardGap,
   },
-  assistantBubble: {
-    alignSelf: 'flex-start',
+  emptyState: {
+    alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    maxWidth: '92%',
-    padding: spacing[4],
-  },
-  assistantLabel: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-  },
-  messageText: {
-    ...typography.textStyles.body,
-  },
-  citationPanel: {
-    backgroundColor: colors.background.secondary,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[3],
+    padding: spacing[5],
   },
-  citationHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
+  emptyTitle: {
+    ...typography.textStyles.emptyTitle,
+    textAlign: 'center',
   },
-  citationTitle: {
-    ...typography.textStyles.bodyStrong,
-  },
-  citationText: {
-    ...typography.textStyles.caption,
-  },
-  sourceButton: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-  },
-  sourceButtonText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
+  emptyText: {
+    ...typography.textStyles.emptyDescription,
+    textAlign: 'center',
   },
 });

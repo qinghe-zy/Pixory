@@ -3,10 +3,12 @@ import {
   aiThreadRepository,
   runWithDatabaseSpace,
   type AiBoundaryMode,
+  type AiCitationRecord,
   type AiContextType,
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
+import type { AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
@@ -31,6 +33,8 @@ export interface SendUserMessageInput {
   space: PixorySpace;
   threadId: string;
   content: string;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  onUpdated?: () => void;
 }
 
 export interface RetryAssistantMessageInput {
@@ -45,6 +49,10 @@ export interface StopStreamingMessageInput {
 }
 
 const stoppedMessageIds = new Set<string>();
+
+export type AiMessageWithCitations = AiMessageRecord & {
+  citations: AiCitationRecord[];
+};
 
 function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
@@ -145,6 +153,18 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
   );
 }
 
+export async function listThreadMessages(space: PixorySpace, threadId: string): Promise<AiMessageWithCitations[]> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const messages = await aiThreadRepository.listMessages(db, threadId);
+    return Promise.all(
+      messages.map(async (message) => ({
+        ...message,
+        citations: await aiThreadRepository.listCitations(db, message.id),
+      }))
+    );
+  });
+}
+
 async function markAssistantFailed(space: PixorySpace, assistantMessageId: string, message: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateMessage(db, assistantMessageId, {
@@ -185,14 +205,18 @@ export async function sendUserMessage(
       lastMessagePreview: input.content.slice(0, 80),
     });
   });
+  input.onCreated?.({ userMessageId, assistantMessageId });
+  input.onUpdated?.();
 
   const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, thread);
   if (!provider || !modelId) {
     await markAssistantFailed(input.space, assistantMessageId, '请先选择可用的 AI provider 和模型。');
+    input.onUpdated?.();
     return { userMessageId, assistantMessageId };
   }
   if (!apiKey) {
     await markAssistantFailed(input.space, assistantMessageId, '请先在 AI 设置中填写 API key。');
+    input.onUpdated?.();
     return { userMessageId, assistantMessageId };
   }
 
@@ -235,6 +259,7 @@ export async function sendUserMessage(
             reasoningText: reasoningText || null,
           })
         );
+        input.onUpdated?.();
       }
       if (event.type === 'error') {
         await markAssistantFailed(input.space, assistantMessageId, event.message);
@@ -252,6 +277,7 @@ export async function sendUserMessage(
         completedAt: new Date().toISOString(),
       })
     );
+    input.onUpdated?.();
     return { userMessageId, assistantMessageId };
   }
 
@@ -281,6 +307,7 @@ export async function sendUserMessage(
       );
     }
   });
+  input.onUpdated?.();
 
   return { userMessageId, assistantMessageId };
 }

@@ -148,8 +148,8 @@ type AppRoute =
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
   | { name: 'backup-export-manager'; space: PixorySpace }
-  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base'; ipId?: number; knowledgeBaseId?: number; threadId?: number }
-  | { name: 'ai-session-config'; space: PixorySpace; threadId?: number; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
+  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base'; ipId?: number; knowledgeBaseId?: string; threadId?: string }
+  | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'ai-model-picker'; space: PixorySpace; providerId?: string }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string }
@@ -157,7 +157,7 @@ type AppRoute =
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: number }
   | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: number }
-  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: number; title?: string }
+  | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string }
   | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };

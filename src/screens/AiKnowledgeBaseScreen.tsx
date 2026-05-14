@@ -6,7 +6,7 @@ interface AiKnowledgeBaseScreenProps {
   onBack: () => void;
   onImportMaterial: (knowledgeBaseId?: number) => void;
   onOpenMaterials: (knowledgeBaseId?: number) => void;
-  onStartChat: (knowledgeBaseId: number | undefined, title: string) => void;
+  onStartChat: (knowledgeBaseId: string | undefined, title: string) => void;
 }
 
 export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenMaterials, onStartChat }: AiKnowledgeBaseScreenProps) {

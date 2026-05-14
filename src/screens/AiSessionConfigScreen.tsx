@@ -13,7 +13,7 @@ import type { PixorySpace } from '../database';
 
 interface AiSessionConfigScreenProps {
   space: PixorySpace;
-  threadId?: number;
+  threadId?: string;
   contextTitle?: string;
   contextType?: AiContextType;
   onBack: () => void;

@@ -3,7 +3,7 @@ import type { PixorySpace } from '../database';
 
 interface AiDocumentReaderScreenProps {
   space: PixorySpace;
-  documentId?: number;
+  documentId?: string;
   title?: string;
   onBack: () => void;
 }
