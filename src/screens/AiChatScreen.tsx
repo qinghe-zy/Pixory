@@ -21,13 +21,27 @@ interface AiChatScreenProps {
   space: PixorySpace;
   contextType: AiContextType;
   contextTitle?: string;
+  boundIpId?: number;
+  boundKnowledgeBaseId?: string;
+  includeIpDocuments?: boolean;
   threadId?: string;
   onBack: () => void;
   onOpenSessionConfig: () => void;
   onOpenSource: (documentId: string, title: string) => void;
 }
 
-export function AiChatScreen({ space, contextType, contextTitle, threadId, onBack, onOpenSessionConfig, onOpenSource }: AiChatScreenProps) {
+export function AiChatScreen({
+  space,
+  contextType,
+  contextTitle,
+  boundIpId,
+  boundKnowledgeBaseId,
+  includeIpDocuments = false,
+  threadId,
+  onBack,
+  onOpenSessionConfig,
+  onOpenSource,
+}: AiChatScreenProps) {
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
@@ -63,7 +77,10 @@ export function AiChatScreen({ space, contextType, contextTitle, threadId, onBac
       return activeThreadId;
     }
     const thread = await createThreadFromContext({
+      boundIpId: boundIpId ?? null,
+      boundKnowledgeBaseId: boundKnowledgeBaseId ?? null,
       contextType,
+      includeIpDocuments,
       space,
       title: resolvedContextTitle,
     });

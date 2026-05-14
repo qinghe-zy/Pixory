@@ -148,7 +148,16 @@ type AppRoute =
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
   | { name: 'backup-export-manager'; space: PixorySpace }
-  | { name: 'ai-chat'; space: PixorySpace; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base'; ipId?: number; knowledgeBaseId?: string; threadId?: string }
+  | {
+      name: 'ai-chat';
+      space: PixorySpace;
+      contextTitle?: string;
+      contextType?: 'normal' | 'ip' | 'knowledge_base';
+      ipId?: number;
+      knowledgeBaseId?: string;
+      includeIpDocuments?: boolean;
+      threadId?: string;
+    }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'ai-model-picker'; space: PixorySpace; providerId?: string }
@@ -1353,6 +1362,9 @@ export default function App() {
       <AiChatScreen
         contextTitle={currentRoute.contextTitle}
         contextType={currentRoute.contextType ?? 'normal'}
+        boundIpId={currentRoute.ipId}
+        boundKnowledgeBaseId={currentRoute.knowledgeBaseId}
+        includeIpDocuments={currentRoute.includeIpDocuments}
         onBack={popRoute}
         onOpenSessionConfig={() =>
           pushRoute({
@@ -1392,11 +1404,12 @@ export default function App() {
     content = (
       <AiIpPickerScreen
         onBack={popRoute}
-        onSelectIp={(ipId, title) =>
+        onSelectIp={(ipId, title, includeIpDocuments) =>
           pushRoute({
             name: 'ai-chat',
             contextTitle: title,
             contextType: 'ip',
+            includeIpDocuments,
             ipId,
             space: currentRoute.space,
           })

@@ -299,8 +299,8 @@ export async function sendUserMessage(
         assistantMessageId,
         snippets.map((snippet) => ({
           id: createAiId('aicite'),
-          sourceType: 'document_chunk',
-          sourceId: snippet.chunkId,
+          sourceType: snippet.sourceType ?? 'document_chunk',
+          sourceId: snippet.sourceId ?? snippet.chunkId,
           label: snippet.label,
           locator: snippet.locator,
         }))
