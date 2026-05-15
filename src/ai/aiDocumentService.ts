@@ -35,6 +35,7 @@ import { parseDocxText } from './documentParsers/docxParser';
 import { parseMarkdownText } from './documentParsers/markdownParser';
 import { parsePdfText } from './documentParsers/pdfParser';
 import { parsePlainText, type ParsedDocumentText } from './documentParsers/textParser';
+import { generateMissingEmbeddingsForDocument, getEmbeddingProviderForSpace } from './aiEmbeddingService';
 
 export const MAX_CHUNK_CHARS = 1200;
 export const CHUNK_OVERLAP_CHARS = 160;
@@ -55,6 +56,18 @@ export interface ImportPickedDocumentInput {
   fileName: string;
   mimeType?: string | null;
   fileSize?: number | null;
+}
+
+export interface ImportPickedDocumentsInput {
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  assets: Array<{
+    sourceUri: string;
+    fileName: string;
+    mimeType?: string | null;
+    fileSize?: number | null;
+  }>;
 }
 
 export interface GenerateIpMaterialInput {
@@ -256,6 +269,24 @@ export async function importPickedDocument(input: ImportPickedDocumentInput): Pr
   });
 }
 
+export async function importPickedDocuments(input: ImportPickedDocumentsInput): Promise<AiDocumentRecord[]> {
+  const documents: AiDocumentRecord[] = [];
+  for (const asset of input.assets) {
+    documents.push(
+      await importPickedDocument({
+        fileName: asset.fileName,
+        fileSize: asset.fileSize,
+        mimeType: asset.mimeType,
+        ownerId: input.ownerId,
+        ownerType: input.ownerType,
+        sourceUri: asset.sourceUri,
+        space: input.space,
+      })
+    );
+  }
+  return documents;
+}
+
 export async function generateIpMaterial(input: GenerateIpMaterialInput): Promise<AiDocumentRecord> {
   const text = await runWithDatabaseSpace(input.space, async (db) => {
     const ip = await ipRepository.findDetailById(db, input.ipId);
@@ -356,6 +387,24 @@ export async function parseAndChunkDocument(input: ParseAndChunkDocumentInput): 
       );
       await aiKnowledgeRepository.updateDocumentStatus(db, input.documentId, chunks.length > 0 ? 'searchable' : 'failed', chunks.length > 0 ? null : '文档没有可检索的文本内容。');
     });
+    const embeddingConfig = await getEmbeddingProviderForSpace(input.space);
+    if (embeddingConfig && chunks.length > 0) {
+      await runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.updateDocumentStatus(db, input.documentId, 'embedding_pending', null));
+      const embeddingResult = await generateMissingEmbeddingsForDocument({
+        documentId: input.documentId,
+        modelId: embeddingConfig.modelId,
+        providerId: embeddingConfig.providerId,
+        space: input.space,
+      });
+      await runWithDatabaseSpace(input.space, (db) =>
+        aiKnowledgeRepository.updateDocumentStatus(
+          db,
+          input.documentId,
+          embeddingResult.generated > 0 ? 'embedding_ready' : 'searchable',
+          embeddingResult.generated > 0 ? null : 'Embedding 生成失败，已保留关键词检索。'
+        )
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : '文档解析失败。';
     await runWithDatabaseSpace(input.space, (db) =>
@@ -387,6 +436,22 @@ export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): P
 
 export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise<number> {
   return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.deleteDocument(db, input.documentId));
+}
+
+export async function removeMaterials(input: { space: PixorySpace; documentIds: string[] }): Promise<number> {
+  const uniqueIds = Array.from(new Set(input.documentIds));
+  if (uniqueIds.length === 0) {
+    return 0;
+  }
+  return runWithDatabaseSpace(input.space, async (db) => {
+    let count = 0;
+    await db.withTransactionAsync(async () => {
+      for (const documentId of uniqueIds) {
+        count += await aiKnowledgeRepository.deleteDocument(db, documentId);
+      }
+    });
+    return count;
+  });
 }
 
 export async function readDocumentForReader(input: ParseAndChunkDocumentInput): Promise<AiReadableDocument> {

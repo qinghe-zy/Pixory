@@ -17,6 +17,7 @@ export interface AiProviderAdapter {
   testConnection(input: { apiKey: string; baseUrl: string }): Promise<void>;
   listModels(input: { apiKey: string; baseUrl: string }): Promise<string[]>;
   streamChat(input: AiChatRequest, onEvent: (event: AiStreamEvent) => void): Promise<void>;
+  embedText(input: { apiKey: string; baseUrl: string; modelId: string; text: string }): Promise<number[]>;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {

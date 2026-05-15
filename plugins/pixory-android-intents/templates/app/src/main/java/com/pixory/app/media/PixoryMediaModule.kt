@@ -5,10 +5,13 @@ import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.MediaStore
@@ -150,6 +153,51 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
         bitmap?.recycle()
         retriever.release()
       }
+    }
+  }
+
+  @ReactMethod
+  fun getPdfPageCount(sourceUri: String, promise: Promise) {
+    runOnIo(promise, "PIXORY_PDF_PAGE_COUNT_FAILED") {
+      openPdfDescriptor(Uri.parse(sourceUri)).use { descriptor ->
+        PdfRenderer(descriptor).use { renderer ->
+          promise.resolve(renderer.pageCount)
+        }
+      }
+    }
+  }
+
+  @ReactMethod
+  fun renderPdfPageToFile(sourceUri: String, pageIndex: Int, destinationUri: String, width: Int, promise: Promise) {
+    runOnIo(promise, "PIXORY_PDF_RENDER_FAILED") {
+      val safeWidth = width.coerceIn(240, 2400)
+      val destination = fileFromUri(destinationUri)
+      destination.parentFile?.mkdirs()
+      openPdfDescriptor(Uri.parse(sourceUri)).use { descriptor ->
+        PdfRenderer(descriptor).use { renderer ->
+          if (pageIndex < 0 || pageIndex >= renderer.pageCount) {
+            throw IllegalArgumentException("Invalid PDF page index: $pageIndex")
+          }
+          renderer.openPage(pageIndex).use { page ->
+            val safeHeight = ((page.height.toFloat() / page.width.toFloat()) * safeWidth).toInt().coerceAtLeast(1)
+            val bitmap = Bitmap.createBitmap(safeWidth, safeHeight, Bitmap.Config.ARGB_8888)
+            try {
+              bitmap.eraseColor(Color.WHITE)
+              page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+              FileOutputStream(destination).use { output ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+              }
+            } finally {
+              bitmap.recycle()
+            }
+          }
+        }
+      }
+
+      val result = Arguments.createMap()
+      result.putString("uri", destination.toURI().toString())
+      result.putDouble("size", destination.length().toDouble())
+      promise.resolve(result)
     }
   }
 
@@ -616,6 +664,19 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     null -> FileInputStream(File(uri.toString()))
     else -> reactContext.contentResolver.openInputStream(uri)
   } ?: throw IllegalArgumentException("Unable to open input: $uri")
+
+  private fun openPdfDescriptor(uri: Uri): ParcelFileDescriptor {
+    if (uri.scheme == ContentResolver.SCHEME_FILE || uri.scheme == null) {
+      return ParcelFileDescriptor.open(fileFromUri(uri.toString()), ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+    val cacheFile = File(reactContext.cacheDir, "pixory_pdf_render_${System.nanoTime()}.pdf")
+    openInput(uri).use { input ->
+      FileOutputStream(cacheFile).use { output ->
+        input.copyTo(output)
+      }
+    }
+    return ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
+  }
 
   private fun fileFromUri(uriValue: String): File {
     val uri = Uri.parse(uriValue)

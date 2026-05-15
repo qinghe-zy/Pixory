@@ -32,6 +32,8 @@ interface AiChatScreenProps {
   onBack: () => void;
   onOpenSessionConfig: () => void;
   onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
+  onOpenIpSource: (ipId: number) => void;
+  onOpenImageSource: (imageId: number) => void;
 }
 
 export function AiChatScreen({
@@ -45,6 +47,8 @@ export function AiChatScreen({
   onBack,
   onOpenSessionConfig,
   onOpenSource,
+  onOpenIpSource,
+  onOpenImageSource,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
@@ -262,7 +266,19 @@ export function AiChatScreen({
       onOpenSource(citation.sourceId, citation.label, citation.locator as AiDocumentReaderLocator);
       return;
     }
-    onOpenSource(citation.sourceId, citation.label, citation.locator as AiDocumentReaderLocator);
+    if (citation.sourceType === 'ip_metadata') {
+      const ipId = typeof citation.locator.ipId === 'number' ? citation.locator.ipId : Number(citation.sourceId);
+      if (Number.isFinite(ipId)) {
+        onOpenIpSource(ipId);
+      }
+      return;
+    }
+    if (citation.sourceType === 'image_note') {
+      const imageId = typeof citation.locator.imageId === 'number' ? citation.locator.imageId : Number(citation.sourceId);
+      if (Number.isFinite(imageId)) {
+        onOpenImageSource(imageId);
+      }
+    }
   }
 
   return (

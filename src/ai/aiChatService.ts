@@ -1,5 +1,6 @@
 import {
   aiProviderRepository,
+  aiRoleCardRepository,
   aiThreadRepository,
   runWithDatabaseSpace,
   type AiBoundaryMode,
@@ -64,6 +65,26 @@ export interface MoveAiThreadsInput {
   targetSpace: PixorySpace;
   threadIds: string[];
   personalPassword?: string;
+}
+
+export interface AiThreadSessionConfig {
+  thread: AiThreadRecord;
+  roleCardName: string | null;
+}
+
+export interface UpdateAiThreadSessionConfigInput {
+  space: PixorySpace;
+  threadId: string;
+  systemPrompt: string;
+  boundaryMode: AiBoundaryMode;
+  providerId?: string | null;
+  modelId?: string | null;
+}
+
+export interface ApplyRoleCardToThreadInput {
+  space: PixorySpace;
+  threadId: string;
+  roleCardId: string | null;
 }
 
 const stoppedMessageIds = new Set<string>();
@@ -223,6 +244,54 @@ export async function listAiHistoryThreads(input: {
 
 export async function archiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateThread(db, threadId, { archivedAt: new Date().toISOString() }));
+}
+
+export async function loadThreadSessionConfig(space: PixorySpace, threadId: string): Promise<AiThreadSessionConfig | null> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    if (!thread || thread.space !== space) {
+      return null;
+    }
+    const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
+    return { thread, roleCardName: roleCard?.name ?? null };
+  });
+}
+
+export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionConfigInput): Promise<AiThreadRecord | null> {
+  return runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.updateThread(db, input.threadId, {
+      boundaryMode: input.boundaryMode,
+      materialRulesSnapshot: input.boundaryMode === 'free' ? MATERIAL_SESSION_RULES : materialRulesForMode(input.boundaryMode),
+      modelId: input.modelId,
+      providerId: input.providerId,
+      systemPrompt: input.systemPrompt.trim() || DEFAULT_AI_ROLE_PROMPT,
+    })
+  );
+}
+
+export async function applyRoleCardToThread(input: ApplyRoleCardToThreadInput): Promise<AiThreadRecord | null> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const roleCard = input.roleCardId ? await aiRoleCardRepository.findById(db, input.roleCardId) : null;
+    return aiThreadRepository.updateThread(db, input.threadId, {
+      boundaryMode: roleCard?.boundaryMode,
+      roleCardId: roleCard?.id ?? null,
+      roleSnapshotJson: JSON.stringify(roleCard ?? {}),
+      systemPrompt: roleCard?.prompt,
+    });
+  });
+}
+
+export async function renameAiThread(space: PixorySpace, threadId: string, title: string): Promise<AiThreadRecord | null> {
+  const nextTitle = title.replace(/\s+/g, ' ').trim();
+  if (!nextTitle) {
+    throw new Error('聊天名称不能为空。');
+  }
+  return runWithDatabaseSpace(space, (db) =>
+    aiThreadRepository.updateThread(db, threadId, {
+      title: nextTitle.slice(0, 40),
+      titleStatus: 'custom',
+    })
+  );
 }
 
 export async function unarchiveAiThread(space: PixorySpace, threadId: string): Promise<void> {

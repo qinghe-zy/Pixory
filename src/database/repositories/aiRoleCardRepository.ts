@@ -95,6 +95,14 @@ export const aiRoleCardRepository = {
     );
     return rows.map(mapRoleCardRow);
   },
+
+  async findById(db: SQLiteDatabase, roleCardId: string): Promise<AiRoleCardRecord | null> {
+    const row = await db.getFirstAsync<AiRoleCardRow>(
+      'SELECT * FROM ai_role_cards WHERE id = ? AND archivedAt IS NULL',
+      roleCardId
+    );
+    return row ? mapRoleCardRow(row) : null;
+  },
 };
 
 export default aiRoleCardRepository;

@@ -55,3 +55,31 @@ test('AI provider setup supports SecureStore keys and manual model IDs', () => {
   assert.match(providerService, /source: 'manual'/);
   assert.match(providerSettings, /自定义模型/);
 });
+
+test('AI session settings persist role cards system prompt and boundary mode to the thread', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const roleEditor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const chatService = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(sessionConfig, /loadThreadSessionConfig/);
+  assert.match(sessionConfig, /updateAiThreadSessionConfig/);
+  assert.match(sessionConfig, /applyRoleCardToThread/);
+  assert.match(roleEditor, /onApplyRoleCard/);
+  assert.match(chatService, /updateAiThreadSessionConfig/);
+  assert.match(chatService, /roleSnapshotJson/);
+  assert.match(repository, /roleCardId/);
+});
+
+test('AI citations open document readers and IP sources without treating all sources as documents', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const app = read('App.tsx');
+
+  assert.match(chat, /onOpenIpSource/);
+  assert.match(chat, /onOpenImageSource/);
+  assert.match(chat, /citation\.sourceType === 'ip_metadata'/);
+  assert.match(chat, /citation\.sourceType === 'image_note'/);
+  assert.match(app, /onOpenIpSource/);
+  assert.match(app, /onOpenImageSource/);
+  assert.match(app, /image-detail/);
+});

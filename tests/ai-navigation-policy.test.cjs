@@ -131,17 +131,29 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.match(providerSettings, /saveProviderBaseUrl/);
   assert.match(providerSettings, /saveProviderDefaultModels/);
   assert.match(providerSettings, /saveManualChatModel/);
+  assert.match(providerSettings, /testProvider/);
+  assert.match(providerSettings, /syncProviderModels/);
+  assert.match(providerSettings, /embeddingModels/);
   assert.match(providerSettings, /supportsChat/);
   assert.match(providerSettings, /chatModels\.map/);
   assert.match(providerSettings, /暂无可用模型/);
   assert.match(providerSettings, /selectedIsOtherProvider/);
-  assert.doesNotMatch(providerSettings, /testProvider/);
-  assert.doesNotMatch(providerSettings, /syncProviderModels/);
+  assert.match(providerSettings, /测试连接/);
+  assert.match(providerSettings, /同步模型/);
   assert.match(providerService, /selectProvider/);
   assert.doesNotMatch(app, /ai-model-picker/);
-  assert.doesNotMatch(sessionConfig, /跳过角色卡/);
-  assert.doesNotMatch(sessionConfig, /选择模型/);
+  assert.match(sessionConfig, /updateAiThreadSessionConfig/);
+  assert.match(sessionConfig, /loadThreadSessionConfig/);
+  assert.match(sessionConfig, /applyRoleCardToThread/);
   assert.match(constants, /displayName: '其他模型'/);
+});
+
+test('AI workbench exposes materials without a normal-space status badge', () => {
+  const content = home();
+  assert.match(content, /onOpenMaterials/);
+  assert.match(content, /最近材料/);
+  assert.match(content, /私密空间/);
+  assert.doesNotMatch(content, /const spaceLabel = space === 'personal' \? '私密空间' : '普通空间'/);
 });
 
 test('AI material and IP selection screens keep vertical rhythm explicit', () => {
@@ -169,7 +181,9 @@ test('AI material import reports file, manual text, IP generation, and PDF parse
   assert.match(materialImport, /document\.parserStatus === 'failed'/);
   assert.match(materialImport, /已可用于问答/);
   assert.match(materialImport, /从选中 IP 生成材料/);
-  assert.match(pdfParser, /当前版本暂不支持从 PDF 提取文本/);
+  assert.match(materialImport, /multiple:\s*true/);
+  assert.match(materialImport, /importPickedDocuments/);
+  assert.doesNotMatch(pdfParser, /当前版本暂不支持从 PDF 提取文本/);
 });
 
 test('AI history supports long-press batch delete and private-space moves', () => {
@@ -186,4 +200,19 @@ test('AI history supports long-press batch delete and private-space moves', () =
   assert.match(repository, /exportThread/);
   assert.match(repository, /importThread/);
   assert.match(repository, /deleteThreads/);
+});
+
+test('AI materials support batch removal and chat history supports rename', () => {
+  const materialList = fs.readFileSync(path.join(root, 'src/screens/AiMaterialListScreen.tsx'), 'utf8');
+  const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
+  const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+
+  assert.match(materialList, /selectedIds/);
+  assert.match(materialList, /removeMaterials/);
+  assert.match(materialList, /批量移除/);
+  assert.match(materialList, /onLongPress/);
+  assert.match(history, /renameAiThread/);
+  assert.match(history, /重命名/);
+  assert.match(service, /renameAiThread/);
+  assert.match(service, /titleStatus:\s*'custom'/);
 });

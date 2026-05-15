@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.1",
-  "versionCode": 215,
+  "version": "2.1.2",
+  "versionCode": 216,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.1 已发布，优化 AI 聊天、工作台和资料导入体验。",
+  "message": "Pixory 2.1.2 已发布，补齐 AI 工作台、材料阅读和本地 RAG 体验。",
   "releaseNotes": [
-    "优化 AI 聊天键盘跟随、自动滚动和消息操作位置。",
-    "调整 AI 工作台标题与资料库页面间距。",
-    "导入材料后显示明确反馈，PDF 解析限制会直接提示。"
+    "角色卡、系统提示词、模型和知识边界现在会保存到会话。",
+    "材料库支持多文件导入、批量移除，以及 TXT、Markdown、DOCX、PDF 阅读。",
+    "补齐 Embedding 设置、本地混合检索和引用跳转。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

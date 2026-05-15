@@ -12,6 +12,8 @@ import {
   saveProviderBaseUrl,
   saveProviderDefaultModels,
   selectProvider,
+  syncProviderModels,
+  testProvider,
 } from '../ai/aiProviderService';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { AiProviderModelRecord } from '../ai/types';
@@ -44,7 +46,9 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
   const selectedIsOtherProvider = selectedCard ? isOtherProvider(selectedCard) : false;
   const chatModels = selectedCard?.models.filter((model) => model.supportsChat) ?? [];
+  const embeddingModels = selectedCard?.models.filter((model) => model.supportsEmbedding) ?? [];
   const selectedModel = chatModels.find((model) => model.modelId === selectedCard?.provider.defaultChatModelId) ?? null;
+  const selectedEmbeddingModel = embeddingModels.find((model) => model.modelId === selectedCard?.provider.defaultEmbeddingModelId) ?? null;
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -119,6 +123,44 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       await loadProviders();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '选择失败');
+    }
+  }
+
+  async function selectEmbeddingModel(model: AiProviderModelRecord) {
+    setStatus('处理中...');
+    try {
+      await saveProviderDefaultModels(space, model.providerId, { defaultEmbeddingModelId: model.modelId });
+      setStatus('已选择默认 Embedding。');
+      await loadProviders();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '选择失败');
+    }
+  }
+
+  async function testSelectedProvider() {
+    if (!selectedCard) {
+      return;
+    }
+    setStatus('正在测试连接...');
+    try {
+      await testProvider(selectedCard.provider.id, space);
+      setStatus('连接可用。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '测试失败');
+    }
+  }
+
+  async function syncSelectedProviderModels() {
+    if (!selectedCard) {
+      return;
+    }
+    setStatus('正在同步模型...');
+    try {
+      const result = await syncProviderModels(selectedCard.provider.id, space);
+      setStatus(result.synced > 0 ? `已同步 ${result.synced} 个模型。` : `已使用 ${result.fallback} 个内置模型。`);
+      await loadProviders();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '同步失败');
     }
   }
 
@@ -225,6 +267,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </Pressable>
           </View>
           <PrimaryButton disabled={saveDisabled} label="保存" onPress={() => void saveSelectedApiKey()} variant="outline" />
+          <View style={styles.inlineActions}>
+            <PrimaryButton label="测试连接" onPress={() => void testSelectedProvider()} variant="ghost" />
+            <PrimaryButton label="同步模型" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
+          </View>
         </View>
 
         <View style={styles.fieldGroup}>
@@ -273,6 +319,31 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </View>
           ) : null}
         </View>
+
+        {embeddingModels.length > 0 ? (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>默认 Embedding</Text>
+            <View style={styles.dropdownPanel}>
+              {embeddingModels.map((model) => {
+                const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={model.id}
+                    onPress={() => {
+                      void selectEmbeddingModel(model);
+                    }}
+                    style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                    {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={18} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.caption}>{selectedEmbeddingModel ? `当前：${selectedEmbeddingModel.displayName}` : '选择后，材料会在导入后尝试生成本地向量索引。'}</Text>
+          </View>
+        ) : null}
 
         {selectedIsOtherProvider ? (
           <View style={styles.fieldGroup}>
@@ -360,6 +431,11 @@ const styles = StyleSheet.create({
   fieldGroup: {
     gap: rhythm.fieldContentGap,
   },
+  inlineActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
   fieldLabel: {
     ...typography.textStyles.bodyStrong,
   },
@@ -396,5 +472,9 @@ const styles = StyleSheet.create({
   status: {
     ...typography.textStyles.caption,
     color: colors.primary.active,
+  },
+  caption: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
   },
 });

@@ -1,4 +1,4 @@
-import { assertOkResponse, normalizeBaseUrl, type AiChatRequest, type AiProviderAdapter } from './base';
+import { assertOkResponse, normalizeBaseUrl, type AiChatRequest, type AiProviderAdapter, type AiStreamEvent } from './base';
 
 interface ClaudeModelsResponse {
   data?: Array<{ id?: string }>;
@@ -10,6 +10,61 @@ function anthropicHeaders(apiKey: string): Record<string, string> {
     'anthropic-version': '2023-06-01',
     'Content-Type': 'application/json',
   };
+}
+
+function parseClaudeStreamLine(line: string): AiStreamEvent[] {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('data:')) {
+    return [];
+  }
+  const payload = trimmed.slice(5).trim();
+  if (!payload || payload === '[DONE]') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(payload);
+    if (parsed.type === 'content_block_delta') {
+      const text = parsed.delta?.text;
+      return typeof text === 'string' && text ? [{ type: 'answer_delta', text }] : [];
+    }
+    if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
+      return [{ type: 'completed', finishReason: parsed.delta.stop_reason }];
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
+
+async function readClaudeStreamingResponse(response: Response, onEvent: (event: AiStreamEvent) => void): Promise<void> {
+  const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
+  if (!body?.getReader) {
+    const text = await response.text();
+    for (const line of text.split('\n')) {
+      for (const event of parseClaudeStreamLine(line)) {
+        onEvent(event);
+      }
+    }
+    return;
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      for (const event of parseClaudeStreamLine(line)) {
+        onEvent(event);
+      }
+    }
+  }
 }
 
 export const claudeProvider: AiProviderAdapter = {
@@ -37,6 +92,7 @@ export const claudeProvider: AiProviderAdapter = {
         body: JSON.stringify({
           model: input.modelId,
           max_tokens: 2048,
+          stream: true,
           system: input.systemPrompt,
           messages: [
             ...input.history,
@@ -45,14 +101,14 @@ export const claudeProvider: AiProviderAdapter = {
         }),
       });
       await assertOkResponse(response, 'Claude chat request failed');
-      const json = await response.json();
-      const text = json.content?.map((part: { text?: string }) => part.text ?? '').join('') ?? '';
-      if (text) {
-        onEvent({ type: 'answer_delta', text });
-      }
+      await readClaudeStreamingResponse(response, onEvent);
       onEvent({ type: 'completed' });
     } catch (error) {
       onEvent({ type: 'error', message: error instanceof Error ? error.message : 'Claude chat request failed' });
     }
+  },
+
+  async embedText() {
+    throw new Error('Claude does not provide a Pixory-supported embedding API.');
   },
 };

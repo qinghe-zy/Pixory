@@ -40,6 +40,34 @@ test('secure AI settings service uses expo-secure-store for API keys', () => {
   assert.match(providerSettings, /setApiDraft\(apiKey\)/);
 });
 
+test('provider settings expose test sync and embedding model controls', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  assert.match(providerSettings, /testProvider/);
+  assert.match(providerSettings, /syncProviderModels/);
+  assert.match(providerSettings, /测试连接/);
+  assert.match(providerSettings, /同步模型/);
+  assert.match(providerSettings, /embeddingModels/);
+  assert.match(providerSettings, /默认 Embedding/);
+  assert.match(providerSettings, /defaultEmbeddingModelId/);
+  assert.match(providerService, /saveProviderDefaultModels/);
+});
+
+test('provider adapters expose real streaming and embedding interfaces', () => {
+  const base = fs.readFileSync(providerBasePath, 'utf8');
+  const openai = fs.readFileSync(path.join(root, 'src/ai/providers/openAiCompatibleProvider.ts'), 'utf8');
+  const gemini = fs.readFileSync(path.join(root, 'src/ai/providers/geminiProvider.ts'), 'utf8');
+  const claude = fs.readFileSync(path.join(root, 'src/ai/providers/claudeProvider.ts'), 'utf8');
+
+  assert.match(base, /embedText\(input:/);
+  assert.match(openai, /\/embeddings/);
+  assert.match(openai, /stream:\s*true/);
+  assert.match(gemini, /:streamGenerateContent/);
+  assert.match(gemini, /embedContent/);
+  assert.match(claude, /stream:\s*true/);
+  assert.match(claude, /content_block_delta/);
+});
+
 test('provider API errors are normalized before reaching chat bubbles', () => {
   const base = fs.readFileSync(providerBasePath, 'utf8');
   assert.match(base, /friendlyProviderErrorMessage/);

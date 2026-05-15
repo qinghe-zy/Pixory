@@ -1,6 +1,6 @@
 import { ipRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiCitationSourceType, AiDocumentOwnerType } from './types';
-import { tryEmbeddingRetrieval } from './aiEmbeddingService';
+import { generateQueryEmbedding, tryEmbeddingRetrieval } from './aiEmbeddingService';
 
 export const DEFAULT_RETRIEVAL_LIMIT = 6;
 export type RetrievalMode = 'keyword' | 'hybrid';
@@ -289,13 +289,21 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   const limit = input.limit ?? DEFAULT_RETRIEVAL_LIMIT;
   const keyword = await keywordSearch({ ...input, limit });
   const ipContext = await collectIpContextSnippets({ ...input, limit });
+  const queryEmbedding = input.queryVector?.length
+    ? { providerId: input.embeddingProviderId ?? null, modelId: input.embeddingModelId ?? null, vector: input.queryVector }
+    : await generateQueryEmbedding({
+        modelId: input.embeddingModelId,
+        providerId: input.embeddingProviderId,
+        space: input.space,
+        text: input.query,
+      });
   const vectorScores = await tryEmbeddingRetrieval({
     space: input.space,
     ownerType: input.ownerType,
     ownerId: input.ownerId,
-    providerId: input.embeddingProviderId,
-    modelId: input.embeddingModelId,
-    queryVector: input.queryVector,
+    providerId: queryEmbedding?.providerId,
+    modelId: queryEmbedding?.modelId,
+    queryVector: queryEmbedding?.vector,
     limit,
   });
 

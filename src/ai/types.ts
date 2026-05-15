@@ -81,6 +81,9 @@ export interface AiThreadRecord {
   titleStatus: 'fallback' | 'generated' | 'custom';
   providerId: string | null;
   modelId: string | null;
+  modelSnapshotJson: string;
+  roleCardId: string | null;
+  roleSnapshotJson: string;
   boundaryMode: AiBoundaryMode;
   systemPrompt: string;
   materialRulesSnapshot: string | null;

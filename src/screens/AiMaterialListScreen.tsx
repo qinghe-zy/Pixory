@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AppDialog } from '../components/AppDialog';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { listMaterials, removeMaterial, retryMaterialParsing } from '../ai/aiDocumentService';
+import { listMaterials, removeMaterial, removeMaterials, retryMaterialParsing } from '../ai/aiDocumentService';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentStatus } from '../ai/types';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -33,6 +34,8 @@ const RECOVERABLE_PARSE_ACTION = '重试解析';
 export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDocument }: AiMaterialListScreenProps) {
   const [items, setItems] = useState<AiDocumentRecord[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmingBatchRemove, setConfirmingBatchRemove] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   const reload = useCallback(async () => {
@@ -56,6 +59,24 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
   async function removeDocument(documentId: string) {
     await removeMaterial({ documentId, space });
     setStatus('材料记录已移除。');
+    setSelectedIds((current) => current.filter((id) => id !== documentId));
+    await reload();
+  }
+
+  function toggleSelected(documentId: string) {
+    setSelectedIds((current) => current.includes(documentId) ? current.filter((id) => id !== documentId) : [...current, documentId]);
+  }
+
+  async function batchRemoveSelected() {
+    const ids = selectedIds;
+    if (!ids.length) {
+      setConfirmingBatchRemove(false);
+      return;
+    }
+    await removeMaterials({ documentIds: ids, space });
+    setSelectedIds([]);
+    setConfirmingBatchRemove(false);
+    setStatus(`已批量移除 ${ids.length} 个材料。`);
     await reload();
   }
 
@@ -70,13 +91,33 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
     >
       <View style={styles.contentStack}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
+        {selectedIds.length ? (
+          <View style={styles.selectionBar}>
+            <Text style={styles.selectionText}>已选择 {selectedIds.length} 个材料</Text>
+            <PrimaryButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
+            <PrimaryButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
+          </View>
+        ) : null}
         <View style={styles.list}>
           {items.length ? (
-            items.map((item) => (
-              <View key={item.id} style={styles.row}>
-                <Pressable accessibilityRole="button" onPress={() => onOpenDocument(item.id, item.title)} style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}>
+            items.map((item) => {
+              const selected = selectedIds.includes(item.id);
+              return (
+              <View key={item.id} style={[styles.row, selected && styles.selectedRow]}>
+                <Pressable
+                  accessibilityRole="button"
+                  onLongPress={() => toggleSelected(item.id)}
+                  onPress={() => {
+                    if (selectedIds.length) {
+                      toggleSelected(item.id);
+                      return;
+                    }
+                    onOpenDocument(item.id, item.title);
+                  }}
+                  style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                >
                   <View style={styles.iconWrap}>
-                    <Ionicons color={colors.primary.active} name={iconForStatus(item.parserStatus)} size={20} />
+                    <Ionicons color={colors.primary.active} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
                   </View>
                   <View style={styles.copy}>
                     <Text style={styles.title}>{item.title}</Text>
@@ -91,7 +132,8 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
                   </View>
                 ) : null}
               </View>
-            ))
+            );
+            })
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.title}>还没有材料</Text>
@@ -99,6 +141,18 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
           )}
         </View>
       </View>
+      <AppDialog
+        danger
+        message="将从材料列表和本地知识索引中移除所选记录。原始导入文件仍在应用材料目录中按普通文件保存。"
+        onClose={() => setConfirmingBatchRemove(false)}
+        onPrimary={() => {
+          void batchRemoveSelected();
+        }}
+        primaryDisabled={!selectedIds.length}
+        primaryLabel="批量移除"
+        title="移除所选材料？"
+        visible={confirmingBatchRemove}
+      />
     </ScreenScaffold>
   );
 }
@@ -131,6 +185,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
     padding: spacing[3],
+  },
+  selectedRow: {
+    borderColor: colors.primary.default,
   },
   rowMain: {
     alignItems: 'center',
@@ -168,5 +225,17 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     padding: spacing[4],
+  },
+  selectionBar: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  selectionText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
   },
 });

@@ -160,7 +160,7 @@ type AppRoute =
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-provider-settings'; space: PixorySpace }
-  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string }
+  | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
   | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string }
@@ -1374,6 +1374,8 @@ export default function App() {
             threadId: currentRoute.threadId,
           })
         }
+        onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
+        onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
@@ -1386,7 +1388,7 @@ export default function App() {
         contextType={currentRoute.contextType}
         onBack={popRoute}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
+        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
         onStartChat={popRoute}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
@@ -1395,7 +1397,7 @@ export default function App() {
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-card-editor') {
-    content = <AiRoleCardEditorScreen onApplyToSession={popRoute} onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} />;
+    content = <AiRoleCardEditorScreen onApplyRoleCard={popRoute} onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'ai-ip-picker') {
     content = (
       <AiIpPickerScreen

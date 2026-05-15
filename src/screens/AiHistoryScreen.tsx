@@ -6,7 +6,7 @@ import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
-import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, unarchiveAiThread } from '../ai/aiChatService';
+import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -32,6 +32,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
+  const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -129,6 +131,24 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     }
   }
 
+  async function confirmRenameThread() {
+    if (!renameThread) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await renameAiThread(space, renameThread.id, renameValue);
+      setStatus('已重命名聊天。');
+      setRenameThread(null);
+      setRenameValue('');
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '重命名失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <ScreenScaffold
@@ -171,13 +191,23 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                     </View>
                   </Pressable>
                   {!isSelecting ? (
-                    <PrimaryButton
-                      label={thread.archivedAt ? '恢复' : '归档'}
-                      onPress={() => {
-                        void toggleArchive(thread);
-                      }}
-                      variant="ghost"
-                    />
+                    <View style={styles.rowActions}>
+                      <PrimaryButton
+                        label={thread.archivedAt ? '恢复' : '归档'}
+                        onPress={() => {
+                          void toggleArchive(thread);
+                        }}
+                        variant="ghost"
+                      />
+                      <PrimaryButton
+                        label="重命名"
+                        onPress={() => {
+                          setRenameThread(thread);
+                          setRenameValue(thread.title);
+                        }}
+                        variant="ghost"
+                      />
+                    </View>
                   ) : null}
                 </View>
               );
@@ -230,6 +260,31 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             value={personalPassword}
           />
         ) : null}
+      </AppDialog>
+
+      <AppDialog
+        message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
+        onClose={() => {
+          if (!busy) {
+            setRenameThread(null);
+            setRenameValue('');
+          }
+        }}
+        onPrimary={() => void confirmRenameThread()}
+        primaryDisabled={busy || !renameValue.trim()}
+        primaryLabel={busy ? '正在保存' : '保存'}
+        title="重命名聊天"
+        visible={Boolean(renameThread)}
+      >
+        <TextInput
+          editable={!busy}
+          onChangeText={setRenameValue}
+          placeholder="聊天名称"
+          placeholderTextColor={colors.text.placeholder}
+          selectionColor={colors.primary.default}
+          style={styles.passwordInput}
+          value={renameValue}
+        />
       </AppDialog>
     </>
   );
@@ -286,6 +341,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
+  },
+  rowActions: {
+    gap: rhythm.cardContentGap,
   },
   pressed: {
     opacity: 0.78,

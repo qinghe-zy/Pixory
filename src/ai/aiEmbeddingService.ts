@@ -1,5 +1,8 @@
-import { runWithDatabaseSpace, type PixorySpace } from '../database';
+import { aiKnowledgeRepository, aiProviderRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
+import type { ReplaceEmbeddingInput } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentOwnerType } from './types';
+import { getAdapterForProvider } from './aiProviderService';
+import { getProviderApiKey } from './secureAiSettingsService';
 
 export interface GenerateMissingEmbeddingsInput {
   space: PixorySpace;
@@ -21,6 +24,17 @@ export interface TryEmbeddingRetrievalInput {
 interface EmbeddingRow {
   chunkId: string;
   vectorJson: string;
+}
+
+interface ChunkForEmbeddingRow {
+  id: string;
+  text: string;
+}
+
+function createAiId(prefix: string): string {
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${prefix}_${timestamp}_${random}`;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -53,15 +67,24 @@ function parseVector(value: string): number[] {
 export async function generateMissingEmbeddingsForDocument(
   input: GenerateMissingEmbeddingsInput
 ): Promise<{ generated: number; failed: number }> {
-  if (!input.providerId || !input.modelId) {
+  const configured = input.providerId && input.modelId
+    ? { providerId: input.providerId, modelId: input.modelId }
+    : await getEmbeddingProviderForSpace(input.space);
+  if (!configured?.providerId || !configured.modelId) {
     return { generated: 0, failed: 0 };
   }
-  const providerId = input.providerId;
-  const modelId = input.modelId;
+  const providerId = configured.providerId;
+  const modelId = configured.modelId;
+  const provider = await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findProviderById(db, providerId));
+  const apiKey = provider ? await getProviderApiKey(provider.id) : null;
+  if (!provider || !apiKey) {
+    return { generated: 0, failed: 0 };
+  }
+  const adapter = getAdapterForProvider(provider);
 
   return runWithDatabaseSpace(input.space, async (db) => {
-    const chunks = await db.getAllAsync<{ id: string }>(
-      `SELECT ai_chunks.id
+    const chunks = await db.getAllAsync<ChunkForEmbeddingRow>(
+      `SELECT ai_chunks.id, ai_chunks.text
        FROM ai_chunks
        LEFT JOIN ai_embeddings
          ON ai_embeddings.chunkId = ai_chunks.id
@@ -74,8 +97,86 @@ export async function generateMissingEmbeddingsForDocument(
       input.space
     );
 
-    return { generated: 0, failed: chunks.length };
+    const embeddings: ReplaceEmbeddingInput[] = [];
+    let failed = 0;
+    for (const chunk of chunks) {
+      try {
+        const vector = await adapter.embedText({
+          apiKey,
+          baseUrl: provider.baseUrl ?? '',
+          modelId,
+          text: chunk.text,
+        });
+        if (vector.length === 0) {
+          failed += 1;
+          continue;
+        }
+        embeddings.push({
+          id: createAiId('aiembed'),
+          chunkId: chunk.id,
+          providerId,
+          modelId,
+          dimensions: vector.length,
+          vectorJson: JSON.stringify(vector),
+        });
+      } catch {
+        failed += 1;
+      }
+    }
+    if (embeddings.length > 0) {
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId IN (SELECT id FROM ai_chunks WHERE documentId = ?) AND providerId = ? AND modelId = ?', input.documentId, providerId, modelId);
+        await aiKnowledgeRepository.replaceEmbeddings(db, embeddings);
+      });
+    }
+    return { generated: embeddings.length, failed };
   });
+}
+
+export async function getEmbeddingProviderForSpace(space: PixorySpace): Promise<{ providerId: string; modelId: string } | null> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const providers = await aiProviderRepository.listProviders(db);
+    for (const provider of providers) {
+      if (!provider.defaultEmbeddingModelId) {
+        continue;
+      }
+      const model = await aiProviderRepository.findModel(db, provider.id, provider.defaultEmbeddingModelId);
+      if (model?.supportsEmbedding) {
+        return { providerId: provider.id, modelId: model.modelId };
+      }
+    }
+    return null;
+  });
+}
+
+export async function generateQueryEmbedding(input: {
+  space: PixorySpace;
+  text: string;
+  providerId?: string | null;
+  modelId?: string | null;
+}): Promise<{ providerId: string; modelId: string; vector: number[] } | null> {
+  const configured = input.providerId && input.modelId
+    ? { providerId: input.providerId, modelId: input.modelId }
+    : await getEmbeddingProviderForSpace(input.space);
+  if (!configured) {
+    return null;
+  }
+  const provider = await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findProviderById(db, configured.providerId));
+  const apiKey = provider ? await getProviderApiKey(provider.id) : null;
+  if (!provider || !apiKey) {
+    return null;
+  }
+  try {
+    const vector = await getAdapterForProvider(provider).embedText({
+      apiKey,
+      baseUrl: provider.baseUrl ?? '',
+      modelId: configured.modelId,
+      text: input.text,
+    });
+    return vector.length > 0 ? { ...configured, vector } : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function tryEmbeddingRetrieval(

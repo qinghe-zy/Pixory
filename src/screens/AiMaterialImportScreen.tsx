@@ -7,8 +7,8 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
   createKnowledgeBase,
   generateIpMaterial,
+  importPickedDocuments,
   importManualTextMaterial,
-  importPickedDocument,
   listKnowledgeBases,
 } from '../ai/aiDocumentService';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
@@ -105,7 +105,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
   async function pickAndImportDocument(): Promise<ImportFeedback> {
     const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
-      multiple: false,
+      multiple: true,
       type: [
         'text/plain',
         'text/markdown',
@@ -117,18 +117,32 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
     if (result.canceled) {
       return { message: '已取消选择。', tone: 'info' };
     }
-    const asset = result.assets[0];
     const ownerId = await ensureKnowledgeBaseId();
-    const document = await importPickedDocument({
-      fileName: asset.name ?? 'material.txt',
-      fileSize: asset.size ?? null,
-      mimeType: asset.mimeType ?? null,
+    const documents = await importPickedDocuments({
+      assets: result.assets.map((asset) => ({
+        fileName: asset.name ?? 'material.txt',
+        fileSize: asset.size ?? null,
+        mimeType: asset.mimeType ?? null,
+        sourceUri: asset.uri,
+      })),
       ownerId,
       ownerType: 'knowledge_base',
-      sourceUri: asset.uri,
       space,
     });
-    return feedbackForDocument(document, '已导入');
+    if (documents.length === 1) {
+      return feedbackForDocument(documents[0], '已导入');
+    }
+    const failed = documents.filter((document) => document.parserStatus === 'failed').length;
+    if (failed) {
+      return {
+        message: `已导入 ${documents.length} 个文件，其中 ${failed} 个没有解析出可用于问答的文本，可在阅读器中查看原文件。`,
+        tone: 'warning',
+      };
+    }
+    return {
+      message: `已导入 ${documents.length} 个文件，已可用于问答。`,
+      tone: 'success',
+    };
   }
 
   async function importFromIp(): Promise<ImportFeedback> {

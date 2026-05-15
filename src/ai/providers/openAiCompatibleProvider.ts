@@ -4,6 +4,10 @@ interface OpenAiModelListResponse {
   data?: Array<{ id?: string }>;
 }
 
+interface OpenAiEmbeddingResponse {
+  data?: Array<{ embedding?: number[] }>;
+}
+
 function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) {
@@ -111,5 +115,22 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
     } catch (error) {
       onEvent({ type: 'error', message: error instanceof Error ? error.message : 'AI chat request failed' });
     }
+  },
+
+  async embedText(input) {
+    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: input.text,
+        model: input.modelId,
+      }),
+    });
+    await assertOkResponse(response, 'AI embedding request failed');
+    const json = (await response.json()) as OpenAiEmbeddingResponse;
+    return json.data?.[0]?.embedding?.filter((value): value is number => typeof value === 'number') ?? [];
   },
 };

@@ -6,7 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen } from '../components/AppScreen';
 import { listAiHistoryThreads } from '../ai/aiChatService';
+import { listRecentMaterials } from '../ai/aiDocumentService';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -51,19 +53,32 @@ export function AiHomeScreen({
   onStartKnowledgeBase,
   onOpenHistory,
   onOpenThread,
+  onOpenMaterials,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
-  const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
+  const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
 
   useEffect(() => {
     let isMounted = true;
     void listAiHistoryThreads({ limit: 3, space }).then((items) => {
       if (isMounted) {
         setRecentThreads(items);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [space]);
+
+  useEffect(() => {
+    let isMounted = true;
+    void listRecentMaterials(space).then((items) => {
+      if (isMounted) {
+        setRecentMaterials(items);
       }
     });
     return () => {
@@ -82,10 +97,10 @@ export function AiHomeScreen({
         <View style={styles.topBar}>
           <View style={styles.titleGroup}>
             <Text style={styles.pageTitle}>AI 工作台</Text>
-            <View style={styles.statusPill}>
+            {space === 'personal' ? <View style={styles.statusPill}>
               <View style={styles.statusDot} />
-              <Text style={styles.statusText}>{spaceLabel}</Text>
-            </View>
+              <Text style={styles.statusText}>私密空间</Text>
+            </View> : null}
           </View>
           <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
             <Ionicons color={colors.text.heading} name="settings-outline" size={22} />
@@ -112,6 +127,24 @@ export function AiHomeScreen({
             </View>
           </Pressable>
         ))}
+      </View>
+
+      <View style={styles.section}>
+        <SectionTitle actionLabel="管理" title="最近材料" onPress={onOpenMaterials} />
+        <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.recentCard, styles.materialCard, pressed && styles.pressed]}>
+          <View style={styles.threadIcon}>
+            <Ionicons color={colors.primary.active} name="document-text-outline" size={24} />
+          </View>
+          <View style={styles.threadCopy}>
+            <Text numberOfLines={1} style={styles.threadTitle}>
+              {recentMaterials[0]?.title ?? '知识库材料'}
+            </Text>
+            <Text numberOfLines={2} style={styles.threadDescription}>
+              {recentMaterials.length ? recentMaterials.slice(0, 3).map((item) => item.title).join(' / ') : '导入 TXT、Markdown、PDF、DOCX 或从 IP 生成材料'}
+            </Text>
+          </View>
+          <Ionicons color={colors.text.tertiary} name="chevron-forward" size={20} />
+        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -358,6 +391,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: spacing[4],
     ...shadows.xs,
+  },
+  materialCard: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: 84,
+    paddingVertical: spacing[3],
   },
   threadRow: {
     alignItems: 'center',

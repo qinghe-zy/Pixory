@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
@@ -6,6 +6,7 @@ import { FilterChip } from '../components/FilterChip';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { applyRoleCardToThread, loadThreadSessionConfig, updateAiThreadSessionConfig } from '../ai/aiChatService';
 import type { AiBoundaryMode, AiContextType } from '../ai/types';
 import { rhythm, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -40,7 +41,60 @@ export function AiSessionConfigScreen({
   const [systemPrompt, setSystemPrompt] = useState('你是 Pixory 的本地素材整理助手，回答要简洁、可靠，并尊重当前空间的数据边界。');
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
+  const [status, setStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+
+  const reloadConfig = useCallback(async () => {
+    if (!threadId) {
+      return;
+    }
+    const config = await loadThreadSessionConfig(space, threadId);
+    if (!config) {
+      setStatus('没有找到当前会话。');
+      return;
+    }
+    setSystemPrompt(config.thread.systemPrompt);
+    setBoundaryMode(config.thread.boundaryMode);
+    setRoleCardSummary(config.roleCardName ?? '默认角色');
+  }, [space, threadId]);
+
+  useEffect(() => {
+    void reloadConfig();
+  }, [reloadConfig]);
+
+  async function saveAndStartChat() {
+    if (!threadId) {
+      onStartChat();
+      return;
+    }
+    setSaving(true);
+    setStatus(null);
+    try {
+      await updateAiThreadSessionConfig({
+        boundaryMode,
+        space,
+        systemPrompt,
+        threadId,
+      });
+      setStatus('已保存会话设置。');
+      onStartChat();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearRoleCard() {
+    if (!threadId) {
+      setRoleCardSummary('默认角色');
+      return;
+    }
+    await applyRoleCardToThread({ roleCardId: null, space, threadId });
+    setRoleCardSummary('默认角色');
+    await reloadConfig();
+  }
 
   return (
     <ScreenScaffold
@@ -70,6 +124,7 @@ export function AiSessionConfigScreen({
           <Text style={styles.body}>{roleCardSummary}</Text>
           <View style={styles.inlineButtons}>
             <PrimaryButton label="选择或编辑角色卡" onPress={onOpenRoleCardEditor} variant="outline" />
+            <PrimaryButton label="使用默认角色" onPress={() => void clearRoleCard()} variant="ghost" />
           </View>
         </ContentCard>
 
@@ -89,8 +144,9 @@ export function AiSessionConfigScreen({
 
         <View style={styles.actions}>
           <PrimaryButton label="模型账号" onPress={onOpenProviderSettings} variant="outline" />
-          <PrimaryButton label="开始聊天" onPress={onStartChat} />
+          <PrimaryButton label="开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
         </View>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
       </View>
     </ScreenScaffold>
   );
@@ -105,6 +161,9 @@ const styles = StyleSheet.create({
   },
   body: {
     ...typography.textStyles.body,
+  },
+  status: {
+    ...typography.textStyles.caption,
   },
   inlineButtons: {
     gap: rhythm.inlineGap,

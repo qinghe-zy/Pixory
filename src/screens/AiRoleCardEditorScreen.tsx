@@ -5,6 +5,7 @@ import { FormInputRow } from '../components/FormInputRow';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
+import { applyRoleCardToThread } from '../ai/aiChatService';
 import { listRoleCards, saveRoleCard } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -13,11 +14,12 @@ import type { PixorySpace } from '../database';
 interface AiRoleCardEditorScreenProps {
   space: PixorySpace;
   roleCardId?: string;
+  threadId?: string;
   onBack: () => void;
-  onApplyToSession: () => void;
+  onApplyRoleCard: (roleCardId?: string | null) => void;
 }
 
-export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSession }: AiRoleCardEditorScreenProps) {
+export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, onApplyRoleCard }: AiRoleCardEditorScreenProps) {
   const [name, setName] = useState('素材整理助手');
   const [description, setDescription] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -42,7 +44,7 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
     }
     setSaving(true);
     try {
-      await saveRoleCard({
+      const card = await saveRoleCard({
         description,
         name: name.trim() || '未命名角色卡',
         prompt,
@@ -50,21 +52,34 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
       });
       setStatus('已保存。');
       await loadCards();
+      return card;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存失败');
+      return null;
     } finally {
       setSaving(false);
     }
   }
 
-  function applyCurrentRole() {
+  async function applyRoleCard(roleId: string | null) {
+    if (threadId) {
+      await applyRoleCardToThread({ roleCardId: roleId, space, threadId });
+    }
+    onApplyRoleCard(roleId);
+  }
+
+  async function applyCurrentRole() {
     if (!prompt.trim()) {
       setStatus('使用默认角色。');
-      onApplyToSession();
+      await applyRoleCard(null);
+      return;
+    }
+    const saved = await saveReusableRoleCard();
+    if (!saved) {
       return;
     }
     setStatus('已应用。');
-    onApplyToSession();
+    await applyRoleCard(saved.id);
   }
 
   return (
@@ -91,9 +106,9 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
       />
 
       <View style={styles.actions}>
-        <PrimaryButton label="应用" onPress={applyCurrentRole} />
+        <PrimaryButton label="应用" onPress={() => void applyCurrentRole()} />
         <PrimaryButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
-        <PrimaryButton label="跳过" onPress={onApplyToSession} variant="ghost" />
+        <PrimaryButton label="跳过" onPress={() => void applyRoleCard(null)} variant="ghost" />
       </View>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
@@ -109,6 +124,9 @@ export function AiRoleCardEditorScreen({ space, roleCardId, onBack, onApplyToSes
                 setName(card.name);
                 setDescription(card.description ?? '');
                 setPrompt(card.prompt);
+              }}
+              onLongPress={() => {
+                void applyRoleCard(card.id);
               }}
               style={({ pressed }) => [styles.savedCard, pressed && styles.pressed]}
             >
