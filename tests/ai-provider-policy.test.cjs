@@ -63,6 +63,8 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   assert.match(openai, /\/embeddings/);
   assert.match(openai, /stream:\s*true/);
   assert.match(gemini, /:streamGenerateContent/);
+  assert.match(gemini, /emitCompletedGeminiChunks\(buffer, onEvent\)/);
+  assert.match(gemini, /buffer \+= decoder\.decode\(value, \{ stream: true \}\);[\s\S]{0,120}buffer = emitCompletedGeminiChunks\(buffer, onEvent\)/);
   assert.match(gemini, /embedContent/);
   assert.match(claude, /stream:\s*true/);
   assert.match(claude, /content_block_delta/);

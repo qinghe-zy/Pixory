@@ -41,7 +41,9 @@ test('AI retrieval and history stay bounded and space scoped', () => {
   const threadRepository = read('src/database/repositories/aiThreadRepository.ts');
   assert.match(retrieval, /DEFAULT_RETRIEVAL_LIMIT = 6/);
   assert.match(retrieval, /LIMIT 80/);
-  assert.match(retrieval, /snippets: \[\.\.\.ipContext, \.\.\.keyword\]\.slice\(0, limit\)/);
+  assert.match(retrieval, /directSnippets = \[\.\.\.ipContext, \.\.\.keyword\]/);
+  assert.match(retrieval, /ownerPreviewSearch/);
+  assert.match(retrieval, /LIMIT \?/);
   assert.match(threadRepository, /ai_threads\.space = \?/);
   assert.match(threadRepository, /archivedAt IS NOT NULL/);
 });

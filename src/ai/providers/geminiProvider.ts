@@ -16,6 +16,63 @@ function emitGeminiTextFromChunk(chunk: unknown, onEvent: (event: { type: 'answe
   }
 }
 
+function emitGeminiJsonChunk(rawJson: string, onEvent: (event: AiStreamEvent) => void): void {
+  try {
+    emitGeminiTextFromChunk(JSON.parse(rawJson), onEvent);
+  } catch {
+    // Incomplete chunks stay buffered before this point; malformed completed chunks are ignored.
+  }
+}
+
+function emitCompletedGeminiChunks(buffer: string, onEvent: (event: AiStreamEvent) => void): string {
+  let depth = 0;
+  let start = -1;
+  let consumed = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < buffer.length; index += 1) {
+    const char = buffer[index];
+    if (start < 0) {
+      if (char === '{') {
+        start = index;
+        depth = 1;
+      } else if (!/\s|,|\[|\]/.test(char)) {
+        consumed = index + 1;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        emitGeminiJsonChunk(buffer.slice(start, index + 1), onEvent);
+        start = -1;
+        consumed = index + 1;
+      }
+    }
+  }
+
+  return buffer.slice(start >= 0 ? start : consumed);
+}
+
 async function readGeminiStream(response: Response, onEvent: (event: AiStreamEvent) => void): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
@@ -36,6 +93,7 @@ async function readGeminiStream(response: Response, onEvent: (event: AiStreamEve
       break;
     }
     buffer += decoder.decode(value, { stream: true });
+    buffer = emitCompletedGeminiChunks(buffer, onEvent);
   }
   const trimmed = buffer.trim();
   if (!trimmed) {

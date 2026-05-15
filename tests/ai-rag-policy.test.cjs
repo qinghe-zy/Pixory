@@ -14,6 +14,8 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /buildNormalChatPrompt/);
   assert.match(content, /buildMaterialBoundPrompt/);
   assert.match(content, /MATERIAL_SESSION_RULES/);
+  assert.match(content, /当前会话角色指令如下/);
+  assert.match(content, /不要仅根据对话记录判断为未设置/);
 });
 
 test('retrieval uses bounded snippets and never whole documents', () => {
@@ -22,6 +24,9 @@ test('retrieval uses bounded snippets and never whole documents', () => {
   assert.match(content, /retrieveForThread/);
   assert.match(content, /keyword/);
   assert.match(content, /hybrid/);
+  assert.match(content, /ownerPreviewSearch/);
+  assert.match(content, /ORDER BY sourceLabel ASC, chunkIndex ASC/);
+  assert.match(content, /directSnippets\.length === 0 \? await ownerPreviewSearch/);
 });
 
 test('hybrid retrieval generates query vectors and document embeddings when configured', () => {

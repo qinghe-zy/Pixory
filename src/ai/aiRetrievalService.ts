@@ -177,6 +177,34 @@ async function loadChunkSnippetsByIds(
   });
 }
 
+async function ownerPreviewSearch(input: RetrieveForThreadInput): Promise<RetrievedSnippet[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const rows = await db.getAllAsync<ChunkSearchRow>(
+      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
+       FROM ai_chunks
+       WHERE space = ?
+         AND ownerType = ?
+         AND ownerId = ?
+       ORDER BY sourceLabel ASC, chunkIndex ASC
+       LIMIT ?`,
+      input.space,
+      input.ownerType,
+      input.ownerId,
+      input.limit ?? DEFAULT_RETRIEVAL_LIMIT
+    );
+
+    return rows.map((row, index) => ({
+      chunkId: row.id,
+      sourceType: 'document_chunk' as const,
+      sourceId: row.documentId,
+      label: row.sourceLabel,
+      text: truncateText(row.text, 700),
+      locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
+      score: 0.5 - index * 0.01,
+    }));
+  });
+}
+
 async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<RetrievedSnippet[]> {
   if (input.ownerType !== 'ip') {
     return [];
@@ -346,7 +374,9 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   });
 
   if (vectorScores.length === 0) {
-    return { mode: 'keyword', snippets: [...ipContext, ...keyword].slice(0, limit) };
+    const directSnippets = [...ipContext, ...keyword];
+    const fallbackSnippets = directSnippets.length === 0 ? await ownerPreviewSearch({ ...input, limit }) : [];
+    return { mode: 'keyword', snippets: [...directSnippets, ...fallbackSnippets].slice(0, limit) };
   }
 
   const scoreByChunkId = new Map(vectorScores.map((item) => [item.chunkId, item.score]));
