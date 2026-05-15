@@ -147,13 +147,32 @@ test('undo snackbar is a global four second feedback path distinct from short to
   assert.match(imageDetailSource, /showUndoSnackbar/);
 });
 
+test('global toast feedback uses semantic tone, icon, and tokenized sizing', () => {
+  const toastSource = readProjectFile('src/components/AppToast.tsx');
+  const feedbackBannerSource = readProjectFile('src/components/FeedbackBanner.tsx');
+  const metricsSource = readProjectFile('src/design/tokens/metrics.ts');
+
+  assert.match(toastSource, /inferToastTone/);
+  assert.match(toastSource, /successToast/);
+  assert.match(toastSource, /warningToast/);
+  assert.match(toastSource, /errorToast/);
+  assert.match(toastSource, /Ionicons/);
+  assert.match(toastSource, /metrics\.iconSizeSm/);
+  assert.match(feedbackBannerSource, /titleForTone/);
+  assert.match(feedbackBannerSource, /metrics\.iconSizeMd/);
+  assert.match(feedbackBannerSource, /colors\.semantic\.successBackground/);
+  assert.match(feedbackBannerSource, /colors\.semantic\.dangerBackground/);
+  assert.match(metricsSource, /iconSizeSm:\s*18/);
+  assert.match(metricsSource, /iconSizeMd:\s*20/);
+});
+
 test('trash cleanup keeps a 30 day DB driven policy with persisted failure records', () => {
   const schemaSource = readProjectFile('src/database/schema.ts');
   const trashSource = readProjectFile('src/services/trashService.ts');
   const appSource = readProjectFile('App.tsx');
   const trashScreenSource = readProjectFile('src/screens/TrashScreen.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*17/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*18/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS trash_cleanup_failures/);
   assert.match(trashSource, /TRASH_RETENTION_DAYS\s*=\s*30/);
   assert.match(trashSource, /findExpiredTrashItems/);

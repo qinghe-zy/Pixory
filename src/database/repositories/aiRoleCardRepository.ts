@@ -4,7 +4,8 @@ import type { AiBoundaryMode, AiRoleCardRecord } from '../../ai/types';
 import type { PixorySpace } from '../db';
 import { createTimestamp } from '../utils';
 
-type AiRoleCardRow = Omit<AiRoleCardRecord, 'tags'> & {
+type AiRoleCardRow = Omit<AiRoleCardRecord, 'tags' | 'avatarEnabled'> & {
+  avatarEnabled: number;
   tagsJson: string;
 };
 
@@ -17,6 +18,8 @@ export interface CreateAiRoleCardInput {
   defaultLanguage?: string | null;
   defaultModelId?: string | null;
   boundaryMode?: AiBoundaryMode;
+  avatarEnabled?: boolean;
+  avatarUri?: string | null;
   tags?: string[];
 }
 
@@ -35,6 +38,8 @@ function mapRoleCardRow(row: AiRoleCardRow): AiRoleCardRecord {
     description: row.description ?? null,
     defaultLanguage: row.defaultLanguage ?? null,
     defaultModelId: row.defaultModelId ?? null,
+    avatarEnabled: row.avatarEnabled === 1,
+    avatarUri: row.avatarUri ?? null,
     archivedAt: row.archivedAt ?? null,
     tags: parseTags(row.tagsJson),
   };
@@ -53,11 +58,13 @@ export const aiRoleCardRepository = {
         defaultLanguage,
         defaultModelId,
         boundaryMode,
+        avatarEnabled,
+        avatarUri,
         tagsJson,
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.name,
@@ -66,6 +73,8 @@ export const aiRoleCardRepository = {
       input.defaultLanguage ?? null,
       input.defaultModelId ?? null,
       input.boundaryMode ?? 'free',
+      input.avatarEnabled ? 1 : 0,
+      input.avatarUri ?? null,
       JSON.stringify(input.tags ?? []),
       now,
       now
@@ -79,6 +88,8 @@ export const aiRoleCardRepository = {
       defaultLanguage: input.defaultLanguage ?? null,
       defaultModelId: input.defaultModelId ?? null,
       boundaryMode: input.boundaryMode ?? 'free',
+      avatarEnabled: input.avatarEnabled ?? false,
+      avatarUri: input.avatarUri ?? null,
       tags: input.tags ?? [],
       createdAt: now,
       updatedAt: now,
@@ -102,6 +113,23 @@ export const aiRoleCardRepository = {
       roleCardId
     );
     return row ? mapRoleCardRow(row) : null;
+  },
+
+  async archiveMany(db: SQLiteDatabase, roleCardIds: string[]): Promise<number> {
+    if (roleCardIds.length === 0) {
+      return 0;
+    }
+    const now = createTimestamp();
+    const placeholders = roleCardIds.map(() => '?').join(', ');
+    const result = await db.runAsync(
+      `UPDATE ai_role_cards
+       SET archivedAt = ?, updatedAt = ?
+       WHERE archivedAt IS NULL AND id IN (${placeholders})`,
+      now,
+      now,
+      ...roleCardIds
+    );
+    return result.changes ?? 0;
   },
 };
 

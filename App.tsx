@@ -1365,18 +1365,19 @@ export default function App() {
         boundKnowledgeBaseId={currentRoute.knowledgeBaseId}
         includeIpDocuments={currentRoute.includeIpDocuments}
         onBack={popRoute}
-        onOpenSessionConfig={() =>
+        onOpenSessionConfig={(threadId) =>
           pushRoute({
             name: 'ai-session-config',
             contextTitle: currentRoute.contextTitle,
             contextType: currentRoute.contextType,
             space: currentRoute.space,
-            threadId: currentRoute.threadId,
+            threadId,
           })
         }
         onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
+        onThreadReady={(threadId) => replaceCurrentRoute({ ...currentRoute, threadId })}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />

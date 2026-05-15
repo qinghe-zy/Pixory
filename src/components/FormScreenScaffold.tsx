@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Keyboard, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
-import { colors, layout, metrics, rhythm, spacing, typography } from '../design/tokens';
+import { layout, metrics, rhythm, spacing } from '../design/tokens';
+import { FeedbackBanner } from './FeedbackBanner';
 import { PrimaryButton } from './PrimaryButton';
 import { ScreenScaffold } from './ScreenScaffold';
 
@@ -54,7 +55,7 @@ export function FormScreenScaffold({
   const footer = (
     <View style={styles.footerWrap}>
       {footerExtra}
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+      {errorMessage ? <FeedbackBanner message={errorMessage} tone="error" /> : null}
       <View style={styles.actions}>
         <PrimaryButton
           disabled={primaryAction.disabled}
@@ -92,10 +93,6 @@ const styles = StyleSheet.create({
   footerWrap: {
     gap: rhythm.listCardGap,
     paddingTop: spacing[2],
-  },
-  errorText: {
-    ...typography.textStyles.caption,
-    color: colors.semantic.danger,
   },
   actions: {
     gap: rhythm.cardContentGap,

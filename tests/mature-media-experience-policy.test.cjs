@@ -34,11 +34,14 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /adjustVolumeFromGesture/);
   assert.match(playerSource, /loadVideoPlayerPreferences/);
   assert.match(playerSource, /saveVideoPlayerPreferences/);
+  assert.match(playerSource, /OrientationLock\.PORTRAIT_UP/);
+  assert.doesNotMatch(playerSource, /kind:\s*isPlaying \? 'pause' : 'play'/);
   assert.match(playerSource, /switchVideoByOffset/);
   assert.match(playerSource, /isLandscape \? \([\s\S]*上一个视频/);
   assert.match(playerSource, /isLandscape \? \([\s\S]*下一个视频/);
   assert.match(playerSource, /当前视频/);
   assert.match(preferenceSource, /videoPlayerPreferences/);
+  assert.match(preferenceSource, /orientationPreference:\s*'portrait'/);
   assert.match(preferenceSource, /lockedByDefault/);
 });
 

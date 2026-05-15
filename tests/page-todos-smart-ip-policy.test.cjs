@@ -54,7 +54,7 @@ test('IP deletion supports recycle bin and permanent local cleanup paths', () =>
   const homeSource = readProjectFile('src/screens/HomeLibraryScreen.tsx');
   const imageRepositorySource = readProjectFile('src/database/repositories/imageRepository.ts');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*17/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*18/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN deletedAt TEXT/);
   assert.match(typesSource, /deletedAt:\s*string \| null/);
   assert.match(ipRepositorySource, /softDeleteById/);

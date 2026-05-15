@@ -1,27 +1,30 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { PrimaryButton } from '../PrimaryButton';
 import { getPdfPageCount, renderPdfPageToFile } from '../../native/pixoryMediaModule';
 import { colors, radius, rhythm, spacing, typography } from '../../design/tokens';
-import { AiTextReader } from './AiTextReader';
 
 interface AiPdfReaderProps {
   readable: AiReadableDocument;
   locator?: AiDocumentReaderLocator;
 }
 
-export function AiPdfReader({ readable, locator }: AiPdfReaderProps) {
-  const hasParsedText = readable.text.trim().length > 0;
+interface PdfPageImageProps {
+  documentId: string;
+  pageIndex: number;
+  sourceUri: string;
+  width: number;
+}
+
+export function AiPdfReader({ readable }: AiPdfReaderProps) {
+  const { width } = useWindowDimensions();
   const [pageCount, setPageCount] = useState(0);
-  const [pageIndex, setPageIndex] = useState(Math.max(0, (locator?.page ?? 1) - 1));
-  const [zoom, setZoom] = useState(1);
-  const [renderedUri, setRenderedUri] = useState<string | null>(null);
   const [status, setStatus] = useState('正在准备 PDF...');
   const sourceUri = readable.document.localUri;
-
+  const pageWidth = Math.max(260, Math.min(width - spacing[4] * 2, 980));
+  const pages = useMemo(() => Array.from({ length: pageCount }, (_, index) => index), [pageCount]);
   useEffect(() => {
     let canceled = false;
     async function loadPageCount() {
@@ -33,7 +36,6 @@ export function AiPdfReader({ readable, locator }: AiPdfReaderProps) {
         const count = await getPdfPageCount(sourceUri);
         if (!canceled) {
           setPageCount(count);
-          setPageIndex((current) => Math.min(current, Math.max(0, count - 1)));
           setStatus('');
         }
       } catch (error) {
@@ -48,17 +50,41 @@ export function AiPdfReader({ readable, locator }: AiPdfReaderProps) {
     };
   }, [sourceUri]);
 
+  return (
+    <FlatList
+      contentContainerStyle={styles.pageList}
+      data={pages}
+      keyExtractor={(pageIndex) => `${readable.document.id}-${pageIndex}`}
+      ListEmptyComponent={status ? <Text style={styles.status}>{status}</Text> : null}
+      renderItem={({ item }) => (
+        <PdfPageImage
+          documentId={readable.document.id}
+          pageIndex={item}
+          sourceUri={sourceUri ?? ''}
+          width={pageWidth}
+        />
+      )}
+      showsVerticalScrollIndicator={false}
+      style={styles.wrap}
+    />
+  );
+}
+
+function PdfPageImage({ documentId, pageIndex, sourceUri, width }: PdfPageImageProps) {
+  const [renderedUri, setRenderedUri] = useState<string | null>(null);
+  const [status, setStatus] = useState('正在渲染...');
+
   useEffect(() => {
     let canceled = false;
     async function renderPage() {
-      if (!sourceUri || !pageCount || !FileSystem.cacheDirectory) {
+      if (!sourceUri || !FileSystem.cacheDirectory) {
+        setStatus('页面不可用');
         return;
       }
-      const width = Math.round(960 * zoom);
-      const destinationUri = `${FileSystem.cacheDirectory}pixory-pdf-${readable.document.id}-${pageIndex}-${width}.png`;
-      setStatus('正在渲染页面...');
+      const renderWidth = Math.round(width * 1.5);
+      const destinationUri = `${FileSystem.cacheDirectory}pixory-pdf-${documentId}-${pageIndex}-${renderWidth}.png`;
       try {
-        const result = await renderPdfPageToFile(sourceUri, pageIndex, destinationUri, width);
+        const result = await renderPdfPageToFile(sourceUri, pageIndex, destinationUri, renderWidth);
         if (!canceled) {
           setRenderedUri(result.uri);
           setStatus('');
@@ -74,82 +100,58 @@ export function AiPdfReader({ readable, locator }: AiPdfReaderProps) {
     return () => {
       canceled = true;
     };
-  }, [pageCount, pageIndex, readable.document.id, sourceUri, zoom]);
+  }, [documentId, pageIndex, sourceUri, width]);
 
   return (
-    <View style={styles.wrap}>
-      {hasParsedText ? <AiTextReader locator={locator} readable={readable} /> : null}
-      <View style={styles.pdfShell}>
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarButton}>
-            <PrimaryButton disabled={pageIndex <= 0} label="上一页" onPress={() => setPageIndex((current) => Math.max(0, current - 1))} variant="outline" />
-          </View>
-          <Text style={styles.pageLabel}>{pageCount ? `${pageIndex + 1} / ${pageCount}` : 'PDF'}</Text>
-          <View style={styles.toolbarButton}>
-            <PrimaryButton disabled={!pageCount || pageIndex >= pageCount - 1} label="下一页" onPress={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))} variant="outline" />
-          </View>
+    <View style={[styles.pageFrame, { width }]}>
+      {renderedUri ? (
+        <Image resizeMode="contain" source={{ uri: renderedUri }} style={styles.pageImage} />
+      ) : (
+        <View style={styles.pagePlaceholder}>
+          <Text style={styles.status}>{status}</Text>
         </View>
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarButton}>
-            <PrimaryButton disabled={zoom <= 0.75} label="缩小" onPress={() => setZoom((current) => Math.max(0.75, Number((current - 0.25).toFixed(2))))} variant="ghost" />
-          </View>
-          <Text style={styles.pageLabel}>{Math.round(zoom * 100)}%</Text>
-          <View style={styles.toolbarButton}>
-            <PrimaryButton disabled={zoom >= 2} label="放大" onPress={() => setZoom((current) => Math.min(2, Number((current + 0.25).toFixed(2))))} variant="ghost" />
-          </View>
-        </View>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-        {renderedUri ? <Image resizeMode="contain" source={{ uri: renderedUri }} style={styles.pageImage} /> : null}
-        {!hasParsedText && readable.document.parserError ? <Text style={styles.error}>{readable.document.parserError}</Text> : null}
-      </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: rhythm.listCardGap,
-    paddingTop: spacing[1],
+    flex: 1,
   },
-  pdfShell: {
+  pageList: {
+    alignItems: 'center',
+    gap: rhythm.listCardGap,
+    paddingBottom: spacing[8],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[2],
+  },
+  pageFrame: {
+    alignItems: 'center',
+    gap: rhythm.microGap,
+  },
+  pageImage: {
+    aspectRatio: 0.707,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
+    width: '100%',
   },
-  toolbar: {
+  pagePlaceholder: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    justifyContent: 'space-between',
-  },
-  pageLabel: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-    minWidth: 58,
-    textAlign: 'center',
-  },
-  toolbarButton: {
-    flex: 1,
+    aspectRatio: 0.707,
+    backgroundColor: colors.background.sunken,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    width: '100%',
   },
   status: {
     ...typography.textStyles.caption,
     color: colors.text.secondary,
+    padding: spacing[4],
     textAlign: 'center',
-  },
-  pageImage: {
-    alignSelf: 'stretch',
-    aspectRatio: 0.707,
-    backgroundColor: colors.background.sunken,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    width: '100%',
-  },
-  error: {
-    ...typography.textStyles.caption,
-    color: colors.semantic.danger,
   },
 });

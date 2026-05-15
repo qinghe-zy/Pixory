@@ -24,7 +24,7 @@ const IMAGE_VIEWER_PREFERENCES_URI = `${PREFERENCE_DIR}imageViewerPreferences.js
 export const DEFAULT_VIDEO_PLAYER_PREFERENCES: VideoPlayerPreferences = {
   speed: 1,
   holdSpeed: 3,
-  orientationPreference: 'system',
+  orientationPreference: 'portrait',
   lockedByDefault: false,
 };
 

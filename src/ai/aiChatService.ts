@@ -18,6 +18,11 @@ import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
 
+export interface AiThreadAvatarConfig {
+  avatarEnabled: boolean;
+  avatarUri: string | null;
+}
+
 export interface CreateThreadFromContextInput {
   space: PixorySpace;
   contextType: AiContextType;
@@ -70,6 +75,7 @@ export interface MoveAiThreadsInput {
 export interface AiThreadSessionConfig {
   thread: AiThreadRecord;
   roleCardName: string | null;
+  avatar: AiThreadAvatarConfig;
 }
 
 export interface UpdateAiThreadSessionConfigInput {
@@ -79,6 +85,7 @@ export interface UpdateAiThreadSessionConfigInput {
   boundaryMode: AiBoundaryMode;
   providerId?: string | null;
   modelId?: string | null;
+  avatarEnabled?: boolean;
 }
 
 export interface ApplyRoleCardToThreadInput {
@@ -92,6 +99,29 @@ const stoppedMessageIds = new Set<string>();
 export type AiMessageWithCitations = AiMessageRecord & {
   citations: AiCitationRecord[];
 };
+
+function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
+  try {
+    const snapshot = JSON.parse(roleSnapshotJson);
+    return {
+      avatarEnabled: snapshot?.avatarEnabled === true,
+      avatarUri: typeof snapshot?.avatarUri === 'string' && snapshot.avatarUri.trim() ? snapshot.avatarUri : null,
+    };
+  } catch {
+    return { avatarEnabled: false, avatarUri: null };
+  }
+}
+
+function patchThreadRoleSnapshot(roleSnapshotJson: string, patch: Partial<AiThreadAvatarConfig>): string {
+  let snapshot: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(roleSnapshotJson);
+    snapshot = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    snapshot = {};
+  }
+  return JSON.stringify({ ...snapshot, ...patch });
+}
 
 function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
@@ -234,6 +264,16 @@ export async function listThreadMessages(space: PixorySpace, threadId: string): 
   });
 }
 
+export async function loadThreadAvatarConfig(space: PixorySpace, threadId: string): Promise<AiThreadAvatarConfig> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    if (!thread || thread.space !== space) {
+      return { avatarEnabled: false, avatarUri: null };
+    }
+    return parseThreadAvatarConfig(thread.roleSnapshotJson);
+  });
+}
+
 export async function listAiHistoryThreads(input: {
   space: PixorySpace;
   filter?: AiThreadHistoryFilter;
@@ -253,30 +293,44 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       return null;
     }
     const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
-    return { thread, roleCardName: roleCard?.name ?? null };
+    return { thread, roleCardName: roleCard?.name ?? null, avatar: parseThreadAvatarConfig(thread.roleSnapshotJson) };
   });
 }
 
 export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionConfigInput): Promise<AiThreadRecord | null> {
-  return runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.updateThread(db, input.threadId, {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, input.threadId);
+    if (!thread || thread.space !== input.space) {
+      return null;
+    }
+    return aiThreadRepository.updateThread(db, input.threadId, {
       boundaryMode: input.boundaryMode,
       materialRulesSnapshot: input.boundaryMode === 'free' ? MATERIAL_SESSION_RULES : materialRulesForMode(input.boundaryMode),
       modelId: input.modelId,
       providerId: input.providerId,
+      roleSnapshotJson:
+        input.avatarEnabled == null
+          ? thread.roleSnapshotJson
+          : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
       systemPrompt: input.systemPrompt.trim() || DEFAULT_AI_ROLE_PROMPT,
-    })
-  );
+    });
+  });
 }
 
 export async function applyRoleCardToThread(input: ApplyRoleCardToThreadInput): Promise<AiThreadRecord | null> {
   return runWithDatabaseSpace(input.space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, input.threadId);
+    if (!thread || thread.space !== input.space) {
+      return null;
+    }
     const roleCard = input.roleCardId ? await aiRoleCardRepository.findById(db, input.roleCardId) : null;
+    const nextBoundaryMode = roleCard?.boundaryMode ?? thread.boundaryMode;
     return aiThreadRepository.updateThread(db, input.threadId, {
-      boundaryMode: roleCard?.boundaryMode,
+      boundaryMode: nextBoundaryMode,
+      materialRulesSnapshot: thread.contextType === 'normal' ? null : materialRulesForMode(nextBoundaryMode),
       roleCardId: roleCard?.id ?? null,
       roleSnapshotJson: JSON.stringify(roleCard ?? {}),
-      systemPrompt: roleCard?.prompt,
+      systemPrompt: roleCard?.prompt ?? DEFAULT_AI_ROLE_PROMPT,
     });
   });
 }

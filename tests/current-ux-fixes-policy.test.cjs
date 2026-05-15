@@ -57,12 +57,15 @@ test('personal mode badge sits below the status bar inset instead of hardcoding 
   assert.match(appSource, /top:\s*insets\.top/);
 });
 
-test('video player keeps portrait progress information below the scrub bar and does not reset saved progress to zero while loading', () => {
+test('video player keeps portrait progress time on the play row below the scrub bar and does not reset saved progress to zero while loading', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
-  assert.match(playerSource, /progressInfoRow/);
   assert.match(playerSource, /progressInfoText/);
-  assert.match(playerSource, /style=\{\[styles\.progressHitArea,\s*isLandscape \? styles\.landscapeProgressHitArea : null\]\}[\s\S]{0,520}\{!isLandscape \? \(\s*<View style=\{styles\.progressInfoRow\}>/);
+  assert.doesNotMatch(playerSource, /progressInfoRow/);
+  assert.match(playerSource, /style=\{\[styles\.progressHitArea,\s*isLandscape \? styles\.landscapeProgressHitArea : null\]\}[\s\S]{0,760}<View style=\{\[styles\.controlLeft,\s*!isLandscape \? styles\.portraitControlLeft : null\]\}>/);
+  const controlLeftBlock = /<View style=\{\[styles\.controlLeft,\s*!isLandscape \? styles\.portraitControlLeft : null\]\}>([\s\S]*?)<\/View>\s*<View style=\{styles\.controlActions\}>/.exec(playerSource)?.[1] ?? '';
+  assert.ok(controlLeftBlock.indexOf("accessibilityLabel={isPlaying ? '暂停' : '播放'}") >= 0);
+  assert.ok(controlLeftBlock.indexOf("accessibilityLabel={isPlaying ? '暂停' : '播放'}") < controlLeftBlock.indexOf('styles.progressInfoText'));
   assert.match(playerSource, /const initialDisplayTime/);
   assert.doesNotMatch(playerSource, /currentTimeRef\.current = 0;\s*\n\s*setCurrentTime\(0\);\s*\n\s*setDuration\(0\);/);
   assert.match(playerSource, /committedSeekTargetRef\.current = initialDisplayTime > 0 \? initialDisplayTime : null/);
@@ -71,7 +74,7 @@ test('video player keeps portrait progress information below the scrub bar and d
 test('video player landscape controls group previous next with play pause and move time below progress', () => {
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
-  assert.match(playerSource, /<View style=\{styles\.controlLeft\}>[\s\S]{0,520}accessibilityLabel="上一个视频"[\s\S]{0,520}accessibilityLabel=\{isPlaying \? '暂停' : '播放'\}[\s\S]{0,520}accessibilityLabel="下一个视频"[\s\S]{0,360}styles\.landscapeTimeText/);
+  assert.match(playerSource, /<View style=\{\[styles\.controlLeft,[\s\S]{0,120}!isLandscape \? styles\.portraitControlLeft : null\]\}>[\s\S]{0,520}accessibilityLabel="上一个视频"[\s\S]{0,520}accessibilityLabel=\{isPlaying \? '暂停' : '播放'\}[\s\S]{0,520}accessibilityLabel="下一个视频"[\s\S]{0,360}styles\.landscapeTimeText/);
   assert.match(playerSource, /<View style=\{styles\.controlActions\}>[\s\S]{0,900}setSpeedMenuVisible/);
   assert.match(playerSource, /controlRow:\s*\{[\s\S]{0,180}justifyContent:\s*'space-between'/);
   assert.match(playerSource, /controlLeft:\s*\{[\s\S]{0,180}flexDirection:\s*'row'/);
@@ -114,7 +117,6 @@ test('video player syncs landscape UI with actual screen orientation changes', (
   const playerSource = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
   assert.match(playerSource, /getLandscapeStateFromOrientation/);
-  assert.match(playerSource, /ScreenOrientation\.getOrientationAsync\(\)\.then\(syncLandscapeState\)/);
   assert.match(playerSource, /ScreenOrientation\.addOrientationChangeListener/);
   assert.match(playerSource, /syncLandscapeState\(event\.orientationInfo\.orientation\)/);
   assert.match(playerSource, /ScreenOrientation\.removeOrientationChangeListener\(orientationSubscription\)/);
@@ -236,8 +238,17 @@ test('global card spacing rhythm is centralized and used by core surfaces', () =
     /margin(?:Top|Bottom):\s*-spacing\[/
   );
   assert.match(docsSource, /### Spacing Rhythm/);
+  assert.match(docsSource, /### Component Token Policy/);
   assert.match(docsSource, /src\/design\/tokens\/rhythm\.ts/);
+  assert.match(docsSource, /src\/design\/tokens\//);
+  assert.match(docsSource, /spacing[\s\S]{0,40}rhythm/);
+  assert.match(docsSource, /metrics/);
+  assert.match(docsSource, /radius/);
+  assert.match(docsSource, /colors/);
+  assert.match(docsSource, /typography\.textStyles/);
   assert.match(agentsSource, /src\/design\/tokens\/rhythm\.ts/);
+  assert.match(agentsSource, /all new UI components must use the shared design tokens/);
+  assert.match(agentsSource, /spacing`, `rhythm`, `metrics`, `radius`, `colors`, and `typography`/);
 });
 
 test('IP cards omit empty cover metadata instead of rendering zero counts', () => {

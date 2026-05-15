@@ -64,6 +64,8 @@ export interface AiRoleCardRecord {
   defaultLanguage: string | null;
   defaultModelId: string | null;
   boundaryMode: AiBoundaryMode;
+  avatarEnabled: boolean;
+  avatarUri: string | null;
   tags: string[];
   createdAt: string;
   updatedAt: string;

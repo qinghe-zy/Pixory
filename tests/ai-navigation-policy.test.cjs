@@ -139,6 +139,10 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.match(providerSettings, /暂无可用模型/);
   assert.match(providerSettings, /selectedIsOtherProvider/);
   assert.match(providerSettings, /测试连接/);
+  assert.match(providerSettings, /FeedbackBanner/);
+  assert.match(providerSettings, /测试连接中/);
+  assert.match(providerSettings, /连接成功/);
+  assert.match(providerSettings, /连接失败/);
   assert.match(providerSettings, /同步模型/);
   assert.match(providerService, /selectProvider/);
   assert.doesNotMatch(app, /ai-model-picker/);
@@ -175,15 +179,40 @@ test('AI material import reports file, manual text, IP generation, and PDF parse
   const materialImport = fs.readFileSync(path.join(root, 'src/screens/AiMaterialImportScreen.tsx'), 'utf8');
   const pdfParser = fs.readFileSync(path.join(root, 'src/ai/documentParsers/pdfParser.ts'), 'utf8');
 
-  assert.match(materialImport, /feedbackCard/);
+  assert.match(materialImport, /FeedbackBanner/);
   assert.match(materialImport, /正在导入材料/);
   assert.match(materialImport, /feedbackForDocument/);
   assert.match(materialImport, /document\.parserStatus === 'failed'/);
+  assert.match(materialImport, /tone:\s*'warning'/);
+  assert.match(materialImport, /tone:\s*'success'/);
   assert.match(materialImport, /已可用于问答/);
   assert.match(materialImport, /从选中 IP 生成材料/);
   assert.match(materialImport, /multiple:\s*true/);
   assert.match(materialImport, /importPickedDocuments/);
   assert.doesNotMatch(pdfParser, /当前版本暂不支持从 PDF 提取文本/);
+});
+
+test('AI document reader uses a full-screen vertical reading surface', () => {
+  const reader = fs.readFileSync(path.join(root, 'src/screens/AiDocumentReaderScreen.tsx'), 'utf8');
+  const pdfReader = fs.readFileSync(path.join(root, 'src/components/ai/AiPdfReader.tsx'), 'utf8');
+
+  assert.match(reader, /AppScreen/);
+  assert.match(reader, /readerHost/);
+  assert.match(reader, /metrics\.minTouchSize/);
+  assert.match(reader, /position: 'absolute'/);
+  assert.doesNotMatch(reader, /ScreenScaffold/);
+  assert.match(pdfReader, /FlatList/);
+  assert.match(pdfReader, /showsVerticalScrollIndicator=\{false\}/);
+});
+
+test('AI session settings avoid one overloaded button cluster', () => {
+  const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
+  const actionsBlock = /<View style=\{styles\.actions\}>([\s\S]*?)<\/View>/.exec(sessionConfig)?.[1] ?? '';
+
+  assert.match(sessionConfig, /<PrimaryButton label="模型账号"/);
+  assert.match(actionsBlock, /保存设置/);
+  assert.match(actionsBlock, /开始聊天/);
+  assert.doesNotMatch(actionsBlock, /模型账号/);
 });
 
 test('AI history supports long-press batch delete and private-space moves', () => {
@@ -210,6 +239,9 @@ test('AI materials support batch removal and chat history supports rename', () =
   assert.match(materialList, /selectedIds/);
   assert.match(materialList, /removeMaterials/);
   assert.match(materialList, /批量移除/);
+  assert.match(materialList, /selectionFooter/);
+  assert.match(materialList, /selectedRow/);
+  assert.doesNotMatch(materialList, /selectionBar/);
   assert.match(materialList, /onLongPress/);
   assert.match(history, /renameAiThread/);
   assert.match(history, /重命名/);

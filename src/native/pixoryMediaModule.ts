@@ -71,6 +71,7 @@ interface PixoryMediaNativeModule {
   createVideoThumbnail(sourceUri: string, destinationUri: string): Promise<NativeCopyResult>;
   getPdfPageCount(sourceUri: string): Promise<number>;
   renderPdfPageToFile(sourceUri: string, pageIndex: number, destinationUri: string, width: number): Promise<NativeCopyResult>;
+  extractPdfText(sourceUri: string): Promise<{ text: string; pageCount: number }>;
   saveImageToMediaStore(sourceUri: string, displayName: string, albumName?: string | null): Promise<string>;
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
   computeFileSha256(sourceUri: string): Promise<string>;
@@ -155,6 +156,10 @@ export function renderPdfPageToFile(
   width: number
 ): Promise<NativeCopyResult> {
   return requireNativeModule().renderPdfPageToFile(sourceUri, pageIndex, destinationUri, width);
+}
+
+export function extractPdfText(sourceUri: string): Promise<{ text: string; pageCount: number }> {
+  return requireNativeModule().extractPdfText(sourceUri);
 }
 
 export function saveNativeImageToMediaStore(

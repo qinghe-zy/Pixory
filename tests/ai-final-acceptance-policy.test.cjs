@@ -59,16 +59,49 @@ test('AI provider setup supports SecureStore keys and manual model IDs', () => {
 test('AI session settings persist role cards system prompt and boundary mode to the thread', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const roleEditor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const app = read('App.tsx');
+  const chatScreen = read('src/screens/AiChatScreen.tsx');
   const chatService = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
   assert.match(sessionConfig, /loadThreadSessionConfig/);
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);
   assert.match(sessionConfig, /applyRoleCardToThread/);
+  assert.match(sessionConfig, /avatarEnabled/);
+  assert.match(sessionConfig, /启用头像|隐藏头像/);
+  assert.match(sessionConfig, /保存设置/);
   assert.match(roleEditor, /onApplyRoleCard/);
+  assert.match(roleEditor, /ImagePicker\.launchImageLibraryAsync/);
+  assert.match(roleEditor, /copyAiRoleAvatarToAppStorage/);
+  assert.match(roleEditor, /imageRepository\.findByIpId/);
+  assert.match(roleEditor, /deleteRoleCards/);
+  assert.match(roleEditor, /selectedCardIds/);
+  assert.match(roleEditor, /selectionFooter/);
+  assert.match(roleEditor, /onLongPress=\{\(\) => toggleSelected\(card\.id\)\}/);
+  assert.match(app, /onThreadReady/);
+  assert.match(chatScreen, /handleOpenSessionConfig/);
+  assert.match(chatScreen, /loadThreadAvatarConfig/);
   assert.match(chatService, /updateAiThreadSessionConfig/);
+  assert.match(chatService, /parseThreadAvatarConfig/);
+  assert.match(chatService, /patchThreadRoleSnapshot/);
+  assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? DEFAULT_AI_ROLE_PROMPT/);
   assert.match(chatService, /roleSnapshotJson/);
   assert.match(repository, /roleCardId/);
+});
+
+test('AI chat can show role avatars while keeping no-avatar mode', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const roleRepository = read('src/database/repositories/aiRoleCardRepository.ts');
+  const storage = read('src/services/fileStorageService.ts');
+
+  assert.match(bubble, /assistantAvatar/);
+  assert.match(bubble, /avatarEnabled/);
+  assert.match(bubble, /SecureImage/);
+  assert.match(bubble, /showAssistantAvatar/);
+  assert.match(roleRepository, /avatarEnabled/);
+  assert.match(roleRepository, /avatarUri/);
+  assert.match(storage, /copyAiRoleAvatarToAppStorage/);
+  assert.match(storage, /getAiRoleAvatarsDir/);
 });
 
 test('AI citations open document readers and IP sources without treating all sources as documents', () => {

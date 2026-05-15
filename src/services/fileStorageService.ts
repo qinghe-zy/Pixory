@@ -10,6 +10,7 @@ const EXPORTS_DIR_NAME = 'exports';
 const TEMP_DIR_NAME = 'temp';
 const PROFILE_DIR_NAME = 'profile';
 const AI_DOCUMENTS_DIR_NAME = 'ai_documents';
+const AI_ROLE_AVATARS_DIR_NAME = 'ai_role_avatars';
 
 export interface ManagedFileInfo {
   uri: string;
@@ -128,6 +129,7 @@ export async function ensureAppDirectories(space: PixorySpace = 'normal'): Promi
     getExportsDir(space),
     getTempDir(space),
     getAiDocumentsDir(space),
+    getAiRoleAvatarsDir(space),
     ...(space === 'normal' ? [getProfileDir()] : []),
   ];
 
@@ -158,6 +160,10 @@ export function getProfileDir(): string {
 
 export function getAiDocumentsDir(space: PixorySpace = 'normal'): string {
   return normalizeDirectoryUri(joinPath(getStorageRootDir(space), AI_DOCUMENTS_DIR_NAME));
+}
+
+export function getAiRoleAvatarsDir(space: PixorySpace = 'normal'): string {
+  return normalizeDirectoryUri(joinPath(getStorageRootDir(space), AI_ROLE_AVATARS_DIR_NAME));
 }
 
 export function getAiKnowledgeBaseDocumentsDir(space: PixorySpace, knowledgeBaseId: string): string {
@@ -232,6 +238,37 @@ export async function copyProfileAvatarToAppStorage(sourceUri: string): Promise<
     }
 
     console.warn('Pixory avatar copyAsync failed for content URI, retrying with native stream copy.', {
+      error: error instanceof Error ? error.message : 'unknown copy error',
+    });
+
+    await copyContentUriWithNativeStream(sourceUri, destinationUri);
+  }
+
+  return destinationUri;
+}
+
+export async function copyAiRoleAvatarToAppStorage(sourceUri: string, space: PixorySpace = 'normal'): Promise<string> {
+  await ensureAppDirectories(space);
+  await ensureSourceFileExists(sourceUri);
+
+  const avatarDir = getAiRoleAvatarsDir(space);
+  await ensureDirectoryExists(avatarDir);
+
+  const extension = getSafeExtension(getFileNameFromUri(sourceUri));
+  const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
+  const destinationUri = joinPath(avatarDir, `role_avatar_${timestamp}${extension}`);
+
+  try {
+    await FileSystem.copyAsync({
+      from: sourceUri,
+      to: destinationUri,
+    });
+  } catch (error) {
+    if (!isAndroidContentUri(sourceUri)) {
+      throw error;
+    }
+
+    console.warn('Pixory role avatar copyAsync failed for content URI, retrying with native stream copy.', {
       error: error instanceof Error ? error.message : 'unknown copy error',
     });
 

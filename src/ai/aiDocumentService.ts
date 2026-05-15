@@ -172,7 +172,7 @@ async function parseDocumentText(document: AiDocumentRecord, space: PixorySpace)
   }
 
   if (document.sourceType === 'pdf') {
-    return parsePdfText();
+    return parsePdfText({ fileUri: document.localUri });
   }
 
   if (document.sourceType === 'docx') {

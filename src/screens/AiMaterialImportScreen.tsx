@@ -2,6 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
@@ -13,15 +14,13 @@ import {
 } from '../ai/aiDocumentService';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiMaterialImportScreenProps {
   space: PixorySpace;
   knowledgeBaseId?: string;
   onBack: () => void;
 }
-
-type FeedbackTone = 'info' | 'success' | 'warning' | 'error';
 
 interface ImportFeedback {
   message: string;
@@ -168,13 +167,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       title="导入材料"
     >
       <View style={styles.contentStack}>
-        {feedback ? (
-          <View style={[styles.feedbackCard, feedback.tone === 'success' && styles.successFeedbackCard, feedback.tone === 'warning' && styles.warningFeedbackCard, feedback.tone === 'error' && styles.errorFeedbackCard]}>
-            <Text style={[styles.feedbackText, feedback.tone === 'success' && styles.successFeedbackText, feedback.tone === 'warning' && styles.warningFeedbackText, feedback.tone === 'error' && styles.errorFeedbackText]}>
-              {feedback.message}
-            </Text>
-          </View>
-        ) : null}
+        {feedback ? <FeedbackBanner message={feedback.message} tone={feedback.tone} /> : null}
 
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>手动文本</Text>
@@ -224,36 +217,6 @@ const styles = StyleSheet.create({
   contentStack: {
     gap: rhythm.entryCardGap,
   },
-  feedbackCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-  },
-  successFeedbackCard: {
-    borderColor: colors.semantic.success,
-  },
-  warningFeedbackCard: {
-    borderColor: colors.semantic.warning,
-  },
-  errorFeedbackCard: {
-    borderColor: colors.semantic.danger,
-  },
-  feedbackText: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  successFeedbackText: {
-    color: colors.semantic.success,
-  },
-  warningFeedbackText: {
-    color: colors.semantic.warning,
-  },
-  errorFeedbackText: {
-    color: colors.semantic.danger,
-  },
   panel: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
@@ -272,7 +235,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     color: colors.text.title,
-    minHeight: 44,
+    minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
   },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
+import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
 import { FilterChip } from '../components/FilterChip';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -40,8 +41,10 @@ export function AiSessionConfigScreen({
 }: AiSessionConfigScreenProps) {
   const [systemPrompt, setSystemPrompt] = useState('你是 Pixory 的本地素材整理助手，回答要简洁、可靠，并尊重当前空间的数据边界。');
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
+  const [avatarEnabled, setAvatarEnabled] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
@@ -51,38 +54,49 @@ export function AiSessionConfigScreen({
     }
     const config = await loadThreadSessionConfig(space, threadId);
     if (!config) {
-      setStatus('没有找到当前会话。');
+      setStatus({ message: '没有找到当前会话。', tone: 'error' });
       return;
     }
     setSystemPrompt(config.thread.systemPrompt);
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
+    setAvatarEnabled(config.avatar.avatarEnabled);
+    setAvatarUri(config.avatar.avatarUri);
   }, [space, threadId]);
 
   useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
 
-  async function saveAndStartChat() {
+  async function saveSessionSettings(): Promise<boolean> {
     if (!threadId) {
-      onStartChat();
-      return;
+      setStatus({ message: '请先进入一个会话后再保存设置。', tone: 'warning' });
+      return false;
     }
     setSaving(true);
     setStatus(null);
     try {
       await updateAiThreadSessionConfig({
         boundaryMode,
+        avatarEnabled,
         space,
         systemPrompt,
         threadId,
       });
-      setStatus('已保存会话设置。');
-      onStartChat();
+      setStatus({ message: '角色指令和回答范围已应用到当前会话。', tone: 'success', title: '设置已保存' });
+      return true;
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存失败');
+      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveAndStartChat() {
+    const saved = await saveSessionSettings();
+    if (saved) {
+      onStartChat();
     }
   }
 
@@ -93,6 +107,9 @@ export function AiSessionConfigScreen({
     }
     await applyRoleCardToThread({ roleCardId: null, space, threadId });
     setRoleCardSummary('默认角色');
+    setAvatarEnabled(false);
+    setAvatarUri(null);
+    setStatus({ message: '当前会话已恢复为 Pixory 默认角色。', tone: 'success', title: '角色已重置' });
     await reloadConfig();
   }
 
@@ -109,6 +126,7 @@ export function AiSessionConfigScreen({
         <ContentCard>
           <Text style={styles.sectionTitle}>当前对话</Text>
           <Text style={styles.body}>{contextTitle ?? '普通聊天'}</Text>
+          <PrimaryButton label="模型账号" onPress={onOpenProviderSettings} variant="outline" />
         </ContentCard>
 
         <FormTextareaRow
@@ -122,7 +140,9 @@ export function AiSessionConfigScreen({
         <ContentCard>
           <Text style={styles.sectionTitle}>角色卡</Text>
           <Text style={styles.body}>{roleCardSummary}</Text>
+          <Text style={styles.caption}>{avatarEnabled ? (avatarUri ? '聊天回复会显示当前角色头像。' : '已启用头像，角色卡还没有选择头像时会显示默认标记。') : '聊天回复保持无头像显示。'}</Text>
           <View style={styles.inlineButtons}>
+            <PrimaryButton label={avatarEnabled ? '隐藏头像' : '启用头像'} onPress={() => setAvatarEnabled((current) => !current)} variant="outline" />
             <PrimaryButton label="选择或编辑角色卡" onPress={onOpenRoleCardEditor} variant="outline" />
             <PrimaryButton label="使用默认角色" onPress={() => void clearRoleCard()} variant="ghost" />
           </View>
@@ -143,10 +163,10 @@ export function AiSessionConfigScreen({
         </ContentCard>
 
         <View style={styles.actions}>
-          <PrimaryButton label="模型账号" onPress={onOpenProviderSettings} variant="outline" />
+          <PrimaryButton label="保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="outline" />
           <PrimaryButton label="开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
         </View>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        {status ? <FeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
       </View>
     </ScreenScaffold>
   );
@@ -162,7 +182,7 @@ const styles = StyleSheet.create({
   body: {
     ...typography.textStyles.body,
   },
-  status: {
+  caption: {
     ...typography.textStyles.caption,
   },
   inlineButtons: {

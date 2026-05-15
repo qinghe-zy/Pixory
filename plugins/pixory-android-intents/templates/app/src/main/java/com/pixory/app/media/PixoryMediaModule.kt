@@ -23,6 +23,9 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -198,6 +201,22 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
       result.putString("uri", destination.toURI().toString())
       result.putDouble("size", destination.length().toDouble())
       promise.resolve(result)
+    }
+  }
+
+  @ReactMethod
+  fun extractPdfText(sourceUri: String, promise: Promise) {
+    runOnIo(promise, "PIXORY_PDF_TEXT_EXTRACTION_FAILED") {
+      PDFBoxResourceLoader.init(reactContext)
+      openInput(Uri.parse(sourceUri)).use { input ->
+        PDDocument.load(input).use { document ->
+          val text = PDFTextStripper().getText(document).trim()
+          val result = Arguments.createMap()
+          result.putString("text", text)
+          result.putInt("pageCount", document.numberOfPages)
+          promise.resolve(result)
+        }
+      }
     }
   }
 

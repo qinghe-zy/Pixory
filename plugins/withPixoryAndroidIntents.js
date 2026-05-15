@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { createRunOncePlugin, withDangerousMod } = require('expo/config-plugins');
+const { createRunOncePlugin, withAppBuildGradle, withDangerousMod } = require('expo/config-plugins');
 
 const PLUGIN_NAME = 'with-pixory-android-intents';
 const PLUGIN_VERSION = '1.0.0';
@@ -20,6 +20,8 @@ const TEMPLATE_FILES = [
   },
 ];
 
+const PDFBOX_DEPENDENCY = 'implementation("com.tom-roush:pdfbox-android:2.0.27.0")';
+
 function copyTemplateFile(projectRoot, androidRoot, sourceRelativePath, targetRelativePath) {
   const sourcePath = path.join(projectRoot, sourceRelativePath);
   const targetPath = path.join(androidRoot, targetRelativePath);
@@ -33,7 +35,17 @@ function copyTemplateFile(projectRoot, androidRoot, sourceRelativePath, targetRe
 }
 
 function withPixoryAndroidIntents(config) {
-  return withDangerousMod(config, [
+  const configWithDependency = withAppBuildGradle(config, (modConfig) => {
+    if (!modConfig.modResults.contents.includes(PDFBOX_DEPENDENCY)) {
+      modConfig.modResults.contents = modConfig.modResults.contents.replace(
+        /dependencies\s*\{\n/,
+        (match) => `${match}    ${PDFBOX_DEPENDENCY}\n`
+      );
+    }
+    return modConfig;
+  });
+
+  return withDangerousMod(configWithDependency, [
     'android',
     async (modConfig) => {
       const { projectRoot, platformProjectRoot } = modConfig.modRequest;

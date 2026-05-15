@@ -165,7 +165,9 @@ Default expectation:
 - optimize one page around one primary visual focus
 - reduce visual weight before adding decoration
 - prefer token-level fixes before page-level one-offs
+- all new UI components must use the shared design tokens from `src/design/tokens/` for spacing, rhythm, radius, color, typography, dimensions, and touch targets before introducing any local hard-coded values
 - use `src/design/tokens/rhythm.ts` for new page/component vertical rhythm before adding ad-hoc `gap`, `rowGap`, `marginTop`, or `marginBottom`
+- use `spacing`, `rhythm`, `metrics`, `radius`, `colors`, and `typography` tokens in component styles; only use literal values when a token cannot express the behavior, and leave a short code comment explaining why
 - validate on Android screenshots with real data, not empty state only
 
 ## Empty States

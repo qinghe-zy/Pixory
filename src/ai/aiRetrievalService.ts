@@ -139,6 +139,44 @@ async function keywordSearch(input: RetrieveForThreadInput): Promise<RetrievedSn
   });
 }
 
+async function loadChunkSnippetsByIds(
+  input: RetrieveForThreadInput,
+  vectorScores: Array<{ chunkId: string; score: number }>
+): Promise<RetrievedSnippet[]> {
+  if (vectorScores.length === 0) {
+    return [];
+  }
+  const scoreByChunkId = new Map(vectorScores.map((item) => [item.chunkId, item.score]));
+  const chunkIds = vectorScores.map((item) => item.chunkId);
+
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const rows = await db.getAllAsync<ChunkSearchRow>(
+      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
+       FROM ai_chunks
+       WHERE space = ?
+         AND ownerType = ?
+         AND ownerId = ?
+         AND id IN (${chunkIds.map(() => '?').join(', ')})`,
+      input.space,
+      input.ownerType,
+      input.ownerId,
+      ...chunkIds
+    );
+
+    return rows
+      .map((row) => ({
+        chunkId: row.id,
+        sourceType: 'document_chunk' as const,
+        sourceId: row.documentId,
+        label: row.sourceLabel,
+        text: row.text,
+        locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
+        score: scoreByChunkId.get(row.id) ?? 0,
+      }))
+      .sort((left, right) => right.score - left.score);
+  });
+}
+
 async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<RetrievedSnippet[]> {
   if (input.ownerType !== 'ip') {
     return [];
@@ -312,7 +350,15 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   }
 
   const scoreByChunkId = new Map(vectorScores.map((item) => [item.chunkId, item.score]));
-  const merged = [...ipContext, ...keyword]
+  const vectorSnippets = await loadChunkSnippetsByIds(input, vectorScores);
+  const mergedByChunkId = new Map<string, RetrievedSnippet>();
+  for (const snippet of [...ipContext, ...vectorSnippets, ...keyword]) {
+    const existing = mergedByChunkId.get(snippet.chunkId);
+    if (!existing || snippet.score > existing.score) {
+      mergedByChunkId.set(snippet.chunkId, snippet);
+    }
+  }
+  const merged = [...mergedByChunkId.values()]
     .map((snippet) => ({
       ...snippet,
       score: snippet.score + (scoreByChunkId.get(snippet.chunkId) ?? 0) * 10,

@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.2",
-  "versionCode": 216,
+  "version": "2.1.3",
+  "versionCode": 217,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.2 已发布，补齐 AI 工作台、材料阅读和本地 RAG 体验。",
+  "message": "Pixory 2.1.3 已发布，增强 AI 角色、知识库和视频播放体验。",
   "releaseNotes": [
-    "角色卡、系统提示词、模型和知识边界现在会保存到会话。",
-    "材料库支持多文件导入、批量移除，以及 TXT、Markdown、DOCX、PDF 阅读。",
-    "补齐 Embedding 设置、本地混合检索和引用跳转。"
+    "聊天角色卡支持头像开关，可从相册或 IP 素材选择头像。",
+    "优化角色指令、知识库读取、材料导入反馈和文档阅读体验。",
+    "改进视频播放器进度手势、默认竖屏和底部控制布局。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

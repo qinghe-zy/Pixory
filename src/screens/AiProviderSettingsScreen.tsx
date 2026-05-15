@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
@@ -40,7 +41,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [manualModelDraft, setManualModelDraft] = useState('');
   const [visibleKey, setVisibleKey] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
 
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
@@ -99,7 +100,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim())) {
       return;
     }
-    setStatus('处理中...');
+    setStatus({ message: '正在保存模型账号设置...', tone: 'info' });
     try {
       if (selectedIsOtherProvider) {
         await saveProviderBaseUrl(space, selectedCard.provider.id, baseUrlDraft);
@@ -107,33 +108,33 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       const apiKey = apiDraft.trim();
       await saveProviderApiKey(selectedCard.provider.id, apiKey);
       setApiDraft(apiKey);
-      setStatus('已保存。');
+      setStatus({ message: '模型账号已保存，后续对话会使用当前配置。', tone: 'success', title: '保存成功' });
       await loadProviders();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存失败');
+      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
     }
   }
 
   async function selectModel(model: AiProviderModelRecord) {
-    setStatus('处理中...');
+    setStatus({ message: '正在切换默认对话模型...', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
       setModelSheetVisible(false);
-      setStatus('已选择。');
+      setStatus({ message: `已选择 ${model.displayName}。`, tone: 'success', title: '模型已更新' });
       await loadProviders();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '选择失败');
+      setStatus({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
     }
   }
 
   async function selectEmbeddingModel(model: AiProviderModelRecord) {
-    setStatus('处理中...');
+    setStatus({ message: '正在切换默认 Embedding 模型...', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultEmbeddingModelId: model.modelId });
-      setStatus('已选择默认 Embedding。');
+      setStatus({ message: `已选择 ${model.displayName} 作为默认 Embedding。`, tone: 'success', title: 'Embedding 已更新' });
       await loadProviders();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '选择失败');
+      setStatus({ message: error instanceof Error ? error.message : '选择失败', tone: 'error' });
     }
   }
 
@@ -141,12 +142,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard) {
       return;
     }
-    setStatus('正在测试连接...');
+    setStatus({ message: '正在验证 API key、模型和服务地址...', tone: 'info', title: '测试连接中' });
     try {
       await testProvider(selectedCard.provider.id, space);
-      setStatus('连接可用。');
+      setStatus({ message: `${selectedCard.provider.displayName} 连接可用，可以开始对话。`, tone: 'success', title: '连接成功' });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '测试失败');
+      setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '连接失败' });
     }
   }
 
@@ -154,13 +155,17 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard) {
       return;
     }
-    setStatus('正在同步模型...');
+    setStatus({ message: '正在从模型商读取模型列表...', tone: 'info', title: '同步模型中' });
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
-      setStatus(result.synced > 0 ? `已同步 ${result.synced} 个模型。` : `已使用 ${result.fallback} 个内置模型。`);
+      setStatus(
+        result.synced > 0
+          ? { message: `已同步 ${result.synced} 个模型。`, tone: 'success', title: '同步完成' }
+          : { message: `没有读取到远程列表，已使用 ${result.fallback} 个内置模型。`, tone: 'warning', title: '使用内置模型' }
+      );
       await loadProviders();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '同步失败');
+      setStatus({ message: error instanceof Error ? error.message : '同步失败', tone: 'error' });
     }
   }
 
@@ -168,14 +173,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard || !manualModelDraft.trim()) {
       return;
     }
-    setStatus('处理中...');
+    setStatus({ message: '正在保存自定义模型...', tone: 'info' });
     try {
       await saveManualChatModel(space, selectedCard.provider.id, manualModelDraft);
       setManualModelDraft('');
-      setStatus('已保存。');
+      setStatus({ message: `已保存自定义模型 ${manualModelDraft.trim()}。`, tone: 'success', title: '模型已保存' });
       await loadProviders();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存失败');
+      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
     }
   }
 
@@ -362,7 +367,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           </View>
         ) : null}
 
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        {status ? <FeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
       </View>
     </ScreenScaffold>
   );
@@ -468,10 +473,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78,
-  },
-  status: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
   },
   caption: {
     ...typography.textStyles.caption,

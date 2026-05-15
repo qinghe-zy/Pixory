@@ -10,6 +10,7 @@ import {
   createThreadFromContext,
   getCurrentChatModelLabel,
   listThreadMessages,
+  loadThreadAvatarConfig,
   regenerateAssistantMessage,
   rewriteUserMessage,
   sendUserMessage,
@@ -18,7 +19,7 @@ import {
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
-import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiChatScreenProps {
@@ -30,10 +31,11 @@ interface AiChatScreenProps {
   includeIpDocuments?: boolean;
   threadId?: string;
   onBack: () => void;
-  onOpenSessionConfig: () => void;
+  onOpenSessionConfig: (threadId: string) => void;
   onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
   onOpenIpSource: (ipId: number) => void;
   onOpenImageSource: (imageId: number) => void;
+  onThreadReady?: (threadId: string) => void;
 }
 
 export function AiChatScreen({
@@ -49,6 +51,7 @@ export function AiChatScreen({
   onOpenSource,
   onOpenIpSource,
   onOpenImageSource,
+  onThreadReady,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
@@ -63,6 +66,7 @@ export function AiChatScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
+  const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
   const thinking = generating;
   const citations = messages.some((message) => message.citations.length > 0);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
@@ -92,6 +96,17 @@ export function AiChatScreen({
     [activeThreadId, space]
   );
 
+  const reloadAvatarConfig = useCallback(
+    async (targetThreadId: string | null = activeThreadId) => {
+      if (!targetThreadId) {
+        setAvatarConfig({ avatarEnabled: false, avatarUri: null });
+        return;
+      }
+      setAvatarConfig(await loadThreadAvatarConfig(space, targetThreadId));
+    },
+    [activeThreadId, space]
+  );
+
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
     setEditingUserMessageId(null);
@@ -104,6 +119,10 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadModelLabel(threadId ?? activeThreadId);
   }, [activeThreadId, reloadModelLabel, threadId]);
+
+  useEffect(() => {
+    void reloadAvatarConfig(threadId ?? activeThreadId);
+  }, [activeThreadId, reloadAvatarConfig, threadId]);
 
   useEffect(() => {
     scrollToLatestMessage(messages.length > 1);
@@ -142,8 +161,19 @@ export function AiChatScreen({
       title: resolvedContextTitle,
     });
     setActiveThreadId(thread.id);
+    onThreadReady?.(thread.id);
     void reloadModelLabel(thread.id);
+    void reloadAvatarConfig(thread.id);
     return thread.id;
+  }
+
+  async function handleOpenSessionConfig() {
+    try {
+      const nextThreadId = await ensureThread();
+      onOpenSessionConfig(nextThreadId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '无法打开会话设置');
+    }
   }
 
   async function handleSend() {
@@ -303,7 +333,7 @@ export function AiChatScreen({
             </Text>
           ) : null}
         </View>
-        <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={onOpenSessionConfig} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+        <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={colors.text.heading} name="options-outline" size={20} />
         </Pressable>
       </View>
@@ -326,7 +356,9 @@ export function AiChatScreen({
             messages.map((message) => (
               <AiMessageBubble
                 key={message.id}
+                assistantAvatar={avatarConfig}
                 message={message}
+                space={space}
                 onEditUser={handleEditUserMessage}
                 onOpenCitation={openCitation}
                 onRegenerate={(messageId) => {
@@ -387,7 +419,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    minHeight: 52,
+    minHeight: metrics.bottomActionHeight,
   },
   pressed: {
     opacity: 0.78,
@@ -396,14 +428,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.overlay.softSurface,
     borderRadius: radius.pill,
-    height: 42,
+    height: metrics.minTouchSize,
     justifyContent: 'center',
-    width: 42,
+    width: metrics.minTouchSize,
   },
   titleBlock: {
     alignItems: 'center',
     flex: 1,
-    gap: 1,
+    gap: rhythm.microGap,
     justifyContent: 'center',
   },
   titleLine: {
@@ -428,8 +460,8 @@ const styles = StyleSheet.create({
   liveDot: {
     backgroundColor: colors.primary.active,
     borderRadius: radius.pill,
-    height: 7,
-    width: 7,
+    height: spacing[1.5],
+    width: spacing[1.5],
   },
   error: {
     ...typography.textStyles.caption,

@@ -80,10 +80,24 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
     await reload();
   }
 
+  const selectionFooter = selectedIds.length ? (
+    <View style={styles.selectionFooter}>
+      <View style={styles.selectionCopy}>
+        <Text style={styles.selectionText}>已选择 {selectedIds.length} 个材料</Text>
+        <Text style={styles.selectionMeta}>只移除材料记录和本地索引，不会删除原始素材。</Text>
+      </View>
+      <View style={styles.selectionActions}>
+        <PrimaryButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
+        <PrimaryButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
+      </View>
+    </View>
+  ) : null;
+
   return (
     <ScreenScaffold
       backgroundVariant="search"
       decorativeTitle="AI"
+      footer={selectionFooter}
       onBack={onBack}
       scrollable
       subtitle={`${spaceLabel} · ${knowledgeBaseId ? '当前知识库' : '最近材料'}`}
@@ -91,13 +105,6 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
     >
       <View style={styles.contentStack}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
-        {selectedIds.length ? (
-          <View style={styles.selectionBar}>
-            <Text style={styles.selectionText}>已选择 {selectedIds.length} 个材料</Text>
-            <PrimaryButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
-            <PrimaryButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
-          </View>
-        ) : null}
         <View style={styles.list}>
           {items.length ? (
             items.map((item) => {
@@ -187,6 +194,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedRow: {
+    backgroundColor: colors.primary.weak,
     borderColor: colors.primary.default,
   },
   rowMain: {
@@ -226,16 +234,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing[4],
   },
-  selectionBar: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+  selectionFooter: {
+    backgroundColor: colors.primary.weak,
+    borderColor: colors.primary.light,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
+  selectionCopy: {
+    gap: rhythm.microGap,
+  },
   selectionText: {
     ...typography.textStyles.bodyStrong,
     color: colors.text.title,
+  },
+  selectionMeta: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+  },
+  selectionActions: {
+    gap: rhythm.inlineGap,
   },
 });

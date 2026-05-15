@@ -59,7 +59,7 @@ const SURFACE_SEEK_FINE_LIGHT_FACTOR = 0.6;
 const SURFACE_SEEK_FINE_MEDIUM_FACTOR = 0.35;
 const SURFACE_SEEK_FINE_HIGH_FACTOR = 0.15;
 
-type GestureFeedbackKind = 'seek-backward' | 'seek-forward' | 'play' | 'pause' | 'brightness' | 'volume' | 'locked' | 'unlocked';
+type GestureFeedbackKind = 'seek-backward' | 'seek-forward' | 'brightness' | 'volume' | 'locked' | 'unlocked';
 
 interface GestureFeedbackState {
   kind: GestureFeedbackKind;
@@ -210,7 +210,6 @@ export function VideoPlayerScreen({
       }
     };
 
-    void ScreenOrientation.getOrientationAsync().then(syncLandscapeState).catch(() => undefined);
     const orientationSubscription = ScreenOrientation.addOrientationChangeListener((event) => {
       syncLandscapeState(event.orientationInfo.orientation);
     });
@@ -226,10 +225,9 @@ export function VideoPlayerScreen({
         setHoldSpeed(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number]);
       }
       setIsPlayerLocked(preferences.lockedByDefault);
-      if (preferences.orientationPreference === 'landscape') {
-        setIsLandscape(true);
-        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => undefined);
-      }
+      const shouldUseLandscape = preferences.orientationPreference === 'landscape';
+      setIsLandscape(shouldUseLandscape);
+      void ScreenOrientation.lockAsync(shouldUseLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
     });
     void VolumeManager.showNativeVolumeUI({ enabled: false }).catch(() => undefined);
     return () => {
@@ -804,7 +802,6 @@ export function VideoPlayerScreen({
         return;
       }
       togglePlay();
-      showGestureFeedback({ kind: isPlaying ? 'pause' : 'play', label: isPlaying ? '暂停' : '播放' });
       return;
     }
     lastSurfaceTapAtRef.current = now;
@@ -825,7 +822,6 @@ export function VideoPlayerScreen({
       return;
     }
     togglePlay();
-    showGestureFeedback({ kind: isPlaying ? 'pause' : 'play', label: isPlaying ? '暂停' : '播放' });
   }
 
   function seekByOffset(offsetSeconds: number) {
@@ -1418,19 +1414,8 @@ export function VideoPlayerScreen({
                 <View style={[styles.progressKnob, { left: `${progress * 100}%` }]} />
               </View>
             </View>
-            {!isLandscape ? (
-              <View style={styles.progressInfoRow}>
-                <Text style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
-                {isScrubbing ? (
-                  <View style={styles.scrubBubble}>
-                    <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
-                    <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
             <View style={[styles.controlRow, isLandscape ? styles.landscapeControlRow : null]}>
-              <View style={styles.controlLeft}>
+              <View style={[styles.controlLeft, !isLandscape ? styles.portraitControlLeft : null]}>
                 {isLandscape ? (
                   <Pressable accessibilityLabel="上一个视频" onPress={() => switchVideoByOffset(-1)} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                     <Ionicons color={colors.text.inverse} name="play-skip-back" size={18} />
@@ -1446,6 +1431,9 @@ export function VideoPlayerScreen({
                 ) : null}
                 {isLandscape ? (
                   <Text numberOfLines={1} style={styles.landscapeTimeText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
+                ) : null}
+                {!isLandscape ? (
+                  <Text numberOfLines={1} style={styles.progressInfoText}>{formatDuration(displayTime * 1000)} / {formatDuration(duration * 1000)}</Text>
                 ) : null}
               </View>
               <View style={styles.controlActions}>
@@ -1464,6 +1452,14 @@ export function VideoPlayerScreen({
                 </Pressable>
               </View>
             </View>
+            {!isLandscape && isScrubbing ? (
+              <View style={styles.portraitScrubBubbleRow}>
+                <View style={styles.scrubBubble}>
+                  <Text style={styles.scrubBubbleTime}>{formatDuration(displayTime * 1000)}</Text>
+                  <Text style={styles.scrubBubbleMeta}>{formatScrubMeta(displayTime - scrubStartTimeRef.current, scrubGestureHint)}</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
         </Animated.View>
 
@@ -1536,7 +1532,7 @@ function getGestureFeedbackIcon(kind: GestureFeedbackKind) {
   if (kind === 'volume') return 'volume-high-outline';
   if (kind === 'locked') return 'lock-closed-outline';
   if (kind === 'unlocked') return 'lock-open-outline';
-  return kind === 'pause' ? 'pause' : 'play';
+  return 'information-circle-outline';
 }
 
 const styles = StyleSheet.create({
@@ -1593,8 +1589,8 @@ const styles = StyleSheet.create({
   surfaceScrubOverlay: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: 'rgba(12, 15, 13, 0.78)',
-    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(12, 15, 13, 0.58)',
+    borderColor: 'rgba(255,255,255,0.1)',
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[2],
@@ -1602,7 +1598,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
     position: 'absolute',
-    top: '42%',
+    top: '56%',
   },
   surfaceScrubTime: {
     ...typography.textStyles.caption,
@@ -1623,7 +1619,7 @@ const styles = StyleSheet.create({
   },
   surfaceScrubMeta: {
     ...typography.textStyles.micro,
-    color: 'rgba(255,255,255,0.72)',
+    color: 'rgba(255,255,255,0.64)',
     fontWeight: '700',
   },
   unlockButton: {
@@ -1740,10 +1736,10 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     paddingTop: spacing[1],
   },
-  progressInfoRow: {
+  portraitScrubBubbleRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[2],
+    justifyContent: 'flex-start',
     minHeight: 30,
   },
   progressInfoText: {
@@ -1820,6 +1816,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     flexShrink: 0,
+  },
+  portraitControlLeft: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   landscapeTimeText: {
     ...typography.textStyles.micro,

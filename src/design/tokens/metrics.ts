@@ -1,5 +1,7 @@
 export const metrics = {
   minTouchSize: 44,
+  iconSizeSm: 18,
+  iconSizeMd: 20,
   iconButtonSize: 48,
   chipHeight: 34,
   chipPaddingHorizontal: 12,
