@@ -86,6 +86,16 @@ test('import flow supports duplicate review skip modes and source move preferenc
   assert.match(importScreenSource, /videoImportNamingMode/);
 });
 
+test('move import rejects assets that cannot be mapped back to a deletable media library source', () => {
+  const imageImportSource = readProjectFile('src/services/imageImportService.ts');
+  const videoImportSource = readProjectFile('src/services/videoImportService.ts');
+
+  assert.match(imageImportSource, /移动导入无法删除原文件/);
+  assert.match(videoImportSource, /移动导入无法删除原视频/);
+  assert.doesNotMatch(imageImportSource, /!pendingImageAsset\.sourceAssetId[\s\S]{0,220}return;/);
+  assert.doesNotMatch(videoImportSource, /!pickedAsset\.assetId[\s\S]{0,220}return;/);
+});
+
 test('duplicate skip import reports skipped counts and applies exact skip to videos', () => {
   const imageImportSource = readProjectFile('src/services/imageImportService.ts');
   const videoImportSource = readProjectFile('src/services/videoImportService.ts');

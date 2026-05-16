@@ -116,6 +116,10 @@ function getExtension(filename: string): string {
   return match ? match[0].toLowerCase() : '.mp4';
 }
 
+function resolvePickedVideoAssetId(assetId: string | null | undefined): string | null {
+  return typeof assetId === 'string' && assetId.trim() ? assetId : null;
+}
+
 function normalizeGroupIds(groupIds?: number[]): number[] {
   if (!groupIds?.length) {
     return [];
@@ -199,14 +203,15 @@ async function shouldSkipVideoDuplicateImport(
 }
 
 async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Promise<void> {
-  if (!pickedAsset.assetId) {
-    console.warn('Pixory video move import could not delete source asset because assetId is unavailable.', {
-      sourceUri: pickedAsset.uri,
-    });
-    return;
+  const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId);
+  if (!sourceAssetId) {
+    throw new Error('移动导入无法删除原视频：系统没有返回可删除的媒体库资产 ID，请切换为复制模式。');
   }
 
-  await MediaLibrary.deleteAssetsAsync([pickedAsset.assetId]);
+  const deleted = await MediaLibrary.deleteAssetsAsync([sourceAssetId]);
+  if (!deleted) {
+    throw new Error('移动导入无法删除原视频：系统未完成源文件删除。');
+  }
 }
 
 async function buildVideoPaths(space: PixorySpace, ipId: number, internalFilename: string) {
@@ -241,6 +246,9 @@ async function importSingleVideo({
   duplicateDecision,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
+  if (imageImportSourceMode === 'move' && !resolvePickedVideoAssetId(pickedAsset.assetId)) {
+    throw new Error('移动导入无法删除原视频：系统没有返回可删除的媒体库资产 ID，请从系统相册选择可管理的视频，或切换为复制模式。');
+  }
   const internalFilename = generateInternalFilename(originalFilename.endsWith(getExtension(originalFilename)) ? originalFilename : `${originalFilename}.mp4`);
   const { coverUri, originalUri, tempUri } = await buildVideoPaths(space, ipId, internalFilename);
   let createdVideoId: number | null = null;

@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.4",
-  "versionCode": 218,
+  "version": "2.1.5",
+  "versionCode": 219,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.4 已发布，修复 AI 知识库读取和角色指令应用体验。",
+  "message": "Pixory 2.1.5 已发布，修复移动导入和视频播放器控制栏体验。",
   "releaseNotes": [
-    "修复知识库聊天在元问题下无法读取已有材料的问题。",
-    "增强自定义角色指令传递，让模型能识别当前会话提示词已生效。",
-    "改进 Gemini 流式响应解析，发送过来的内容可以动态刷新。"
+    "修复视频移动导入在无法删除原文件时仍显示成功的问题。",
+    "同步收紧图片移动导入，避免原文件未删除却被当作移动成功。",
+    "优化竖屏视频播放器控制栏，锁定按钮与待播放等操作保持同一行。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

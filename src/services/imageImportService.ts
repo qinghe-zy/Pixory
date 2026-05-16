@@ -190,6 +190,10 @@ function buildFallbackFilename(pickedAsset: PickedImageAsset): string {
   return `imported-image.${mimeExtension}`;
 }
 
+function resolvePickedAssetId(assetId: string | null | undefined): string | null {
+  return typeof assetId === 'string' && assetId.trim() ? assetId : null;
+}
+
 function resolveMimeType(pickedAsset: PickedImageAsset, filename: string): string {
   if (pickedAsset.mimeType?.trim()) {
     return pickedAsset.mimeType.trim().toLowerCase();
@@ -477,13 +481,13 @@ async function shouldSkipDuplicateImport(
 
 export async function deleteImportedSourceAsset(pendingImageAsset: PendingImageAssetImport): Promise<void> {
   if (!pendingImageAsset.sourceAssetId) {
-    console.warn('Pixory move import could not delete source asset because assetId is unavailable.', {
-      sourceUri: pendingImageAsset.sourceUri,
-    });
-    return;
+    throw new Error('移动导入无法删除原文件：系统没有返回可删除的媒体库资产 ID，请切换为复制模式。');
   }
 
-  await MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
+  const deleted = await MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
+  if (!deleted) {
+    throw new Error('移动导入无法删除原文件：系统未完成源文件删除。');
+  }
 }
 
 export async function pickImagesForImport(): Promise<PickImagesForImportResult> {
@@ -530,6 +534,11 @@ export async function buildImageAssetFromPickedFile(
   const originalFilename = pickedAsset.fileName?.trim() || buildFallbackFilename(pickedAsset);
   const fileSize = pickedAsset.fileSize ?? 0;
   const { width, height } = await resolveDimensionsForPickedAsset(pickedAsset, originalFilename);
+  const sourceAssetId = resolvePickedAssetId(pickedAsset.assetId);
+
+  if ((params.imageImportSourceMode ?? 'copy') === 'move' && !sourceAssetId) {
+    throw new Error('移动导入无法删除原文件：系统没有返回可删除的媒体库资产 ID，请从系统相册选择可管理的图片，或切换为复制模式。');
+  }
 
   return {
     space: params.space ?? 'normal',
@@ -544,7 +553,7 @@ export async function buildImageAssetFromPickedFile(
     height,
     mimeType: resolveMimeType(pickedAsset, originalFilename),
     fileSize,
-    sourceAssetId: typeof pickedAsset.assetId === 'string' ? pickedAsset.assetId : null,
+    sourceAssetId,
     duplicateDecision: params.duplicateDecision ?? 'importAll',
     imageImportSourceMode: params.imageImportSourceMode ?? 'copy',
     isFavorite: Boolean(isFavorite),

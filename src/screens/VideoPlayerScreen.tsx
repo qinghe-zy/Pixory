@@ -1831,9 +1831,9 @@ const styles = StyleSheet.create({
   },
   controlActions: {
     alignItems: 'center',
-    flex: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexShrink: 0,
+    flexWrap: 'nowrap',
     gap: spacing[2],
     justifyContent: 'flex-end',
     minWidth: 0,
