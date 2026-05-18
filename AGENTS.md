@@ -246,33 +246,41 @@ Default release workflow:
    - `src/services/updateCheckService.ts`
    - `docs/update-version.json`
    - local Android Gradle release fields/output name when present
-5. Keep remote update JSON and release notes short, concrete, and user-facing.
-6. Do not switch signing certificates, keystores, aliases, or Gradle signing config. The release certificate is local and must stay the existing Pixory local release certificate unless the user explicitly requests a certificate migration.
-7. Run verification before packaging:
+5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, remote update metadata, release notes, APK output filename references, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
+6. Before verification and APK build, clean release-interfering temporary artifacts:
+   - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
+   - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
+   - Do not delete durable project documentation such as `README.md`, `AGENTS.md`, `.impeccable.md`, `docs/update-version.json`, `docs/announcement.json`, or intentionally maintained product/spec documents.
+   - Never remove user-made unrelated work just to make the tree clean; if uncertain whether a document is disposable, keep it and mention the uncertainty in the release report.
+7. Keep remote update JSON and release notes short, concrete, and user-facing.
+8. Do not switch signing certificates, keystores, aliases, or Gradle signing config. The release certificate is local and must stay the existing Pixory local release certificate unless the user explicitly requests a certificate migration.
+9. Run verification before packaging:
    - `pnpm typecheck`
    - `pnpm test`
    - `git diff --check`
-8. Build the Android release APK from `android` with the existing Gradle config:
+10. Build the Android release APK from `android` with the existing Gradle config:
    - `.\gradlew.bat assembleRelease`
-9. Copy the generated release APK to `output/release/` with the matching versioned filename.
-10. Verify the APK signature with `apksigner verify --print-certs`. Expected current local release certificate:
+11. Copy the generated release APK to `output/release/` with the matching versioned filename.
+12. Verify the APK signature with `apksigner verify --print-certs`. Expected current local release certificate:
     - `CN=Pixory, OU=Local Release, O=Pixory, L=Local, ST=Local, C=CN`
     - SHA-256 `b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e`
-11. Do Android validation:
+13. Do Android validation:
     - Use `D:\Develop\Android\Sdk\platform-tools\adb.exe devices`.
     - If a compatible emulator/device is available, install and launch.
     - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
-12. Commit the release changes with a concise release commit.
-13. Push `main`.
-14. Create and push the version tag.
-15. Create a GitHub Release and upload the APK.
-16. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, and local/remote branch sync.
-17. Report:
+14. Commit the release changes with a concise release commit.
+15. Push `main`.
+16. Create and push the version tag.
+17. Create a GitHub Release and upload the APK.
+18. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, and local/remote branch sync.
+19. Report:
     - version
     - commit
     - tag
     - release URL
     - APK path and size
+    - release-required files updated
+    - temporary or completed requirement documents cleaned, archived, or intentionally kept
     - verification performed
     - any unverified device checks or signature-install caveats
 
