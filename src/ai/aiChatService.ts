@@ -2,6 +2,7 @@ import {
   aiProviderRepository,
   aiRoleCardRepository,
   aiThreadRepository,
+  settingsRepository,
   runWithDatabaseSpace,
   type AiBoundaryMode,
   type AiCitationRecord,
@@ -154,7 +155,8 @@ function materialRulesForMode(boundaryMode: AiBoundaryMode): string {
 async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord) {
   await ensureBuiltInProviders(space);
   const providers = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listProviders(db));
-  const provider = providers.find((item) => item.id === thread.providerId) ?? providers[0] ?? null;
+  const defaultProviderId = await runWithDatabaseSpace(space, (db) => settingsRepository.getDefaultAiProviderId(db));
+  const provider = providers.find((item) => item.id === thread.providerId) ?? providers.find((item) => item.id === defaultProviderId) ?? providers[0] ?? null;
   if (!provider) {
     return { provider: null, modelId: null, apiKey: null };
   }
@@ -168,9 +170,14 @@ async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord)
 }
 
 async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: string | null, modelId?: string | null) {
-  const provider = providerId
-    ? await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId))
-    : (await runWithDatabaseSpace(space, (db) => aiProviderRepository.listProviders(db)))[0] ?? null;
+  const provider = await runWithDatabaseSpace(space, async (db) => {
+    if (providerId) {
+      return aiProviderRepository.findProviderById(db, providerId);
+    }
+    const providers = await aiProviderRepository.listProviders(db);
+    const defaultProviderId = await settingsRepository.getDefaultAiProviderId(db);
+    return providers.find((item) => item.id === defaultProviderId) ?? providers[0] ?? null;
+  });
   if (!provider) {
     return { provider: null, model: null };
   }

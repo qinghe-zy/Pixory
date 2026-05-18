@@ -8,6 +8,7 @@ const LAST_BACKUP_AT_KEY = 'lastBackupAt';
 const BACKUP_EXPORT_DIRECTORY_URI_KEY = 'backupExportDirectoryUri';
 const SKIPPED_UPDATE_VERSION_KEY = 'skippedUpdateVersionKey';
 const DISMISSED_ANNOUNCEMENT_ID_KEY = 'dismissedAnnouncementId';
+export const AI_DEFAULT_CHAT_PROVIDER_ID_KEY = 'aiDefaultChatProviderId';
 export const ASSET_LIST_VIEW_MODE_KEY = 'assetListViewMode';
 export const ASSET_LIST_SORT_ORDER_KEY = 'assetListSortOrder';
 export const IMAGE_IMPORT_SOURCE_MODE_KEY = 'imageImportSourceMode';
@@ -115,6 +116,14 @@ export const settingsRepository = {
 
   async setDismissedAnnouncementId(db: SQLiteDatabase, value: string | null): Promise<void> {
     await this.setValue(db, DISMISSED_ANNOUNCEMENT_ID_KEY, value);
+  },
+
+  async getDefaultAiProviderId(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, AI_DEFAULT_CHAT_PROVIDER_ID_KEY);
+  },
+
+  async setDefaultAiProviderId(db: SQLiteDatabase, providerId: string | null): Promise<void> {
+    await this.setValue(db, AI_DEFAULT_CHAT_PROVIDER_ID_KEY, providerId);
   },
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {

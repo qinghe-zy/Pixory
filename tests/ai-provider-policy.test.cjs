@@ -43,14 +43,21 @@ test('secure AI settings service uses expo-secure-store for API keys', () => {
 test('provider settings expose test sync and embedding model controls', () => {
   const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const chatService = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   assert.match(providerSettings, /testProvider/);
   assert.match(providerSettings, /syncProviderModels/);
+  assert.match(providerSettings, /saveProviderDraft/);
+  assert.match(providerSettings, /保存并测试/);
+  assert.match(providerSettings, /await saveProviderDraft\(\)/);
   assert.match(providerSettings, /测试连接/);
   assert.match(providerSettings, /同步模型/);
   assert.match(providerSettings, /embeddingModels/);
   assert.match(providerSettings, /默认 Embedding/);
   assert.match(providerSettings, /defaultEmbeddingModelId/);
+  assert.match(providerSettings, /advancedVisible/);
+  assert.match(providerService, /getDefaultChatProviderId/);
   assert.match(providerService, /saveProviderDefaultModels/);
+  assert.match(chatService, /getDefaultAiProviderId/);
 });
 
 test('provider adapters expose real streaming and embedding interfaces', () => {

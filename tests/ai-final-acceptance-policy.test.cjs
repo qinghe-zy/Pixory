@@ -18,8 +18,12 @@ test('AI final failure paths keep local records recoverable', () => {
 
 test('new AI chats snapshot the last selected chat provider and model', () => {
   const chat = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const settingsRepository = read('src/database/repositories/settingsRepository.ts');
   assert.match(chat, /resolveDefaultThreadProvider/);
-  assert.match(chat, /aiProviderRepository\.listProviders\(db\)\)\)\[0\]/);
+  assert.match(chat, /settingsRepository\.getDefaultAiProviderId/);
+  assert.match(providerService, /setDefaultAiProviderId/);
+  assert.match(settingsRepository, /AI_DEFAULT_CHAT_PROVIDER_ID_KEY/);
   assert.match(chat, /provider\.defaultChatModelId/);
   assert.match(chat, /item\.supportsChat/);
   assert.match(chat, /providerId: provider\?\.id \?\? null/);

@@ -6,6 +6,7 @@ import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner'
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import {
+  getDefaultChatProviderId,
   getSavedProviderApiKey,
   listProviderCards,
   saveManualChatModel,
@@ -41,6 +42,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [manualModelDraft, setManualModelDraft] = useState('');
   const [visibleKey, setVisibleKey] = useState(false);
+  const [advancedVisible, setAdvancedVisible] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
 
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
@@ -54,14 +56,21 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const loadProviders = useCallback(async () => {
     setLoading(true);
     try {
-      const nextCards = await listProviderCards(space);
+      const [nextCards, defaultProviderId] = await Promise.all([listProviderCards(space), getDefaultChatProviderId(space)]);
       setCards(nextCards);
-      setSelectedProviderId((current) => current ?? nextCards[0]?.provider.id ?? null);
-      setBaseUrlDraft((current) => current || nextCards.find((card) => card.provider.id === selectedProviderId)?.provider.baseUrl || '');
+      setSelectedProviderId((current) => {
+        if (current && nextCards.some((card) => card.provider.id === current)) {
+          return current;
+        }
+        if (defaultProviderId && nextCards.some((card) => card.provider.id === defaultProviderId)) {
+          return defaultProviderId;
+        }
+        return nextCards[0]?.provider.id ?? null;
+      });
     } finally {
       setLoading(false);
     }
-  }, [selectedProviderId, space]);
+  }, [space]);
 
   useEffect(() => {
     void loadProviders();
@@ -70,9 +79,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   useEffect(() => {
     if (!selectedProviderId) {
       setApiDraft('');
+      setBaseUrlDraft('');
       return;
     }
     let active = true;
+    const selected = orderedCards.find((card) => card.provider.id === selectedProviderId);
+    setBaseUrlDraft(selected?.provider.baseUrl ?? '');
     void getSavedProviderApiKey(selectedProviderId).then((apiKey) => {
       if (active) {
         setApiDraft(apiKey ?? '');
@@ -81,7 +93,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     return () => {
       active = false;
     };
-  }, [selectedProviderId]);
+  }, [orderedCards, selectedProviderId]);
 
   async function chooseProvider(providerId: string) {
     const nextCard = orderedCards.find((card) => card.provider.id === providerId) ?? null;
@@ -96,9 +108,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     await loadProviders();
   }
 
-  async function saveSelectedApiKey() {
+  async function saveProviderDraft(): Promise<boolean> {
     if (!selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim())) {
-      return;
+      setStatus({ message: selectedIsOtherProvider ? '请填写服务地址和 API key。' : '请填写 API key。', tone: 'warning' });
+      return false;
     }
     setStatus({ message: '正在保存模型账号设置...', tone: 'info' });
     try {
@@ -106,12 +119,15 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         await saveProviderBaseUrl(space, selectedCard.provider.id, baseUrlDraft);
       }
       const apiKey = apiDraft.trim();
+      await selectProvider(space, selectedCard.provider.id);
       await saveProviderApiKey(selectedCard.provider.id, apiKey);
       setApiDraft(apiKey);
       setStatus({ message: '模型账号已保存，后续对话会使用当前配置。', tone: 'success', title: '保存成功' });
       await loadProviders();
+      return true;
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      return false;
     }
   }
 
@@ -142,6 +158,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedCard) {
       return;
     }
+    const saved = await saveProviderDraft();
+    if (!saved) {
+      return;
+    }
     setStatus({ message: '正在验证 API key、模型和服务地址...', tone: 'info', title: '测试连接中' });
     try {
       await testProvider(selectedCard.provider.id, space);
@@ -153,6 +173,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
   async function syncSelectedProviderModels() {
     if (!selectedCard) {
+      return;
+    }
+    const saved = await saveProviderDraft();
+    if (!saved) {
       return;
     }
     setStatus({ message: '正在从模型商读取模型列表...', tone: 'info', title: '同步模型中' });
@@ -271,9 +295,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               <Ionicons color={colors.text.secondary} name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={18} />
             </Pressable>
           </View>
-          <PrimaryButton disabled={saveDisabled} label="保存" onPress={() => void saveSelectedApiKey()} variant="outline" />
+          <PrimaryButton disabled={saveDisabled} label="保存并测试连接" onPress={() => void testSelectedProvider()} />
           <View style={styles.inlineActions}>
-            <PrimaryButton label="测试连接" onPress={() => void testSelectedProvider()} variant="ghost" />
             <PrimaryButton label="同步模型" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
           </View>
         </View>
@@ -325,45 +348,62 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           ) : null}
         </View>
 
-        {embeddingModels.length > 0 ? (
+        {embeddingModels.length > 0 || selectedIsOtherProvider ? (
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>默认 Embedding</Text>
-            <View style={styles.dropdownPanel}>
-              {embeddingModels.map((model) => {
-                const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
-                return (
-                  <Pressable
-                    accessibilityRole="button"
-                    key={model.id}
-                    onPress={() => {
-                      void selectEmbeddingModel(model);
-                    }}
-                    style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                    {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={18} /> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Text style={styles.caption}>{selectedEmbeddingModel ? `当前：${selectedEmbeddingModel.displayName}` : '选择后，材料会在导入后尝试生成本地向量索引。'}</Text>
-          </View>
-        ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setAdvancedVisible((current) => !current)}
+              style={({ pressed }) => [styles.advancedToggle, pressed && styles.pressed]}
+            >
+              <Text style={styles.fieldLabel}>高级设置</Text>
+              <Ionicons color={colors.text.tertiary} name={advancedVisible ? 'chevron-up' : 'chevron-down'} size={18} />
+            </Pressable>
 
-        {selectedIsOtherProvider ? (
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>自定义模型</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setManualModelDraft}
-              placeholder="模型名称"
-              placeholderTextColor={colors.text.placeholder}
-              selectionColor={colors.primary.default}
-              style={styles.input}
-              value={manualModelDraft}
-            />
-            <PrimaryButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} variant="outline" />
+            {advancedVisible ? (
+              <View style={styles.advancedPanel}>
+                {embeddingModels.length > 0 ? (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>默认 Embedding</Text>
+                    <View style={styles.dropdownPanel}>
+                      {embeddingModels.map((model) => {
+                        const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
+                        return (
+                          <Pressable
+                            accessibilityRole="button"
+                            key={model.id}
+                            onPress={() => {
+                              void selectEmbeddingModel(model);
+                            }}
+                            style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
+                          >
+                            <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                            {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={18} /> : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.caption}>{selectedEmbeddingModel ? `当前：${selectedEmbeddingModel.displayName}` : '选择后，材料会在导入后尝试生成本地向量索引。'}</Text>
+                  </View>
+                ) : null}
+
+                {selectedIsOtherProvider ? (
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>自定义模型</Text>
+                    <TextInput
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      onChangeText={setManualModelDraft}
+                      placeholder="模型名称"
+                      placeholderTextColor={colors.text.placeholder}
+                      selectionColor={colors.primary.default}
+                      style={styles.input}
+                      value={manualModelDraft}
+                    />
+                    <PrimaryButton disabled={!manualModelDraft.trim()} label="保存模型" onPress={() => void saveManualModel()} variant="outline" />
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -440,6 +480,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  advancedToggle: {
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 44,
+    paddingHorizontal: spacing[3],
+  },
+  advancedPanel: {
+    gap: rhythm.cardContentGap,
   },
   fieldLabel: {
     ...typography.textStyles.bodyStrong,

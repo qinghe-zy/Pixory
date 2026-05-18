@@ -144,6 +144,8 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.match(providerSettings, /连接成功/);
   assert.match(providerSettings, /连接失败/);
   assert.match(providerSettings, /同步模型/);
+  assert.match(providerSettings, /advancedVisible/);
+  assert.match(providerSettings, /高级设置/);
   assert.match(providerService, /selectProvider/);
   assert.doesNotMatch(app, /ai-model-picker/);
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);

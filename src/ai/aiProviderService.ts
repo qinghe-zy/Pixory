@@ -1,5 +1,6 @@
 import {
   aiProviderRepository,
+  settingsRepository,
   runWithDatabaseSpace,
   type AiProviderModelRecord,
   type AiProviderRecord,
@@ -129,7 +130,11 @@ export async function saveProviderDefaultModels(
 }
 
 export async function selectProvider(space: PixorySpace, providerId: string): Promise<void> {
-  await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderDefaults(db, providerId, {}));
+  await runWithDatabaseSpace(space, (db) => settingsRepository.setDefaultAiProviderId(db, providerId));
+}
+
+export async function getDefaultChatProviderId(space: PixorySpace): Promise<string | null> {
+  return runWithDatabaseSpace(space, (db) => settingsRepository.getDefaultAiProviderId(db));
 }
 
 export async function saveManualChatModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
