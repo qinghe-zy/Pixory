@@ -1,4 +1,13 @@
-import { assertOkResponse, normalizeBaseUrl, type AiChatRequest, type AiProviderAdapter, type AiStreamEvent } from './base';
+import { fetch as expoFetch } from 'expo/fetch';
+
+import {
+  assertOkResponse,
+  normalizeBaseUrl,
+  type AiChatRequest,
+  type AiProviderAdapter,
+  type AiStreamEvent,
+  type AiStreamEventHandler,
+} from './base';
 
 interface GeminiModelsResponse {
   models?: Array<{ name?: string }>;
@@ -8,23 +17,23 @@ interface GeminiEmbeddingResponse {
   embedding?: { values?: number[] };
 }
 
-function emitGeminiTextFromChunk(chunk: unknown, onEvent: (event: { type: 'answer_delta'; text: string }) => void) {
+async function emitGeminiTextFromChunk(chunk: unknown, onEvent: AiStreamEventHandler): Promise<void> {
   const candidate = (chunk as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }).candidates?.[0];
   const text = candidate?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
   if (text) {
-    onEvent({ type: 'answer_delta', text });
+    await onEvent({ type: 'answer_delta', text });
   }
 }
 
-function emitGeminiJsonChunk(rawJson: string, onEvent: (event: AiStreamEvent) => void): void {
+async function emitGeminiJsonChunk(rawJson: string, onEvent: AiStreamEventHandler): Promise<void> {
   try {
-    emitGeminiTextFromChunk(JSON.parse(rawJson), onEvent);
+    await emitGeminiTextFromChunk(JSON.parse(rawJson), onEvent);
   } catch {
     // Incomplete chunks stay buffered before this point; malformed completed chunks are ignored.
   }
 }
 
-function emitCompletedGeminiChunks(buffer: string, onEvent: (event: AiStreamEvent) => void): string {
+async function emitCompletedGeminiChunks(buffer: string, onEvent: AiStreamEventHandler): Promise<string> {
   let depth = 0;
   let start = -1;
   let consumed = 0;
@@ -63,7 +72,7 @@ function emitCompletedGeminiChunks(buffer: string, onEvent: (event: AiStreamEven
     } else if (char === '}') {
       depth -= 1;
       if (depth === 0) {
-        emitGeminiJsonChunk(buffer.slice(start, index + 1), onEvent);
+        await emitGeminiJsonChunk(buffer.slice(start, index + 1), onEvent);
         start = -1;
         consumed = index + 1;
       }
@@ -73,13 +82,13 @@ function emitCompletedGeminiChunks(buffer: string, onEvent: (event: AiStreamEven
   return buffer.slice(start >= 0 ? start : consumed);
 }
 
-async function readGeminiStream(response: Response, onEvent: (event: AiStreamEvent) => void): Promise<void> {
+async function readGeminiStream(response: Response, onEvent: AiStreamEventHandler): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const json = await response.json();
     const chunks = Array.isArray(json) ? json : [json];
     for (const chunk of chunks) {
-      emitGeminiTextFromChunk(chunk, onEvent);
+      await emitGeminiTextFromChunk(chunk, onEvent);
     }
     return;
   }
@@ -93,7 +102,7 @@ async function readGeminiStream(response: Response, onEvent: (event: AiStreamEve
       break;
     }
     buffer += decoder.decode(value, { stream: true });
-    buffer = emitCompletedGeminiChunks(buffer, onEvent);
+    buffer = await emitCompletedGeminiChunks(buffer, onEvent);
   }
   const trimmed = buffer.trim();
   if (!trimmed) {
@@ -103,21 +112,21 @@ async function readGeminiStream(response: Response, onEvent: (event: AiStreamEve
     const parsed = JSON.parse(trimmed);
     const chunks = Array.isArray(parsed) ? parsed : [parsed];
     for (const chunk of chunks) {
-      emitGeminiTextFromChunk(chunk, onEvent);
+      await emitGeminiTextFromChunk(chunk, onEvent);
     }
   } catch {
-    onEvent({ type: 'answer_delta', text: trimmed });
+    await onEvent({ type: 'answer_delta', text: trimmed });
   }
 }
 
 export const geminiProvider: AiProviderAdapter = {
   async testConnection(input) {
-    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
     await assertOkResponse(response, 'Gemini connection failed');
   },
 
   async listModels(input) {
-    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
     await assertOkResponse(response, 'Gemini model list sync failed');
     const json = (await response.json()) as GeminiModelsResponse;
     return (json.models ?? [])
@@ -127,7 +136,7 @@ export const geminiProvider: AiProviderAdapter = {
 
   async streamChat(input: AiChatRequest, onEvent) {
     try {
-      const response = await fetch(
+      const response = await expoFetch(
         `${normalizeBaseUrl(input.baseUrl)}/v1beta/models/${encodeURIComponent(input.modelId)}:streamGenerateContent?key=${encodeURIComponent(input.apiKey)}`,
         {
           method: 'POST',
@@ -146,14 +155,14 @@ export const geminiProvider: AiProviderAdapter = {
       );
       await assertOkResponse(response, 'Gemini chat request failed');
       await readGeminiStream(response, onEvent);
-      onEvent({ type: 'completed' });
+      await onEvent({ type: 'completed' });
     } catch (error) {
-      onEvent({ type: 'error', message: error instanceof Error ? error.message : 'Gemini chat request failed' });
+      await onEvent({ type: 'error', message: error instanceof Error ? error.message : 'Gemini chat request failed' });
     }
   },
 
   async embedText(input) {
-    const response = await fetch(
+    const response = await expoFetch(
       `${normalizeBaseUrl(input.baseUrl)}/v1beta/models/${encodeURIComponent(input.modelId)}:embedContent?key=${encodeURIComponent(input.apiKey)}`,
       {
         method: 'POST',

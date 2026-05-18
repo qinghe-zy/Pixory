@@ -4,6 +4,8 @@ export type AiStreamEvent =
   | { type: 'completed'; finishReason?: string }
   | { type: 'error'; message: string };
 
+export type AiStreamEventHandler = (event: AiStreamEvent) => void | Promise<void>;
+
 export interface AiChatRequest {
   apiKey: string;
   baseUrl: string;
@@ -16,7 +18,7 @@ export interface AiChatRequest {
 export interface AiProviderAdapter {
   testConnection(input: { apiKey: string; baseUrl: string }): Promise<void>;
   listModels(input: { apiKey: string; baseUrl: string }): Promise<string[]>;
-  streamChat(input: AiChatRequest, onEvent: (event: AiStreamEvent) => void): Promise<void>;
+  streamChat(input: AiChatRequest, onEvent: AiStreamEventHandler): Promise<void>;
   embedText(input: { apiKey: string; baseUrl: string; modelId: string; text: string }): Promise<number[]>;
 }
 

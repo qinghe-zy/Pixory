@@ -1,4 +1,13 @@
-import { assertOkResponse, normalizeBaseUrl, type AiChatRequest, type AiProviderAdapter, type AiStreamEvent } from './base';
+import { fetch as expoFetch } from 'expo/fetch';
+
+import {
+  assertOkResponse,
+  normalizeBaseUrl,
+  type AiChatRequest,
+  type AiProviderAdapter,
+  type AiStreamEvent,
+  type AiStreamEventHandler,
+} from './base';
 
 interface OpenAiModelListResponse {
   data?: Array<{ id?: string }>;
@@ -38,13 +47,13 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   }
 }
 
-async function readStreamingResponse(response: Response, onEvent: (event: AiStreamEvent) => void): Promise<void> {
+async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const text = await response.text();
     for (const line of text.split('\n')) {
       for (const event of parseOpenAiStreamLine(line)) {
-        onEvent(event);
+        await onEvent(event);
       }
     }
     return;
@@ -63,27 +72,27 @@ async function readStreamingResponse(response: Response, onEvent: (event: AiStre
     buffer = lines.pop() ?? '';
     for (const line of lines) {
       for (const event of parseOpenAiStreamLine(line)) {
-        onEvent(event);
+        await onEvent(event);
       }
     }
   }
   if (buffer) {
     for (const event of parseOpenAiStreamLine(buffer)) {
-      onEvent(event);
+      await onEvent(event);
     }
   }
 }
 
 export const openAiCompatibleProvider: AiProviderAdapter = {
   async testConnection(input) {
-    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
       headers: { Authorization: `Bearer ${input.apiKey}` },
     });
     await assertOkResponse(response, 'AI provider connection failed');
   },
 
   async listModels(input) {
-    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
       headers: { Authorization: `Bearer ${input.apiKey}` },
     });
     await assertOkResponse(response, 'AI model list sync failed');
@@ -93,9 +102,10 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
 
   async streamChat(input: AiChatRequest, onEvent) {
     try {
-      const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {
+      const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {
         method: 'POST',
         headers: {
+          Accept: 'text/event-stream',
           Authorization: `Bearer ${input.apiKey}`,
           'Content-Type': 'application/json',
         },
@@ -111,14 +121,14 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       });
       await assertOkResponse(response, 'AI chat request failed');
       await readStreamingResponse(response, onEvent);
-      onEvent({ type: 'completed' });
+      await onEvent({ type: 'completed' });
     } catch (error) {
-      onEvent({ type: 'error', message: error instanceof Error ? error.message : 'AI chat request failed' });
+      await onEvent({ type: 'error', message: error instanceof Error ? error.message : 'AI chat request failed' });
     }
   },
 
   async embedText(input) {
-    const response = await fetch(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.apiKey}`,

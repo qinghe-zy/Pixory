@@ -60,11 +60,17 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   const claude = fs.readFileSync(path.join(root, 'src/ai/providers/claudeProvider.ts'), 'utf8');
 
   assert.match(base, /embedText\(input:/);
+  assert.match(base, /Promise<void>/);
+  for (const provider of [openai, gemini, claude]) {
+    assert.match(provider, /expo\/fetch/);
+    assert.match(provider, /await onEvent\(/);
+    assert.doesNotMatch(provider, /const response = await fetch\(/);
+  }
   assert.match(openai, /\/embeddings/);
   assert.match(openai, /stream:\s*true/);
   assert.match(gemini, /:streamGenerateContent/);
-  assert.match(gemini, /emitCompletedGeminiChunks\(buffer, onEvent\)/);
-  assert.match(gemini, /buffer \+= decoder\.decode\(value, \{ stream: true \}\);[\s\S]{0,120}buffer = emitCompletedGeminiChunks\(buffer, onEvent\)/);
+  assert.match(gemini, /await emitCompletedGeminiChunks\(buffer, onEvent\)/);
+  assert.match(gemini, /buffer \+= decoder\.decode\(value, \{ stream: true \}\);[\s\S]{0,120}buffer = await emitCompletedGeminiChunks\(buffer, onEvent\)/);
   assert.match(gemini, /embedContent/);
   assert.match(claude, /stream:\s*true/);
   assert.match(claude, /content_block_delta/);
