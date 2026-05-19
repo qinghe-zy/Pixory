@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mist01.com/sitemap.xml
