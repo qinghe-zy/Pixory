@@ -64,7 +64,7 @@ if (navLinks) {
   window.addEventListener("resize", () => moveIndicator(activeLink()));
 }
 
-const revealTargets = document.querySelectorAll(".reveal");
+const revealTargets = document.querySelectorAll(".reveal, .reveal-stagger");
 
 if ("IntersectionObserver" in window) {
   const observer = new IntersectionObserver(
@@ -130,11 +130,21 @@ if (phone && !reduceMotion) {
 
 document.querySelectorAll("[data-faq]").forEach((item) => {
   const button = item.querySelector(".faq-question");
+  const answer = item.querySelector(".faq-answer");
   if (!button) return;
+
+  // Initial ARIA state
+  if (answer) {
+    const id = `faq-answer-${Math.random().toString(36).slice(2, 7)}`;
+    answer.id = id;
+    button.setAttribute("aria-controls", id);
+    answer.setAttribute("aria-hidden", button.getAttribute("aria-expanded") !== "true" ? "true" : "false");
+  }
 
   button.addEventListener("click", () => {
     const isOpen = item.classList.toggle("is-open");
     button.setAttribute("aria-expanded", String(isOpen));
+    if (answer) answer.setAttribute("aria-hidden", String(!isOpen));
   });
 });
 
