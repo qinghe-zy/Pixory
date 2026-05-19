@@ -639,6 +639,10 @@ textarea {
   max-width: 900px;
 }
 
+.flow-hero {
+  padding: var(--space-6) 0 var(--space-3);
+}
+
 .archive-hero {
   padding: var(--space-6) 0 var(--space-2);
 }
@@ -911,6 +915,87 @@ textarea {
 
 .feature .feature-mark {
   grid-row: 1 / span 2;
+}
+
+.flow-section {
+  padding-top: var(--space-4);
+}
+
+.flow-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.34fr) minmax(320px, 0.66fr);
+  gap: var(--space-7);
+  align-items: start;
+}
+
+.flow-board .section-title {
+  max-width: 620px;
+  font-size: 36px;
+}
+
+.flow-board .feature-grid {
+  gap: 0 var(--space-5);
+  margin-top: var(--space-4);
+}
+
+.flow-board .feature {
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-4) 0;
+}
+
+.flow-board .feature-mark {
+  width: 34px;
+  height: 34px;
+}
+
+.flow-board .feature h3 {
+  font-size: 18px;
+}
+
+.flow-board .feature p {
+  margin-top: var(--space-1);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.flow-rail {
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.flow-rail h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.flow-rail .workflow {
+  gap: 0;
+  margin-top: var(--space-4);
+}
+
+.flow-rail .workflow-step {
+  grid-template-columns: 54px 1fr;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.flow-rail .step-number {
+  font-size: 30px;
+}
+
+.flow-rail .workflow-step h3 {
+  font-size: 18px;
+}
+
+.flow-rail .workflow-step p {
+  margin-top: var(--space-1);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .workflow {
@@ -1511,6 +1596,7 @@ textarea {
 
   .menu-toggle {
     display: inline-flex;
+    margin-left: auto;
   }
 
   .nav-links {
@@ -1552,13 +1638,14 @@ textarea {
     color: var(--ink);
   }
 
-  .nav-actions .button {
+  .nav-actions {
     display: none;
   }
 
   .hero-grid,
   .two-column,
   .culture-wall,
+  .flow-board,
   .download-hero,
   .cta-band .container {
     grid-template-columns: 1fr;
@@ -1641,6 +1728,18 @@ textarea {
     padding: var(--space-6) 0 var(--space-3);
   }
 
+  .flow-hero {
+    padding: var(--space-5) 0 var(--space-2);
+  }
+
+  .flow-board .section-title {
+    font-size: 30px;
+  }
+
+  .flow-board .feature {
+    padding: var(--space-3) 0;
+  }
+
   .hero h1,
   .page-hero h1 {
     font-size: 38px;
@@ -1706,28 +1805,20 @@ textarea {
     position: relative;
     inset: auto;
     width: 100%;
-    min-height: 600px;
-    margin-top: var(--space-7);
+    min-height: 380px;
+    margin-top: var(--space-6);
   }
 
   .archive-image {
     position: relative;
     inset: auto;
-    height: 430px;
+    height: 360px;
     border-radius: 20px;
     transform: rotate(0.5deg);
   }
 
   .phone {
-    right: 0;
-    top: 190px;
-    bottom: auto;
-    width: 198px;
-    min-height: 380px;
-  }
-
-  .phone-screen {
-    min-height: 354px;
+    display: none;
   }
 
   .thumb-grid {
@@ -1750,6 +1841,10 @@ textarea {
   .workflow-step {
     grid-template-columns: 1fr;
     gap: var(--space-3);
+  }
+
+  .flow-rail .workflow-step {
+    grid-template-columns: 44px 1fr;
   }
 
   .footer-grid {
