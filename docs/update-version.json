@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.7",
-  "versionCode": 221,
+  "version": "2.1.8",
+  "versionCode": 222,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.7 已发布，完善 AI 聊天输入、消息操作和视觉一致性。",
+  "message": "Pixory 2.1.8 已发布，修复 AI 聊天标题生成并优化输入与消息操作。",
   "releaseNotes": [
-    "AI 聊天输入框支持添加图片、视频和文档附件。",
-    "长按消息可复制、修改，长按 AI 回复可重新生成。",
-    "聊天页与弹窗统一使用新的浅色花纹背景。"
+    "普通聊天首条消息会自动生成更贴合内容的会话标题。",
+    "输入框收窄为单行样式，降低聊天页视觉占用。",
+    "消息长按菜单改为当前位置弹出，复制、修改和重新生成更直接。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

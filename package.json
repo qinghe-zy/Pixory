@@ -1,6 +1,6 @@
 {
   "name": "pixory",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
