@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.6",
-  "versionCode": 220,
+  "version": "2.1.7",
+  "versionCode": 221,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.6 已发布，优化 AI 聊天流式输出和模型设置流程。",
+  "message": "Pixory 2.1.7 已发布，完善 AI 聊天输入、消息操作和视觉一致性。",
   "releaseNotes": [
-    "AI 聊天支持边生成边显示回复。",
-    "保存并测试连接会先保存当前模型账号设置。",
-    "明确记住默认聊天供应商，并收拢高级模型选项。"
+    "AI 聊天输入框支持添加图片、视频和文档附件。",
+    "长按消息可复制、修改，长按 AI 回复可重新生成。",
+    "聊天页与弹窗统一使用新的浅色花纹背景。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

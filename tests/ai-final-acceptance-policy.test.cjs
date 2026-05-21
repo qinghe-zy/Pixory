@@ -90,9 +90,47 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(chatService, /updateAiThreadSessionConfig/);
   assert.match(chatService, /parseThreadAvatarConfig/);
   assert.match(chatService, /patchThreadRoleSnapshot/);
-  assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? DEFAULT_AI_ROLE_PROMPT/);
+  assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? getDefaultThreadSystemPrompt\(thread\.contextType\)/);
   assert.match(chatService, /roleSnapshotJson/);
   assert.match(repository, /roleCardId/);
+});
+
+test('normal chat keeps role instruction empty unless the user configures one', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const chatService = read('src/ai/aiChatService.ts');
+  const promptBuilder = read('src/ai/promptBuilder.ts');
+
+  assert.match(sessionConfig, /getDefaultSystemPrompt\(contextType\)/);
+  assert.match(sessionConfig, /contextType === 'normal' \? '' : DEFAULT_AI_ROLE_PROMPT/);
+  assert.match(chatService, /systemPrompt: input\.systemPrompt \?\? getDefaultThreadSystemPrompt\(input\.contextType\)/);
+  assert.match(chatService, /thread\.contextType === 'normal'\s*\?\s*thread\.systemPrompt/);
+  assert.match(chatService, /contextType === 'normal' \? '' : DEFAULT_AI_ROLE_PROMPT/);
+  assert.match(promptBuilder, /if \(!trimmed\) \{\s*return '';\s*\}/);
+});
+
+test('AI session settings report save success and failed missing thread updates', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  assert.match(sessionConfig, /setStatus\(\{ message: '正在保存会话设置\.\.\.', tone: 'info', title: '保存中' \}\)/);
+  assert.match(sessionConfig, /const updated = await updateAiThreadSessionConfig/);
+  assert.match(sessionConfig, /if \(!updated\) \{/);
+  assert.match(sessionConfig, /throw new Error\('没有找到当前会话，设置未保存。'\)/);
+  assert.match(sessionConfig, /保存失败/);
+  assert.match(sessionConfig, /设置已保存/);
+});
+
+test('AI chat title is generated from the first user message and refreshed in the chat header', () => {
+  const chatScreen = read('src/screens/AiChatScreen.tsx');
+  const chatService = read('src/ai/aiChatService.ts');
+  const app = read('App.tsx');
+
+  assert.match(chatService, /generateAiThreadTitle/);
+  assert.match(chatService, /COMMON_TITLE_PREFIXES/);
+  assert.match(chatService, /titleStatus === 'fallback'/);
+  assert.match(chatScreen, /loadThreadTitle/);
+  assert.match(chatScreen, /displayTitle/);
+  assert.match(chatScreen, /displayTitleRef/);
+  assert.match(chatScreen, /onThreadTitleChange/);
+  assert.match(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute/);
 });
 
 test('AI chat can show role avatars while keeping no-avatar mode', () => {

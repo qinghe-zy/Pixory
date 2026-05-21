@@ -16,6 +16,8 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /MATERIAL_SESSION_RULES/);
   assert.match(content, /当前会话角色指令如下/);
   assert.match(content, /不要仅根据对话记录判断为未设置/);
+  assert.match(content, /if \(!trimmed\) \{\s*return '';\s*\}/);
+  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt\), input\.rolePrompt\]\.filter\(Boolean\)/);
 });
 
 test('retrieval uses bounded snippets and never whole documents', () => {

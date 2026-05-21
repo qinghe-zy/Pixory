@@ -19,10 +19,11 @@ interface AiMessageBubbleProps {
   streaming?: boolean;
   onOpenCitation: (citation: AiCitationRecord) => void;
   onEditUser: (messageId: string, content: string) => void;
+  onLongPress: (message: AiMessageWithCitations) => void;
   onRegenerate: (messageId: string) => void;
 }
 
-export function AiMessageBubble({ assistantAvatar, message, space, streaming = false, onEditUser, onOpenCitation, onRegenerate }: AiMessageBubbleProps) {
+export function AiMessageBubble({ assistantAvatar, message, space, streaming = false, onEditUser, onLongPress, onOpenCitation, onRegenerate }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const canRegenerate = !isUser && !streaming && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
@@ -46,10 +47,14 @@ export function AiMessageBubble({ assistantAvatar, message, space, streaming = f
             <AiThinkingBlock label={message.modelSnapshotJson.includes('reasoning') ? '思路' : '摘要'} reasoningText={message.reasoningText} />
           </View>
         ) : null}
-        <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+        <Pressable
+          accessibilityRole="button"
+          onLongPress={() => onLongPress(message)}
+          style={({ pressed }) => [styles.bubble, isUser ? styles.userBubble : styles.assistantBubble, pressed && styles.pressed]}
+        >
           <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
-        </View>
+        </Pressable>
         {isUser ? (
           <View style={styles.userActionRow}>
             <Pressable accessibilityLabel="重写" accessibilityRole="button" onPress={() => onEditUser(message.id, message.content)} style={({ pressed }) => [styles.messageActionButton, pressed && styles.pressed]}>

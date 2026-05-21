@@ -8,6 +8,7 @@ import { FormTextareaRow } from '../components/FormTextareaRow';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { applyRoleCardToThread, loadThreadSessionConfig, updateAiThreadSessionConfig } from '../ai/aiChatService';
+import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import type { AiBoundaryMode, AiContextType } from '../ai/types';
 import { rhythm, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -29,6 +30,10 @@ const BOUNDARY_MODES: Array<{ value: AiBoundaryMode; label: string }> = [
   { value: 'strict_material', label: '仅限资料' },
 ];
 
+function getDefaultSystemPrompt(contextType: AiContextType): string {
+  return contextType === 'normal' ? '' : DEFAULT_AI_ROLE_PROMPT;
+}
+
 export function AiSessionConfigScreen({
   space,
   threadId,
@@ -39,7 +44,7 @@ export function AiSessionConfigScreen({
   onOpenRoleCardEditor,
   onStartChat,
 }: AiSessionConfigScreenProps) {
-  const [systemPrompt, setSystemPrompt] = useState('你是 Pixory 的本地素材整理助手，回答要简洁、可靠，并尊重当前空间的数据边界。');
+  const [systemPrompt, setSystemPrompt] = useState(getDefaultSystemPrompt(contextType));
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
   const [avatarEnabled, setAvatarEnabled] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -50,6 +55,7 @@ export function AiSessionConfigScreen({
 
   const reloadConfig = useCallback(async () => {
     if (!threadId) {
+      setSystemPrompt(getDefaultSystemPrompt(contextType));
       return;
     }
     const config = await loadThreadSessionConfig(space, threadId);
@@ -62,7 +68,7 @@ export function AiSessionConfigScreen({
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
-  }, [space, threadId]);
+  }, [contextType, space, threadId]);
 
   useEffect(() => {
     void reloadConfig();
@@ -74,19 +80,22 @@ export function AiSessionConfigScreen({
       return false;
     }
     setSaving(true);
-    setStatus(null);
+    setStatus({ message: '正在保存会话设置...', tone: 'info', title: '保存中' });
     try {
-      await updateAiThreadSessionConfig({
+      const updated = await updateAiThreadSessionConfig({
         boundaryMode,
         avatarEnabled,
         space,
         systemPrompt,
         threadId,
       });
+      if (!updated) {
+        throw new Error('没有找到当前会话，设置未保存。');
+      }
       setStatus({ message: '角色指令和回答范围已应用到当前会话。', tone: 'success', title: '设置已保存' });
       return true;
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
+      setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error', title: '保存失败' });
       return false;
     } finally {
       setSaving(false);
@@ -133,7 +142,7 @@ export function AiSessionConfigScreen({
           label="角色指令"
           minHeight={132}
           onChangeText={setSystemPrompt}
-          placeholder="输入角色指令"
+          placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
           value={systemPrompt}
         />
 

@@ -64,6 +64,19 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   assert.doesNotMatch(content, /footer=\{/);
 });
 
+test('AI chat uses the botanical full-screen background image', () => {
+  const content = chat();
+  const backgrounds = fs.readFileSync(path.join(root, 'src/design/backgrounds.ts'), 'utf8');
+  const pageBackground = fs.readFileSync(path.join(root, 'src/components/PageBackground.tsx'), 'utf8');
+
+  assert.match(content, /backgroundVariant="aiChat"/);
+  assert.match(backgrounds, /aiChat:\s*\[\]/);
+  assert.match(backgrounds, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
+  assert.match(backgrounds, /aspectRatio:\s*941\s*\/\s*1672/);
+  assert.match(backgrounds, /resizeMode:\s*'cover'/);
+  assert.match(pageBackground, /resizeMode=\{backgroundImage\.resizeMode \?\? 'contain'\}/);
+});
+
 test('AI chat composer follows the keyboard and messages stay pinned to the latest item', () => {
   const content = chat();
   assert.match(content, /Keyboard\.addListener\('keyboardDidShow'/);
@@ -71,6 +84,17 @@ test('AI chat composer follows the keyboard and messages stay pinned to the late
   assert.match(content, /messageScrollRef/);
   assert.match(content, /scrollToEnd/);
   assert.match(content, /onContentSizeChange=\{\(\) => scrollToLatestMessage\(\)\}/);
+});
+
+test('AI chat streaming does not force bottom after the user scrolls upward', () => {
+  const content = chat();
+  assert.match(content, /userScrolledAwayFromBottomRef/);
+  assert.match(content, /MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.match(content, /handleMessageScroll/);
+  assert.match(content, /onScroll=\{handleMessageScroll\}/);
+  assert.match(content, /scrollEventThrottle=\{16\}/);
+  assert.match(content, /if \(!force && userScrolledAwayFromBottomRef\.current\)/);
+  assert.doesNotMatch(content, /onContentSizeChange=\{\(\) => messageScrollRef\.current\?\.scrollToEnd/);
 });
 
 test('AI chat supports stopping, regenerating replies, and rewriting user messages', () => {
@@ -87,6 +111,75 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
   assert.match(bubble, /onRegenerate/);
   assert.match(composer, /onCancelEdit/);
   assert.match(composer, /停止回复/);
+});
+
+test('AI chat composer supports image, video, and document attachments', () => {
+  const content = chat();
+  const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
+
+  assert.match(content, /expo-document-picker/);
+  assert.match(content, /expo-image-picker/);
+  assert.match(content, /CHAT_DOCUMENT_TYPES/);
+  assert.match(content, /pickChatImages/);
+  assert.match(content, /pickChatVideos/);
+  assert.match(content, /pickChatDocuments/);
+  assert.match(content, /buildChatMessageContent/);
+  assert.match(content, /\[附件\]/);
+  assert.match(content, /上传图片/);
+  assert.match(content, /上传视频/);
+  assert.match(content, /上传文档/);
+  assert.match(composer, /AiComposerAttachment/);
+  assert.match(composer, /attachments/);
+  assert.match(composer, /onAddAttachment/);
+  assert.match(composer, /onRemoveAttachment/);
+  assert.match(composer, /styles\.attachmentRail/);
+  assert.match(composer, /添加附件/);
+});
+
+test('AI chat messages expose long-press copy, edit, and regenerate actions', () => {
+  const content = chat();
+  const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
+
+  assert.match(content, /expo-clipboard/);
+  assert.match(content, /Clipboard\.setStringAsync/);
+  assert.match(content, /messageActionTarget/);
+  assert.match(content, /AppActionSheet/);
+  assert.match(content, /复制消息/);
+  assert.match(content, /修改消息/);
+  assert.match(content, /重新生成/);
+  assert.match(bubble, /onLongPress/);
+  assert.match(bubble, /onLongPress=\{\(\) => onLongPress\(message\)\}/);
+});
+
+test('AI chat composer matches the botanical floating capsule input reference', () => {
+  const content = chat();
+  const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
+
+  assert.match(content, /backgroundColor:\s*'transparent'/);
+  assert.match(content, /paddingBottom:\s*spacing\[3\]/);
+  assert.match(composer, /styles\.composerShell/);
+  assert.match(composer, /borderRadius:\s*radius\.pill/);
+  assert.match(composer, /backgroundColor:\s*'rgba\(255, 253, 248, 0\.9\)'/);
+  assert.match(composer, /\.\.\.shadows\.floating/);
+  assert.match(composer, /styles\.addButton/);
+  assert.match(composer, /name="add"/);
+  assert.match(composer, /placeholder="输入问题或整理需求"/);
+  assert.match(composer, /name="mic-outline"/);
+  assert.match(composer, /name=\{editing \? 'checkmark' : 'paper-plane-outline'\}/);
+  assert.match(composer, /height:\s*58/);
+  assert.match(composer, /width:\s*58/);
+});
+
+test('Shared dialogs and action sheets use the botanical pattern surface', () => {
+  const dialog = fs.readFileSync(path.join(root, 'src/components/AppDialog.tsx'), 'utf8');
+  const actionSheet = fs.readFileSync(path.join(root, 'src/components/AppActionSheet.tsx'), 'utf8');
+  const personalUnlock = fs.readFileSync(path.join(root, 'src/components/PersonalUnlockModal.tsx'), 'utf8');
+
+  for (const content of [dialog, actionSheet, personalUnlock]) {
+    assert.match(content, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
+    assert.match(content, /styles\.patternImage/);
+    assert.match(content, /overflow:\s*'hidden'/);
+  }
 });
 
 test('AI message thinking and per-message actions stay outside the chat bubble', () => {

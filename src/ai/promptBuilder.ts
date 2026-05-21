@@ -12,7 +12,11 @@ const ROLE_INSTRUCTION_FRAME = [
 ].join('\n');
 
 function frameRoleInstruction(prompt: string): string {
-  return [ROLE_INSTRUCTION_FRAME, prompt.trim()].filter(Boolean).join('\n\n');
+  const trimmed = prompt.trim();
+  if (!trimmed) {
+    return '';
+  }
+  return [ROLE_INSTRUCTION_FRAME, trimmed].filter(Boolean).join('\n\n');
 }
 
 export function buildNormalChatPrompt(input: {

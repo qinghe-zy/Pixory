@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+
+const actionSheetPatternImage = require('../../docs/black.png');
 
 export interface AppActionSheetItem {
   key: string;
@@ -33,6 +35,7 @@ export function AppActionSheet({ visible, title, message, items, onClose, closeO
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭操作面板" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[3] }]}>
+          <Image resizeMode="cover" source={actionSheetPatternImage} style={styles.patternImage} />
           <View style={styles.handle} />
           <View style={styles.copy}>
             <Text numberOfLines={2} style={styles.title}>{title}</Text>
@@ -98,8 +101,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
     gap: rhythm.listCardGap,
+    overflow: 'hidden',
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[2],
+  },
+  patternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.2,
   },
   handle: {
     alignSelf: 'center',

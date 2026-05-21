@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { AppDialog } from './AppDialog';
 import { PrimaryButton } from './PrimaryButton';
+
+const unlockPatternImage = require('../../docs/black.png');
 
 interface PersonalUnlockModalProps {
   hasCredential: boolean | null;
@@ -99,6 +101,7 @@ export function PersonalUnlockModal({
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
+          <Image resizeMode="cover" source={unlockPatternImage} style={styles.patternImage} />
           <View style={styles.header}>
             <View style={styles.iconWrap}>
               <Ionicons color={colors.primary.active} name="lock-closed-outline" size={22} />
@@ -262,8 +265,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[3],
     maxWidth: 420,
+    overflow: 'hidden',
     padding: spacing[4],
     width: '100%',
+  },
+  patternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
   },
   header: {
     alignItems: 'flex-start',

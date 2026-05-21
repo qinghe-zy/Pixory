@@ -1378,6 +1378,7 @@ export default function App() {
         onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         onThreadReady={(threadId) => replaceCurrentRoute({ ...currentRoute, threadId })}
+        onThreadTitleChange={(title) => replaceCurrentRoute({ ...currentRoute, contextTitle: title })}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />

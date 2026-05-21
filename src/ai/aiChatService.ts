@@ -97,6 +97,17 @@ export interface ApplyRoleCardToThreadInput {
 
 const stoppedMessageIds = new Set<string>();
 
+const COMMON_TITLE_PREFIXES = [
+  /^请(你)?帮我/,
+  /^帮我/,
+  /^麻烦(你)?/,
+  /^能不能/,
+  /^可以/,
+  /^我想/,
+  /^想要/,
+  /^请/,
+];
+
 export type AiMessageWithCitations = AiMessageRecord & {
   citations: AiCitationRecord[];
 };
@@ -131,11 +142,27 @@ function createAiId(prefix: string): string {
 }
 
 export function fallbackAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType }): string {
-  const compact = input.firstUserMessage.replace(/\s+/g, ' ').trim().slice(0, 18);
+  return generateAiThreadTitle(input);
+}
+
+export function generateAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType }): string {
+  const compact = COMMON_TITLE_PREFIXES.reduce(
+    (title, pattern) => title.replace(pattern, ''),
+    input.firstUserMessage
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[`*_>#\[\](){}]/g, '')
+      .replace(/[。！？!?，,；;：:、]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  ).trim().slice(0, 18);
   if (input.contextType === 'normal') {
     return compact || '普通聊天';
   }
   return compact ? `${input.contextTitle} / ${compact}` : input.contextTitle;
+}
+
+function getDefaultThreadSystemPrompt(contextType: AiContextType): string {
+  return contextType === 'normal' ? '' : DEFAULT_AI_ROLE_PROMPT;
 }
 
 function fallbackTitle(input: CreateThreadFromContextInput): string {
@@ -194,7 +221,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
-        systemPrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+        systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         userMessage,
       }),
       snippets: [],
@@ -241,11 +268,18 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       providerId: provider?.id ?? null,
       modelId: model?.modelId ?? null,
       modelSnapshotJson: JSON.stringify(model ?? {}),
-      systemPrompt: input.systemPrompt ?? DEFAULT_AI_ROLE_PROMPT,
+      systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
     })
   );
+}
+
+export async function loadThreadTitle(space: PixorySpace, threadId: string): Promise<string | null> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    return thread && thread.space === space ? thread.title : null;
+  });
 }
 
 export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: string | null): Promise<string> {
@@ -312,14 +346,14 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
     }
     return aiThreadRepository.updateThread(db, input.threadId, {
       boundaryMode: input.boundaryMode,
-      materialRulesSnapshot: input.boundaryMode === 'free' ? MATERIAL_SESSION_RULES : materialRulesForMode(input.boundaryMode),
+      materialRulesSnapshot: thread.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode),
       modelId: input.modelId,
       providerId: input.providerId,
       roleSnapshotJson:
         input.avatarEnabled == null
           ? thread.roleSnapshotJson
           : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
-      systemPrompt: input.systemPrompt.trim() || DEFAULT_AI_ROLE_PROMPT,
+      systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
   });
 }
@@ -337,7 +371,7 @@ export async function applyRoleCardToThread(input: ApplyRoleCardToThreadInput): 
       materialRulesSnapshot: thread.contextType === 'normal' ? null : materialRulesForMode(nextBoundaryMode),
       roleCardId: roleCard?.id ?? null,
       roleSnapshotJson: JSON.stringify(roleCard ?? {}),
-      systemPrompt: roleCard?.prompt ?? DEFAULT_AI_ROLE_PROMPT,
+      systemPrompt: roleCard?.prompt ?? getDefaultThreadSystemPrompt(thread.contextType),
     });
   });
 }

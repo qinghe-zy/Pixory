@@ -1,15 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AiChatComposer } from '../components/ai/AiChatComposer';
+import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
+import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
 import {
   createThreadFromContext,
   getCurrentChatModelLabel,
   listThreadMessages,
+  loadThreadTitle,
   loadThreadAvatarConfig,
   regenerateAssistantMessage,
   rewriteUserMessage,
@@ -21,6 +26,47 @@ import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+
+const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
+
+const CHAT_DOCUMENT_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '*/*',
+];
+
+function getFileNameFromUri(uri: string, fallback: string): string {
+  const rawName = uri.split(/[\\/]/).pop()?.split('?')[0]?.trim();
+  return rawName ? decodeURIComponent(rawName) : fallback;
+}
+
+function describeAttachmentKind(kind: AiComposerAttachment['kind']): string {
+  if (kind === 'image') {
+    return '图片';
+  }
+  if (kind === 'video') {
+    return '视频';
+  }
+  return '文档';
+}
+
+function buildChatMessageContent(text: string, attachments: AiComposerAttachment[]): string {
+  if (!attachments.length) {
+    return text;
+  }
+  const attachmentLines = attachments.map((attachment) => {
+    const type = attachment.mimeType ? `，类型：${attachment.mimeType}` : '';
+    return `- ${describeAttachmentKind(attachment.kind)}：${attachment.name}${type}`;
+  });
+  return [text || '请根据以下附件继续对话。', '', '[附件]', ...attachmentLines].join('\n');
+}
 
 interface AiChatScreenProps {
   space: PixorySpace;
@@ -36,6 +82,7 @@ interface AiChatScreenProps {
   onOpenIpSource: (ipId: number) => void;
   onOpenImageSource: (imageId: number) => void;
   onThreadReady?: (threadId: string) => void;
+  onThreadTitleChange?: (title: string) => void;
 }
 
 export function AiChatScreen({
@@ -52,11 +99,14 @@ export function AiChatScreen({
   onOpenIpSource,
   onOpenImageSource,
   onThreadReady,
+  onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageScrollRef = useRef<ScrollView | null>(null);
+  const userScrolledAwayFromBottomRef = useRef(false);
+  const displayTitleRef = useRef(resolvedContextTitle);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [composerText, setComposerText] = useState('');
@@ -64,18 +114,92 @@ export function AiChatScreen({
   const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
+  const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
+  const [messageActionTarget, setMessageActionTarget] = useState<AiMessageWithCitations | null>(null);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
+  const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
   const thinking = generating;
   const citations = messages.some((message) => message.citations.length > 0);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+  const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
+    () => [
+      { key: 'image', label: '上传图片', icon: 'image-outline', onPress: () => void pickChatImages() },
+      { key: 'video', label: '上传视频', icon: 'videocam-outline', onPress: () => void pickChatVideos() },
+      { key: 'document', label: '上传文档', icon: 'document-text-outline', onPress: () => void pickChatDocuments() },
+    ],
+    []
+  );
+  const messageActionItems = useMemo<AppActionSheetItem[]>(() => {
+    if (!messageActionTarget) {
+      return [];
+    }
+    const items: AppActionSheetItem[] = [
+      {
+        key: 'copy',
+        label: '复制消息',
+        icon: 'copy-outline',
+        onPress: () => {
+          void copyMessageContent(messageActionTarget);
+        },
+      },
+    ];
+    if (messageActionTarget.role === 'user') {
+      items.push({
+        key: 'edit',
+        label: '修改消息',
+        icon: 'create-outline',
+        disabled: generating,
+        onPress: () => handleEditUserMessage(messageActionTarget.id, messageActionTarget.content),
+      });
+    } else {
+      const canRegenerate = !generating && (messageActionTarget.status === 'completed' || messageActionTarget.status === 'failed' || messageActionTarget.status === 'stopped');
+      items.push({
+        key: 'regenerate',
+        label: '重新生成',
+        icon: 'refresh-outline',
+        disabled: !canRegenerate,
+        onPress: () => {
+          void handleRegenerate(messageActionTarget.id);
+        },
+      });
+    }
+    return items;
+  }, [generating, messageActionTarget]);
 
-  const scrollToLatestMessage = useCallback((animated = true) => {
+  const scrollToLatestMessage = useCallback((animated = true, force = false) => {
+    if (!force && userScrolledAwayFromBottomRef.current) {
+      return;
+    }
     requestAnimationFrame(() => {
       messageScrollRef.current?.scrollToEnd({ animated });
     });
   }, []);
+
+  const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    userScrolledAwayFromBottomRef.current = distanceFromBottom > MESSAGE_BOTTOM_LOCK_THRESHOLD;
+  }, []);
+
+  const followLatestMessage = useCallback((animated = true) => {
+    userScrolledAwayFromBottomRef.current = false;
+    scrollToLatestMessage(animated, true);
+  }, [scrollToLatestMessage]);
+
+  const applyDisplayTitle = useCallback(
+    (title: string) => {
+      if (title === displayTitleRef.current) {
+        return;
+      }
+      displayTitleRef.current = title;
+      setDisplayTitle(title);
+      onThreadTitleChange?.(title);
+    },
+    [onThreadTitleChange]
+  );
 
   const reloadMessages = useCallback(
     async (targetThreadId: string | null = activeThreadId) => {
@@ -84,8 +208,27 @@ export function AiChatScreen({
       }
       const nextMessages = await listThreadMessages(space, targetThreadId);
       setMessages(nextMessages);
+      void loadThreadTitle(space, targetThreadId).then((title) => {
+        if (title) {
+          applyDisplayTitle(title);
+        }
+      });
     },
-    [activeThreadId, space]
+    [activeThreadId, applyDisplayTitle, space]
+  );
+
+  const reloadThreadTitle = useCallback(
+    async (targetThreadId: string | null = activeThreadId) => {
+      if (!targetThreadId) {
+        applyDisplayTitle(resolvedContextTitle);
+        return;
+      }
+      const title = await loadThreadTitle(space, targetThreadId);
+      if (title) {
+        applyDisplayTitle(title);
+      }
+    },
+    [activeThreadId, applyDisplayTitle, resolvedContextTitle, space]
   );
 
   const reloadModelLabel = useCallback(
@@ -110,7 +253,9 @@ export function AiChatScreen({
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
     setEditingUserMessageId(null);
-  }, [threadId]);
+    setPendingAttachments([]);
+    applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
+  }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
   useEffect(() => {
     void reloadMessages(threadId ?? activeThreadId);
@@ -123,6 +268,10 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadAvatarConfig(threadId ?? activeThreadId);
   }, [activeThreadId, reloadAvatarConfig, threadId]);
+
+  useEffect(() => {
+    void reloadThreadTitle(threadId ?? activeThreadId);
+  }, [activeThreadId, reloadThreadTitle, threadId]);
 
   useEffect(() => {
     scrollToLatestMessage(messages.length > 1);
@@ -176,24 +325,125 @@ export function AiChatScreen({
     }
   }
 
+  async function pickChatImages() {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error('需要相册权限才能上传图片。');
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        mediaTypes: ['images'],
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+        quality: 1,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const picked = result.assets.map<AiComposerAttachment>((asset, index) => ({
+        id: `image-${Date.now()}-${index}-${asset.uri}`,
+        kind: 'image',
+        mimeType: asset.mimeType ?? null,
+        name: asset.fileName ?? getFileNameFromUri(asset.uri, `image-${index + 1}`),
+        size: asset.fileSize ?? null,
+        uri: asset.uri,
+      }));
+      setPendingAttachments((current) => [...current, ...picked]);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '选择图片失败');
+    }
+  }
+
+  async function pickChatVideos() {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error('需要相册权限才能上传视频。');
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        mediaTypes: ['videos'],
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+        quality: 1,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const picked = result.assets.map<AiComposerAttachment>((asset, index) => ({
+        id: `video-${Date.now()}-${index}-${asset.uri}`,
+        kind: 'video',
+        mimeType: asset.mimeType ?? null,
+        name: asset.fileName ?? getFileNameFromUri(asset.uri, `video-${index + 1}`),
+        size: asset.fileSize ?? null,
+        uri: asset.uri,
+      }));
+      setPendingAttachments((current) => [...current, ...picked]);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '选择视频失败');
+    }
+  }
+
+  async function pickChatDocuments() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: true,
+        type: CHAT_DOCUMENT_TYPES,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const picked = result.assets.map<AiComposerAttachment>((asset, index) => ({
+        id: `document-${Date.now()}-${index}-${asset.uri}`,
+        kind: 'document',
+        mimeType: asset.mimeType ?? null,
+        name: asset.name ?? getFileNameFromUri(asset.uri, `document-${index + 1}`),
+        size: asset.size ?? null,
+        uri: asset.uri,
+      }));
+      setPendingAttachments((current) => [...current, ...picked]);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '选择文档失败');
+    }
+  }
+
+  async function copyMessageContent(message: AiMessageWithCitations) {
+    const content = message.content || message.errorMessage || '';
+    if (!content.trim()) {
+      return;
+    }
+    await Clipboard.setStringAsync(content);
+    setErrorMessage(null);
+  }
+
   async function handleSend() {
     if (editingUserMessageId) {
       await handleRewrite();
       return;
     }
-    const content = composerText.trim();
-    if (!content || generating) {
+    const typedText = composerText.trim();
+    const attachments = pendingAttachments;
+    const content = buildChatMessageContent(typedText, attachments);
+    if ((!typedText && !attachments.length) || generating) {
       return;
     }
     setComposerText('');
+    setPendingAttachments([]);
     setGenerating(true);
     setErrorMessage(null);
+    followLatestMessage();
     try {
       const nextThreadId = await ensureThread();
       await sendUserMessage({
         content,
         onCreated: ({ assistantMessageId }) => {
           setActiveAssistantId(assistantMessageId);
+          followLatestMessage();
           void reloadMessages(nextThreadId);
         },
         onUpdated: () => {
@@ -204,6 +454,8 @@ export function AiChatScreen({
       });
       await reloadMessages(nextThreadId);
     } catch (error) {
+      setComposerText(typedText);
+      setPendingAttachments(attachments);
       setErrorMessage(error instanceof Error ? error.message : '发送失败');
     } finally {
       setGenerating(false);
@@ -221,11 +473,13 @@ export function AiChatScreen({
     setEditingUserMessageId(null);
     setGenerating(true);
     setErrorMessage(null);
+    followLatestMessage();
     try {
       await rewriteUserMessage({
         content,
         onCreated: ({ assistantMessageId }) => {
           setActiveAssistantId(assistantMessageId);
+          followLatestMessage();
           void reloadMessages(activeThreadId);
         },
         onUpdated: () => {
@@ -264,6 +518,7 @@ export function AiChatScreen({
     setGenerating(true);
     setActiveAssistantId(targetMessageId);
     setErrorMessage(null);
+    followLatestMessage();
     try {
       await regenerateAssistantMessage({
         assistantMessageId: targetMessageId,
@@ -288,6 +543,7 @@ export function AiChatScreen({
     }
     setEditingUserMessageId(messageId);
     setComposerText(content);
+    setPendingAttachments([]);
     setErrorMessage(null);
   }
 
@@ -313,7 +569,7 @@ export function AiChatScreen({
 
   return (
     <AppScreen
-      backgroundVariant="search"
+      backgroundVariant="aiChat"
       contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
     >
       <View style={styles.header}>
@@ -323,7 +579,7 @@ export function AiChatScreen({
         <View style={styles.titleBlock}>
           <View style={styles.titleLine}>
             <Text numberOfLines={1} style={styles.title}>
-              {resolvedContextTitle}
+              {displayTitle}
             </Text>
             {thinking ? <View style={styles.liveDot} /> : null}
           </View>
@@ -343,7 +599,9 @@ export function AiChatScreen({
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => scrollToLatestMessage()}
-        onLayout={() => scrollToLatestMessage(false)}
+        onLayout={() => scrollToLatestMessage(false, true)}
+        onScroll={handleMessageScroll}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         style={styles.messageScroller}
         contentContainerStyle={styles.messageScrollContent}
@@ -360,6 +618,7 @@ export function AiChatScreen({
                 message={message}
                 space={space}
                 onEditUser={handleEditUserMessage}
+                onLongPress={setMessageActionTarget}
                 onOpenCitation={openCitation}
                 onRegenerate={(messageId) => {
                   void handleRegenerate(messageId);
@@ -378,13 +637,17 @@ export function AiChatScreen({
 
       <View style={[styles.composerPanel, keyboardBottomInset ? { marginBottom: keyboardBottomInset } : null]}>
         <AiChatComposer
+          attachments={pendingAttachments}
           generating={generating}
           editing={Boolean(editingUserMessageId)}
+          onAddAttachment={() => setAttachmentSheetVisible(true)}
           onChangeText={setComposerText}
           onCancelEdit={() => {
             setEditingUserMessageId(null);
             setComposerText('');
+            setPendingAttachments([]);
           }}
+          onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
           onRetry={() => {
             void handleRegenerate();
           }}
@@ -398,6 +661,18 @@ export function AiChatScreen({
           value={composerText}
         />
       </View>
+      <AppActionSheet
+        items={attachmentSheetItems}
+        onClose={() => setAttachmentSheetVisible(false)}
+        title="添加附件"
+        visible={attachmentSheetVisible}
+      />
+      <AppActionSheet
+        items={messageActionItems}
+        onClose={() => setMessageActionTarget(null)}
+        title={messageActionTarget?.role === 'user' ? '消息操作' : '回复操作'}
+        visible={Boolean(messageActionTarget)}
+      />
     </AppScreen>
   );
 }
@@ -409,9 +684,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: colors.overlay.softSurface,
+    backgroundColor: 'transparent',
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
+    paddingBottom: spacing[3],
     paddingTop: spacing[2],
     ...shadows.none,
   },

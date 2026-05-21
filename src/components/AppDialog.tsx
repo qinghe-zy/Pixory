@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { PrimaryButton } from './PrimaryButton';
+
+const dialogPatternImage = require('../../docs/black.png');
 
 interface AppDialogProps {
   visible: boolean;
@@ -38,6 +40,7 @@ export function AppDialog({
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={styles.panel}>
+          <Image resizeMode="cover" source={dialogPatternImage} style={styles.patternImage} />
           <View style={styles.copy}>
             <Text style={[styles.title, danger ? styles.dangerTitle : null]}>{title}</Text>
             {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -70,8 +73,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.entryCardGap,
     maxWidth: 360,
+    overflow: 'hidden',
     padding: spacing[5],
     width: '100%',
+  },
+  patternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
   },
   copy: {
     gap: rhythm.cardContentGap,

@@ -6,11 +6,10 @@ import {
   pageBackgroundImages,
   pageBackgroundVariants,
   type PageBackgroundElementRecipe,
+  type PageBackgroundImageRecipe,
   type PageBackgroundVariant,
 } from '../design/backgrounds';
 import { colors } from '../design/tokens';
-
-const BACKGROUND_IMAGE_ASPECT_RATIO = 1080 / 2400;
 
 interface PageBackgroundProps {
   children: ReactNode;
@@ -27,7 +26,9 @@ export function PageBackground({
 }: PageBackgroundProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const backgroundImage = variant ? pageBackgroundImages[variant as keyof typeof pageBackgroundImages] : undefined;
+  const backgroundImage: PageBackgroundImageRecipe | undefined = variant
+    ? pageBackgroundImages[variant as keyof typeof pageBackgroundImages]
+    : undefined;
   const recipe = variant && !backgroundImage ? pageBackgroundVariants[variant] : [];
 
   return (
@@ -35,9 +36,9 @@ export function PageBackground({
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {backgroundImage ? (
           <Image
-            resizeMode="contain"
-            source={backgroundImage}
-            style={[buildBackgroundImageStyle(width, height), dimmed && styles.dimmed]}
+            resizeMode={backgroundImage.resizeMode ?? 'contain'}
+            source={backgroundImage.source}
+            style={[buildBackgroundImageStyle(width, height, backgroundImage), dimmed && styles.dimmed]}
           />
         ) : null}
         {recipe.map((element, index) => (
@@ -54,11 +55,21 @@ export function PageBackground({
   );
 }
 
-function buildBackgroundImageStyle(screenWidth: number, screenHeight: number): ImageStyle {
+function buildBackgroundImageStyle(screenWidth: number, screenHeight: number, image: PageBackgroundImageRecipe): ImageStyle {
+  if (image.resizeMode === 'cover') {
+    return {
+      height: screenHeight,
+      left: 0,
+      position: 'absolute',
+      top: 0,
+      width: screenWidth,
+    };
+  }
+
   const screenAspectRatio = screenWidth / screenHeight;
-  const useHeight = screenAspectRatio > BACKGROUND_IMAGE_ASPECT_RATIO;
-  const imageHeight = useHeight ? screenHeight : screenWidth / BACKGROUND_IMAGE_ASPECT_RATIO;
-  const imageWidth = useHeight ? screenHeight * BACKGROUND_IMAGE_ASPECT_RATIO : screenWidth;
+  const useHeight = screenAspectRatio > image.aspectRatio;
+  const imageHeight = useHeight ? screenHeight : screenWidth / image.aspectRatio;
+  const imageWidth = useHeight ? screenHeight * image.aspectRatio : screenWidth;
 
   return {
     height: imageHeight,
