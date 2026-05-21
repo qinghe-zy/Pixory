@@ -175,6 +175,15 @@ function fallbackTitle(input: CreateThreadFromContextInput): string {
   return input.contextType === 'ip' ? 'IP 对话' : '知识库对话';
 }
 
+function isCustomInitialTitle(input: CreateThreadFromContextInput): boolean {
+  const title = input.title.trim();
+  if (!title) {
+    return false;
+  }
+  const defaultTitle = input.contextType === 'normal' ? '普通聊天' : input.contextType === 'ip' ? 'IP 对话' : '知识库对话';
+  return title !== defaultTitle;
+}
+
 function materialRulesForMode(boundaryMode: AiBoundaryMode): string {
   return boundaryMode === 'strict_material' ? STRICT_MATERIAL_RULES : MATERIAL_SESSION_RULES;
 }
@@ -264,7 +273,7 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       boundKnowledgeBaseId: input.boundKnowledgeBaseId ?? null,
       includeIpDocuments: input.includeIpDocuments ?? false,
       title: fallbackTitle(input),
-      titleStatus: input.title.trim() ? 'custom' : 'fallback',
+      titleStatus: isCustomInitialTitle(input) ? 'custom' : 'fallback',
       providerId: provider?.id ?? null,
       modelId: model?.modelId ?? null,
       modelSnapshotJson: JSON.stringify(model ?? {}),

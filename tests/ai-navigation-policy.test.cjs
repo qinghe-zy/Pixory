@@ -107,10 +107,11 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
     assert.match(content, new RegExp(expected));
     assert.match(service, new RegExp(expected));
   }
-  assert.match(bubble, /onEditUser/);
-  assert.match(bubble, /onRegenerate/);
+  assert.doesNotMatch(bubble, /onEditUser/);
+  assert.doesNotMatch(bubble, /onRegenerate/);
   assert.match(composer, /onCancelEdit/);
   assert.match(composer, /停止回复/);
+  assert.match(composer, /刷新回复/);
 });
 
 test('AI chat composer supports image, video, and document attachments', () => {
@@ -143,12 +144,16 @@ test('AI chat messages expose long-press copy, edit, and regenerate actions', ()
   assert.match(content, /expo-clipboard/);
   assert.match(content, /Clipboard\.setStringAsync/);
   assert.match(content, /messageActionTarget/);
-  assert.match(content, /AppActionSheet/);
-  assert.match(content, /复制消息/);
-  assert.match(content, /修改消息/);
+  assert.match(content, /Modal/);
+  assert.match(content, /messageMenu/);
+  assert.match(content, /MESSAGE_MENU_WIDTH/);
+  assert.match(content, /openMessageActionMenu/);
+  assert.match(content, />复制</);
+  assert.match(content, />修改</);
   assert.match(content, /重新生成/);
   assert.match(bubble, /onLongPress/);
-  assert.match(bubble, /onLongPress=\{\(\) => onLongPress\(message\)\}/);
+  assert.match(bubble, /onLongPress=\{\(event\) => onLongPress\(message, event\)\}/);
+  assert.doesNotMatch(bubble, /messageActionButton/);
 });
 
 test('AI chat composer matches the botanical floating capsule input reference', () => {
@@ -158,6 +163,7 @@ test('AI chat composer matches the botanical floating capsule input reference', 
   assert.match(content, /backgroundColor:\s*'transparent'/);
   assert.match(content, /paddingBottom:\s*spacing\[3\]/);
   assert.match(composer, /styles\.composerShell/);
+  assert.match(composer, /multiline=\{false\}/);
   assert.match(composer, /borderRadius:\s*radius\.pill/);
   assert.match(composer, /backgroundColor:\s*'rgba\(255, 253, 248, 0\.9\)'/);
   assert.match(composer, /\.\.\.shadows\.floating/);
@@ -168,6 +174,8 @@ test('AI chat composer matches the botanical floating capsule input reference', 
   assert.match(composer, /name=\{editing \? 'checkmark' : 'paper-plane-outline'\}/);
   assert.match(composer, /height:\s*58/);
   assert.match(composer, /width:\s*58/);
+  assert.match(composer, /width:\s*'94%'/);
+  assert.match(composer, /maxWidth:\s*680/);
 });
 
 test('Shared dialogs and action sheets use the botanical pattern surface', () => {
@@ -187,11 +195,9 @@ test('AI message thinking and per-message actions stay outside the chat bubble',
   const renderPart = bubble.split('const styles = StyleSheet.create')[0];
   const thinkingIndex = renderPart.indexOf('styles.thinkingWrap');
   const bubbleIndex = renderPart.indexOf('styles.bubble');
-  const actionIndex = renderPart.indexOf('styles.messageActionButton');
   assert.ok(thinkingIndex >= 0 && thinkingIndex < bubbleIndex);
-  assert.ok(actionIndex > bubbleIndex);
-  assert.match(bubble, /userActionRow/);
-  assert.match(bubble, /assistantActionRow/);
+  assert.doesNotMatch(bubble, /userActionRow/);
+  assert.doesNotMatch(bubble, /assistantActionRow/);
   assert.doesNotMatch(bubble, /userActionButton/);
   assert.doesNotMatch(bubble, /retryButton/);
 });

@@ -1,3 +1,4 @@
+import type { GestureResponderEvent } from 'react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -18,15 +19,12 @@ interface AiMessageBubbleProps {
   space: PixorySpace;
   streaming?: boolean;
   onOpenCitation: (citation: AiCitationRecord) => void;
-  onEditUser: (messageId: string, content: string) => void;
-  onLongPress: (message: AiMessageWithCitations) => void;
-  onRegenerate: (messageId: string) => void;
+  onLongPress: (message: AiMessageWithCitations, event: GestureResponderEvent) => void;
 }
 
-export function AiMessageBubble({ assistantAvatar, message, space, streaming = false, onEditUser, onLongPress, onOpenCitation, onRegenerate }: AiMessageBubbleProps) {
+export function AiMessageBubble({ assistantAvatar, message, space, streaming = false, onLongPress, onOpenCitation }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
-  const canRegenerate = !isUser && !streaming && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
   const showAssistantAvatar = !isUser && assistantAvatar?.avatarEnabled;
 
@@ -49,25 +47,12 @@ export function AiMessageBubble({ assistantAvatar, message, space, streaming = f
         ) : null}
         <Pressable
           accessibilityRole="button"
-          onLongPress={() => onLongPress(message)}
+          onLongPress={(event) => onLongPress(message, event)}
           style={({ pressed }) => [styles.bubble, isUser ? styles.userBubble : styles.assistantBubble, pressed && styles.pressed]}
         >
           <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </Pressable>
-        {isUser ? (
-          <View style={styles.userActionRow}>
-            <Pressable accessibilityLabel="重写" accessibilityRole="button" onPress={() => onEditUser(message.id, message.content)} style={({ pressed }) => [styles.messageActionButton, pressed && styles.pressed]}>
-              <Ionicons color={colors.primary.active} name="create-outline" size={15} />
-            </Pressable>
-          </View>
-        ) : canRegenerate ? (
-          <View style={styles.assistantActionRow}>
-            <Pressable accessibilityLabel="刷新回复" accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.messageActionButton, pressed && styles.pressed]}>
-              <Ionicons color={colors.primary.active} name="refresh-outline" size={16} />
-            </Pressable>
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -139,28 +124,6 @@ const styles = StyleSheet.create({
   thinkingWrap: {
     maxWidth: '100%',
     paddingHorizontal: spacing[1],
-  },
-  userActionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingRight: spacing[1],
-  },
-  assistantActionRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    paddingLeft: spacing[1],
-  },
-  messageActionButton: {
-    alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
   },
   pressed: {
     opacity: 0.78,

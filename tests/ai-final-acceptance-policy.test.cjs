@@ -125,6 +125,8 @@ test('AI chat title is generated from the first user message and refreshed in th
 
   assert.match(chatService, /generateAiThreadTitle/);
   assert.match(chatService, /COMMON_TITLE_PREFIXES/);
+  assert.match(chatService, /isCustomInitialTitle/);
+  assert.match(chatService, /title !== defaultTitle/);
   assert.match(chatService, /titleStatus === 'fallback'/);
   assert.match(chatScreen, /loadThreadTitle/);
   assert.match(chatScreen, /displayTitle/);

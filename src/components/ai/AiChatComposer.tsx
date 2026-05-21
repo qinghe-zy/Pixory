@@ -108,7 +108,7 @@ export function AiChatComposer({
           allowFontScaling={false}
           maxFontSizeMultiplier={1}
           ref={inputRef}
-          multiline
+          multiline={false}
           numberOfLines={1}
           onChangeText={onChangeText}
           placeholder="输入问题或整理需求"
@@ -216,14 +216,17 @@ const styles = StyleSheet.create({
   },
   composerShell: {
     alignItems: 'center',
+    alignSelf: 'center',
     backgroundColor: 'rgba(255, 253, 248, 0.9)',
     borderRadius: radius.pill,
     flexDirection: 'row',
     gap: spacing[3],
-    minHeight: 76,
+    maxWidth: 680,
+    minHeight: 68,
     paddingLeft: spacing[3],
     paddingRight: spacing[2],
     paddingVertical: spacing[2],
+    width: '94%',
     ...shadows.floating,
   },
   addButton: {
@@ -244,8 +247,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     includeFontPadding: false,
     lineHeight: 26,
-    maxHeight: 96,
-    minHeight: 48,
+    height: 42,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
