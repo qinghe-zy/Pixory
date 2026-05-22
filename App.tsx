@@ -282,6 +282,39 @@ export default function App() {
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
 
+  async function checkRemoteNotices(isStillActive: () => boolean = () => true) {
+    const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
+    if (!isStillActive() || isExternalEntryRoute(activeRoute)) {
+      return;
+    }
+
+    const updateInfo = await checkForAppUpdate();
+    if (!isStillActive()) {
+      return;
+    }
+    if (updateInfo) {
+      const skippedUpdateVersionKey = await runWithDatabaseSpace('normal', (db) => settingsRepository.getSkippedUpdateVersionKey(db)).catch(() => null);
+      if (!isStillActive()) {
+        return;
+      }
+      if (skippedUpdateVersionKey !== getUpdateVersionKey(updateInfo)) {
+        setAvailableAnnouncement(null);
+        setAvailableUpdate(updateInfo);
+        return;
+      }
+    }
+
+    const announcement = await checkForRemoteAnnouncement();
+    if (!isStillActive() || !announcement) {
+      return;
+    }
+    const activeRouteAfterAnnouncement = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
+    const dismissedAnnouncementId = await runWithDatabaseSpace('normal', (db) => settingsRepository.getDismissedAnnouncementId(db)).catch(() => null);
+    if (isStillActive() && !isExternalEntryRoute(activeRouteAfterAnnouncement) && announcement.id !== dismissedAnnouncementId) {
+      setAvailableAnnouncement(announcement);
+    }
+  }
+
   useEffect(() => {
     routeStackRef.current = routeStack;
   }, [routeStack]);
@@ -348,35 +381,7 @@ export default function App() {
     }
 
     let isMounted = true;
-    void (async () => {
-      const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
-      if (!isMounted || isExternalEntryRoute(activeRoute)) {
-        return;
-      }
-
-      const updateInfo = await checkForAppUpdate();
-      if (!isMounted) {
-        return;
-      }
-      if (updateInfo) {
-        const skippedUpdateVersionKey = await runWithDatabaseSpace('normal', (db) => settingsRepository.getSkippedUpdateVersionKey(db)).catch(() => null);
-        if (skippedUpdateVersionKey !== getUpdateVersionKey(updateInfo)) {
-          setAvailableAnnouncement(null);
-          setAvailableUpdate(updateInfo);
-          return;
-        }
-      }
-
-      const announcement = await checkForRemoteAnnouncement();
-      if (!isMounted || !announcement) {
-        return;
-      }
-      const activeRouteAfterAnnouncement = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
-      const dismissedAnnouncementId = await runWithDatabaseSpace('normal', (db) => settingsRepository.getDismissedAnnouncementId(db)).catch(() => null);
-      if (isMounted && !isExternalEntryRoute(activeRouteAfterAnnouncement) && announcement.id !== dismissedAnnouncementId) {
-        setAvailableAnnouncement(announcement);
-      }
-    })().catch(() => undefined);
+    void checkRemoteNotices(() => isMounted).catch(() => undefined);
 
     return () => {
       isMounted = false;
@@ -450,6 +455,7 @@ export default function App() {
           return;
         }
         setPrivacyShieldVisible(false);
+        void checkRemoteNotices().catch(() => undefined);
         return;
       }
 

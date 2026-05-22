@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.8",
-  "versionCode": 222,
+  "version": "2.1.9",
+  "versionCode": 223,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.8 已发布，修复 AI 聊天标题生成并优化输入与消息操作。",
+  "message": "Pixory 2.1.9 已发布，优化远程更新检查触发时机。",
   "releaseNotes": [
-    "普通聊天首条消息会自动生成更贴合内容的会话标题。",
-    "输入框收窄为单行样式，降低聊天页视觉占用。",
-    "消息长按菜单改为当前位置弹出，复制、修改和重新生成更直接。"
+    "App 启动后会检查新版本。",
+    "从后台回到前台时也会重新检查远程更新。",
+    "继续保留跳过指定版本的去重逻辑，避免重复打扰。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

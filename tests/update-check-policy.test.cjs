@@ -62,6 +62,9 @@ test('App shows update and announcement prompts without adding push notification
   assert.equal(packageJson.dependencies['expo-constants'], '~18.0.13');
   assert.match(appSource, /checkForAppUpdate\(\)/);
   assert.match(appSource, /setAvailableUpdate\(updateInfo\)/);
+  assert.match(appSource, /function checkRemoteNotices/);
+  assert.match(appSource, /void checkRemoteNotices\(\(\) => isMounted\)/);
+  assert.match(appSource, /nextState === 'active'[\s\S]{0,700}void checkRemoteNotices\(\)/);
   assert.match(appSource, /<AppDialog[\s\S]{0,500}primaryLabel="去更新"/);
   assert.match(appSource, /tertiaryLabel="跳过此版本"/);
   assert.match(appSource, /setSkippedUpdateVersionKey/);
