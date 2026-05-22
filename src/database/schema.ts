@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 18;
+export const DATABASE_VERSION = 19;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -497,4 +497,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_citations_message ON ai_message_citations(mess
 export const MIGRATION_STATEMENTS_V18 = `
 ALTER TABLE ai_role_cards ADD COLUMN avatarEnabled INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE ai_role_cards ADD COLUMN avatarUri TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V19 = `
+ALTER TABLE ai_providers ADD COLUMN embeddingBaseUrl TEXT;
 `;

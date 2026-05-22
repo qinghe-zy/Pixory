@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.11",
-  "versionCode": 225,
+  "version": "2.1.12",
+  "versionCode": 226,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.11 已发布，优化 AI 聊天界面、会话设置和历史会话整理。",
+  "message": "Pixory 2.1.12 已发布，统一 AI light 设计并补齐 Embedding 接口配置。",
   "releaseNotes": [
-    "AI 聊天页按 light 设计收敛视觉层级，输入框更轻更紧凑。",
-    "会话设置页改为摘要优先，高级角色指令默认折叠。",
-    "历史会话长按进入批量整理，单条重命名和删除移入当前位置菜单。"
+    "AI 工作台、历史、知识库、材料、模型账号和会话设置统一为 warm light 视觉。",
+    "聊天气泡、输入框、引用、思考块和文档阅读器全部接入 AI light token。",
+    "模型账号高级设置新增 Embedding 接口和自定义 Embedding 模型配置。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

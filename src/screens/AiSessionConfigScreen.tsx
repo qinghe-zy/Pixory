@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ContentCard } from '../components/ContentCard';
-import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
-import { FilterChip } from '../components/FilterChip';
-import { FormTextareaRow } from '../components/FormTextareaRow';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightCard } from '../components/ai/AiLightCard';
+import { AiLightChip } from '../components/ai/AiLightChip';
+import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
+import { AiLightTextareaRow } from '../components/ai/AiLightField';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { applyRoleCardToThread, loadThreadSessionConfig, updateAiThreadSessionConfig } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import type { AiBoundaryMode, AiContextType } from '../ai/types';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiSessionConfigScreenProps {
@@ -129,16 +130,14 @@ export function AiSessionConfigScreen({
   }
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       onBack={onBack}
       scrollable
       subtitle={`${spaceLabel}${threadId != null ? ` · 会话 ${threadId}` : ''}`}
       title="会话设置"
     >
       <View style={styles.content}>
-        <ContentCard>
+        <AiLightCard>
           <View style={styles.summaryHeader}>
             <View style={styles.summaryCopy}>
               <Text style={styles.sectionTitle}>当前会话</Text>
@@ -153,9 +152,9 @@ export function AiSessionConfigScreen({
             <Text style={styles.metaPill}>{BOUNDARY_MODES.find((mode) => mode.value === boundaryMode)?.label ?? '自由'}</Text>
             <Text numberOfLines={1} style={styles.metaPill}>{roleCardSummary}</Text>
           </View>
-        </ContentCard>
+        </AiLightCard>
 
-        <ContentCard>
+        <AiLightCard>
           <View style={styles.roleRow}>
             <View style={styles.summaryCopy}>
               <Text style={styles.sectionTitle}>角色显示</Text>
@@ -174,13 +173,13 @@ export function AiSessionConfigScreen({
               <Text style={styles.compactButtonText}>默认角色</Text>
             </Pressable>
           </View>
-        </ContentCard>
+        </AiLightCard>
 
-        <ContentCard>
+        <AiLightCard>
           <Text style={styles.sectionTitle}>回答范围</Text>
           <View style={styles.chips}>
             {BOUNDARY_MODES.map((mode) => (
-              <FilterChip
+              <AiLightChip
                 active={boundaryMode === mode.value}
                 key={mode.value}
                 label={mode.label}
@@ -188,9 +187,9 @@ export function AiSessionConfigScreen({
               />
             ))}
           </View>
-        </ContentCard>
+        </AiLightCard>
 
-        <ContentCard>
+        <AiLightCard>
           <Pressable accessibilityRole="button" onPress={() => setAdvancedPromptVisible((current) => !current)} style={({ pressed }) => [styles.advancedHeader, pressed && styles.pressed]}>
             <View style={styles.summaryCopy}>
               <Text style={styles.sectionTitle}>高级角色指令</Text>
@@ -199,7 +198,7 @@ export function AiSessionConfigScreen({
             <Text style={styles.textActionLabel}>{advancedPromptVisible ? '收起' : '展开'}</Text>
           </Pressable>
           {advancedPromptVisible ? (
-            <FormTextareaRow
+            <AiLightTextareaRow
               label="角色指令"
               minHeight={104}
               onChangeText={setSystemPrompt}
@@ -207,15 +206,15 @@ export function AiSessionConfigScreen({
               value={systemPrompt}
             />
           ) : null}
-        </ContentCard>
+        </AiLightCard>
 
         <View style={styles.actions}>
-          <PrimaryButton label="保存并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
-          <PrimaryButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
+          <AiLightButton label="保存并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+          <AiLightButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
         </View>
-        {status ? <FeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
+        {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
       </View>
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -241,23 +240,26 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     ...typography.textStyles.caption,
-    backgroundColor: colors.background.tag,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
     maxWidth: '100%',
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   body: {
     ...typography.textStyles.body,
+    color: aiLightColors.ink,
   },
   caption: {
     ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   roleRow: {
     alignItems: 'center',
@@ -272,8 +274,8 @@ const styles = StyleSheet.create({
   },
   textAction: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
@@ -282,13 +284,13 @@ const styles = StyleSheet.create({
   },
   textActionLabel: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
     fontWeight: '600',
   },
   compactButton: {
     alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
@@ -296,16 +298,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   compactButtonActive: {
-    backgroundColor: colors.primary.default,
-    borderColor: colors.primary.default,
+    backgroundColor: aiLightColors.coral,
+    borderColor: aiLightColors.coral,
   },
   compactButtonText: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
     fontWeight: '600',
   },
   compactButtonTextActive: {
-    color: colors.text.inverse,
+    color: aiLightColors.onDark,
   },
   advancedHeader: {
     alignItems: 'center',

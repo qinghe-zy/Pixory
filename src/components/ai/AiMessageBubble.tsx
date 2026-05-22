@@ -7,7 +7,7 @@ import type { AiCitationRecord } from '../../ai/types';
 import type { PixorySpace } from '../../database';
 import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { AiCitationList } from './AiCitationList';
-import { aiChatLightColors } from './aiChatLightTheme';
+import { aiLightColors } from './aiLightTheme';
 import { AiThinkingBlock } from './AiThinkingBlock';
 
 interface AiMessageBubbleProps {
@@ -51,7 +51,7 @@ export function AiMessageBubble({
           {assistantAvatar.avatarUri ? (
             <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
           ) : (
-            <Ionicons color={aiChatLightColors.coral} name="sparkles-outline" size={metrics.iconSizeSm} />
+            <Ionicons color={aiLightColors.coral} name="sparkles-outline" size={metrics.iconSizeSm} />
           )}
         </View>
       ) : null}
@@ -74,7 +74,7 @@ export function AiMessageBubble({
             onPress={() => onCopy(message)}
             style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
           >
-            <Ionicons color={aiChatLightColors.muted} name="copy-outline" size={15} />
+            <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
           </Pressable>
           {isUser ? (
             <Pressable
@@ -85,7 +85,7 @@ export function AiMessageBubble({
               onPress={() => onEditUser(message.id, message.content)}
               style={({ pressed }) => [styles.messageActionButton, !canEdit && styles.disabledAction, pressed && canEdit && styles.pressed]}
             >
-              <Ionicons color={aiChatLightColors.muted} name="create-outline" size={15} />
+              <Ionicons color={aiLightColors.muted} name="create-outline" size={15} />
             </Pressable>
           ) : (
             <Pressable
@@ -96,7 +96,7 @@ export function AiMessageBubble({
               onPress={() => onRegenerate(message.id)}
               style={({ pressed }) => [styles.messageActionButton, !canRegenerate && styles.disabledAction, pressed && canRegenerate && styles.pressed]}
             >
-              <Ionicons color={aiChatLightColors.muted} name="refresh-outline" size={15} />
+              <Ionicons color={aiLightColors.muted} name="refresh-outline" size={15} />
             </Pressable>
           )}
         </View>
@@ -132,8 +132,8 @@ const styles = StyleSheet.create({
   },
   avatar: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.canvas,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: metrics.minTouchSize,
@@ -150,13 +150,13 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: aiChatLightColors.coral,
+    backgroundColor: aiLightColors.coral,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
   },
   assistantBubble: {
-    backgroundColor: aiChatLightColors.card,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderTopLeftRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
@@ -166,10 +166,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   userText: {
-    color: aiChatLightColors.onDark,
+    color: aiLightColors.onDark,
   },
   assistantText: {
-    color: aiChatLightColors.ink,
+    color: aiLightColors.ink,
   },
   thinkingWrap: {
     maxWidth: '100%',
@@ -188,8 +188,8 @@ const styles = StyleSheet.create({
   },
   messageActionButton: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.canvas,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     height: 28,

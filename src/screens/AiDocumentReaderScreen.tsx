@@ -7,10 +7,11 @@ import { AiDocxReader } from '../components/ai/AiDocxReader';
 import { AiMarkdownReader } from '../components/ai/AiMarkdownReader';
 import { AiPdfReader } from '../components/ai/AiPdfReader';
 import { AiTextReader } from '../components/ai/AiTextReader';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { AppScreen } from '../components/AppScreen';
 import { readDocumentForReader } from '../ai/aiDocumentService';
 import type { AiDocumentReaderLocator, AiReadableDocument } from '../ai/readers/readerTypes';
-import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { layout, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiDocumentReaderScreenProps {
@@ -62,10 +63,10 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
   const pdfMode = readable?.document.sourceType === 'pdf';
 
   return (
-    <AppScreen backgroundVariant="search" contentStyle={styles.screen}>
+    <AppScreen backgroundColor={aiLightColors.canvas} contentStyle={styles.screen}>
       <View style={[styles.header, { paddingTop: statusBarHeight + spacing[2] }]}>
         <Pressable accessibilityLabel="返回" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-          <Ionicons color={colors.text.heading} name="chevron-back" size={22} />
+          <Ionicons color={aiLightColors.ink} name="chevron-back" size={22} />
         </Pressable>
         <Text numberOfLines={1} style={styles.title}>{displayTitle}</Text>
         <View style={styles.headerSpacer} />
@@ -74,7 +75,7 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
       <View style={[styles.readerHost, { paddingTop: statusBarHeight + metrics.minTouchSize + spacing[4] }]}>
         {loading ? (
           <View style={styles.stateBlock}>
-            <ActivityIndicator color={colors.primary.active} />
+            <ActivityIndicator color={aiLightColors.coral} />
             <Text style={styles.stateText}>正在打开文档...</Text>
           </View>
         ) : errorMessage ? (
@@ -117,8 +118,8 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderBottomColor: colors.border.subtle,
+    backgroundColor: aiLightColors.canvas,
+    borderBottomColor: aiLightColors.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
@@ -129,7 +130,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 2,
-    ...shadows.none,
   },
   backButton: {
     alignItems: 'center',
@@ -143,6 +143,9 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.navTitle,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontWeight: '400',
     flex: 1,
     textAlign: 'center',
   },
@@ -166,12 +169,12 @@ const styles = StyleSheet.create({
   },
   stateText: {
     ...typography.textStyles.body,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
     textAlign: 'center',
   },
   errorText: {
     ...typography.textStyles.body,
-    color: colors.semantic.danger,
+    color: aiLightColors.coralActive,
     textAlign: 'center',
   },
 });

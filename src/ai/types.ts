@@ -35,6 +35,7 @@ export interface AiProviderRecord {
   providerType: AiProviderType;
   displayName: string;
   baseUrl: string | null;
+  embeddingBaseUrl: string | null;
   protocol: AiProviderProtocol;
   chatEnabled: boolean;
   embeddingEnabled: boolean;

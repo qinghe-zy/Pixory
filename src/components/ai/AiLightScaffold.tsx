@@ -1,0 +1,149 @@
+import { Ionicons } from '@expo/vector-icons';
+import type { ReactNode, RefObject } from 'react';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AppScreen } from '../AppScreen';
+import { layout, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
+
+interface AiLightScaffoldProps {
+  children: ReactNode;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  errorMessage?: string | null;
+  footer?: ReactNode;
+  loading?: boolean;
+  onBack?: () => void;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  rightAction?: ReactNode;
+  scrollable?: boolean;
+  scrollViewRef?: RefObject<ScrollView | null>;
+  subtitle?: string;
+  title: string;
+  titleSlot?: ReactNode;
+}
+
+export function AiLightScaffold({
+  children,
+  contentContainerStyle,
+  errorMessage,
+  footer,
+  loading = false,
+  onBack,
+  onScroll,
+  rightAction,
+  scrollable = false,
+  scrollViewRef,
+  subtitle,
+  title,
+  titleSlot,
+}: AiLightScaffoldProps) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+
+  return (
+    <AppScreen
+      backgroundColor={aiLightColors.canvas}
+      contentStyle={contentContainerStyle}
+      footer={footer}
+      footerStyle={styles.footer}
+      onScroll={onScroll}
+      scrollViewRef={scrollViewRef}
+      scrollable={scrollable}
+    >
+      <View style={[styles.header, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+        <View style={styles.side}>
+          {onBack ? (
+            <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={10} onPress={onBack} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
+              <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
+            </Pressable>
+          ) : null}
+        </View>
+        <View style={styles.titleWrap}>
+          {titleSlot ?? (
+            <Text numberOfLines={1} style={styles.title}>
+              {title}
+            </Text>
+          )}
+          {subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}
+        </View>
+        <View style={styles.side}>{rightAction}</View>
+      </View>
+      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+      <View pointerEvents={loading ? 'none' : 'auto'} style={loading ? styles.loadingContent : undefined}>
+        {children}
+      </View>
+    </AppScreen>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    alignItems: 'center',
+    borderBottomColor: aiLightColors.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: layout.headerHeight,
+  },
+  side: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    minWidth: spacing[10],
+  },
+  titleWrap: {
+    alignItems: 'flex-start',
+    flex: 1,
+    gap: rhythm.microGap,
+  },
+  title: {
+    ...typography.textStyles.navTitle,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontSize: 21,
+    fontWeight: '400',
+    lineHeight: 27,
+  },
+  subtitle: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  iconButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: spacing[10],
+    justifyContent: 'center',
+    width: spacing[10],
+  },
+  errorText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+  },
+  footer: {
+    backgroundColor: aiLightColors.canvas,
+    borderTopColor: aiLightColors.hairline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  loadingContent: {
+    opacity: 0.7,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+});

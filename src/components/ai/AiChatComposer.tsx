@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
-import { aiChatLightColors } from './aiChatLightTheme';
+import { aiLightColors } from './aiLightTheme';
 
 export interface AiComposerAttachment {
   id: string;
@@ -72,7 +72,7 @@ export function AiChatComposer({
         <View style={styles.editBar}>
           <Text style={styles.editText}>重写</Text>
           <Pressable accessibilityLabel="取消重写" accessibilityRole="button" onPress={onCancelEdit} style={({ pressed }) => [styles.editClose, pressed && styles.pressed]}>
-            <Ionicons color={aiChatLightColors.muted} name="close" size={16} />
+            <Ionicons color={aiLightColors.muted} name="close" size={16} />
           </Pressable>
         </View>
       ) : null}
@@ -82,7 +82,7 @@ export function AiChatComposer({
             const size = formatAttachmentSize(attachment.size);
             return (
               <View key={attachment.id} style={styles.attachmentChip}>
-                <Ionicons color={aiChatLightColors.coral} name={getAttachmentIcon(attachment.kind)} size={16} />
+                <Ionicons color={aiLightColors.coral} name={getAttachmentIcon(attachment.kind)} size={16} />
                 <View style={styles.attachmentCopy}>
                   <Text numberOfLines={1} style={styles.attachmentName}>{attachment.name}</Text>
                   {size ? <Text numberOfLines={1} style={styles.attachmentMeta}>{size}</Text> : null}
@@ -94,7 +94,7 @@ export function AiChatComposer({
                   onPress={() => onRemoveAttachment?.(attachment.id)}
                   style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
                 >
-                  <Ionicons color={aiChatLightColors.muted} name="close" size={14} />
+                  <Ionicons color={aiLightColors.muted} name="close" size={14} />
                 </Pressable>
               </View>
             );
@@ -103,7 +103,7 @@ export function AiChatComposer({
       ) : null}
       <View style={styles.composerShell}>
         <Pressable accessibilityLabel="添加附件" accessibilityRole="button" disabled={generating || editing} hitSlop={spacing[2]} onPress={onAddAttachment} style={({ pressed }) => [styles.addButton, (generating || editing) && styles.disabled, pressed && !(generating || editing) && styles.pressed]}>
-          <Ionicons color={aiChatLightColors.coral} name="add" size={spacing[6]} />
+          <Ionicons color={aiLightColors.coral} name="add" size={spacing[6]} />
         </Pressable>
         <TextInput
           allowFontScaling={false}
@@ -113,8 +113,8 @@ export function AiChatComposer({
           numberOfLines={1}
           onChangeText={onChangeText}
           placeholder="输入提示或需求"
-          placeholderTextColor={aiChatLightColors.mutedSoft}
-          selectionColor={aiChatLightColors.coral}
+          placeholderTextColor={aiLightColors.mutedSoft}
+          selectionColor={aiLightColors.coral}
           style={styles.input}
           textAlignVertical="center"
           value={value}
@@ -122,16 +122,16 @@ export function AiChatComposer({
         <View style={styles.sideActions}>
           {retryAvailable ? (
             <Pressable accessibilityLabel="刷新回复" accessibilityRole="button" hitSlop={spacing[2]} onPress={onRetry} style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}>
-              <Ionicons color={aiChatLightColors.coral} name="refresh-outline" size={spacing[5]} />
+              <Ionicons color={aiLightColors.coral} name="refresh-outline" size={spacing[5]} />
             </Pressable>
           ) : (
             <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.micButton}>
-              <Ionicons color={aiChatLightColors.coral} name="mic-outline" size={spacing[5]} />
+              <Ionicons color={aiLightColors.coral} name="mic-outline" size={spacing[5]} />
             </View>
           )}
           {generating ? (
             <Pressable accessibilityLabel="停止回复" accessibilityRole="button" hitSlop={spacing[2]} onPress={onStop} style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}>
-              <Ionicons color={aiChatLightColors.onDark} name="stop" size={spacing[5]} />
+              <Ionicons color={aiLightColors.onDark} name="stop" size={spacing[5]} />
             </Pressable>
           ) : (
             <Pressable
@@ -142,7 +142,7 @@ export function AiChatComposer({
               onPress={onSend}
               style={({ pressed }) => [styles.sendButton, !canSend && styles.disabled, pressed && canSend && styles.pressed]}
             >
-              <Ionicons color={aiChatLightColors.onDark} name={editing ? 'checkmark' : 'paper-plane-outline'} size={spacing[5]} />
+              <Ionicons color={aiLightColors.onDark} name={editing ? 'checkmark' : 'paper-plane-outline'} size={spacing[5]} />
             </Pressable>
           )}
         </View>
@@ -163,8 +163,8 @@ const styles = StyleSheet.create({
   },
   attachmentChip: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.surface,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -181,11 +181,11 @@ const styles = StyleSheet.create({
   },
   attachmentName: {
     ...typography.textStyles.caption,
-    color: aiChatLightColors.ink,
+    color: aiLightColors.ink,
   },
   attachmentMeta: {
     ...typography.textStyles.micro,
-    color: aiChatLightColors.muted,
+    color: aiLightColors.muted,
   },
   attachmentRemove: {
     alignItems: 'center',
@@ -196,8 +196,8 @@ const styles = StyleSheet.create({
   editBar: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: aiChatLightColors.surface,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   },
   editText: {
     ...typography.textStyles.caption,
-    color: aiChatLightColors.coralActive,
+    color: aiLightColors.coralActive,
   },
   editClose: {
     alignItems: 'center',
@@ -218,8 +218,8 @@ const styles = StyleSheet.create({
   },
   composerShell: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.canvas,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -232,8 +232,8 @@ const styles = StyleSheet.create({
   },
   addButton: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.canvas,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: spacing[8],
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     width: spacing[8],
   },
   input: {
-    color: aiChatLightColors.ink,
+    color: aiLightColors.ink,
     flex: 1,
     fontFamily: typography.family.base,
     fontSize: typography.size.body,
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.coral,
+    backgroundColor: aiLightColors.coral,
     borderRadius: radius.md,
     height: spacing[8],
     justifyContent: 'center',

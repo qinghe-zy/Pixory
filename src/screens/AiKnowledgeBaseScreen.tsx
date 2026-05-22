@@ -2,11 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightCard } from '../components/ai/AiLightCard';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { createKnowledgeBase, listKnowledgeBases } from '../ai/aiDocumentService';
 import type { AiKnowledgeBaseRecord } from '../database/repositories/aiKnowledgeRepository';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiKnowledgeBaseScreenProps {
@@ -48,28 +50,26 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
   }
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
       title="资料库"
     >
       <View style={styles.contentStack}>
-        <View style={styles.createPanel}>
+        <AiLightCard>
           <Text style={styles.sectionTitle}>新建资料库</Text>
           <TextInput
             onChangeText={setName}
             placeholder="名称"
-            placeholderTextColor={colors.text.placeholder}
-            selectionColor={colors.primary.default}
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.coral}
             style={styles.input}
             value={name}
           />
-          <PrimaryButton disabled={!name.trim()} label="创建" onPress={() => void handleCreate()} variant="outline" />
+          <AiLightButton disabled={!name.trim()} label="创建" onPress={() => void handleCreate()} variant="outline" />
           {status ? <Text style={styles.status}>{status}</Text> : null}
-        </View>
+        </AiLightCard>
 
         <View style={styles.list}>
           {items.length ? (
@@ -83,7 +83,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
                   style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, pressed && styles.pressed]}
                 >
                   <View style={styles.kbIcon}>
-                    <Ionicons color={colors.primary.active} name={selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
+                    <Ionicons color={aiLightColors.coralActive} name={selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
                   </View>
                   <View style={styles.kbCopy}>
                     <Text style={styles.kbName}>{item.name}</Text>
@@ -99,9 +99,9 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
         </View>
 
         <View style={styles.actions}>
-          <PrimaryButton label="导入材料" onPress={() => onImportMaterial(selected?.id)} variant="outline" />
-          <PrimaryButton label="材料列表" onPress={() => onOpenMaterials(selected?.id)} variant="outline" />
-          <PrimaryButton
+          <AiLightButton label="导入材料" onPress={() => onImportMaterial(selected?.id)} variant="outline" />
+          <AiLightButton label="材料列表" onPress={() => onOpenMaterials(selected?.id)} variant="outline" />
+          <AiLightButton
             disabled={!selected}
             label="开始聊天"
             onPress={() => {
@@ -112,7 +112,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
           />
         </View>
       </View>
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -120,28 +120,21 @@ const styles = StyleSheet.create({
   contentStack: {
     gap: rhythm.entryCardGap,
   },
-  createPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.fieldContentGap,
-    padding: spacing[4],
-  },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   status: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
   },
   input: {
     ...typography.textStyles.body,
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.title,
+    color: aiLightColors.ink,
     minHeight: 44,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
@@ -151,8 +144,8 @@ const styles = StyleSheet.create({
   },
   kbRow: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -160,14 +153,14 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedRow: {
-    borderColor: colors.primary.light,
+    borderColor: aiLightColors.coral,
   },
   pressed: {
     opacity: 0.78,
   },
   kbIcon: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 38,
     justifyContent: 'center',
@@ -179,6 +172,7 @@ const styles = StyleSheet.create({
   },
   kbName: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   emptyState: {
     alignItems: 'center',

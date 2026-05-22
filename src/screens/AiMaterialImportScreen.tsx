@@ -2,9 +2,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightCard } from '../components/ai/AiLightCard';
+import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   createKnowledgeBase,
   generateIpMaterial,
@@ -14,7 +16,7 @@ import {
 } from '../ai/aiDocumentService';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
-import { colors, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiMaterialImportScreenProps {
   space: PixorySpace;
@@ -157,9 +159,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
   }
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       loading={busy}
       onBack={onBack}
       scrollable
@@ -167,15 +167,15 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       title="导入材料"
     >
       <View style={styles.contentStack}>
-        {feedback ? <FeedbackBanner message={feedback.message} tone={feedback.tone} /> : null}
+        {feedback ? <AiLightFeedbackBanner message={feedback.message} tone={feedback.tone} /> : null}
 
-        <View style={styles.panel}>
+        <AiLightCard>
           <Text style={styles.sectionTitle}>手动文本</Text>
           <TextInput
             onChangeText={setTitle}
             placeholder="材料标题"
-            placeholderTextColor={colors.text.placeholder}
-            selectionColor={colors.primary.default}
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.coral}
             style={styles.input}
             value={title}
           />
@@ -183,21 +183,21 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
             multiline
             onChangeText={setText}
             placeholder="粘贴角色资料、研究记录或标签体系"
-            placeholderTextColor={colors.text.placeholder}
-            selectionColor={colors.primary.default}
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.coral}
             style={[styles.input, styles.textarea]}
             textAlignVertical="top"
             value={text}
           />
-          <PrimaryButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
-        </View>
+          <AiLightButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
+        </AiLightCard>
 
-        <View style={styles.panel}>
+        <AiLightCard>
           <Text style={styles.sectionTitle}>文件材料</Text>
-          <PrimaryButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
-        </View>
+          <AiLightButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
+        </AiLightCard>
 
-        <View style={styles.panel}>
+        <AiLightCard>
           <Text style={styles.sectionTitle}>从已有 IP 生成</Text>
           <View style={styles.ipChoiceList}>
             {ips.map((ip) => (
@@ -206,10 +206,10 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
               </Text>
             ))}
           </View>
-          <PrimaryButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
-        </View>
+          <AiLightButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
+        </AiLightCard>
       </View>
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -217,24 +217,17 @@ const styles = StyleSheet.create({
   contentStack: {
     gap: rhythm.entryCardGap,
   },
-  panel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.fieldContentGap,
-    padding: spacing[4],
-  },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   input: {
     ...typography.textStyles.body,
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.title,
+    color: aiLightColors.ink,
     minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
@@ -247,10 +240,10 @@ const styles = StyleSheet.create({
   },
   ipChoice: {
     ...typography.textStyles.body,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   selectedIpChoice: {
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
     fontWeight: '600',
   },
 });

@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightCard } from '../components/ai/AiLightCard';
+import { AiLightSearchBar } from '../components/ai/AiLightField';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { PageStateBlock } from '../components/PageStateBlock';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
-import { SearchBar } from '../components/SearchBar';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiIpPickerScreenProps {
   space: PixorySpace;
@@ -60,9 +62,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
@@ -70,10 +70,10 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
     >
       <View style={styles.contentStack}>
         <View style={styles.searchWrap}>
-          <SearchBar onChangeText={setSearchText} placeholder="搜索 IP" value={searchText} />
+          <AiLightSearchBar onChangeText={setSearchText} placeholder="搜索 IP" value={searchText} />
         </View>
 
-        <View style={styles.optionPanel}>
+        <AiLightCard>
           <OptionRow
             fixed
             label="基础 IP 资料"
@@ -84,7 +84,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
             onValueChange={setIncludeIpDocuments}
             value={includeIpDocuments}
           />
-        </View>
+        </AiLightCard>
 
         <PageStateBlock
           emptyActionLabel="返回"
@@ -109,7 +109,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
                   style={({ pressed }) => [styles.ipRow, selected && styles.selectedIpRow, pressed && styles.pressed]}
                 >
                   <View style={styles.ipIcon}>
-                    <Ionicons color={colors.primary.active} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
+                    <Ionicons color={aiLightColors.coralActive} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
                   </View>
                   <View style={styles.ipCopy}>
                     <Text style={styles.ipName}>{item.name}</Text>
@@ -123,7 +123,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
           </View>
         </PageStateBlock>
 
-        <PrimaryButton
+        <AiLightButton
           disabled={!selectedIp}
           label="用这个 IP 开始聊天"
           onPress={() => {
@@ -133,7 +133,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
           }}
         />
       </View>
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -155,8 +155,8 @@ function OptionRow({ label, value, fixed = false, onValueChange }: OptionRowProp
       ) : (
         <Switch
           onValueChange={onValueChange}
-          thumbColor={colors.background.surface}
-          trackColor={{ false: colors.border.strong, true: colors.primary.default }}
+          thumbColor={aiLightColors.canvas}
+          trackColor={{ false: aiLightColors.hairline, true: aiLightColors.coral }}
           value={value}
         />
       )}
@@ -171,14 +171,6 @@ const styles = StyleSheet.create({
   searchWrap: {
     gap: rhythm.fieldContentGap,
   },
-  optionPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[4],
-  },
   optionRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -190,12 +182,13 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   fixedBadge: {
     ...typography.textStyles.micro,
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
@@ -204,8 +197,8 @@ const styles = StyleSheet.create({
   },
   ipRow: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -214,14 +207,14 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedIpRow: {
-    borderColor: colors.primary.light,
+    borderColor: aiLightColors.coral,
   },
   pressed: {
     opacity: 0.78,
   },
   ipIcon: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 38,
     justifyContent: 'center',
@@ -233,8 +226,10 @@ const styles = StyleSheet.create({
   },
   ipName: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   ipMeta: {
     ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
 });

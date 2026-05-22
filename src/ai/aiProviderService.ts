@@ -44,6 +44,7 @@ function builtInProviderRecord(providerType: AiProviderType): AiProviderRecord |
     providerType: preset.providerType,
     displayName: preset.displayName,
     baseUrl: preset.baseUrl,
+    embeddingBaseUrl: null,
     protocol: preset.protocol,
     chatEnabled: preset.chatEnabled,
     embeddingEnabled: preset.embeddingEnabled,
@@ -96,6 +97,26 @@ function manualModelRecord(provider: AiProviderRecord, modelId: string): AiProvi
   };
 }
 
+function manualEmbeddingModelRecord(provider: AiProviderRecord, modelId: string): AiProviderModelRecord {
+  const now = createTimestamp();
+  return {
+    id: `${provider.id}:${modelId}`,
+    providerId: provider.id,
+    modelId,
+    displayName: modelId,
+    supportsChat: false,
+    supportsEmbedding: true,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: false,
+    contextWindowTokens: undefined,
+    labels: ['Embedding', 'Manual'],
+    source: 'manual',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function ensureBuiltInProviders(space: PixorySpace): Promise<void> {
   await runWithDatabaseSpace(space, async (db) => {
     for (const preset of BUILT_IN_PROVIDERS) {
@@ -119,6 +140,12 @@ export async function getSavedProviderApiKey(providerId: string): Promise<string
 
 export async function saveProviderBaseUrl(space: PixorySpace, providerId: string, baseUrl: string | null): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.updateProviderBaseUrl(db, providerId, baseUrl?.trim() || null));
+}
+
+export async function saveProviderEmbeddingBaseUrl(space: PixorySpace, providerId: string, embeddingBaseUrl: string | null): Promise<void> {
+  await runWithDatabaseSpace(space, (db) =>
+    aiProviderRepository.updateProviderEmbeddingBaseUrl(db, providerId, embeddingBaseUrl?.trim() || null)
+  );
 }
 
 export async function saveProviderDefaultModels(
@@ -149,6 +176,21 @@ export async function saveManualChatModel(space: PixorySpace, providerId: string
   await runWithDatabaseSpace(space, async (db) => {
     await aiProviderRepository.upsertModels(db, provider.id, [manualModelRecord(provider, trimmedModelId)]);
     await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultChatModelId: trimmedModelId });
+  });
+}
+
+export async function saveManualEmbeddingModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
+  const trimmedModelId = modelId.trim();
+  if (!trimmedModelId) {
+    throw new Error('请输入 Embedding 模型 ID。');
+  }
+  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
+  if (!provider) {
+    throw new Error('AI provider is not configured.');
+  }
+  await runWithDatabaseSpace(space, async (db) => {
+    await aiProviderRepository.upsertModels(db, provider.id, [manualEmbeddingModelRecord(provider, trimmedModelId)]);
+    await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultEmbeddingModelId: trimmedModelId });
   });
 }
 

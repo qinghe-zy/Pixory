@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AppScreen } from '../components/AppScreen';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { listAiHistoryThreads } from '../ai/aiChatService';
 import { listRecentMaterials } from '../ai/aiDocumentService';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
-import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiHomeScreenProps {
@@ -27,21 +27,21 @@ interface AiHomeScreenProps {
 const START_ENTRIES = [
   {
     title: '开始普通聊天',
-    tint: colors.primary.weak,
+    tint: aiLightColors.coral,
     icon: 'chatbubble-ellipses-outline',
-    iconColor: colors.primary.active,
+    iconColor: aiLightColors.onDark,
   },
   {
     title: '问问某个 IP',
-    tint: colors.support.lilac100,
+    tint: aiLightColors.card,
     icon: 'albums-outline',
-    iconColor: colors.support.lilac300,
+    iconColor: aiLightColors.coralActive,
   },
   {
     title: '连接知识库',
-    tint: colors.support.sky100,
+    tint: aiLightColors.surface,
     icon: 'library-outline',
-    iconColor: colors.support.sky300,
+    iconColor: aiLightColors.coralActive,
   },
 ] as const;
 
@@ -56,11 +56,10 @@ export function AiHomeScreen({
   onOpenMaterials,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
-  const insets = useSafeAreaInsets();
-  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
+  const spaceLabel = space === 'personal' ? '私密空间' : undefined;
 
   useEffect(() => {
     let isMounted = true;
@@ -87,25 +86,23 @@ export function AiHomeScreen({
   }, [space]);
 
   return (
-    <AppScreen
-      backgroundVariant="search"
-      contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
+    <AiLightScaffold
+      contentContainerStyle={styles.screenContent}
       footer={footer}
+      rightAction={(
+        <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
+          <Ionicons color={aiLightColors.ink} name="settings-outline" size={20} />
+        </Pressable>
+      )}
       scrollable
+      subtitle={spaceLabel}
+      title="AI 工作台"
     >
       <View style={styles.hero}>
-        <View style={styles.topBar}>
-          <View style={styles.titleGroup}>
-            <Text style={styles.pageTitle}>AI 工作台</Text>
-            {space === 'personal' ? <View style={styles.statusPill}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>私密空间</Text>
-            </View> : null}
-          </View>
-          <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
-            <Ionicons color={colors.text.heading} name="settings-outline" size={22} />
-          </Pressable>
-        </View>
+        {space === 'personal' ? <View style={styles.statusPill}>
+          <View style={styles.statusDot} />
+          <Text style={styles.statusText}>私密空间</Text>
+        </View> : null}
       </View>
 
       <View style={styles.entryRow}>
@@ -133,7 +130,7 @@ export function AiHomeScreen({
         <SectionTitle actionLabel="管理" title="最近材料" onPress={onOpenMaterials} />
         <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.recentCard, styles.materialCard, pressed && styles.pressed]}>
           <View style={styles.threadIcon}>
-            <Ionicons color={colors.primary.active} name="document-text-outline" size={24} />
+            <Ionicons color={aiLightColors.coralActive} name="document-text-outline" size={24} />
           </View>
           <View style={styles.threadCopy}>
             <Text numberOfLines={1} style={styles.threadTitle}>
@@ -143,7 +140,7 @@ export function AiHomeScreen({
               {recentMaterials.length ? recentMaterials.slice(0, 3).map((item) => item.title).join(' / ') : '导入 TXT、Markdown、PDF、DOCX 或从 IP 生成材料'}
             </Text>
           </View>
-          <Ionicons color={colors.text.tertiary} name="chevron-forward" size={20} />
+          <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
         </Pressable>
       </View>
 
@@ -170,24 +167,24 @@ export function AiHomeScreen({
                   </Text>
                 </View>
                 <Text style={styles.threadTime}>{formatRecentTime(thread.updatedAt)}</Text>
-                <Ionicons color={colors.text.tertiary} name="chevron-forward" size={20} />
+                <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
               </Pressable>
             ))
           ) : (
             <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
               <View style={styles.threadIcon}>
-                <Ionicons color={colors.primary.active} name="chatbubble-ellipses-outline" size={24} />
+                <Ionicons color={aiLightColors.coralActive} name="chatbubble-ellipses-outline" size={24} />
               </View>
               <View style={styles.threadCopy}>
                 <Text style={styles.threadTitle}>普通聊天</Text>
                 <Text style={styles.threadDescription}>暂无最近会话</Text>
               </View>
-              <Ionicons color={colors.text.tertiary} name="chevron-forward" size={20} />
+              <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
             </Pressable>
           )}
         </View>
       </View>
-    </AppScreen>
+    </AiLightScaffold>
   );
 }
 
@@ -207,7 +204,7 @@ function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
       {actionLabel && onPress ? (
         <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
           <Text style={styles.sectionActionText}>{actionLabel}</Text>
-          <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
+          <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={18} />
         </Pressable>
       ) : null}
     </View>
@@ -226,22 +223,22 @@ function iconForContext(contextType: AiThreadHistoryItem['contextType']): keyof 
 
 function colorForContext(contextType: AiThreadHistoryItem['contextType']) {
   if (contextType === 'ip') {
-    return colors.support.lilac300;
+    return aiLightColors.coralActive;
   }
   if (contextType === 'knowledge_base') {
-    return colors.primary.active;
+    return aiLightColors.coralActive;
   }
-  return colors.primary.active;
+  return aiLightColors.coralActive;
 }
 
 function backgroundForContext(contextType: AiThreadHistoryItem['contextType']) {
   if (contextType === 'ip') {
-    return colors.support.lilac100;
+    return aiLightColors.card;
   }
   if (contextType === 'knowledge_base') {
-    return colors.primary.weak;
+    return aiLightColors.surface;
   }
-  return colors.background.tag;
+  return aiLightColors.canvas;
 }
 
 function formatRecentTime(value: string) {
@@ -260,33 +257,21 @@ const styles = StyleSheet.create({
   hero: {
     gap: rhythm.cardContentGap,
   },
-  topBar: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  titleGroup: {
-    flex: 1,
-    gap: rhythm.microGap,
-    paddingRight: spacing[2],
-  },
-  pageTitle: {
-    ...typography.textStyles.pageTitle,
-  },
   topAction: {
     alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderRadius: radius.pill,
-    height: 52,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: spacing[10],
     justifyContent: 'center',
-    width: 52,
-    ...shadows.xs,
+    width: spacing[10],
   },
   statusPill: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.overlay.softSurface,
-    borderColor: colors.primary.light,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -295,14 +280,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1.5],
   },
   statusDot: {
-    backgroundColor: colors.primary.active,
+    backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
     height: 8,
     width: 8,
   },
   statusText: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
     fontWeight: '500',
   },
   entryRow: {
@@ -315,7 +300,6 @@ const styles = StyleSheet.create({
     minHeight: 116,
     borderRadius: radius.md,
     padding: spacing[3],
-    ...shadows.xs,
   },
   pressed: {
     opacity: 0.78,
@@ -323,7 +307,7 @@ const styles = StyleSheet.create({
   entryIcon: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: colors.overlay.softSurface,
+    backgroundColor: 'rgba(250, 249, 245, 0.7)',
     borderRadius: radius.md,
     height: 48,
     justifyContent: 'center',
@@ -337,18 +321,18 @@ const styles = StyleSheet.create({
   },
   entryTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
     flex: 1,
     fontSize: 14,
     lineHeight: 19,
   },
   entryArrow: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 34,
     justifyContent: 'center',
     width: 34,
-    ...shadows.xs,
   },
   section: {
     gap: rhythm.cardContentGap,
@@ -363,11 +347,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontWeight: '400',
     fontSize: 20,
     lineHeight: 28,
   },
   sectionUnderline: {
-    backgroundColor: colors.primary.active,
+    backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
     height: 4,
     width: 26,
@@ -381,16 +368,15 @@ const styles = StyleSheet.create({
   },
   sectionActionText: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   recentCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     paddingHorizontal: spacing[4],
-    ...shadows.xs,
   },
   materialCard: {
     alignItems: 'center',
@@ -412,12 +398,12 @@ const styles = StyleSheet.create({
     minHeight: 84,
   },
   threadDivider: {
-    borderTopColor: colors.border.divider,
+    borderTopColor: aiLightColors.hairline,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   threadIcon: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 48,
     justifyContent: 'center',
@@ -429,15 +415,16 @@ const styles = StyleSheet.create({
   },
   threadTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
     fontSize: 16,
     lineHeight: 22,
   },
   threadDescription: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   threadTime: {
     ...typography.textStyles.caption,
-    color: colors.text.tertiary,
+    color: aiLightColors.mutedSoft,
   },
 });

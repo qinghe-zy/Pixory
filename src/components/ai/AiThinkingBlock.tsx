@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, rhythm, spacing, typography } from '../../design/tokens';
+import { rhythm, spacing, typography } from '../../design/tokens';
+import { aiLightColors } from './aiLightTheme';
 
 interface AiThinkingBlockProps {
   reasoningText?: string | null;
@@ -19,7 +20,7 @@ export function AiThinkingBlock({ reasoningText, label = '摘要' }: AiThinkingB
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" onPress={() => setExpanded((current) => !current)} style={styles.header}>
-        <Ionicons color={colors.primary.active} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+        <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
       {expanded ? <Text style={styles.text}>{reasoningText}</Text> : null}
@@ -39,10 +40,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
   },
   text: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
 });

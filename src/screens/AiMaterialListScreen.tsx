@@ -2,13 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
 import { listMaterials, removeMaterial, removeMaterials, retryMaterialParsing } from '../ai/aiDocumentService';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentStatus } from '../ai/types';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiMaterialListScreenProps {
@@ -87,16 +88,14 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
         <Text style={styles.selectionMeta}>只移除材料记录和本地索引，不会删除原始素材。</Text>
       </View>
       <View style={styles.selectionActions}>
-        <PrimaryButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
-        <PrimaryButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
+        <AiLightButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
+        <AiLightButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
       </View>
     </View>
   ) : null;
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       footer={selectionFooter}
       onBack={onBack}
       scrollable
@@ -124,7 +123,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
                   style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                 >
                   <View style={styles.iconWrap}>
-                    <Ionicons color={colors.primary.active} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
+                    <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
                   </View>
                   <View style={styles.copy}>
                     <Text style={styles.title}>{item.title}</Text>
@@ -134,8 +133,8 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
                 </Pressable>
                 {item.parserStatus === 'failed' ? (
                   <View style={styles.failedActions}>
-                    <PrimaryButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
-                    <PrimaryButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
+                    <AiLightButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
+                    <AiLightButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
                   </View>
                 ) : null}
               </View>
@@ -160,7 +159,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
         title="移除所选材料？"
         visible={confirmingBatchRemove}
       />
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -180,22 +179,22 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
   },
   list: {
     gap: rhythm.listCardGap,
   },
   row: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
   selectedRow: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.default,
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
   },
   rowMain: {
     alignItems: 'center',
@@ -207,7 +206,7 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 38,
     justifyContent: 'center',
@@ -219,13 +218,15 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   meta: {
     ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   error: {
     ...typography.textStyles.caption,
-    color: colors.semantic.danger,
+    color: aiLightColors.coralActive,
   },
   failedActions: {
     gap: rhythm.inlineGap,
@@ -235,8 +236,8 @@ const styles = StyleSheet.create({
     padding: spacing[4],
   },
   selectionFooter: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
@@ -247,11 +248,11 @@ const styles = StyleSheet.create({
   },
   selectionText: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+    color: aiLightColors.ink,
   },
   selectionMeta: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   selectionActions: {
     gap: rhythm.inlineGap,

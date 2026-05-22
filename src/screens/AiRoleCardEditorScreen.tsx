@@ -3,17 +3,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AiLightButton } from '../components/ai/AiLightButton';
+import { AiLightInputRow, AiLightTextareaRow } from '../components/ai/AiLightField';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
-import { FormInputRow } from '../components/FormInputRow';
-import { FormTextareaRow } from '../components/FormTextareaRow';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { applyRoleCardToThread } from '../ai/aiChatService';
 import { deleteRoleCards, listRoleCards, saveRoleCard } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { copyAiRoleAvatarToAppStorage } from '../services/fileStorageService';
-import { colors, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
 
 interface AiRoleCardEditorScreenProps {
@@ -169,29 +169,27 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
         <Text style={styles.selectionMeta}>只删除已保存的角色卡，不影响已有聊天记录。</Text>
       </View>
       <View style={styles.selectionActions}>
-        <PrimaryButton label="批量删除" onPress={() => setConfirmingBatchDelete(true)} variant="outline" />
-        <PrimaryButton label="取消选择" onPress={() => setSelectedCardIds([])} variant="ghost" />
+        <AiLightButton label="批量删除" onPress={() => setConfirmingBatchDelete(true)} variant="outline" />
+        <AiLightButton label="取消选择" onPress={() => setSelectedCardIds([])} variant="ghost" />
       </View>
     </View>
   ) : null;
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       footer={selectionFooter}
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
       title="角色"
     >
-      <FormInputRow
+      <AiLightInputRow
         label="名称"
         onChangeText={setName}
         placeholder="品牌设定整理助手"
         value={name}
       />
-      <FormTextareaRow
+      <AiLightTextareaRow
         label="角色内容"
         minHeight={240}
         onChangeText={setPrompt}
@@ -205,7 +203,7 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
             {avatarUri ? (
               <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={avatarUri} />
             ) : (
-              <Ionicons color={colors.primary.active} name="sparkles-outline" size={metrics.iconSizeMd} />
+              <Ionicons color={aiLightColors.coralActive} name="sparkles-outline" size={metrics.iconSizeMd} />
             )}
           </View>
           <View style={styles.avatarCopy}>
@@ -214,9 +212,9 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
           </View>
         </View>
         <View style={styles.inlineActions}>
-          <PrimaryButton label={avatarEnabled ? '隐藏头像' : '启用头像'} onPress={() => setAvatarEnabled((current) => !current)} variant="outline" />
-          <PrimaryButton label="从相册选择" onPress={() => void pickAvatarFromAlbum()} variant="ghost" />
-          {avatarUri ? <PrimaryButton label="清除头像" onPress={() => setAvatarUri(null)} variant="ghost" /> : null}
+          <AiLightButton label={avatarEnabled ? '隐藏头像' : '启用头像'} onPress={() => setAvatarEnabled((current) => !current)} variant="outline" />
+          <AiLightButton label="从相册选择" onPress={() => void pickAvatarFromAlbum()} variant="ghost" />
+          {avatarUri ? <AiLightButton label="清除头像" onPress={() => setAvatarUri(null)} variant="ghost" /> : null}
         </View>
         {ips.length ? (
           <View style={styles.ipAvatarPicker}>
@@ -261,9 +259,9 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
       </View>
 
       <View style={styles.actions}>
-        <PrimaryButton label="应用" onPress={() => void applyCurrentRole()} />
-        <PrimaryButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
-        <PrimaryButton label="跳过" onPress={() => void applyRoleCard(null)} variant="ghost" />
+        <AiLightButton label="应用" onPress={() => void applyCurrentRole()} />
+        <AiLightButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
+        <AiLightButton label="跳过" onPress={() => void applyRoleCard(null)} variant="ghost" />
       </View>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
@@ -292,16 +290,16 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
                     {card.avatarEnabled && card.avatarUri ? (
                       <SecureImage contentFit="cover" space={space} style={styles.savedAvatarImage} uri={card.avatarUri} />
                     ) : (
-                      <Ionicons color={card.avatarEnabled ? colors.primary.active : colors.text.tertiary} name={card.avatarEnabled ? 'person-circle-outline' : 'ellipse-outline'} size={metrics.iconSizeMd} />
+                      <Ionicons color={card.avatarEnabled ? aiLightColors.coralActive : aiLightColors.mutedSoft} name={card.avatarEnabled ? 'person-circle-outline' : 'ellipse-outline'} size={metrics.iconSizeMd} />
                     )}
                   </View>
                   <View style={styles.savedCopy}>
                     <Text style={styles.savedTitle}>{card.name}</Text>
                     <Text numberOfLines={2} style={styles.caption}>{card.description ?? card.prompt}</Text>
                   </View>
-                  {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={metrics.iconSizeMd} /> : null}
+                  {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeMd} /> : null}
                 </View>
-                {!selectedCardIds.length ? <PrimaryButton label="应用到当前会话" onPress={() => void applyRoleCard(card.id)} variant="ghost" /> : null}
+                {!selectedCardIds.length ? <AiLightButton label="应用到当前会话" onPress={() => void applyRoleCard(card.id)} variant="ghost" /> : null}
               </Pressable>
             );
           })}
@@ -319,16 +317,18 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
         title="删除所选角色卡？"
         visible={confirmingBatchDelete}
       />
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
 const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
   caption: {
     ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   actions: {
     gap: rhythm.inlineGap,
@@ -340,14 +340,14 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
   },
   cardList: {
     gap: rhythm.listCardGap,
   },
   avatarPanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   avatarPreview: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: metrics.iconButtonSize,
     justifyContent: 'center',
@@ -385,8 +385,8 @@ const styles = StyleSheet.create({
     gap: rhythm.compactGridGap,
   },
   ipChip: {
-    backgroundColor: colors.background.tag,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     maxWidth: 140,
@@ -395,15 +395,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ipChipActive: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
   },
   ipChipText: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   ipChipTextActive: {
-    color: colors.primary.active,
+    color: aiLightColors.coralActive,
     fontWeight: '700',
   },
   avatarGrid: {
@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
     gap: rhythm.compactGridGap,
   },
   avatarChoice: {
-    borderColor: colors.border.subtle,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: metrics.iconButtonSize,
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     width: metrics.iconButtonSize,
   },
   avatarChoiceActive: {
-    borderColor: colors.primary.active,
+    borderColor: aiLightColors.coral,
     borderWidth: 2,
   },
   avatarChoiceImage: {
@@ -428,16 +428,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   savedCard: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.microGap,
     padding: spacing[3],
   },
   selectedSavedCard: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.active,
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
   },
   savedHeader: {
     alignItems: 'center',
@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
   },
   savedAvatar: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: metrics.minTouchSize,
     justifyContent: 'center',
@@ -463,8 +463,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   selectionFooter: {
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
@@ -475,11 +475,11 @@ const styles = StyleSheet.create({
   },
   selectionTitle: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+    color: aiLightColors.ink,
   },
   selectionMeta: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
   },
   selectionActions: {
     gap: rhythm.inlineGap,
@@ -489,5 +489,6 @@ const styles = StyleSheet.create({
   },
   savedTitle: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
 });

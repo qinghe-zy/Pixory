@@ -2,6 +2,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
 import { rhythm } from '../../design/tokens';
+import { aiLightColors } from './aiLightTheme';
 import { AiTextReader } from './AiTextReader';
 
 interface AiDocxReaderProps {
@@ -19,6 +20,7 @@ export function AiDocxReader({ readable, locator }: AiDocxReaderProps) {
 
 const styles = StyleSheet.create({
   wrap: {
+    backgroundColor: aiLightColors.canvas,
     gap: rhythm.listCardGap,
   },
 });

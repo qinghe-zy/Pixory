@@ -4,7 +4,8 @@ import { FlatList, Image, StyleSheet, Text, useWindowDimensions, View } from 're
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
 import { getPdfPageCount, renderPdfPageToFile } from '../../native/pixoryMediaModule';
-import { colors, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { aiLightColors } from './aiLightTheme';
 
 interface AiPdfReaderProps {
   readable: AiReadableDocument;
@@ -132,8 +133,8 @@ const styles = StyleSheet.create({
   },
   pageImage: {
     aspectRatio: 0.707,
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     width: '100%',
@@ -141,8 +142,8 @@ const styles = StyleSheet.create({
   pagePlaceholder: {
     alignItems: 'center',
     aspectRatio: 0.707,
-    backgroundColor: colors.background.sunken,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
@@ -150,7 +151,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiLightColors.muted,
     padding: spacing[4],
     textAlign: 'center',
   },

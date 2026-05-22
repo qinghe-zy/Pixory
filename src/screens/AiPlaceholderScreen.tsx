@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ScreenScaffold } from '../components/ScreenScaffold';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
+import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiAction {
@@ -28,9 +29,7 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   return (
-    <ScreenScaffold
-      backgroundVariant="search"
-      decorativeTitle="AI"
+    <AiLightScaffold
       onBack={onBack}
       scrollable
       subtitle={subtitle ?? `${spaceLabel} · 本地资料优先`}
@@ -38,7 +37,7 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
     >
       <View style={styles.hero}>
         <View style={styles.iconWrap}>
-          <Ionicons color={colors.primary.active} name={icon} size={24} />
+          <Ionicons color={aiLightColors.coralActive} name={icon} size={24} />
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{title}</Text>
@@ -57,17 +56,17 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
               style={({ pressed }) => [styles.action, pressed && styles.pressed]}
             >
               <View style={styles.actionIcon}>
-                <Ionicons color={colors.primary.active} name={action.icon} size={18} />
+                <Ionicons color={aiLightColors.coralActive} name={action.icon} size={18} />
               </View>
               <View style={styles.actionCopy}>
                 <Text style={styles.actionLabel}>{action.label}</Text>
               </View>
-              <Ionicons color={colors.text.tertiary} name="chevron-forward" size={18} />
+              <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={18} />
             </Pressable>
           ))}
         </View>
       ) : null}
-    </ScreenScaffold>
+    </AiLightScaffold>
   );
 }
 
@@ -78,7 +77,7 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: aiLightColors.surface,
     borderRadius: radius.pill,
     height: 48,
     justifyContent: 'center',
@@ -89,6 +88,9 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.sectionTitle,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontWeight: '400',
   },
   section: {
     gap: rhythm.listCardGap,
@@ -98,8 +100,8 @@ const styles = StyleSheet.create({
   },
   action: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -112,7 +114,7 @@ const styles = StyleSheet.create({
   },
   actionIcon: {
     alignItems: 'center',
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
     height: 36,
     justifyContent: 'center',
@@ -124,5 +126,6 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
   },
 });

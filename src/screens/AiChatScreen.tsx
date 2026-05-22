@@ -7,7 +7,7 @@ import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
-import { aiChatDisplayFont, aiChatLightColors } from '../components/ai/aiChatLightTheme';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
@@ -25,7 +25,7 @@ import {
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
-import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
@@ -533,12 +533,12 @@ export function AiChatScreen({
 
   return (
     <AppScreen
-      backgroundColor={aiChatLightColors.canvas}
+      backgroundColor={aiLightColors.canvas}
       contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
     >
       <View style={styles.header}>
         <Pressable accessibilityLabel="返回" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={aiChatLightColors.ink} name="chevron-back" size={20} />
+          <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
         </Pressable>
         <View style={styles.titleBlock}>
           <View style={styles.titleLine}>
@@ -554,7 +554,7 @@ export function AiChatScreen({
           ) : null}
         </View>
         <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={aiChatLightColors.ink} name="options-outline" size={18} />
+          <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
         </Pressable>
       </View>
 
@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: aiChatLightColors.canvas,
+    backgroundColor: aiLightColors.canvas,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingBottom: spacing[3],
@@ -649,7 +649,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: aiChatLightColors.hairline,
+    borderBottomColor: aiLightColors.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
@@ -660,8 +660,8 @@ const styles = StyleSheet.create({
   },
   roundButton: {
     alignItems: 'center',
-    backgroundColor: aiChatLightColors.canvas,
-    borderColor: aiChatLightColors.hairline,
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: spacing[10],
@@ -683,8 +683,8 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.navTitle,
-    color: aiChatLightColors.ink,
-    fontFamily: aiChatDisplayFont,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
     fontSize: 20,
     fontWeight: '400',
     lineHeight: 26,
@@ -692,19 +692,19 @@ const styles = StyleSheet.create({
   },
   modelSubtitle: {
     ...typography.textStyles.caption,
-    color: aiChatLightColors.muted,
+    color: aiLightColors.muted,
     maxWidth: '92%',
     textAlign: 'center',
   },
   liveDot: {
-    backgroundColor: aiChatLightColors.coral,
+    backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
     height: spacing[1.5],
     width: spacing[1.5],
   },
   error: {
     ...typography.textStyles.caption,
-    color: colors.semantic.danger,
+    color: aiLightColors.coralActive,
     textAlign: 'center',
   },
   messageScroller: {

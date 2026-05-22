@@ -28,6 +28,7 @@ function mapProviderRow(row: AiProviderRow): AiProviderRecord {
   return {
     ...row,
     baseUrl: row.baseUrl ?? null,
+    embeddingBaseUrl: row.embeddingBaseUrl ?? null,
     chatEnabled: sqliteToBoolean(row.chatEnabled),
     embeddingEnabled: sqliteToBoolean(row.embeddingEnabled),
     visionEnabled: sqliteToBoolean(row.visionEnabled),
@@ -67,6 +68,7 @@ export const aiProviderRepository = {
         providerType,
         displayName,
         baseUrl,
+        embeddingBaseUrl,
         protocol,
         chatEnabled,
         embeddingEnabled,
@@ -75,11 +77,12 @@ export const aiProviderRepository = {
         defaultEmbeddingModelId,
         createdAt,
         updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         providerType = excluded.providerType,
         displayName = excluded.displayName,
         baseUrl = COALESCE(NULLIF(ai_providers.baseUrl, ''), excluded.baseUrl),
+        embeddingBaseUrl = COALESCE(NULLIF(ai_providers.embeddingBaseUrl, ''), excluded.embeddingBaseUrl),
         protocol = excluded.protocol,
         chatEnabled = excluded.chatEnabled,
         embeddingEnabled = excluded.embeddingEnabled,
@@ -91,6 +94,7 @@ export const aiProviderRepository = {
       provider.providerType,
       provider.displayName,
       provider.baseUrl,
+      provider.embeddingBaseUrl,
       provider.protocol,
       booleanToSqlite(provider.chatEnabled),
       booleanToSqlite(provider.embeddingEnabled),
@@ -118,6 +122,17 @@ export const aiProviderRepository = {
        SET baseUrl = ?, updatedAt = ?
        WHERE id = ?`,
       baseUrl,
+      createTimestamp(),
+      providerId
+    );
+  },
+
+  async updateProviderEmbeddingBaseUrl(db: SQLiteDatabase, providerId: string, embeddingBaseUrl: string | null): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_providers
+       SET embeddingBaseUrl = ?, updatedAt = ?
+       WHERE id = ?`,
+      embeddingBaseUrl,
       createTimestamp(),
       providerId
     );

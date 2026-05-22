@@ -53,10 +53,17 @@ test('provider settings expose test sync and embedding model controls', () => {
   assert.match(providerSettings, /同步模型/);
   assert.match(providerSettings, /embeddingModels/);
   assert.match(providerSettings, /默认 Embedding/);
+  assert.match(providerSettings, /Embedding 接口/);
+  assert.match(providerSettings, /embeddingBaseUrlDraft/);
+  assert.match(providerSettings, /saveProviderEmbeddingBaseUrl/);
+  assert.match(providerSettings, /saveManualEmbeddingModel/);
+  assert.match(providerSettings, /自定义 Embedding 模型/);
   assert.match(providerSettings, /defaultEmbeddingModelId/);
   assert.match(providerSettings, /advancedVisible/);
   assert.match(providerService, /getDefaultChatProviderId/);
   assert.match(providerService, /saveProviderDefaultModels/);
+  assert.match(providerService, /saveProviderEmbeddingBaseUrl/);
+  assert.match(providerService, /saveManualEmbeddingModel/);
   assert.match(chatService, /getDefaultAiProviderId/);
 });
 

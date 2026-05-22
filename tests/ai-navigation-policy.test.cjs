@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
 const home = () => fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
 const chat = () => fs.readFileSync(path.join(root, 'src/screens/AiChatScreen.tsx'), 'utf8');
+const aiScreenFiles = () => fs.readdirSync(path.join(root, 'src/screens')).filter((file) => /^Ai.*\.tsx$/.test(file));
 
 test('AI routes are registered for workbench, chat, settings, history, materials, and readers', () => {
   for (const route of [
@@ -29,8 +30,8 @@ test('AI workbench exposes the three first-version starts and no disconnected de
   assert.match(content, /开始普通聊天/);
   assert.match(content, /问问某个 IP/);
   assert.match(content, /连接知识库/);
-  assert.match(content, /pageTitle/);
-  assert.match(content, />AI 工作台</);
+  assert.match(content, /AiLightScaffold/);
+  assert.match(content, /title="AI 工作台"/);
   assert.doesNotMatch(content, />Pixory</);
   assert.doesNotMatch(content, /brandName/);
   assert.doesNotMatch(content, /当前未连接知识库/);
@@ -68,13 +69,17 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
 
 test('AI chat uses the design.md light mode surface', () => {
   const content = chat();
-  const theme = fs.readFileSync(path.join(root, 'src/components/ai/aiChatLightTheme.ts'), 'utf8');
+  const theme = fs.readFileSync(path.join(root, 'src/components/ai/aiLightTheme.ts'), 'utf8');
 
-  assert.match(content, /backgroundColor=\{aiChatLightColors\.canvas\}/);
-  assert.match(content, /aiChatDisplayFont/);
+  assert.match(content, /backgroundColor=\{aiLightColors\.canvas\}/);
+  assert.match(content, /aiLightDisplayFont/);
   assert.match(theme, /canvas:\s*'#FAF9F5'/);
+  assert.match(theme, /surface:\s*'#F5F0E8'/);
+  assert.match(theme, /card:\s*'#EFE9DE'/);
   assert.match(theme, /coral:\s*'#CC785C'/);
+  assert.match(theme, /coralActive:\s*'#A9583E'/);
   assert.match(theme, /dark:\s*'#181715'/);
+  assert.match(theme, /hairline:\s*'#E6DFD8'/);
   assert.doesNotMatch(content, /backgroundVariant="aiChat"/);
 });
 
@@ -163,13 +168,13 @@ test('AI chat composer matches the design.md light input surface', () => {
   const content = chat();
   const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
 
-  assert.match(content, /backgroundColor:\s*aiChatLightColors\.canvas/);
+  assert.match(content, /backgroundColor:\s*aiLightColors\.canvas/);
   assert.match(content, /paddingBottom:\s*spacing\[3\]/);
   assert.match(composer, /styles\.composerShell/);
   assert.match(composer, /multiline=\{false\}/);
   assert.match(composer, /borderRadius:\s*radius\.md/);
-  assert.match(composer, /backgroundColor:\s*aiChatLightColors\.canvas/);
-  assert.match(composer, /borderColor:\s*aiChatLightColors\.hairline/);
+  assert.match(composer, /backgroundColor:\s*aiLightColors\.canvas/);
+  assert.match(composer, /borderColor:\s*aiLightColors\.hairline/);
   assert.match(composer, /\.\.\.shadows\.hairline/);
   assert.match(composer, /styles\.addButton/);
   assert.match(composer, /name="add"/);
@@ -216,11 +221,13 @@ test('AI message thinking and per-message actions stay outside the chat bubble',
 test('AI custom top bars use safe status-bar spacing and compact workbench layout', () => {
   const homeContent = home();
   const chatContent = chat();
-  for (const content of [homeContent, chatContent]) {
+  const scaffold = fs.readFileSync(path.join(root, 'src/components/ai/AiLightScaffold.tsx'), 'utf8');
+  for (const content of [chatContent, scaffold]) {
     assert.match(content, /useSafeAreaInsets/);
     assert.match(content, /StatusBar\.currentHeight/);
     assert.match(content, /layout\.pageTopOffset/);
   }
+  assert.match(homeContent, /AiLightScaffold/);
   assert.match(homeContent, /rhythm\.entryCardGap/);
   assert.doesNotMatch(homeContent, /知识库与资料/);
 });
@@ -231,7 +238,9 @@ test('AI provider and model screens keep preset providers simple and custom addr
   const constants = fs.readFileSync(path.join(root, 'src/ai/aiConstants.ts'), 'utf8');
   const providerService = fs.readFileSync(path.join(root, 'src/ai/aiProviderService.ts'), 'utf8');
 
-  assert.match(providerSettings, /accountCard/);
+  assert.match(providerSettings, /AiLightCard/);
+  assert.match(providerSettings, /AiLightButton/);
+  assert.match(providerSettings, /aiLightColors/);
   assert.match(providerSettings, /dropdownPanel/);
   assert.match(providerSettings, /providerSheetVisible/);
   assert.match(providerSettings, /modelSheetVisible/);
@@ -244,6 +253,8 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.match(providerSettings, /testProvider/);
   assert.match(providerSettings, /syncProviderModels/);
   assert.match(providerSettings, /embeddingModels/);
+  assert.match(providerSettings, /Embedding 接口/);
+  assert.match(providerSettings, /自定义 Embedding 模型/);
   assert.match(providerSettings, /supportsChat/);
   assert.match(providerSettings, /chatModels\.map/);
   assert.match(providerSettings, /暂无可用模型/);
@@ -269,7 +280,56 @@ test('AI workbench exposes materials without a normal-space status badge', () =>
   assert.match(content, /onOpenMaterials/);
   assert.match(content, /最近材料/);
   assert.match(content, /私密空间/);
-  assert.doesNotMatch(content, /const spaceLabel = space === 'personal' \? '私密空间' : '普通空间'/);
+  assert.doesNotMatch(content, /普通空间/);
+});
+
+test('AI route screens use the AI light scaffold and avoid global green controls', () => {
+  for (const file of aiScreenFiles()) {
+    const content = fs.readFileSync(path.join(root, 'src/screens', file), 'utf8');
+    assert.doesNotMatch(content, /backgroundVariant="search"/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/PrimaryButton'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/FilterChip'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/ScreenScaffold'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/ContentCard'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/FormInputRow'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/FormTextareaRow'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/SearchBar'/, file);
+    assert.doesNotMatch(content, /from '\.\.\/components\/FeedbackBanner'/, file);
+    assert.ok(/AiLightScaffold/.test(content) || /backgroundColor=\{aiLightColors\.canvas\}/.test(content), file);
+  }
+});
+
+test('AI form inputs, search, and feedback use AI light components', () => {
+  const roleEditor = fs.readFileSync(path.join(root, 'src/screens/AiRoleCardEditorScreen.tsx'), 'utf8');
+  const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
+  const ipPicker = fs.readFileSync(path.join(root, 'src/screens/AiIpPickerScreen.tsx'), 'utf8');
+  const materialImport = fs.readFileSync(path.join(root, 'src/screens/AiMaterialImportScreen.tsx'), 'utf8');
+  const providerSettings = fs.readFileSync(path.join(root, 'src/screens/AiProviderSettingsScreen.tsx'), 'utf8');
+  const field = fs.readFileSync(path.join(root, 'src/components/ai/AiLightField.tsx'), 'utf8');
+  const feedback = fs.readFileSync(path.join(root, 'src/components/ai/AiLightFeedbackBanner.tsx'), 'utf8');
+
+  assert.match(roleEditor, /AiLightInputRow/);
+  assert.match(roleEditor, /AiLightTextareaRow/);
+  assert.match(sessionConfig, /AiLightTextareaRow/);
+  assert.match(ipPicker, /AiLightSearchBar/);
+  assert.match(materialImport, /AiLightFeedbackBanner/);
+  assert.match(providerSettings, /AiLightFeedbackBanner/);
+  assert.match(field, /aiLightColors/);
+  assert.match(feedback, /aiLightColors/);
+});
+
+test('AI reading and citation components use the shared AI light tokens', () => {
+  for (const file of [
+    'AiCitationList.tsx',
+    'AiThinkingBlock.tsx',
+    'AiTextReader.tsx',
+    'AiMarkdownReader.tsx',
+    'AiPdfReader.tsx',
+    'AiDocxReader.tsx',
+  ]) {
+    const content = fs.readFileSync(path.join(root, 'src/components/ai', file), 'utf8');
+    assert.match(content, /aiLightColors/, file);
+  }
 });
 
 test('AI material and IP selection screens keep vertical rhythm explicit', () => {

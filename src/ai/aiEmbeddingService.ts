@@ -103,7 +103,7 @@ export async function generateMissingEmbeddingsForDocument(
       try {
         const vector = await adapter.embedText({
           apiKey,
-          baseUrl: provider.baseUrl ?? '',
+          baseUrl: provider.embeddingBaseUrl ?? provider.baseUrl ?? '',
           modelId,
           text: chunk.text,
         });
@@ -169,7 +169,7 @@ export async function generateQueryEmbedding(input: {
   try {
     const vector = await getAdapterForProvider(provider).embedText({
       apiKey,
-      baseUrl: provider.baseUrl ?? '',
+      baseUrl: provider.embeddingBaseUrl ?? provider.baseUrl ?? '',
       modelId: configured.modelId,
       text: input.text,
     });

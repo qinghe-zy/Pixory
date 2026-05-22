@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { colors, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 
 interface AiMarkdownReaderProps {
   readable: AiReadableDocument;
@@ -39,8 +40,8 @@ export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
@@ -48,18 +49,23 @@ const styles = StyleSheet.create({
   },
   heading: {
     ...typography.textStyles.sectionTitle,
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontWeight: '400',
   },
   body: {
     ...typography.textStyles.body,
+    color: aiLightColors.ink,
   },
   code: {
     ...typography.textStyles.caption,
-    backgroundColor: colors.background.secondary,
+    backgroundColor: aiLightColors.dark,
     borderRadius: radius.md,
+    color: aiLightColors.onDark,
     fontFamily: typography.family.mono,
     padding: spacing[2],
   },
   highlighted: {
-    backgroundColor: colors.background.tag,
+    backgroundColor: aiLightColors.card,
   },
 });
