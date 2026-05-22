@@ -64,17 +64,16 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   assert.doesNotMatch(content, /footer=\{/);
 });
 
-test('AI chat uses the botanical full-screen background image', () => {
+test('AI chat uses the design.md light mode surface', () => {
   const content = chat();
-  const backgrounds = fs.readFileSync(path.join(root, 'src/design/backgrounds.ts'), 'utf8');
-  const pageBackground = fs.readFileSync(path.join(root, 'src/components/PageBackground.tsx'), 'utf8');
+  const theme = fs.readFileSync(path.join(root, 'src/components/ai/aiChatLightTheme.ts'), 'utf8');
 
-  assert.match(content, /backgroundVariant="aiChat"/);
-  assert.match(backgrounds, /aiChat:\s*\[\]/);
-  assert.match(backgrounds, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
-  assert.match(backgrounds, /aspectRatio:\s*941\s*\/\s*1672/);
-  assert.match(backgrounds, /resizeMode:\s*'cover'/);
-  assert.match(pageBackground, /resizeMode=\{backgroundImage\.resizeMode \?\? 'contain'\}/);
+  assert.match(content, /backgroundColor=\{aiChatLightColors\.canvas\}/);
+  assert.match(content, /aiChatDisplayFont/);
+  assert.match(theme, /canvas:\s*'#FAF9F5'/);
+  assert.match(theme, /coral:\s*'#CC785C'/);
+  assert.match(theme, /dark:\s*'#181715'/);
+  assert.doesNotMatch(content, /backgroundVariant="aiChat"/);
 });
 
 test('AI chat composer follows the keyboard and messages stay pinned to the latest item', () => {
@@ -158,25 +157,28 @@ test('AI chat messages expose compact copy, edit, and regenerate buttons below b
   assert.doesNotMatch(bubble, /onLongPress/);
 });
 
-test('AI chat composer matches the botanical floating capsule input reference', () => {
+test('AI chat composer matches the design.md light input surface', () => {
   const content = chat();
   const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
 
-  assert.match(content, /backgroundColor:\s*'transparent'/);
+  assert.match(content, /backgroundColor:\s*aiChatLightColors\.canvas/);
   assert.match(content, /paddingBottom:\s*spacing\[3\]/);
   assert.match(composer, /styles\.composerShell/);
   assert.match(composer, /multiline=\{false\}/);
-  assert.match(composer, /borderRadius:\s*radius\.pill/);
-  assert.match(composer, /backgroundColor:\s*'rgba\(255, 253, 248, 0\.9\)'/);
-  assert.match(composer, /\.\.\.shadows\.floating/);
+  assert.match(composer, /borderRadius:\s*radius\.md/);
+  assert.match(composer, /backgroundColor:\s*aiChatLightColors\.canvas/);
+  assert.match(composer, /borderColor:\s*aiChatLightColors\.hairline/);
+  assert.match(composer, /\.\.\.shadows\.hairline/);
   assert.match(composer, /styles\.addButton/);
   assert.match(composer, /name="add"/);
-  assert.match(composer, /placeholder="输入问题或整理需求"/);
+  assert.match(composer, /placeholder="输入提示或需求"/);
   assert.match(composer, /name="mic-outline"/);
   assert.match(composer, /name=\{editing \? 'checkmark' : 'paper-plane-outline'\}/);
-  assert.match(composer, /height:\s*metrics\.iconButtonSize/);
-  assert.match(composer, /width:\s*metrics\.iconButtonSize/);
-  assert.match(composer, /minHeight:\s*64/);
+  assert.match(composer, /height:\s*spacing\[8\]/);
+  assert.match(composer, /width:\s*spacing\[8\]/);
+  assert.match(composer, /height:\s*spacing\[6\]/);
+  assert.match(composer, /minHeight:\s*spacing\[10\]/);
+  assert.match(composer, /hitSlop=\{spacing\[2\]\}/);
   assert.doesNotMatch(composer, /width:\s*'94%'/);
   assert.doesNotMatch(composer, /maxWidth:\s*680/);
 });
@@ -189,6 +191,8 @@ test('Shared dialogs and action sheets use the botanical pattern surface', () =>
   for (const content of [dialog, actionSheet, personalUnlock]) {
     assert.match(content, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
     assert.match(content, /styles\.patternImage/);
+    assert.match(content, /resizeMode="stretch"/);
+    assert.match(content, /opacity:\s*0\.24/);
     assert.match(content, /overflow:\s*'hidden'/);
   }
 });
@@ -315,13 +319,18 @@ test('AI session settings avoid one overloaded button cluster', () => {
   const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
   const actionsBlock = /<View style=\{styles\.actions\}>([\s\S]*?)<\/View>/.exec(sessionConfig)?.[1] ?? '';
 
-  assert.match(sessionConfig, /<PrimaryButton label="模型账号"/);
-  assert.match(actionsBlock, /保存设置/);
-  assert.match(actionsBlock, /开始聊天/);
+  assert.match(sessionConfig, /高级角色指令/);
+  assert.match(sessionConfig, /advancedPromptVisible/);
+  assert.match(sessionConfig, /模型账号/);
+  assert.doesNotMatch(sessionConfig, /<PrimaryButton label="模型账号"/);
+  assert.doesNotMatch(sessionConfig, /选择或编辑角色卡/);
+  assert.doesNotMatch(sessionConfig, /minHeight=\{132\}/);
+  assert.match(actionsBlock, /保存并开始聊天/);
+  assert.match(actionsBlock, /仅保存设置/);
   assert.doesNotMatch(actionsBlock, /模型账号/);
 });
 
-test('AI history supports long-press batch delete and private-space moves', () => {
+test('AI history long-press enters batch mode while single actions stay in a compact menu', () => {
   const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
@@ -332,7 +341,13 @@ test('AI history supports long-press batch delete and private-space moves', () =
   assert.match(history, /PanResponder\.create/);
   assert.match(history, /swipedThreadId/);
   assert.match(history, /styles\.archiveAction/);
+  assert.match(history, /onLongPress=\{\(\) => toggleSelected\(thread\.id\)\}/);
+  assert.match(history, /accessibilityLabel="会话操作"/);
+  assert.match(history, /styles\.rowMenuButton/);
   assert.match(history, /setActionThread\(thread\)/);
+  assert.match(history, /key:\s*'delete'/);
+  assert.match(history, /setDeleteThread\(actionThread\)/);
+  assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
   assert.match(history, /AppActionSheet/);
   assert.doesNotMatch(history, /rowActions/);
   assert.doesNotMatch(history, /PrimaryButton/);

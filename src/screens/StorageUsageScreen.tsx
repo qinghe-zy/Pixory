@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useToast } from '../components/AppToast';
@@ -24,6 +24,7 @@ interface StorageUsageScreenProps {
 }
 
 const DASHBOARD_CATEGORY_LABELS = ['原始素材', '预览缓存', '临时缓存', '备份导出', '回收站'] as const;
+const sheetPatternImage = require('../../docs/black.png');
 
 export function StorageUsageScreen({
   space = 'normal',
@@ -292,6 +293,7 @@ function PreviewCachePanel({
       <View style={styles.sheetOverlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
+          <Image resizeMode="stretch" source={sheetPatternImage} style={styles.sheetPatternImage} />
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>预览缓存</Text>
           <Text style={styles.sheetValue}>{formatFileSize(summary?.previewBytes ?? 0)}</Text>
@@ -328,6 +330,7 @@ function TemporaryCachePanel({
       <View style={styles.sheetOverlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
+          <Image resizeMode="stretch" source={sheetPatternImage} style={styles.sheetPatternImage} />
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>临时缓存</Text>
           <Text style={styles.sheetValue}>{formatFileSize(summary?.temporaryBytes ?? 0)} 可释放</Text>
@@ -367,6 +370,7 @@ function PreviewRebuildConfirmPanel({
       <View style={styles.sheetOverlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[12] + spacing[4] }]}>
+          <Image resizeMode="stretch" source={sheetPatternImage} style={styles.sheetPatternImage} />
           <View style={styles.sheetHandle} />
           <View style={styles.confirmCopy}>
             <Text style={styles.sheetTitle}>重建预览缓存？</Text>
@@ -521,8 +525,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
     gap: rhythm.listCardGap,
+    overflow: 'hidden',
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[2],
+  },
+  sheetPatternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.24,
   },
   sheetHandle: {
     alignSelf: 'center',

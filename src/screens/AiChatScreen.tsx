@@ -7,6 +7,7 @@ import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
+import { aiChatDisplayFont, aiChatLightColors } from '../components/ai/aiChatLightTheme';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
@@ -24,7 +25,7 @@ import {
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
-import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { colors, layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
@@ -532,12 +533,12 @@ export function AiChatScreen({
 
   return (
     <AppScreen
-      backgroundVariant="aiChat"
+      backgroundColor={aiChatLightColors.canvas}
       contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
     >
       <View style={styles.header}>
         <Pressable accessibilityLabel="返回" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={colors.text.heading} name="chevron-back" size={22} />
+          <Ionicons color={aiChatLightColors.ink} name="chevron-back" size={20} />
         </Pressable>
         <View style={styles.titleBlock}>
           <View style={styles.titleLine}>
@@ -553,7 +554,7 @@ export function AiChatScreen({
           ) : null}
         </View>
         <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={colors.text.heading} name="options-outline" size={20} />
+          <Ionicons color={aiChatLightColors.ink} name="options-outline" size={18} />
         </Pressable>
       </View>
 
@@ -594,7 +595,9 @@ export function AiChatScreen({
             ))
           ) : (
             <View style={styles.emptyState}>
-              <Ionicons color={colors.primary.active} name="sparkles-outline" size={28} />
+              <View style={styles.emptyGlyph}>
+                <Ionicons color={aiChatLightColors.onDark} name="sparkles-outline" size={22} />
+              </View>
               <Text style={styles.emptyTitle}>开始对话</Text>
             </View>
           )}
@@ -640,11 +643,11 @@ export function AiChatScreen({
 const styles = StyleSheet.create({
   screenContent: {
     flex: 1,
-    gap: rhythm.listCardGap,
+    gap: rhythm.cardContentGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: 'transparent',
+    backgroundColor: aiChatLightColors.canvas,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingBottom: spacing[3],
@@ -653,20 +656,24 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
+    borderBottomColor: aiChatLightColors.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    minHeight: metrics.bottomActionHeight,
+    minHeight: spacing[12],
   },
   pressed: {
     opacity: 0.78,
   },
   roundButton: {
     alignItems: 'center',
-    backgroundColor: colors.overlay.softSurface,
-    borderRadius: radius.pill,
-    height: metrics.minTouchSize,
+    backgroundColor: aiChatLightColors.canvas,
+    borderColor: aiChatLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: spacing[10],
     justifyContent: 'center',
-    width: metrics.minTouchSize,
+    width: spacing[10],
   },
   titleBlock: {
     alignItems: 'center',
@@ -683,18 +690,21 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.navTitle,
-    fontSize: 18,
-    lineHeight: 24,
+    color: aiChatLightColors.ink,
+    fontFamily: aiChatDisplayFont,
+    fontSize: 20,
+    fontWeight: '400',
+    lineHeight: 26,
     maxWidth: '90%',
   },
   modelSubtitle: {
     ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    color: aiChatLightColors.muted,
     maxWidth: '92%',
     textAlign: 'center',
   },
   liveDot: {
-    backgroundColor: colors.primary.active,
+    backgroundColor: aiChatLightColors.coral,
     borderRadius: radius.pill,
     height: spacing[1.5],
     width: spacing[1.5],
@@ -713,15 +723,32 @@ const styles = StyleSheet.create({
   },
   messageList: {
     gap: rhythm.listCardGap,
-    paddingTop: spacing[2],
+    paddingTop: spacing[3],
   },
   emptyState: {
     alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: aiChatLightColors.dark,
+    borderRadius: radius.lg,
     gap: rhythm.cardContentGap,
-    paddingTop: spacing[12],
+    marginTop: spacing[12],
+    maxWidth: 280,
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[6],
+  },
+  emptyGlyph: {
+    alignItems: 'center',
+    backgroundColor: aiChatLightColors.coral,
+    borderRadius: radius.md,
+    height: spacing[10],
+    justifyContent: 'center',
+    width: spacing[10],
   },
   emptyTitle: {
     ...typography.textStyles.emptyTitle,
+    color: aiChatLightColors.onDark,
+    fontFamily: aiChatDisplayFont,
+    fontWeight: '400',
     textAlign: 'center',
   },
 });

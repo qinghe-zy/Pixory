@@ -101,7 +101,7 @@ export function PersonalUnlockModal({
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.backdrop}>
         <View style={styles.panel}>
-          <Image resizeMode="cover" source={unlockPatternImage} style={styles.patternImage} />
+          <Image resizeMode="stretch" source={unlockPatternImage} style={styles.patternImage} />
           <View style={styles.header}>
             <View style={styles.iconWrap}>
               <Ionicons color={colors.primary.active} name="lock-closed-outline" size={22} />
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   },
   patternImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.18,
+    opacity: 0.24,
   },
   header: {
     alignItems: 'flex-start',

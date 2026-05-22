@@ -5,8 +5,9 @@ import { SecureImage } from '../SecureImage';
 import type { AiMessageWithCitations } from '../../ai/aiChatService';
 import type { AiCitationRecord } from '../../ai/types';
 import type { PixorySpace } from '../../database';
-import { colors, metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { AiCitationList } from './AiCitationList';
+import { aiChatLightColors } from './aiChatLightTheme';
 import { AiThinkingBlock } from './AiThinkingBlock';
 
 interface AiMessageBubbleProps {
@@ -50,7 +51,7 @@ export function AiMessageBubble({
           {assistantAvatar.avatarUri ? (
             <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
           ) : (
-            <Ionicons color={colors.primary.active} name="sparkles-outline" size={metrics.iconSizeSm} />
+            <Ionicons color={aiChatLightColors.coral} name="sparkles-outline" size={metrics.iconSizeSm} />
           )}
         </View>
       ) : null}
@@ -73,7 +74,7 @@ export function AiMessageBubble({
             onPress={() => onCopy(message)}
             style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
           >
-            <Ionicons color={colors.text.secondary} name="copy-outline" size={15} />
+            <Ionicons color={aiChatLightColors.muted} name="copy-outline" size={15} />
           </Pressable>
           {isUser ? (
             <Pressable
@@ -84,7 +85,7 @@ export function AiMessageBubble({
               onPress={() => onEditUser(message.id, message.content)}
               style={({ pressed }) => [styles.messageActionButton, !canEdit && styles.disabledAction, pressed && canEdit && styles.pressed]}
             >
-              <Ionicons color={colors.text.secondary} name="create-outline" size={15} />
+              <Ionicons color={aiChatLightColors.muted} name="create-outline" size={15} />
             </Pressable>
           ) : (
             <Pressable
@@ -95,7 +96,7 @@ export function AiMessageBubble({
               onPress={() => onRegenerate(message.id)}
               style={({ pressed }) => [styles.messageActionButton, !canRegenerate && styles.disabledAction, pressed && canRegenerate && styles.pressed]}
             >
-              <Ionicons color={colors.text.secondary} name="refresh-outline" size={15} />
+              <Ionicons color={aiChatLightColors.muted} name="refresh-outline" size={15} />
             </Pressable>
           )}
         </View>
@@ -131,9 +132,9 @@ const styles = StyleSheet.create({
   },
   avatar: {
     alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
+    backgroundColor: aiChatLightColors.canvas,
+    borderColor: aiChatLightColors.hairline,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     height: metrics.minTouchSize,
     justifyContent: 'center',
@@ -149,23 +150,26 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: colors.primary.default,
+    backgroundColor: aiChatLightColors.coral,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
   },
   assistantBubble: {
-    backgroundColor: colors.overlay.softSurface,
+    backgroundColor: aiChatLightColors.card,
+    borderColor: aiChatLightColors.hairline,
     borderRadius: radius.lg,
     borderTopLeftRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   content: {
     ...typography.textStyles.body,
+    lineHeight: 22,
   },
   userText: {
-    color: colors.text.inverse,
+    color: aiChatLightColors.onDark,
   },
   assistantText: {
-    color: colors.text.body,
+    color: aiChatLightColors.ink,
   },
   thinkingWrap: {
     maxWidth: '100%',
@@ -184,7 +188,10 @@ const styles = StyleSheet.create({
   },
   messageActionButton: {
     alignItems: 'center',
-    borderRadius: radius.pill,
+    backgroundColor: aiChatLightColors.canvas,
+    borderColor: aiChatLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 28,
     justifyContent: 'center',
     width: 28,

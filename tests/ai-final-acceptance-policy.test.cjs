@@ -74,8 +74,10 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);
   assert.match(sessionConfig, /applyRoleCardToThread/);
   assert.match(sessionConfig, /avatarEnabled/);
-  assert.match(sessionConfig, /启用头像|隐藏头像/);
-  assert.match(sessionConfig, /保存设置/);
+  assert.match(sessionConfig, /头像开启|头像关闭/);
+  assert.match(sessionConfig, /高级角色指令/);
+  assert.match(sessionConfig, /保存并开始聊天/);
+  assert.match(sessionConfig, /仅保存设置/);
   assert.match(roleEditor, /onApplyRoleCard/);
   assert.match(roleEditor, /ImagePicker\.launchImageLibraryAsync/);
   assert.match(roleEditor, /copyAiRoleAvatarToAppStorage/);

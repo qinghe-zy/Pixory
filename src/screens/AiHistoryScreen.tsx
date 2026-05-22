@@ -37,6 +37,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
+  const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
   const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,6 +83,16 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           icon: 'checkmark-circle-outline',
           onPress: () => toggleSelected(actionThread.id),
         },
+        {
+          key: 'delete',
+          label: '删除',
+          icon: 'trash-outline',
+          danger: true,
+          onPress: () => {
+            setDeleteThread(actionThread);
+            setPendingAction('delete');
+          },
+        },
       ]
     : [];
 
@@ -95,6 +106,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     setPersonalPassword('');
     setSwipedThreadId(null);
     setActionThread(null);
+    setDeleteThread(null);
   }, [filter, space]);
 
   async function toggleArchive(thread: AiThreadHistoryItem) {
@@ -142,11 +154,13 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   }
 
   async function confirmDeleteSelected() {
+    const threadIds = deleteThread ? [deleteThread.id] : selectedIds;
     setBusy(true);
     try {
-      const count = await deleteAiThreads(space, selectedIds);
+      const count = await deleteAiThreads(space, threadIds);
       setStatus(`已删除 ${count} 条。`);
       setSelectedIds([]);
+      setDeleteThread(null);
       setPendingAction(null);
       await reload();
     } catch (error) {
@@ -240,29 +254,35 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                       swiped && !isSelecting ? styles.swipedRow : null,
                     ]}
                   >
-                  <Pressable
-                    accessibilityRole="button"
-                    onLongPress={() => {
-                      if (isSelecting) {
-                        toggleSelected(thread.id);
-                        return;
-                      }
-                      setActionThread(thread);
-                    }}
-                    onPress={() => handleRowPress(thread)}
-                    style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
-                  >
-                    <View style={styles.iconWrap}>
-                      <Ionicons color={colors.primary.active} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                    <View style={styles.rowContent}>
+                      <Pressable
+                        accessibilityRole="button"
+                        onLongPress={() => toggleSelected(thread.id)}
+                        onPress={() => handleRowPress(thread)}
+                        style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                      >
+                        <View style={styles.iconWrap}>
+                          <Ionicons color={colors.primary.active} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                        </View>
+                        <View style={styles.copy}>
+                          <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
+                          <Text numberOfLines={1} style={styles.meta}>
+                            {labelForContext(thread)} · {thread.updatedAt}
+                          </Text>
+                          {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
+                        </View>
+                      </Pressable>
+                      {!isSelecting ? (
+                        <Pressable
+                          accessibilityLabel="会话操作"
+                          accessibilityRole="button"
+                          onPress={() => setActionThread(thread)}
+                          style={({ pressed }) => [styles.rowMenuButton, pressed && styles.pressed]}
+                        >
+                          <Ionicons color={colors.text.secondary} name="ellipsis-horizontal" size={18} />
+                        </Pressable>
+                      ) : null}
                     </View>
-                    <View style={styles.copy}>
-                      <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
-                      <Text numberOfLines={1} style={styles.meta}>
-                        {labelForContext(thread)} · {thread.updatedAt}
-                      </Text>
-                      {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
-                    </View>
-                  </Pressable>
                   </View>
                 </View>
               );
@@ -277,10 +297,11 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
 
       <AppDialog
         danger
-        message={`删除 ${selectedIds.length} 条聊天记录。`}
+        message={`删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录。`}
         onClose={() => {
           if (!busy) {
             setPendingAction(null);
+            setDeleteThread(null);
           }
         }}
         onPrimary={() => void confirmDeleteSelected()}
@@ -422,10 +443,25 @@ const styles = StyleSheet.create({
   selectedRow: {
     borderColor: colors.primary.light,
   },
-  rowMain: {
+  rowContent: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
+  },
+  rowMain: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minWidth: 0,
+  },
+  rowMenuButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.tag,
+    borderRadius: radius.pill,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
   },
   pressed: {
     opacity: 0.78,

@@ -40,7 +40,7 @@ export function AppDialog({
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={styles.panel}>
-          <Image resizeMode="cover" source={dialogPatternImage} style={styles.patternImage} />
+          <Image resizeMode="stretch" source={dialogPatternImage} style={styles.patternImage} />
           <View style={styles.copy}>
             <Text style={[styles.title, danger ? styles.dangerTitle : null]}>{title}</Text>
             {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   },
   patternImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.18,
+    opacity: 0.24,
   },
   copy: {
     gap: rhythm.cardContentGap,

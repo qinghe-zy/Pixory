@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { EmptyState } from '../components/EmptyState';
@@ -13,6 +13,8 @@ import { colors, layout, radius, rhythm, shadows, spacing, typography } from '..
 import { finishNativeShareActivity, type NativeShareItem } from '../native/pixoryMediaModule';
 import { importSingleImage, type PickedImageAsset } from '../services/imageImportService';
 import { importVideosToIp, type PickedVideoAsset } from '../services/videoImportService';
+
+const shareSheetPatternImage = require('../../docs/black.png');
 
 interface ShareCollectScreenProps {
   items: NativeShareItem[];
@@ -190,6 +192,7 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
     <View style={styles.overlay}>
       <Pressable disabled={isSaving} onPress={finishShareEntry} style={styles.backdrop} />
       <View style={styles.sheet}>
+        <Image resizeMode="stretch" source={shareSheetPatternImage} style={styles.sheetPatternImage} />
         <View style={styles.handle} />
         <View style={styles.header}>
           <View>
@@ -247,6 +250,7 @@ export function ShareCollectScreen({ items, onClose, onSaved }: ShareCollectScre
       {previewModalItem ? (
         <Pressable onPress={() => setPreviewModalItem(null)} style={styles.previewModalBackdrop}>
           <View style={styles.previewModalCard}>
+            <Image resizeMode="stretch" source={shareSheetPatternImage} style={styles.previewModalPatternImage} />
             {previewModalItem.kind === 'image' ? (
               <SecureImage contentFit="contain" space="normal" style={styles.previewModalImage} uri={previewModalItem.uri} />
             ) : (
@@ -296,10 +300,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     gap: rhythm.entryCardGap,
     maxHeight: '86%',
+    overflow: 'hidden',
     paddingBottom: spacing[6],
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[2],
     ...shadows.floating,
+  },
+  sheetPatternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.24,
   },
   handle: {
     alignSelf: 'center',
@@ -405,6 +414,10 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     overflow: 'hidden',
     width: '100%',
+  },
+  previewModalPatternImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.24,
   },
   previewModalImage: {
     aspectRatio: 1,

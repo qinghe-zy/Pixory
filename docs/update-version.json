@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.10",
-  "versionCode": 224,
+  "version": "2.1.11",
+  "versionCode": 225,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.10 已发布，优化 AI 聊天和历史会话操作。",
+  "message": "Pixory 2.1.11 已发布，优化 AI 聊天界面、会话设置和历史会话整理。",
   "releaseNotes": [
-    "聊天消息操作改为气泡下方的小按钮，复制、重写和重新生成更直接。",
-    "历史会话支持左滑归档，重命名移动到长按菜单。",
-    "隐私模式允许截屏，并保留后台自动锁定。"
+    "AI 聊天页按 light 设计收敛视觉层级，输入框更轻更紧凑。",
+    "会话设置页改为摘要优先，高级角色指令默认折叠。",
+    "历史会话长按进入批量整理，单条重命名和删除移入当前位置菜单。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

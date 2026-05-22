@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ContentCard } from '../components/ContentCard';
 import { FeedbackBanner, type FeedbackTone } from '../components/FeedbackBanner';
@@ -10,7 +10,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { applyRoleCardToThread, loadThreadSessionConfig, updateAiThreadSessionConfig } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import type { AiBoundaryMode, AiContextType } from '../ai/types';
-import { rhythm, typography } from '../design/tokens';
+import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AiSessionConfigScreenProps {
@@ -49,13 +49,18 @@ export function AiSessionConfigScreen({
   const [avatarEnabled, setAvatarEnabled] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
+  const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const promptConfigured = systemPrompt.trim().length > 0;
+  const promptSummary = promptConfigured ? `已配置 ${systemPrompt.trim().length} 字` : '未配置';
+  const avatarSummary = avatarEnabled ? (avatarUri ? '头像已启用' : '头像已启用，使用默认标记') : '无头像';
 
   const reloadConfig = useCallback(async () => {
     if (!threadId) {
       setSystemPrompt(getDefaultSystemPrompt(contextType));
+      setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
     const config = await loadThreadSessionConfig(space, threadId);
@@ -64,6 +69,7 @@ export function AiSessionConfigScreen({
       return;
     }
     setSystemPrompt(config.thread.systemPrompt);
+    setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
@@ -133,27 +139,40 @@ export function AiSessionConfigScreen({
     >
       <View style={styles.content}>
         <ContentCard>
-          <Text style={styles.sectionTitle}>当前对话</Text>
-          <Text style={styles.body}>{contextTitle ?? '普通聊天'}</Text>
-          <PrimaryButton label="模型账号" onPress={onOpenProviderSettings} variant="outline" />
+          <View style={styles.summaryHeader}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.sectionTitle}>当前会话</Text>
+              <Text numberOfLines={1} style={styles.body}>{contextTitle ?? '普通聊天'}</Text>
+            </View>
+            <Pressable accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
+              <Text style={styles.textActionLabel}>模型账号</Text>
+            </Pressable>
+          </View>
+          <View style={styles.summaryMetaRow}>
+            <Text style={styles.metaPill}>{spaceLabel}</Text>
+            <Text style={styles.metaPill}>{BOUNDARY_MODES.find((mode) => mode.value === boundaryMode)?.label ?? '自由'}</Text>
+            <Text numberOfLines={1} style={styles.metaPill}>{roleCardSummary}</Text>
+          </View>
         </ContentCard>
 
-        <FormTextareaRow
-          label="角色指令"
-          minHeight={132}
-          onChangeText={setSystemPrompt}
-          placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
-          value={systemPrompt}
-        />
-
         <ContentCard>
-          <Text style={styles.sectionTitle}>角色卡</Text>
-          <Text style={styles.body}>{roleCardSummary}</Text>
-          <Text style={styles.caption}>{avatarEnabled ? (avatarUri ? '聊天回复会显示当前角色头像。' : '已启用头像，角色卡还没有选择头像时会显示默认标记。') : '聊天回复保持无头像显示。'}</Text>
-          <View style={styles.inlineButtons}>
-            <PrimaryButton label={avatarEnabled ? '隐藏头像' : '启用头像'} onPress={() => setAvatarEnabled((current) => !current)} variant="outline" />
-            <PrimaryButton label="选择或编辑角色卡" onPress={onOpenRoleCardEditor} variant="outline" />
-            <PrimaryButton label="使用默认角色" onPress={() => void clearRoleCard()} variant="ghost" />
+          <View style={styles.roleRow}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.sectionTitle}>角色显示</Text>
+              <Text numberOfLines={1} style={styles.body}>{roleCardSummary}</Text>
+              <Text style={styles.caption}>{avatarSummary}</Text>
+            </View>
+            <Pressable accessibilityRole="button" onPress={onOpenRoleCardEditor} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
+              <Text style={styles.textActionLabel}>更换</Text>
+            </Pressable>
+          </View>
+          <View style={styles.roleActions}>
+            <Pressable accessibilityRole="switch" accessibilityState={{ checked: avatarEnabled }} onPress={() => setAvatarEnabled((current) => !current)} style={({ pressed }) => [styles.compactButton, avatarEnabled && styles.compactButtonActive, pressed && styles.pressed]}>
+              <Text style={[styles.compactButtonText, avatarEnabled && styles.compactButtonTextActive]}>{avatarEnabled ? '头像开启' : '头像关闭'}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => void clearRoleCard()} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
+              <Text style={styles.compactButtonText}>默认角色</Text>
+            </Pressable>
           </View>
         </ContentCard>
 
@@ -171,9 +190,28 @@ export function AiSessionConfigScreen({
           </View>
         </ContentCard>
 
+        <ContentCard>
+          <Pressable accessibilityRole="button" onPress={() => setAdvancedPromptVisible((current) => !current)} style={({ pressed }) => [styles.advancedHeader, pressed && styles.pressed]}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.sectionTitle}>高级角色指令</Text>
+              <Text style={styles.caption}>{promptSummary}</Text>
+            </View>
+            <Text style={styles.textActionLabel}>{advancedPromptVisible ? '收起' : '展开'}</Text>
+          </Pressable>
+          {advancedPromptVisible ? (
+            <FormTextareaRow
+              label="角色指令"
+              minHeight={104}
+              onChangeText={setSystemPrompt}
+              placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
+              value={systemPrompt}
+            />
+          ) : null}
+        </ContentCard>
+
         <View style={styles.actions}>
-          <PrimaryButton label="保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="outline" />
-          <PrimaryButton label="开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+          <PrimaryButton label="保存并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+          <PrimaryButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
         </View>
         {status ? <FeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
       </View>
@@ -185,6 +223,33 @@ const styles = StyleSheet.create({
   content: {
     gap: rhythm.listCardGap,
   },
+  summaryHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
+  },
+  summaryCopy: {
+    flex: 1,
+    gap: rhythm.microGap,
+    minWidth: 0,
+  },
+  summaryMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  metaPill: {
+    ...typography.textStyles.caption,
+    backgroundColor: colors.background.tag,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text.secondary,
+    maxWidth: '100%',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
   },
@@ -194,11 +259,65 @@ const styles = StyleSheet.create({
   caption: {
     ...typography.textStyles.caption,
   },
-  inlineButtons: {
+  roleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
+  },
+  roleActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  textAction: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  textActionLabel: {
+    ...typography.textStyles.caption,
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
+  compactButton: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.default,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+  },
+  compactButtonActive: {
+    backgroundColor: colors.primary.default,
+    borderColor: colors.primary.default,
+  },
+  compactButtonText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '600',
+  },
+  compactButtonTextActive: {
+    color: colors.text.inverse,
+  },
+  advancedHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
   },
   actions: {
     gap: rhythm.listCardGap,
+  },
+  pressed: {
+    opacity: 0.78,
   },
   chips: {
     flexDirection: 'row',

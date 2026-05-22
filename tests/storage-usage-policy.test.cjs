@@ -58,6 +58,10 @@ test('preview cache sheet uses non-growing stacked buttons', () => {
   const source = readProjectFile('src/screens/StorageUsageScreen.tsx');
 
   assert.match(source, /function PanelButton\(\{ disabled, fill = false/);
+  assert.match(source, /require\('\.\.\/\.\.\/docs\/black\.png'\)/);
+  assert.match(source, /styles\.sheetPatternImage/);
+  assert.match(source, /resizeMode="stretch"/);
+  assert.match(source, /overflow:\s*'hidden'/);
   assert.match(source, /fill && styles\.panelButtonFill/);
   assert.match(source, /panelButtonFill:\s*\{\s*flex:\s*1/);
   assert.match(source, /<View style=\{styles\.previewActions\}>[\s\S]{0,240}<PanelButton disabled=\{disabled\} label="重新生成缺失预览"/);

@@ -35,7 +35,7 @@ export function AppActionSheet({ visible, title, message, items, onClose, closeO
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭操作面板" onPress={onClose} style={StyleSheet.absoluteFill} />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing[3] }]}>
-          <Image resizeMode="cover" source={actionSheetPatternImage} style={styles.patternImage} />
+          <Image resizeMode="stretch" source={actionSheetPatternImage} style={styles.patternImage} />
           <View style={styles.handle} />
           <View style={styles.copy}>
             <Text numberOfLines={2} style={styles.title}>{title}</Text>
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   patternImage: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.2,
+    opacity: 0.24,
   },
   handle: {
     alignSelf: 'center',
