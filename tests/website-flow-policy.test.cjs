@@ -32,9 +32,19 @@ test('website pages form a continuous previous and next reading path', () => {
 test('website release-facing files reference the current 2.1.10 release', () => {
   assert.match(read('docs/download.html'), /<div class="version-number">2\.1\.10<\/div>/);
   assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.1\.10<\/h2>/);
+  assert.match(read('docs/updates.html'), /附件输入/);
+  assert.match(read('docs/updates.html'), /自动标题/);
+  assert.match(read('docs/features.html'), /会话整理/);
   assert.match(read('README.md'), /当前版本 `2\.1\.10`/);
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.1\.10/);
   assert.doesNotMatch(read('docs/download.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
+});
+
+test('public docs describe privacy screenshots consistently with 2.1.10 behavior', () => {
+  const docs = read('README.md') + read('docs/pixory-product-bid-handbook.md');
+  assert.match(docs, /隐私模式允许截屏/);
+  assert.match(docs, /允许系统截屏/);
+  assert.doesNotMatch(docs, /截屏防护|截屏保护|禁止截屏/);
 });
 
 test('website sitemap lastmod is synchronized with the release update date', () => {
