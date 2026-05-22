@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.9",
-  "versionCode": 223,
+  "version": "2.1.10",
+  "versionCode": 224,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.9 已发布，优化远程更新检查触发时机。",
+  "message": "Pixory 2.1.10 已发布，优化 AI 聊天和历史会话操作。",
   "releaseNotes": [
-    "App 启动后会检查新版本。",
-    "从后台回到前台时也会重新检查远程更新。",
-    "继续保留跳过指定版本的去重逻辑，避免重复打扰。"
+    "聊天消息操作改为气泡下方的小按钮，复制、重写和重新生成更直接。",
+    "历史会话支持左滑归档，重命名移动到长按菜单。",
+    "隐私模式允许截屏，并保留后台自动锁定。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

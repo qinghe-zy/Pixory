@@ -107,8 +107,8 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
     assert.match(content, new RegExp(expected));
     assert.match(service, new RegExp(expected));
   }
-  assert.doesNotMatch(bubble, /onEditUser/);
-  assert.doesNotMatch(bubble, /onRegenerate/);
+  assert.match(bubble, /onEditUser/);
+  assert.match(bubble, /onRegenerate/);
   assert.match(composer, /onCancelEdit/);
   assert.match(composer, /停止回复/);
   assert.match(composer, /刷新回复/);
@@ -137,23 +137,25 @@ test('AI chat composer supports image, video, and document attachments', () => {
   assert.match(composer, /添加附件/);
 });
 
-test('AI chat messages expose long-press copy, edit, and regenerate actions', () => {
+test('AI chat messages expose compact copy, edit, and regenerate buttons below bubbles', () => {
   const content = chat();
   const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
 
   assert.match(content, /expo-clipboard/);
   assert.match(content, /Clipboard\.setStringAsync/);
-  assert.match(content, /messageActionTarget/);
-  assert.match(content, /Modal/);
-  assert.match(content, /messageMenu/);
-  assert.match(content, /MESSAGE_MENU_WIDTH/);
-  assert.match(content, /openMessageActionMenu/);
-  assert.match(content, />复制</);
-  assert.match(content, />修改</);
-  assert.match(content, /重新生成/);
-  assert.match(bubble, /onLongPress/);
-  assert.match(bubble, /onLongPress=\{\(event\) => onLongPress\(message, event\)\}/);
-  assert.doesNotMatch(bubble, /messageActionButton/);
+  assert.match(bubble, /styles\.actionRow/);
+  assert.match(bubble, /styles\.messageActionButton/);
+  assert.match(bubble, /accessibilityLabel="复制消息"/);
+  assert.match(bubble, /accessibilityLabel="重写消息"/);
+  assert.match(bubble, /accessibilityLabel="重新生成回复"/);
+  assert.match(bubble, /name="copy-outline"/);
+  assert.match(bubble, /name="create-outline"/);
+  assert.match(bubble, /name="refresh-outline"/);
+  assert.match(bubble, /height:\s*28/);
+  assert.match(bubble, /width:\s*28/);
+  assert.doesNotMatch(content, /messageActionTarget/);
+  assert.doesNotMatch(content, /MESSAGE_MENU_WIDTH/);
+  assert.doesNotMatch(bubble, /onLongPress/);
 });
 
 test('AI chat composer matches the botanical floating capsule input reference', () => {
@@ -172,10 +174,11 @@ test('AI chat composer matches the botanical floating capsule input reference', 
   assert.match(composer, /placeholder="输入问题或整理需求"/);
   assert.match(composer, /name="mic-outline"/);
   assert.match(composer, /name=\{editing \? 'checkmark' : 'paper-plane-outline'\}/);
-  assert.match(composer, /height:\s*58/);
-  assert.match(composer, /width:\s*58/);
-  assert.match(composer, /width:\s*'94%'/);
-  assert.match(composer, /maxWidth:\s*680/);
+  assert.match(composer, /height:\s*metrics\.iconButtonSize/);
+  assert.match(composer, /width:\s*metrics\.iconButtonSize/);
+  assert.match(composer, /minHeight:\s*64/);
+  assert.doesNotMatch(composer, /width:\s*'94%'/);
+  assert.doesNotMatch(composer, /maxWidth:\s*680/);
 });
 
 test('Shared dialogs and action sheets use the botanical pattern surface', () => {
@@ -195,10 +198,12 @@ test('AI message thinking and per-message actions stay outside the chat bubble',
   const renderPart = bubble.split('const styles = StyleSheet.create')[0];
   const thinkingIndex = renderPart.indexOf('styles.thinkingWrap');
   const bubbleIndex = renderPart.indexOf('styles.bubble');
+  const actionIndex = renderPart.indexOf('styles.actionRow');
   assert.ok(thinkingIndex >= 0 && thinkingIndex < bubbleIndex);
-  assert.doesNotMatch(bubble, /userActionRow/);
-  assert.doesNotMatch(bubble, /assistantActionRow/);
-  assert.doesNotMatch(bubble, /userActionButton/);
+  assert.ok(actionIndex > bubbleIndex);
+  assert.match(bubble, /userActionRow/);
+  assert.match(bubble, /assistantActionRow/);
+  assert.match(bubble, /messageActionButton/);
   assert.doesNotMatch(bubble, /retryButton/);
 });
 
@@ -324,6 +329,13 @@ test('AI history supports long-press batch delete and private-space moves', () =
   for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
     assert.match(history, new RegExp(expected));
   }
+  assert.match(history, /PanResponder\.create/);
+  assert.match(history, /swipedThreadId/);
+  assert.match(history, /styles\.archiveAction/);
+  assert.match(history, /setActionThread\(thread\)/);
+  assert.match(history, /AppActionSheet/);
+  assert.doesNotMatch(history, /rowActions/);
+  assert.doesNotMatch(history, /PrimaryButton/);
   assert.match(history, /footer={selectionFooter}/);
   assert.match(history, /gap: rhythm\.listCardGap/);
   assert.match(service, /verifyPersonalPassword/);

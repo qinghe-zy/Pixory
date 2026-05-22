@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, type GestureResponderEvent, Keyboard, Modal, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -28,7 +28,6 @@ import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography }
 import type { PixorySpace } from '../database';
 
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
-const MESSAGE_MENU_WIDTH = 184;
 
 const CHAT_DOCUMENT_TYPES = [
   'application/pdf',
@@ -68,16 +67,6 @@ function buildChatMessageContent(text: string, attachments: AiComposerAttachment
   });
   return [text || '请根据以下附件继续对话。', '', '[附件]', ...attachmentLines].join('\n');
 }
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-type MessageActionTarget = {
-  message: AiMessageWithCitations;
-  x: number;
-  y: number;
-};
 
 interface AiChatScreenProps {
   space: PixorySpace;
@@ -127,7 +116,6 @@ export function AiChatScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
   const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
-  const [messageActionTarget, setMessageActionTarget] = useState<MessageActionTarget | null>(null);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
@@ -396,40 +384,6 @@ export function AiChatScreen({
     setErrorMessage(null);
   }
 
-  function openMessageActionMenu(message: AiMessageWithCitations, event: GestureResponderEvent) {
-    const { pageX, pageY } = event.nativeEvent;
-    setMessageActionTarget({ message, x: pageX, y: pageY });
-  }
-
-  function closeMessageActionMenu() {
-    setMessageActionTarget(null);
-  }
-
-  function copySelectedMessage() {
-    if (!messageActionTarget) {
-      return;
-    }
-    void copyMessageContent(messageActionTarget.message);
-    closeMessageActionMenu();
-  }
-
-  function editSelectedMessage() {
-    if (!messageActionTarget || messageActionTarget.message.role !== 'user') {
-      return;
-    }
-    handleEditUserMessage(messageActionTarget.message.id, messageActionTarget.message.content);
-    closeMessageActionMenu();
-  }
-
-  function regenerateSelectedMessage() {
-    if (!messageActionTarget || messageActionTarget.message.role !== 'assistant') {
-      return;
-    }
-    const messageId = messageActionTarget.message.id;
-    closeMessageActionMenu();
-    void handleRegenerate(messageId);
-  }
-
   async function handleSend() {
     if (editingUserMessageId) {
       await handleRewrite();
@@ -576,20 +530,6 @@ export function AiChatScreen({
     }
   }
 
-  const windowSize = Dimensions.get('window');
-  const messageMenuLeft = messageActionTarget
-    ? clamp(messageActionTarget.x - MESSAGE_MENU_WIDTH / 2, spacing[3], windowSize.width - MESSAGE_MENU_WIDTH - spacing[3])
-    : spacing[3];
-  const messageMenuTop = messageActionTarget
-    ? clamp(messageActionTarget.y + spacing[2], statusBarHeight + spacing[2], windowSize.height - 190)
-    : statusBarHeight + spacing[2];
-  const selectedMessage = messageActionTarget?.message ?? null;
-  const canRegenerateSelectedMessage = Boolean(
-    selectedMessage?.role === 'assistant'
-      && !generating
-      && (selectedMessage.status === 'completed' || selectedMessage.status === 'failed' || selectedMessage.status === 'stopped')
-  );
-
   return (
     <AppScreen
       backgroundVariant="aiChat"
@@ -638,10 +578,17 @@ export function AiChatScreen({
               <AiMessageBubble
                 key={message.id}
                 assistantAvatar={avatarConfig}
+                generating={generating}
                 message={message}
                 space={space}
-                onLongPress={openMessageActionMenu}
+                onCopy={(targetMessage) => {
+                  void copyMessageContent(targetMessage);
+                }}
+                onEditUser={handleEditUserMessage}
                 onOpenCitation={openCitation}
+                onRegenerate={(messageId) => {
+                  void handleRegenerate(messageId);
+                }}
                 streaming={generating && message.id === activeAssistantId}
               />
             ))
@@ -686,27 +633,6 @@ export function AiChatScreen({
         title="添加附件"
         visible={attachmentSheetVisible}
       />
-      <Modal animationType="fade" onRequestClose={closeMessageActionMenu} transparent visible={Boolean(messageActionTarget)}>
-        <Pressable accessibilityLabel="关闭消息操作" onPress={closeMessageActionMenu} style={styles.messageMenuOverlay}>
-          <View style={[styles.messageMenu, { left: messageMenuLeft, top: messageMenuTop }]}>
-            <Pressable accessibilityRole="button" onPress={copySelectedMessage} style={({ pressed }) => [styles.messageMenuItem, pressed && styles.pressed]}>
-              <Ionicons color={colors.text.title} name="copy-outline" size={17} />
-              <Text style={styles.messageMenuText}>复制</Text>
-            </Pressable>
-            {selectedMessage?.role === 'user' ? (
-              <Pressable disabled={generating} accessibilityRole="button" onPress={editSelectedMessage} style={({ pressed }) => [styles.messageMenuItem, generating && styles.disabledMenuItem, pressed && !generating && styles.pressed]}>
-                <Ionicons color={colors.text.title} name="create-outline" size={17} />
-                <Text style={styles.messageMenuText}>修改</Text>
-              </Pressable>
-            ) : (
-              <Pressable disabled={!canRegenerateSelectedMessage} accessibilityRole="button" onPress={regenerateSelectedMessage} style={({ pressed }) => [styles.messageMenuItem, !canRegenerateSelectedMessage && styles.disabledMenuItem, pressed && canRegenerateSelectedMessage && styles.pressed]}>
-                <Ionicons color={colors.text.title} name="refresh-outline" size={17} />
-                <Text style={styles.messageMenuText}>重新生成</Text>
-              </Pressable>
-            )}
-          </View>
-        </Pressable>
-      </Modal>
     </AppScreen>
   );
 }
@@ -797,33 +723,5 @@ const styles = StyleSheet.create({
   emptyTitle: {
     ...typography.textStyles.emptyTitle,
     textAlign: 'center',
-  },
-  messageMenuOverlay: {
-    flex: 1,
-  },
-  messageMenu: {
-    ...shadows.floating,
-    backgroundColor: 'rgba(255, 253, 248, 0.96)',
-    borderColor: colors.border.subtle,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    paddingVertical: spacing[1],
-    position: 'absolute',
-    width: MESSAGE_MENU_WIDTH,
-  },
-  messageMenuItem: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-    minHeight: 44,
-    paddingHorizontal: spacing[3],
-  },
-  messageMenuText: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  disabledMenuItem: {
-    opacity: 0.42,
   },
 });

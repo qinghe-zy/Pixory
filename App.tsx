@@ -1,5 +1,4 @@
 import { StatusBar } from 'expo-status-bar';
-import * as ScreenCapture from 'expo-screen-capture';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -484,26 +483,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (personalSessionState !== 'unlocked') {
-      return;
-    }
-
-    void ScreenCapture.preventScreenCaptureAsync().catch((error) => {
-      console.warn('Pixory screen capture protection failed.', {
-        message: error instanceof Error ? error.message : 'unknown screen capture error',
-      });
-    });
-
-    return () => {
-      void ScreenCapture.allowScreenCaptureAsync().catch((error) => {
-        console.warn('Pixory screen capture protection failed.', {
-          message: error instanceof Error ? error.message : 'unknown screen capture error',
-        });
-      });
-    };
-  }, [personalSessionState]);
-
-  useEffect(() => {
     if (personalSessionState !== 'unlocked' && isPersonalRoute(currentRoute)) {
       setRouteStack([INITIAL_ROUTE]);
     }
@@ -664,7 +643,6 @@ export default function App() {
       clearPersonalImageCache(),
       cleanupOldTempFiles('personal', 0),
       resetDatabaseSpaceCache('personal'),
-      ScreenCapture.allowScreenCaptureAsync(),
     ]);
     for (const cleanupResult of cleanupResults) {
       if (cleanupResult.status === 'rejected') {

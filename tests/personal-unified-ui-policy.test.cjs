@@ -15,7 +15,7 @@ test('personal image rendering goes through the secure image wrapper and require
   const appSource = readProjectFile('App.tsx');
 
   assert.match(packageSource, /"expo-image"/);
-  assert.match(packageSource, /"expo-screen-capture"/);
+  assert.doesNotMatch(packageSource, /"expo-screen-capture"/);
   assert.match(secureImageSource, /from 'expo-image'/);
   assert.match(secureImageSource, /space:\s*PixorySpace/);
   assert.match(secureImageSource, /cachePolicy=\{space === 'personal' \? 'none' : 'disk'\}/);
@@ -24,13 +24,13 @@ test('personal image rendering goes through the secure image wrapper and require
   assert.match(appSource, /lockPersonalSpace[\s\S]{0,1600}clearPersonalImageCache/);
 });
 
-test('personal mode enables screen capture protection and still locks when protection fails', () => {
+test('personal mode allows screenshots while keeping background lock behavior', () => {
   const appSource = readProjectFile('App.tsx');
 
-  assert.match(appSource, /expo-screen-capture/);
-  assert.match(appSource, /preventScreenCaptureAsync/);
-  assert.match(appSource, /allowScreenCaptureAsync/);
-  assert.match(appSource, /console\.warn\('Pixory screen capture protection failed\.'/);
+  assert.doesNotMatch(appSource, /expo-screen-capture/);
+  assert.doesNotMatch(appSource, /preventScreenCaptureAsync/);
+  assert.doesNotMatch(appSource, /allowScreenCaptureAsync/);
+  assert.doesNotMatch(appSource, /screen capture protection failed/);
   assert.match(appSource, /setPrivacyShieldVisible\(true\)[\s\S]{0,900}lockPersonalSpace\('background'\)/);
 });
 

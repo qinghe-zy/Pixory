@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
-import { PrimaryButton } from '../components/PrimaryButton';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
@@ -25,6 +25,8 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
   { key: 'customer_project', label: '项目' },
   { key: 'archived', label: '已归档' },
 ];
+const ARCHIVE_ACTION_WIDTH = 78;
+const ARCHIVE_SWIPE_THRESHOLD = 52;
 
 export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreenProps) {
   const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
@@ -34,6 +36,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
+  const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -61,6 +65,25 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const reload = useCallback(async () => {
     setItems(await listAiHistoryThreads({ filter, space }));
   }, [filter, space]);
+  const actionSheetItems: AppActionSheetItem[] = actionThread
+    ? [
+        {
+          key: 'rename',
+          label: '重命名',
+          icon: 'create-outline',
+          onPress: () => {
+            setRenameThread(actionThread);
+            setRenameValue(actionThread.title);
+          },
+        },
+        {
+          key: 'select',
+          label: '多选',
+          icon: 'checkmark-circle-outline',
+          onPress: () => toggleSelected(actionThread.id),
+        },
+      ]
+    : [];
 
   useEffect(() => {
     void reload();
@@ -70,9 +93,12 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     setSelectedIds([]);
     setPendingAction(null);
     setPersonalPassword('');
+    setSwipedThreadId(null);
+    setActionThread(null);
   }, [filter, space]);
 
   async function toggleArchive(thread: AiThreadHistoryItem) {
+    setSwipedThreadId(null);
     if (thread.archivedAt) {
       await unarchiveAiThread(space, thread.id);
       setStatus('会话已恢复。');
@@ -83,6 +109,22 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     await reload();
   }
 
+  function getThreadSwipeHandlers(thread: AiThreadHistoryItem) {
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+      onPanResponderRelease: (_event, gesture) => {
+        if (gesture.dx < -ARCHIVE_SWIPE_THRESHOLD) {
+          setSwipedThreadId(thread.id);
+          return;
+        }
+        if (gesture.dx > ARCHIVE_SWIPE_THRESHOLD / 2) {
+          setSwipedThreadId(null);
+        }
+      },
+      onPanResponderTerminate: () => undefined,
+    }).panHandlers;
+  }
+
   function toggleSelected(threadId: string) {
     setSelectedIds((current) => current.includes(threadId) ? current.filter((id) => id !== threadId) : [...current, threadId]);
   }
@@ -90,6 +132,10 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   function handleRowPress(thread: AiThreadHistoryItem) {
     if (isSelecting) {
       toggleSelected(thread.id);
+      return;
+    }
+    if (swipedThreadId === thread.id) {
+      setSwipedThreadId(null);
       return;
     }
     onOpenThread(thread);
@@ -171,11 +217,38 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           {items.length ? (
             items.map((thread) => {
               const selected = selectedIds.includes(thread.id);
+              const swiped = swipedThreadId === thread.id;
               return (
-                <View key={thread.id} style={[styles.row, selected && styles.selectedRow]}>
+                <View key={thread.id} style={styles.swipeWrap}>
+                  {!isSelecting ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        void toggleArchive(thread);
+                      }}
+                      style={({ pressed }) => [styles.archiveAction, pressed && styles.pressed]}
+                    >
+                      <Ionicons color={colors.text.inverse} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
+                      <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
+                    </Pressable>
+                  ) : null}
+                  <View
+                    {...getThreadSwipeHandlers(thread)}
+                    style={[
+                      styles.row,
+                      selected && styles.selectedRow,
+                      swiped && !isSelecting ? styles.swipedRow : null,
+                    ]}
+                  >
                   <Pressable
                     accessibilityRole="button"
-                    onLongPress={() => toggleSelected(thread.id)}
+                    onLongPress={() => {
+                      if (isSelecting) {
+                        toggleSelected(thread.id);
+                        return;
+                      }
+                      setActionThread(thread);
+                    }}
                     onPress={() => handleRowPress(thread)}
                     style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                   >
@@ -190,25 +263,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                       {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
                     </View>
                   </Pressable>
-                  {!isSelecting ? (
-                    <View style={styles.rowActions}>
-                      <PrimaryButton
-                        label={thread.archivedAt ? '恢复' : '归档'}
-                        onPress={() => {
-                          void toggleArchive(thread);
-                        }}
-                        variant="ghost"
-                      />
-                      <PrimaryButton
-                        label="重命名"
-                        onPress={() => {
-                          setRenameThread(thread);
-                          setRenameValue(thread.title);
-                        }}
-                        variant="ghost"
-                      />
-                    </View>
-                  ) : null}
+                  </View>
                 </View>
               );
             })
@@ -261,6 +316,13 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           />
         ) : null}
       </AppDialog>
+
+      <AppActionSheet
+        items={actionSheetItems}
+        onClose={() => setActionThread(null)}
+        title={actionThread?.title ?? '会话操作'}
+        visible={Boolean(actionThread)}
+      />
 
       <AppDialog
         message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
@@ -326,6 +388,26 @@ const styles = StyleSheet.create({
   threadList: {
     paddingTop: rhythm.listCardGap,
   },
+  swipeWrap: {
+    overflow: 'hidden',
+  },
+  archiveAction: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.lg,
+    bottom: 0,
+    gap: 2,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: ARCHIVE_ACTION_WIDTH,
+  },
+  archiveActionText: {
+    ...typography.textStyles.micro,
+    color: colors.text.inverse,
+    fontWeight: '600',
+  },
   row: {
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
@@ -334,6 +416,9 @@ const styles = StyleSheet.create({
     gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
+  swipedRow: {
+    transform: [{ translateX: -ARCHIVE_ACTION_WIDTH }],
+  },
   selectedRow: {
     borderColor: colors.primary.light,
   },
@@ -341,9 +426,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-  },
-  rowActions: {
-    gap: rhythm.cardContentGap,
   },
   pressed: {
     opacity: 0.78,

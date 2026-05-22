@@ -6,19 +6,19 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.1.9`
+[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.1.10`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.1.9
+### Pixory 2.1.10
 
-这一版优化远程更新检查触发时机：
+这一版优化 AI 聊天和历史会话操作：
 
-- App 启动后会检查新版本。
-- 从后台回到前台时也会重新检查远程更新。
-- 继续保留跳过指定版本的去重逻辑，避免重复打扰。
+- 聊天消息操作改为气泡下方的小按钮，复制、重写和重新生成更直接。
+- 历史会话支持左滑归档，重命名移动到长按菜单。
+- 隐私模式允许截屏，并保留后台自动锁定。
 
 下载地址：
 
