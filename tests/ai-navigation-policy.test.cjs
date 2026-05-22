@@ -60,6 +60,8 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   assert.match(content, /style=\{styles\.messageScroller\}/);
   assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
   assert.match(content, /styles\.composerPanel/);
+  assert.doesNotMatch(content, /开始对话/);
+  assert.doesNotMatch(content, /styles\.emptyState/);
   assert.doesNotMatch(content, /scrollable\s*\n\s*>/);
   assert.doesNotMatch(content, /footer=\{/);
 });

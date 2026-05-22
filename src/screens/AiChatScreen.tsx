@@ -593,14 +593,7 @@ export function AiChatScreen({
                 streaming={generating && message.id === activeAssistantId}
               />
             ))
-          ) : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyGlyph}>
-                <Ionicons color={aiChatLightColors.onDark} name="sparkles-outline" size={22} />
-              </View>
-              <Text style={styles.emptyTitle}>开始对话</Text>
-            </View>
-          )}
+          ) : null}
         </View>
       </ScrollView>
 
@@ -724,31 +717,5 @@ const styles = StyleSheet.create({
   messageList: {
     gap: rhythm.listCardGap,
     paddingTop: spacing[3],
-  },
-  emptyState: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: aiChatLightColors.dark,
-    borderRadius: radius.lg,
-    gap: rhythm.cardContentGap,
-    marginTop: spacing[12],
-    maxWidth: 280,
-    paddingHorizontal: spacing[6],
-    paddingVertical: spacing[6],
-  },
-  emptyGlyph: {
-    alignItems: 'center',
-    backgroundColor: aiChatLightColors.coral,
-    borderRadius: radius.md,
-    height: spacing[10],
-    justifyContent: 'center',
-    width: spacing[10],
-  },
-  emptyTitle: {
-    ...typography.textStyles.emptyTitle,
-    color: aiChatLightColors.onDark,
-    fontFamily: aiChatDisplayFont,
-    fontWeight: '400',
-    textAlign: 'center',
   },
 });
