@@ -461,10 +461,23 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(repository, /deleteThreads/);
 });
 
+test('AI home recent continue rows show last chat time to the minute', () => {
+  const home = fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
+
+  assert.match(home, /formatRecentChatMinute/);
+  assert.match(home, /thread\.lastMessageAt \?\? thread\.updatedAt/);
+  assert.match(home, /上次聊天/);
+  assert.match(home, /\$\{month\}-\$\{day\} \$\{hours\}:\$\{minutes\}/);
+  assert.doesNotMatch(home, /formatRecentTime\(thread\.updatedAt\)/);
+});
+
 test('AI materials support batch removal and chat history supports rename', () => {
   const materialList = fs.readFileSync(path.join(root, 'src/screens/AiMaterialListScreen.tsx'), 'utf8');
+  const knowledgeBase = fs.readFileSync(path.join(root, 'src/screens/AiKnowledgeBaseScreen.tsx'), 'utf8');
   const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const documentService = fs.readFileSync(path.join(root, 'src/ai/aiDocumentService.ts'), 'utf8');
+  const knowledgeRepository = fs.readFileSync(path.join(root, 'src/database/repositories/aiKnowledgeRepository.ts'), 'utf8');
 
   assert.match(materialList, /selectedIds/);
   assert.match(materialList, /removeMaterials/);
@@ -473,6 +486,15 @@ test('AI materials support batch removal and chat history supports rename', () =
   assert.match(materialList, /selectedRow/);
   assert.doesNotMatch(materialList, /selectionBar/);
   assert.match(materialList, /onLongPress/);
+  assert.match(knowledgeBase, /selectedIds/);
+  assert.match(knowledgeBase, /onLongPress=\{\(\) => toggleSelected\(item\.id\)\}/);
+  assert.match(knowledgeBase, /deleteKnowledgeBases/);
+  assert.match(knowledgeBase, /批量删除/);
+  assert.match(knowledgeBase, /footer={selectionFooter}/);
+  assert.match(documentService, /deleteKnowledgeBases/);
+  assert.match(knowledgeRepository, /deleteKnowledgeBase/);
+  assert.match(knowledgeRepository, /ownerType:\s*'knowledge_base'/);
+  assert.match(knowledgeRepository, /SET boundKnowledgeBaseId = NULL/);
   assert.match(history, /renameAiThread/);
   assert.match(history, /重命名/);
   assert.match(service, /renameAiThread/);

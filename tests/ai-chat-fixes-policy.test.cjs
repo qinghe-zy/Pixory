@@ -107,6 +107,24 @@ test('AI inline edit cancel and send labels are centered in their buttons', () =
   assert.match(labelStyle, /textAlign:\s*'center'/);
 });
 
+test('AI inline edit cursor stays visible on the user bubble', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const editorInput = /<TextInput[\s\S]*?value=\{editDraft\}/.exec(bubble)?.[0] ?? '';
+
+  assert.match(editorInput, /cursorColor=\{aiLightColors\.onDark\}/);
+  assert.match(editorInput, /selectionColor=\{aiLightColors\.onDark\}/);
+  assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.coral\}/);
+});
+
+test('AI regenerate switches back to the newest generated message version', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const regenerateBlock = /async function handleRegenerate[\s\S]*?try \{/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /function showLatestMessageVersion\(messageId: string\)/);
+  assert.match(chat, /delete next\[messageId\]/);
+  assert.match(regenerateBlock, /showLatestMessageVersion\(targetMessageId\)/);
+});
+
 test('AI message action row puts version controls after edit regenerate and shows assistant reply time', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?<\/View>\n      <\/View>/m.exec(bubble)?.[0] ?? '';

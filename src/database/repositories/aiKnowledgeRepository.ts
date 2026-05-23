@@ -160,6 +160,31 @@ export const aiKnowledgeRepository = {
     );
   },
 
+  async deleteKnowledgeBase(db: SQLiteDatabase, space: PixorySpace, knowledgeBaseId: string): Promise<number> {
+    const documents = await this.listDocuments(db, {
+      ownerId: knowledgeBaseId,
+      ownerType: 'knowledge_base',
+      space,
+    });
+    for (const document of documents) {
+      await this.deleteDocument(db, document.id);
+    }
+    await db.runAsync(
+      `UPDATE ai_threads
+       SET boundKnowledgeBaseId = NULL, updatedAt = ?
+       WHERE space = ? AND boundKnowledgeBaseId = ?`,
+      createTimestamp(),
+      space,
+      knowledgeBaseId
+    );
+    const result = await db.runAsync(
+      'DELETE FROM ai_knowledge_bases WHERE id = ? AND space = ?',
+      knowledgeBaseId,
+      space
+    );
+    return result.changes;
+  },
+
   async createDocument(db: SQLiteDatabase, input: CreateDocumentInput): Promise<AiDocumentRecord> {
     const now = createTimestamp();
     await db.runAsync(

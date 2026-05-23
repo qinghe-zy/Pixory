@@ -145,7 +145,11 @@ test('AI chat title is finalized from the first exchange and refreshed in the ch
   assert.match(chatService, /generateAiThreadTitle/);
   assert.match(chatService, /COMMON_TITLE_PREFIXES/);
   assert.match(chatService, /LOW_SIGNAL_TITLE_PATTERNS/);
+  assert.match(chatService, /TITLE_FILLER_PATTERNS/);
+  assert.match(chatService, /ASSISTANT_TOPIC_PATTERNS/);
+  assert.match(chatService, /pickAssistantTopicCandidate/);
   assert.match(chatService, /assistantReply/);
+  assert.doesNotMatch(chatService, /const assistantTitle = trimGenericTitleWords\(normalizeTitleSource/);
   assert.match(chatService, /finalizeThreadTitleAfterReply/);
   assert.match(chatService, /isCustomInitialTitle/);
   assert.match(chatService, /title !== defaultTitle/);

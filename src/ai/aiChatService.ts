@@ -133,6 +133,18 @@ const GENERIC_TITLE_WORDS = [
   /^请问/,
 ];
 
+const TITLE_FILLER_PATTERNS = [
+  /^(一下|这个|那个|一个|一些)/,
+  /(一下|呢|吧|吗|么)$/g,
+  /^怎么(样)?/,
+];
+
+const ASSISTANT_TOPIC_PATTERNS = [
+  /(?:主题|问题|需求|重点|核心)是\s*([^。！？!?，,；;]{2,30})/,
+  /(?:关于|围绕)\s*([^。！？!?，,；;]{2,30})/,
+  /(?:你想要|你希望|你需要)\s*([^。！？!?，,；;]{2,30})/,
+];
+
 export type AiMessageWithCitations = AiMessageRecord & {
   citations: AiCitationRecord[];
   messageVersions: AiMessageVersionRecord[];
@@ -189,23 +201,43 @@ function trimGenericTitleWords(text: string): string {
   return GENERIC_TITLE_WORDS.reduce((title, pattern) => title.replace(pattern, ''), text).trim();
 }
 
+function trimTitleFiller(text: string): string {
+  return TITLE_FILLER_PATTERNS.reduce((title, pattern) => title.replace(pattern, ''), text).trim();
+}
+
 function isLowSignalTitle(text: string): boolean {
   const compact = text.replace(/\s+/g, '').trim();
   return compact.length <= 1 || LOW_SIGNAL_TITLE_PATTERNS.some((pattern) => pattern.test(compact));
 }
 
+function prepareUserTitle(text: string): string {
+  return trimTitleFiller(trimGenericTitleWords(normalizeTitleSource(text)));
+}
+
+function pickAssistantTopicCandidate(assistantReply: string): string {
+  const normalized = normalizeTitleSource(assistantReply);
+  for (const pattern of ASSISTANT_TOPIC_PATTERNS) {
+    const match = pattern.exec(normalized);
+    const candidate = trimTitleFiller(trimGenericTitleWords(match?.[1] ?? ''));
+    if (candidate && !isLowSignalTitle(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
 function pickTitleCandidate(userMessage: string, assistantReply?: string): string {
-  const userTitle = trimGenericTitleWords(normalizeTitleSource(userMessage));
+  const userTitle = prepareUserTitle(userMessage);
   if (userTitle && !isLowSignalTitle(userTitle)) {
     return userTitle;
   }
 
-  const assistantTitle = trimGenericTitleWords(normalizeTitleSource(assistantReply ?? ''));
-  if (assistantTitle && !isLowSignalTitle(assistantTitle)) {
-    return assistantTitle;
+  const assistantTopic = pickAssistantTopicCandidate(assistantReply ?? '');
+  if (assistantTopic) {
+    return assistantTopic;
   }
 
-  return userTitle || assistantTitle || '初次问候';
+  return userTitle || '新的聊天';
 }
 
 export function generateAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType; assistantReply?: string }): string {

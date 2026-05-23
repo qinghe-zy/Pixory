@@ -160,7 +160,7 @@ export function AiHomeScreen({
                     {thread.lastMessagePreview ?? '继续'}
                   </Text>
                 </View>
-                <Text style={styles.threadTime}>{formatRecentTime(thread.updatedAt)}</Text>
+                <Text style={styles.threadTime}>{formatRecentChatMinute(thread.lastMessageAt ?? thread.updatedAt)}</Text>
                 <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
               </Pressable>
             ))
@@ -257,12 +257,16 @@ function backgroundForContext(contextType: AiThreadHistoryItem['contextType']) {
   return aiLightColors.canvas;
 }
 
-function formatRecentTime(value: string) {
+function formatRecentChatMinute(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `上次聊天 ${month}-${day} ${hours}:${minutes}`;
 }
 
 const styles = StyleSheet.create({

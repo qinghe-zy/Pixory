@@ -212,6 +212,22 @@ export async function listKnowledgeBases(space: PixorySpace): Promise<AiKnowledg
   return runWithDatabaseSpace(space, (db) => aiKnowledgeRepository.listKnowledgeBases(db, space));
 }
 
+export async function deleteKnowledgeBases(input: { space: PixorySpace; knowledgeBaseIds: string[] }): Promise<number> {
+  const uniqueIds = Array.from(new Set(input.knowledgeBaseIds));
+  if (uniqueIds.length === 0) {
+    return 0;
+  }
+  return runWithDatabaseSpace(input.space, async (db) => {
+    let count = 0;
+    await db.withTransactionAsync(async () => {
+      for (const knowledgeBaseId of uniqueIds) {
+        count += await aiKnowledgeRepository.deleteKnowledgeBase(db, input.space, knowledgeBaseId);
+      }
+    });
+    return count;
+  });
+}
+
 export async function importManualTextMaterial(input: ImportManualTextMaterialInput): Promise<AiDocumentRecord> {
   await ensureAppDirectories(input.space);
   const ownerDir = resolveOwnerDirectory(input.space, input.ownerType, input.ownerId);

@@ -186,6 +186,17 @@ export function AiChatScreen({
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
 
+  function showLatestMessageVersion(messageId: string) {
+    setSelectedVersionByMessageId((current) => {
+      if (!(messageId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[messageId];
+      return next;
+    });
+  }
+
   const applyDisplayTitle = useCallback(
     (title: string) => {
       if (title === displayTitleRef.current) {
@@ -478,6 +489,8 @@ export function AiChatScreen({
         content,
         onCreated: ({ assistantMessageId }) => {
           setActiveAssistantId(assistantMessageId);
+          showLatestMessageVersion(userMessageId);
+          showLatestMessageVersion(assistantMessageId);
           followLatestMessage();
           void reloadMessages(activeThreadId);
         },
@@ -517,6 +530,7 @@ export function AiChatScreen({
     setGenerating(true);
     setActiveAssistantId(targetMessageId);
     setErrorMessage(null);
+    showLatestMessageVersion(targetMessageId);
     followLatestMessage();
     try {
       await regenerateAssistantMessage({

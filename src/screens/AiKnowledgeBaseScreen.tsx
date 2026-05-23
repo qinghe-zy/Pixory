@@ -6,7 +6,8 @@ import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { createKnowledgeBase, listKnowledgeBases } from '../ai/aiDocumentService';
+import { AppDialog } from '../components/AppDialog';
+import { createKnowledgeBase, deleteKnowledgeBases, listKnowledgeBases } from '../ai/aiDocumentService';
 import type { AiKnowledgeBaseRecord } from '../database/repositories/aiKnowledgeRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -22,6 +23,8 @@ interface AiKnowledgeBaseScreenProps {
 export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenMaterials, onStartChat }: AiKnowledgeBaseScreenProps) {
   const [items, setItems] = useState<AiKnowledgeBaseRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmingBatchDelete, setConfirmingBatchDelete] = useState(false);
   const [name, setName] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const selected = items.find((item) => item.id === selectedId);
@@ -30,7 +33,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
   async function reload() {
     const nextItems = await listKnowledgeBases(space);
     setItems(nextItems);
-    setSelectedId((current) => current ?? nextItems[0]?.id);
+    setSelectedId((current) => nextItems.some((item) => item.id === current) ? current : nextItems[0]?.id);
   }
 
   useEffect(() => {
@@ -49,8 +52,43 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
     }
   }
 
+  function toggleSelected(knowledgeBaseId: string) {
+    setSelectedIds((current) => current.includes(knowledgeBaseId) ? current.filter((id) => id !== knowledgeBaseId) : [...current, knowledgeBaseId]);
+  }
+
+  async function batchDeleteSelected() {
+    const ids = selectedIds;
+    if (!ids.length) {
+      setConfirmingBatchDelete(false);
+      return;
+    }
+    try {
+      const deletedCount = await deleteKnowledgeBases({ knowledgeBaseIds: ids, space });
+      setSelectedIds([]);
+      setConfirmingBatchDelete(false);
+      setStatus(`已删除 ${deletedCount} 个知识库。`);
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '删除失败');
+    }
+  }
+
+  const selectionFooter = selectedIds.length ? (
+    <View style={styles.selectionFooter}>
+      <View style={styles.selectionCopy}>
+        <Text style={styles.selectionText}>已选择 {selectedIds.length} 个知识库</Text>
+        <Text style={styles.selectionMeta}>会删除知识库、材料记录和本地索引，不会删除原始材料文件。</Text>
+      </View>
+      <View style={styles.selectionActions}>
+        <AiLightButton label="批量删除" onPress={() => setConfirmingBatchDelete(true)} variant="outline" />
+        <AiLightButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
+      </View>
+    </View>
+  ) : null;
+
   return (
     <AiLightScaffold
+      footer={selectionFooter}
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
@@ -75,15 +113,23 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
           {items.length ? (
             items.map((item) => {
               const selectedItem = item.id === selectedId;
+              const batchSelected = selectedIds.includes(item.id);
               return (
                 <Pressable
                   accessibilityRole="button"
                   key={item.id}
-                  onPress={() => setSelectedId(item.id)}
-                  style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, pressed && styles.pressed]}
+                  onLongPress={() => toggleSelected(item.id)}
+                  onPress={() => {
+                    if (selectedIds.length) {
+                      toggleSelected(item.id);
+                      return;
+                    }
+                    setSelectedId(item.id);
+                  }}
+                  style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, batchSelected && styles.batchSelectedRow, pressed && styles.pressed]}
                 >
                   <View style={styles.kbIcon}>
-                    <Ionicons color={aiLightColors.coralActive} name={selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
+                    <Ionicons color={aiLightColors.coralActive} name={batchSelected ? 'checkmark-circle' : selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
                   </View>
                   <View style={styles.kbCopy}>
                     <Text style={styles.kbName}>{item.name}</Text>
@@ -112,6 +158,18 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
           />
         </View>
       </View>
+      <AppDialog
+        danger
+        message={`将删除 ${selectedIds.length} 个知识库，并移除其中的材料记录和本地知识索引。原始材料文件不会被删除。`}
+        onClose={() => setConfirmingBatchDelete(false)}
+        onPrimary={() => {
+          void batchDeleteSelected();
+        }}
+        primaryDisabled={!selectedIds.length}
+        primaryLabel="批量删除"
+        title="删除所选知识库？"
+        visible={confirmingBatchDelete}
+      />
     </AiLightScaffold>
   );
 }
@@ -155,6 +213,10 @@ const styles = StyleSheet.create({
   selectedRow: {
     borderColor: aiLightColors.coral,
   },
+  batchSelectedRow: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
+  },
   pressed: {
     opacity: 0.78,
   },
@@ -179,6 +241,28 @@ const styles = StyleSheet.create({
     padding: spacing[4],
   },
   actions: {
+    gap: rhythm.inlineGap,
+  },
+  selectionFooter: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  selectionCopy: {
+    gap: rhythm.microGap,
+  },
+  selectionText: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  selectionMeta: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  selectionActions: {
     gap: rhythm.inlineGap,
   },
 });

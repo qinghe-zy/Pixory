@@ -116,11 +116,12 @@ export function AiMessageBubble({
             <View style={styles.inlineEditor}>
               <TextInput
                 autoFocus
+                cursorColor={aiLightColors.onDark}
                 multiline
                 onChangeText={updateEditDraft}
                 placeholder="重写这条消息"
                 placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.onDark}
                 style={styles.inlineEditorInput}
                 textAlignVertical="top"
                 value={editDraft}
