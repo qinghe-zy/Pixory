@@ -12,7 +12,7 @@ import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { applyRoleCardToThread, deleteAiThreads, loadThreadSessionConfig, renameAiThread, updateAiThreadSessionConfig } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
-import type { AiBoundaryMode, AiContextType, AiRoleInstructionWeight } from '../ai/types';
+import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -37,6 +37,12 @@ const BOUNDARY_MODES: Array<{ value: AiBoundaryMode; label: string }> = [
 const ROLE_INSTRUCTION_WEIGHTS: Array<{ value: AiRoleInstructionWeight; label: string }> = [
   { value: 'default', label: '默认' },
   { value: 'high', label: '高' },
+];
+
+const REPLY_PREFERENCES: Array<{ value: AiReplyPreference; label: string }> = [
+  { value: 'auto', label: '模型自适应' },
+  { value: 'concise', label: '更简洁' },
+  { value: 'detailed', label: '更详细' },
 ];
 
 function getDefaultSystemPrompt(contextType: AiContextType): string {
@@ -65,6 +71,7 @@ export function AiSessionConfigScreen({
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
+  const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
@@ -82,6 +89,7 @@ export function AiSessionConfigScreen({
       setRenameValue(fallbackThreadTitle);
       setSystemPrompt(getDefaultSystemPrompt(contextType));
       setRoleInstructionWeight('default');
+      setReplyPreference('auto');
       setDeepMemoryEnabled(false);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
@@ -95,6 +103,7 @@ export function AiSessionConfigScreen({
     setRenameValue(config.thread.title);
     setSystemPrompt(config.thread.systemPrompt);
     setRoleInstructionWeight(config.thread.roleInstructionWeight);
+    setReplyPreference(config.thread.replyPreference);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
@@ -144,6 +153,7 @@ export function AiSessionConfigScreen({
         boundaryMode,
         avatarEnabled,
         deepMemoryEnabled,
+        replyPreference,
         roleInstructionWeight,
         space,
         systemPrompt,
@@ -152,7 +162,7 @@ export function AiSessionConfigScreen({
       if (!updated) {
         throw new Error('没有找到当前会话，设置未保存。');
       }
-      setStatus({ message: '角色指令和回答范围已应用到当前会话。', tone: 'success', title: '设置已保存' });
+      setStatus({ message: '会话设置已保存。', tone: 'success', title: '设置已保存' });
       return true;
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error', title: '保存失败' });
@@ -291,16 +301,32 @@ export function AiSessionConfigScreen({
         </AiLightCard>
 
         <AiLightCard>
-          <Text style={styles.sectionTitle}>回答范围</Text>
-          <View style={styles.chips}>
-            {BOUNDARY_MODES.map((mode) => (
-              <AiLightChip
-                active={boundaryMode === mode.value}
-                key={mode.value}
-                label={mode.label}
-                onPress={() => setBoundaryMode(mode.value)}
-              />
-            ))}
+          <Text style={styles.sectionTitle}>回复设置</Text>
+          <View style={styles.settingGroup}>
+            <Text style={styles.caption}>资料范围</Text>
+            <View style={styles.chips}>
+              {BOUNDARY_MODES.map((mode) => (
+                <AiLightChip
+                  active={boundaryMode === mode.value}
+                  key={mode.value}
+                  label={mode.label}
+                  onPress={() => setBoundaryMode(mode.value)}
+                />
+              ))}
+            </View>
+          </View>
+          <View style={styles.settingGroup}>
+            <Text style={styles.caption}>回复倾向</Text>
+            <View style={styles.chips}>
+              {REPLY_PREFERENCES.map((item) => (
+                <AiLightChip
+                  active={replyPreference === item.value}
+                  key={item.value}
+                  label={item.label}
+                  onPress={() => setReplyPreference(item.value)}
+                />
+              ))}
+            </View>
           </View>
         </AiLightCard>
 
@@ -308,7 +334,7 @@ export function AiSessionConfigScreen({
           <View style={styles.memoryRow}>
             <View style={styles.summaryCopy}>
               <Text style={styles.sectionTitle}>深度记忆</Text>
-              <Text style={styles.caption}>开启后在本地保存会话摘要和可复用记忆，用于长对话回看。</Text>
+              <Text style={styles.caption}>开启后在本地保存会话摘要和可复用记忆，用于长对话回看；关闭后不会继续注入记忆背景。</Text>
             </View>
             <Pressable
               accessibilityRole="switch"
@@ -569,6 +595,9 @@ const styles = StyleSheet.create({
     gap: rhythm.cardContentGap,
   },
   weightRow: {
+    gap: rhythm.microGap,
+  },
+  settingGroup: {
     gap: rhythm.microGap,
   },
   weightChips: {

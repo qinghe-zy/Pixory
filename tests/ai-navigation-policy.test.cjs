@@ -338,6 +338,7 @@ test('AI form inputs, search, and feedback use AI light components', () => {
 test('AI reading and citation components use the shared AI light tokens', () => {
   for (const file of [
     'AiCitationList.tsx',
+    'AiMessageContent.tsx',
     'AiThinkingBlock.tsx',
     'AiTextReader.tsx',
     'AiMarkdownReader.tsx',

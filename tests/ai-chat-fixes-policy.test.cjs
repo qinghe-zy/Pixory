@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 22/);
+  assert.match(schema, /DATABASE_VERSION = 23/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -118,6 +118,25 @@ test('AI inline edit cursor stays visible on the user bubble', () => {
   assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.coral\}/);
 });
 
+test('AI chat keeps the latest message visible after initial load keyboard show and composer growth', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+
+  assert.match(chat, /forceScrollAfterMessagesRef/);
+  assert.match(chat, /setTimeout\(scroll,\s*80\)/);
+  assert.match(chat, /setTimeout\(scroll,\s*180\)/);
+  assert.match(chat, /forceScrollAfterMessagesRef\.current = true/);
+  assert.match(chat, /forceScrollAfterMessagesRef\.current = false/);
+  assert.match(chat, /scrollToLatestMessage\(messages\.length > 1,\s*force\)/);
+  assert.match(chat, /Keyboard\.addListener\('keyboardDidShow'[\s\S]*followLatestMessage\(\)/);
+  assert.match(chat, /const handleComposerHeightChange = useCallback/);
+  assert.match(chat, /onComposerHeightChange=\{handleComposerHeightChange\}/);
+  assert.match(composer, /onComposerHeightChange\?: \(\) => void/);
+  assert.match(composer, /attachmentCountRef/);
+  assert.match(composer, /onComposerHeightChange\?\.\(\)/);
+  assert.match(composer, /if \(nextHeight !== inputHeight\)/);
+});
+
 test('AI regenerate switches back to the newest generated message version', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const regenerateBlock = /async function handleRegenerate[\s\S]*?try \{/.exec(chat)?.[0] ?? '';
@@ -143,6 +162,40 @@ test('AI message action row puts version controls after edit regenerate and show
   assert.match(bubble, /formatMessageMinute/);
   assert.match(bubble, /message\.completedAt \?\? message\.updatedAt/);
   assert.match(bubble, /styles\.messageTime/);
+});
+
+test('AI assistant replies use lightweight Claude-style markdown without changing bubble chrome', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const citations = read('src/components/ai/AiCitationList.tsx');
+
+  assert.match(bubble, /import \{ AiMessageContent \} from '\.\/AiMessageContent'/);
+  assert.match(bubble, /isUser \? \([\s\S]*<Text style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*<AiMessageContent content=\{content\} \/>/);
+  assert.match(content, /parseMarkdownBlocks/);
+  assert.match(content, /type: 'heading'/);
+  assert.match(content, /type: 'list'/);
+  assert.match(content, /type: 'quote'/);
+  assert.match(content, /type: 'code'/);
+  assert.match(content, /type: 'table'/);
+  assert.match(content, /inlineCode/);
+  assert.match(content, /boldText/);
+  assert.match(content, /italicText/);
+  assert.match(content, /strikeText/);
+  assert.match(content, /linkText/);
+  assert.match(content, /https\?:\\\/\\\/\[\^\)\\s\]\+/);
+  assert.match(content, /☑/);
+  assert.match(content, /☐/);
+  assert.match(content, /Clipboard\.setStringAsync/);
+  assert.match(content, /accessibilityLabel="复制代码块"/);
+  assert.match(content, /aiLightColors\.dark/);
+  assert.match(content, /aiLightColors\.onDark/);
+  assert.match(content, /typography\.family\.mono/);
+  assert.match(content, /aiLightDisplayFont/);
+  assert.match(bubble, /bubble:\s*\{[\s\S]{0,80}padding:\s*spacing\[3\]/);
+  assert.match(bubble, /assistantBubble:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.card/);
+  assert.match(bubble, /messageActionButton:\s*\{[\s\S]*height:\s*28[\s\S]*width:\s*28/);
+  assert.match(citations, /来源 · \{citations\.length\}/);
+  assert.match(citations, /onPress=\{\(\) => onOpenCitation\(citation\)\}/);
 });
 
 test('AI session settings keep role instructions visible above the Android keyboard', () => {
@@ -191,6 +244,7 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(service, /只输出 JSON/);
   assert.match(service, /modelUpdate\?\.memories\.length \? modelUpdate\.memories : extractMemoryCandidates/);
   assert.match(sessionConfig, /深度记忆/);
+  assert.match(sessionConfig, /不会继续注入记忆背景/);
   assert.match(sessionConfig, /accessibilityRole="switch"/);
   assert.match(sessionConfig, /deepMemoryEnabled/);
 });

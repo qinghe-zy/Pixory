@@ -18,7 +18,10 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /不要仅根据对话记录判断为未设置/);
   assert.match(content, /if \(!trimmed\) \{\s*return '';\s*\}/);
   assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
-  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\), input\.rolePrompt\]\.filter\(Boolean\)/);
+  assert.match(content, /frameReplyPreference\(input\.replyPreference\)/);
+  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\), frameReplyPreference\(input\.replyPreference\), input\.rolePrompt\]\.filter\(Boolean\)/);
+  assert.match(content, /return ''/);
+  assert.match(content, /以用户当前要求为准/);
 });
 
 test('retrieval uses bounded snippets and never whole documents', () => {

@@ -16,6 +16,7 @@ export type {
   AiProviderProtocol,
   AiProviderRecord,
   AiProviderType,
+  AiReplyPreference,
   AiRoleCardRecord,
   AiRoleInstructionWeight,
   AiThreadRecord,

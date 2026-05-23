@@ -110,6 +110,7 @@ export function AiChatScreen({
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageListRef = useRef<FlatList<AiMessageWithCitations> | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
+  const forceScrollAfterMessagesRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
@@ -173,9 +174,12 @@ export function AiChatScreen({
     if (!force && userScrolledAwayFromBottomRef.current) {
       return;
     }
-    requestAnimationFrame(() => {
+    const scroll = () => {
       messageListRef.current?.scrollToEnd({ animated });
-    });
+    };
+    requestAnimationFrame(scroll);
+    setTimeout(scroll, 80);
+    setTimeout(scroll, 180);
   }, []);
 
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -188,6 +192,10 @@ export function AiChatScreen({
     userScrolledAwayFromBottomRef.current = false;
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
+
+  const handleComposerHeightChange = useCallback(() => {
+    followLatestMessage(false);
+  }, [followLatestMessage]);
 
   function showLatestMessageVersion(messageId: string) {
     setSelectedVersionByMessageId((current) => {
@@ -213,12 +221,16 @@ export function AiChatScreen({
   );
 
   const reloadMessages = useCallback(
-    async (targetThreadId: string | null = activeThreadId) => {
+    async (targetThreadId: string | null = activeThreadId, forceToLatest = false) => {
       if (!targetThreadId) {
         return;
       }
       const nextMessages = await listThreadMessages(space, targetThreadId, { limit: loadedMessageLimit });
       setHasEarlierMessages(nextMessages.length >= loadedMessageLimit);
+      if (forceToLatest) {
+        forceScrollAfterMessagesRef.current = true;
+        userScrolledAwayFromBottomRef.current = false;
+      }
       setMessages(nextMessages);
       void loadThreadTitle(space, targetThreadId).then((title) => {
         if (title) {
@@ -299,11 +311,13 @@ export function AiChatScreen({
     setPendingAttachments([]);
     setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
     setHasEarlierMessages(false);
+    forceScrollAfterMessagesRef.current = true;
+    userScrolledAwayFromBottomRef.current = false;
     applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
   useEffect(() => {
-    void reloadMessages(threadId ?? activeThreadId);
+    void reloadMessages(threadId ?? activeThreadId, forceScrollAfterMessagesRef.current);
   }, [activeThreadId, reloadMessages, threadId]);
 
   useEffect(() => {
@@ -319,7 +333,9 @@ export function AiChatScreen({
   }, [activeThreadId, reloadThreadTitle, threadId]);
 
   useEffect(() => {
-    scrollToLatestMessage(messages.length > 1);
+    const force = forceScrollAfterMessagesRef.current;
+    forceScrollAfterMessagesRef.current = false;
+    scrollToLatestMessage(messages.length > 1, force);
   }, [messages, scrollToLatestMessage]);
 
   useEffect(() => {
@@ -333,7 +349,7 @@ export function AiChatScreen({
         return;
       }
       setKeyboardBottomInset(Math.max(0, event.endCoordinates.height - insets.bottom));
-      scrollToLatestMessage();
+      followLatestMessage();
     });
     const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
       setKeyboardBottomInset(0);
@@ -344,7 +360,7 @@ export function AiChatScreen({
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [insets.bottom, scrollToLatestMessage]);
+  }, [followLatestMessage, insets.bottom, scrollToLatestMessage]);
 
   async function ensureThread(): Promise<string> {
     if (activeThreadId) {
@@ -734,6 +750,7 @@ export function AiChatScreen({
           generating={generating}
           onAddAttachment={() => setAttachmentSheetVisible(true)}
           onChangeText={setComposerText}
+          onComposerHeightChange={handleComposerHeightChange}
           onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
           onSend={() => {
             void handleSend();

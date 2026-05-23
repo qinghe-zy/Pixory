@@ -14,6 +14,9 @@ test('AI final failure paths keep local records recoverable', () => {
   assert.match(chat, /retryAssistantMessage/);
   assert.match(chat, /stopStreamingMessage/);
   assert.match(chat, /fallbackAiThreadTitle/);
+  assert.match(chat, /partialContent = ''/);
+  assert.match(chat, /content: partialContent/);
+  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, event\.message, answerText, reasoningText \|\| null\)/);
 });
 
 test('new AI chats snapshot the last selected chat provider and model', () => {
@@ -76,6 +79,13 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /avatarEnabled/);
   assert.match(sessionConfig, /头像开启|头像关闭/);
   assert.match(sessionConfig, /高级角色指令/);
+  assert.match(sessionConfig, /回复设置/);
+  assert.match(sessionConfig, /资料范围/);
+  assert.match(sessionConfig, /回复倾向/);
+  assert.match(sessionConfig, /REPLY_PREFERENCES/);
+  assert.match(sessionConfig, /模型自适应/);
+  assert.match(sessionConfig, /更简洁/);
+  assert.match(sessionConfig, /更详细/);
   assert.match(sessionConfig, /ROLE_INSTRUCTION_WEIGHTS/);
   assert.match(sessionConfig, /权重等级/);
   assert.match(sessionConfig, /setRoleInstructionWeight/);
@@ -97,9 +107,11 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(chatService, /patchThreadRoleSnapshot/);
   assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? getDefaultThreadSystemPrompt\(thread\.contextType\)/);
   assert.match(chatService, /roleInstructionWeight: input\.roleInstructionWeight/);
+  assert.match(chatService, /replyPreference: input\.replyPreference/);
   assert.match(chatService, /roleSnapshotJson/);
   assert.match(repository, /roleCardId/);
   assert.match(repository, /roleInstructionWeight/);
+  assert.match(repository, /replyPreference/);
 });
 
 test('normal chat keeps role instruction empty unless the user configures one', () => {
@@ -130,11 +142,35 @@ test('high role instruction weight uses a stronger prompt frame without conflict
 test('AI session settings report save success and failed missing thread updates', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   assert.match(sessionConfig, /setStatus\(\{ message: '正在保存会话设置\.\.\.', tone: 'info', title: '保存中' \}\)/);
+  assert.match(sessionConfig, /会话设置已保存。/);
   assert.match(sessionConfig, /const updated = await updateAiThreadSessionConfig/);
   assert.match(sessionConfig, /if \(!updated\) \{/);
   assert.match(sessionConfig, /throw new Error\('没有找到当前会话，设置未保存。'\)/);
   assert.match(sessionConfig, /保存失败/);
   assert.match(sessionConfig, /设置已保存/);
+});
+
+test('AI reply preference is per-thread and only adds lightweight prompt hints when selected', () => {
+  const types = read('src/ai/types.ts');
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+  const promptBuilder = read('src/ai/promptBuilder.ts');
+
+  assert.match(types, /AiReplyPreference = 'auto' \| 'concise' \| 'detailed'/);
+  assert.match(schema, /replyPreference TEXT NOT NULL DEFAULT 'auto'/);
+  assert.match(db, /MIGRATION_STATEMENTS_V23/);
+  assert.match(repository, /replyPreference: row\.replyPreference === 'concise' \|\| row\.replyPreference === 'detailed' \? row\.replyPreference : 'auto'/);
+  assert.match(repository, /input\.replyPreference \?\? 'auto'/);
+  assert.match(repository, /snapshot\.thread\.replyPreference \?\? 'auto'/);
+  assert.match(chatService, /replyPreference: thread\.replyPreference/);
+  assert.match(chatService, /replyPreference: input\.replyPreference \?\? 'auto'/);
+  assert.match(promptBuilder, /function frameReplyPreference/);
+  assert.match(promptBuilder, /preference === 'concise'/);
+  assert.match(promptBuilder, /preference === 'detailed'/);
+  assert.match(promptBuilder, /return ''/);
+  assert.match(promptBuilder, /以用户当前要求为准/);
 });
 
 test('AI chat title is finalized from the first exchange and refreshed in the chat header', () => {

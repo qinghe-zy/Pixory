@@ -54,6 +54,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
   const selectedIsOtherProvider = selectedCard ? isOtherProvider(selectedCard) : false;
+  const selectedSupportsManualEmbedding = selectedCard?.provider.protocol === 'openai_compatible';
   const chatModels = selectedCard?.models.filter((model) => model.supportsChat) ?? [];
   const embeddingModels = selectedCard?.models.filter((model) => model.supportsEmbedding) ?? [];
   const selectedModel = chatModels.find((model) => model.modelId === selectedCard?.provider.defaultChatModelId) ?? null;
@@ -374,7 +375,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           ) : null}
         </View>
 
-        {embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedIsOtherProvider ? (
+        {embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
           <View style={styles.fieldGroup}>
             <Pressable
               accessibilityRole="button"
@@ -412,7 +413,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                   </View>
                 ) : null}
 
-                {selectedCard?.provider.embeddingEnabled || selectedIsOtherProvider ? (
+                {selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>Embedding 接口</Text>
                     <TextInput
@@ -425,7 +426,9 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       style={styles.input}
                       value={embeddingBaseUrlDraft}
                     />
-                    <Text style={styles.caption}>留空时使用对话服务地址；只有向量检索和材料索引会调用这里。</Text>
+                    <Text style={styles.caption}>
+                      留空时使用对话服务地址；只有向量检索和材料索引会调用这里。DeepSeek 官方接口暂未列出 Embedding，兼容网关可在这里填写 /embeddings 所在的基础地址。
+                    </Text>
                   </View>
                 ) : null}
 
@@ -446,7 +449,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                   </View>
                 ) : null}
 
-                {selectedIsOtherProvider ? (
+                {selectedSupportsManualEmbedding ? (
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>自定义 Embedding 模型</Text>
                     <TextInput

@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 22;
+export const DATABASE_VERSION = 23;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -600,4 +600,8 @@ CREATE TABLE IF NOT EXISTS ai_memories (
 CREATE INDEX IF NOT EXISTS idx_ai_memory_settings_thread ON ai_thread_memory_settings(threadId);
 CREATE INDEX IF NOT EXISTS idx_ai_memories_scope_status ON ai_memories(space, scope, scopeId, status, importance);
 CREATE INDEX IF NOT EXISTS idx_ai_memories_source ON ai_memories(sourceMessageId);
+`;
+
+export const MIGRATION_STATEMENTS_V23 = `
+ALTER TABLE ai_threads ADD COLUMN replyPreference TEXT NOT NULL DEFAULT 'auto' CHECK (replyPreference IN ('auto', 'concise', 'detailed'));
 `;

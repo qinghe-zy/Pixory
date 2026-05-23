@@ -1,5 +1,5 @@
 import { MATERIAL_SESSION_RULES } from './aiConstants';
-import type { AiRoleInstructionWeight } from './types';
+import type { AiReplyPreference, AiRoleInstructionWeight } from './types';
 
 export interface BuiltPrompt {
   system: string;
@@ -27,14 +27,31 @@ function frameRoleInstruction(prompt: string, weight: AiRoleInstructionWeight = 
   return [frame, trimmed].filter(Boolean).join('\n\n');
 }
 
+function frameReplyPreference(preference: AiReplyPreference = 'auto'): string {
+  if (preference === 'concise') {
+    return [
+      '回复倾向：默认更直接、更简洁，减少铺垫和重复，但不要省略必要事实、关键步骤或风险。',
+      '如果用户当前明确要求详细、展开、逐步说明或指定格式，以用户当前要求为准。',
+    ].join('\n');
+  }
+  if (preference === 'detailed') {
+    return [
+      '回复倾向：默认多给必要背景、步骤和注意点，让回答更完整，但避免模板化、空泛扩写和无关铺垫。',
+      '如果用户当前明确要求简短、一句话、只给结论或指定格式，以用户当前要求为准。',
+    ].join('\n');
+  }
+  return '';
+}
+
 export function buildNormalChatPrompt(input: {
   systemPrompt: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
+  replyPreference?: AiReplyPreference;
   rolePrompt?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   return {
-    system: [frameRoleInstruction(input.systemPrompt, input.roleInstructionWeight), input.rolePrompt].filter(Boolean).join('\n\n'),
+    system: [frameRoleInstruction(input.systemPrompt, input.roleInstructionWeight), frameReplyPreference(input.replyPreference), input.rolePrompt].filter(Boolean).join('\n\n'),
     materialRules: null,
     user: input.userMessage,
   };
@@ -43,6 +60,7 @@ export function buildNormalChatPrompt(input: {
 export function buildMaterialBoundPrompt(input: {
   editablePrompt: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
+  replyPreference?: AiReplyPreference;
   materialRules?: string;
   contextSummary: string;
   snippets: Array<{ label: string; text: string }>;
@@ -50,7 +68,7 @@ export function buildMaterialBoundPrompt(input: {
 }): BuiltPrompt {
   const materialRules = input.materialRules ?? MATERIAL_SESSION_RULES;
   return {
-    system: [frameRoleInstruction(input.editablePrompt, input.roleInstructionWeight), '资料规则：', materialRules].filter(Boolean).join('\n\n'),
+    system: [frameRoleInstruction(input.editablePrompt, input.roleInstructionWeight), frameReplyPreference(input.replyPreference), '资料规则：', materialRules].filter(Boolean).join('\n\n'),
     materialRules,
     user: [
       input.contextSummary,

@@ -9,6 +9,7 @@ import {
   type AiBoundaryMode,
   type AiCitationRecord,
   type AiContextType,
+  type AiReplyPreference,
   type AiRoleInstructionWeight,
   type AiThreadRecord,
   type PixorySpace,
@@ -38,6 +39,7 @@ export interface CreateThreadFromContextInput {
   modelId?: string | null;
   systemPrompt?: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
+  replyPreference?: AiReplyPreference;
   boundaryMode?: AiBoundaryMode;
 }
 
@@ -92,6 +94,7 @@ export interface UpdateAiThreadSessionConfigInput {
   threadId: string;
   systemPrompt: string;
   roleInstructionWeight: AiRoleInstructionWeight;
+  replyPreference: AiReplyPreference;
   boundaryMode: AiBoundaryMode;
   providerId?: string | null;
   modelId?: string | null;
@@ -694,6 +697,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
     return {
       prompt: buildNormalChatPrompt({
         roleInstructionWeight: thread.roleInstructionWeight,
+        replyPreference: thread.replyPreference,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         userMessage: [deepMemoryContext, userMessage].filter(Boolean).join('\n\n用户当前问题：\n'),
       }),
@@ -716,6 +720,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
     prompt: buildMaterialBoundPrompt({
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
       roleInstructionWeight: thread.roleInstructionWeight,
+      replyPreference: thread.replyPreference,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: [thread.title, deepMemoryContext].filter(Boolean).join('\n\n'),
       snippets: retrieval.snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
@@ -743,6 +748,7 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       modelId: model?.modelId ?? null,
       modelSnapshotJson: JSON.stringify(model ?? {}),
       roleInstructionWeight: input.roleInstructionWeight ?? 'default',
+      replyPreference: input.replyPreference ?? 'auto',
       systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
@@ -844,6 +850,7 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
           ? thread.roleSnapshotJson
           : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
       roleInstructionWeight: input.roleInstructionWeight,
+      replyPreference: input.replyPreference,
       systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
     if (input.deepMemoryEnabled != null) {
@@ -948,12 +955,18 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
   return snapshots.length;
 }
 
-async function markAssistantFailed(space: PixorySpace, assistantMessageId: string, message: string): Promise<void> {
+async function markAssistantFailed(
+  space: PixorySpace,
+  assistantMessageId: string,
+  message: string,
+  partialContent = '',
+  partialReasoningText: string | null = null
+): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateMessage(db, assistantMessageId, {
       status: 'failed',
-      content: '',
-      reasoningText: null,
+      content: partialContent,
+      reasoningText: partialReasoningText,
       errorMessage: message,
       completedAt: new Date().toISOString(),
     })
@@ -1139,8 +1152,8 @@ async function streamAssistantReply(input: {
         }
         if (event.type === 'error') {
           streamFailed = true;
-          await markAssistantFailed(input.space, input.assistantMessageId, event.message);
-          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: event.message, completedAt: new Date().toISOString() });
+          await markAssistantFailed(input.space, input.assistantMessageId, event.message, answerText, reasoningText || null);
+          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: event.message, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
@@ -1148,8 +1161,8 @@ async function streamAssistantReply(input: {
   } catch (error) {
     streamFailed = true;
     const message = error instanceof Error ? error.message : 'AI 回复失败。';
-    await markAssistantFailed(input.space, input.assistantMessageId, message);
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: message, completedAt: new Date().toISOString() });
+    await markAssistantFailed(input.space, input.assistantMessageId, message, answerText, reasoningText || null);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: message, completedAt: new Date().toISOString() });
     input.onUpdated?.();
   }
 

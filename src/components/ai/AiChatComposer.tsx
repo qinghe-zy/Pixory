@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -26,6 +26,7 @@ interface AiChatComposerProps {
   onAddAttachment: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
+  onComposerHeightChange?: () => void;
   onVoiceInput: () => void;
   onSend: () => void;
   onStop: () => void;
@@ -57,6 +58,7 @@ export function AiChatComposer({
   attachments = [],
   onAddAttachment,
   onChangeText,
+  onComposerHeightChange,
   onRemoveAttachment,
   onVoiceInput,
   onSend,
@@ -64,7 +66,16 @@ export function AiChatComposer({
 }: AiChatComposerProps) {
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !generating;
   const inputRef = useRef<TextInput>(null);
+  const attachmentCountRef = useRef(attachments.length);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
+
+  useEffect(() => {
+    if (attachmentCountRef.current === attachments.length) {
+      return;
+    }
+    attachmentCountRef.current = attachments.length;
+    onComposerHeightChange?.();
+  }, [attachments.length, onComposerHeightChange]);
 
   return (
     <View style={styles.container}>
@@ -108,7 +119,10 @@ export function AiChatComposer({
               COMPOSER_INPUT_MAX_HEIGHT,
               Math.max(COMPOSER_INPUT_MIN_HEIGHT, event.nativeEvent.contentSize.height)
             );
-            setInputHeight(nextHeight);
+            if (nextHeight !== inputHeight) {
+              setInputHeight(nextHeight);
+              onComposerHeightChange?.();
+            }
           }}
           onChangeText={onChangeText}
           placeholder="输入提示或需求"

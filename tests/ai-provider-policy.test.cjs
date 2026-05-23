@@ -67,6 +67,20 @@ test('provider settings expose test sync and embedding model controls', () => {
   assert.match(chatService, /getDefaultAiProviderId/);
 });
 
+test('OpenAI-compatible built-in providers can manually configure embedding endpoints without marking DeepSeek official embedding support', () => {
+  const constants = fs.readFileSync(constantsPath, 'utf8');
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+  const deepSeekBlock = /providerType: 'deepseek'[\s\S]*?visionEnabled: false,\n  \}/.exec(constants)?.[0] ?? '';
+
+  assert.match(deepSeekBlock, /embeddingEnabled:\s*false/);
+  assert.match(providerSettings, /selectedSupportsManualEmbedding/);
+  assert.match(providerSettings, /selectedCard\?\.provider\.protocol === 'openai_compatible'/);
+  assert.match(providerSettings, /selectedCard\?\.provider\.embeddingEnabled \|\| selectedSupportsManualEmbedding/);
+  assert.match(providerSettings, /DeepSeek 官方接口暂未列出 Embedding/);
+  assert.match(providerSettings, /兼容网关/);
+  assert.match(providerSettings, /\/embeddings/);
+});
+
 test('provider adapters expose real streaming and embedding interfaces', () => {
   const base = fs.readFileSync(providerBasePath, 'utf8');
   const openai = fs.readFileSync(path.join(root, 'src/ai/providers/openAiCompatibleProvider.ts'), 'utf8');

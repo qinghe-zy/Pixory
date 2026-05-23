@@ -9,6 +9,7 @@ import type { PixorySpace } from '../../database';
 import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { AiCitationList } from './AiCitationList';
 import { aiLightColors } from './aiLightTheme';
+import { AiMessageContent } from './AiMessageContent';
 import { AiThinkingBlock } from './AiThinkingBlock';
 
 interface AiMessageBubbleProps {
@@ -135,8 +136,10 @@ export function AiMessageBubble({
                 </Pressable>
               </View>
             </View>
+          ) : isUser ? (
+            <Text style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
-            <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
+            <AiMessageContent content={content} />
           )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </View>

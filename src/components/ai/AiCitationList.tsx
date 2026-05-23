@@ -19,7 +19,7 @@ export function AiCitationList({ citations, onOpenCitation }: AiCitationListProp
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Ionicons color={aiLightColors.coralActive} name="document-text-outline" size={16} />
-        <Text style={styles.title}>来源</Text>
+        <Text style={styles.title}>来源 · {citations.length}</Text>
       </View>
       {citations.map((citation) => (
         <Pressable

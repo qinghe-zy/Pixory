@@ -7,6 +7,7 @@ import type {
   AiContextType,
   AiMessageRole,
   AiMessageStatus,
+  AiReplyPreference,
   AiRoleInstructionWeight,
   AiThreadRecord,
 } from '../types';
@@ -127,6 +128,7 @@ export interface CreateAiThreadInput {
   roleCardId?: string | null;
   roleSnapshotJson?: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
+  replyPreference?: AiReplyPreference;
   systemPrompt?: string;
   materialRulesSnapshot?: string | null;
   boundaryMode?: AiBoundaryMode;
@@ -162,6 +164,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'roleCardId'
     | 'roleSnapshotJson'
     | 'roleInstructionWeight'
+    | 'replyPreference'
     | 'systemPrompt'
     | 'materialRulesSnapshot'
     | 'boundaryMode'
@@ -262,6 +265,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     roleCardId: row.roleCardId ?? null,
     roleSnapshotJson: row.roleSnapshotJson,
     roleInstructionWeight: row.roleInstructionWeight === 'high' ? 'high' : 'default',
+    replyPreference: row.replyPreference === 'concise' || row.replyPreference === 'detailed' ? row.replyPreference : 'auto',
     boundaryMode: row.boundaryMode,
     systemPrompt: row.systemPrompt,
     materialRulesSnapshot: row.materialRulesSnapshot ?? null,
@@ -347,6 +351,7 @@ export const aiThreadRepository = {
         roleCardId,
         roleSnapshotJson,
         roleInstructionWeight,
+        replyPreference,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -355,7 +360,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -370,6 +375,7 @@ export const aiThreadRepository = {
       input.roleCardId ?? null,
       input.roleSnapshotJson ?? '{}',
       input.roleInstructionWeight ?? 'default',
+      input.replyPreference ?? 'auto',
       input.systemPrompt ?? '',
       input.materialRulesSnapshot ?? null,
       input.boundaryMode ?? 'free',
@@ -398,6 +404,7 @@ export const aiThreadRepository = {
       roleCardId: patch.roleCardId,
       roleSnapshotJson: patch.roleSnapshotJson,
       roleInstructionWeight: patch.roleInstructionWeight,
+      replyPreference: patch.replyPreference,
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
       boundaryMode: patch.boundaryMode,
@@ -470,6 +477,7 @@ export const aiThreadRepository = {
         roleCardId,
         roleSnapshotJson,
         roleInstructionWeight,
+        replyPreference,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -478,7 +486,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
@@ -493,6 +501,7 @@ export const aiThreadRepository = {
       snapshot.thread.roleCardId ?? null,
       snapshot.thread.roleSnapshotJson,
       snapshot.thread.roleInstructionWeight ?? 'default',
+      snapshot.thread.replyPreference ?? 'auto',
       snapshot.thread.systemPrompt,
       snapshot.thread.materialRulesSnapshot ?? null,
       snapshot.thread.boundaryMode,
