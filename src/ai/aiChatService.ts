@@ -9,6 +9,7 @@ import {
   type AiBoundaryMode,
   type AiCitationRecord,
   type AiContextType,
+  type AiRoleInstructionWeight,
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
@@ -36,6 +37,7 @@ export interface CreateThreadFromContextInput {
   providerId?: string | null;
   modelId?: string | null;
   systemPrompt?: string;
+  roleInstructionWeight?: AiRoleInstructionWeight;
   boundaryMode?: AiBoundaryMode;
 }
 
@@ -85,6 +87,7 @@ export interface UpdateAiThreadSessionConfigInput {
   space: PixorySpace;
   threadId: string;
   systemPrompt: string;
+  roleInstructionWeight: AiRoleInstructionWeight;
   boundaryMode: AiBoundaryMode;
   providerId?: string | null;
   modelId?: string | null;
@@ -108,6 +111,26 @@ const COMMON_TITLE_PREFIXES = [
   /^我想/,
   /^想要/,
   /^请/,
+];
+
+const LOW_SIGNAL_TITLE_PATTERNS = [
+  /^(你)?好$/,
+  /^您好$/,
+  /^哈[喽啰罗]$/,
+  /^嗨$/,
+  /^hi$/i,
+  /^hello$/i,
+  /^在吗$/,
+  /^测试$/,
+  /^继续$/,
+  /^ok$/i,
+];
+
+const GENERIC_TITLE_WORDS = [
+  /^关于/,
+  /^讨论/,
+  /^问题/,
+  /^请问/,
 ];
 
 export type AiMessageWithCitations = AiMessageRecord & {
@@ -150,16 +173,43 @@ export function fallbackAiThreadTitle(input: { contextTitle: string; firstUserMe
   return generateAiThreadTitle(input);
 }
 
-export function generateAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType }): string {
-  const compact = COMMON_TITLE_PREFIXES.reduce(
+function normalizeTitleSource(text: string): string {
+  return COMMON_TITLE_PREFIXES.reduce(
     (title, pattern) => title.replace(pattern, ''),
-    input.firstUserMessage
+    text
       .replace(/https?:\/\/\S+/g, '')
       .replace(/[`*_>#\[\](){}]/g, '')
       .replace(/[。！？!?，,；;：:、]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-  ).trim().slice(0, 18);
+  ).trim();
+}
+
+function trimGenericTitleWords(text: string): string {
+  return GENERIC_TITLE_WORDS.reduce((title, pattern) => title.replace(pattern, ''), text).trim();
+}
+
+function isLowSignalTitle(text: string): boolean {
+  const compact = text.replace(/\s+/g, '').trim();
+  return compact.length <= 1 || LOW_SIGNAL_TITLE_PATTERNS.some((pattern) => pattern.test(compact));
+}
+
+function pickTitleCandidate(userMessage: string, assistantReply?: string): string {
+  const userTitle = trimGenericTitleWords(normalizeTitleSource(userMessage));
+  if (userTitle && !isLowSignalTitle(userTitle)) {
+    return userTitle;
+  }
+
+  const assistantTitle = trimGenericTitleWords(normalizeTitleSource(assistantReply ?? ''));
+  if (assistantTitle && !isLowSignalTitle(assistantTitle)) {
+    return assistantTitle;
+  }
+
+  return userTitle || assistantTitle || '初次问候';
+}
+
+export function generateAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType; assistantReply?: string }): string {
+  const compact = pickTitleCandidate(input.firstUserMessage, input.assistantReply).slice(0, 18);
   if (input.contextType === 'normal') {
     return compact || '普通聊天';
   }
@@ -235,6 +285,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
+        roleInstructionWeight: thread.roleInstructionWeight,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         userMessage,
       }),
@@ -256,6 +307,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
   return {
     prompt: buildMaterialBoundPrompt({
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+      roleInstructionWeight: thread.roleInstructionWeight,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
       snippets: retrieval.snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
@@ -282,6 +334,7 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       providerId: provider?.id ?? null,
       modelId: model?.modelId ?? null,
       modelSnapshotJson: JSON.stringify(model ?? {}),
+      roleInstructionWeight: input.roleInstructionWeight ?? 'default',
       systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
@@ -373,6 +426,7 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
         input.avatarEnabled == null
           ? thread.roleSnapshotJson
           : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
+      roleInstructionWeight: input.roleInstructionWeight,
       systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
   });
@@ -522,6 +576,30 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string) {
     }));
 }
 
+async function finalizeThreadTitleAfterReply(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  userMessage: Pick<AiMessageRecord, 'content'>;
+  assistantReply: string;
+}): Promise<void> {
+  const nextTitle = generateAiThreadTitle({
+    assistantReply: input.assistantReply,
+    contextTitle: input.thread.title,
+    contextType: input.thread.contextType,
+    firstUserMessage: input.userMessage.content,
+  });
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const current = await aiThreadRepository.findThreadById(db, input.thread.id);
+    if (!current || current.space !== input.space || current.titleStatus !== 'fallback') {
+      return;
+    }
+    await aiThreadRepository.updateThread(db, input.thread.id, {
+      title: nextTitle,
+      titleStatus: 'generated',
+    });
+  });
+}
+
 async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -530,6 +608,7 @@ async function streamAssistantReply(input: {
   onUpdated?: () => void;
 }): Promise<void> {
   stoppedMessageIds.delete(input.assistantMessageId);
+  const startedAt = new Date().toISOString();
   await runWithDatabaseSpace(input.space, async (db) => {
     await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
       status: 'generating',
@@ -540,6 +619,7 @@ async function streamAssistantReply(input: {
       modelId: null,
       modelSnapshotJson: '{}',
       promptSnapshotJson: '{}',
+      createdAt: startedAt,
       completedAt: null,
     });
     await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
@@ -653,6 +733,14 @@ async function streamAssistantReply(input: {
       );
     }
   });
+  if (answerText) {
+    await finalizeThreadTitleAfterReply({
+      assistantReply: answerText,
+      space: input.space,
+      thread: input.thread,
+      userMessage: input.userMessage,
+    });
+  }
   input.onUpdated?.();
 }
 
@@ -687,7 +775,7 @@ export async function sendUserMessage(
         ? fallbackAiThreadTitle({ contextTitle: thread.title, contextType: thread.contextType, firstUserMessage: input.content })
         : undefined,
       lastMessagePreview: input.content.slice(0, 80),
-      titleStatus: thread.titleStatus === 'fallback' ? 'generated' : undefined,
+      titleStatus: thread.titleStatus === 'fallback' ? 'fallback' : undefined,
     });
   });
   input.onCreated?.({ userMessageId, assistantMessageId });

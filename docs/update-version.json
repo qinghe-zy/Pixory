@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.13",
-  "versionCode": 227,
+  "version": "2.1.14",
+  "versionCode": 228,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.13 已发布，优化 AI 聊天、语音输入和视频长按体验。",
+  "message": "Pixory 2.1.14 已发布，优化 AI 会话指令、时间显示和消息回看体验。",
   "releaseNotes": [
-    "AI 聊天新增思考计时、多行输入、气泡内重写和消息版本回看。",
-    "麦克风按钮接入 Android 语音转文字，回复后不再变成刷新按钮。",
-    "会话设置键盘避让更稳定，视频长按加速不再弹出控制栏。"
+    "高级角色指令新增默认/高权重，默认保持原行为，高权重使用更明确的会话角色约束。",
+    "聊天历史显示上次聊天时间，AI 回复操作栏显示分钟级回复时间。",
+    "消息版本切换统一放在编辑/重新生成按钮后方，并修复重写和重新生成的独立思考计时。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

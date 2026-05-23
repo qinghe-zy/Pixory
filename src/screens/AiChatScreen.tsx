@@ -123,6 +123,7 @@ export function AiChatScreen({
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
+  const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const citations = messages.some((message) => message.citations.length > 0);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
@@ -248,6 +249,7 @@ export function AiChatScreen({
 
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
+    editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setSelectedVersionByMessageId({});
     setPendingAttachments([]);
@@ -280,6 +282,10 @@ export function AiChatScreen({
     }
 
     const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      if (editingUserMessageIdRef.current) {
+        setKeyboardBottomInset(0);
+        return;
+      }
       setKeyboardBottomInset(Math.max(0, event.endCoordinates.height - insets.bottom));
       scrollToLatestMessage();
     });
@@ -462,6 +468,7 @@ export function AiChatScreen({
       return;
     }
     const userMessageId = messageId;
+    editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setGenerating(true);
     setErrorMessage(null);
@@ -483,6 +490,7 @@ export function AiChatScreen({
       });
       await reloadMessages(activeThreadId);
     } catch (error) {
+      editingUserMessageIdRef.current = userMessageId;
       setEditingUserMessageId(userMessageId);
       setErrorMessage(error instanceof Error ? error.message : '重写失败');
     } finally {
@@ -532,8 +540,15 @@ export function AiChatScreen({
     if (generating) {
       return;
     }
+    editingUserMessageIdRef.current = messageId;
+    setKeyboardBottomInset(0);
     setEditingUserMessageId(messageId);
     setErrorMessage(null);
+  }
+
+  function cancelInlineEdit() {
+    editingUserMessageIdRef.current = null;
+    setEditingUserMessageId(null);
   }
 
   async function handleVoiceInput() {
@@ -638,7 +653,7 @@ export function AiChatScreen({
                 onCopy={(targetMessage) => {
                   void copyMessageContent(targetMessage);
                 }}
-                onCancelEdit={() => setEditingUserMessageId(null)}
+                onCancelEdit={cancelInlineEdit}
                 onEditUser={handleEditUserMessage}
                 onOpenCitation={openCitation}
                 onRegenerate={(messageId) => {
@@ -657,7 +672,7 @@ export function AiChatScreen({
         </View>
       </ScrollView>
 
-      <View style={[styles.composerPanel, keyboardBottomInset ? { marginBottom: keyboardBottomInset } : null]}>
+      <View style={[styles.composerPanel, keyboardBottomInset && !editingUserMessageId ? { marginBottom: keyboardBottomInset } : null]}>
         <AiChatComposer
           attachments={pendingAttachments}
           generating={generating}

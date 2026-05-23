@@ -665,6 +665,17 @@ export default function App() {
     setRouteStack((current) => (current.length > 1 ? current.slice(0, -1) : current));
   }
 
+  function closeDeletedAiThread(threadId?: string) {
+    setRouteStack((current) => {
+      const next = current.slice(0, -1);
+      const previousRoute = next[next.length - 1];
+      if (threadId && previousRoute?.name === 'ai-chat' && previousRoute.threadId === threadId) {
+        return next.length > 1 ? next.slice(0, -1) : [INITIAL_ROUTE];
+      }
+      return next.length > 0 ? next : [INITIAL_ROUTE];
+    });
+  }
+
   function exitExternalEntry() {
     if (Platform.OS === 'android') {
       BackHandler.exitApp();
@@ -1373,6 +1384,7 @@ export default function App() {
         contextTitle={currentRoute.contextTitle}
         contextType={currentRoute.contextType}
         onBack={popRoute}
+        onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
         onStartChat={popRoute}

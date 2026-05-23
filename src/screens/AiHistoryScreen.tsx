@@ -29,6 +29,18 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
 const ARCHIVE_ACTION_WIDTH = 78;
 const ARCHIVE_SWIPE_THRESHOLD = 52;
 
+function formatHistoryMinute(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}-${day} ${hours}:${minutes}`;
+}
+
 export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreenProps) {
   const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
@@ -266,7 +278,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                         <View style={styles.copy}>
                           <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
                           <Text numberOfLines={1} style={styles.meta}>
-                            {labelForContext(thread)} · {thread.updatedAt}
+                            {labelForContext(thread)} · 上次聊天 {formatHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
                           </Text>
                           {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
                         </View>

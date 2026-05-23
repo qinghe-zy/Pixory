@@ -31,6 +31,19 @@ interface AiMessageBubbleProps {
   onOpenCitation: (citation: AiCitationRecord) => void;
 }
 
+function formatMessageMinute(value: string | null | undefined): string {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export function AiMessageBubble({
   assistantAvatar,
   generating = false,
@@ -55,6 +68,7 @@ export function AiMessageBubble({
   const editing = editingMessageId === message.id;
   const canEdit = isUser && !generating && message.versionIndex === message.versionTotal;
   const canRegenerate = !isUser && !generating && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
+  const messageTime = formatMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
 
   useEffect(() => {
@@ -126,31 +140,6 @@ export function AiMessageBubble({
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </View>
         <View style={[styles.actionRow, isUser ? styles.userActionRow : styles.assistantActionRow]}>
-          {message.versionTotal > 1 ? (
-            <View style={styles.versionControl}>
-              <Pressable
-                accessibilityLabel="上一版消息"
-                accessibilityRole="button"
-                disabled={message.versionIndex <= 1}
-                hitSlop={8}
-                onPress={() => selectVersion(-1)}
-                style={({ pressed }) => [styles.versionButton, message.versionIndex <= 1 && styles.disabledAction, pressed && message.versionIndex > 1 && styles.pressed]}
-              >
-                <Ionicons color={aiLightColors.muted} name="chevron-back" size={14} />
-              </Pressable>
-              <Text style={styles.versionText}>{message.versionIndex}/{message.versionTotal}</Text>
-              <Pressable
-                accessibilityLabel="下一版消息"
-                accessibilityRole="button"
-                disabled={message.versionIndex >= message.versionTotal}
-                hitSlop={8}
-                onPress={() => selectVersion(1)}
-                style={({ pressed }) => [styles.versionButton, message.versionIndex >= message.versionTotal && styles.disabledAction, pressed && message.versionIndex < message.versionTotal && styles.pressed]}
-              >
-                <Ionicons color={aiLightColors.muted} name="chevron-forward" size={14} />
-              </Pressable>
-            </View>
-          ) : null}
           <Pressable
             accessibilityLabel="复制消息"
             accessibilityRole="button"
@@ -184,6 +173,32 @@ export function AiMessageBubble({
               <Ionicons color={aiLightColors.muted} name="refresh-outline" size={15} />
             </Pressable>
           )}
+          {message.versionTotal > 1 ? (
+            <View style={styles.versionControl}>
+              <Pressable
+                accessibilityLabel="上一版消息"
+                accessibilityRole="button"
+                disabled={message.versionIndex <= 1}
+                hitSlop={8}
+                onPress={() => selectVersion(-1)}
+                style={({ pressed }) => [styles.versionButton, message.versionIndex <= 1 && styles.disabledAction, pressed && message.versionIndex > 1 && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.muted} name="chevron-back" size={14} />
+              </Pressable>
+              <Text style={styles.versionText}>{message.versionIndex}/{message.versionTotal}</Text>
+              <Pressable
+                accessibilityLabel="下一版消息"
+                accessibilityRole="button"
+                disabled={message.versionIndex >= message.versionTotal}
+                hitSlop={8}
+                onPress={() => selectVersion(1)}
+                style={({ pressed }) => [styles.versionButton, message.versionIndex >= message.versionTotal && styles.disabledAction, pressed && message.versionIndex < message.versionTotal && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.muted} name="chevron-forward" size={14} />
+              </Pressable>
+            </View>
+          ) : null}
+          {!isUser && messageTime ? <Text style={styles.messageTime}>{messageTime}</Text> : null}
         </View>
       </View>
     </View>
@@ -305,6 +320,13 @@ const styles = StyleSheet.create({
     minWidth: 28,
     textAlign: 'center',
   },
+  messageTime: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.muted,
+    minHeight: 28,
+    paddingHorizontal: spacing[1],
+    textAlignVertical: 'center',
+  },
   inlineEditor: {
     gap: rhythm.microGap,
     minWidth: 220,
@@ -328,8 +350,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.42)',
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
     minHeight: 30,
     paddingHorizontal: spacing[3],
+    paddingVertical: 0,
   },
   inlineEditorPrimary: {
     backgroundColor: aiLightColors.onDark,
@@ -339,6 +363,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.onDark,
     fontWeight: '700',
+    textAlign: 'center',
   },
   inlineEditorPrimaryText: {
     color: aiLightColors.coral,

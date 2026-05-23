@@ -7,6 +7,7 @@ import type {
   AiContextType,
   AiMessageRole,
   AiMessageStatus,
+  AiRoleInstructionWeight,
   AiThreadRecord,
 } from '../types';
 import type { PixorySpace } from '../db';
@@ -79,6 +80,7 @@ export interface CreateAiThreadInput {
   modelSnapshotJson?: string;
   roleCardId?: string | null;
   roleSnapshotJson?: string;
+  roleInstructionWeight?: AiRoleInstructionWeight;
   systemPrompt?: string;
   materialRulesSnapshot?: string | null;
   boundaryMode?: AiBoundaryMode;
@@ -97,6 +99,7 @@ export type AiThreadHistoryFilter = 'all' | AiContextType | 'customer_project' |
 
 export interface AiThreadHistoryItem extends AiThreadRecord {
   knowledgeCategory: string | null;
+  lastMessageAt: string | null;
 }
 
 export type UpdateAiThreadPatch = Partial<
@@ -112,6 +115,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'modelSnapshotJson'
     | 'roleCardId'
     | 'roleSnapshotJson'
+    | 'roleInstructionWeight'
     | 'systemPrompt'
     | 'materialRulesSnapshot'
     | 'boundaryMode'
@@ -137,7 +141,9 @@ export interface CreateAiMessageInput {
   completedAt?: string | null;
 }
 
-export type UpdateAiMessagePatch = Partial<Omit<CreateAiMessageInput, 'id' | 'threadId' | 'role'>>;
+export type UpdateAiMessagePatch = Partial<Omit<CreateAiMessageInput, 'id' | 'threadId' | 'role'>> & {
+  createdAt?: string;
+};
 
 export interface CreateAiMessageVersionInput {
   id: string;
@@ -188,6 +194,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     modelSnapshotJson: row.modelSnapshotJson,
     roleCardId: row.roleCardId ?? null,
     roleSnapshotJson: row.roleSnapshotJson,
+    roleInstructionWeight: row.roleInstructionWeight === 'high' ? 'high' : 'default',
     boundaryMode: row.boundaryMode,
     systemPrompt: row.systemPrompt,
     materialRulesSnapshot: row.materialRulesSnapshot ?? null,
@@ -199,10 +206,11 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
   };
 }
 
-function mapThreadHistoryRow(row: AiThreadRow & { knowledgeCategory: string | null }): AiThreadHistoryItem {
+function mapThreadHistoryRow(row: AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }): AiThreadHistoryItem {
   return {
     ...mapThreadRow(row),
     knowledgeCategory: row.knowledgeCategory ?? null,
+    lastMessageAt: row.lastMessageAt ?? null,
   };
 }
 
@@ -259,6 +267,7 @@ export const aiThreadRepository = {
         modelSnapshotJson,
         roleCardId,
         roleSnapshotJson,
+        roleInstructionWeight,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -267,7 +276,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -281,6 +290,7 @@ export const aiThreadRepository = {
       input.modelSnapshotJson ?? '{}',
       input.roleCardId ?? null,
       input.roleSnapshotJson ?? '{}',
+      input.roleInstructionWeight ?? 'default',
       input.systemPrompt ?? '',
       input.materialRulesSnapshot ?? null,
       input.boundaryMode ?? 'free',
@@ -308,6 +318,7 @@ export const aiThreadRepository = {
       modelSnapshotJson: patch.modelSnapshotJson,
       roleCardId: patch.roleCardId,
       roleSnapshotJson: patch.roleSnapshotJson,
+      roleInstructionWeight: patch.roleInstructionWeight,
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
       boundaryMode: patch.boundaryMode,
@@ -379,6 +390,7 @@ export const aiThreadRepository = {
         modelSnapshotJson,
         roleCardId,
         roleSnapshotJson,
+        roleInstructionWeight,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -387,7 +399,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
@@ -401,6 +413,7 @@ export const aiThreadRepository = {
       snapshot.thread.modelSnapshotJson,
       snapshot.thread.roleCardId ?? null,
       snapshot.thread.roleSnapshotJson,
+      snapshot.thread.roleInstructionWeight ?? 'default',
       snapshot.thread.systemPrompt,
       snapshot.thread.materialRulesSnapshot ?? null,
       snapshot.thread.boundaryMode,
@@ -569,12 +582,17 @@ export const aiThreadRepository = {
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
     }
-    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null }>(
-      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory
+    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }>(
+      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory, ai_last_messages.lastMessageAt AS lastMessageAt
        FROM ai_threads
        LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
+       LEFT JOIN (
+         SELECT threadId, MAX(COALESCE(completedAt, updatedAt, createdAt)) AS lastMessageAt
+         FROM ai_messages
+         GROUP BY threadId
+       ) ai_last_messages ON ai_last_messages.threadId = ai_threads.id
        WHERE ${clauses.join(' AND ')}
-       ORDER BY ai_threads.updatedAt DESC, ai_threads.createdAt DESC
+       ORDER BY COALESCE(ai_last_messages.lastMessageAt, ai_threads.updatedAt) DESC, ai_threads.createdAt DESC
        LIMIT ?`,
       ...values,
       limit
@@ -633,6 +651,7 @@ export const aiThreadRepository = {
       modelId: patch.modelId,
       modelSnapshotJson: patch.modelSnapshotJson,
       promptSnapshotJson: patch.promptSnapshotJson,
+      createdAt: patch.createdAt,
       completedAt: patch.completedAt,
       updatedAt: createTimestamp(),
     });

@@ -76,6 +76,9 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /avatarEnabled/);
   assert.match(sessionConfig, /头像开启|头像关闭/);
   assert.match(sessionConfig, /高级角色指令/);
+  assert.match(sessionConfig, /ROLE_INSTRUCTION_WEIGHTS/);
+  assert.match(sessionConfig, /权重等级/);
+  assert.match(sessionConfig, /setRoleInstructionWeight/);
   assert.match(sessionConfig, /保存并开始聊天/);
   assert.match(sessionConfig, /仅保存设置/);
   assert.match(roleEditor, /onApplyRoleCard/);
@@ -93,8 +96,10 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(chatService, /parseThreadAvatarConfig/);
   assert.match(chatService, /patchThreadRoleSnapshot/);
   assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? getDefaultThreadSystemPrompt\(thread\.contextType\)/);
+  assert.match(chatService, /roleInstructionWeight: input\.roleInstructionWeight/);
   assert.match(chatService, /roleSnapshotJson/);
   assert.match(repository, /roleCardId/);
+  assert.match(repository, /roleInstructionWeight/);
 });
 
 test('normal chat keeps role instruction empty unless the user configures one', () => {
@@ -110,6 +115,18 @@ test('normal chat keeps role instruction empty unless the user configures one', 
   assert.match(promptBuilder, /if \(!trimmed\) \{\s*return '';\s*\}/);
 });
 
+test('high role instruction weight uses a stronger prompt frame without conflict wording', () => {
+  const promptBuilder = read('src/ai/promptBuilder.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(promptBuilder, /HIGH_ROLE_INSTRUCTION_FRAME/);
+  assert.match(promptBuilder, /【最高优先级：当前会话角色指令】/);
+  assert.match(promptBuilder, /身份、语气、边界和输出方式/);
+  assert.doesNotMatch(promptBuilder, /除非与安全规则、资料事实或用户最新明确要求冲突/);
+  assert.match(promptBuilder, /weight === 'high'/);
+  assert.match(chatService, /roleInstructionWeight: thread\.roleInstructionWeight/);
+});
+
 test('AI session settings report save success and failed missing thread updates', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   assert.match(sessionConfig, /setStatus\(\{ message: '正在保存会话设置\.\.\.', tone: 'info', title: '保存中' \}\)/);
@@ -120,16 +137,21 @@ test('AI session settings report save success and failed missing thread updates'
   assert.match(sessionConfig, /设置已保存/);
 });
 
-test('AI chat title is generated from the first user message and refreshed in the chat header', () => {
+test('AI chat title is finalized from the first exchange and refreshed in the chat header', () => {
   const chatScreen = read('src/screens/AiChatScreen.tsx');
   const chatService = read('src/ai/aiChatService.ts');
   const app = read('App.tsx');
 
   assert.match(chatService, /generateAiThreadTitle/);
   assert.match(chatService, /COMMON_TITLE_PREFIXES/);
+  assert.match(chatService, /LOW_SIGNAL_TITLE_PATTERNS/);
+  assert.match(chatService, /assistantReply/);
+  assert.match(chatService, /finalizeThreadTitleAfterReply/);
   assert.match(chatService, /isCustomInitialTitle/);
   assert.match(chatService, /title !== defaultTitle/);
   assert.match(chatService, /titleStatus === 'fallback'/);
+  assert.match(chatService, /current\.titleStatus !== 'fallback'/);
+  assert.match(chatService, /titleStatus:\s*'generated'/);
   assert.match(chatScreen, /loadThreadTitle/);
   assert.match(chatScreen, /displayTitle/);
   assert.match(chatScreen, /displayTitleRef/);

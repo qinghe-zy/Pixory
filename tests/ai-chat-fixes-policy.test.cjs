@@ -19,6 +19,21 @@ test('AI thinking block shows timed thinking state instead of the old summary la
   assert.doesNotMatch(bubble, /label=\{message\.modelSnapshotJson\.includes\('reasoning'\) \? '思路' : '摘要'\}/);
 });
 
+test('AI regenerated and rewritten replies reset the thinking timer for the new generation', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const resetBlock = /async function streamAssistantReply[\s\S]*?aiThreadRepository\.updateMessage\(db, input\.assistantMessageId, \{([\s\S]*?)\n    \}\);/.exec(service)?.[1] ?? '';
+
+  assert.match(service, /const startedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(resetBlock, /status:\s*'generating'/);
+  assert.match(resetBlock, /createdAt:\s*startedAt/);
+  assert.match(resetBlock, /completedAt:\s*null/);
+  assert.match(service, /snapshotMessageVersion\(db, assistantMessage\)/);
+  assert.match(service, /snapshotMessageVersion\(db, nextAssistant\)/);
+  assert.match(repository, /createdAt\?: string/);
+  assert.match(repository, /createdAt:\s*patch\.createdAt/);
+});
+
 test('AI chat persists and exposes message versions for edits and regenerations', () => {
   const schema = read('src/database/schema.ts');
   const db = read('src/database/db.ts');
@@ -26,13 +41,15 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 20/);
+  assert.match(schema, /DATABASE_VERSION = 21/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
   assert.match(schema, /UNIQUE\(originalMessageId, versionIndex\)/);
   assert.match(db, /MIGRATION_STATEMENTS_V20/);
   assert.match(db, /currentVersion < 20/);
+  assert.match(db, /MIGRATION_STATEMENTS_V21/);
+  assert.match(db, /currentVersion < 21/);
   assert.match(repository, /createMessageVersion/);
   assert.match(repository, /listMessageVersions/);
   assert.match(service, /snapshotMessageVersion/);
@@ -67,6 +84,45 @@ test('AI chat voice input stays on the mic button and uses Android speech recogn
   assert.doesNotMatch(manifest, /RECORD_AUDIO" tools:node="remove"/);
   assert.match(pluginManifest, /android\.permission\.RECORD_AUDIO/);
   assert.doesNotMatch(pluginManifest, /RECORD_AUDIO" tools:node="remove"/);
+});
+
+test('AI inline message editing does not lift the edit bubble when the Android keyboard opens', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /editingUserMessageIdRef/);
+  assert.match(chat, /Keyboard\.addListener\('keyboardDidShow'[\s\S]*editingUserMessageIdRef\.current[\s\S]*setKeyboardBottomInset\(0\)[\s\S]*return;/);
+  assert.match(chat, /function handleEditUserMessage[\s\S]*editingUserMessageIdRef\.current = messageId[\s\S]*setKeyboardBottomInset\(0\)/);
+  assert.match(chat, /function cancelInlineEdit\(\)[\s\S]*editingUserMessageIdRef\.current = null[\s\S]*setEditingUserMessageId\(null\)/);
+  assert.match(chat, /keyboardBottomInset && !editingUserMessageId/);
+});
+
+test('AI inline edit cancel and send labels are centered in their buttons', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const buttonStyle = /inlineEditorButton:\s*\{([\s\S]*?)\n  \}/.exec(bubble)?.[1] ?? '';
+  const labelStyle = /inlineEditorButtonText:\s*\{([\s\S]*?)\n  \}/.exec(bubble)?.[1] ?? '';
+
+  assert.match(buttonStyle, /alignItems:\s*'center'/);
+  assert.match(buttonStyle, /justifyContent:\s*'center'/);
+  assert.match(buttonStyle, /paddingVertical:\s*0/);
+  assert.match(labelStyle, /textAlign:\s*'center'/);
+});
+
+test('AI message action row puts version controls after edit regenerate and shows assistant reply time', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?<\/View>\n      <\/View>/m.exec(bubble)?.[0] ?? '';
+  const copyIndex = actionRow.indexOf('accessibilityLabel="复制消息"');
+  const editIndex = actionRow.indexOf('accessibilityLabel="重写消息"');
+  const regenerateIndex = actionRow.indexOf('accessibilityLabel="重新生成回复"');
+  const versionIndex = actionRow.indexOf('styles.versionControl');
+
+  assert.ok(copyIndex >= 0);
+  assert.ok(editIndex >= 0);
+  assert.ok(regenerateIndex >= 0);
+  assert.ok(versionIndex > editIndex);
+  assert.ok(versionIndex > regenerateIndex);
+  assert.match(bubble, /formatMessageMinute/);
+  assert.match(bubble, /message\.completedAt \?\? message\.updatedAt/);
+  assert.match(bubble, /styles\.messageTime/);
 });
 
 test('AI session settings keep role instructions visible above the Android keyboard', () => {

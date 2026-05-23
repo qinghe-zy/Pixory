@@ -4,6 +4,7 @@ export type AiProviderType = 'deepseek' | 'openai' | 'gemini' | 'claude' | 'open
 export type AiProviderProtocol = 'openai_compatible' | 'gemini' | 'anthropic';
 export type AiContextType = 'normal' | 'ip' | 'knowledge_base';
 export type AiBoundaryMode = 'free' | 'prefer_material' | 'strict_material';
+export type AiRoleInstructionWeight = 'default' | 'high';
 export type AiMessageRole = 'user' | 'assistant' | 'system';
 export type AiMessageStatus = 'draft' | 'queued' | 'generating' | 'completed' | 'failed' | 'stopped';
 export type AiDocumentOwnerType = 'knowledge_base' | 'ip' | 'thread';
@@ -87,6 +88,7 @@ export interface AiThreadRecord {
   modelSnapshotJson: string;
   roleCardId: string | null;
   roleSnapshotJson: string;
+  roleInstructionWeight: AiRoleInstructionWeight;
   boundaryMode: AiBoundaryMode;
   systemPrompt: string;
   materialRulesSnapshot: string | null;

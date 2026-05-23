@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 20;
+export const DATABASE_VERSION = 21;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -553,4 +553,8 @@ CREATE TABLE IF NOT EXISTS ai_message_versions (
   FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
+`;
+
+export const MIGRATION_STATEMENTS_V21 = `
+ALTER TABLE ai_threads ADD COLUMN roleInstructionWeight TEXT NOT NULL DEFAULT 'default' CHECK (roleInstructionWeight IN ('default', 'high'));
 `;

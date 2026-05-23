@@ -406,6 +406,27 @@ test('AI session settings avoid one overloaded button cluster', () => {
   assert.doesNotMatch(actionsBlock, /模型账号/);
 });
 
+test('AI session settings can rename and delete the current thread', () => {
+  const sessionConfig = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
+
+  assert.match(sessionConfig, /renameAiThread/);
+  assert.match(sessionConfig, /deleteAiThreads/);
+  assert.match(sessionConfig, /AppDialog/);
+  assert.match(sessionConfig, /TextInput/);
+  assert.match(sessionConfig, /accessibilityLabel="重命名当前会话"/);
+  assert.match(sessionConfig, /name="create-outline"/);
+  assert.match(sessionConfig, /title="重命名当前会话"/);
+  assert.match(sessionConfig, /onPrimary=\{\(\) => void confirmRenameThread\(\)\}/);
+  assert.match(sessionConfig, /deleteAiThreads\(space, \[threadId\]\)/);
+  assert.match(sessionConfig, /删除当前会话/);
+  assert.match(sessionConfig, /name="trash-outline"/);
+  assert.match(sessionConfig, /onCurrentThreadDeleted/);
+  assert.match(app, /function closeDeletedAiThread/);
+  assert.match(app, /previousRoute\?\.name === 'ai-chat'/);
+  assert.match(app, /previousRoute\.threadId === threadId/);
+  assert.match(app, /onCurrentThreadDeleted=\{\(\) => closeDeletedAiThread\(currentRoute\.threadId\)\}/);
+});
+
 test('AI history long-press enters batch mode while single actions stay in a compact menu', () => {
   const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
@@ -425,6 +446,11 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /setDeleteThread\(actionThread\)/);
   assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
   assert.match(history, /AppActionSheet/);
+  assert.match(history, /formatHistoryMinute/);
+  assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
+  assert.match(history, /上次聊天/);
+  assert.match(repository, /lastMessageAt/);
+  assert.match(repository, /MAX\(COALESCE\(completedAt, updatedAt, createdAt\)\) AS lastMessageAt/);
   assert.doesNotMatch(history, /rowActions/);
   assert.doesNotMatch(history, /PrimaryButton/);
   assert.match(history, /footer={selectionFooter}/);
