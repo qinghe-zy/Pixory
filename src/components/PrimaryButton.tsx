@@ -10,6 +10,7 @@ interface PrimaryButtonProps {
   loading?: boolean;
   disabled?: boolean;
   variant?: ButtonVariant;
+  compact?: boolean;
 }
 
 export function PrimaryButton({
@@ -18,6 +19,7 @@ export function PrimaryButton({
   loading = false,
   disabled = false,
   variant = 'solid',
+  compact = false,
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
 
@@ -29,6 +31,7 @@ export function PrimaryButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        compact && styles.compact,
         variant === 'solid' ? styles.solid : variant === 'outline' ? styles.outline : styles.ghost,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
@@ -59,6 +62,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: componentTokens.primaryButton.horizontalPadding,
     width: '100%',
+  },
+  compact: {
+    height: Math.round(componentTokens.primaryButton.height * 0.7),
   },
   solid: {
     backgroundColor: colors.primary.default,

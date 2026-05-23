@@ -1562,6 +1562,9 @@ export default function App() {
           visible={personalUnlockVisible}
         />
         <AppDialog
+          actionLayout="primaryThenSplit"
+          backgroundVariant="home"
+          compactActions
           message={availableUpdate?.message}
           onClose={() => setAvailableUpdate(null)}
           onPrimary={openAvailableUpdate}

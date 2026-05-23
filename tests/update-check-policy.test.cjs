@@ -66,6 +66,9 @@ test('App shows update and announcement prompts without adding push notification
   assert.match(appSource, /void checkRemoteNotices\(\(\) => isMounted\)/);
   assert.match(appSource, /nextState === 'active'[\s\S]{0,700}void checkRemoteNotices\(\)/);
   assert.match(appSource, /<AppDialog[\s\S]{0,500}primaryLabel="去更新"/);
+  assert.match(appSource, /<AppDialog[\s\S]{0,500}actionLayout="primaryThenSplit"/);
+  assert.match(appSource, /<AppDialog[\s\S]{0,500}backgroundVariant="home"/);
+  assert.match(appSource, /<AppDialog[\s\S]{0,500}compactActions/);
   assert.match(appSource, /tertiaryLabel="跳过此版本"/);
   assert.match(appSource, /setSkippedUpdateVersionKey/);
   assert.match(appSource, /checkForRemoteAnnouncement\(\)/);
@@ -76,4 +79,17 @@ test('App shows update and announcement prompts without adding push notification
   assert.match(settingsRepositorySource, /SKIPPED_UPDATE_VERSION_KEY/);
   assert.match(settingsRepositorySource, /DISMISSED_ANNOUNCEMENT_ID_KEY/);
   assert.doesNotMatch(appSource, /Notifications|expo-notifications|getExpoPushToken|FCM|pushToken/);
+});
+
+test('update prompt uses compact themed split action layout', () => {
+  const dialogSource = readProjectFile('src/components/AppDialog.tsx');
+  const primaryButtonSource = readProjectFile('src/components/PrimaryButton.tsx');
+
+  assert.match(dialogSource, /actionLayout\?: 'stack' \| 'primaryThenSplit'/);
+  assert.match(dialogSource, /splitSecondaryActions/);
+  assert.match(dialogSource, /secondaryActionRow/);
+  assert.match(dialogSource, /backgroundVariant\?: PageBackgroundVariant/);
+  assert.match(dialogSource, /pageBackgroundImages\[backgroundVariant\]/);
+  assert.match(primaryButtonSource, /compact\?: boolean/);
+  assert.match(primaryButtonSource, /Math\.round\(componentTokens\.primaryButton\.height \* 0\.7\)/);
 });
