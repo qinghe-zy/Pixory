@@ -51,6 +51,52 @@ export interface AiMessageVersionRecord {
   createdAt: string;
 }
 
+export type AiMemoryScope = 'global' | 'thread' | 'role' | 'ip' | 'knowledge_base';
+export type AiMemoryType = 'preference' | 'fact' | 'decision' | 'instruction' | 'task' | 'correction';
+export type AiMemoryStatus = 'active' | 'stale' | 'deleted';
+
+export interface AiThreadMemorySettingsRecord {
+  threadId: string;
+  deepMemoryEnabled: boolean;
+  updatedAt: string;
+}
+
+export interface AiThreadSummaryRecord {
+  threadId: string;
+  summary: string;
+  decisions: string;
+  openQuestions: string;
+  lastMessageId: string | null;
+  updatedAt: string;
+}
+
+export interface AiMemoryRecord {
+  id: string;
+  space: PixorySpace;
+  scope: AiMemoryScope;
+  scopeId: string | null;
+  type: AiMemoryType;
+  content: string;
+  normalizedContent: string;
+  sourceMessageId: string | null;
+  confidence: number;
+  importance: number;
+  status: AiMemoryStatus;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+interface AiThreadMemorySettingsRow {
+  threadId: string;
+  deepMemoryEnabled: number;
+  updatedAt: string;
+}
+
+export type AiThreadSummaryRow = AiThreadSummaryRecord;
+export type AiMemoryRow = AiMemoryRecord;
+
 export type AiMessageVersionRow = Omit<AiMessageVersionRecord, 'citations'> & {
   citationsJson: string;
 };
@@ -164,6 +210,27 @@ export interface CreateAiMessageVersionInput {
   messageCompletedAt?: string | null;
 }
 
+export interface UpsertAiThreadSummaryInput {
+  threadId: string;
+  summary: string;
+  decisions?: string;
+  openQuestions?: string;
+  lastMessageId?: string | null;
+}
+
+export interface CreateAiMemoryInput {
+  id: string;
+  space: PixorySpace;
+  scope: AiMemoryScope;
+  scopeId?: string | null;
+  type: AiMemoryType;
+  content: string;
+  normalizedContent: string;
+  sourceMessageId?: string | null;
+  confidence?: number;
+  importance?: number;
+}
+
 export interface ReplaceCitationInput {
   id: string;
   sourceType: AiCitationSourceType;
@@ -247,6 +314,18 @@ function mapCitationRow(row: AiCitationRow): AiCitationRecord {
     locator,
     createdAt: row.createdAt,
   };
+}
+
+function mapMemorySettingsRow(row: AiThreadMemorySettingsRow): AiThreadMemorySettingsRecord {
+  return {
+    threadId: row.threadId,
+    deepMemoryEnabled: sqliteToBoolean(row.deepMemoryEnabled),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function makeInClause(values: string[]): string {
+  return values.map(() => '?').join(', ');
 }
 
 export const aiThreadRepository = {
@@ -671,7 +750,20 @@ export const aiThreadRepository = {
     return deletedCount;
   },
 
-  async listMessages(db: SQLiteDatabase, threadId: string): Promise<AiMessageRecord[]> {
+  async listMessages(db: SQLiteDatabase, threadId: string, limit?: number): Promise<AiMessageRecord[]> {
+    if (limit && limit > 0) {
+      return db.getAllAsync<AiMessageRecord>(
+        `SELECT * FROM (
+           SELECT * FROM ai_messages
+           WHERE threadId = ?
+           ORDER BY createdAt DESC
+           LIMIT ?
+         )
+         ORDER BY createdAt ASC`,
+        threadId,
+        limit
+      );
+    }
     return db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM ai_messages
        WHERE threadId = ?
@@ -747,6 +839,24 @@ export const aiThreadRepository = {
     return rows.map(mapMessageVersionRow);
   },
 
+  async listMessageVersionsForMessages(db: SQLiteDatabase, messageIds: string[]): Promise<Record<string, AiMessageVersionRecord[]>> {
+    if (messageIds.length === 0) {
+      return {};
+    }
+    const rows = await db.getAllAsync<AiMessageVersionRow>(
+      `SELECT * FROM ai_message_versions
+       WHERE originalMessageId IN (${makeInClause(messageIds)})
+       ORDER BY originalMessageId ASC, versionIndex ASC`,
+      ...messageIds
+    );
+    return rows.reduce<Record<string, AiMessageVersionRecord[]>>((grouped, row) => {
+      const mapped = mapMessageVersionRow(row);
+      grouped[mapped.originalMessageId] = grouped[mapped.originalMessageId] ?? [];
+      grouped[mapped.originalMessageId].push(mapped);
+      return grouped;
+    }, {});
+  },
+
   async replaceCitations(db: SQLiteDatabase, messageId: string, citations: ReplaceCitationInput[]): Promise<void> {
     const now = createTimestamp();
     await db.runAsync('DELETE FROM ai_message_citations WHERE messageId = ?', messageId);
@@ -780,6 +890,164 @@ export const aiThreadRepository = {
       messageId
     );
     return rows.map(mapCitationRow);
+  },
+
+  async listCitationsForMessages(db: SQLiteDatabase, messageIds: string[]): Promise<Record<string, AiCitationRecord[]>> {
+    if (messageIds.length === 0) {
+      return {};
+    }
+    const rows = await db.getAllAsync<AiCitationRow>(
+      `SELECT * FROM ai_message_citations
+       WHERE messageId IN (${makeInClause(messageIds)})
+       ORDER BY messageId ASC, createdAt ASC`,
+      ...messageIds
+    );
+    return rows.reduce<Record<string, AiCitationRecord[]>>((grouped, row) => {
+      const mapped = mapCitationRow(row);
+      grouped[mapped.messageId] = grouped[mapped.messageId] ?? [];
+      grouped[mapped.messageId].push(mapped);
+      return grouped;
+    }, {});
+  },
+
+  async getThreadMemorySettings(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemorySettingsRecord> {
+    const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
+    return row ? mapMemorySettingsRow(row) : { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+  },
+
+  async updateThreadMemorySettings(db: SQLiteDatabase, threadId: string, deepMemoryEnabled: boolean): Promise<AiThreadMemorySettingsRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_thread_memory_settings (threadId, deepMemoryEnabled, updatedAt)
+       VALUES (?, ?, ?)
+       ON CONFLICT(threadId) DO UPDATE SET deepMemoryEnabled = excluded.deepMemoryEnabled, updatedAt = excluded.updatedAt`,
+      threadId,
+      booleanToSqlite(deepMemoryEnabled),
+      now
+    );
+    const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
+    if (!row) {
+      throw new Error(`AI thread memory settings ${threadId} could not be reloaded.`);
+    }
+    return mapMemorySettingsRow(row);
+  },
+
+  async getThreadSummary(db: SQLiteDatabase, threadId: string): Promise<AiThreadSummaryRecord | null> {
+    return db.getFirstAsync<AiThreadSummaryRecord>('SELECT * FROM ai_thread_summaries WHERE threadId = ?', threadId);
+  },
+
+  async upsertThreadSummary(db: SQLiteDatabase, input: UpsertAiThreadSummaryInput): Promise<AiThreadSummaryRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_thread_summaries (threadId, summary, decisions, openQuestions, lastMessageId, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(threadId) DO UPDATE SET
+         summary = excluded.summary,
+         decisions = excluded.decisions,
+         openQuestions = excluded.openQuestions,
+         lastMessageId = excluded.lastMessageId,
+         updatedAt = excluded.updatedAt`,
+      input.threadId,
+      input.summary,
+      input.decisions ?? '',
+      input.openQuestions ?? '',
+      input.lastMessageId ?? null,
+      now
+    );
+    const row = await db.getFirstAsync<AiThreadSummaryRecord>('SELECT * FROM ai_thread_summaries WHERE threadId = ?', input.threadId);
+    if (!row) {
+      throw new Error(`AI thread summary ${input.threadId} could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async findActiveMemoryByNormalizedContent(db: SQLiteDatabase, input: { space: PixorySpace; scope: AiMemoryScope; scopeId?: string | null; normalizedContent: string }): Promise<AiMemoryRecord | null> {
+    return db.getFirstAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE space = ? AND scope = ? AND COALESCE(scopeId, '') = COALESCE(?, '') AND normalizedContent = ? AND status = 'active'
+       LIMIT 1`,
+      input.space,
+      input.scope,
+      input.scopeId ?? null,
+      input.normalizedContent
+    );
+  },
+
+  async createMemory(db: SQLiteDatabase, input: CreateAiMemoryInput): Promise<AiMemoryRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_memories (
+        id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
+        confidence, importance, status, lastUsedAt, createdAt, updatedAt, deletedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, NULL)`,
+      input.id,
+      input.space,
+      input.scope,
+      input.scopeId ?? null,
+      input.type,
+      input.content,
+      input.normalizedContent,
+      input.sourceMessageId ?? null,
+      input.confidence ?? 0.7,
+      input.importance ?? 1,
+      now,
+      now
+    );
+    const row = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error(`AI memory ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async listActiveMemories(db: SQLiteDatabase, input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; limit?: number }): Promise<AiMemoryRecord[]> {
+    const scopePairs: Array<[AiMemoryScope, string | null]> = [
+      ['global', null],
+      ['thread', input.threadId],
+    ];
+    if (input.roleCardId) {
+      scopePairs.push(['role', input.roleCardId]);
+    }
+    if (input.boundIpId != null) {
+      scopePairs.push(['ip', String(input.boundIpId)]);
+    }
+    if (input.boundKnowledgeBaseId) {
+      scopePairs.push(['knowledge_base', input.boundKnowledgeBaseId]);
+    }
+    const clauses = scopePairs.map(() => '(scope = ? AND COALESCE(scopeId, \'\') = COALESCE(?, \'\'))');
+    const values = scopePairs.flatMap(([scope, scopeId]) => [scope, scopeId]);
+    return db.getAllAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE space = ? AND status = 'active' AND (${clauses.join(' OR ')})
+       ORDER BY importance DESC, COALESCE(lastUsedAt, updatedAt) DESC, updatedAt DESC
+       LIMIT ?`,
+      input.space,
+      ...values,
+      input.limit ?? 80
+    );
+  },
+
+  async touchMemories(db: SQLiteDatabase, memoryIds: string[]): Promise<void> {
+    if (memoryIds.length === 0) {
+      return;
+    }
+    await db.runAsync(
+      `UPDATE ai_memories SET lastUsedAt = ?, updatedAt = ? WHERE id IN (${makeInClause(memoryIds)})`,
+      createTimestamp(),
+      createTimestamp(),
+      ...memoryIds
+    );
+  },
+
+  async updateMemoryStatus(db: SQLiteDatabase, memoryId: string, status: AiMemoryStatus): Promise<void> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `UPDATE ai_memories SET status = ?, deletedAt = ?, updatedAt = ? WHERE id = ?`,
+      status,
+      status === 'deleted' ? now : null,
+      now,
+      memoryId
+    );
   },
 };
 

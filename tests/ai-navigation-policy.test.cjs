@@ -63,7 +63,10 @@ test('AI chat header shows the current model below the chat title', () => {
 
 test('AI chat keeps the top bar fixed while only messages scroll', () => {
   const content = chat();
-  assert.match(content, /<ScrollView/);
+  assert.match(content, /<FlatList/);
+  assert.match(content, /data=\{visibleMessages\}/);
+  assert.match(content, /renderItem=\{\(\{ item: message \}\) =>/);
+  assert.match(content, /keyExtractor=\{\(message\) => message\.id\}/);
   assert.match(content, /style=\{styles\.messageScroller\}/);
   assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
   assert.match(content, /styles\.composerPanel/);
@@ -93,7 +96,7 @@ test('AI chat composer follows the keyboard and messages stay pinned to the late
   const content = chat();
   assert.match(content, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.match(content, /keyboardBottomInset/);
-  assert.match(content, /messageScrollRef/);
+  assert.match(content, /messageListRef/);
   assert.match(content, /scrollToEnd/);
   assert.match(content, /onContentSizeChange=\{\(\) => scrollToLatestMessage\(\)\}/);
 });

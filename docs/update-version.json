@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.15",
-  "versionCode": 229,
+  "version": "2.1.16",
+  "versionCode": 230,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.15 已发布，优化 AI 消息编辑、标题生成、最近继续和知识库管理。",
+  "message": "Pixory 2.1.16 已发布，新增 AI 深度记忆开关并优化长聊天性能。",
   "releaseNotes": [
-    "编辑已发送消息时光标更清楚，重新生成后会自动切到最新回复版本。",
-    "自动标题生成更克制，最近继续也显示分钟级上次聊天时间。",
-    "资料库知识库支持长按多选和批量删除，并清理对应本地知识索引。"
+    "会话设置可开启深度记忆，本地保存摘要和可复用记忆。",
+    "短期上下文提升到最近 20 条，长对话衔接更自然。",
+    "长聊天改为虚拟化列表，流式回复不再每个片段整线程重载。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

@@ -65,6 +65,7 @@ export function AiSessionConfigScreen({
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
+  const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -81,6 +82,7 @@ export function AiSessionConfigScreen({
       setRenameValue(fallbackThreadTitle);
       setSystemPrompt(getDefaultSystemPrompt(contextType));
       setRoleInstructionWeight('default');
+      setDeepMemoryEnabled(false);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
@@ -93,6 +95,7 @@ export function AiSessionConfigScreen({
     setRenameValue(config.thread.title);
     setSystemPrompt(config.thread.systemPrompt);
     setRoleInstructionWeight(config.thread.roleInstructionWeight);
+    setDeepMemoryEnabled(config.deepMemoryEnabled);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
@@ -140,6 +143,7 @@ export function AiSessionConfigScreen({
       const updated = await updateAiThreadSessionConfig({
         boundaryMode,
         avatarEnabled,
+        deepMemoryEnabled,
         roleInstructionWeight,
         space,
         systemPrompt,
@@ -298,6 +302,26 @@ export function AiSessionConfigScreen({
               />
             ))}
           </View>
+        </AiLightCard>
+
+        <AiLightCard>
+          <View style={styles.memoryRow}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.sectionTitle}>深度记忆</Text>
+              <Text style={styles.caption}>开启后在本地保存会话摘要和可复用记忆，用于长对话回看。</Text>
+            </View>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: deepMemoryEnabled }}
+              onPress={() => setDeepMemoryEnabled((current) => !current)}
+              style={({ pressed }) => [styles.memorySwitch, deepMemoryEnabled && styles.memorySwitchActive, pressed && styles.pressed]}
+            >
+              <Text style={[styles.memorySwitchText, deepMemoryEnabled && styles.memorySwitchTextActive]}>{deepMemoryEnabled ? '开启' : '关闭'}</Text>
+            </Pressable>
+          </View>
+          {deepMemoryEnabled ? (
+            <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
+          ) : null}
         </AiLightCard>
 
         <AiLightCard>
@@ -468,6 +492,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  memoryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
+  },
+  memorySwitch: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 34,
+    minWidth: 58,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[3],
+  },
+  memorySwitchActive: {
+    backgroundColor: aiLightColors.coral,
+    borderColor: aiLightColors.coral,
+  },
+  memorySwitchText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '700',
+  },
+  memorySwitchTextActive: {
+    color: aiLightColors.onDark,
   },
   textAction: {
     alignItems: 'center',

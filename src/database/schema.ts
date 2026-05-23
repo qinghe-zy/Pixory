@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 21;
+export const DATABASE_VERSION = 22;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -557,4 +557,47 @@ CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_version
 
 export const MIGRATION_STATEMENTS_V21 = `
 ALTER TABLE ai_threads ADD COLUMN roleInstructionWeight TEXT NOT NULL DEFAULT 'default' CHECK (roleInstructionWeight IN ('default', 'high'));
+`;
+
+export const MIGRATION_STATEMENTS_V22 = `
+CREATE TABLE IF NOT EXISTS ai_thread_memory_settings (
+  threadId TEXT PRIMARY KEY NOT NULL,
+  deepMemoryEnabled INTEGER NOT NULL DEFAULT 0,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_thread_summaries (
+  threadId TEXT PRIMARY KEY NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  decisions TEXT NOT NULL DEFAULT '',
+  openQuestions TEXT NOT NULL DEFAULT '',
+  lastMessageId TEXT,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (lastMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_memories (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  scope TEXT NOT NULL CHECK (scope IN ('global', 'thread', 'role', 'ip', 'knowledge_base')),
+  scopeId TEXT,
+  type TEXT NOT NULL CHECK (type IN ('preference', 'fact', 'decision', 'instruction', 'task', 'correction')),
+  content TEXT NOT NULL,
+  normalizedContent TEXT NOT NULL,
+  sourceMessageId TEXT,
+  confidence REAL NOT NULL DEFAULT 0.7,
+  importance INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'stale', 'deleted')),
+  lastUsedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  deletedAt TEXT,
+  FOREIGN KEY (sourceMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_settings_thread ON ai_thread_memory_settings(threadId);
+CREATE INDEX IF NOT EXISTS idx_ai_memories_scope_status ON ai_memories(space, scope, scopeId, status, importance);
+CREATE INDEX IF NOT EXISTS idx_ai_memories_source ON ai_memories(sourceMessageId);
 `;

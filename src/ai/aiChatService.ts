@@ -13,7 +13,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
@@ -46,6 +46,7 @@ export interface SendUserMessageInput {
   threadId: string;
   content: string;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
 
@@ -53,6 +54,7 @@ export interface RetryAssistantMessageInput {
   space: PixorySpace;
   threadId: string;
   assistantMessageId: string;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
 
@@ -62,6 +64,7 @@ export interface RewriteUserMessageInput {
   userMessageId: string;
   content: string;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
 
@@ -81,6 +84,7 @@ export interface AiThreadSessionConfig {
   thread: AiThreadRecord;
   roleCardName: string | null;
   avatar: AiThreadAvatarConfig;
+  deepMemoryEnabled: boolean;
 }
 
 export interface UpdateAiThreadSessionConfigInput {
@@ -92,6 +96,7 @@ export interface UpdateAiThreadSessionConfigInput {
   providerId?: string | null;
   modelId?: string | null;
   avatarEnabled?: boolean;
+  deepMemoryEnabled?: boolean;
 }
 
 export interface ApplyRoleCardToThreadInput {
@@ -151,6 +156,49 @@ export type AiMessageWithCitations = AiMessageRecord & {
   versionIndex: number;
   versionTotal: number;
 };
+
+export interface AiStreamingMessagePatch {
+  id: string;
+  status?: AiMessageRecord['status'];
+  content?: string;
+  reasoningText?: string | null;
+  errorMessage?: string | null;
+  providerId?: string | null;
+  modelId?: string | null;
+  modelSnapshotJson?: string;
+  promptSnapshotJson?: string;
+  createdAt?: string;
+  completedAt?: string | null;
+  citations?: AiCitationRecord[];
+}
+
+export interface ListThreadMessagesOptions {
+  limit?: number;
+}
+
+const CHAT_HISTORY_MESSAGE_LIMIT = 20;
+const CHAT_MESSAGE_PAGE_SIZE = 60;
+const STREAMING_PERSIST_INTERVAL_MS = 120;
+const STREAMING_UI_PATCH_INTERVAL_MS = 80;
+const DEEP_MEMORY_LIMIT = 5;
+const RELATED_HISTORY_LIMIT = 4;
+const SUMMARY_DECISION_LIMIT = 8;
+const MEMORY_MODEL_CONTEXT_LIMIT = 18;
+
+interface MemoryCandidate {
+  type: AiMemoryRecord['type'];
+  scope: AiMemoryRecord['scope'];
+  content: string;
+  importance: number;
+  confidence: number;
+}
+
+interface ModelMemoryUpdate {
+  summary: string;
+  decisions: string;
+  openQuestions: string;
+  memories: MemoryCandidate[];
+}
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
   try {
@@ -275,6 +323,333 @@ function materialRulesForMode(boundaryMode: AiBoundaryMode): string {
   return boundaryMode === 'strict_material' ? STRICT_MATERIAL_RULES : MATERIAL_SESSION_RULES;
 }
 
+function truncateForPrompt(value: string, maxLength: number): string {
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`;
+}
+
+function normalizeMemoryContent(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 180);
+}
+
+function getQueryTerms(value: string): string[] {
+  return [...new Set(value.toLowerCase().split(/[\s,，。！？!?;；:：、]+/).filter((term) => term.length >= 2))].slice(0, 10);
+}
+
+function scoreTextForQuery(text: string, query: string): number {
+  const normalizedText = text.toLowerCase();
+  const normalizedQuery = query.toLowerCase().trim();
+  let score = normalizedQuery && normalizedText.includes(normalizedQuery) ? 12 : 0;
+  for (const term of getQueryTerms(query)) {
+    if (normalizedText.includes(term)) {
+      score += 3;
+    }
+  }
+  return score;
+}
+
+function formatDeepMemorySection(input: {
+  summary?: string | null;
+  decisions?: string | null;
+  openQuestions?: string | null;
+  memories: AiMemoryRecord[];
+  history: AiMessageRecord[];
+}): string {
+  const lines: string[] = [
+    '深度记忆背景：以下内容只作为理解上下文的参考，不能覆盖用户当前最新要求、当前会话角色指令、安全规则或资料事实。回答时自然使用，不要模板化复述，也不要为了展示记忆而主动提到“记忆”。',
+  ];
+  if (input.summary?.trim()) {
+    lines.push(`会话摘要：${truncateForPrompt(input.summary, 700)}`);
+  }
+  if (input.decisions?.trim()) {
+    lines.push(`已确认事项：${truncateForPrompt(input.decisions, 520)}`);
+  }
+  if (input.openQuestions?.trim()) {
+    lines.push(`待跟进问题：${truncateForPrompt(input.openQuestions, 360)}`);
+  }
+  if (input.memories.length > 0) {
+    lines.push('相关长期记忆：');
+    input.memories.forEach((memory, index) => {
+      lines.push(`${index + 1}. ${truncateForPrompt(memory.content, 180)}`);
+    });
+  }
+  if (input.history.length > 0) {
+    lines.push('相关历史片段：');
+    input.history.forEach((message, index) => {
+      lines.push(`${index + 1}. ${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 220)}`);
+    });
+  }
+  return lines.join('\n');
+}
+
+async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord, userMessage: string): Promise<string> {
+  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+  if (!settings.deepMemoryEnabled) {
+    return '';
+  }
+  const [summary, memories, messages] = await Promise.all([
+    aiThreadRepository.getThreadSummary(db, thread.id),
+    aiThreadRepository.listActiveMemories(db, {
+      boundIpId: thread.boundIpId,
+      boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
+      roleCardId: thread.roleCardId,
+      space: thread.space,
+      threadId: thread.id,
+      limit: 80,
+    }),
+    aiThreadRepository.listMessages(db, thread.id, 260),
+  ]);
+  const rankedMemories = memories
+    .map((memory) => ({
+      memory,
+      score: scoreTextForQuery(memory.content, userMessage) + memory.importance * 2 + (memory.type === 'correction' ? 4 : 0),
+    }))
+    .filter((item) => item.score > 0 || item.memory.importance >= 3)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, DEEP_MEMORY_LIMIT)
+    .map((item) => item.memory);
+  const recentIds = new Set(messages.slice(-CHAT_HISTORY_MESSAGE_LIMIT).map((message) => message.id));
+  const rankedHistory = messages
+    .filter((message) => message.status === 'completed' && message.role !== 'system' && !recentIds.has(message.id))
+    .map((message) => ({ message, score: scoreTextForQuery(message.content, userMessage) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, RELATED_HISTORY_LIMIT)
+    .map((item) => item.message);
+  if (rankedMemories.length > 0) {
+    await aiThreadRepository.touchMemories(db, rankedMemories.map((memory) => memory.id));
+  }
+  return formatDeepMemorySection({
+    decisions: summary?.decisions,
+    history: rankedHistory,
+    memories: rankedMemories,
+    openQuestions: summary?.openQuestions,
+    summary: summary?.summary,
+  });
+}
+
+function extractMemoryCandidates(userMessage: string): MemoryCandidate[] {
+  const normalized = userMessage.replace(/\s+/g, ' ').trim();
+  if (normalized.length < 4) {
+    return [];
+  }
+  const candidates: MemoryCandidate[] = [];
+  const push = (type: AiMemoryRecord['type'], scope: AiMemoryRecord['scope'], content: string, importance: number, confidence = 0.76) => {
+    const cleaned = content.replace(/^[：:，,\s]+/, '').trim();
+    if (cleaned.length >= 4 && cleaned.length <= 180) {
+      candidates.push({ type, scope, content: cleaned, importance, confidence });
+    }
+  };
+
+  for (const match of normalized.matchAll(/(?:请记住|记住|以后默认|之后默认)([^。！？!?]{4,120})/g)) {
+    push('instruction', 'global', match[1] ?? '', 4, 0.86);
+  }
+  for (const match of normalized.matchAll(/我(?:喜欢|偏好|希望|习惯|通常|一般)([^。！？!?]{4,120})/g)) {
+    push('preference', 'global', `我${match[0].replace(/^我/, '')}`, 3, 0.82);
+  }
+  for (const match of normalized.matchAll(/(?:决定|确认|确定|同意)([^。！？!?]{4,120})/g)) {
+    push('decision', 'thread', match[1] ?? '', 3, 0.78);
+  }
+  for (const match of normalized.matchAll(/(?:纠正|更正|不是|不要)([^。！？!?]{4,120})/g)) {
+    push('correction', 'thread', match[0] ?? '', 4, 0.84);
+  }
+  return candidates.slice(0, 6);
+}
+
+function extractJsonObject(text: string): string {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  return first >= 0 && last > first ? text.slice(first, last + 1) : text.trim();
+}
+
+function parseModelMemoryUpdate(text: string): ModelMemoryUpdate | null {
+  try {
+    const parsed = JSON.parse(extractJsonObject(text)) as Record<string, unknown>;
+    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+    const decisions = typeof parsed.decisions === 'string' ? parsed.decisions.trim() : '';
+    const openQuestions = typeof parsed.openQuestions === 'string' ? parsed.openQuestions.trim() : '';
+    const rawMemories = Array.isArray(parsed.memories) ? parsed.memories : [];
+    const memories = rawMemories.flatMap((item): MemoryCandidate[] => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+      const record = item as Record<string, unknown>;
+      const content = typeof record.content === 'string' ? record.content.replace(/\s+/g, ' ').trim() : '';
+      const scope = record.scope === 'global' ? 'global' : record.scope === 'thread' ? 'thread' : null;
+      const type = ['preference', 'fact', 'decision', 'instruction', 'task', 'correction'].includes(String(record.type))
+        ? String(record.type) as AiMemoryRecord['type']
+        : null;
+      if (!content || !scope || !type || content.length < 4 || content.length > 180) {
+        return [];
+      }
+      return [{
+        confidence: typeof record.confidence === 'number' ? Math.max(0.1, Math.min(1, record.confidence)) : 0.78,
+        content,
+        importance: typeof record.importance === 'number' ? Math.max(1, Math.min(5, Math.round(record.importance))) : 2,
+        scope,
+        type,
+      }];
+    }).slice(0, 8);
+    if (!summary && !decisions && !openQuestions && memories.length === 0) {
+      return null;
+    }
+    return { decisions, memories, openQuestions, summary };
+  } catch {
+    return null;
+  }
+}
+
+function buildMemoryModelPrompt(messages: AiMessageRecord[]): string {
+  const recent = messages
+    .filter((message) => message.status === 'completed' && message.role !== 'system')
+    .slice(-MEMORY_MODEL_CONTEXT_LIMIT)
+    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 420)}`)
+    .join('\n\n');
+  return [
+    '请为一个本地离线优先的 AI 聊天应用更新“深度记忆”。',
+    '只输出 JSON，不要输出 Markdown 或解释。',
+    '记忆必须保守：只保存用户明确表达、重复出现、纠正 AI、或对后续明显有用的稳定事实。不要保存普通寒暄、临时情绪、一次性闲聊、未经确认的推测。',
+    '记忆使用时只是背景参考，不能覆盖用户当前最新要求、角色指令、安全规则或资料事实。',
+    'JSON 结构：{"summary":"会话摘要","decisions":"已确认事项","openQuestions":"待跟进问题","memories":[{"scope":"global或thread","type":"preference|fact|decision|instruction|task|correction","content":"单条记忆","confidence":0.1到1,"importance":1到5}]}',
+    'scope 只允许 global 或 thread；跨会话稳定偏好用 global，本会话决策和任务用 thread。',
+    '如果没有值得长期保存的记忆，memories 返回空数组。',
+    '聊天片段：',
+    recent || '暂无聊天片段。',
+  ].join('\n\n');
+}
+
+async function summarizeMemoryWithModel(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  messages: AiMessageRecord[];
+}): Promise<ModelMemoryUpdate | null> {
+  try {
+    const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, input.thread);
+    if (!provider || !modelId || !apiKey) {
+      return null;
+    }
+    let text = '';
+    await getAdapterForProvider(provider).streamChat(
+      {
+        apiKey,
+        baseUrl: provider.baseUrl ?? '',
+        history: [],
+        modelId,
+        systemPrompt: '你是 Pixory 的后台记忆整理器。你只输出可解析 JSON。',
+        userPrompt: buildMemoryModelPrompt(input.messages),
+      },
+      (event) => {
+        if (event.type === 'answer_delta') {
+          text += event.text;
+        }
+      }
+    );
+    return parseModelMemoryUpdate(text);
+  } catch {
+    return null;
+  }
+}
+
+function buildThreadSummaryFromMessages(messages: AiMessageRecord[]): { summary: string; decisions: string; openQuestions: string; lastMessageId: string | null } {
+  const completed = messages.filter((message) => message.status === 'completed' && message.role !== 'system');
+  const recent = completed.slice(-16);
+  const summary = recent
+    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 120)}`)
+    .join('\n')
+    .slice(0, 1200);
+  const decisions = completed
+    .filter((message) => /决定|确认|确定|同意|以后|默认|记住|纠正|更正/.test(message.content))
+    .slice(-SUMMARY_DECISION_LIMIT)
+    .map((message) => `- ${truncateForPrompt(message.content, 140)}`)
+    .join('\n');
+  const openQuestions = completed
+    .filter((message) => message.role === 'user' && /[?？]|怎么|如何|是否|能不能/.test(message.content))
+    .slice(-5)
+    .map((message) => `- ${truncateForPrompt(message.content, 120)}`)
+    .join('\n');
+  return {
+    decisions,
+    lastMessageId: completed.length ? completed[completed.length - 1].id : null,
+    openQuestions,
+    summary,
+  };
+}
+
+async function updateDeepMemoryAfterReply(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
+  assistantMessageId: string;
+}): Promise<void> {
+  const prepared = await runWithDatabaseSpace(input.space, async (db) => {
+    const settings = await aiThreadRepository.getThreadMemorySettings(db, input.thread.id);
+    if (!settings.deepMemoryEnabled) {
+      return null;
+    }
+    const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80);
+    return {
+      fallbackSummary: buildThreadSummaryFromMessages(messages),
+      messages,
+    };
+  });
+  if (!prepared) {
+    return;
+  }
+
+  const modelUpdate = await summarizeMemoryWithModel({
+    messages: prepared.messages,
+    space: input.space,
+    thread: input.thread,
+  });
+
+  await runWithDatabaseSpace(input.space, async (db) => {
+    await aiThreadRepository.upsertThreadSummary(db, {
+      decisions: modelUpdate?.decisions || prepared.fallbackSummary.decisions,
+      lastMessageId: prepared.fallbackSummary.lastMessageId,
+      openQuestions: modelUpdate?.openQuestions || prepared.fallbackSummary.openQuestions,
+      summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
+      threadId: input.thread.id,
+    });
+    const candidates = modelUpdate?.memories.length ? modelUpdate.memories : extractMemoryCandidates(input.userMessage.content);
+    for (const candidate of candidates) {
+      const scopeId = candidate.scope === 'thread'
+        ? input.thread.id
+        : candidate.scope === 'role'
+          ? input.thread.roleCardId
+          : candidate.scope === 'ip'
+            ? String(input.thread.boundIpId ?? '')
+            : candidate.scope === 'knowledge_base'
+              ? input.thread.boundKnowledgeBaseId
+              : null;
+      const normalizedContent = normalizeMemoryContent(candidate.content);
+      const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
+        normalizedContent,
+        scope: candidate.scope,
+        scopeId,
+        space: input.space,
+      });
+      if (!existing) {
+        await aiThreadRepository.createMemory(db, {
+          confidence: candidate.confidence,
+          content: candidate.content,
+          id: createAiId('aimem'),
+          importance: candidate.importance,
+          normalizedContent,
+          scope: candidate.scope,
+          scopeId,
+          sourceMessageId: input.userMessage.id,
+          space: input.space,
+          type: candidate.type,
+        });
+      }
+    }
+  });
+}
+
 async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord) {
   await ensureBuiltInProviders(space);
   const providers = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listProviders(db));
@@ -314,12 +689,13 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
+  const deepMemoryContext = await runWithDatabaseSpace(thread.space, (db) => loadDeepMemoryContext(db, thread, userMessage));
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
         roleInstructionWeight: thread.roleInstructionWeight,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
-        userMessage,
+        userMessage: [deepMemoryContext, userMessage].filter(Boolean).join('\n\n用户当前问题：\n'),
       }),
       snippets: [],
     };
@@ -341,7 +717,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
       roleInstructionWeight: thread.roleInstructionWeight,
       materialRules: materialRulesForMode(thread.boundaryMode),
-      contextSummary: thread.title,
+      contextSummary: [thread.title, deepMemoryContext].filter(Boolean).join('\n\n'),
       snippets: retrieval.snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
       userMessage,
     }),
@@ -392,21 +768,24 @@ export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: st
   return modelName ? `${provider.displayName} · ${modelName}` : provider.displayName;
 }
 
-export async function listThreadMessages(space: PixorySpace, threadId: string): Promise<AiMessageWithCitations[]> {
+export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, async (db) => {
-    const messages = await aiThreadRepository.listMessages(db, threadId);
-    return Promise.all(
-      messages.map(async (message) => {
-        const messageVersions = await aiThreadRepository.listMessageVersions(db, message.id);
-        return {
-          ...message,
-          citations: await aiThreadRepository.listCitations(db, message.id),
-          messageVersions,
-          versionIndex: messageVersions.length + 1,
-          versionTotal: messageVersions.length + 1,
-        };
-      })
-    );
+    const messages = await aiThreadRepository.listMessages(db, threadId, options.limit);
+    const messageIds = messages.map((message) => message.id);
+    const [versionsByMessageId, citationsByMessageId] = await Promise.all([
+      aiThreadRepository.listMessageVersionsForMessages(db, messageIds),
+      aiThreadRepository.listCitationsForMessages(db, messageIds),
+    ]);
+    return messages.map((message) => {
+      const messageVersions = versionsByMessageId[message.id] ?? [];
+      return {
+        ...message,
+        citations: citationsByMessageId[message.id] ?? [],
+        messageVersions,
+        versionIndex: messageVersions.length + 1,
+        versionTotal: messageVersions.length + 1,
+      };
+    });
   });
 }
 
@@ -439,7 +818,13 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       return null;
     }
     const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
-    return { thread, roleCardName: roleCard?.name ?? null, avatar: parseThreadAvatarConfig(thread.roleSnapshotJson) };
+    const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+    return {
+      thread,
+      roleCardName: roleCard?.name ?? null,
+      avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+      deepMemoryEnabled: memorySettings.deepMemoryEnabled,
+    };
   });
 }
 
@@ -449,7 +834,7 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
     if (!thread || thread.space !== input.space) {
       return null;
     }
-    return aiThreadRepository.updateThread(db, input.threadId, {
+    const updated = await aiThreadRepository.updateThread(db, input.threadId, {
       boundaryMode: input.boundaryMode,
       materialRulesSnapshot: thread.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode),
       modelId: input.modelId,
@@ -461,6 +846,10 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
       roleInstructionWeight: input.roleInstructionWeight,
       systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
+    if (input.deepMemoryEnabled != null) {
+      await aiThreadRepository.updateThreadMemorySettings(db, input.threadId, input.deepMemoryEnabled);
+    }
+    return updated;
   });
 }
 
@@ -601,7 +990,7 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string) {
   const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
   return previousMessages
     .filter((message) => message.role !== 'system' && message.status === 'completed')
-    .slice(-8)
+    .slice(-CHAT_HISTORY_MESSAGE_LIMIT)
     .map((message) => ({
       role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: message.content,
@@ -637,6 +1026,7 @@ async function streamAssistantReply(input: {
   thread: AiThreadRecord;
   userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId: string;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }): Promise<void> {
   stoppedMessageIds.delete(input.assistantMessageId);
@@ -656,16 +1046,32 @@ async function streamAssistantReply(input: {
     });
     await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
   });
+  input.onMessagePatch?.({
+    id: input.assistantMessageId,
+    status: 'generating',
+    content: '',
+    reasoningText: null,
+    errorMessage: null,
+    providerId: null,
+    modelId: null,
+    modelSnapshotJson: '{}',
+    promptSnapshotJson: '{}',
+    createdAt: startedAt,
+    completedAt: null,
+    citations: [],
+  });
   input.onUpdated?.();
 
   const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, input.thread);
   if (!provider || !modelId) {
     await markAssistantFailed(input.space, input.assistantMessageId, '请先选择可用的 AI provider 和模型。');
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: '请先选择可用的 AI provider 和模型。', completedAt: new Date().toISOString() });
     input.onUpdated?.();
     return;
   }
   if (!apiKey) {
     await markAssistantFailed(input.space, input.assistantMessageId, '请先在 AI 设置中填写 API key。');
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: '请先在 AI 设置中填写 API key。', completedAt: new Date().toISOString() });
     input.onUpdated?.();
     return;
   }
@@ -677,7 +1083,35 @@ async function streamAssistantReply(input: {
   let answerText = '';
   let reasoningText = '';
   let streamFailed = false;
+  let lastPersistAt = 0;
+  let lastUiPatchAt = 0;
   const adapter = getAdapterForProvider(provider);
+  const emitStreamingPatch = (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastUiPatchAt < STREAMING_UI_PATCH_INTERVAL_MS) {
+      return;
+    }
+    lastUiPatchAt = now;
+    input.onMessagePatch?.({
+      id: input.assistantMessageId,
+      content: answerText,
+      reasoningText: reasoningText || null,
+      status: 'generating',
+    });
+  };
+  const persistStreamingSnapshot = async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastPersistAt < STREAMING_PERSIST_INTERVAL_MS) {
+      return;
+    }
+    lastPersistAt = now;
+    await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+        content: answerText,
+        reasoningText: reasoningText || null,
+      })
+    );
+  };
 
   try {
     await adapter.streamChat(
@@ -700,37 +1134,40 @@ async function streamAssistantReply(input: {
           reasoningText += event.text;
         }
         if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
-          await runWithDatabaseSpace(input.space, (db) =>
-            aiThreadRepository.updateMessage(db, input.assistantMessageId, {
-              content: answerText,
-              reasoningText: reasoningText || null,
-            })
-          );
-          input.onUpdated?.();
+          emitStreamingPatch();
+          await persistStreamingSnapshot();
         }
         if (event.type === 'error') {
           streamFailed = true;
           await markAssistantFailed(input.space, input.assistantMessageId, event.message);
+          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: event.message, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
     );
   } catch (error) {
     streamFailed = true;
-    await markAssistantFailed(input.space, input.assistantMessageId, error instanceof Error ? error.message : 'AI 回复失败。');
+    const message = error instanceof Error ? error.message : 'AI 回复失败。';
+    await markAssistantFailed(input.space, input.assistantMessageId, message);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: message, completedAt: new Date().toISOString() });
     input.onUpdated?.();
   }
 
+  await persistStreamingSnapshot(true);
+  emitStreamingPatch(true);
+
   if (stoppedMessageIds.has(input.assistantMessageId)) {
+    const completedAt = new Date().toISOString();
     stoppedMessageIds.delete(input.assistantMessageId);
     await runWithDatabaseSpace(input.space, (db) =>
       aiThreadRepository.updateMessage(db, input.assistantMessageId, {
         status: 'stopped',
         content: answerText,
         reasoningText: reasoningText || null,
-        completedAt: new Date().toISOString(),
+        completedAt,
       })
     );
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
     return;
   }
@@ -739,6 +1176,8 @@ async function streamAssistantReply(input: {
     return;
   }
 
+  let finalCitations: AiCitationRecord[] = [];
+  const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(input.space, async (db) => {
     const current = await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
       status: answerText ? 'completed' : 'failed',
@@ -749,25 +1188,42 @@ async function streamAssistantReply(input: {
       modelId,
       modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
       promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
-      completedAt: new Date().toISOString(),
+      completedAt,
     });
     if (current?.status === 'completed' && snippets.length > 0) {
-      await aiThreadRepository.replaceCitations(
-        db,
-        input.assistantMessageId,
-        snippets.map((snippet) => ({
-          id: createAiId('aicite'),
-          sourceType: snippet.sourceType ?? 'document_chunk',
-          sourceId: snippet.sourceId ?? snippet.chunkId,
-          label: snippet.label,
-          locator: snippet.locator,
-        }))
-      );
+      const citations = snippets.map((snippet) => ({
+        id: createAiId('aicite'),
+        sourceType: snippet.sourceType ?? 'document_chunk',
+        sourceId: snippet.sourceId ?? snippet.chunkId,
+        label: snippet.label,
+        locator: snippet.locator,
+      }));
+      await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
+      finalCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
     }
+  });
+  input.onMessagePatch?.({
+    id: input.assistantMessageId,
+    status: answerText ? 'completed' : 'failed',
+    content: answerText,
+    reasoningText: reasoningText || null,
+    errorMessage: answerText ? null : 'AI 没有返回可用内容。',
+    providerId: provider.id,
+    modelId,
+    modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
+    promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
+    completedAt,
+    citations: finalCitations,
   });
   if (answerText) {
     await finalizeThreadTitleAfterReply({
       assistantReply: answerText,
+      space: input.space,
+      thread: input.thread,
+      userMessage: input.userMessage,
+    });
+    void updateDeepMemoryAfterReply({
+      assistantMessageId: input.assistantMessageId,
       space: input.space,
       thread: input.thread,
       userMessage: input.userMessage,
@@ -815,6 +1271,7 @@ export async function sendUserMessage(
 
   await streamAssistantReply({
     assistantMessageId,
+    onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     space: input.space,
     thread,
@@ -856,6 +1313,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
 
   await streamAssistantReply({
     assistantMessageId: input.assistantMessageId,
+    onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     space: input.space,
     thread,
@@ -928,6 +1386,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
 
   await streamAssistantReply({
     assistantMessageId,
+    onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     space: input.space,
     thread,
