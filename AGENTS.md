@@ -245,8 +245,12 @@ Default release workflow:
    - `app.json`
    - `src/services/updateCheckService.ts`
    - `docs/update-version.json`
+   - `README.md`
+   - `docs/download.html`
+   - `docs/updates.html`
+   - `docs/sitemap.xml`
    - local Android Gradle release fields/output name when present
-5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, remote update metadata, release notes, APK output filename references, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
+5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
 6. Before verification and APK build, clean release-interfering temporary artifacts:
    - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
    - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
@@ -272,7 +276,7 @@ Default release workflow:
 15. Push `main`.
 16. Create and push the version tag.
 17. Create a GitHub Release and upload the APK.
-18. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, and local/remote branch sync.
+18. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync.
 19. Report:
     - version
     - commit

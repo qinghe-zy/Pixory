@@ -41,6 +41,19 @@ test('website release-facing files reference the current 2.1.13 release', () => 
   assert.doesNotMatch(read('docs/download.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
+test('release workflow requires README and update website pages', () => {
+  const agents = read('AGENTS.md');
+
+  assert.match(agents, /`README\.md`/);
+  assert.match(agents, /`docs\/download\.html`/);
+  assert.match(agents, /`docs\/updates\.html`/);
+  assert.match(agents, /`docs\/sitemap\.xml`/);
+  assert.match(agents, /README current-version text/);
+  assert.match(agents, /website download\/update pages/);
+  assert.match(agents, /remote release-facing website pages/);
+  assert.match(agents, /remote README/);
+});
+
 test('public docs describe privacy screenshots consistently with current behavior', () => {
   const docs = read('README.md') + read('docs/pixory-product-bid-handbook.md');
   assert.match(docs, /隐私模式允许截屏/);
