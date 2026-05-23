@@ -6,21 +6,21 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.1.12`
+[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.1.13`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.1.12
+### Pixory 2.1.13
 
-这一版统一 AI 相关页面的 light 设计，并补齐 Embedding 配置：
+这一版优化 AI 聊天、语音输入和视频长按体验：
 
-- AI 工作台、历史、知识库、材料、模型账号和会话设置统一为 warm light 视觉。
-- 聊天气泡、输入框、引用、思考块和文档阅读器全部接入 AI light token。
-- 模型账号高级设置新增 Embedding 接口，可单独覆盖默认服务地址。
-- 其他模型支持手动保存自定义 Embedding 模型 ID。
-- 数据库 schema 升至 19，用于保存独立 Embedding 接口地址。
+- AI 回复显示思考计时，完成后保留最终用时。
+- 聊天输入框支持最多六行自适应输入。
+- 重写和重新生成支持消息版本回看。
+- 麦克风按钮接入 Android 语音转文字。
+- 会话设置键盘避让和视频长按加速体验更稳定。
 
 下载地址：
 

@@ -729,7 +729,6 @@ export function VideoPlayerScreen({
   }
 
   function startHoldFastForward() {
-    showControls();
     clearLongPressTimer();
     isHoldingFastForwardRef.current = true;
     holdWasPlayingRef.current = isPlaying;

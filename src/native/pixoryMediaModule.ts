@@ -76,6 +76,7 @@ interface PixoryMediaNativeModule {
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
   computeFileSha256(sourceUri: string): Promise<string>;
   computeImageDHash(sourceUri: string): Promise<string>;
+  recognizeSpeech(): Promise<{ text: string }>;
   getInitialExternalOpen(): Promise<NativeExternalOpen>;
   getInitialShareIntent(): Promise<NativeShareIntent>;
   finishShareActivity(): Promise<boolean>;
@@ -180,6 +181,10 @@ export function computeFileSha256(sourceUri: string): Promise<string> {
 
 export function computeImageDHash(sourceUri: string): Promise<string> {
   return requireNativeModule().computeImageDHash(sourceUri);
+}
+
+export function recognizeSpeech(): Promise<{ text: string }> {
+  return requireNativeModule().recognizeSpeech();
 }
 
 export function getInitialExternalOpen(): Promise<NativeExternalOpen> {

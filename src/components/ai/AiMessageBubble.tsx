@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { SecureImage } from '../SecureImage';
@@ -19,9 +20,14 @@ interface AiMessageBubbleProps {
   space: PixorySpace;
   streaming?: boolean;
   generating?: boolean;
+  editingMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
   onEditUser: (messageId: string, content: string) => void;
+  onChangeEditDraft?: (content: string) => void;
+  onSubmitEdit: (messageId: string, content: string) => void;
+  onCancelEdit: () => void;
   onRegenerate: (messageId: string) => void;
+  onSelectVersion: (messageId: string, versionIndex: number) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
 }
 
@@ -31,18 +37,43 @@ export function AiMessageBubble({
   message,
   space,
   streaming = false,
+  editingMessageId = null,
   onCopy,
+  onCancelEdit,
+  onChangeEditDraft,
   onEditUser,
   onOpenCitation,
   onRegenerate,
+  onSelectVersion,
+  onSubmitEdit,
 }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
   const showAssistantAvatar = !isUser && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
-  const canEdit = isUser && !generating;
+  const editing = editingMessageId === message.id;
+  const canEdit = isUser && !generating && message.versionIndex === message.versionTotal;
   const canRegenerate = !isUser && !generating && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
+  const [editDraft, setEditDraft] = useState(message.content);
+
+  useEffect(() => {
+    if (editing) {
+      setEditDraft(message.content);
+    }
+  }, [editing, message.content]);
+
+  function updateEditDraft(nextDraft: string) {
+    setEditDraft(nextDraft);
+    onChangeEditDraft?.(nextDraft);
+  }
+
+  function selectVersion(offset: -1 | 1) {
+    const nextVersionIndex = Math.min(message.versionTotal, Math.max(1, message.versionIndex + offset));
+    if (nextVersionIndex !== message.versionIndex) {
+      onSelectVersion(message.id, nextVersionIndex);
+    }
+  }
 
   return (
     <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
@@ -58,14 +89,68 @@ export function AiMessageBubble({
       <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack]}>
         {!isUser ? (
           <View style={styles.thinkingWrap}>
-            <AiThinkingBlock label={message.modelSnapshotJson.includes('reasoning') ? '思路' : '摘要'} reasoningText={message.reasoningText} />
+            <AiThinkingBlock
+              completedAt={message.completedAt}
+              createdAt={message.createdAt}
+              reasoningText={message.reasoningText}
+              status={message.status}
+            />
           </View>
         ) : null}
         <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-          <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
+          {editing ? (
+            <View style={styles.inlineEditor}>
+              <TextInput
+                autoFocus
+                multiline
+                onChangeText={updateEditDraft}
+                placeholder="重写这条消息"
+                placeholderTextColor={aiLightColors.mutedSoft}
+                selectionColor={aiLightColors.coral}
+                style={styles.inlineEditorInput}
+                textAlignVertical="top"
+                value={editDraft}
+              />
+              <View style={styles.inlineEditorActions}>
+                <Pressable accessibilityLabel="取消重写" accessibilityRole="button" onPress={onCancelEdit} style={({ pressed }) => [styles.inlineEditorButton, pressed && styles.pressed]}>
+                  <Text style={styles.inlineEditorButtonText}>取消</Text>
+                </Pressable>
+                <Pressable accessibilityLabel="提交重写" accessibilityRole="button" disabled={!editDraft.trim()} onPress={() => onSubmitEdit(message.id, editDraft)} style={({ pressed }) => [styles.inlineEditorButton, styles.inlineEditorPrimary, !editDraft.trim() && styles.disabledAction, pressed && editDraft.trim() && styles.pressed]}>
+                  <Text style={[styles.inlineEditorButtonText, styles.inlineEditorPrimaryText]}>发送</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Text style={[styles.content, isUser ? styles.userText : styles.assistantText]}>{content}</Text>
+          )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </View>
         <View style={[styles.actionRow, isUser ? styles.userActionRow : styles.assistantActionRow]}>
+          {message.versionTotal > 1 ? (
+            <View style={styles.versionControl}>
+              <Pressable
+                accessibilityLabel="上一版消息"
+                accessibilityRole="button"
+                disabled={message.versionIndex <= 1}
+                hitSlop={8}
+                onPress={() => selectVersion(-1)}
+                style={({ pressed }) => [styles.versionButton, message.versionIndex <= 1 && styles.disabledAction, pressed && message.versionIndex > 1 && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.muted} name="chevron-back" size={14} />
+              </Pressable>
+              <Text style={styles.versionText}>{message.versionIndex}/{message.versionTotal}</Text>
+              <Pressable
+                accessibilityLabel="下一版消息"
+                accessibilityRole="button"
+                disabled={message.versionIndex >= message.versionTotal}
+                hitSlop={8}
+                onPress={() => selectVersion(1)}
+                style={({ pressed }) => [styles.versionButton, message.versionIndex >= message.versionTotal && styles.disabledAction, pressed && message.versionIndex < message.versionTotal && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.muted} name="chevron-forward" size={14} />
+              </Pressable>
+            </View>
+          ) : null}
           <Pressable
             accessibilityLabel="复制消息"
             accessibilityRole="button"
@@ -176,6 +261,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[1],
   },
   actionRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[1],
     paddingHorizontal: spacing[1],
@@ -195,6 +281,67 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: 'center',
     width: 28,
+  },
+  versionControl: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: 28,
+    paddingHorizontal: spacing[1],
+  },
+  versionButton: {
+    alignItems: 'center',
+    height: 24,
+    justifyContent: 'center',
+    width: 22,
+  },
+  versionText: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.muted,
+    fontWeight: '700',
+    minWidth: 28,
+    textAlign: 'center',
+  },
+  inlineEditor: {
+    gap: rhythm.microGap,
+    minWidth: 220,
+  },
+  inlineEditorInput: {
+    ...typography.textStyles.body,
+    color: aiLightColors.onDark,
+    lineHeight: 22,
+    maxHeight: 132,
+    minHeight: 44,
+    padding: 0,
+  },
+  inlineEditorActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    justifyContent: 'flex-end',
+  },
+  inlineEditorButton: {
+    alignItems: 'center',
+    borderColor: 'rgba(255,255,255,0.42)',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 30,
+    paddingHorizontal: spacing[3],
+  },
+  inlineEditorPrimary: {
+    backgroundColor: aiLightColors.onDark,
+    borderColor: aiLightColors.onDark,
+  },
+  inlineEditorButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.onDark,
+    fontWeight: '700',
+  },
+  inlineEditorPrimaryText: {
+    color: aiLightColors.coral,
   },
   disabledAction: {
     opacity: 0.36,

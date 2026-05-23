@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -11,6 +11,7 @@ import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
+import { recognizeSpeech } from '../native/pixoryMediaModule';
 import {
   createThreadFromContext,
   getCurrentChatModelLabel,
@@ -116,6 +117,7 @@ export function AiChatScreen({
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
+  const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
   const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
@@ -124,6 +126,36 @@ export function AiChatScreen({
   const thinking = generating;
   const citations = messages.some((message) => message.citations.length > 0);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+  const visibleMessages = useMemo(
+    () =>
+      messages.map((message) => {
+        const selectedVersionIndex = selectedVersionByMessageId[message.id] ?? message.versionTotal;
+        if (selectedVersionIndex >= message.versionTotal) {
+          return { ...message, versionIndex: message.versionTotal };
+        }
+        const selectedVersion = message.messageVersions.find((version) => version.versionIndex === selectedVersionIndex);
+        if (!selectedVersion) {
+          return { ...message, versionIndex: message.versionTotal };
+        }
+        return {
+          ...message,
+          content: selectedVersion.content,
+          reasoningText: selectedVersion.reasoningText,
+          errorMessage: selectedVersion.errorMessage,
+          providerId: selectedVersion.providerId,
+          modelId: selectedVersion.modelId,
+          modelSnapshotJson: selectedVersion.modelSnapshotJson,
+          promptSnapshotJson: selectedVersion.promptSnapshotJson,
+          citations: selectedVersion.citations,
+          createdAt: selectedVersion.messageCreatedAt,
+          updatedAt: selectedVersion.messageUpdatedAt,
+          completedAt: selectedVersion.messageCompletedAt,
+          status: selectedVersion.status,
+          versionIndex: selectedVersion.versionIndex,
+        };
+      }),
+    [messages, selectedVersionByMessageId]
+  );
   const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
     () => [
       { key: 'image', label: '上传图片', icon: 'image-outline', onPress: () => void pickChatImages() },
@@ -217,6 +249,7 @@ export function AiChatScreen({
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
     setEditingUserMessageId(null);
+    setSelectedVersionByMessageId({});
     setPendingAttachments([]);
     applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
@@ -386,10 +419,6 @@ export function AiChatScreen({
   }
 
   async function handleSend() {
-    if (editingUserMessageId) {
-      await handleRewrite();
-      return;
-    }
     const typedText = composerText.trim();
     const attachments = pendingAttachments;
     const content = buildChatMessageContent(typedText, attachments);
@@ -427,13 +456,12 @@ export function AiChatScreen({
     }
   }
 
-  async function handleRewrite() {
-    const content = composerText.trim();
-    if (!content || generating || !activeThreadId || !editingUserMessageId) {
+  async function handleSubmitInlineRewrite(messageId: string, nextContent: string) {
+    const content = nextContent.trim();
+    if (!content || generating || !activeThreadId) {
       return;
     }
-    const userMessageId = editingUserMessageId;
-    setComposerText('');
+    const userMessageId = messageId;
     setEditingUserMessageId(null);
     setGenerating(true);
     setErrorMessage(null);
@@ -455,7 +483,6 @@ export function AiChatScreen({
       });
       await reloadMessages(activeThreadId);
     } catch (error) {
-      setComposerText(content);
       setEditingUserMessageId(userMessageId);
       setErrorMessage(error instanceof Error ? error.message : '重写失败');
     } finally {
@@ -506,9 +533,34 @@ export function AiChatScreen({
       return;
     }
     setEditingUserMessageId(messageId);
-    setComposerText(content);
-    setPendingAttachments([]);
     setErrorMessage(null);
+  }
+
+  async function handleVoiceInput() {
+    try {
+      if (Platform.OS === 'android') {
+        const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          setErrorMessage('需要麦克风权限才能进行语音输入。');
+          return;
+        }
+      }
+      const result = await recognizeSpeech();
+      const recognizedText = result.text.trim();
+      if (!recognizedText) {
+        setErrorMessage('没有识别到语音内容。');
+        return;
+      }
+      setComposerText((current) => {
+        if (!current.trim()) {
+          return recognizedText;
+        }
+        return `${current}${current.endsWith('\n') ? '' : '\n'}${recognizedText}`;
+      });
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '语音识别失败');
+    }
   }
 
   function openCitation(citation: AiCitationRecord) {
@@ -574,21 +626,29 @@ export function AiChatScreen({
         {citations ? null : null}
 
         <View style={styles.messageList}>
-          {messages.length ? (
-            messages.map((message) => (
+          {visibleMessages.length ? (
+            visibleMessages.map((message) => (
               <AiMessageBubble
                 key={message.id}
                 assistantAvatar={avatarConfig}
+                editingMessageId={editingUserMessageId}
                 generating={generating}
                 message={message}
                 space={space}
                 onCopy={(targetMessage) => {
                   void copyMessageContent(targetMessage);
                 }}
+                onCancelEdit={() => setEditingUserMessageId(null)}
                 onEditUser={handleEditUserMessage}
                 onOpenCitation={openCitation}
                 onRegenerate={(messageId) => {
                   void handleRegenerate(messageId);
+                }}
+                onSelectVersion={(messageId, versionIndex) => {
+                  setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
+                }}
+                onSubmitEdit={(messageId, content) => {
+                  void handleSubmitInlineRewrite(messageId, content);
                 }}
                 streaming={generating && message.id === activeAssistantId}
               />
@@ -601,25 +661,18 @@ export function AiChatScreen({
         <AiChatComposer
           attachments={pendingAttachments}
           generating={generating}
-          editing={Boolean(editingUserMessageId)}
           onAddAttachment={() => setAttachmentSheetVisible(true)}
           onChangeText={setComposerText}
-          onCancelEdit={() => {
-            setEditingUserMessageId(null);
-            setComposerText('');
-            setPendingAttachments([]);
-          }}
           onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
-          onRetry={() => {
-            void handleRegenerate();
-          }}
           onSend={() => {
             void handleSend();
           }}
           onStop={() => {
             void handleStop();
           }}
-          retryAvailable={Boolean(latestAssistantMessage) && !generating}
+          onVoiceInput={() => {
+            void handleVoiceInput();
+          }}
           value={composerText}
         />
       </View>

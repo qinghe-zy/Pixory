@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
@@ -53,6 +53,8 @@ export function AiSessionConfigScreen({
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
+  const scrollViewRef = useRef<ScrollView | null>(null);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const promptConfigured = systemPrompt.trim().length > 0;
   const promptSummary = promptConfigured ? `已配置 ${systemPrompt.trim().length} 字` : '未配置';
@@ -80,6 +82,31 @@ export function AiSessionConfigScreen({
   useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardBottomInset(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardBottomInset(0);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  function handleSystemPromptFocus() {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 120);
+  }
 
   async function saveSessionSettings(): Promise<boolean> {
     if (!threadId) {
@@ -131,8 +158,10 @@ export function AiSessionConfigScreen({
 
   return (
     <AiLightScaffold
+      contentContainerStyle={keyboardBottomInset ? { paddingBottom: keyboardBottomInset + spacing[8] } : undefined}
       onBack={onBack}
       scrollable
+      scrollViewRef={scrollViewRef}
       subtitle={`${spaceLabel}${threadId != null ? ` · 会话 ${threadId}` : ''}`}
       title="会话设置"
     >
@@ -202,6 +231,7 @@ export function AiSessionConfigScreen({
               label="角色指令"
               minHeight={104}
               onChangeText={setSystemPrompt}
+              onFocus={handleSystemPromptFocus}
               placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
               value={systemPrompt}
             />

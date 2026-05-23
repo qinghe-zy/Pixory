@@ -1,29 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
+import type { AiMessageStatus } from '../../ai/types';
 
 interface AiThinkingBlockProps {
   reasoningText?: string | null;
-  label?: '思路' | '摘要';
+  status: AiMessageStatus;
+  createdAt: string;
+  completedAt?: string | null;
 }
 
-export function AiThinkingBlock({ reasoningText, label = '摘要' }: AiThinkingBlockProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!reasoningText) {
-    return null;
+function elapsedSeconds(createdAt: string, completedAt: string | null | undefined, now: number): number {
+  const startedAt = Date.parse(createdAt);
+  if (!Number.isFinite(startedAt)) {
+    return 0;
   }
+  const endedAt = completedAt ? Date.parse(completedAt) : now;
+  if (!Number.isFinite(endedAt)) {
+    return 0;
+  }
+  return Math.max(0, (endedAt - startedAt) / 1000);
+}
+
+export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt }: AiThinkingBlockProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const thinking = status === 'generating' || status === 'queued';
+  const duration = useMemo(() => elapsedSeconds(createdAt, thinking ? null : completedAt, now), [completedAt, createdAt, now, thinking]);
+  const label = `${thinking ? '正在思考中…' : '思考完成'} ${duration.toFixed(1)}秒`;
+
+  useEffect(() => {
+    if (!thinking) {
+      return undefined;
+    }
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, [thinking]);
 
   return (
     <View style={styles.wrap}>
-      <Pressable accessibilityRole="button" onPress={() => setExpanded((current) => !current)} style={styles.header}>
+      <Pressable accessibilityRole="button" disabled={!reasoningText} onPress={() => setExpanded((current) => !current)} style={styles.header}>
         <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
-      {expanded ? <Text style={styles.text}>{reasoningText}</Text> : null}
+      {expanded && reasoningText ? <Text style={styles.text}>{reasoningText}</Text> : null}
     </View>
   );
 }

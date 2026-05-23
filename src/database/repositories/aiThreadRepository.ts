@@ -29,6 +29,31 @@ export interface AiMessageRecord {
   completedAt: string | null;
 }
 
+export interface AiMessageVersionRecord {
+  id: string;
+  originalMessageId: string;
+  threadId: string;
+  versionIndex: number;
+  role: AiMessageRole;
+  status: AiMessageStatus;
+  content: string;
+  reasoningText: string | null;
+  errorMessage: string | null;
+  providerId: string | null;
+  modelId: string | null;
+  modelSnapshotJson: string;
+  promptSnapshotJson: string;
+  citations: AiCitationRecord[];
+  messageCreatedAt: string;
+  messageUpdatedAt: string;
+  messageCompletedAt: string | null;
+  createdAt: string;
+}
+
+export type AiMessageVersionRow = Omit<AiMessageVersionRecord, 'citations'> & {
+  citationsJson: string;
+};
+
 export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments'> & {
   includeIpDocuments: number;
   modelSnapshotJson: string;
@@ -114,6 +139,25 @@ export interface CreateAiMessageInput {
 
 export type UpdateAiMessagePatch = Partial<Omit<CreateAiMessageInput, 'id' | 'threadId' | 'role'>>;
 
+export interface CreateAiMessageVersionInput {
+  id: string;
+  originalMessageId: string;
+  threadId: string;
+  role: AiMessageRole;
+  status: AiMessageStatus;
+  content: string;
+  reasoningText?: string | null;
+  errorMessage?: string | null;
+  providerId?: string | null;
+  modelId?: string | null;
+  modelSnapshotJson?: string;
+  promptSnapshotJson?: string;
+  citations?: AiCitationRecord[];
+  messageCreatedAt: string;
+  messageUpdatedAt: string;
+  messageCompletedAt?: string | null;
+}
+
 export interface ReplaceCitationInput {
   id: string;
   sourceType: AiCitationSourceType;
@@ -126,6 +170,7 @@ export interface AiThreadExportSnapshot {
   thread: AiThreadRow;
   messages: AiMessageRecord[];
   citations: AiCitationRow[];
+  versions: AiMessageVersionRow[];
 }
 
 function mapThreadRow(row: AiThreadRow): AiThreadRecord {
@@ -158,6 +203,22 @@ function mapThreadHistoryRow(row: AiThreadRow & { knowledgeCategory: string | nu
   return {
     ...mapThreadRow(row),
     knowledgeCategory: row.knowledgeCategory ?? null,
+  };
+}
+
+function parseVersionCitations(citationsJson: string): AiCitationRecord[] {
+  try {
+    const parsed = JSON.parse(citationsJson);
+    return Array.isArray(parsed) ? parsed.filter((citation): citation is AiCitationRecord => citation && typeof citation.id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function mapMessageVersionRow(row: AiMessageVersionRow): AiMessageVersionRecord {
+  return {
+    ...row,
+    citations: parseVersionCitations(row.citationsJson),
   };
 }
 
@@ -288,7 +349,15 @@ export const aiThreadRepository = {
        ORDER BY ai_message_citations.createdAt ASC`,
       threadId
     );
-    return { thread, messages, citations };
+    const versions = await db.getAllAsync<AiMessageVersionRow>(
+      `SELECT ai_message_versions.*
+       FROM ai_message_versions
+       INNER JOIN ai_messages ON ai_messages.id = ai_message_versions.originalMessageId
+       WHERE ai_messages.threadId = ?
+       ORDER BY ai_message_versions.originalMessageId ASC, ai_message_versions.versionIndex ASC`,
+      threadId
+    );
+    return { thread, messages, citations, versions };
   },
 
   async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
@@ -395,6 +464,49 @@ export const aiThreadRepository = {
         citation.label,
         citation.locatorJson,
         citation.createdAt
+      );
+    }
+
+    for (const version of snapshot.versions ?? []) {
+      await db.runAsync(
+        `INSERT INTO ai_message_versions (
+          id,
+          originalMessageId,
+          threadId,
+          versionIndex,
+          role,
+          status,
+          content,
+          reasoningText,
+          errorMessage,
+          providerId,
+          modelId,
+          modelSnapshotJson,
+          promptSnapshotJson,
+          citationsJson,
+          messageCreatedAt,
+          messageUpdatedAt,
+          messageCompletedAt,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        version.id,
+        version.originalMessageId,
+        version.threadId,
+        version.versionIndex,
+        version.role,
+        version.status,
+        version.content,
+        version.reasoningText,
+        version.errorMessage,
+        version.providerId,
+        version.modelId,
+        version.modelSnapshotJson,
+        version.promptSnapshotJson,
+        version.citationsJson,
+        version.messageCreatedAt,
+        version.messageUpdatedAt,
+        version.messageCompletedAt,
+        version.createdAt
       );
     }
   },
@@ -547,6 +659,73 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC`,
       threadId
     );
+  },
+
+  async createMessageVersion(db: SQLiteDatabase, input: CreateAiMessageVersionInput): Promise<AiMessageVersionRecord> {
+    const now = createTimestamp();
+    const latest = await db.getFirstAsync<{ versionIndex: number }>(
+      `SELECT versionIndex FROM ai_message_versions
+       WHERE originalMessageId = ?
+       ORDER BY versionIndex DESC
+       LIMIT 1`,
+      input.originalMessageId
+    );
+    const versionIndex = (latest?.versionIndex ?? 0) + 1;
+    await db.runAsync(
+      `INSERT INTO ai_message_versions (
+        id,
+        originalMessageId,
+        threadId,
+        versionIndex,
+        role,
+        status,
+        content,
+        reasoningText,
+        errorMessage,
+        providerId,
+        modelId,
+        modelSnapshotJson,
+        promptSnapshotJson,
+        citationsJson,
+        messageCreatedAt,
+        messageUpdatedAt,
+        messageCompletedAt,
+        createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.originalMessageId,
+      input.threadId,
+      versionIndex,
+      input.role,
+      input.status,
+      input.content,
+      input.reasoningText ?? null,
+      input.errorMessage == null ? null : normalizeOptionalText(input.errorMessage) ?? null,
+      input.providerId ?? null,
+      input.modelId ?? null,
+      input.modelSnapshotJson ?? '{}',
+      input.promptSnapshotJson ?? '{}',
+      JSON.stringify(input.citations ?? []),
+      input.messageCreatedAt,
+      input.messageUpdatedAt,
+      input.messageCompletedAt ?? null,
+      now
+    );
+    const row = await db.getFirstAsync<AiMessageVersionRow>('SELECT * FROM ai_message_versions WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error(`AI message version ${input.id} was created but could not be reloaded.`);
+    }
+    return mapMessageVersionRow(row);
+  },
+
+  async listMessageVersions(db: SQLiteDatabase, messageId: string): Promise<AiMessageVersionRecord[]> {
+    const rows = await db.getAllAsync<AiMessageVersionRow>(
+      `SELECT * FROM ai_message_versions
+       WHERE originalMessageId = ?
+       ORDER BY versionIndex ASC`,
+      messageId
+    );
+    return rows.map(mapMessageVersionRow);
   },
 
   async replaceCitations(db: SQLiteDatabase, messageId: string, citations: ReplaceCitationInput[]): Promise<void> {

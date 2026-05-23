@@ -1,5 +1,6 @@
 package com.pixory.app.media
 
+import android.app.Activity
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
@@ -15,8 +16,11 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.MediaStore
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.webkit.MimeTypeMap
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -44,6 +48,62 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   override fun getName(): String = "PixoryMediaModule"
 
   private val ioExecutor = Executors.newFixedThreadPool(2)
+  private var speechRecognitionPromise: Promise? = null
+  private val speechActivityListener = object : BaseActivityEventListener() {
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode != SPEECH_RECOGNITION_REQUEST_CODE) {
+        return
+      }
+      val promise = speechRecognitionPromise ?: return
+      speechRecognitionPromise = null
+      if (resultCode != Activity.RESULT_OK) {
+        promise.reject("PIXORY_SPEECH_CANCELLED", "语音识别已取消。")
+        return
+      }
+      val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS).orEmpty()
+      val text = matches.firstOrNull()?.trim().orEmpty()
+      if (text.isEmpty()) {
+        promise.reject("PIXORY_SPEECH_EMPTY", "没有识别到语音内容。")
+        return
+      }
+      val result = Arguments.createMap()
+      result.putString("text", text)
+      promise.resolve(result)
+    }
+  }
+
+  init {
+    reactContext.addActivityEventListener(speechActivityListener)
+  }
+
+  @ReactMethod
+  fun recognizeSpeech(promise: Promise) {
+    val activity = reactApplicationContext.currentActivity
+    if (activity == null) {
+      promise.reject("PIXORY_SPEECH_NO_ACTIVITY", "当前无法打开语音识别。")
+      return
+    }
+    if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
+      promise.reject("PIXORY_SPEECH_UNAVAILABLE", "当前设备不支持语音识别。")
+      return
+    }
+    if (speechRecognitionPromise != null) {
+      promise.reject("PIXORY_SPEECH_BUSY", "语音识别正在进行中。")
+      return
+    }
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+      putExtra(RecognizerIntent.EXTRA_PROMPT, "请说出要发送给 AI 的内容")
+    }
+    speechRecognitionPromise = promise
+    try {
+      activity.startActivityForResult(intent, SPEECH_RECOGNITION_REQUEST_CODE)
+    } catch (error: Exception) {
+      speechRecognitionPromise = null
+      promise.reject("PIXORY_SPEECH_FAILED", error.message ?: "语音识别启动失败。")
+    }
+  }
 
   @ReactMethod
   fun copyUriToFileWithProgress(sourceUri: String, destinationUri: String, options: ReadableMap?, promise: Promise) {
@@ -769,5 +829,6 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     private const val MAX_ZIP_IMAGE_ENTRIES = 2000
     private const val MAX_ZIP_ENTRY_BYTES = 256L * 1024L * 1024L
     private const val MAX_ZIP_DECLARED_BYTES = 4L * 1024L * 1024L * 1024L
+    private const val SPEECH_RECOGNITION_REQUEST_CODE = 7304
   }
 }

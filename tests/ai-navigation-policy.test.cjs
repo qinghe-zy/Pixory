@@ -120,10 +120,13 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
     assert.match(service, new RegExp(expected));
   }
   assert.match(bubble, /onEditUser/);
+  assert.match(bubble, /editingMessageId/);
+  assert.match(bubble, /onSubmitEdit/);
+  assert.match(bubble, /onCancelEdit/);
   assert.match(bubble, /onRegenerate/);
-  assert.match(composer, /onCancelEdit/);
   assert.match(composer, /停止回复/);
-  assert.match(composer, /刷新回复/);
+  assert.doesNotMatch(composer, /刷新回复/);
+  assert.doesNotMatch(composer, /retryAvailable/);
 });
 
 test('AI chat composer supports image, video, and document attachments', () => {
@@ -177,7 +180,10 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(content, /backgroundColor:\s*aiLightColors\.canvas/);
   assert.match(content, /paddingBottom:\s*spacing\[3\]/);
   assert.match(composer, /styles\.composerShell/);
-  assert.match(composer, /multiline=\{false\}/);
+  assert.match(composer, /multiline/);
+  assert.match(composer, /MAX_COMPOSER_LINES/);
+  assert.match(composer, /onContentSizeChange/);
+  assert.match(composer, /scrollEnabled=\{/);
   assert.match(composer, /borderRadius:\s*radius\.md/);
   assert.match(composer, /backgroundColor:\s*aiLightColors\.canvas/);
   assert.match(composer, /borderColor:\s*aiLightColors\.hairline/);
@@ -186,10 +192,11 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(composer, /name="add"/);
   assert.match(composer, /placeholder="输入提示或需求"/);
   assert.match(composer, /name="mic-outline"/);
-  assert.match(composer, /name=\{editing \? 'checkmark' : 'paper-plane-outline'\}/);
+  assert.match(composer, /onVoiceInput/);
+  assert.match(composer, /name="paper-plane-outline"/);
   assert.match(composer, /height:\s*spacing\[8\]/);
   assert.match(composer, /width:\s*spacing\[8\]/);
-  assert.match(composer, /height:\s*spacing\[6\]/);
+  assert.match(composer, /maxHeight:\s*COMPOSER_INPUT_MAX_HEIGHT/);
   assert.match(composer, /minHeight:\s*spacing\[10\]/);
   assert.match(composer, /hitSlop=\{spacing\[2\]\}/);
   assert.doesNotMatch(composer, /width:\s*'94%'/);

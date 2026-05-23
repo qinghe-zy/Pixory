@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 19;
+export const DATABASE_VERSION = 20;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -483,9 +483,34 @@ CREATE TABLE IF NOT EXISTS ai_message_citations (
   FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ai_message_versions (
+  id TEXT PRIMARY KEY NOT NULL,
+  originalMessageId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  versionIndex INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'queued', 'generating', 'completed', 'failed', 'stopped')),
+  content TEXT NOT NULL DEFAULT '',
+  reasoningText TEXT,
+  errorMessage TEXT,
+  providerId TEXT,
+  modelId TEXT,
+  modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  promptSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  citationsJson TEXT NOT NULL DEFAULT '[]',
+  messageCreatedAt TEXT NOT NULL,
+  messageUpdatedAt TEXT NOT NULL,
+  messageCompletedAt TEXT,
+  createdAt TEXT NOT NULL,
+  UNIQUE(originalMessageId, versionIndex),
+  FOREIGN KEY (originalMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_ai_threads_space_updated_at ON ai_threads(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextType, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
+CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
 CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
 CREATE INDEX IF NOT EXISTS idx_ai_chunks_owner ON ai_chunks(space, ownerType, ownerId);
@@ -501,4 +526,31 @@ ALTER TABLE ai_role_cards ADD COLUMN avatarUri TEXT;
 
 export const MIGRATION_STATEMENTS_V19 = `
 ALTER TABLE ai_providers ADD COLUMN embeddingBaseUrl TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V20 = `
+CREATE TABLE IF NOT EXISTS ai_message_versions (
+  id TEXT PRIMARY KEY NOT NULL,
+  originalMessageId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  versionIndex INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  status TEXT NOT NULL CHECK (status IN ('draft', 'queued', 'generating', 'completed', 'failed', 'stopped')),
+  content TEXT NOT NULL DEFAULT '',
+  reasoningText TEXT,
+  errorMessage TEXT,
+  providerId TEXT,
+  modelId TEXT,
+  modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  promptSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  citationsJson TEXT NOT NULL DEFAULT '[]',
+  messageCreatedAt TEXT NOT NULL,
+  messageUpdatedAt TEXT NOT NULL,
+  messageCompletedAt TEXT,
+  createdAt TEXT NOT NULL,
+  UNIQUE(originalMessageId, versionIndex),
+  FOREIGN KEY (originalMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
 `;

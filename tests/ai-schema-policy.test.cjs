@@ -9,8 +9,9 @@ const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'src/database/index.ts'), 'utf8');
 
 test('AI migration bumps database version and creates core local tables', () => {
-  assert.match(schema, /DATABASE_VERSION = 19/);
+  assert.match(schema, /DATABASE_VERSION = 20/);
   assert.match(schema, /MIGRATION_STATEMENTS_V19/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V20/);
   assert.match(schema, /embeddingBaseUrl TEXT/);
   for (const table of [
     'ai_providers',
@@ -23,6 +24,7 @@ test('AI migration bumps database version and creates core local tables', () => 
     'ai_chunks',
     'ai_embeddings',
     'ai_message_citations',
+    'ai_message_versions',
   ]) {
     assert.match(schema, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
@@ -40,9 +42,11 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /MIGRATION_STATEMENTS_V17/);
   assert.match(db, /MIGRATION_STATEMENTS_V18/);
   assert.match(db, /MIGRATION_STATEMENTS_V19/);
+  assert.match(db, /MIGRATION_STATEMENTS_V20/);
   assert.match(db, /currentVersion < 17/);
   assert.match(db, /currentVersion < 18/);
   assert.match(db, /currentVersion < 19/);
+  assert.match(db, /currentVersion < 20/);
   assert.match(index, /aiProviderRepository/);
   assert.match(index, /aiThreadRepository/);
   assert.match(index, /aiKnowledgeRepository/);

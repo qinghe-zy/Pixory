@@ -1,3 +1,5 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
 import {
   aiProviderRepository,
   aiRoleCardRepository,
@@ -10,7 +12,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiMessageRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
@@ -110,6 +112,9 @@ const COMMON_TITLE_PREFIXES = [
 
 export type AiMessageWithCitations = AiMessageRecord & {
   citations: AiCitationRecord[];
+  messageVersions: AiMessageVersionRecord[];
+  versionIndex: number;
+  versionTotal: number;
 };
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
@@ -306,10 +311,16 @@ export async function listThreadMessages(space: PixorySpace, threadId: string): 
   return runWithDatabaseSpace(space, async (db) => {
     const messages = await aiThreadRepository.listMessages(db, threadId);
     return Promise.all(
-      messages.map(async (message) => ({
-        ...message,
-        citations: await aiThreadRepository.listCitations(db, message.id),
-      }))
+      messages.map(async (message) => {
+        const messageVersions = await aiThreadRepository.listMessageVersions(db, message.id);
+        return {
+          ...message,
+          citations: await aiThreadRepository.listCitations(db, message.id),
+          messageVersions,
+          versionIndex: messageVersions.length + 1,
+          versionTotal: messageVersions.length + 1,
+        };
+      })
     );
   });
 }
@@ -472,6 +483,31 @@ async function markAssistantFailed(space: PixorySpace, assistantMessageId: strin
       completedAt: new Date().toISOString(),
     })
   );
+}
+
+async function snapshotMessageVersion(
+  db: SQLiteDatabase,
+  message: AiMessageRecord
+): Promise<AiMessageVersionRecord> {
+  const citations = await aiThreadRepository.listCitations(db, message.id);
+  return aiThreadRepository.createMessageVersion(db, {
+    id: createAiId('aimver'),
+    originalMessageId: message.id,
+    threadId: message.threadId,
+    role: message.role,
+    status: message.status,
+    content: message.content,
+    reasoningText: message.reasoningText,
+    errorMessage: message.errorMessage,
+    providerId: message.providerId,
+    modelId: message.modelId,
+    modelSnapshotJson: message.modelSnapshotJson,
+    promptSnapshotJson: message.promptSnapshotJson,
+    citations,
+    messageCreatedAt: message.createdAt,
+    messageUpdatedAt: message.updatedAt,
+    messageCompletedAt: message.completedAt,
+  });
 }
 
 function buildChatHistory(messages: AiMessageRecord[], userMessageId: string) {
@@ -687,6 +723,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     }
     const trailingIds = messages.slice(assistantIndex + 1).map((message) => message.id);
     await db.withTransactionAsync(async () => {
+      await snapshotMessageVersion(db, assistantMessage);
       if (trailingIds.length > 0) {
         await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
       }
@@ -721,7 +758,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     throw new Error('AI thread was not found.');
   }
 
-  const assistantMessageId = createAiId('aimsg');
+  let assistantMessageId = createAiId('aimsg');
   await runWithDatabaseSpace(input.space, async (db) => {
     const messages = await aiThreadRepository.listMessages(db, thread.id);
     const userIndex = messages.findIndex((message) => message.id === input.userMessageId);
@@ -729,8 +766,19 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     if (!userMessage || userMessage.role !== 'user') {
       throw new Error('AI user message was not found.');
     }
-    const trailingIds = messages.slice(userIndex + 1).map((message) => message.id);
+    const nextAssistantIndex = messages.findIndex((message, index) => index > userIndex && message.role === 'assistant');
+    const nextAssistant = nextAssistantIndex >= 0 ? messages[nextAssistantIndex] : null;
+    if (nextAssistant) {
+      assistantMessageId = nextAssistant.id;
+    }
+    const trailingIds = messages
+      .slice(nextAssistant ? nextAssistantIndex + 1 : userIndex + 1)
+      .map((message) => message.id);
     await db.withTransactionAsync(async () => {
+      await snapshotMessageVersion(db, userMessage);
+      if (nextAssistant) {
+        await snapshotMessageVersion(db, nextAssistant);
+      }
       await aiThreadRepository.updateMessage(db, input.userMessageId, {
         status: 'completed',
         content,
@@ -740,13 +788,15 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
       if (trailingIds.length > 0) {
         await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
       }
-      await aiThreadRepository.createMessage(db, {
-        id: assistantMessageId,
-        threadId: thread.id,
-        role: 'assistant',
-        status: 'generating',
-        content: '',
-      });
+      if (!nextAssistant) {
+        await aiThreadRepository.createMessage(db, {
+          id: assistantMessageId,
+          threadId: thread.id,
+          role: 'assistant',
+          status: 'generating',
+          content: '',
+        });
+      }
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: content.slice(0, 80),
       });

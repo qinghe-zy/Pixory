@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -14,19 +14,21 @@ export interface AiComposerAttachment {
   size?: number | null;
 }
 
+const MAX_COMPOSER_LINES = 6;
+const COMPOSER_INPUT_LINE_HEIGHT = 22;
+const COMPOSER_INPUT_MIN_HEIGHT = spacing[6];
+const COMPOSER_INPUT_MAX_HEIGHT = COMPOSER_INPUT_LINE_HEIGHT * MAX_COMPOSER_LINES;
+
 interface AiChatComposerProps {
   value: string;
   generating: boolean;
-  editing?: boolean;
-  retryAvailable?: boolean;
   attachments?: AiComposerAttachment[];
   onAddAttachment: () => void;
   onChangeText: (value: string) => void;
-  onCancelEdit?: () => void;
   onRemoveAttachment?: (id: string) => void;
+  onVoiceInput: () => void;
   onSend: () => void;
   onStop: () => void;
-  onRetry: () => void;
 }
 
 function getAttachmentIcon(kind: AiComposerAttachment['kind']): keyof typeof Ionicons.glyphMap {
@@ -52,30 +54,20 @@ function formatAttachmentSize(size?: number | null): string | null {
 export function AiChatComposer({
   value,
   generating,
-  editing = false,
-  retryAvailable = false,
   attachments = [],
   onAddAttachment,
-  onCancelEdit,
   onChangeText,
   onRemoveAttachment,
+  onVoiceInput,
   onSend,
   onStop,
-  onRetry,
 }: AiChatComposerProps) {
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !generating;
   const inputRef = useRef<TextInput>(null);
+  const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
 
   return (
     <View style={styles.container}>
-      {editing ? (
-        <View style={styles.editBar}>
-          <Text style={styles.editText}>重写</Text>
-          <Pressable accessibilityLabel="取消重写" accessibilityRole="button" onPress={onCancelEdit} style={({ pressed }) => [styles.editClose, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.muted} name="close" size={16} />
-          </Pressable>
-        </View>
-      ) : null}
       {attachments.length ? (
         <View style={styles.attachmentRail}>
           {attachments.map((attachment) => {
@@ -102,47 +94,49 @@ export function AiChatComposer({
         </View>
       ) : null}
       <View style={styles.composerShell}>
-        <Pressable accessibilityLabel="添加附件" accessibilityRole="button" disabled={generating || editing} hitSlop={spacing[2]} onPress={onAddAttachment} style={({ pressed }) => [styles.addButton, (generating || editing) && styles.disabled, pressed && !(generating || editing) && styles.pressed]}>
+        <Pressable accessibilityLabel="添加附件" accessibilityRole="button" disabled={generating} hitSlop={spacing[2]} onPress={onAddAttachment} style={({ pressed }) => [styles.addButton, generating && styles.disabled, pressed && !generating && styles.pressed]}>
           <Ionicons color={aiLightColors.coral} name="add" size={spacing[6]} />
         </Pressable>
         <TextInput
           allowFontScaling={false}
           maxFontSizeMultiplier={1}
           ref={inputRef}
-          multiline={false}
+          multiline
           numberOfLines={1}
+          onContentSizeChange={(event) => {
+            const nextHeight = Math.min(
+              COMPOSER_INPUT_MAX_HEIGHT,
+              Math.max(COMPOSER_INPUT_MIN_HEIGHT, event.nativeEvent.contentSize.height)
+            );
+            setInputHeight(nextHeight);
+          }}
           onChangeText={onChangeText}
           placeholder="输入提示或需求"
           placeholderTextColor={aiLightColors.mutedSoft}
           selectionColor={aiLightColors.coral}
-          style={styles.input}
-          textAlignVertical="center"
+          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+          style={[styles.input, { height: inputHeight }]}
+          textAlignVertical="top"
           value={value}
         />
         <View style={styles.sideActions}>
-          {retryAvailable ? (
-            <Pressable accessibilityLabel="刷新回复" accessibilityRole="button" hitSlop={spacing[2]} onPress={onRetry} style={({ pressed }) => [styles.micButton, pressed && styles.pressed]}>
-              <Ionicons color={aiLightColors.coral} name="refresh-outline" size={spacing[5]} />
-            </Pressable>
-          ) : (
-            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.micButton}>
-              <Ionicons color={aiLightColors.coral} name="mic-outline" size={spacing[5]} />
-            </View>
-          )}
+          <Pressable accessibilityLabel="语音输入" accessibilityRole="button" disabled={generating} hitSlop={spacing[2]} onPress={onVoiceInput} style={({ pressed }) => [styles.micButton, generating && styles.disabled, pressed && !generating && styles.pressed]}>
+            <Ionicons color={aiLightColors.coral} name="mic-outline" size={spacing[5]} />
+          </Pressable>
           {generating ? (
             <Pressable accessibilityLabel="停止回复" accessibilityRole="button" hitSlop={spacing[2]} onPress={onStop} style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}>
               <Ionicons color={aiLightColors.onDark} name="stop" size={spacing[5]} />
             </Pressable>
           ) : (
             <Pressable
-              accessibilityLabel={editing ? '提交重写' : '发送'}
+              accessibilityLabel="发送"
               accessibilityRole="button"
               disabled={!canSend}
               hitSlop={spacing[2]}
               onPress={onSend}
               style={({ pressed }) => [styles.sendButton, !canSend && styles.disabled, pressed && canSend && styles.pressed]}
             >
-              <Ionicons color={aiLightColors.onDark} name={editing ? 'checkmark' : 'paper-plane-outline'} size={spacing[5]} />
+              <Ionicons color={aiLightColors.onDark} name="paper-plane-outline" size={spacing[5]} />
             </Pressable>
           )}
         </View>
@@ -193,31 +187,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 24,
   },
-  editBar: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-    paddingLeft: spacing[3],
-    paddingRight: spacing[1],
-    paddingVertical: spacing[1],
-  },
-  editText: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
-  },
-  editClose: {
-    alignItems: 'center',
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
-  },
   composerShell: {
-    alignItems: 'center',
+    alignItems: 'flex-end',
     backgroundColor: aiLightColors.canvas,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
@@ -247,8 +218,9 @@ const styles = StyleSheet.create({
     fontSize: typography.size.body,
     fontWeight: '400',
     includeFontPadding: false,
-    lineHeight: 22,
-    height: spacing[6],
+    lineHeight: COMPOSER_INPUT_LINE_HEIGHT,
+    maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
+    minHeight: COMPOSER_INPUT_MIN_HEIGHT,
     paddingHorizontal: 0,
     paddingVertical: 0,
   },

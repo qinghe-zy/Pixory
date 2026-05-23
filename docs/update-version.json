@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.12",
-  "versionCode": 226,
+  "version": "2.1.13",
+  "versionCode": 227,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.12 已发布，统一 AI light 设计并补齐 Embedding 接口配置。",
+  "message": "Pixory 2.1.13 已发布，优化 AI 聊天、语音输入和视频长按体验。",
   "releaseNotes": [
-    "AI 工作台、历史、知识库、材料、模型账号和会话设置统一为 warm light 视觉。",
-    "聊天气泡、输入框、引用、思考块和文档阅读器全部接入 AI light token。",
-    "模型账号高级设置新增 Embedding 接口和自定义 Embedding 模型配置。"
+    "AI 聊天新增思考计时、多行输入、气泡内重写和消息版本回看。",
+    "麦克风按钮接入 Android 语音转文字，回复后不再变成刷新按钮。",
+    "会话设置键盘避让更稳定，视频长按加速不再弹出控制栏。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

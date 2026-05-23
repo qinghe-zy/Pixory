@@ -29,19 +29,19 @@ test('website pages form a continuous previous and next reading path', () => {
   }
 });
 
-test('website release-facing files reference the current 2.1.12 release', () => {
-  assert.match(read('docs/download.html'), /<div class="version-number">2\.1\.12<\/div>/);
-  assert.match(read('docs/download.html'), /versionCode 226/);
-  assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.1\.12<\/h2>/);
-  assert.match(read('docs/updates.html'), /AI 全页面 light 统一/);
-  assert.match(read('docs/updates.html'), /Embedding 接口补齐/);
+test('website release-facing files reference the current 2.1.13 release', () => {
+  assert.match(read('docs/download.html'), /<div class="version-number">2\.1\.13<\/div>/);
+  assert.match(read('docs/download.html'), /versionCode 227/);
+  assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.1\.13<\/h2>/);
+  assert.match(read('docs/updates.html'), /AI 聊天回看/);
+  assert.match(read('docs/updates.html'), /语音转文字/);
   assert.match(read('docs/features.html'), /会话整理/);
-  assert.match(read('README.md'), /当前版本 `2\.1\.12`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.1\.12/);
+  assert.match(read('README.md'), /当前版本 `2\.1\.13`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.1\.13/);
   assert.doesNotMatch(read('docs/download.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
-test('public docs describe privacy screenshots consistently with 2.1.12 behavior', () => {
+test('public docs describe privacy screenshots consistently with current behavior', () => {
   const docs = read('README.md') + read('docs/pixory-product-bid-handbook.md');
   assert.match(docs, /隐私模式允许截屏/);
   assert.match(docs, /允许系统截屏/);
@@ -50,6 +50,6 @@ test('public docs describe privacy screenshots consistently with 2.1.12 behavior
 
 test('website sitemap lastmod is synchronized with the release update date', () => {
   const sitemap = read('docs/sitemap.xml');
-  const matches = sitemap.match(/<lastmod>2026-05-22<\/lastmod>/g) ?? [];
+  const matches = sitemap.match(/<lastmod>2026-05-23<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
