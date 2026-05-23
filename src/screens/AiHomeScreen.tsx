@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
-import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
+import { aiLightColors } from '../components/ai/aiLightTheme';
 import { listAiHistoryThreads } from '../ai/aiChatService';
 import { listRecentMaterials } from '../ai/aiDocumentService';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+
+const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
 interface AiHomeScreenProps {
   footer?: ReactNode;
@@ -24,27 +26,6 @@ interface AiHomeScreenProps {
   onOpenProviderSettings: () => void;
 }
 
-const START_ENTRIES = [
-  {
-    title: '开始普通聊天',
-    tint: aiLightColors.coral,
-    icon: 'chatbubble-ellipses-outline',
-    iconColor: aiLightColors.onDark,
-  },
-  {
-    title: '问问某个 IP',
-    tint: aiLightColors.card,
-    icon: 'albums-outline',
-    iconColor: aiLightColors.coralActive,
-  },
-  {
-    title: '连接知识库',
-    tint: aiLightColors.surface,
-    icon: 'library-outline',
-    iconColor: aiLightColors.coralActive,
-  },
-] as const;
-
 export function AiHomeScreen({
   footer,
   space,
@@ -56,7 +37,6 @@ export function AiHomeScreen({
   onOpenMaterials,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
-  const startHandlers = [onStartNormalChat, onStartIpChat, onStartKnowledgeBase];
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
   const spaceLabel = space === 'personal' ? '私密空间' : undefined;
@@ -87,8 +67,10 @@ export function AiHomeScreen({
 
   return (
     <AiLightScaffold
+      backgroundVariant="aiChat"
       contentContainerStyle={styles.screenContent}
       footer={footer}
+      headerDividerVisible={false}
       rightAction={(
         <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="settings-outline" size={20} />
@@ -98,32 +80,44 @@ export function AiHomeScreen({
       subtitle={spaceLabel}
       title="AI 工作台"
     >
-      <View style={styles.hero}>
-        {space === 'personal' ? <View style={styles.statusPill}>
-          <View style={styles.statusDot} />
-          <Text style={styles.statusText}>私密空间</Text>
-        </View> : null}
-      </View>
+      {space === 'personal' ? (
+        <View style={styles.hero}>
+          <View style={styles.statusPill}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>私密空间</Text>
+          </View>
+        </View>
+      ) : null}
 
-      <View style={styles.entryRow}>
-        {START_ENTRIES.map((entry, index) => (
-          <Pressable
-            accessibilityRole="button"
-            key={entry.title}
-            onPress={startHandlers[index]}
-            style={({ pressed }) => [styles.entry, { backgroundColor: entry.tint }, pressed && styles.pressed]}
-          >
-            <View style={styles.entryIcon}>
-              <Ionicons color={entry.iconColor} name={entry.icon} size={30} />
-            </View>
-            <View style={styles.entryFooter}>
-              <Text numberOfLines={2} style={styles.entryTitle}>{entry.title}</Text>
-              <View style={styles.entryArrow}>
-                <Ionicons color={entry.iconColor} name="chevron-forward" size={20} />
-              </View>
-            </View>
-          </Pressable>
-        ))}
+      <View style={styles.actionStack}>
+        <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}>
+          <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
+          <View style={styles.primaryIcon}>
+            <Ionicons color={aiLightColors.onDark} name="chatbubble-ellipses-outline" size={34} />
+          </View>
+          <View style={styles.primaryCopy}>
+            <Text style={styles.primaryTitle}>开始聊天</Text>
+            <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
+          </View>
+          <View style={styles.primaryArrow}>
+            <Ionicons color={aiLightColors.coralActive} name="chevron-forward" size={26} />
+          </View>
+        </Pressable>
+
+        <View style={styles.secondaryActionRow}>
+          <SecondaryAction
+            description="带着 IP 资料聊"
+            icon="albums-outline"
+            onPress={onStartIpChat}
+            title="问问某个 IP"
+          />
+          <SecondaryAction
+            description="引用材料回答"
+            icon="library-outline"
+            onPress={onStartKnowledgeBase}
+            title="连接知识库"
+          />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -194,6 +188,28 @@ interface SectionTitleProps {
   onPress?: () => void;
 }
 
+interface SecondaryActionProps {
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  onPress: () => void;
+}
+
+function SecondaryAction({ description, icon, onPress, title }: SecondaryActionProps) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
+      <View style={styles.secondaryIcon}>
+        <Ionicons color={aiLightColors.coralActive} name={icon} size={20} />
+      </View>
+      <View style={styles.secondaryCopy}>
+        <Text numberOfLines={1} style={styles.secondaryTitle}>{title}</Text>
+        <Text numberOfLines={1} style={styles.secondaryDescription}>{description}</Text>
+      </View>
+      <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={19} />
+    </Pressable>
+  );
+}
+
 function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
   return (
     <View style={styles.sectionHeader}>
@@ -251,7 +267,7 @@ function formatRecentTime(value: string) {
 
 const styles = StyleSheet.create({
   screenContent: {
-    gap: rhythm.entryCardGap,
+    gap: rhythm.screenSectionGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   hero: {
@@ -290,49 +306,106 @@ const styles = StyleSheet.create({
     color: aiLightColors.coralActive,
     fontWeight: '500',
   },
-  entryRow: {
-    flexDirection: 'row',
-    gap: rhythm.compactGridGap,
-  },
-  entry: {
-    flex: 1,
-    justifyContent: 'space-between',
-    minHeight: 116,
-    borderRadius: radius.md,
-    padding: spacing[3],
-  },
   pressed: {
     opacity: 0.78,
   },
-  entryIcon: {
+  actionStack: {
+    gap: rhythm.inlineGap,
+  },
+  primaryChatCard: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(250, 249, 245, 0.7)',
-    borderRadius: radius.md,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
-  },
-  entryFooter: {
-    alignItems: 'flex-end',
+    backgroundColor: aiLightColors.coral,
+    borderRadius: radius.xxl,
     flexDirection: 'row',
-    gap: rhythm.microGap,
-    justifyContent: 'space-between',
+    gap: spacing[5],
+    minHeight: 142,
+    overflow: 'hidden',
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[6],
+    position: 'relative',
   },
-  entryTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
+  primaryCardPattern: {
+    height: 152,
+    opacity: 0.1,
+    position: 'absolute',
+    right: -spacing[4],
+    top: -spacing[1],
+    width: 112,
+  },
+  primaryIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(250, 249, 245, 0.24)',
+    borderRadius: radius.pill,
+    height: 68,
+    justifyContent: 'center',
+    width: 68,
+  },
+  primaryCopy: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 19,
+    gap: rhythm.microGap,
   },
-  entryArrow: {
+  primaryTitle: {
+    ...typography.textStyles.cardTitle,
+    color: aiLightColors.onDark,
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 31,
+  },
+  primaryDescription: {
+    ...typography.textStyles.body,
+    color: 'rgba(250, 249, 245, 0.82)',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  primaryArrow: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
-    height: 34,
+    height: 52,
     justifyContent: 'center',
-    width: 34,
+    width: 52,
+  },
+  secondaryActionRow: {
+    flexDirection: 'row',
+    gap: rhythm.compactGridGap,
+  },
+  secondaryAction: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    minHeight: 86,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[3],
+  },
+  secondaryIcon: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.pill,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  secondaryCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  secondaryTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  secondaryDescription: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontSize: 11,
+    lineHeight: 15,
   },
   section: {
     gap: rhythm.cardContentGap,
@@ -348,16 +421,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.textStyles.sectionTitle,
     color: aiLightColors.ink,
-    fontFamily: aiLightDisplayFont,
-    fontWeight: '400',
-    fontSize: 20,
-    lineHeight: 28,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
   },
   sectionUnderline: {
     backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
-    height: 4,
-    width: 26,
+    height: 3,
+    width: 24,
   },
   sectionAction: {
     alignItems: 'center',

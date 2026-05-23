@@ -27,9 +27,15 @@ test('AI routes are registered for workbench, chat, settings, history, materials
 
 test('AI workbench exposes the three first-version starts and no disconnected default warning', () => {
   const content = home();
-  assert.match(content, /开始普通聊天/);
+  assert.match(content, /开始聊天/);
   assert.match(content, /问问某个 IP/);
   assert.match(content, /连接知识库/);
+  assert.match(content, /primaryChatCard/);
+  assert.match(content, /secondaryAction/);
+  assert.match(content, /backgroundVariant="aiChat"/);
+  assert.match(content, /headerDividerVisible=\{false\}/);
+  assert.doesNotMatch(content, /START_ENTRIES/);
+  assert.doesNotMatch(content, /entryRow/);
   assert.match(content, /AiLightScaffold/);
   assert.match(content, /title="AI 工作台"/);
   assert.doesNotMatch(content, />Pixory</);
@@ -228,7 +234,8 @@ test('AI custom top bars use safe status-bar spacing and compact workbench layou
     assert.match(content, /layout\.pageTopOffset/);
   }
   assert.match(homeContent, /AiLightScaffold/);
-  assert.match(homeContent, /rhythm\.entryCardGap/);
+  assert.match(homeContent, /rhythm\.screenSectionGap/);
+  assert.match(homeContent, /rhythm\.inlineGap/);
   assert.doesNotMatch(homeContent, /知识库与资料/);
 });
 

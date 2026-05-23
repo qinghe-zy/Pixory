@@ -16,14 +16,17 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen } from '../AppScreen';
+import type { PageBackgroundVariant } from '../../design/backgrounds';
 import { layout, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 
 interface AiLightScaffoldProps {
+  backgroundVariant?: PageBackgroundVariant;
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   errorMessage?: string | null;
   footer?: ReactNode;
+  headerDividerVisible?: boolean;
   loading?: boolean;
   onBack?: () => void;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -36,10 +39,12 @@ interface AiLightScaffoldProps {
 }
 
 export function AiLightScaffold({
+  backgroundVariant,
   children,
   contentContainerStyle,
   errorMessage,
   footer,
+  headerDividerVisible = true,
   loading = false,
   onBack,
   onScroll,
@@ -56,6 +61,7 @@ export function AiLightScaffold({
   return (
     <AppScreen
       backgroundColor={aiLightColors.canvas}
+      backgroundVariant={backgroundVariant}
       contentStyle={contentContainerStyle}
       footer={footer}
       footerStyle={styles.footer}
@@ -63,7 +69,7 @@ export function AiLightScaffold({
       scrollViewRef={scrollViewRef}
       scrollable={scrollable}
     >
-      <View style={[styles.header, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+      <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
         <View style={styles.side}>
           {onBack ? (
             <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={10} onPress={onBack} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
@@ -97,6 +103,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: layout.headerHeight,
+  },
+  headerNoDivider: {
+    borderBottomWidth: 0,
   },
   side: {
     alignItems: 'center',
