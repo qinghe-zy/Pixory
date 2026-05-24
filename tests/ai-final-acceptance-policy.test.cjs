@@ -104,8 +104,8 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /ROLE_INSTRUCTION_WEIGHTS/);
   assert.match(sessionConfig, /权重等级/);
   assert.match(sessionConfig, /setRoleInstructionWeight/);
-  assert.match(sessionConfig, /保存并开始聊天/);
-  assert.match(sessionConfig, /仅保存设置/);
+  assert.match(sessionConfig, /保存角色指令并开始聊天/);
+  assert.match(sessionConfig, /仅保存角色指令/);
   assert.match(roleEditor, /onApplyRoleCard/);
   assert.match(roleEditor, /ImagePicker\.launchImageLibraryAsync/);
   assert.match(roleEditor, /copyAiRoleAvatarToAppStorage/);
@@ -174,6 +174,16 @@ test('AI session settings autosave lightweight options and separates dangerous d
   assert.doesNotMatch(sessionConfig, /subtitle=\{`\$\{spaceLabel\}\$\{threadId/);
   assert.match(sessionConfig, /dangerSection/);
   assert.match(sessionConfig, /删除当前会话/);
+});
+
+test('AI session settings clearly distinguish autosaved options from role instruction saves', () => {
+  const session = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(session, /这些选项会自动保存/);
+  assert.match(session, /角色指令需要点击保存后生效/);
+  assert.match(session, /保存角色指令并开始聊天/);
+  assert.match(session, /仅保存角色指令/);
+  assert.match(session, /dangerSection/);
 });
 
 test('AI reply preference is per-thread and only adds lightweight prompt hints when selected', () => {

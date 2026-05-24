@@ -356,6 +356,7 @@ export function AiSessionConfigScreen({
 
         <AiLightCard>
           <Text style={styles.sectionTitle}>回复设置</Text>
+          <Text style={styles.caption}>资料范围、回复倾向和深度记忆这些选项会自动保存。</Text>
           <View style={styles.settingGroup}>
             <Text style={styles.caption}>资料范围</Text>
             <View style={styles.chips}>
@@ -429,6 +430,7 @@ export function AiSessionConfigScreen({
           </Pressable>
           {advancedPromptVisible ? (
             <View style={styles.advancedContent}>
+              <Text style={styles.caption}>角色指令需要点击保存后生效，避免输入过程中频繁改写当前会话。</Text>
               <View style={styles.weightRow}>
                 <Text style={styles.caption}>权重等级</Text>
                 <View style={styles.weightChips}>
@@ -456,8 +458,8 @@ export function AiSessionConfigScreen({
         </AiLightCard>
 
           <View style={styles.actions}>
-            <AiLightButton label="保存并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
-            <AiLightButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
+            <AiLightButton label="保存角色指令并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+            <AiLightButton label="仅保存角色指令" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
             <View style={styles.dangerSection}>
               <Pressable
                 accessibilityRole="button"

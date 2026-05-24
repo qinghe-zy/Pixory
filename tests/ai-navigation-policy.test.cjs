@@ -407,8 +407,8 @@ test('AI session settings avoid one overloaded button cluster', () => {
   assert.doesNotMatch(sessionConfig, /<PrimaryButton label="模型账号"/);
   assert.doesNotMatch(sessionConfig, /选择或编辑角色卡/);
   assert.doesNotMatch(sessionConfig, /minHeight=\{132\}/);
-  assert.match(actionsBlock, /保存并开始聊天/);
-  assert.match(actionsBlock, /仅保存设置/);
+  assert.match(actionsBlock, /保存角色指令并开始聊天/);
+  assert.match(actionsBlock, /仅保存角色指令/);
   assert.doesNotMatch(actionsBlock, /模型账号/);
 });
 
@@ -481,6 +481,27 @@ test('AI chat and history expose recent switcher quick new chat and searchable g
   assert.match(history, /historyGroupLabel/);
   assert.match(history, /过去 7 天/);
   assert.match(repository, /lastMessagePreview LIKE/);
+});
+
+test('AI history search is debounced and older chats are grouped by month', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /debouncedSearchText/);
+  assert.match(history, /setTimeout\(\(\) => setDebouncedSearchText\(searchText\), 300\)/);
+  assert.match(history, /searchText: debouncedSearchText/);
+  assert.match(history, /过去 30 天/);
+  assert.match(history, /toLocaleDateString\('zh-CN', \{ year: 'numeric', month: 'long' \}\)/);
+});
+
+test('AI history archive swipe follows the finger and snaps with animation', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /Animated/);
+  assert.match(history, /swipeAnimatedValuesRef/);
+  assert.match(history, /Animated\.spring/);
+  assert.match(history, /useNativeDriver: true/);
+  assert.match(history, /onPanResponderMove/);
+  assert.match(history, /translateX: swipeTranslateX/);
 });
 
 test('AI home recent continue rows show last chat time to the minute', () => {
