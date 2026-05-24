@@ -160,7 +160,7 @@ function AiMessageBubbleComponent({
               </View>
             </View>
           ) : isUser ? (
-            <Text style={[styles.content, styles.userText]}>{content}</Text>
+            <Text selectable style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
             <>
               {waitingForFirstToken ? <AiTypingIndicator /> : <AiMessageContent content={content} />}

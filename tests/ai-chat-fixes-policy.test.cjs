@@ -170,7 +170,7 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   const citations = read('src/components/ai/AiCitationList.tsx');
 
   assert.match(bubble, /import \{ AiMessageContent \} from '\.\/AiMessageContent'/);
-  assert.match(bubble, /isUser \? \([\s\S]*<Text style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*<AiMessageContent content=\{content\} \/>/);
+  assert.match(bubble, /isUser \? \([\s\S]*<Text selectable style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*<AiMessageContent content=\{content\} \/>/);
   assert.match(content, /parseMarkdownBlocks/);
   assert.match(content, /type: 'heading'/);
   assert.match(content, /type: 'list'/);
@@ -493,6 +493,18 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
   assert.match(chat, /contextTrimNotice/);
   assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
   assert.match(chat, /promptSnapshotJson/);
+});
+
+test('AI message text supports selection and lightweight markdown separators', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(bubble, /<Text selectable style=\{\[styles\.content, styles\.userText\]\}/);
+  assert.match(content, /selectable/);
+  assert.match(content, /type: 'hr'/);
+  assert.match(content, /isHorizontalRule/);
+  assert.match(content, /styles\.horizontalRule/);
+  assert.match(content, /nestLevel/);
 });
 
 test('AI memory maintenance uses a unified per-thread queue', () => {
