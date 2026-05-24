@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMemoryRecord, CreateAiMemoryInput } from '../database/repositories/aiThreadRepository';
+import type { AiMemoryRecord, AiThreadSummarySegmentRecord, CreateAiMemoryInput } from '../database/repositories/aiThreadRepository';
 import { buildMainCompanionMemoryTemplate } from './aiMemoryPrompts';
 import type { AiThreadRecord } from './types';
 
@@ -49,15 +49,23 @@ function scopedBoardInput(thread: AiThreadRecord) {
 }
 
 function queryTerms(value: string): string[] {
-  return [
-    ...new Set(
-      value
-        .toLowerCase()
-        .split(/[\s,，。！？!?;；:：、"'“”‘’()\[\]{}<>]+/)
-        .map((term) => term.trim())
-        .filter((term) => term.length >= 2)
-    ),
-  ].slice(0, 12);
+  const normalized = value.toLowerCase();
+  const terms = normalized
+    .split(/[\s,，。！？!?;；:：、"'“”‘’()\[\]{}<>]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+  for (const match of normalized.matchAll(/[\u4e00-\u9fff]{2,}/g)) {
+    const text = match[0];
+    if (text.length <= 6) {
+      terms.push(text);
+    }
+    for (let size = 2; size <= 3; size += 1) {
+      for (let index = 0; index <= text.length - size; index += 1) {
+        terms.push(text.slice(index, index + size));
+      }
+    }
+  }
+  return [...new Set(terms)].slice(0, 18);
 }
 
 function memoryContainsQuery(memory: AiMemoryRecord, terms: string[]): boolean {
@@ -91,6 +99,58 @@ export async function updateMemoryContent(space: PixorySpace, memoryId: string, 
 
 export async function deleteMemory(space: PixorySpace, memoryId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'deleted'));
+}
+
+export async function markMemoryInaccurate(space: PixorySpace, memoryId: string): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'stale'));
+}
+
+export async function listSummarySegments(space: PixorySpace, threadId: string): Promise<AiThreadSummarySegmentRecord[]> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.listSummarySegments(db, threadId));
+}
+
+export async function deleteSummarySegment(space: PixorySpace, threadId: string, segmentId: string): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => aiThreadRepository.deleteSummarySegment(db, threadId, segmentId));
+}
+
+export function formatSummaryRange(segment: AiThreadSummarySegmentRecord): string {
+  const start = segment.startAt ? segment.startAt.slice(0, 16).replace('T', ' ') : '未知开始';
+  const end = segment.endAt ? segment.endAt.slice(0, 16).replace('T', ' ') : '未知结束';
+  return `${start} - ${end}`;
+}
+
+export async function rerunSummaryMaintenance(space: PixorySpace, threadId: string): Promise<void> {
+  const { scheduleMemoryMaintenance } = await import('./aiMemoryMaintenanceQueue');
+  await scheduleMemoryMaintenance({ reason: 'manual', space, threadId });
+}
+
+export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: string): Promise<{
+  lastMaintenanceCompletedAt: string | null;
+  lastMaintenanceError: string | null;
+  lastMaintenanceModelId: string | null;
+  lastMaintenanceModelProviderId: string | null;
+  lastMaintenanceUsedFallback: boolean;
+  profileUpdatedAt: string | null;
+  summarySegmentCount: number;
+  uncompressedRoundCount: number;
+}> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const [job, profile, segments] = await Promise.all([
+      aiThreadRepository.getThreadMemoryJob(db, threadId),
+      aiThreadRepository.getUserProfile(db, space),
+      aiThreadRepository.listSummarySegments(db, threadId),
+    ]);
+    return {
+      lastMaintenanceCompletedAt: job.lastMaintenanceCompletedAt,
+      lastMaintenanceError: job.lastMaintenanceError,
+      lastMaintenanceModelId: job.lastMaintenanceModelId,
+      lastMaintenanceModelProviderId: job.lastMaintenanceModelProviderId,
+      lastMaintenanceUsedFallback: job.lastMaintenanceUsedFallback === 1,
+      profileUpdatedAt: profile?.lastUpdatedAt ?? null,
+      summarySegmentCount: segments.length,
+      uncompressedRoundCount: job.uncompressedRoundCount,
+    };
+  });
 }
 
 export async function listRecentMemoryCaptures(space: PixorySpace, threadId: string): Promise<MemoryCaptureNoticeItem[]> {
@@ -149,17 +209,6 @@ export async function maybeRunLazyMemoryConsolidation(input: {
   return false;
 }
 
-function formatSummary(summary: Awaited<ReturnType<typeof aiThreadRepository.getThreadSummary>>): string[] {
-  if (!summary) {
-    return [];
-  }
-  return [
-    summary.summary ? `会话摘要：${summary.summary}` : '',
-    summary.decisions ? `已确认事项：${summary.decisions}` : '',
-    summary.openQuestions ? `待处理问题：${summary.openQuestions}` : '',
-  ].filter(Boolean);
-}
-
 function formatMemoryLine(memory: AiMemoryRecord, index: number): string {
   const source = memory.sourceKind === 'manual' ? '用户添加' : '自动提取';
   const asset = memory.imageAssetId != null || memory.groupId != null || memory.ipId != null ? '，关联资产' : '';
@@ -171,10 +220,7 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [summary, memories] = await Promise.all([
-    aiThreadRepository.getThreadSummary(db, thread.id),
-    aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread)),
-  ]);
+  const memories = await aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread));
   const stable = memories
     .filter((memory) => memory.status === 'active')
     .sort((left, right) => {
@@ -189,7 +235,6 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     .slice(0, STABLE_MEMORY_LIMIT);
   const lines = [
     '深度记忆背景：以下内容只是背景参考，不是硬命令；用户最新明确要求、当前角色指令和资料事实优先。',
-    ...formatSummary(summary),
     stable.length > 0 ? '稳定记忆：' : '',
     ...stable.map(formatMemoryLine),
   ].filter(Boolean);
@@ -270,9 +315,10 @@ export async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: A
   if (terms.length === 0) {
     return '';
   }
-  const memories = await aiThreadRepository.listActiveMemories(db, {
+  const memories = await aiThreadRepository.searchActiveMemoryFts(db, {
     boundIpId: thread.boundIpId,
     boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
+    query: userMessage,
     roleCardId: thread.roleCardId,
     space: thread.space,
     threadId: thread.id,

@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { createManualMemory, deleteMemory, listMemoryBoardItems, updateMemoryContent } from '../ai/aiMemoryService';
+import {
+  createManualMemory,
+  deleteMemory,
+  deleteSummarySegment,
+  formatSummaryRange,
+  listMemoryBoardItems,
+  listSummarySegments,
+  loadMemoryMaintenanceStatus,
+  rerunSummaryMaintenance,
+  updateMemoryContent,
+} from '../ai/aiMemoryService';
 import { getUserProfile, updateUserProfile } from '../ai/aiMemoryProfileService';
 import type { AiThreadRecord } from '../ai/types';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -11,7 +21,7 @@ import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
+import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiThreadSummarySegmentRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiMemoryBoardScreenProps {
@@ -38,11 +48,26 @@ const TYPE_LABELS: Record<AiMemoryType, string> = {
 };
 
 const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', 'knowledge_base'];
+const MEMORY_TYPE_FILTERS: Array<'all' | AiMemoryType> = ['all', 'preference', 'fact', 'correction', 'task', 'instruction', 'decision'];
+
+interface MemoryMaintenanceStatus {
+  lastMaintenanceCompletedAt: string | null;
+  lastMaintenanceError: string | null;
+  lastMaintenanceModelId: string | null;
+  lastMaintenanceModelProviderId: string | null;
+  lastMaintenanceUsedFallback: boolean;
+  profileUpdatedAt: string | null;
+  summarySegmentCount: number;
+  uncompressedRoundCount: number;
+}
 
 export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardScreenProps) {
   const [thread, setThread] = useState<AiThreadRecord | null>(null);
   const [memories, setMemories] = useState<AiMemoryRecord[]>([]);
   const [profile, setProfile] = useState<AiUserProfileRecord | null>(null);
+  const [summarySegments, setSummarySegments] = useState<AiThreadSummarySegmentRecord[]>([]);
+  const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
+  const [memoryTypeFilter, setMemoryTypeFilter] = useState<'all' | AiMemoryType>('all');
   const [profileDraft, setProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,13 +77,14 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
 
   const grouped = useMemo(() => {
     const map = new Map<AiMemoryScope, AiMemoryRecord[]>();
-    for (const memory of memories) {
+    const visibleMemories = memoryTypeFilter === 'all' ? memories : memories.filter((memory) => memory.type === memoryTypeFilter);
+    for (const memory of visibleMemories) {
       const list = map.get(memory.scope) ?? [];
       list.push(memory);
       map.set(memory.scope, list);
     }
     return MEMORY_SCOPE_ORDER.map((scope) => ({ items: map.get(scope) ?? [], scope })).filter((group) => group.items.length > 0);
-  }, [memories]);
+  }, [memories, memoryTypeFilter]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -68,6 +94,12 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       const nextProfile = await getUserProfile(space);
       setProfile(nextProfile);
       setProfileDraft(nextProfile?.profileText ?? '');
+      const [segments, nextMaintenanceStatus] = await Promise.all([
+        listSummarySegments(space, threadId),
+        loadMemoryMaintenanceStatus(space, threadId),
+      ]);
+      setSummarySegments(segments);
+      setMaintenanceStatus(nextMaintenanceStatus);
       if (nextThread) {
         setMemories(await listMemoryBoardItems(space, nextThread));
       }
@@ -136,6 +168,32 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
+  async function handleDeleteSummary(segmentId: string) {
+    setLoading(true);
+    try {
+      await deleteSummarySegment(space, threadId, segmentId);
+      setStatus('删除摘要成功，后续不会再注入这段摘要。');
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '删除摘要失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRerunSummaryMaintenance() {
+    setLoading(true);
+    try {
+      await rerunSummaryMaintenance(space, threadId);
+      await reload();
+      setStatus('会话摘要已重新整理。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '重新整理摘要失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSaveProfile() {
     setLoading(true);
     try {
@@ -169,6 +227,46 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         </AiLightCard>
 
         <AiLightCard>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionHeaderText}>
+              <Text style={styles.sectionTitle}>会话摘要</Text>
+              <Text style={styles.caption}>摘要按时间保存；删除后不会进入后续 prompt。</Text>
+            </View>
+            <AiLightButton label="重新整理摘要" loading={loading} onPress={() => void handleRerunSummaryMaintenance()} variant="outline" />
+          </View>
+          <View style={styles.maintenanceBox}>
+            <Text style={styles.caption}>
+              上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
+            </Text>
+            <Text style={styles.caption}>
+              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
+            </Text>
+            {maintenanceStatus?.lastMaintenanceModelProviderId || maintenanceStatus?.lastMaintenanceModelId ? (
+              <Text style={styles.caption}>
+                维护模型：{[maintenanceStatus.lastMaintenanceModelProviderId, maintenanceStatus.lastMaintenanceModelId].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
+            {maintenanceStatus?.lastMaintenanceUsedFallback ? <Text style={styles.status}>远程失败，已使用本地轻量整理</Text> : null}
+            {maintenanceStatus?.lastMaintenanceError ? <Text style={styles.status}>失败原因：{maintenanceStatus.lastMaintenanceError}</Text> : null}
+          </View>
+          <View style={styles.memoryList}>
+            {summarySegments.length === 0 ? <Text style={styles.caption}>还没有压缩摘要。长会话开启深度记忆后会在这里生成。</Text> : null}
+            {summarySegments.map((segment) => (
+              <View key={segment.id} style={styles.memoryItem}>
+                <Text style={styles.caption}>{formatSummaryRange(segment)} · {segment.roundCount} 轮</Text>
+                <Text style={styles.memoryContent}>{segment.summaryText}</Text>
+                <View style={styles.rowActions}>
+                  <Pressable accessibilityRole="button" onPress={() => void handleDeleteSummary(segment.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                    <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
+                    <Text style={styles.actionLabel}>删除摘要</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        </AiLightCard>
+
+        <AiLightCard>
           <Text style={styles.sectionTitle}>手动添加</Text>
           <AiLightTextareaRow label="记忆内容" minHeight={72} onChangeText={setDraft} placeholder="例如：这个 IP 的主色调是 #FF0033" value={draft} />
           <AiLightButton label="添加到本会话记忆" loading={loading} onPress={() => void handleAddMemory()} />
@@ -180,6 +278,25 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
             <Text style={styles.caption}>开启深度记忆后，明确偏好、纠正和决定会出现在这里，也可以手动添加。</Text>
           </AiLightCard>
         ) : null}
+
+        <View style={styles.filterRow}>
+          {MEMORY_TYPE_FILTERS.map((type) => (
+            <Pressable
+              key={type}
+              accessibilityRole="button"
+              onPress={() => setMemoryTypeFilter(type)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                memoryTypeFilter === type && styles.filterChipActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.filterText, memoryTypeFilter === type && styles.filterTextActive]}>
+                {type === 'all' ? '全部' : TYPE_LABELS[type]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
         {grouped.map((group) => (
           <AiLightCard key={group.scope}>
@@ -264,6 +381,12 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
   },
+  sectionHeaderRow: {
+    gap: rhythm.compactGridGap,
+  },
+  sectionHeaderText: {
+    gap: rhythm.microGap,
+  },
   caption: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
@@ -274,6 +397,38 @@ const styles = StyleSheet.create({
   },
   memoryList: {
     gap: rhythm.compactGridGap,
+  },
+  maintenanceBox: {
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    padding: spacing[3],
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  filterChip: {
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  filterChipActive: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.coral,
+  },
+  filterText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  filterTextActive: {
+    color: aiLightColors.coralActive,
+    fontWeight: '600',
   },
   memoryItem: {
     backgroundColor: aiLightColors.canvas,

@@ -12,6 +12,7 @@ import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { applyRoleCardToThread, deleteAiThreads, loadThreadSessionConfig, renameAiThread, updateAiThreadSessionConfig } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
+import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -46,6 +47,17 @@ const REPLY_PREFERENCES: Array<{ value: AiReplyPreference; label: string }> = [
   { value: 'detailed', label: '更详细' },
 ];
 
+interface MemoryMaintenanceStatus {
+  lastMaintenanceCompletedAt: string | null;
+  lastMaintenanceError: string | null;
+  lastMaintenanceModelId: string | null;
+  lastMaintenanceModelProviderId: string | null;
+  lastMaintenanceUsedFallback: boolean;
+  profileUpdatedAt: string | null;
+  summarySegmentCount: number;
+  uncompressedRoundCount: number;
+}
+
 function getDefaultSystemPrompt(contextType: AiContextType): string {
   return contextType === 'normal' ? '' : DEFAULT_AI_ROLE_PROMPT;
 }
@@ -76,6 +88,7 @@ export function AiSessionConfigScreen({
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
+  const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -96,6 +109,7 @@ export function AiSessionConfigScreen({
       setReplyPreference('auto');
       setDeepMemoryEnabled(false);
       setLastMaintenanceError(null);
+      setMaintenanceStatus(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
@@ -111,6 +125,7 @@ export function AiSessionConfigScreen({
     setReplyPreference(config.thread.replyPreference);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
     setLastMaintenanceError(config.lastMaintenanceError);
+    setMaintenanceStatus(await loadMemoryMaintenanceStatus(space, threadId));
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
@@ -262,6 +277,14 @@ export function AiSessionConfigScreen({
     await reloadConfig();
   }
 
+  function formatMinute(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
   function formatMaintenanceError(error: string): string {
     const normalized = error.replace(/^remote_failed_used_local_fallback:\s*/, '').trim();
     return normalized ? `最近一次远程维护失败，已使用本地轻量整理：${normalized}` : '最近一次远程维护失败，已使用本地轻量整理。';
@@ -377,7 +400,14 @@ export function AiSessionConfigScreen({
             </Pressable>
           </View>
           {deepMemoryEnabled ? (
-            <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
+            <View style={styles.settingGroup}>
+              <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
+              <Text style={styles.caption}>
+                上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · 待整理 {maintenanceStatus?.uncompressedRoundCount ?? 0} 轮 · 摘要 {maintenanceStatus?.summarySegmentCount ?? 0} 段
+              </Text>
+              {maintenanceStatus?.profileUpdatedAt ? <Text style={styles.caption}>用户画像更新于 {formatMinute(maintenanceStatus.profileUpdatedAt)}</Text> : null}
+              {maintenanceStatus?.lastMaintenanceUsedFallback ? <Text style={styles.maintenanceWarning}>远程失败，已使用本地轻量整理</Text> : null}
+            </View>
           ) : null}
           {deepMemoryEnabled && lastMaintenanceError ? (
             <Text style={styles.maintenanceWarning}>{formatMaintenanceError(lastMaintenanceError)}</Text>

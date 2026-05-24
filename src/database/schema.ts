@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 25;
+export const DATABASE_VERSION = 26;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -677,4 +677,40 @@ ALTER TABLE ai_thread_memory_jobs ADD COLUMN profileUpdateCooldownUntil TEXT;
 ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceError TEXT;
 ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceModelProviderId TEXT;
 ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceModelId TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V26 = `
+CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5(
+  id UNINDEXED,
+  threadId UNINDEXED,
+  role UNINDEXED,
+  content,
+  updatedAt UNINDEXED
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5(
+  id UNINDEXED,
+  space UNINDEXED,
+  scope UNINDEXED,
+  scopeId UNINDEXED,
+  content,
+  normalizedContent,
+  assetSnapshotJson,
+  updatedAt UNINDEXED
+);
+
+DELETE FROM ai_message_fts;
+INSERT INTO ai_message_fts (id, threadId, role, content, updatedAt)
+SELECT id, threadId, role, content, updatedAt
+FROM ai_messages
+WHERE status = 'completed' AND role <> 'system' AND content <> '';
+
+DELETE FROM ai_memory_fts;
+INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
+FROM ai_memories
+WHERE status = 'active';
+
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceCompletedAt TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceUsedFallback INTEGER NOT NULL DEFAULT 0;
 `;

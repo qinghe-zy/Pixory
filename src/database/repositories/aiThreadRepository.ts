@@ -85,6 +85,8 @@ export interface AiThreadMemoryJobRecord {
   lastMaintenanceError: string | null;
   lastMaintenanceModelProviderId: string | null;
   lastMaintenanceModelId: string | null;
+  lastMaintenanceCompletedAt: string | null;
+  lastMaintenanceUsedFallback: number;
   updatedAt: string;
 }
 
@@ -388,6 +390,31 @@ function mapMemorySettingsRow(row: AiThreadMemorySettingsRow): AiThreadMemorySet
 
 function makeInClause(values: string[]): string {
   return values.map(() => '?').join(', ');
+}
+
+function buildSearchTerms(value: string): string[] {
+  const normalized = value.toLowerCase();
+  const terms = normalized
+    .split(/[\s,，。！？!?;；:：、"'“”‘’()\[\]{}<>]+/)
+    .map((term) => term.replace(/[^\p{L}\p{N}_-]/gu, '').trim())
+    .filter((term) => term.length >= 2);
+  for (const match of normalized.matchAll(/[\u4e00-\u9fff]{2,}/g)) {
+    const text = match[0];
+    if (text.length <= 6) {
+      terms.push(text);
+    }
+    for (let size = 2; size <= 3; size += 1) {
+      for (let index = 0; index <= text.length - size; index += 1) {
+        terms.push(text.slice(index, index + size));
+      }
+    }
+  }
+  return [...new Set(terms)].slice(0, 18);
+}
+
+function buildFtsQuery(value: string): string | null {
+  const terms = buildSearchTerms(value).slice(0, 8);
+  return terms.length > 0 ? terms.map((term) => `"${term}"`).join(' OR ') : null;
 }
 
 const DELETE_MESSAGE_CHUNK_SIZE = 200;
@@ -791,6 +818,7 @@ export const aiThreadRepository = {
     if (!message) {
       throw new Error(`AI message ${input.id} was created but could not be reloaded.`);
     }
+    await aiThreadRepository.syncMessageFts(db, message);
     return message;
   },
 
@@ -812,17 +840,85 @@ export const aiThreadRepository = {
       return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
     }
     await db.runAsync(`UPDATE ai_messages SET ${updates.setClause} WHERE id = ?`, ...updates.values, messageId);
-    return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
+    const message = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
+    if (message) {
+      await aiThreadRepository.syncMessageFts(db, message);
+    }
+    return message;
   },
 
   async deleteMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<number> {
     let deletedCount = 0;
     for (let index = 0; index < messageIds.length; index += DELETE_MESSAGE_CHUNK_SIZE) {
       const chunk = messageIds.slice(index, index + DELETE_MESSAGE_CHUNK_SIZE);
+      await db.runAsync(`DELETE FROM ai_message_fts WHERE id IN (${makeInClause(chunk)})`, ...chunk);
       const result = await db.runAsync(`DELETE FROM ai_messages WHERE id IN (${makeInClause(chunk)})`, ...chunk);
       deletedCount += result.changes;
     }
     return deletedCount;
+  },
+
+  async syncMessageFts(db: SQLiteDatabase, message: AiMessageRecord): Promise<void> {
+    await db.runAsync('DELETE FROM ai_message_fts WHERE id = ?', message.id);
+    if (message.status !== 'completed' || message.role === 'system' || !message.content.trim()) {
+      return;
+    }
+    await db.runAsync(
+      'INSERT INTO ai_message_fts (id, threadId, role, content, updatedAt) VALUES (?, ?, ?, ?, ?)',
+      message.id,
+      message.threadId,
+      message.role,
+      message.content,
+      message.updatedAt
+    );
+  },
+
+  async searchCompletedMessageFts(db: SQLiteDatabase, input: { threadId: string; query: string; excludeIds?: string[]; limit: number }): Promise<AiMessageRecord[]> {
+    const ftsQuery = buildFtsQuery(input.query);
+    if (!ftsQuery || input.limit <= 0) {
+      return [];
+    }
+    const excludeIds = input.excludeIds ?? [];
+    const excludeClause = excludeIds.length > 0 ? `AND ai_messages.id NOT IN (${makeInClause(excludeIds)})` : '';
+    const fallbackTerms = buildSearchTerms(input.query).slice(0, 8);
+    const fallbackClause = fallbackTerms.length > 0 ? `AND (${fallbackTerms.map(() => 'content LIKE ?').join(' OR ')})` : 'AND content LIKE ?';
+    const fallbackValues = fallbackTerms.length > 0 ? fallbackTerms.map((term) => `%${term}%`) : [`%${input.query.trim()}%`];
+    const fallbackSearch = () => db.getAllAsync<AiMessageRecord>(
+      `SELECT *
+       FROM ai_messages
+       WHERE threadId = ?
+         AND status = 'completed'
+         AND role <> 'system'
+         ${fallbackClause}
+         ${excludeClause}
+       ORDER BY updatedAt DESC
+       LIMIT ?`,
+      input.threadId,
+      ...fallbackValues,
+      ...excludeIds,
+      input.limit
+    );
+    try {
+      const rows = await db.getAllAsync<AiMessageRecord>(
+        `SELECT ai_messages.*
+         FROM ai_message_fts
+         JOIN ai_messages ON ai_messages.id = ai_message_fts.id
+         WHERE ai_message_fts MATCH ?
+           AND ai_messages.threadId = ?
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role <> 'system'
+           ${excludeClause}
+         ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
+         LIMIT ?`,
+        ftsQuery,
+        input.threadId,
+        ...excludeIds,
+        input.limit
+      );
+      return rows.length > 0 ? rows : fallbackSearch();
+    } catch {
+      return fallbackSearch();
+    }
   },
 
   async listMessages(db: SQLiteDatabase, threadId: string, limit?: number): Promise<AiMessageRecord[]> {
@@ -1273,6 +1369,15 @@ export const aiThreadRepository = {
     await db.runAsync(`DELETE FROM ai_thread_summary_segments WHERE id IN (${placeholders})`, ...ids);
   },
 
+  async deleteSummarySegment(db: SQLiteDatabase, threadId: string, segmentId: string): Promise<number> {
+    const result = await db.runAsync(
+      'DELETE FROM ai_thread_summary_segments WHERE threadId = ? AND id = ?',
+      threadId,
+      segmentId
+    );
+    return result.changes;
+  },
+
   async getThreadSummary(db: SQLiteDatabase, threadId: string): Promise<AiThreadSummaryRecord | null> {
     return db.getFirstAsync<AiThreadSummaryRecord>('SELECT * FROM ai_thread_summaries WHERE threadId = ?', threadId);
   },
@@ -1344,6 +1449,7 @@ export const aiThreadRepository = {
     if (!row) {
       throw new Error(`AI memory ${input.id} was created but could not be reloaded.`);
     }
+    await aiThreadRepository.syncMemoryFts(db, row);
     return row;
   },
 
@@ -1369,7 +1475,11 @@ export const aiThreadRepository = {
       now,
       memoryId
     );
-    return db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', memoryId);
+    const memory = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', memoryId);
+    if (memory) {
+      await aiThreadRepository.syncMemoryFts(db, memory);
+    }
+    return memory;
   },
 
   async listMemoryBoardItems(db: SQLiteDatabase, input: { space: PixorySpace; threadId?: string | null; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null }): Promise<AiMemoryRecord[]> {
@@ -1428,6 +1538,81 @@ export const aiThreadRepository = {
     );
   },
 
+  async syncMemoryFts(db: SQLiteDatabase, memory: AiMemoryRecord): Promise<void> {
+    await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', memory.id);
+    if (memory.status !== 'active') {
+      return;
+    }
+    await db.runAsync(
+      `INSERT INTO ai_memory_fts (
+        id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      memory.id,
+      memory.space,
+      memory.scope,
+      memory.scopeId,
+      memory.content,
+      memory.normalizedContent,
+      memory.assetSnapshotJson,
+      memory.updatedAt
+    );
+  },
+
+  async searchActiveMemoryFts(
+    db: SQLiteDatabase,
+    input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; query: string; limit: number }
+  ): Promise<AiMemoryRecord[]> {
+    const ftsQuery = buildFtsQuery(input.query);
+    if (!ftsQuery || input.limit <= 0) {
+      return [];
+    }
+    const scopePairs: Array<[AiMemoryScope, string | null]> = [
+      ['global', null],
+      ['thread', input.threadId],
+    ];
+    if (input.roleCardId) {
+      scopePairs.push(['role', input.roleCardId]);
+    }
+    if (input.boundIpId != null) {
+      scopePairs.push(['ip', String(input.boundIpId)]);
+    }
+    if (input.boundKnowledgeBaseId) {
+      scopePairs.push(['knowledge_base', input.boundKnowledgeBaseId]);
+    }
+    const scopeClauses = scopePairs.map(() => '(ai_memories.scope = ? AND COALESCE(ai_memories.scopeId, \'\') = COALESCE(?, \'\'))');
+    const scopeValues = scopePairs.flatMap(([scope, scopeId]) => [scope, scopeId]);
+    const fallbackSearch = async () => {
+      const memories = await aiThreadRepository.listActiveMemories(db, input);
+      const terms = buildSearchTerms(input.query);
+      return memories
+        .filter((memory) => {
+          const content = `${memory.content} ${memory.normalizedContent} ${memory.assetSnapshotJson}`.toLowerCase();
+          return terms.some((term) => content.includes(term));
+        })
+        .slice(0, input.limit);
+    };
+    try {
+      const rows = await db.getAllAsync<AiMemoryRecord>(
+        `SELECT ai_memories.*
+         FROM ai_memory_fts
+         JOIN ai_memories ON ai_memories.id = ai_memory_fts.id
+         WHERE ai_memory_fts MATCH ?
+           AND ai_memories.space = ?
+           AND ai_memories.status = 'active'
+           AND (${scopeClauses.join(' OR ')})
+         ORDER BY bm25(ai_memory_fts), ai_memories.importance DESC, COALESCE(ai_memories.lastUsedAt, ai_memories.updatedAt) DESC
+         LIMIT ?`,
+        ftsQuery,
+        input.space,
+        ...scopeValues,
+        input.limit
+      );
+      return rows.length > 0 ? rows : fallbackSearch();
+    } catch {
+      return fallbackSearch();
+    }
+  },
+
   async touchMemories(db: SQLiteDatabase, memoryIds: string[]): Promise<void> {
     if (memoryIds.length === 0) {
       return;
@@ -1449,6 +1634,10 @@ export const aiThreadRepository = {
       now,
       memoryId
     );
+    const memory = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', memoryId);
+    if (memory) {
+      await aiThreadRepository.syncMemoryFts(db, memory);
+    }
   },
 
   async deleteMemory(db: SQLiteDatabase, memoryId: string): Promise<void> {
@@ -1470,6 +1659,8 @@ export const aiThreadRepository = {
       lastMaintenanceError: null,
       lastMaintenanceModelProviderId: null,
       lastMaintenanceModelId: null,
+      lastMaintenanceCompletedAt: null,
+      lastMaintenanceUsedFallback: 0,
       updatedAt: createTimestamp(),
     };
   },
@@ -1482,9 +1673,10 @@ export const aiThreadRepository = {
          threadId, pendingTurnCount, lastConsolidatedMessageId, lastCaptureNoticeJson,
          lastCompressedMessageId, uncompressedRoundCount, completedMessageCountAtProfileUpdate,
          lastProfileUpdatedAt, profileUpdateCooldownUntil, lastMaintenanceError,
-         lastMaintenanceModelProviderId, lastMaintenanceModelId, updatedAt
+         lastMaintenanceModelProviderId, lastMaintenanceModelId,
+         lastMaintenanceCompletedAt, lastMaintenanceUsedFallback, updatedAt
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(threadId) DO UPDATE SET
          pendingTurnCount = excluded.pendingTurnCount,
          lastConsolidatedMessageId = excluded.lastConsolidatedMessageId,
@@ -1497,6 +1689,8 @@ export const aiThreadRepository = {
          lastMaintenanceError = excluded.lastMaintenanceError,
          lastMaintenanceModelProviderId = excluded.lastMaintenanceModelProviderId,
          lastMaintenanceModelId = excluded.lastMaintenanceModelId,
+         lastMaintenanceCompletedAt = excluded.lastMaintenanceCompletedAt,
+         lastMaintenanceUsedFallback = excluded.lastMaintenanceUsedFallback,
          updatedAt = excluded.updatedAt`,
       next.threadId,
       next.pendingTurnCount,
@@ -1510,6 +1704,8 @@ export const aiThreadRepository = {
       next.lastMaintenanceError,
       next.lastMaintenanceModelProviderId,
       next.lastMaintenanceModelId,
+      next.lastMaintenanceCompletedAt,
+      next.lastMaintenanceUsedFallback,
       next.updatedAt
     );
     return next;

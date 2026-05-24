@@ -1,7 +1,8 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMessageRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { EMPTY_USER_PROFILE_JSON, buildProfileInitializationPrompt, buildProfileUpdatePrompt } from './aiMemoryPrompts';
-import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
+import { callMemoryMaintenanceModel, localMemoryMaintenanceResult, type MemoryMaintenanceModelCallResult } from './aiMemoryMaintenanceModelService';
+import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
 
 export const PROFILE_INITIAL_MESSAGE_COUNT = 20;
 export const PROFILE_UPDATE_MESSAGE_INTERVAL = 50;
@@ -173,6 +174,16 @@ function remoteFallbackError(error: string | null): string | null {
   return error ? `remote_failed_used_local_fallback: ${error}` : null;
 }
 
+function stepResultFromModel(modelResult: MemoryMaintenanceModelCallResult, usedFallback: boolean): MemoryMaintenanceStepResult {
+  return {
+    error: modelResult.error,
+    modelId: modelResult.modelId,
+    providerId: modelResult.providerId,
+    usedFallback,
+    usedRemote: modelResult.usedRemote,
+  };
+}
+
 export function hasStrongProfileSignal(text: string): boolean {
   return PROFILE_SIGNAL_PATTERNS.some((pattern) => pattern.test(text));
 }
@@ -201,7 +212,7 @@ export async function updateUserProfile(space: PixorySpace, profileText: string)
   });
 }
 
-export async function maybeInitializeUserProfile(space: PixorySpace, threadId: string): Promise<void> {
+export async function maybeInitializeUserProfile(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
     if (!thread) {
@@ -227,14 +238,16 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
     };
   });
   if (!prepared) {
-    return;
+    return emptyMaintenanceStepResult();
   }
-  const modelResult = await callMemoryMaintenanceModel({
-    space,
-    systemPrompt: '你是 Pixory 的用户画像建档器。只输出 JSON。',
-    thread: prepared.thread,
-    userPrompt: buildProfileInitializationPrompt(prepared.conversation),
-  });
+  const modelResult = options.allowRemoteModel === false
+    ? localMemoryMaintenanceResult()
+    : await callMemoryMaintenanceModel({
+      space,
+      systemPrompt: '你是 Pixory 的用户画像建档器。只输出 JSON。',
+      thread: prepared.thread,
+      userPrompt: buildProfileInitializationPrompt(prepared.conversation),
+    });
   const profileJson = modelResult.text ? parseProfileJson(modelResult.text) : buildLocalProfileJsonFromMessages(prepared.selected);
   const now = new Date().toISOString();
   await runWithDatabaseSpace(space, async (db) => {
@@ -255,6 +268,7 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       threadId,
     });
   });
+  return stepResultFromModel(modelResult, !modelResult.text);
 }
 
 function reasonIsEligible(input: {
@@ -276,7 +290,12 @@ function reasonIsEligible(input: {
   return cooldownByMessage || cooldownByTime;
 }
 
-export async function maybeUpdateUserProfile(space: PixorySpace, threadId: string, reason: ProfileUpdateReason): Promise<void> {
+export async function maybeUpdateUserProfile(
+  space: PixorySpace,
+  threadId: string,
+  reason: ProfileUpdateReason,
+  options: { allowRemoteModel?: boolean } = {}
+): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
     if (!thread) {
@@ -312,14 +331,16 @@ export async function maybeUpdateUserProfile(space: PixorySpace, threadId: strin
     };
   });
   if (!prepared) {
-    return;
+    return emptyMaintenanceStepResult();
   }
-  const modelResult = await callMemoryMaintenanceModel({
-    space,
-    systemPrompt: '你是 Pixory 的用户画像维护器。只输出 JSON。',
-    thread: prepared.thread,
-    userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText),
-  });
+  const modelResult = options.allowRemoteModel === false
+    ? localMemoryMaintenanceResult()
+    : await callMemoryMaintenanceModel({
+      space,
+      systemPrompt: '你是 Pixory 的用户画像维护器。只输出 JSON。',
+      thread: prepared.thread,
+      userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText),
+    });
   const profileJson = modelResult.text
     ? parseProfileJson(modelResult.text, getProfileFallback(prepared.currentProfile))
     : buildLocalProfileJsonFromMessages(prepared.selected, getProfileFallback(prepared.currentProfile));
@@ -345,4 +366,5 @@ export async function maybeUpdateUserProfile(space: PixorySpace, threadId: strin
       threadId,
     });
   });
+  return stepResultFromModel(modelResult, !modelResult.text);
 }

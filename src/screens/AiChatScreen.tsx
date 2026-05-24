@@ -17,7 +17,7 @@ import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton'
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
 import { recognizeSpeech } from '../native/pixoryMediaModule';
-import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
+import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemoryInaccurate, updateMemoryContent, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
 import {
   createThreadFromContext,
   getCurrentChatModelLabel,
@@ -496,6 +496,34 @@ export function AiChatScreen({
     }
   }
 
+  async function onSaveMemoryCapture(memoryId: string, content: string) {
+    if (!activeThreadId) {
+      return;
+    }
+    try {
+      const memory = await updateMemoryContent(space, memoryId, content);
+      setMemoryCaptures((current) => current.map((item) => item.id === memoryId ? { ...item, content: memory?.content ?? content } : item));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '更新记忆失败');
+    }
+  }
+
+  async function onMarkMemoryCaptureInaccurate(memoryId: string) {
+    if (!activeThreadId) {
+      return;
+    }
+    try {
+      await markMemoryInaccurate(space, memoryId);
+      const next = memoryCaptures.filter((item) => item.id !== memoryId);
+      setMemoryCaptures(next);
+      if (next.length === 0) {
+        await dismissMemoryCapture(space, activeThreadId);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '标记记忆失败');
+    }
+  }
+
   async function pickChatImages() {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -930,8 +958,11 @@ export function AiChatScreen({
         {memoryCaptures.length > 0 ? (
           <AiMemoryCaptureNotice
             count={memoryCaptures.length}
+            items={memoryCaptures}
             summary={memoryCaptures[0]?.content}
             onManage={() => void onOpenMemoryBoardFromChat()}
+            onMarkInaccurate={(memoryId) => void onMarkMemoryCaptureInaccurate(memoryId)}
+            onSave={(memoryId, content) => void onSaveMemoryCapture(memoryId, content)}
             onUndo={() => void onUndoMemoryCapture()}
           />
         ) : null}
