@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { rhythm, spacing, typography } from '../../design/tokens';
@@ -29,8 +29,10 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(Date.now());
   const thinking = status === 'generating' || status === 'queued';
+  const expandedProgress = useRef(new Animated.Value(expanded || thinking ? 1 : 0)).current;
   const duration = useMemo(() => elapsedSeconds(createdAt, thinking ? null : completedAt, now), [completedAt, createdAt, now, thinking]);
   const label = `${thinking ? '正在思考中…' : '思考完成'} ${duration.toFixed(1)}秒`;
+  const bodyVisible = (expanded || thinking) && Boolean(reasoningText);
 
   useEffect(() => {
     if (!thinking) {
@@ -40,6 +42,14 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
     return () => clearInterval(timer);
   }, [thinking]);
 
+  useEffect(() => {
+    Animated.timing(expandedProgress, {
+      duration: 180,
+      toValue: bodyVisible ? 1 : 0,
+      useNativeDriver: false,
+    }).start();
+  }, [bodyVisible, expandedProgress]);
+
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" disabled={!reasoningText} onPress={() => setExpanded((current) => !current)} style={styles.header}>
@@ -47,7 +57,20 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
         <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
-      {(expanded || thinking) && reasoningText ? <Text style={styles.text}>{reasoningText}</Text> : null}
+      <Animated.View
+        style={[
+          styles.thinkingAnimatedBody,
+          {
+            maxHeight: expandedProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 320],
+            }),
+            opacity: expandedProgress,
+          },
+        ]}
+      >
+        {bodyVisible ? <Text style={styles.text}>{reasoningText}</Text> : null}
+      </Animated.View>
     </View>
   );
 }
@@ -69,5 +92,8 @@ const styles = StyleSheet.create({
   text: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+  },
+  thinkingAnimatedBody: {
+    overflow: 'hidden',
   },
 });

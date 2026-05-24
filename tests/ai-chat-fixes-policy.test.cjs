@@ -507,6 +507,16 @@ test('AI message text supports selection and lightweight markdown separators', (
   assert.match(content, /nestLevel/);
 });
 
+test('AI thinking block expands and collapses with a lightweight animation', () => {
+  const thinking = read('src/components/ai/AiThinkingBlock.tsx');
+
+  assert.match(thinking, /Animated/);
+  assert.match(thinking, /expandedProgress/);
+  assert.match(thinking, /Animated\.timing/);
+  assert.match(thinking, /useNativeDriver: false/);
+  assert.match(thinking, /thinkingAnimatedBody/);
+});
+
 test('AI memory maintenance uses a unified per-thread queue', () => {
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');
