@@ -111,6 +111,12 @@ function shouldShowDateSeparator(messages: AiMessageWithCitations[], index: numb
   );
 }
 
+type VisibleMessageItem = {
+  message: AiMessageWithCitations;
+  showAvatar: boolean;
+  showDateSeparator: boolean;
+};
+
 interface AiChatScreenProps {
   space: PixorySpace;
   contextType: AiContextType;
@@ -153,7 +159,7 @@ export function AiChatScreen({
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
-  const messageListRef = useRef<FlatList<AiMessageWithCitations> | null>(null);
+  const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
   const forceScrollAfterMessagesRef = useRef(false);
   const isLoadingEarlierRef = useRef(false);
@@ -211,6 +217,19 @@ export function AiChatScreen({
         };
       }),
     [messages, selectedVersionByMessageId]
+  );
+  const visibleMessageItems = useMemo<VisibleMessageItem[]>(
+    () =>
+      visibleMessages.map((message, index) => {
+        const previousMessage = visibleMessages[index - 1];
+        const showDateSeparator = shouldShowDateSeparator(visibleMessages, index);
+        return {
+          message,
+          showAvatar: message.role === 'assistant' && (showDateSeparator || previousMessage?.role !== 'assistant'),
+          showDateSeparator,
+        };
+      }),
+    [visibleMessages]
   );
   const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
     () => [
@@ -859,6 +878,56 @@ export function AiChatScreen({
     }
   }
 
+  const messageKeyExtractor = useCallback((item: VisibleMessageItem) => item.message.id, []);
+
+  const renderMessageItem = useCallback(
+    ({ item }: { item: VisibleMessageItem }) => {
+      const { message } = item;
+      return (
+        <>
+          {item.showDateSeparator ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
+          <AiMessageBubble
+            assistantAvatar={avatarConfig}
+            editingMessageId={editingUserMessageId}
+            generating={generating}
+            message={message}
+            showAvatar={item.showAvatar}
+            space={space}
+            onCopy={(targetMessage) => {
+              void copyMessageContent(targetMessage);
+            }}
+            onCancelEdit={cancelInlineEdit}
+            onEditUser={handleEditUserMessage}
+            onOpenCitation={openCitation}
+            onRegenerate={(messageId) => {
+              void handleRegenerate(messageId);
+            }}
+            onSelectVersion={(messageId, versionIndex) => {
+              setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
+            }}
+            onSubmitEdit={(messageId, content) => {
+              void handleSubmitInlineRewrite(messageId, content);
+            }}
+            streaming={generating && message.id === activeAssistantId}
+          />
+        </>
+      );
+    },
+    [
+      activeAssistantId,
+      avatarConfig,
+      cancelInlineEdit,
+      copyMessageContent,
+      editingUserMessageId,
+      generating,
+      handleEditUserMessage,
+      handleRegenerate,
+      handleSubmitInlineRewrite,
+      openCitation,
+      space,
+    ]
+  );
+
   return (
     <AppScreen
       backgroundColor={aiLightColors.canvas}
@@ -891,10 +960,10 @@ export function AiChatScreen({
 
       <FlatList
         ref={messageListRef}
-        data={visibleMessages}
+        data={visibleMessageItems}
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
-        keyExtractor={(message) => message.id}
+        keyExtractor={messageKeyExtractor}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
         ListHeaderComponent={
           <>
@@ -918,34 +987,7 @@ export function AiChatScreen({
           }
         }}
         onScroll={handleMessageScroll}
-        renderItem={({ item: message, index }) => (
-          <>
-            {shouldShowDateSeparator(visibleMessages, index) ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
-            <AiMessageBubble
-              assistantAvatar={avatarConfig}
-              editingMessageId={editingUserMessageId}
-              generating={generating}
-              message={message}
-              space={space}
-              onCopy={(targetMessage) => {
-                void copyMessageContent(targetMessage);
-              }}
-              onCancelEdit={cancelInlineEdit}
-              onEditUser={handleEditUserMessage}
-              onOpenCitation={openCitation}
-              onRegenerate={(messageId) => {
-                void handleRegenerate(messageId);
-              }}
-              onSelectVersion={(messageId, versionIndex) => {
-                setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
-              }}
-              onSubmitEdit={(messageId, content) => {
-                void handleSubmitInlineRewrite(messageId, content);
-              }}
-              streaming={generating && message.id === activeAssistantId}
-            />
-          </>
-        )}
+        renderItem={renderMessageItem}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         style={styles.messageScroller}

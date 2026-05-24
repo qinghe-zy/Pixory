@@ -65,9 +65,10 @@ test('AI chat header shows the current model below the chat title', () => {
 test('AI chat keeps the top bar fixed while only messages scroll', () => {
   const content = chat();
   assert.match(content, /<FlatList/);
-  assert.match(content, /data=\{visibleMessages\}/);
-  assert.match(content, /renderItem=\{\(\{ item: message, index \}\) =>/);
-  assert.match(content, /keyExtractor=\{\(message\) => message\.id\}/);
+  assert.match(content, /data=\{visibleMessageItems\}/);
+  assert.match(content, /type VisibleMessageItem/);
+  assert.match(content, /renderMessageItem/);
+  assert.match(content, /keyExtractor=\{messageKeyExtractor\}/);
   assert.match(content, /style=\{styles\.messageScroller\}/);
   assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
   assert.match(content, /styles\.composerPanel/);

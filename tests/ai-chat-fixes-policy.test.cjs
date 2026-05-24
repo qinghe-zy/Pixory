@@ -453,6 +453,25 @@ test('AI prompt build reuses deep memory settings instead of repeating settings 
   assert.match(chat, /retrieveDynamicMemoryContext\(db, thread, userMessage, \{ settings: memorySettings/);
 });
 
+test('AI long chat rendering memoizes message rows and precomputes avatar grouping', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(bubble, /import \{ memo, useEffect, useState \} from 'react'/);
+  assert.match(bubble, /showAvatar\?: boolean/);
+  assert.match(bubble, /function AiMessageBubbleComponent/);
+  assert.match(bubble, /showAssistantAvatar = !isUser && showAvatar && assistantAvatar\?\.avatarEnabled/);
+  assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent\)/);
+  assert.match(chat, /type VisibleMessageItem/);
+  assert.match(chat, /visibleMessageItems = useMemo/);
+  assert.match(chat, /showAvatar: message\.role === 'assistant'/);
+  assert.match(chat, /previousMessage\?\.role !== 'assistant'/);
+  assert.match(chat, /messageKeyExtractor = useCallback/);
+  assert.match(chat, /renderMessageItem = useCallback/);
+  assert.match(chat, /data=\{visibleMessageItems\}/);
+  assert.match(chat, /renderItem=\{renderMessageItem\}/);
+});
+
 test('AI memory maintenance uses a unified per-thread queue', () => {
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');

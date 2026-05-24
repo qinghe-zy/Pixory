@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -19,6 +19,7 @@ interface AiMessageBubbleProps {
     avatarEnabled: boolean;
     avatarUri: string | null;
   };
+  showAvatar?: boolean;
   space: PixorySpace;
   streaming?: boolean;
   generating?: boolean;
@@ -46,10 +47,11 @@ function formatMessageMinute(value: string | null | undefined): string {
   return `${hours}:${minutes}`;
 }
 
-export function AiMessageBubble({
+function AiMessageBubbleComponent({
   assistantAvatar,
   generating = false,
   message,
+  showAvatar = true,
   space,
   streaming = false,
   editingMessageId = null,
@@ -65,7 +67,7 @@ export function AiMessageBubble({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const showAssistantAvatar = !isUser && assistantAvatar?.avatarEnabled;
+  const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
   const canEdit = isUser && !generating && message.versionIndex === message.versionTotal;
@@ -218,6 +220,8 @@ export function AiMessageBubble({
     </View>
   );
 }
+
+export const AiMessageBubble = memo(AiMessageBubbleComponent);
 
 const styles = StyleSheet.create({
   messageRow: {
