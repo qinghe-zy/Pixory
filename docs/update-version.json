@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.16",
-  "versionCode": 230,
+  "version": "2.1.17",
+  "versionCode": 231,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.16 已发布，新增 AI 深度记忆开关并优化长聊天性能。",
+  "message": "Pixory 2.1.17 已发布，AI 记忆更可控，长聊天体验更稳。",
   "releaseNotes": [
-    "会话设置可开启深度记忆，本地保存摘要和可复用记忆。",
-    "短期上下文提升到最近 20 条，长对话衔接更自然。",
-    "长聊天改为虚拟化列表，流式回复不再每个片段整线程重载。"
+    "AI 长期记忆支持更新、修正和过期标记，避免新旧偏好互相干扰。",
+    "聊天内联显示记忆反馈，可直接撤销、编辑或进入记忆管理。",
+    "记忆管理页可查看当前和已过期记忆，手动记忆不会被模型自动覆盖。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
