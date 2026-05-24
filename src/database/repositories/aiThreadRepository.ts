@@ -1421,30 +1421,52 @@ export const aiThreadRepository = {
 
   async createMemory(db: SQLiteDatabase, input: CreateAiMemoryInput): Promise<AiMemoryRecord> {
     const now = createTimestamp();
-    await db.runAsync(
-      `INSERT INTO ai_memories (
-        id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
-        confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
-        createdAt, updatedAt, deletedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-      input.id,
-      input.space,
-      input.scope,
-      input.scopeId ?? null,
-      input.type,
-      input.content,
-      input.normalizedContent,
-      input.sourceMessageId ?? null,
-      input.confidence ?? 0.7,
-      input.importance ?? 1,
-      input.ipId ?? null,
-      input.groupId ?? null,
-      input.imageAssetId ?? null,
-      input.assetSnapshotJson ?? '{}',
-      input.sourceKind ?? 'auto',
-      now,
-      now
-    );
+    const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
+      normalizedContent: input.normalizedContent,
+      scope: input.scope,
+      scopeId: input.scopeId ?? null,
+      space: input.space,
+    });
+    if (existing) {
+      return existing;
+    }
+    try {
+      await db.runAsync(
+        `INSERT INTO ai_memories (
+          id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
+          confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
+          createdAt, updatedAt, deletedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        input.id,
+        input.space,
+        input.scope,
+        input.scopeId ?? null,
+        input.type,
+        input.content,
+        input.normalizedContent,
+        input.sourceMessageId ?? null,
+        input.confidence ?? 0.7,
+        input.importance ?? 1,
+        input.ipId ?? null,
+        input.groupId ?? null,
+        input.imageAssetId ?? null,
+        input.assetSnapshotJson ?? '{}',
+        input.sourceKind ?? 'auto',
+        now,
+        now
+      );
+    } catch (error) {
+      const duplicate = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
+        normalizedContent: input.normalizedContent,
+        scope: input.scope,
+        scopeId: input.scopeId ?? null,
+        space: input.space,
+      });
+      if (duplicate) {
+        return duplicate;
+      }
+      throw error;
+    }
     const row = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', input.id);
     if (!row) {
       throw new Error(`AI memory ${input.id} was created but could not be reloaded.`);
@@ -1466,6 +1488,19 @@ export const aiThreadRepository = {
     const now = createTimestamp();
     const trimmed = content.replace(/\s+/g, ' ').trim();
     const normalizedContent = trimmed.toLowerCase().slice(0, 180);
+    const current = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ? AND status = \'active\'', memoryId);
+    if (!current) {
+      return null;
+    }
+    const duplicate = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
+      normalizedContent,
+      scope: current.scope,
+      scopeId: current.scopeId,
+      space: current.space,
+    });
+    if (duplicate && duplicate.id !== memoryId) {
+      throw new Error('已存在相同的记忆。');
+    }
     await db.runAsync(
       `UPDATE ai_memories
        SET content = ?, normalizedContent = ?, updatedAt = ?

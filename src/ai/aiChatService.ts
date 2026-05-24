@@ -955,6 +955,10 @@ async function streamAssistantReply(input: {
     input.onUpdated?.();
   }
 
+  if (streamFailed) {
+    return;
+  }
+
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 
@@ -971,10 +975,6 @@ async function streamAssistantReply(input: {
     );
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
-    return;
-  }
-
-  if (streamFailed) {
     return;
   }
 

@@ -202,11 +202,11 @@ export function AiChatScreen({
       messages.map((message) => {
         const selectedVersionIndex = selectedVersionByMessageId[message.id] ?? message.versionTotal;
         if (selectedVersionIndex >= message.versionTotal) {
-          return { ...message, versionIndex: message.versionTotal };
+          return message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal };
         }
         const selectedVersion = message.messageVersions.find((version) => version.versionIndex === selectedVersionIndex);
         if (!selectedVersion) {
-          return { ...message, versionIndex: message.versionTotal };
+          return message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal };
         }
         return {
           ...message,
@@ -241,7 +241,10 @@ export function AiChatScreen({
     [visibleMessages]
   );
   const contextTrimNotice = useMemo(
-    () => [...visibleMessages].reverse().some((message) => message.role === 'assistant' && messageHasContextTrim(message)),
+    () => {
+      const latestAssistant = [...visibleMessages].reverse().find((message) => message.role === 'assistant');
+      return latestAssistant ? messageHasContextTrim(latestAssistant) : false;
+    },
     [visibleMessages]
   );
   const attachmentSheetItems = useMemo<AppActionSheetItem[]>(

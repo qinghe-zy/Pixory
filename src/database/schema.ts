@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 27;
+export const DATABASE_VERSION = 28;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -718,4 +718,28 @@ ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceUsedFallback INTEGER
 export const MIGRATION_STATEMENTS_V27 = `
 CREATE INDEX IF NOT EXISTS idx_ai_memories_normalized_content
   ON ai_memories(space, scope, scopeId, normalizedContent, status);
+`;
+
+export const MIGRATION_STATEMENTS_V28 = `
+UPDATE ai_memories
+SET status = 'stale',
+    updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE status = 'active'
+  AND id IN (
+    SELECT id FROM (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (
+          PARTITION BY space, scope, COALESCE(scopeId, ''), normalizedContent
+          ORDER BY importance DESC, confidence DESC, createdAt ASC, id ASC
+        ) AS duplicateRank
+      FROM ai_memories
+      WHERE status = 'active'
+    )
+    WHERE duplicateRank > 1
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_memories_active_normalized_content
+  ON ai_memories(space, scope, COALESCE(scopeId, ''), normalizedContent)
+  WHERE status = 'active';
 `;

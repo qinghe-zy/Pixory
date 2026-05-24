@@ -234,7 +234,20 @@ function AiMessageBubbleComponent({
   );
 }
 
-export const AiMessageBubble = memo(AiMessageBubbleComponent);
+function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMessageBubbleProps): boolean {
+  return (
+    previous.message === next.message &&
+    previous.space === next.space &&
+    previous.streaming === next.streaming &&
+    previous.generating === next.generating &&
+    previous.showAvatar === next.showAvatar &&
+    previous.editingMessageId === next.editingMessageId &&
+    previous.assistantAvatar?.avatarEnabled === next.assistantAvatar?.avatarEnabled &&
+    previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri
+  );
+}
+
+export const AiMessageBubble = memo(AiMessageBubbleComponent, areAiMessageBubblePropsEqual);
 
 const styles = StyleSheet.create({
   messageRow: {

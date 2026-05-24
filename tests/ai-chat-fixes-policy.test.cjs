@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 27/);
+  assert.match(schema, /DATABASE_VERSION = 28/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -148,7 +148,7 @@ test('AI regenerate switches back to the newest generated message version', () =
 
 test('AI message action row puts version controls after edit regenerate and shows assistant reply time', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
-  const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?<\/View>\n      <\/View>/m.exec(bubble)?.[0] ?? '';
+  const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?\{messageTime \? <Text style=\{styles\.messageTime\}>\{messageTime\}<\/Text> : null\}[\s\S]*?<\/View>/m.exec(bubble)?.[0] ?? '';
   const copyIndex = actionRow.indexOf('accessibilityLabel="复制消息"');
   const editIndex = actionRow.indexOf('accessibilityLabel="重写消息"');
   const regenerateIndex = actionRow.indexOf('accessibilityLabel="重新生成回复"');
@@ -162,6 +162,19 @@ test('AI message action row puts version controls after edit regenerate and show
   assert.match(bubble, /formatAiMessageMinute/);
   assert.match(bubble, /message\.completedAt \?\? message\.updatedAt/);
   assert.match(bubble, /styles\.messageTime/);
+});
+
+test('AI failed streaming state is not overwritten by a final generating patch', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const streamBlock = /async function streamAssistantReply[\s\S]*?let finalCitations/.exec(service)?.[0] ?? '';
+  const failedReturnIndex = streamBlock.indexOf('if (streamFailed)');
+  const forcedPersistIndex = streamBlock.indexOf('await persistStreamingSnapshot(true)');
+  const forcedEmitIndex = streamBlock.indexOf('emitStreamingPatch(true)');
+
+  assert.ok(failedReturnIndex >= 0);
+  assert.ok(forcedPersistIndex > failedReturnIndex);
+  assert.ok(forcedEmitIndex > failedReturnIndex);
+  assert.match(streamBlock, /if \(streamFailed\) \{\s*return;\s*\}/);
 });
 
 test('AI assistant replies use lightweight Claude-style markdown without changing bubble chrome', () => {
@@ -439,6 +452,9 @@ test('AI memory repository uses atomic pending increments bounded board queries 
   assert.match(repository, /LIMIT \?/);
   assert.match(repository, /OFFSET \?/);
   assert.match(repository, /const now = createTimestamp\(\);[\s\S]*lastUsedAt = \?, updatedAt = \?[\s\S]*now,\s*now/);
+  assert.match(repository, /const existing = await aiThreadRepository\.findActiveMemoryByNormalizedContent/);
+  assert.match(repository, /return existing/);
+  assert.match(repository, /已存在相同的记忆/);
 });
 
 test('AI prompt build reuses deep memory settings instead of repeating settings reads', () => {
@@ -461,7 +477,10 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(bubble, /showAvatar\?: boolean/);
   assert.match(bubble, /function AiMessageBubbleComponent/);
   assert.match(bubble, /showAssistantAvatar = !isUser && showAvatar && assistantAvatar\?\.avatarEnabled/);
-  assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent\)/);
+  assert.match(bubble, /areAiMessageBubblePropsEqual/);
+  assert.match(bubble, /previous\.message === next\.message/);
+  assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent, areAiMessageBubblePropsEqual\)/);
+  assert.match(chat, /return message\.versionIndex === message\.versionTotal \? message/);
   assert.match(chat, /type VisibleMessageItem/);
   assert.match(chat, /visibleMessageItems = useMemo/);
   assert.match(chat, /showAvatar: message\.role === 'assistant'/);
@@ -491,6 +510,7 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
   assert.match(service, /contextTrimmedByBudget/);
   assert.match(service, /contextTrimmedByCount/);
   assert.match(chat, /contextTrimNotice/);
+  assert.match(chat, /const latestAssistant = \[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
   assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
   assert.match(chat, /promptSnapshotJson/);
 });
@@ -564,7 +584,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 27/);
+  assert.match(schema, /DATABASE_VERSION = 28/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);
