@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  isAbortError,
   normalizeBaseUrl,
   type AiChatRequest,
   type AiProviderAdapter,
@@ -47,10 +48,13 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   }
 }
 
-async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler): Promise<void> {
+async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const text = await response.text();
+    if (signal?.aborted) {
+      return;
+    }
     for (const line of text.split('\n')) {
       for (const event of parseOpenAiStreamLine(line)) {
         await onEvent(event);
@@ -63,7 +67,13 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   const decoder = new TextDecoder();
   let buffer = '';
   while (true) {
+    if (signal?.aborted) {
+      return;
+    }
     const { done, value } = await reader.read();
+    if (signal?.aborted) {
+      return;
+    }
     if (done) {
       break;
     }
@@ -109,6 +119,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
           Authorization: `Bearer ${input.apiKey}`,
           'Content-Type': 'application/json',
         },
+        signal: input.signal,
         body: JSON.stringify({
           model: input.modelId,
           stream: true,
@@ -120,9 +131,15 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
         }),
       });
       await assertOkResponse(response, 'AI chat request failed');
-      await readStreamingResponse(response, onEvent);
+      await readStreamingResponse(response, onEvent, input.signal);
+      if (input.signal?.aborted) {
+        return;
+      }
       await onEvent({ type: 'completed' });
     } catch (error) {
+      if (input.signal?.aborted || isAbortError(error)) {
+        return;
+      }
       await onEvent({ type: 'error', message: error instanceof Error ? error.message : 'AI chat request failed' });
     }
   },

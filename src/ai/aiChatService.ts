@@ -55,6 +55,7 @@ export interface SendUserMessageInput {
   space: PixorySpace;
   threadId: string;
   content: string;
+  signal?: AbortSignal;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
@@ -64,6 +65,7 @@ export interface RetryAssistantMessageInput {
   space: PixorySpace;
   threadId: string;
   assistantMessageId: string;
+  signal?: AbortSignal;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
@@ -73,6 +75,7 @@ export interface RewriteUserMessageInput {
   threadId: string;
   userMessageId: string;
   content: string;
+  signal?: AbortSignal;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
@@ -745,6 +748,25 @@ async function markAssistantFailed(
   );
 }
 
+async function markAssistantStopped(
+  space: PixorySpace,
+  assistantMessageId: string,
+  partialContent?: string,
+  partialReasoningText?: string | null
+): Promise<string> {
+  const completedAt = new Date().toISOString();
+  await runWithDatabaseSpace(space, (db) =>
+    aiThreadRepository.updateMessage(db, assistantMessageId, {
+      status: 'stopped',
+      content: partialContent,
+      reasoningText: partialReasoningText,
+      completedAt,
+    })
+  );
+  stoppedMessageIds.delete(assistantMessageId);
+  return completedAt;
+}
+
 async function snapshotMessageVersion(
   db: SQLiteDatabase,
   message: AiMessageRecord
@@ -822,9 +844,36 @@ async function streamAssistantReply(input: {
   thread: AiThreadRecord;
   userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId: string;
+  signal?: AbortSignal;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }): Promise<void> {
+  let answerText = '';
+  let reasoningText = '';
+  let assistantReset = false;
+  const stopForAbort = async (): Promise<boolean> => {
+    if (!input.signal?.aborted) {
+      return false;
+    }
+    const completedAt = await markAssistantStopped(
+      input.space,
+      input.assistantMessageId,
+      assistantReset ? answerText : undefined,
+      assistantReset ? reasoningText || null : undefined
+    );
+    input.onMessagePatch?.({
+      id: input.assistantMessageId,
+      status: 'stopped',
+      content: assistantReset ? answerText : undefined,
+      reasoningText: assistantReset ? reasoningText || null : undefined,
+      completedAt,
+    });
+    input.onUpdated?.();
+    return true;
+  };
+  if (await stopForAbort()) {
+    return;
+  }
   stoppedMessageIds.delete(input.assistantMessageId);
   const startedAt = new Date().toISOString();
   await runWithDatabaseSpace(input.space, async (db) => {
@@ -842,6 +891,7 @@ async function streamAssistantReply(input: {
     });
     await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
   });
+  assistantReset = true;
   input.onMessagePatch?.({
     id: input.assistantMessageId,
     status: 'generating',
@@ -858,7 +908,14 @@ async function streamAssistantReply(input: {
   });
   input.onUpdated?.();
 
+  if (await stopForAbort()) {
+    return;
+  }
+
   const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, input.thread);
+  if (await stopForAbort()) {
+    return;
+  }
   if (!provider || !modelId) {
     await markAssistantFailed(input.space, input.assistantMessageId, '请先选择可用的 AI provider 和模型。');
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: '请先选择可用的 AI provider 和模型。', completedAt: new Date().toISOString() });
@@ -873,21 +930,28 @@ async function streamAssistantReply(input: {
   }
 
   const { prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content);
+  if (await stopForAbort()) {
+    return;
+  }
   const historySource = await runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.listRecentCompletedMessagesBefore(db, input.thread.id, input.userMessage.id, CHAT_HISTORY_MESSAGE_LIMIT + 1)
   );
+  if (await stopForAbort()) {
+    return;
+  }
   const contextTrimmedByCount = historySource.length > CHAT_HISTORY_MESSAGE_LIMIT;
   const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
   const { contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id);
   const contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget;
 
-  let answerText = '';
-  let reasoningText = '';
   let streamFailed = false;
   let lastPersistAt = 0;
   let lastUiPatchAt = 0;
   const adapter = getAdapterForProvider(provider);
   const emitStreamingPatch = (force = false) => {
+    if (input.signal?.aborted) {
+      return;
+    }
     const now = Date.now();
     if (!force && now - lastUiPatchAt < STREAMING_UI_PATCH_INTERVAL_MS) {
       return;
@@ -901,6 +965,9 @@ async function streamAssistantReply(input: {
     });
   };
   const persistStreamingSnapshot = async (force = false) => {
+    if (input.signal?.aborted) {
+      return;
+    }
     const now = Date.now();
     if (!force && now - lastPersistAt < STREAMING_PERSIST_INTERVAL_MS) {
       return;
@@ -923,9 +990,10 @@ async function streamAssistantReply(input: {
         systemPrompt: prompt.system,
         userPrompt: prompt.user,
         history,
+        signal: input.signal,
       },
       async (event: AiStreamEvent) => {
-        if (stoppedMessageIds.has(input.assistantMessageId)) {
+        if (input.signal?.aborted || stoppedMessageIds.has(input.assistantMessageId)) {
           return;
         }
         if (event.type === 'answer_delta') {
@@ -948,6 +1016,9 @@ async function streamAssistantReply(input: {
       }
     );
   } catch (error) {
+    if (await stopForAbort()) {
+      return;
+    }
     streamFailed = true;
     const readableError = normalizeAiErrorMessage(error);
     await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
@@ -959,20 +1030,19 @@ async function streamAssistantReply(input: {
     return;
   }
 
+  if (await stopForAbort()) {
+    return;
+  }
+
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 
+  if (await stopForAbort()) {
+    return;
+  }
+
   if (stoppedMessageIds.has(input.assistantMessageId)) {
-    const completedAt = new Date().toISOString();
-    stoppedMessageIds.delete(input.assistantMessageId);
-    await runWithDatabaseSpace(input.space, (db) =>
-      aiThreadRepository.updateMessage(db, input.assistantMessageId, {
-        status: 'stopped',
-        content: answerText,
-        reasoningText: reasoningText || null,
-        completedAt,
-      })
-    );
+    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, answerText, reasoningText || null);
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
     return;
@@ -1077,6 +1147,7 @@ export async function sendUserMessage(
     assistantMessageId,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
+    signal: input.signal,
     space: input.space,
     thread,
     userMessage: { id: userMessageId, content: input.content },
@@ -1117,6 +1188,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     assistantMessageId: input.assistantMessageId,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
+    signal: input.signal,
     space: input.space,
     thread,
     userMessage,
@@ -1185,6 +1257,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     assistantMessageId,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
+    signal: input.signal,
     space: input.space,
     thread,
     userMessage: { id: input.userMessageId, content },

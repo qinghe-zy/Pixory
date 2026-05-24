@@ -206,6 +206,18 @@ function scheduleAiChatMemoryMaintenanceForRoute(route: AppRoute | undefined, re
   });
 }
 
+function aiChatRouteKey(route: Extract<AppRoute, { name: 'ai-chat' }>, stackDepth: number): string {
+  return [
+    route.name,
+    stackDepth,
+    route.space,
+    route.contextType ?? 'normal',
+    route.ipId ?? 'none',
+    route.knowledgeBaseId ?? 'none',
+    route.includeIpDocuments ? 'with-docs' : 'without-docs',
+  ].join(':');
+}
+
 function isArchiveMimeType(mimeType: string | null | undefined): boolean {
   return mimeType === 'application/zip' || mimeType === 'application/x-cbz' || mimeType === 'application/vnd.comicbook+zip';
 }
@@ -1377,6 +1389,7 @@ export default function App() {
   } else if (currentRoute.name === 'ai-chat') {
     content = (
       <AiChatScreen
+        key={aiChatRouteKey(currentRoute, routeStack.length)}
         contextTitle={currentRoute.contextTitle}
         contextType={currentRoute.contextType ?? 'normal'}
         boundIpId={currentRoute.ipId}

@@ -13,6 +13,7 @@ export interface AiChatRequest {
   systemPrompt: string;
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  signal?: AbortSignal;
 }
 
 export interface AiProviderAdapter {
@@ -24,6 +25,10 @@ export interface AiProviderAdapter {
 
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '');
+}
+
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || /aborted/i.test(error.message));
 }
 
 function titleForProviderError(fallbackMessage: string): string {

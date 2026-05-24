@@ -63,7 +63,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   assert.match(bubble, /chevron-forward/);
 });
 
-test('AI chat voice input stays on the mic button and uses Android speech recognition', () => {
+test('AI chat hides the voice input entry while keeping Android speech recognition code available', () => {
   const composer = read('src/components/ai/AiChatComposer.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
   const nativeTs = read('src/native/pixoryMediaModule.ts');
@@ -72,7 +72,8 @@ test('AI chat voice input stays on the mic button and uses Android speech recogn
   const manifest = read('android/app/src/main/AndroidManifest.xml');
   const pluginManifest = read('plugins/pixory-android-intents/templates/app/src/main/AndroidManifest.xml');
 
-  assert.match(composer, /accessibilityLabel="语音输入"/);
+  assert.doesNotMatch(composer, /accessibilityLabel="语音输入"/);
+  assert.doesNotMatch(composer, /name="mic-outline"/);
   assert.match(composer, /onVoiceInput/);
   assert.doesNotMatch(composer, /refresh-outline/);
   assert.doesNotMatch(composer, /retryAvailable/);
@@ -88,14 +89,15 @@ test('AI chat voice input stays on the mic button and uses Android speech recogn
   assert.doesNotMatch(pluginManifest, /RECORD_AUDIO" tools:node="remove"/);
 });
 
-test('AI inline message editing does not lift the edit bubble when the Android keyboard opens', () => {
+test('AI chat relies on Android adjustResize instead of JS keyboard margin lifting', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(chat, /editingUserMessageIdRef/);
-  assert.match(chat, /Keyboard\.addListener\('keyboardDidShow'[\s\S]*editingUserMessageIdRef\.current[\s\S]*setKeyboardBottomInset\(0\)[\s\S]*return;/);
-  assert.match(chat, /function handleEditUserMessage[\s\S]*editingUserMessageIdRef\.current = messageId[\s\S]*setKeyboardBottomInset\(0\)/);
+  assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.doesNotMatch(chat, /keyboardBottomInset/);
+  assert.doesNotMatch(chat, /marginBottom:\s*keyboardBottomInset/);
+  assert.match(chat, /function handleEditUserMessage[\s\S]*editingUserMessageIdRef\.current = messageId/);
   assert.match(chat, /function cancelInlineEdit\(\)[\s\S]*editingUserMessageIdRef\.current = null[\s\S]*setEditingUserMessageId\(null\)/);
-  assert.match(chat, /keyboardBottomInset && !editingUserMessageId/);
 });
 
 test('AI inline edit cancel and send labels are centered in their buttons', () => {
@@ -118,23 +120,40 @@ test('AI inline edit cursor stays visible on the user bubble', () => {
   assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.coral\}/);
 });
 
-test('AI chat keeps the latest message visible after initial load keyboard show and composer growth', () => {
+test('AI chat uses an inverted list pinned to offset zero without forced scrollToEnd loops', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const composer = read('src/components/ai/AiChatComposer.tsx');
 
-  assert.match(chat, /forceScrollAfterMessagesRef/);
-  assert.match(chat, /setTimeout\(scroll,\s*80\)/);
-  assert.match(chat, /setTimeout\(scroll,\s*180\)/);
-  assert.match(chat, /forceScrollAfterMessagesRef\.current = true/);
-  assert.match(chat, /forceScrollAfterMessagesRef\.current = false/);
-  assert.match(chat, /scrollToLatestMessage\(messages\.length > 1,\s*force\)/);
-  assert.match(chat, /Keyboard\.addListener\('keyboardDidShow'[\s\S]*followLatestMessage\(\)/);
+  assert.match(chat, /invertedMessageItems = useMemo/);
+  assert.match(chat, /data=\{invertedMessageItems\}/);
+  assert.match(chat, /\binverted\b/);
+  assert.match(chat, /ListFooterComponent=/);
+  assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
+  assert.match(chat, /contentOffset\.y > MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.doesNotMatch(chat, /scrollToEnd/);
+  assert.doesNotMatch(chat, /setTimeout\(scroll/);
+  assert.doesNotMatch(chat, /onContentSizeChange=/);
+  assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
   assert.match(chat, /const handleComposerHeightChange = useCallback/);
+  assert.match(chat, /handleComposerHeightChange[\s\S]*scrollToLatestMessage\(false\)/);
+  assert.doesNotMatch(chat, /handleComposerHeightChange[\s\S]*followLatestMessage\(false\)/);
   assert.match(chat, /onComposerHeightChange=\{handleComposerHeightChange\}/);
   assert.match(composer, /onComposerHeightChange\?: \(\) => void/);
   assert.match(composer, /attachmentCountRef/);
   assert.match(composer, /onComposerHeightChange\?\.\(\)/);
   assert.match(composer, /if \(nextHeight !== inputHeight\)/);
+});
+
+test('AI chat route reloads do not fall back to stale active thread state', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
+  assert.match(chat, /reloadMessages\(threadId \?\? null/);
+  assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
+  assert.match(chat, /reloadAvatarConfig\(threadId \?\? null/);
+  assert.match(chat, /reloadThreadTitle\(threadId \?\? null/);
+  assert.match(chat, /reloadMemoryCaptures\(threadId \?\? null/);
+  assert.match(chat, /latestRequestRef/);
 });
 
 test('AI regenerate switches back to the newest generated message version', () => {
@@ -298,10 +317,18 @@ test('AI chat uses thirty short-term messages and avoids full reload for every s
   assert.match(chat, /<FlatList/);
   assert.match(chat, /CHAT_MESSAGE_PAGE_SIZE = 60/);
   assert.match(chat, /加载更早消息/);
-  assert.match(chat, /maintainVisibleContentPosition=\{\{ minIndexForVisible: 0 \}\}/);
+  assert.match(chat, /ListFooterComponent=/);
+  assert.match(chat, /invertedMessageItems/);
   assert.match(chat, /isLoadingEarlierRef/);
-  assert.match(chat, /onContentSizeChange=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage/);
-  assert.match(chat, /onLayout=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage\(false, true\)/);
+  assert.doesNotMatch(chat, /maintainVisibleContentPosition=\{\{ minIndexForVisible: 0 \}\}/);
+  assert.doesNotMatch(chat, /onContentSizeChange=/);
+  assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
+  assert.match(service, /signal\?: AbortSignal/);
+  assert.match(service, /signal: input\.signal/);
+  assert.match(service, /input\.signal\?\.aborted/);
+  assert.match(service, /markAssistantStopped/);
+  assert.match(service, /stopForAbort/);
+  assert.match(service, /status: 'stopped'/);
   assert.match(repository, /listMessageVersionsForMessages/);
   assert.match(repository, /listCitationsForMessages/);
 });
@@ -487,11 +514,12 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(chat, /return message\.versionIndex === message\.versionTotal \? message/);
   assert.match(chat, /type VisibleMessageItem/);
   assert.match(chat, /visibleMessageItems = useMemo/);
+  assert.match(chat, /invertedMessageItems = useMemo/);
   assert.match(chat, /showAvatar: message\.role === 'assistant'/);
   assert.match(chat, /previousMessage\?\.role !== 'assistant'/);
   assert.match(chat, /messageKeyExtractor = useCallback/);
   assert.match(chat, /renderMessageItem = useCallback/);
-  assert.match(chat, /data=\{visibleMessageItems\}/);
+  assert.match(chat, /data=\{invertedMessageItems\}/);
   assert.match(chat, /renderItem=\{renderMessageItem\}/);
 });
 

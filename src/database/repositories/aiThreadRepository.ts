@@ -1447,7 +1447,7 @@ export const aiThreadRepository = {
           confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
           supersededByMemoryId, mergeReason, mergedAt, lastReconciledAt, reconcileSourceMessageId,
           createdAt, updatedAt, deletedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         input.id,
         input.space,
         input.scope,

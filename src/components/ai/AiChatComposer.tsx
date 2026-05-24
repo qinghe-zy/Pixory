@@ -149,9 +149,6 @@ export function AiChatComposer({
           value={value}
         />
         <View style={styles.sideActions}>
-          <Pressable accessibilityLabel="语音输入" accessibilityRole="button" disabled={generating} hitSlop={spacing[2]} onPress={onVoiceInput} style={({ pressed }) => [styles.micButton, generating && styles.disabled, pressed && !generating && styles.pressed]}>
-            <Ionicons color={aiLightColors.coral} name="mic-outline" size={spacing[5]} />
-          </Pressable>
           {generating ? (
             <Pressable accessibilityLabel="停止回复" accessibilityRole="button" hitSlop={spacing[2]} onPress={onStop} style={({ pressed }) => [styles.sendButton, pressed && styles.pressed]}>
               <Ionicons color={aiLightColors.onDark} name="stop" size={spacing[5]} />
@@ -263,14 +260,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
-  },
-  micButton: {
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderRadius: radius.md,
-    height: spacing[8],
-    justifyContent: 'center',
-    width: spacing[8],
   },
   sendButton: {
     alignItems: 'center',

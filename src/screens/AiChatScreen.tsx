@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -170,9 +170,18 @@ export function AiChatScreen({
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
-  const forceScrollAfterMessagesRef = useRef(false);
   const isLoadingEarlierRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
+  const activeThreadIdRef = useRef<string | null>(threadId ?? null);
+  const latestRequestRef = useRef({
+    avatar: 0,
+    memory: 0,
+    messages: 0,
+    model: 0,
+    title: 0,
+  });
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const activeStreamGenerationRef = useRef(0);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [loadedMessageLimit, setLoadedMessageLimit] = useState(CHAT_MESSAGE_PAGE_SIZE);
@@ -185,7 +194,6 @@ export function AiChatScreen({
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
   const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
   const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
-  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
@@ -240,6 +248,10 @@ export function AiChatScreen({
       }),
     [visibleMessages]
   );
+  const invertedMessageItems = useMemo(
+    () => [...visibleMessageItems].reverse(),
+    [visibleMessageItems]
+  );
   const contextTrimNotice = useMemo(
     () => {
       const latestAssistant = [...visibleMessages].reverse().find((message) => message.role === 'assistant');
@@ -272,22 +284,44 @@ export function AiChatScreen({
     []
   );
 
+  function nextRequestId(kind: keyof typeof latestRequestRef.current): number {
+    latestRequestRef.current[kind] += 1;
+    return latestRequestRef.current[kind];
+  }
+
+  function isLatestRequest(kind: keyof typeof latestRequestRef.current, requestId: number, targetThreadId: string | null): boolean {
+    return latestRequestRef.current[kind] === requestId && activeThreadIdRef.current === targetThreadId;
+  }
+
+  function isCurrentStream(targetThreadId: string, generation: number): boolean {
+    return activeStreamGenerationRef.current === generation && activeThreadIdRef.current === targetThreadId;
+  }
+
+  function beginStreamingRequest(targetThreadId: string): { controller: AbortController; generation: number } {
+    streamAbortRef.current?.abort();
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    activeStreamGenerationRef.current += 1;
+    activeThreadIdRef.current = targetThreadId;
+    return { controller, generation: activeStreamGenerationRef.current };
+  }
+
+  function abortActiveStreamingRequest() {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    activeStreamGenerationRef.current += 1;
+  }
+
   const scrollToLatestMessage = useCallback((animated = true, force = false) => {
     if (!force && userScrolledAwayFromBottomRef.current) {
       return;
     }
-    const scroll = () => {
-      messageListRef.current?.scrollToEnd({ animated });
-    };
-    requestAnimationFrame(scroll);
-    setTimeout(scroll, 80);
-    setTimeout(scroll, 180);
+    messageListRef.current?.scrollToOffset({ animated, offset: 0 });
   }, []);
 
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    userScrolledAwayFromBottomRef.current = distanceFromBottom > MESSAGE_BOTTOM_LOCK_THRESHOLD;
+    const { contentOffset } = event.nativeEvent;
+    userScrolledAwayFromBottomRef.current = contentOffset.y > MESSAGE_BOTTOM_LOCK_THRESHOLD;
     setLatestVisible(!userScrolledAwayFromBottomRef.current);
   }, []);
 
@@ -298,8 +332,8 @@ export function AiChatScreen({
   }, [scrollToLatestMessage]);
 
   const handleComposerHeightChange = useCallback(() => {
-    followLatestMessage(false);
-  }, [followLatestMessage]);
+    scrollToLatestMessage(false);
+  }, [scrollToLatestMessage]);
 
   function showLatestMessageVersion(messageId: string) {
     setSelectedVersionByMessageId((current) => {
@@ -325,24 +359,36 @@ export function AiChatScreen({
   );
 
   const reloadMessages = useCallback(
-    async (targetThreadId: string | null = activeThreadId, forceToLatest = false) => {
+    async (targetThreadId: string | null, forceToLatest = false) => {
+      const requestId = nextRequestId('messages');
       if (!targetThreadId) {
+        setMessages([]);
+        setHasEarlierMessages(false);
+        setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
+        setMemoryCaptures([]);
+        isLoadingEarlierRef.current = false;
+        userScrolledAwayFromBottomRef.current = false;
+        setLatestVisible(true);
         return;
       }
       const nextMessages = await listThreadMessages(space, targetThreadId, { limit: loadedMessageLimit });
+      if (!isLatestRequest('messages', requestId, targetThreadId)) {
+        return;
+      }
       setHasEarlierMessages(nextMessages.length >= loadedMessageLimit);
       if (forceToLatest) {
-        forceScrollAfterMessagesRef.current = true;
         userScrolledAwayFromBottomRef.current = false;
+        setLatestVisible(true);
       }
       setMessages(nextMessages);
+      const titleRequestId = nextRequestId('title');
       void loadThreadTitle(space, targetThreadId).then((title) => {
-        if (title) {
+        if (title && isLatestRequest('title', titleRequestId, targetThreadId)) {
           applyDisplayTitle(title);
         }
       });
     },
-    [activeThreadId, applyDisplayTitle, loadedMessageLimit, space]
+    [applyDisplayTitle, loadedMessageLimit, space]
   );
 
   const applyStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
@@ -376,48 +422,62 @@ export function AiChatScreen({
   }, []);
 
   const reloadThreadTitle = useCallback(
-    async (targetThreadId: string | null = activeThreadId) => {
+    async (targetThreadId: string | null) => {
+      const requestId = nextRequestId('title');
       if (!targetThreadId) {
         applyDisplayTitle(resolvedContextTitle);
         return;
       }
       const title = await loadThreadTitle(space, targetThreadId);
-      if (title) {
+      if (title && isLatestRequest('title', requestId, targetThreadId)) {
         applyDisplayTitle(title);
       }
     },
-    [activeThreadId, applyDisplayTitle, resolvedContextTitle, space]
+    [applyDisplayTitle, resolvedContextTitle, space]
   );
 
   const reloadModelLabel = useCallback(
-    async (targetThreadId: string | null = activeThreadId) => {
+    async (targetThreadId: string | null) => {
+      const requestId = nextRequestId('model');
       const label = await getCurrentChatModelLabel(space, targetThreadId);
+      if (!isLatestRequest('model', requestId, targetThreadId)) {
+        return;
+      }
       setModelLabel(label);
     },
-    [activeThreadId, space]
+    [space]
   );
 
   const reloadAvatarConfig = useCallback(
-    async (targetThreadId: string | null = activeThreadId) => {
+    async (targetThreadId: string | null) => {
+      const requestId = nextRequestId('avatar');
       if (!targetThreadId) {
         setAvatarConfig({ avatarEnabled: false, avatarUri: null });
         return;
       }
-      setAvatarConfig(await loadThreadAvatarConfig(space, targetThreadId));
+      const nextAvatarConfig = await loadThreadAvatarConfig(space, targetThreadId);
+      if (!isLatestRequest('avatar', requestId, targetThreadId)) {
+        return;
+      }
+      setAvatarConfig(nextAvatarConfig);
     },
-    [activeThreadId, space]
+    [space]
   );
 
   const reloadMemoryCaptures = useCallback(
-    async (targetThreadId: string | null = activeThreadId) => {
+    async (targetThreadId: string | null) => {
+      const requestId = nextRequestId('memory');
       if (!targetThreadId) {
         setMemoryCaptures([]);
         return;
       }
       const captures = await listRecentMemoryCaptures(space, targetThreadId);
+      if (!isLatestRequest('memory', requestId, targetThreadId)) {
+        return;
+      }
       setMemoryCaptures(captures);
     },
-    [activeThreadId, space]
+    [space]
   );
 
   const reloadRecentThreads = useCallback(async () => {
@@ -425,77 +485,65 @@ export function AiChatScreen({
   }, [space]);
 
   useEffect(() => {
-    setActiveThreadId(threadId ?? null);
+    const nextThreadId = threadId ?? null;
+    activeThreadIdRef.current = nextThreadId;
+    setActiveThreadId(nextThreadId);
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setSelectedVersionByMessageId({});
     setPendingAttachments([]);
     setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
     setHasEarlierMessages(false);
-    forceScrollAfterMessagesRef.current = true;
+    if (!nextThreadId) {
+      setMessages([]);
+      setMemoryCaptures([]);
+    }
     userScrolledAwayFromBottomRef.current = false;
+    setLatestVisible(true);
     applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
   useEffect(() => {
-    void reloadMessages(threadId ?? activeThreadId, forceScrollAfterMessagesRef.current);
-  }, [activeThreadId, reloadMessages, threadId]);
+    void reloadMessages(threadId ?? null);
+  }, [reloadMessages, threadId]);
 
   useEffect(() => {
-    void reloadModelLabel(threadId ?? activeThreadId);
-  }, [activeThreadId, reloadModelLabel, threadId]);
+    void reloadModelLabel(threadId ?? null);
+  }, [reloadModelLabel, threadId]);
 
   useEffect(() => {
-    void reloadAvatarConfig(threadId ?? activeThreadId);
-  }, [activeThreadId, reloadAvatarConfig, threadId]);
+    void reloadAvatarConfig(threadId ?? null);
+  }, [reloadAvatarConfig, threadId]);
 
   useEffect(() => {
-    void reloadThreadTitle(threadId ?? activeThreadId);
-  }, [activeThreadId, reloadThreadTitle, threadId]);
+    void reloadThreadTitle(threadId ?? null);
+  }, [reloadThreadTitle, threadId]);
 
   useEffect(() => {
-    void reloadMemoryCaptures(threadId ?? activeThreadId);
-  }, [activeThreadId, reloadMemoryCaptures, threadId]);
+    void reloadMemoryCaptures(threadId ?? null);
+  }, [reloadMemoryCaptures, threadId]);
 
   useEffect(() => {
     void reloadRecentThreads();
   }, [reloadRecentThreads, activeThreadId]);
 
   useEffect(() => {
-    const force = forceScrollAfterMessagesRef.current;
-    forceScrollAfterMessagesRef.current = false;
     if (isLoadingEarlierRef.current) {
       const timeout = setTimeout(() => {
         isLoadingEarlierRef.current = false;
       }, 250);
       return () => clearTimeout(timeout);
     }
-    scrollToLatestMessage(messages.length > 1, force);
-  }, [messages, scrollToLatestMessage]);
+    return undefined;
+  }, [messages]);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return undefined;
-    }
-
-    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
-      if (editingUserMessageIdRef.current) {
-        setKeyboardBottomInset(0);
-        return;
-      }
-      setKeyboardBottomInset(Math.max(0, event.endCoordinates.height - insets.bottom));
-      followLatestMessage();
-    });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardBottomInset(0);
-      scrollToLatestMessage();
-    });
-
     return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = null;
+      activeStreamGenerationRef.current += 1;
     };
-  }, [followLatestMessage, insets.bottom, scrollToLatestMessage]);
+  }, []);
 
   async function ensureThread(): Promise<string> {
     if (activeThreadId) {
@@ -509,6 +557,7 @@ export function AiChatScreen({
       space,
       title: resolvedContextTitle,
     });
+    activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     onThreadReady?.(thread.id);
     void reloadModelLabel(thread.id);
@@ -695,31 +744,59 @@ export function AiChatScreen({
     setGenerating(true);
     setErrorMessage(null);
     followLatestMessage();
+    let nextThreadId: string | null = null;
+    let streamController: AbortController | null = null;
+    let streamGeneration = 0;
     try {
-      const nextThreadId = await ensureThread();
+      nextThreadId = await ensureThread();
+      const targetThreadId = nextThreadId;
+      const streamRequest = beginStreamingRequest(targetThreadId);
+      streamController = streamRequest.controller;
+      streamGeneration = streamRequest.generation;
       await sendUserMessage({
         content,
         onCreated: ({ assistantMessageId }) => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
+            return;
+          }
           setActiveAssistantId(assistantMessageId);
           followLatestMessage();
-          void reloadMessages(nextThreadId);
+          void reloadMessages(targetThreadId);
         },
-        onMessagePatch: applyStreamingMessagePatch,
+        onMessagePatch: (patch) => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
+            return;
+          }
+          applyStreamingMessagePatch(patch);
+        },
         onUpdated: () => {
-          void reloadMessages(nextThreadId);
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
+            return;
+          }
+          void reloadMessages(targetThreadId);
         },
+        signal: streamController.signal,
         space,
-        threadId: nextThreadId,
+        threadId: targetThreadId,
       });
-      await reloadMessages(nextThreadId);
-      await reloadMemoryCaptures(nextThreadId);
+      await reloadMessages(targetThreadId);
+      await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
+      if (streamController?.signal.aborted || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
+        return;
+      }
       setComposerText(typedText);
       setPendingAttachments(attachments);
       setErrorMessage(error instanceof Error ? error.message : '发送失败');
     } finally {
-      setGenerating(false);
-      setActiveAssistantId(null);
+      const stillCurrent = nextThreadId && streamGeneration ? isCurrentStream(nextThreadId, streamGeneration) : true;
+      if (stillCurrent) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (streamAbortRef.current === streamController) {
+          streamAbortRef.current = null;
+        }
+      }
     }
   }
 
@@ -753,49 +830,75 @@ export function AiChatScreen({
         return;
       }
     }
+    const targetThreadId = activeThreadId;
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setGenerating(true);
     setErrorMessage(null);
     followLatestMessage();
+    const { controller: streamController, generation: streamGeneration } = beginStreamingRequest(targetThreadId);
     try {
       await rewriteUserMessage({
         content,
         onCreated: ({ assistantMessageId }) => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
+            return;
+          }
           setActiveAssistantId(assistantMessageId);
           showLatestMessageVersion(userMessageId);
           showLatestMessageVersion(assistantMessageId);
           followLatestMessage();
-          void reloadMessages(activeThreadId);
+          void reloadMessages(targetThreadId);
         },
-        onMessagePatch: applyStreamingMessagePatch,
+        onMessagePatch: (patch) => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
+            return;
+          }
+          applyStreamingMessagePatch(patch);
+        },
         onUpdated: () => {
-          void reloadMessages(activeThreadId);
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
+            return;
+          }
+          void reloadMessages(targetThreadId);
         },
+        signal: streamController.signal,
         space,
-        threadId: activeThreadId,
+        threadId: targetThreadId,
         userMessageId,
       });
-      await reloadMessages(activeThreadId);
-      await reloadMemoryCaptures(activeThreadId);
+      await reloadMessages(targetThreadId);
+      await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
+      if (streamController.signal.aborted || !isCurrentStream(targetThreadId, streamGeneration)) {
+        return;
+      }
       editingUserMessageIdRef.current = userMessageId;
       setEditingUserMessageId(userMessageId);
       setErrorMessage(error instanceof Error ? error.message : '重写失败');
     } finally {
-      setGenerating(false);
-      setActiveAssistantId(null);
+      if (isCurrentStream(targetThreadId, streamGeneration)) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (streamAbortRef.current === streamController) {
+          streamAbortRef.current = null;
+        }
+      }
     }
   }
 
   async function handleStop() {
-    if (!activeAssistantId) {
+    const targetAssistantId = activeAssistantId;
+    const targetThreadId = activeThreadIdRef.current;
+    abortActiveStreamingRequest();
+    setGenerating(false);
+    setActiveAssistantId(null);
+    if (!targetAssistantId) {
       setGenerating(false);
       return;
     }
-    await stopStreamingMessage({ assistantMessageId: activeAssistantId, space });
-    setGenerating(false);
-    await reloadMessages();
+    await stopStreamingMessage({ assistantMessageId: targetAssistantId, space });
+    await reloadMessages(targetThreadId);
   }
 
   async function handleRegenerate(messageId?: string) {
@@ -809,28 +912,47 @@ export function AiChatScreen({
         return;
       }
     }
+    const targetThreadId = activeThreadId;
     setGenerating(true);
     setActiveAssistantId(targetMessageId);
     setErrorMessage(null);
     showLatestMessageVersion(targetMessageId);
     followLatestMessage();
+    const { controller: streamController, generation: streamGeneration } = beginStreamingRequest(targetThreadId);
     try {
       await regenerateAssistantMessage({
         assistantMessageId: targetMessageId,
-        onMessagePatch: applyStreamingMessagePatch,
-        onUpdated: () => {
-          void reloadMessages(activeThreadId);
+        onMessagePatch: (patch) => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
+            return;
+          }
+          applyStreamingMessagePatch(patch);
         },
+        onUpdated: () => {
+          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
+            return;
+          }
+          void reloadMessages(targetThreadId);
+        },
+        signal: streamController.signal,
         space,
-        threadId: activeThreadId,
+        threadId: targetThreadId,
       });
-      await reloadMessages(activeThreadId);
-      await reloadMemoryCaptures(activeThreadId);
+      await reloadMessages(targetThreadId);
+      await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
+      if (streamController.signal.aborted || !isCurrentStream(targetThreadId, streamGeneration)) {
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : '刷新失败');
     } finally {
-      setGenerating(false);
-      setActiveAssistantId(null);
+      if (isCurrentStream(targetThreadId, streamGeneration)) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (streamAbortRef.current === streamController) {
+          streamAbortRef.current = null;
+        }
+      }
     }
   }
 
@@ -839,7 +961,6 @@ export function AiChatScreen({
       return;
     }
     editingUserMessageIdRef.current = messageId;
-    setKeyboardBottomInset(0);
     setEditingUserMessageId(messageId);
     setErrorMessage(null);
   }
@@ -1019,12 +1140,12 @@ export function AiChatScreen({
 
       <FlatList
         ref={messageListRef}
-        data={visibleMessageItems}
+        data={invertedMessageItems}
+        inverted
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         keyExtractor={messageKeyExtractor}
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-        ListHeaderComponent={
+        ListFooterComponent={
           <>
             {errorMessage ? <AiChatErrorBanner message={errorMessage} onRetry={latestAssistantMessage?.status === 'failed' ? () => void handleRegenerate(latestAssistantMessage.id) : undefined} /> : null}
             {hasEarlierMessages ? (
@@ -1035,16 +1156,6 @@ export function AiChatScreen({
             ) : null}
           </>
         }
-        onContentSizeChange={() => {
-          if (!isLoadingEarlierRef.current) {
-            scrollToLatestMessage();
-          }
-        }}
-        onLayout={() => {
-          if (!isLoadingEarlierRef.current) {
-            scrollToLatestMessage(false, true);
-          }
-        }}
         onScroll={handleMessageScroll}
         renderItem={renderMessageItem}
         scrollEventThrottle={16}
@@ -1053,7 +1164,7 @@ export function AiChatScreen({
         contentContainerStyle={styles.messageScrollContent}
       />
 
-      <View style={[styles.composerPanel, keyboardBottomInset && !editingUserMessageId ? { marginBottom: keyboardBottomInset } : null]}>
+      <View style={styles.composerPanel}>
         {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
         <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
         <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />

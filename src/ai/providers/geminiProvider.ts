@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  isAbortError,
   normalizeBaseUrl,
   type AiChatRequest,
   type AiProviderAdapter,
@@ -82,10 +83,13 @@ async function emitCompletedGeminiChunks(buffer: string, onEvent: AiStreamEventH
   return buffer.slice(start >= 0 ? start : consumed);
 }
 
-async function readGeminiStream(response: Response, onEvent: AiStreamEventHandler): Promise<void> {
+async function readGeminiStream(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const json = await response.json();
+    if (signal?.aborted) {
+      return;
+    }
     const chunks = Array.isArray(json) ? json : [json];
     for (const chunk of chunks) {
       await emitGeminiTextFromChunk(chunk, onEvent);
@@ -97,7 +101,13 @@ async function readGeminiStream(response: Response, onEvent: AiStreamEventHandle
   const decoder = new TextDecoder();
   let buffer = '';
   while (true) {
+    if (signal?.aborted) {
+      return;
+    }
     const { done, value } = await reader.read();
+    if (signal?.aborted) {
+      return;
+    }
     if (done) {
       break;
     }
@@ -105,7 +115,7 @@ async function readGeminiStream(response: Response, onEvent: AiStreamEventHandle
     buffer = await emitCompletedGeminiChunks(buffer, onEvent);
   }
   const trimmed = buffer.trim();
-  if (!trimmed) {
+  if (!trimmed || signal?.aborted) {
     return;
   }
   try {
@@ -141,6 +151,7 @@ export const geminiProvider: AiProviderAdapter = {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: input.signal,
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: input.systemPrompt }] },
             contents: [
@@ -154,9 +165,15 @@ export const geminiProvider: AiProviderAdapter = {
         }
       );
       await assertOkResponse(response, 'Gemini chat request failed');
-      await readGeminiStream(response, onEvent);
+      await readGeminiStream(response, onEvent, input.signal);
+      if (input.signal?.aborted) {
+        return;
+      }
       await onEvent({ type: 'completed' });
     } catch (error) {
+      if (input.signal?.aborted || isAbortError(error)) {
+        return;
+      }
       await onEvent({ type: 'error', message: error instanceof Error ? error.message : 'Gemini chat request failed' });
     }
   },

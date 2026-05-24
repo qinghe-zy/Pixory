@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  isAbortError,
   normalizeBaseUrl,
   type AiChatRequest,
   type AiProviderAdapter,
@@ -45,10 +46,13 @@ function parseClaudeStreamLine(line: string): AiStreamEvent[] {
   return [];
 }
 
-async function readClaudeStreamingResponse(response: Response, onEvent: AiStreamEventHandler): Promise<void> {
+async function readClaudeStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const text = await response.text();
+    if (signal?.aborted) {
+      return;
+    }
     for (const line of text.split('\n')) {
       for (const event of parseClaudeStreamLine(line)) {
         await onEvent(event);
@@ -61,7 +65,13 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
   const decoder = new TextDecoder();
   let buffer = '';
   while (true) {
+    if (signal?.aborted) {
+      return;
+    }
     const { done, value } = await reader.read();
+    if (signal?.aborted) {
+      return;
+    }
     if (done) {
       break;
     }
@@ -101,6 +111,7 @@ export const claudeProvider: AiProviderAdapter = {
           ...anthropicHeaders(input.apiKey),
           Accept: 'text/event-stream',
         },
+        signal: input.signal,
         body: JSON.stringify({
           model: input.modelId,
           max_tokens: 2048,
@@ -113,9 +124,15 @@ export const claudeProvider: AiProviderAdapter = {
         }),
       });
       await assertOkResponse(response, 'Claude chat request failed');
-      await readClaudeStreamingResponse(response, onEvent);
+      await readClaudeStreamingResponse(response, onEvent, input.signal);
+      if (input.signal?.aborted) {
+        return;
+      }
       await onEvent({ type: 'completed' });
     } catch (error) {
+      if (input.signal?.aborted || isAbortError(error)) {
+        return;
+      }
       await onEvent({ type: 'error', message: error instanceof Error ? error.message : 'Claude chat request failed' });
     }
   },

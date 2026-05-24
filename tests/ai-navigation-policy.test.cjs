@@ -65,7 +65,7 @@ test('AI chat header shows the current model below the chat title', () => {
 test('AI chat keeps the top bar fixed while only messages scroll', () => {
   const content = chat();
   assert.match(content, /<FlatList/);
-  assert.match(content, /data=\{visibleMessageItems\}/);
+  assert.match(content, /data=\{invertedMessageItems\}/);
   assert.match(content, /type VisibleMessageItem/);
   assert.match(content, /renderMessageItem/);
   assert.match(content, /keyExtractor=\{messageKeyExtractor\}/);
@@ -94,13 +94,17 @@ test('AI chat uses the design.md light mode surface', () => {
   assert.doesNotMatch(content, /backgroundVariant="aiChat"/);
 });
 
-test('AI chat composer follows the keyboard and messages stay pinned to the latest item', () => {
+test('AI chat relies on inverted native list positioning and Android adjustResize', () => {
   const content = chat();
-  assert.match(content, /Keyboard\.addListener\('keyboardDidShow'/);
-  assert.match(content, /keyboardBottomInset/);
   assert.match(content, /messageListRef/);
-  assert.match(content, /scrollToEnd/);
-  assert.match(content, /onContentSizeChange=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage\(\)/);
+  assert.match(content, /\binverted\b/);
+  assert.match(content, /data=\{invertedMessageItems\}/);
+  assert.match(content, /ListFooterComponent=/);
+  assert.match(content, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
+  assert.doesNotMatch(content, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.doesNotMatch(content, /keyboardBottomInset/);
+  assert.doesNotMatch(content, /scrollToEnd/);
+  assert.doesNotMatch(content, /onContentSizeChange=/);
 });
 
 test('AI chat streaming does not force bottom after the user scrolls upward', () => {
@@ -111,7 +115,8 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   assert.match(content, /onScroll=\{handleMessageScroll\}/);
   assert.match(content, /scrollEventThrottle=\{16\}/);
   assert.match(content, /if \(!force && userScrolledAwayFromBottomRef\.current\)/);
-  assert.doesNotMatch(content, /onContentSizeChange=\{\(\) => messageScrollRef\.current\?\.scrollToEnd/);
+  assert.doesNotMatch(content, /onContentSizeChange=/);
+  assert.doesNotMatch(content, /scrollToEnd/);
 });
 
 test('AI chat supports stopping, regenerating replies, and rewriting user messages', () => {
@@ -196,7 +201,7 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(composer, /styles\.addButton/);
   assert.match(composer, /name="add"/);
   assert.match(composer, /placeholder="输入提示或需求"/);
-  assert.match(composer, /name="mic-outline"/);
+  assert.doesNotMatch(composer, /name="mic-outline"/);
   assert.match(composer, /onVoiceInput/);
   assert.match(composer, /name="paper-plane-outline"/);
   assert.match(composer, /height:\s*spacing\[8\]/);
@@ -476,6 +481,9 @@ test('AI chat and history expose recent switcher quick new chat and searchable g
   assert.match(chat, /AiRecentThreadSwitcher/);
   assert.match(chat, /onNewChat/);
   assert.match(app, /onNewChat/);
+  assert.match(app, /function aiChatRouteKey/);
+  assert.match(app, /key=\{aiChatRouteKey\(currentRoute, routeStack\.length\)\}/);
+  assert.doesNotMatch(app, /function aiChatRouteKey[\s\S]*route\.threadId/);
   assert.match(history, /searchText/);
   assert.match(history, /搜索标题或最近消息/);
   assert.match(history, /historyGroupLabel/);
