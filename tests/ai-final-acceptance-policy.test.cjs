@@ -16,7 +16,22 @@ test('AI final failure paths keep local records recoverable', () => {
   assert.match(chat, /fallbackAiThreadTitle/);
   assert.match(chat, /partialContent = ''/);
   assert.match(chat, /content: partialContent/);
-  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, event\.message, answerText, reasoningText \|\| null\)/);
+  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, readableError, answerText, reasoningText \|\| null\)/);
+});
+
+test('AI failed assistant bubbles provide readable errors and inline retry', () => {
+  const errors = read('src/ai/aiErrorMessageService.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(errors, /normalizeAiErrorMessage/);
+  assert.match(errors, /API Key 无效或已过期/);
+  assert.match(errors, /额度不足或请求过于频繁/);
+  assert.match(errors, /模型暂时不可用/);
+  assert.match(errors, /网络连接失败/);
+  assert.match(chatService, /normalizeAiErrorMessage/);
+  assert.match(bubble, /inlineRetryButton/);
+  assert.match(bubble, /重试/);
 });
 
 test('new AI chats snapshot the last selected chat provider and model', () => {

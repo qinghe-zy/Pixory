@@ -457,7 +457,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(bubble, /import \{ memo, useEffect, useState \} from 'react'/);
+  assert.match(bubble, /import \{ memo, useEffect, useRef, useState \} from 'react'/);
   assert.match(bubble, /showAvatar\?: boolean/);
   assert.match(bubble, /function AiMessageBubbleComponent/);
   assert.match(bubble, /showAssistantAvatar = !isUser && showAvatar && assistantAvatar\?\.avatarEnabled/);
@@ -470,6 +470,18 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(chat, /renderMessageItem = useCallback/);
   assert.match(chat, /data=\{visibleMessageItems\}/);
   assert.match(chat, /renderItem=\{renderMessageItem\}/);
+});
+
+test('AI assistant waiting and streaming states use lightweight animated feedback', () => {
+  const typing = read('src/components/ai/AiTypingIndicator.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(typing, /Animated/);
+  assert.match(typing, /typingDot/);
+  assert.match(bubble, /AiTypingIndicator/);
+  assert.match(bubble, /waitingForFirstToken/);
+  assert.match(bubble, /Animated\.loop/);
+  assert.match(bubble, /streamingCursorOpacity/);
 });
 
 test('AI memory maintenance uses a unified per-thread queue', () => {

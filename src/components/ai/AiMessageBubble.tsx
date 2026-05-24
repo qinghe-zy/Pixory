@@ -1,5 +1,5 @@
-import { memo, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { memo, useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { SecureImage } from '../SecureImage';
@@ -12,6 +12,7 @@ import { aiLightColors } from './aiLightTheme';
 import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
 import { AiThinkingBlock } from './AiThinkingBlock';
+import { AiTypingIndicator } from './AiTypingIndicator';
 
 interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
@@ -67,6 +68,7 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
+  const waitingForFirstToken = streaming && !message.content.trim();
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
@@ -75,12 +77,28 @@ function AiMessageBubbleComponent({
   const messageTime = formatMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
+  const streamingCursorOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (editing) {
       setEditDraft(message.content);
     }
   }, [editing, message.content]);
+
+  useEffect(() => {
+    if (!streaming) {
+      streamingCursorOpacity.setValue(1);
+      return undefined;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(streamingCursorOpacity, { duration: 520, toValue: 0.2, useNativeDriver: true }),
+        Animated.timing(streamingCursorOpacity, { duration: 520, toValue: 1, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [streaming, streamingCursorOpacity]);
 
   function updateEditDraft(nextDraft: string) {
     setEditDraft(nextDraft);
@@ -145,8 +163,15 @@ function AiMessageBubbleComponent({
             <Text style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
             <>
-              <AiMessageContent content={content} />
-              {streaming ? <Text style={styles.streamingCursor}>▌</Text> : null}
+              {waitingForFirstToken ? <AiTypingIndicator /> : <AiMessageContent content={content} />}
+              {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
+              {isFailed && canRegenerate ? (
+                <Pressable accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.inlineRetryButton, pressed && styles.pressed]}>
+                  <Ionicons color={aiLightColors.coralActive} name="refresh-outline" size={15} />
+                  <Text style={styles.inlineRetryText}>重试</Text>
+                </Pressable>
+              ) : null}
+              {streaming && !waitingForFirstToken ? <Animated.Text style={[styles.streamingCursor, { opacity: streamingCursorOpacity }]}>▌</Animated.Text> : null}
             </>
           )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
@@ -295,6 +320,26 @@ const styles = StyleSheet.create({
   streamingCursor: {
     ...typography.textStyles.body,
     color: aiLightColors.coralActive,
+  },
+  errorText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+  },
+  inlineRetryButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  inlineRetryText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+    fontWeight: '700',
   },
   thinkingWrap: {
     maxWidth: '100%',

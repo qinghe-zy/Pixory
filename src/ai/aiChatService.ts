@@ -26,6 +26,7 @@ import {
   retrieveDynamicMemoryContext,
 } from './aiMemoryService';
 import { scheduleMemoryMaintenance } from './aiMemoryMaintenanceService';
+import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -939,17 +940,18 @@ async function streamAssistantReply(input: {
         }
         if (event.type === 'error') {
           streamFailed = true;
-          await markAssistantFailed(input.space, input.assistantMessageId, event.message, answerText, reasoningText || null);
-          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: event.message, completedAt: new Date().toISOString() });
+          const readableError = normalizeAiErrorMessage(event.message);
+          await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
     );
   } catch (error) {
     streamFailed = true;
-    const message = error instanceof Error ? error.message : 'AI 回复失败。';
-    await markAssistantFailed(input.space, input.assistantMessageId, message, answerText, reasoningText || null);
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: message, completedAt: new Date().toISOString() });
+    const readableError = normalizeAiErrorMessage(error);
+    await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
     input.onUpdated?.();
   }
 
