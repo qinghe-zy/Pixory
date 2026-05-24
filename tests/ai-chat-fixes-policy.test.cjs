@@ -484,6 +484,17 @@ test('AI assistant waiting and streaming states use lightweight animated feedbac
   assert.match(bubble, /streamingCursorOpacity/);
 });
 
+test('AI chat surfaces a subtle notice when older context was trimmed', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(service, /contextTrimmedByBudget/);
+  assert.match(service, /contextTrimmedByCount/);
+  assert.match(chat, /contextTrimNotice/);
+  assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
+  assert.match(chat, /promptSnapshotJson/);
+});
+
 test('AI memory maintenance uses a unified per-thread queue', () => {
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');

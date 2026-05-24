@@ -111,6 +111,15 @@ function shouldShowDateSeparator(messages: AiMessageWithCitations[], index: numb
   );
 }
 
+function messageHasContextTrim(message: AiMessageWithCitations): boolean {
+  try {
+    const snapshot = message.promptSnapshotJson ? JSON.parse(message.promptSnapshotJson) : null;
+    return Boolean(snapshot?.contextTrimmedByBudget || snapshot?.contextTrimmedByCount || snapshot?.contextTrimmed);
+  } catch {
+    return false;
+  }
+}
+
 type VisibleMessageItem = {
   message: AiMessageWithCitations;
   showAvatar: boolean;
@@ -229,6 +238,10 @@ export function AiChatScreen({
           showDateSeparator,
         };
       }),
+    [visibleMessages]
+  );
+  const contextTrimNotice = useMemo(
+    () => [...visibleMessages].reverse().some((message) => message.role === 'assistant' && messageHasContextTrim(message)),
     [visibleMessages]
   );
   const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
@@ -995,6 +1008,7 @@ export function AiChatScreen({
       />
 
       <View style={[styles.composerPanel, keyboardBottomInset && !editingUserMessageId ? { marginBottom: keyboardBottomInset } : null]}>
+        {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
         <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
         <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
         {memoryCaptures.length > 0 ? (
@@ -1054,6 +1068,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[3],
     paddingTop: spacing[2],
     ...shadows.none,
+  },
+  contextTrimNotice: {
+    ...typography.textStyles.micro,
+    alignSelf: 'center',
+    color: aiLightColors.muted,
+    paddingBottom: spacing[1],
   },
   header: {
     alignItems: 'center',
