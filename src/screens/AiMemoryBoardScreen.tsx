@@ -20,6 +20,7 @@ import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
+import { AppDialog } from '../components/AppDialog';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiThreadSummarySegmentRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
@@ -50,6 +51,26 @@ const TYPE_LABELS: Record<AiMemoryType, string> = {
 const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', 'knowledge_base'];
 const MEMORY_TYPE_FILTERS: Array<'all' | AiMemoryType> = ['all', 'preference', 'fact', 'correction', 'task', 'instruction', 'decision'];
 
+function formatMemoryImportanceLabel(value: number): string {
+  if (value >= 4) {
+    return '很重要';
+  }
+  if (value >= 2) {
+    return '较重要';
+  }
+  return '普通重要';
+}
+
+function formatMemoryConfidenceLabel(value: number): string {
+  if (value >= 0.85) {
+    return '判断很可信';
+  }
+  if (value >= 0.65) {
+    return '判断较可信';
+  }
+  return '待确认';
+}
+
 interface MemoryMaintenanceStatus {
   lastMaintenanceCompletedAt: string | null;
   lastMaintenanceError: string | null;
@@ -74,6 +95,8 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   const [editingText, setEditingText] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingDeleteMemory, setPendingDeleteMemory] = useState<AiMemoryRecord | null>(null);
+  const [pendingDeleteSummary, setPendingDeleteSummary] = useState<AiThreadSummarySegmentRecord | null>(null);
 
   const grouped = useMemo(() => {
     const map = new Map<AiMemoryScope, AiMemoryRecord[]>();
@@ -181,6 +204,22 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
+  async function confirmDeleteMemory() {
+    if (!pendingDeleteMemory) {
+      return;
+    }
+    await handleDelete(pendingDeleteMemory.id);
+    setPendingDeleteMemory(null);
+  }
+
+  async function confirmDeleteSummary() {
+    if (!pendingDeleteSummary) {
+      return;
+    }
+    await handleDeleteSummary(pendingDeleteSummary.id);
+    setPendingDeleteSummary(null);
+  }
+
   async function handleRerunSummaryMaintenance() {
     setLoading(true);
     try {
@@ -209,6 +248,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   }
 
   return (
+    <>
     <AiLightScaffold loading={loading} onBack={onBack} scrollable subtitle="本地可控记忆" title="AI 记住了这些">
       <View style={styles.content}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
@@ -256,7 +296,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                 <Text style={styles.caption}>{formatSummaryRange(segment)} · {segment.roundCount} 轮</Text>
                 <Text style={styles.memoryContent}>{segment.summaryText}</Text>
                 <View style={styles.rowActions}>
-                  <Pressable accessibilityRole="button" onPress={() => void handleDeleteSummary(segment.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                  <Pressable accessibilityRole="button" onPress={() => setPendingDeleteSummary(segment)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                     <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
                     <Text style={styles.actionLabel}>删除摘要</Text>
                   </Pressable>
@@ -319,7 +359,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                     <>
                       <Text style={styles.memoryContent}>{memory.content}</Text>
                       <Text style={styles.caption}>
-                        {TYPE_LABELS[memory.type]} · 重要度 {memory.importance} · 可信度 {Math.round(memory.confidence * 100)}%
+                        {TYPE_LABELS[memory.type]} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
                       </Text>
                     </>
                   )}
@@ -348,7 +388,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                           <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
                           <Text style={styles.actionLabel}>编辑</Text>
                         </Pressable>
-                        <Pressable accessibilityRole="button" onPress={() => void handleDelete(memory.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                        <Pressable accessibilityRole="button" onPress={() => setPendingDeleteMemory(memory)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                           <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
                           <Text style={styles.actionLabel}>删除</Text>
                         </Pressable>
@@ -362,6 +402,25 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         ))}
       </View>
     </AiLightScaffold>
+    <AppDialog
+      danger
+      message="删除后，这条记忆不会再进入后续回复。"
+      onClose={() => setPendingDeleteMemory(null)}
+      onPrimary={() => void confirmDeleteMemory()}
+      primaryLabel="删除"
+      title="删除这条记忆"
+      visible={Boolean(pendingDeleteMemory)}
+    />
+    <AppDialog
+      danger
+      message="删除后，这段会话摘要不会再进入后续回复。"
+      onClose={() => setPendingDeleteSummary(null)}
+      onPrimary={() => void confirmDeleteSummary()}
+      primaryLabel="删除"
+      title="删除这段摘要"
+      visible={Boolean(pendingDeleteSummary)}
+    />
+    </>
   );
 }
 

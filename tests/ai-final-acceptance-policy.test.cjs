@@ -186,6 +186,18 @@ test('AI session settings clearly distinguish autosaved options from role instru
   assert.match(session, /dangerSection/);
 });
 
+test('AI memory board uses confirmation or undo and human memory quality labels', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /pendingDeleteMemory/);
+  assert.match(board, /AppDialog/);
+  assert.match(board, /删除这条记忆/);
+  assert.match(board, /删除这段摘要/);
+  assert.match(board, /formatMemoryImportanceLabel/);
+  assert.match(board, /formatMemoryConfidenceLabel/);
+  assert.doesNotMatch(board, /重要度 \{memory\.importance\} · 可信度 \{Math\.round\(memory\.confidence \* 100\)\}%/);
+});
+
 test('AI reply preference is per-thread and only adds lightweight prompt hints when selected', () => {
   const types = read('src/ai/types.ts');
   const schema = read('src/database/schema.ts');
