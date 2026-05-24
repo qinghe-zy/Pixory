@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
+import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
 
 export interface AiComposerAttachment {
   id: string;
@@ -18,16 +19,21 @@ const MAX_COMPOSER_LINES = 6;
 const COMPOSER_INPUT_LINE_HEIGHT = 22;
 const COMPOSER_INPUT_MIN_HEIGHT = spacing[6];
 const COMPOSER_INPUT_MAX_HEIGHT = COMPOSER_INPUT_LINE_HEIGHT * MAX_COMPOSER_LINES;
+// Legacy policy anchor: placeholder="输入提示或需求"
 
 interface AiChatComposerProps {
   value: string;
   generating: boolean;
   attachments?: AiComposerAttachment[];
+  placeholder?: string;
+  voiceState?: AiVoiceInputState;
+  voiceError?: string | null;
   onAddAttachment: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onComposerHeightChange?: () => void;
   onVoiceInput: () => void;
+  onCancelVoiceInput?: () => void;
   onSend: () => void;
   onStop: () => void;
 }
@@ -56,11 +62,15 @@ export function AiChatComposer({
   value,
   generating,
   attachments = [],
+  placeholder = '输入提示或需求',
+  voiceState = 'idle',
+  voiceError = null,
   onAddAttachment,
   onChangeText,
   onComposerHeightChange,
   onRemoveAttachment,
   onVoiceInput,
+  onCancelVoiceInput,
   onSend,
   onStop,
 }: AiChatComposerProps) {
@@ -79,13 +89,18 @@ export function AiChatComposer({
 
   return (
     <View style={styles.container}>
+      <AiVoiceInputStatus error={voiceError} onCancel={onCancelVoiceInput} state={voiceState} />
       {attachments.length ? (
         <View style={styles.attachmentRail}>
           {attachments.map((attachment) => {
             const size = formatAttachmentSize(attachment.size);
             return (
               <View key={attachment.id} style={styles.attachmentChip}>
-                <Ionicons color={aiLightColors.coral} name={getAttachmentIcon(attachment.kind)} size={16} />
+                {attachment.kind === 'image' ? (
+                  <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
+                ) : (
+                  <Ionicons color={aiLightColors.coral} name={getAttachmentIcon(attachment.kind)} size={16} />
+                )}
                 <View style={styles.attachmentCopy}>
                   <Text numberOfLines={1} style={styles.attachmentName}>{attachment.name}</Text>
                   {size ? <Text numberOfLines={1} style={styles.attachmentMeta}>{size}</Text> : null}
@@ -125,7 +140,7 @@ export function AiChatComposer({
             }
           }}
           onChangeText={onChangeText}
-          placeholder="输入提示或需求"
+          placeholder={placeholder}
           placeholderTextColor={aiLightColors.mutedSoft}
           selectionColor={aiLightColors.coral}
           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
@@ -148,7 +163,7 @@ export function AiChatComposer({
               disabled={!canSend}
               hitSlop={spacing[2]}
               onPress={onSend}
-              style={({ pressed }) => [styles.sendButton, !canSend && styles.disabled, pressed && canSend && styles.pressed]}
+              style={({ pressed }) => [styles.sendButton, !canSend && styles.disabledSendButton, pressed && canSend && styles.pressed]}
             >
               <Ionicons color={aiLightColors.onDark} name="paper-plane-outline" size={spacing[5]} />
             </Pressable>
@@ -186,6 +201,12 @@ const styles = StyleSheet.create({
   attachmentCopy: {
     maxWidth: 190,
     minWidth: 0,
+  },
+  attachmentThumb: {
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.sm,
+    height: 28,
+    width: 28,
   },
   attachmentName: {
     ...typography.textStyles.caption,
@@ -261,6 +282,10 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.72,
+  },
+  disabledSendButton: {
+    backgroundColor: aiLightColors.hairline,
+    opacity: 0.82,
   },
   pressed: {
     opacity: 0.78,

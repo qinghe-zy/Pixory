@@ -41,9 +41,31 @@ function formatHistoryMinute(value: string): string {
   return `${month}-${day} ${hours}:${minutes}`;
 }
 
+function historyGroupLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '更早';
+  }
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.floor((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
+  if (diffDays === 0) {
+    return '今天';
+  }
+  if (diffDays === 1) {
+    return '昨天';
+  }
+  if (diffDays <= 7) {
+    return '过去 7 天';
+  }
+  return '更早';
+}
+
 export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreenProps) {
   const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
+  const [searchText, setSearchText] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
@@ -77,8 +99,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   ) : undefined;
 
   const reload = useCallback(async () => {
-    setItems(await listAiHistoryThreads({ filter, space }));
-  }, [filter, space]);
+    setItems(await listAiHistoryThreads({ filter, searchText, space }));
+  }, [filter, searchText, space]);
   const actionSheetItems: AppActionSheetItem[] = actionThread
     ? [
         {
@@ -236,15 +258,29 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             <AiLightChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
           ))}
         </View>
+        <View style={styles.searchBox}>
+          <Ionicons color={aiLightColors.mutedSoft} name="search-outline" size={16} />
+          <TextInput
+            onChangeText={setSearchText}
+            placeholder="搜索标题或最近消息"
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.coral}
+            style={styles.searchInput}
+            value={searchText}
+          />
+        </View>
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
         <View style={[styles.list, styles.threadList]}>
           {items.length ? (
-            items.map((thread) => {
+            items.map((thread, index) => {
               const selected = selectedIds.includes(thread.id);
               const swiped = swipedThreadId === thread.id;
+              const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
+              const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
               return (
                 <View key={thread.id} style={styles.swipeWrap}>
+                  {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
                   {!isSelecting ? (
                     <Pressable
                       accessibilityRole="button"
@@ -300,7 +336,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             })
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.title}>没有历史会话</Text>
+              <Text style={styles.title}>{searchText.trim() ? '没有找到匹配会话' : '没有历史会话'}</Text>
+              <Text style={styles.meta}>{searchText.trim() ? '换个关键词试试。' : '开始聊天后，最近会话会出现在这里。'}</Text>
             </View>
           )}
         </View>
@@ -420,8 +457,32 @@ const styles = StyleSheet.create({
   threadList: {
     paddingTop: rhythm.listCardGap,
   },
+  searchBox: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: 42,
+    paddingHorizontal: spacing[3],
+  },
+  searchInput: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    flex: 1,
+    paddingVertical: 0,
+  },
   swipeWrap: {
     overflow: 'hidden',
+  },
+  groupLabel: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '700',
+    paddingBottom: spacing[1],
+    paddingHorizontal: spacing[1],
   },
   archiveAction: {
     alignItems: 'center',

@@ -8,6 +8,7 @@ const promptBuilder = () => fs.readFileSync(path.join(root, 'src/ai/promptBuilde
 const retrieval = () => fs.readFileSync(path.join(root, 'src/ai/aiRetrievalService.ts'), 'utf8');
 const docService = () => fs.readFileSync(path.join(root, 'src/ai/aiDocumentService.ts'), 'utf8');
 const embeddingService = () => fs.readFileSync(path.join(root, 'src/ai/aiEmbeddingService.ts'), 'utf8');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 test('normal chat prompt avoids Pixory material rules', () => {
   const content = promptBuilder();
@@ -19,9 +20,22 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /if \(!trimmed\) \{\s*return '';\s*\}/);
   assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
   assert.match(content, /frameReplyPreference\(input\.replyPreference\)/);
-  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\), frameReplyPreference\(input\.replyPreference\), input\.rolePrompt\]\.filter\(Boolean\)/);
+  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\), frameReplyPreference\(input\.replyPreference\), input\.stableMemoryPrefix, input\.rolePrompt\]/);
   assert.match(content, /return ''/);
   assert.match(content, /以用户当前要求为准/);
+});
+
+test('AI prompt assembly separates stable memory prefix from dynamic memory context', () => {
+  const chatService = read('src/ai/aiChatService.ts');
+  const content = promptBuilder();
+
+  assert.match(chatService, /buildStableMemoryPrefix/);
+  assert.match(chatService, /retrieveDynamicMemoryContext/);
+  assert.match(chatService, /stableMemoryPrefix/);
+  assert.match(chatService, /dynamicMemoryContext/);
+  assert.match(content, /stableMemoryPrefix/);
+  assert.match(content, /dynamicMemoryContext/);
+  assert.match(content, /\[frameRoleInstruction[\s\S]*input\.stableMemoryPrefix[\s\S]*input\.rolePrompt\]/);
 });
 
 test('retrieval uses bounded snippets and never whole documents', () => {
@@ -83,4 +97,39 @@ test('PDF import and reader use native renderer instead of unsupported fallback'
   assert.match(nativeModule, /extractPdfText/);
   assert.match(nativeAndroid, /PDFTextStripper/);
   assert.match(configPlugin, /com\.tom-roush:pdfbox-android:2\.0\.27\.0/);
+});
+
+test('AI memory retrieval supports asset-aware hybrid fallback scoring', () => {
+  const service = read('src/ai/aiMemoryService.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(repository, /ipId/);
+  assert.match(repository, /groupId/);
+  assert.match(repository, /imageAssetId/);
+  assert.match(repository, /assetSnapshotJson/);
+  assert.match(service, /buildMemoryAssetSnapshot/);
+  assert.match(service, /internalFilename/);
+  assert.match(service, /originalFilename/);
+  assert.match(service, /width/);
+  assert.match(service, /height/);
+  assert.match(service, /scoreMemoryForQuery/);
+  assert.match(service, /scopeScore/);
+  assert.match(service, /importanceScore/);
+  assert.match(service, /recencyScore/);
+  assert.match(service, /assetScore/);
+  assert.match(service, /keywordScore/);
+  assert.match(service, /embedding/);
+  assert.match(service, /fallback/);
+});
+
+test('AI prompt context is budget-aware and records trim state', () => {
+  const budget = read('src/ai/aiContextBudget.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(budget, /estimatePromptTokens/);
+  assert.match(budget, /getConservativeContextBudget/);
+  assert.match(budget, /protectedPrompt/);
+  assert.match(budget, /trimmed/);
+  assert.match(chatService, /trimMessagesToContextBudget/);
+  assert.match(chatService, /contextTrimmed/);
 });

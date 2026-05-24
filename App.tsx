@@ -38,6 +38,7 @@ import { AiIpPickerScreen } from './src/screens/AiIpPickerScreen';
 import { AiKnowledgeBaseScreen } from './src/screens/AiKnowledgeBaseScreen';
 import { AiMaterialImportScreen } from './src/screens/AiMaterialImportScreen';
 import { AiMaterialListScreen } from './src/screens/AiMaterialListScreen';
+import { AiMemoryBoardScreen } from './src/screens/AiMemoryBoardScreen';
 import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
@@ -158,6 +159,7 @@ type AppRoute =
       threadId?: string;
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
+  | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
@@ -1369,6 +1371,20 @@ export default function App() {
             threadId,
           })
         }
+        onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
+        onNewChat={() => pushRoute({ name: 'ai-chat', contextTitle: '普通聊天', contextType: 'normal', space: currentRoute.space })}
+        onOpenThread={(thread) =>
+          pushRoute({
+            name: 'ai-chat',
+            contextTitle: thread.title,
+            contextType: thread.contextType,
+            includeIpDocuments: thread.includeIpDocuments,
+            ipId: thread.boundIpId ?? undefined,
+            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
+            space: currentRoute.space,
+            threadId: thread.id,
+          })
+        }
         onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
@@ -1387,11 +1403,18 @@ export default function App() {
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
+        onOpenMemoryBoard={
+          currentRoute.threadId
+            ? () => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId: currentRoute.threadId as string })
+            : undefined
+        }
         onStartChat={popRoute}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />
     );
+  } else if (currentRoute.name === 'ai-memory-board') {
+    content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-card-editor') {

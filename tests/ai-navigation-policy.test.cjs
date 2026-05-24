@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const home = () => fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
 const chat = () => fs.readFileSync(path.join(root, 'src/screens/AiChatScreen.tsx'), 'utf8');
 const aiScreenFiles = () => fs.readdirSync(path.join(root, 'src/screens')).filter((file) => /^Ai.*\.tsx$/.test(file));
@@ -65,7 +66,7 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   const content = chat();
   assert.match(content, /<FlatList/);
   assert.match(content, /data=\{visibleMessages\}/);
-  assert.match(content, /renderItem=\{\(\{ item: message \}\) =>/);
+  assert.match(content, /renderItem=\{\(\{ item: message, index \}\) =>/);
   assert.match(content, /keyExtractor=\{\(message\) => message\.id\}/);
   assert.match(content, /style=\{styles\.messageScroller\}/);
   assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
@@ -463,6 +464,22 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(repository, /exportThread/);
   assert.match(repository, /importThread/);
   assert.match(repository, /deleteThreads/);
+});
+
+test('AI chat and history expose recent switcher quick new chat and searchable grouped history', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const app = read('App.tsx');
+  const history = read('src/screens/AiHistoryScreen.tsx');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(chat, /AiRecentThreadSwitcher/);
+  assert.match(chat, /onNewChat/);
+  assert.match(app, /onNewChat/);
+  assert.match(history, /searchText/);
+  assert.match(history, /搜索标题或最近消息/);
+  assert.match(history, /historyGroupLabel/);
+  assert.match(history, /过去 7 天/);
+  assert.match(repository, /lastMessagePreview LIKE/);
 });
 
 test('AI home recent continue rows show last chat time to the minute', () => {

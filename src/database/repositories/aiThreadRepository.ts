@@ -7,6 +7,7 @@ import type {
   AiContextType,
   AiMessageRole,
   AiMessageStatus,
+  AiMemorySourceKind,
   AiReplyPreference,
   AiRoleInstructionWeight,
   AiThreadRecord,
@@ -71,6 +72,14 @@ export interface AiThreadSummaryRecord {
   updatedAt: string;
 }
 
+export interface AiThreadMemoryJobRecord {
+  threadId: string;
+  pendingTurnCount: number;
+  lastConsolidatedMessageId: string | null;
+  lastCaptureNoticeJson: string;
+  updatedAt: string;
+}
+
 export interface AiMemoryRecord {
   id: string;
   space: PixorySpace;
@@ -84,6 +93,11 @@ export interface AiMemoryRecord {
   importance: number;
   status: AiMemoryStatus;
   lastUsedAt: string | null;
+  ipId: number | null;
+  groupId: number | null;
+  imageAssetId: number | null;
+  assetSnapshotJson: string;
+  sourceKind: AiMemorySourceKind;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -232,6 +246,11 @@ export interface CreateAiMemoryInput {
   sourceMessageId?: string | null;
   confidence?: number;
   importance?: number;
+  ipId?: number | null;
+  groupId?: number | null;
+  imageAssetId?: number | null;
+  assetSnapshotJson?: string;
+  sourceKind?: AiMemorySourceKind;
 }
 
 export interface ReplaceCitationInput {
@@ -654,9 +673,10 @@ export const aiThreadRepository = {
     return rows.map(mapThreadRow);
   },
 
-  async listHistoryItems(db: SQLiteDatabase, space: PixorySpace, filter: AiThreadHistoryFilter = 'all', limit = 100): Promise<AiThreadHistoryItem[]> {
+  async listHistoryItems(db: SQLiteDatabase, space: PixorySpace, filter: AiThreadHistoryFilter = 'all', limit = 100, searchText = ''): Promise<AiThreadHistoryItem[]> {
     const clauses = ['ai_threads.space = ?'];
     const values: (string | number)[] = [space];
+    const normalizedSearch = searchText.trim();
     if (filter === 'archived') {
       clauses.push('ai_threads.archivedAt IS NOT NULL');
     } else {
@@ -669,6 +689,10 @@ export const aiThreadRepository = {
         clauses.push("ai_threads.contextType = 'knowledge_base'");
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
+    }
+    if (normalizedSearch) {
+      clauses.push('(ai_threads.title LIKE ? OR ai_threads.lastMessagePreview LIKE ?)');
+      values.push(`%${normalizedSearch}%`, `%${normalizedSearch}%`);
     }
     const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }>(
       `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory, ai_last_messages.lastMessageAt AS lastMessageAt
@@ -987,8 +1011,9 @@ export const aiThreadRepository = {
     await db.runAsync(
       `INSERT INTO ai_memories (
         id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
-        confidence, importance, status, lastUsedAt, createdAt, updatedAt, deletedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, NULL)`,
+        confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
+        createdAt, updatedAt, deletedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.scope,
@@ -999,6 +1024,11 @@ export const aiThreadRepository = {
       input.sourceMessageId ?? null,
       input.confidence ?? 0.7,
       input.importance ?? 1,
+      input.ipId ?? null,
+      input.groupId ?? null,
+      input.imageAssetId ?? null,
+      input.assetSnapshotJson ?? '{}',
+      input.sourceKind ?? 'auto',
       now,
       now
     );
@@ -1007,6 +1037,60 @@ export const aiThreadRepository = {
       throw new Error(`AI memory ${input.id} was created but could not be reloaded.`);
     }
     return row;
+  },
+
+  async createManualMemory(db: SQLiteDatabase, input: CreateAiMemoryInput): Promise<AiMemoryRecord> {
+    return aiThreadRepository.createMemory(db, {
+      ...input,
+      confidence: input.confidence ?? 1,
+      importance: input.importance ?? 4,
+      sourceKind: 'manual',
+    });
+  },
+
+  async updateMemoryContent(db: SQLiteDatabase, memoryId: string, content: string): Promise<AiMemoryRecord | null> {
+    const now = createTimestamp();
+    const trimmed = content.replace(/\s+/g, ' ').trim();
+    const normalizedContent = trimmed.toLowerCase().slice(0, 180);
+    await db.runAsync(
+      `UPDATE ai_memories
+       SET content = ?, normalizedContent = ?, updatedAt = ?
+       WHERE id = ? AND status = 'active'`,
+      trimmed,
+      normalizedContent,
+      now,
+      memoryId
+    );
+    return db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', memoryId);
+  },
+
+  async listMemoryBoardItems(db: SQLiteDatabase, input: { space: PixorySpace; threadId?: string | null; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null }): Promise<AiMemoryRecord[]> {
+    const clauses = ["space = ?", "status = 'active'"];
+    const values: Array<string | number | null> = [input.space];
+    const scopeClauses = ["scope = 'global'"];
+    if (input.threadId) {
+      scopeClauses.push("(scope = 'thread' AND scopeId = ?)");
+      values.push(input.threadId);
+    }
+    if (input.roleCardId) {
+      scopeClauses.push("(scope = 'role' AND scopeId = ?)");
+      values.push(input.roleCardId);
+    }
+    if (input.boundIpId != null) {
+      scopeClauses.push("(scope = 'ip' AND scopeId = ?)");
+      values.push(String(input.boundIpId));
+    }
+    if (input.boundKnowledgeBaseId) {
+      scopeClauses.push("(scope = 'knowledge_base' AND scopeId = ?)");
+      values.push(input.boundKnowledgeBaseId);
+    }
+    clauses.push(`(${scopeClauses.join(' OR ')})`);
+    return db.getAllAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC`,
+      ...values
+    );
   },
 
   async listActiveMemories(db: SQLiteDatabase, input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; limit?: number }): Promise<AiMemoryRecord[]> {
@@ -1057,6 +1141,41 @@ export const aiThreadRepository = {
       now,
       memoryId
     );
+  },
+
+  async deleteMemory(db: SQLiteDatabase, memoryId: string): Promise<void> {
+    await aiThreadRepository.updateMemoryStatus(db, memoryId, 'deleted');
+  },
+
+  async getThreadMemoryJob(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemoryJobRecord> {
+    const row = await db.getFirstAsync<AiThreadMemoryJobRecord>('SELECT * FROM ai_thread_memory_jobs WHERE threadId = ?', threadId);
+    return row ?? {
+      threadId,
+      pendingTurnCount: 0,
+      lastConsolidatedMessageId: null,
+      lastCaptureNoticeJson: '[]',
+      updatedAt: createTimestamp(),
+    };
+  },
+
+  async updateThreadMemoryJob(db: SQLiteDatabase, input: Partial<AiThreadMemoryJobRecord> & { threadId: string }): Promise<AiThreadMemoryJobRecord> {
+    const current = await aiThreadRepository.getThreadMemoryJob(db, input.threadId);
+    const next = { ...current, ...input, updatedAt: createTimestamp() };
+    await db.runAsync(
+      `INSERT INTO ai_thread_memory_jobs (threadId, pendingTurnCount, lastConsolidatedMessageId, lastCaptureNoticeJson, updatedAt)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(threadId) DO UPDATE SET
+         pendingTurnCount = excluded.pendingTurnCount,
+         lastConsolidatedMessageId = excluded.lastConsolidatedMessageId,
+         lastCaptureNoticeJson = excluded.lastCaptureNoticeJson,
+         updatedAt = excluded.updatedAt`,
+      next.threadId,
+      next.pendingTurnCount,
+      next.lastConsolidatedMessageId,
+      next.lastCaptureNoticeJson,
+      next.updatedAt
+    );
+    return next;
   },
 };
 

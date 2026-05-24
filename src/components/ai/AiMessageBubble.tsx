@@ -9,6 +9,7 @@ import type { PixorySpace } from '../../database';
 import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
 import { AiCitationList } from './AiCitationList';
 import { aiLightColors } from './aiLightTheme';
+import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
 import { AiThinkingBlock } from './AiThinkingBlock';
 
@@ -71,6 +72,7 @@ export function AiMessageBubble({
   const canRegenerate = !isUser && !generating && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const messageTime = formatMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
+  const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
 
   useEffect(() => {
     if (editing) {
@@ -112,7 +114,8 @@ export function AiMessageBubble({
             />
           </View>
         ) : null}
-        <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+        {copyFeedbackVisible ? <AiInlineFeedback message="已复制" tone="success" /> : null}
+        <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble, isFailed && styles.failedBubble]}>
           {editing ? (
             <View style={styles.inlineEditor}>
               <TextInput
@@ -139,7 +142,10 @@ export function AiMessageBubble({
           ) : isUser ? (
             <Text style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
-            <AiMessageContent content={content} />
+            <>
+              <AiMessageContent content={content} />
+              {streaming ? <Text style={styles.streamingCursor}>▌</Text> : null}
+            </>
           )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </View>
@@ -149,7 +155,11 @@ export function AiMessageBubble({
             accessibilityRole="button"
             disabled={!canCopy}
             hitSlop={8}
-            onPress={() => onCopy(message)}
+            onPress={() => {
+              onCopy(message);
+              setCopyFeedbackVisible(true);
+              setTimeout(() => setCopyFeedbackVisible(false), 1400);
+            }}
             style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
           >
             <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
@@ -202,7 +212,7 @@ export function AiMessageBubble({
               </Pressable>
             </View>
           ) : null}
-          {!isUser && messageTime ? <Text style={styles.messageTime}>{messageTime}</Text> : null}
+          {messageTime ? <Text style={styles.messageTime}>{messageTime}</Text> : null}
         </View>
       </View>
     </View>
@@ -265,6 +275,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  failedBubble: {
+    borderColor: aiLightColors.coral,
+  },
   content: {
     ...typography.textStyles.body,
     lineHeight: 22,
@@ -274,6 +287,10 @@ const styles = StyleSheet.create({
   },
   assistantText: {
     color: aiLightColors.ink,
+  },
+  streamingCursor: {
+    ...typography.textStyles.body,
+    color: aiLightColors.coralActive,
   },
   thinkingWrap: {
     maxWidth: '100%',

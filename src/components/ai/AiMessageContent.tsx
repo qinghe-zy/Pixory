@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
+import { AiInlineFeedback } from './AiInlineFeedback';
 
 type MarkdownBlock =
   | { type: 'paragraph'; text: string }
@@ -139,14 +140,22 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
   return blocks.length ? blocks : [{ type: 'paragraph', text: content }];
 }
 
-function renderInlineText(text: string, style: StyleProp<TextStyle>): ReactNode {
+function isSafeHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void): ReactNode {
   return text.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/g).map((part, index) => {
     if (!part) {
       return null;
     }
     const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(part);
     if (link) {
-      return <Text key={`${index}-${part}`} style={[style, styles.linkText]}>{link[1]}</Text>;
+      return (
+        <Text key={`${index}-${part}`} onPress={() => onLinkPress(link[2])} style={[style, styles.linkText]}>
+          {link[1]}
+        </Text>
+      );
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
       return <Text key={`${index}-${part}`} style={styles.inlineCode}>{part.slice(1, -1)}</Text>;
@@ -166,6 +175,7 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>): ReactNode 
 
 export function AiMessageContent({ content, variant = 'assistant' }: AiMessageContentProps) {
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
 
   if (variant === 'user') {
     return <Text style={[styles.body, styles.userText]}>{content}</Text>;
@@ -174,18 +184,37 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
   const blocks = parseMarkdownBlocks(content);
 
   async function copyCodeBlock(blockKey: string, code: string) {
-    await Clipboard.setStringAsync(code);
-    setCopiedBlockKey(blockKey);
+    try {
+      await Clipboard.setStringAsync(code);
+      setCopiedBlockKey(blockKey);
+      setFeedback({ message: '代码已复制', tone: 'success' });
+      setTimeout(() => setFeedback(null), 1600);
+    } catch {
+      setFeedback({ message: '复制失败', tone: 'error' });
+    }
+  }
+
+  async function openSafeLink(url: string) {
+    if (!isSafeHttpUrl(url)) {
+      setFeedback({ message: '不支持打开该链接', tone: 'error' });
+      return;
+    }
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setFeedback({ message: '链接打开失败', tone: 'error' });
+    }
   }
 
   return (
     <View style={styles.wrap}>
+      {feedback ? <AiInlineFeedback message={feedback.message} tone={feedback.tone} /> : null}
       {blocks.map((block, index) => {
         const key = `${block.type}-${index}`;
         if (block.type === 'heading') {
           return (
             <Text key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
-              {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading])}
+              {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink)}
             </Text>
           );
         }
@@ -196,7 +225,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
                 <View key={`${key}-${itemIndex}`} style={styles.listItem}>
                   <Text style={styles.listMarker}>{item.marker}</Text>
                   <Text style={[styles.body, styles.assistantText, styles.listText]}>
-                    {renderInlineText(item.text, [styles.body, styles.assistantText])}
+                    {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink)}
                   </Text>
                 </View>
               ))}
@@ -206,7 +235,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         if (block.type === 'quote') {
           return (
             <View key={key} style={styles.quote}>
-              <Text style={[styles.body, styles.quoteText]}>{renderInlineText(block.text, [styles.body, styles.quoteText])}</Text>
+              <Text style={[styles.body, styles.quoteText]}>{renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}</Text>
             </View>
           );
         }
@@ -239,7 +268,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
                   <View key={`${key}-${rowIndex}`} style={[styles.tableRow, rowIndex === 0 && styles.tableHeaderRow]}>
                     {row.map((cell, cellIndex) => (
                       <Text key={`${key}-${rowIndex}-${cellIndex}`} style={[styles.tableCell, rowIndex === 0 && styles.tableHeaderCell]}>
-                        {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell])}
+                        {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink)}
                       </Text>
                     ))}
                   </View>
@@ -250,7 +279,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         }
         return (
           <Text key={key} style={[styles.body, styles.assistantText]}>
-            {renderInlineText(block.text, [styles.body, styles.assistantText])}
+            {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink)}
           </Text>
         );
       })}

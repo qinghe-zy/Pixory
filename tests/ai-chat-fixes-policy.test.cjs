@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 23/);
+  assert.match(schema, /DATABASE_VERSION = 24/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -249,12 +249,12 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(sessionConfig, /deepMemoryEnabled/);
 });
 
-test('AI chat uses twenty short-term messages and avoids full reload for every streaming token', () => {
+test('AI chat uses thirty short-term messages and avoids full reload for every streaming token', () => {
   const service = read('src/ai/aiChatService.ts');
   const chat = read('src/screens/AiChatScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(service, /CHAT_HISTORY_MESSAGE_LIMIT = 20/);
+  assert.match(service, /CHAT_HISTORY_MESSAGE_LIMIT = 30/);
   assert.match(service, /\.slice\(-CHAT_HISTORY_MESSAGE_LIMIT\)/);
   assert.doesNotMatch(service, /\.slice\(-8\)/);
   assert.match(service, /onMessagePatch/);
@@ -266,4 +266,65 @@ test('AI chat uses twenty short-term messages and avoids full reload for every s
   assert.match(chat, /加载更早消息/);
   assert.match(repository, /listMessageVersionsForMessages/);
   assert.match(repository, /listCitationsForMessages/);
+});
+
+test('AI memory service exposes board lazy capture and prompt helpers', () => {
+  const service = read('src/ai/aiMemoryService.ts');
+
+  assert.match(service, /listMemoryBoardItems/);
+  assert.match(service, /createManualMemory/);
+  assert.match(service, /deleteMemory/);
+  assert.match(service, /shouldRunImmediateMemoryCapture/);
+  assert.match(service, /MEMORY_CAPTURE_PATTERNS/);
+  assert.match(service, /maybeRunLazyMemoryConsolidation/);
+  assert.match(service, /pendingTurnCount >= 5/);
+  assert.match(service, /buildStableMemoryPrefix/);
+  assert.match(service, /retrieveDynamicMemoryContext/);
+  assert.match(service, /importance DESC/);
+});
+
+test('AI deep memory updates are triggered or lazy instead of every reply', () => {
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(chatService, /shouldRunImmediateMemoryCapture/);
+  assert.match(chatService, /incrementPendingMemoryTurn/);
+  assert.match(chatService, /maybeRunLazyMemoryConsolidation/);
+  assert.match(chatService, /pendingTurnCount/);
+  assert.doesNotMatch(chatService, /void updateDeepMemoryAfterReply\(\{[\s\S]*\}\);/);
+});
+
+test('AI chat shows memory capture notice with undo and board actions', () => {
+  const notice = read('src/components/ai/AiMemoryCaptureNotice.tsx');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(notice, /已记住 \{count\} 条内容/);
+  assert.match(notice, /撤销/);
+  assert.match(notice, /管理/);
+  assert.match(chat, /AiMemoryCaptureNotice/);
+  assert.match(chat, /onUndoMemoryCapture/);
+  assert.match(chat, /onOpenMemoryBoard/);
+});
+
+test('AI chat feedback voice empty state error and long navigation polish are wired', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(bubble, /AiInlineFeedback/);
+  assert.match(bubble, /setCopyFeedbackVisible\(true\)/);
+  assert.match(content, /Linking\.openURL/);
+  assert.match(content, /isSafeHttpUrl/);
+  assert.match(content, /代码已复制/);
+  assert.match(composer, /AiVoiceInputStatus/);
+  assert.match(composer, /voiceState/);
+  assert.match(composer, /attachmentThumb/);
+  assert.match(composer, /disabledSendButton/);
+  assert.match(chat, /AiEmptyChatSuggestions/);
+  assert.match(chat, /AiChatErrorBanner/);
+  assert.match(chat, /AiScrollToLatestButton/);
+  assert.match(chat, /dateSeparator/);
+  assert.match(chat, /formatDateSeparator/);
+  assert.match(chat, /最新/);
+  assert.match(chat, /voiceState/);
 });

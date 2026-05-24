@@ -150,6 +150,17 @@ test('AI session settings report save success and failed missing thread updates'
   assert.match(sessionConfig, /设置已保存/);
 });
 
+test('AI session settings autosave lightweight options and separates dangerous deletion', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(sessionConfig, /setTimeout\(\(\) => \{/);
+  assert.match(sessionConfig, /updateAiThreadSessionConfig/);
+  assert.match(sessionConfig, /boundaryMode[\s\S]*deepMemoryEnabled[\s\S]*replyPreference/);
+  assert.doesNotMatch(sessionConfig, /subtitle=\{`\$\{spaceLabel\}\$\{threadId/);
+  assert.match(sessionConfig, /dangerSection/);
+  assert.match(sessionConfig, /删除当前会话/);
+});
+
 test('AI reply preference is per-thread and only adds lightweight prompt hints when selected', () => {
   const types = read('src/ai/types.ts');
   const schema = read('src/database/schema.ts');
@@ -171,6 +182,36 @@ test('AI reply preference is per-thread and only adds lightweight prompt hints w
   assert.match(promptBuilder, /preference === 'detailed'/);
   assert.match(promptBuilder, /return ''/);
   assert.match(promptBuilder, /以用户当前要求为准/);
+});
+
+test('AI memory repository supports visible board controls and lazy job state', () => {
+  const types = read('src/ai/types.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(types, /AiMemorySourceKind = 'auto' \| 'manual'/);
+  assert.match(repository, /listMemoryBoardItems/);
+  assert.match(repository, /createManualMemory/);
+  assert.match(repository, /updateMemoryContent/);
+  assert.match(repository, /updateMemoryStatus\(db, memoryId, 'deleted'\)/);
+  assert.match(repository, /getThreadMemoryJob/);
+  assert.match(repository, /updateThreadMemoryJob/);
+  assert.match(repository, /sourceKind: 'manual'/);
+  assert.match(repository, /ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC/);
+});
+
+test('AI memory board is reachable from session settings and supports user control', () => {
+  const app = read('App.tsx');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(app, /ai-memory-board/);
+  assert.match(app, /AiMemoryBoardScreen/);
+  assert.match(sessionConfig, /onOpenMemoryBoard/);
+  assert.match(sessionConfig, /管理记忆/);
+  assert.match(board, /AI 记住了这些/);
+  assert.match(board, /createManualMemory/);
+  assert.match(board, /updateMemoryContent/);
+  assert.match(board, /deleteMemory/);
 });
 
 test('AI chat title is finalized from the first exchange and refreshed in the chat header', () => {

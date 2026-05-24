@@ -24,6 +24,7 @@ interface AiSessionConfigScreenProps {
   onBack: () => void;
   onOpenProviderSettings: () => void;
   onOpenRoleCardEditor: () => void;
+  onOpenMemoryBoard?: () => void;
   onStartChat: () => void;
   onCurrentThreadDeleted?: () => void;
 }
@@ -57,6 +58,7 @@ export function AiSessionConfigScreen({
   onBack,
   onOpenProviderSettings,
   onOpenRoleCardEditor,
+  onOpenMemoryBoard,
   onStartChat,
   onCurrentThreadDeleted,
 }: AiSessionConfigScreenProps) {
@@ -78,6 +80,7 @@ export function AiSessionConfigScreen({
   const [saving, setSaving] = useState(false);
   const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const settingsLoadedRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const promptConfigured = systemPrompt.trim().length > 0;
   const promptSummary = promptConfigured ? `已配置 ${systemPrompt.trim().length} 字` : '未配置';
@@ -110,7 +113,27 @@ export function AiSessionConfigScreen({
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
+    settingsLoadedRef.current = true;
   }, [contextType, fallbackThreadTitle, space, threadId]);
+
+  useEffect(() => {
+    if (!threadId || !settingsLoadedRef.current) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      void updateAiThreadSessionConfig({
+        avatarEnabled,
+        boundaryMode,
+        deepMemoryEnabled,
+        replyPreference,
+        roleInstructionWeight,
+        space,
+        systemPrompt,
+        threadId,
+      }).catch(() => undefined);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [boundaryMode, deepMemoryEnabled, replyPreference, space, threadId]);
 
   useEffect(() => {
     void reloadConfig();
@@ -243,7 +266,7 @@ export function AiSessionConfigScreen({
         onBack={onBack}
         scrollable
         scrollViewRef={scrollViewRef}
-        subtitle={`${spaceLabel}${threadId != null ? ` · 会话 ${threadId}` : ''}`}
+        subtitle={spaceLabel}
         title="会话设置"
       >
         <View style={styles.content}>
@@ -348,6 +371,11 @@ export function AiSessionConfigScreen({
           {deepMemoryEnabled ? (
             <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
           ) : null}
+          {threadId ? (
+            <Pressable accessibilityRole="button" onPress={onOpenMemoryBoard} style={({ pressed }) => [styles.memoryManageButton, pressed && styles.pressed]}>
+              <Text style={styles.textActionLabel}>管理记忆</Text>
+            </Pressable>
+          ) : null}
         </AiLightCard>
 
         <AiLightCard>
@@ -389,15 +417,17 @@ export function AiSessionConfigScreen({
           <View style={styles.actions}>
             <AiLightButton label="保存并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
             <AiLightButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
-            <Pressable
-              accessibilityRole="button"
-              disabled={!threadId || saving}
-              onPress={() => setDeleteDialogVisible(true)}
-              style={({ pressed }) => [styles.deleteButton, (!threadId || saving) && styles.disabled, pressed && threadId && !saving && styles.pressed]}
-            >
-              <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={17} />
-              <Text style={styles.deleteButtonText}>删除当前会话</Text>
-            </Pressable>
+            <View style={styles.dangerSection}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!threadId || saving}
+                onPress={() => setDeleteDialogVisible(true)}
+                style={({ pressed }) => [styles.deleteButton, (!threadId || saving) && styles.disabled, pressed && threadId && !saving && styles.pressed]}
+              >
+                <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={17} />
+                <Text style={styles.deleteButtonText}>删除当前会话</Text>
+              </Pressable>
+            </View>
           </View>
           {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
         </View>
@@ -548,6 +578,17 @@ const styles = StyleSheet.create({
   memorySwitchTextActive: {
     color: aiLightColors.onDark,
   },
+  memoryManageButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
+  },
   textAction: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
@@ -607,6 +648,11 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: rhythm.listCardGap,
+  },
+  dangerSection: {
+    borderTopColor: aiLightColors.hairline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: spacing[3],
   },
   deleteButton: {
     alignItems: 'center',

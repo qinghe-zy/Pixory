@@ -6,6 +6,7 @@ export type AiContextType = 'normal' | 'ip' | 'knowledge_base';
 export type AiBoundaryMode = 'free' | 'prefer_material' | 'strict_material';
 export type AiRoleInstructionWeight = 'default' | 'high';
 export type AiReplyPreference = 'auto' | 'concise' | 'detailed';
+export type AiMemorySourceKind = 'auto' | 'manual';
 export type AiMessageRole = 'user' | 'assistant' | 'system';
 export type AiMessageStatus = 'draft' | 'queued' | 'generating' | 'completed' | 'failed' | 'stopped';
 export type AiDocumentOwnerType = 'knowledge_base' | 'ip' | 'thread';

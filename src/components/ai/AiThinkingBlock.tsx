@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { rhythm, spacing, typography } from '../../design/tokens';
@@ -43,10 +43,11 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" disabled={!reasoningText} onPress={() => setExpanded((current) => !current)} style={styles.header}>
+        {thinking ? <ActivityIndicator color={aiLightColors.coralActive} size="small" /> : null}
         <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
-      {expanded && reasoningText ? <Text style={styles.text}>{reasoningText}</Text> : null}
+      {(expanded || thinking) && reasoningText ? <Text style={styles.text}>{reasoningText}</Text> : null}
     </View>
   );
 }

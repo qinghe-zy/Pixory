@@ -10,6 +10,7 @@ export type {
   AiDocumentStatus,
   AiMessageRole,
   AiMessageStatus,
+  AiMemorySourceKind,
   AiModelCapabilities,
   AiModelSource,
   AiProviderModelRecord,

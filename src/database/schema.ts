@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 23;
+export const DATABASE_VERSION = 24;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -604,4 +604,25 @@ CREATE INDEX IF NOT EXISTS idx_ai_memories_source ON ai_memories(sourceMessageId
 
 export const MIGRATION_STATEMENTS_V23 = `
 ALTER TABLE ai_threads ADD COLUMN replyPreference TEXT NOT NULL DEFAULT 'auto' CHECK (replyPreference IN ('auto', 'concise', 'detailed'));
+`;
+
+export const MIGRATION_STATEMENTS_V24 = `
+ALTER TABLE ai_memories ADD COLUMN ipId INTEGER;
+ALTER TABLE ai_memories ADD COLUMN groupId INTEGER;
+ALTER TABLE ai_memories ADD COLUMN imageAssetId INTEGER;
+ALTER TABLE ai_memories ADD COLUMN assetSnapshotJson TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE ai_memories ADD COLUMN sourceKind TEXT NOT NULL DEFAULT 'auto' CHECK (sourceKind IN ('auto', 'manual'));
+
+CREATE TABLE IF NOT EXISTS ai_thread_memory_jobs (
+  threadId TEXT PRIMARY KEY NOT NULL,
+  pendingTurnCount INTEGER NOT NULL DEFAULT 0,
+  lastConsolidatedMessageId TEXT,
+  lastCaptureNoticeJson TEXT NOT NULL DEFAULT '[]',
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (lastConsolidatedMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memories_asset_refs ON ai_memories(space, ipId, groupId, imageAssetId, status);
+CREATE INDEX IF NOT EXISTS idx_ai_memory_jobs_updated_at ON ai_thread_memory_jobs(updatedAt);
 `;

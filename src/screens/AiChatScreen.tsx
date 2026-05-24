@@ -7,17 +7,25 @@ import { FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
+import { AiChatErrorBanner } from '../components/ai/AiChatErrorBanner';
+import type { AiVoiceInputState } from '../components/ai/AiVoiceInputStatus';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
+import { AiEmptyChatSuggestions } from '../components/ai/AiEmptyChatSuggestions';
+import { AiMemoryCaptureNotice } from '../components/ai/AiMemoryCaptureNotice';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
+import { AiRecentThreadSwitcher } from '../components/ai/AiRecentThreadSwitcher';
+import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
 import { recognizeSpeech } from '../native/pixoryMediaModule';
+import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures } from '../ai/aiMemoryService';
 import {
   createThreadFromContext,
   getCurrentChatModelLabel,
   listThreadMessages,
   loadThreadTitle,
   loadThreadAvatarConfig,
+  listAiHistoryThreads,
   regenerateAssistantMessage,
   rewriteUserMessage,
   sendUserMessage,
@@ -27,11 +35,13 @@ import {
 } from '../ai/aiChatService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
+import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
+// Scroll affordance copy: 回到最新.
 
 const CHAT_DOCUMENT_TYPES = [
   'application/pdf',
@@ -72,6 +82,36 @@ function buildChatMessageContent(text: string, attachments: AiComposerAttachment
   return [text || '请根据以下附件继续对话。', '', '[附件]', ...attachmentLines].join('\n');
 }
 
+function formatDateSeparator(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (startOfDate === startOfToday) {
+    return '今天';
+  }
+  if (startOfDate === startOfToday - 24 * 60 * 60 * 1000) {
+    return '昨天';
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function shouldShowDateSeparator(messages: AiMessageWithCitations[], index: number): boolean {
+  if (index <= 0) {
+    return true;
+  }
+  const current = new Date(messages[index]?.createdAt ?? '');
+  const previous = new Date(messages[index - 1]?.createdAt ?? '');
+  return (
+    current.getFullYear() !== previous.getFullYear() ||
+    current.getMonth() !== previous.getMonth() ||
+    current.getDate() !== previous.getDate()
+  );
+}
+
 interface AiChatScreenProps {
   space: PixorySpace;
   contextType: AiContextType;
@@ -82,6 +122,9 @@ interface AiChatScreenProps {
   threadId?: string;
   onBack: () => void;
   onOpenSessionConfig: (threadId: string) => void;
+  onOpenMemoryBoard: (threadId: string) => void;
+  onNewChat: () => void;
+  onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
   onOpenIpSource: (ipId: number) => void;
   onOpenImageSource: (imageId: number) => void;
@@ -99,6 +142,9 @@ export function AiChatScreen({
   threadId,
   onBack,
   onOpenSessionConfig,
+  onOpenMemoryBoard,
+  onNewChat,
+  onOpenThread,
   onOpenSource,
   onOpenIpSource,
   onOpenImageSource,
@@ -128,6 +174,11 @@ export function AiChatScreen({
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
+  const [memoryCaptureIds, setMemoryCaptureIds] = useState<string[]>([]);
+  const [voiceState, setVoiceState] = useState<AiVoiceInputState>('idle');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [latestVisible, setLatestVisible] = useState(true);
+  const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
@@ -186,10 +237,12 @@ export function AiChatScreen({
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
     userScrolledAwayFromBottomRef.current = distanceFromBottom > MESSAGE_BOTTOM_LOCK_THRESHOLD;
+    setLatestVisible(!userScrolledAwayFromBottomRef.current);
   }, []);
 
   const followLatestMessage = useCallback((animated = true) => {
     userScrolledAwayFromBottomRef.current = false;
+    setLatestVisible(true);
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
 
@@ -303,6 +356,22 @@ export function AiChatScreen({
     [activeThreadId, space]
   );
 
+  const reloadMemoryCaptures = useCallback(
+    async (targetThreadId: string | null = activeThreadId) => {
+      if (!targetThreadId) {
+        setMemoryCaptureIds([]);
+        return;
+      }
+      const captures = await listRecentMemoryCaptures(space, targetThreadId);
+      setMemoryCaptureIds(captures.map((capture) => capture.id));
+    },
+    [activeThreadId, space]
+  );
+
+  const reloadRecentThreads = useCallback(async () => {
+    setRecentThreads(await listAiHistoryThreads({ limit: 5, space }));
+  }, [space]);
+
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
     editingUserMessageIdRef.current = null;
@@ -331,6 +400,14 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadThreadTitle(threadId ?? activeThreadId);
   }, [activeThreadId, reloadThreadTitle, threadId]);
+
+  useEffect(() => {
+    void reloadMemoryCaptures(threadId ?? activeThreadId);
+  }, [activeThreadId, reloadMemoryCaptures, threadId]);
+
+  useEffect(() => {
+    void reloadRecentThreads();
+  }, [reloadRecentThreads, activeThreadId]);
 
   useEffect(() => {
     const force = forceScrollAfterMessagesRef.current;
@@ -387,6 +464,28 @@ export function AiChatScreen({
       onOpenSessionConfig(nextThreadId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '无法打开会话设置');
+    }
+  }
+
+  async function onOpenMemoryBoardFromChat() {
+    try {
+      const nextThreadId = await ensureThread();
+      onOpenMemoryBoard(nextThreadId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '无法打开记忆管理');
+    }
+  }
+
+  async function onUndoMemoryCapture() {
+    if (!activeThreadId) {
+      return;
+    }
+    try {
+      await Promise.all(memoryCaptureIds.map((memoryId) => deleteMemory(space, memoryId)));
+      await dismissMemoryCapture(space, activeThreadId);
+      setMemoryCaptureIds([]);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '撤销记忆失败');
     }
   }
 
@@ -515,6 +614,7 @@ export function AiChatScreen({
         threadId: nextThreadId,
       });
       await reloadMessages(nextThreadId);
+      await reloadMemoryCaptures(nextThreadId);
     } catch (error) {
       setComposerText(typedText);
       setPendingAttachments(attachments);
@@ -555,6 +655,7 @@ export function AiChatScreen({
         userMessageId,
       });
       await reloadMessages(activeThreadId);
+      await reloadMemoryCaptures(activeThreadId);
     } catch (error) {
       editingUserMessageIdRef.current = userMessageId;
       setEditingUserMessageId(userMessageId);
@@ -596,6 +697,7 @@ export function AiChatScreen({
         threadId: activeThreadId,
       });
       await reloadMessages(activeThreadId);
+      await reloadMemoryCaptures(activeThreadId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '刷新失败');
     } finally {
@@ -621,16 +723,23 @@ export function AiChatScreen({
 
   async function handleVoiceInput() {
     try {
+      setVoiceState('listening');
+      setVoiceError(null);
       if (Platform.OS === 'android') {
         const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
         if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          setVoiceState('error');
+          setVoiceError('需要麦克风权限才能进行语音输入。');
           setErrorMessage('需要麦克风权限才能进行语音输入。');
           return;
         }
       }
+      setVoiceState('recognizing');
       const result = await recognizeSpeech();
       const recognizedText = result.text.trim();
       if (!recognizedText) {
+        setVoiceState('error');
+        setVoiceError('没有识别到语音内容。');
         setErrorMessage('没有识别到语音内容。');
         return;
       }
@@ -640,10 +749,29 @@ export function AiChatScreen({
         }
         return `${current}${current.endsWith('\n') ? '' : '\n'}${recognizedText}`;
       });
+      setVoiceState('idle');
       setErrorMessage(null);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '语音识别失败');
+      const message = error instanceof Error ? error.message : '语音识别失败';
+      setVoiceState('error');
+      setVoiceError(message);
+      setErrorMessage(message);
     }
+  }
+
+  function handleCancelVoiceInput() {
+    setVoiceState('cancelled');
+    setTimeout(() => setVoiceState('idle'), 1200);
+  }
+
+  function getComposerPlaceholder() {
+    if (contextType === 'ip') {
+      return '询问这个 IP 的整理、标签或资料';
+    }
+    if (contextType === 'knowledge_base') {
+      return '询问知识库内容';
+    }
+    return '输入提示或需求';
   }
 
   function openCitation(citation: AiCitationRecord) {
@@ -691,6 +819,9 @@ export function AiChatScreen({
         <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
         </Pressable>
+        <Pressable accessibilityLabel="新聊天" accessibilityRole="button" onPress={onNewChat} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+          <Ionicons color={aiLightColors.ink} name="add-outline" size={18} />
+        </Pressable>
       </View>
 
       <FlatList
@@ -701,7 +832,7 @@ export function AiChatScreen({
         keyExtractor={(message) => message.id}
         ListHeaderComponent={
           <>
-            {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+            {errorMessage ? <AiChatErrorBanner message={errorMessage} onRetry={latestAssistantMessage?.status === 'failed' ? () => void handleRegenerate(latestAssistantMessage.id) : undefined} /> : null}
             {hasEarlierMessages ? (
               <Pressable accessibilityLabel="加载更早消息" accessibilityRole="button" onPress={loadEarlierMessages} style={({ pressed }) => [styles.loadEarlierButton, pressed && styles.pressed]}>
                 <Ionicons color={aiLightColors.muted} name="chevron-up" size={15} />
@@ -710,33 +841,45 @@ export function AiChatScreen({
             ) : null}
           </>
         }
+        ListEmptyComponent={
+          <AiEmptyChatSuggestions
+            contextType={contextType}
+            onPickSuggestion={(text) => {
+              setComposerText(text);
+              followLatestMessage(false);
+            }}
+          />
+        }
         onContentSizeChange={() => scrollToLatestMessage()}
         onLayout={() => scrollToLatestMessage(false, true)}
         onScroll={handleMessageScroll}
-        renderItem={({ item: message }) => (
-          <AiMessageBubble
-            assistantAvatar={avatarConfig}
-            editingMessageId={editingUserMessageId}
-            generating={generating}
-            message={message}
-            space={space}
-            onCopy={(targetMessage) => {
-              void copyMessageContent(targetMessage);
-            }}
-            onCancelEdit={cancelInlineEdit}
-            onEditUser={handleEditUserMessage}
-            onOpenCitation={openCitation}
-            onRegenerate={(messageId) => {
-              void handleRegenerate(messageId);
-            }}
-            onSelectVersion={(messageId, versionIndex) => {
-              setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
-            }}
-            onSubmitEdit={(messageId, content) => {
-              void handleSubmitInlineRewrite(messageId, content);
-            }}
-            streaming={generating && message.id === activeAssistantId}
-          />
+        renderItem={({ item: message, index }) => (
+          <>
+            {shouldShowDateSeparator(visibleMessages, index) ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
+            <AiMessageBubble
+              assistantAvatar={avatarConfig}
+              editingMessageId={editingUserMessageId}
+              generating={generating}
+              message={message}
+              space={space}
+              onCopy={(targetMessage) => {
+                void copyMessageContent(targetMessage);
+              }}
+              onCancelEdit={cancelInlineEdit}
+              onEditUser={handleEditUserMessage}
+              onOpenCitation={openCitation}
+              onRegenerate={(messageId) => {
+                void handleRegenerate(messageId);
+              }}
+              onSelectVersion={(messageId, versionIndex) => {
+                setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
+              }}
+              onSubmitEdit={(messageId, content) => {
+                void handleSubmitInlineRewrite(messageId, content);
+              }}
+              streaming={generating && message.id === activeAssistantId}
+            />
+          </>
         )}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
@@ -745,6 +888,15 @@ export function AiChatScreen({
       />
 
       <View style={[styles.composerPanel, keyboardBottomInset && !editingUserMessageId ? { marginBottom: keyboardBottomInset } : null]}>
+        <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
+        <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
+        {memoryCaptureIds.length > 0 ? (
+          <AiMemoryCaptureNotice
+            count={memoryCaptureIds.length}
+            onManage={() => void onOpenMemoryBoardFromChat()}
+            onUndo={() => void onUndoMemoryCapture()}
+          />
+        ) : null}
         <AiChatComposer
           attachments={pendingAttachments}
           generating={generating}
@@ -752,6 +904,7 @@ export function AiChatScreen({
           onChangeText={setComposerText}
           onComposerHeightChange={handleComposerHeightChange}
           onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
+          placeholder={getComposerPlaceholder()}
           onSend={() => {
             void handleSend();
           }}
@@ -761,7 +914,10 @@ export function AiChatScreen({
           onVoiceInput={() => {
             void handleVoiceInput();
           }}
+          onCancelVoiceInput={handleCancelVoiceInput}
           value={composerText}
+          voiceError={voiceError}
+          voiceState={voiceState}
         />
       </View>
       <AppActionSheet
@@ -873,5 +1029,11 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
     fontWeight: '600',
+  },
+  dateSeparator: {
+    ...typography.textStyles.micro,
+    alignSelf: 'center',
+    color: aiLightColors.muted,
+    paddingVertical: spacing[1],
   },
 });

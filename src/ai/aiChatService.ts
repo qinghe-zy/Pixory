@@ -19,6 +19,15 @@ import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES }
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
 import { retrieveForThread } from './aiRetrievalService';
+import { trimMessagesToContextBudget } from './aiContextBudget';
+import {
+  buildStableMemoryPrefix,
+  incrementPendingMemoryTurn,
+  maybeRunLazyMemoryConsolidation,
+  retrieveDynamicMemoryContext,
+  saveRecentMemoryCaptures,
+  shouldRunImmediateMemoryCapture,
+} from './aiMemoryService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -179,7 +188,7 @@ export interface ListThreadMessagesOptions {
   limit?: number;
 }
 
-const CHAT_HISTORY_MESSAGE_LIMIT = 20;
+const CHAT_HISTORY_MESSAGE_LIMIT = 30;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const STREAMING_PERSIST_INTERVAL_MS = 120;
 const STREAMING_UI_PATCH_INTERVAL_MS = 80;
@@ -617,6 +626,7 @@ async function updateDeepMemoryAfterReply(input: {
       summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
       threadId: input.thread.id,
     });
+    const captures: Array<{ id: string; content: string }> = [];
     const candidates = modelUpdate?.memories.length ? modelUpdate.memories : extractMemoryCandidates(input.userMessage.content);
     for (const candidate of candidates) {
       const scopeId = candidate.scope === 'thread'
@@ -636,7 +646,7 @@ async function updateDeepMemoryAfterReply(input: {
         space: input.space,
       });
       if (!existing) {
-        await aiThreadRepository.createMemory(db, {
+        const memory = await aiThreadRepository.createMemory(db, {
           confidence: candidate.confidence,
           content: candidate.content,
           id: createAiId('aimem'),
@@ -648,9 +658,58 @@ async function updateDeepMemoryAfterReply(input: {
           space: input.space,
           type: candidate.type,
         });
+        if (memory.confidence >= 0.75 && memory.importance >= 2) {
+          captures.push({ content: memory.content, id: memory.id });
+        }
       }
     }
+    if (captures.length > 0) {
+      await saveRecentMemoryCaptures(db, input.thread.id, captures);
+    }
   });
+}
+
+async function scheduleDeepMemoryAfterReply(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
+  assistantMessageId: string;
+}): Promise<void> {
+  const exchangeText = `${input.userMessage.content}`;
+  const shouldCaptureImmediately = shouldRunImmediateMemoryCapture(exchangeText);
+  let shouldRunConsolidation = false;
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const settings = await aiThreadRepository.getThreadMemorySettings(db, input.thread.id);
+    if (!settings.deepMemoryEnabled) {
+      return;
+    }
+    if (shouldCaptureImmediately) {
+      shouldRunConsolidation = true;
+      return;
+    }
+    await incrementPendingMemoryTurn(db, input.thread.id);
+    const job = await aiThreadRepository.getThreadMemoryJob(db, input.thread.id);
+    const pendingTurnCount = job.pendingTurnCount;
+    shouldRunConsolidation = await maybeRunLazyMemoryConsolidation({
+      db,
+      reason: 'turn_threshold',
+      runConsolidation: async () => {
+        // The model call runs after this transaction so streaming is never blocked by nested DB work.
+      },
+      thread: input.thread,
+    }) || pendingTurnCount >= 5;
+  });
+  if (!shouldRunConsolidation) {
+    return;
+  }
+  await updateDeepMemoryAfterReply(input);
+  await runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.updateThreadMemoryJob(db, {
+      lastConsolidatedMessageId: input.assistantMessageId,
+      pendingTurnCount: 0,
+      threadId: input.thread.id,
+    })
+  );
 }
 
 async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord) {
@@ -692,14 +751,19 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
-  const deepMemoryContext = await runWithDatabaseSpace(thread.space, (db) => loadDeepMemoryContext(db, thread, userMessage));
+  const { stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => ({
+    dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage),
+    stableMemoryPrefix: await buildStableMemoryPrefix(db, thread),
+  }));
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
+        dynamicMemoryContext,
         roleInstructionWeight: thread.roleInstructionWeight,
         replyPreference: thread.replyPreference,
+        stableMemoryPrefix,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
-        userMessage: [deepMemoryContext, userMessage].filter(Boolean).join('\n\n用户当前问题：\n'),
+        userMessage,
       }),
       snippets: [],
     };
@@ -719,10 +783,12 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string)
   return {
     prompt: buildMaterialBoundPrompt({
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+      dynamicMemoryContext,
       roleInstructionWeight: thread.roleInstructionWeight,
       replyPreference: thread.replyPreference,
+      stableMemoryPrefix,
       materialRules: materialRulesForMode(thread.boundaryMode),
-      contextSummary: [thread.title, deepMemoryContext].filter(Boolean).join('\n\n'),
+      contextSummary: thread.title,
       snippets: retrieval.snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
       userMessage,
     }),
@@ -809,8 +875,9 @@ export async function listAiHistoryThreads(input: {
   space: PixorySpace;
   filter?: AiThreadHistoryFilter;
   limit?: number;
+  searchText?: string;
 }): Promise<AiThreadHistoryItem[]> {
-  return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItems(db, input.space, input.filter ?? 'all', input.limit ?? 100));
+  return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItems(db, input.space, input.filter ?? 'all', input.limit ?? 100, input.searchText ?? ''));
 }
 
 export async function archiveAiThread(space: PixorySpace, threadId: string): Promise<void> {
@@ -1001,9 +1068,14 @@ async function snapshotMessageVersion(
 function buildChatHistory(messages: AiMessageRecord[], userMessageId: string) {
   const userIndex = messages.findIndex((message) => message.id === userMessageId);
   const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
-  return previousMessages
+  const completedMessages = previousMessages
     .filter((message) => message.role !== 'system' && message.status === 'completed')
-    .slice(-CHAT_HISTORY_MESSAGE_LIMIT)
+    .slice(-CHAT_HISTORY_MESSAGE_LIMIT);
+  const budgeted = trimMessagesToContextBudget({
+    messages: completedMessages,
+    protectedPrompt: 'Current user message and role instruction are protected from context trimming.',
+  });
+  return budgeted.messages
     .map((message) => ({
       role: message.role === 'assistant' ? 'assistant' as const : 'user' as const,
       content: message.content,
@@ -1200,7 +1272,7 @@ async function streamAssistantReply(input: {
       providerId: provider.id,
       modelId,
       modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-      promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
+      promptSnapshotJson: JSON.stringify({ contextTrimmed: messages.length > history.length + 1, system: prompt.system, materialRules: prompt.materialRules ?? null }),
       completedAt,
     });
     if (current?.status === 'completed' && snippets.length > 0) {
@@ -1224,7 +1296,7 @@ async function streamAssistantReply(input: {
     providerId: provider.id,
     modelId,
     modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-    promptSnapshotJson: JSON.stringify({ system: prompt.system, materialRules: prompt.materialRules ?? null }),
+    promptSnapshotJson: JSON.stringify({ contextTrimmed: messages.length > history.length + 1, system: prompt.system, materialRules: prompt.materialRules ?? null }),
     completedAt,
     citations: finalCitations,
   });
@@ -1235,7 +1307,7 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    void updateDeepMemoryAfterReply({
+    void scheduleDeepMemoryAfterReply({
       assistantMessageId: input.assistantMessageId,
       space: input.space,
       thread: input.thread,
