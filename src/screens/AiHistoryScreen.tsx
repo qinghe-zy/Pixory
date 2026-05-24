@@ -11,6 +11,7 @@ import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBe
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
 
 interface AiHistoryScreenProps {
   space: PixorySpace;
@@ -28,18 +29,6 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
 ];
 const ARCHIVE_ACTION_WIDTH = 78;
 const ARCHIVE_SWIPE_THRESHOLD = 52;
-
-function formatHistoryMinute(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${month}-${day} ${hours}:${minutes}`;
-}
 
 function historyGroupLabel(value: string): string {
   const date = new Date(value);
@@ -356,7 +345,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                         <View style={styles.copy}>
                           <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
                           <Text numberOfLines={1} style={styles.meta}>
-                            {labelForContext(thread)} · 上次聊天 {formatHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                            {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
                           </Text>
                           {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
                         </View>

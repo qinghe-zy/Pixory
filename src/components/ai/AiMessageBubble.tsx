@@ -13,6 +13,7 @@ import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
+import { formatAiMessageMinute } from '../../utils/aiTimeFormatters';
 
 interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
@@ -33,19 +34,6 @@ interface AiMessageBubbleProps {
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
-}
-
-function formatMessageMinute(value: string | null | undefined): string {
-  if (!value) {
-    return '';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
 }
 
 function AiMessageBubbleComponent({
@@ -74,7 +62,7 @@ function AiMessageBubbleComponent({
   const editing = editingMessageId === message.id;
   const canEdit = isUser && !generating && message.versionIndex === message.versionTotal;
   const canRegenerate = !isUser && !generating && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
-  const messageTime = formatMessageMinute(message.completedAt ?? message.updatedAt);
+  const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
   const streamingCursorOpacity = useRef(new Animated.Value(1)).current;

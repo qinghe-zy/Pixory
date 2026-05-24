@@ -452,7 +452,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /setDeleteThread\(actionThread\)/);
   assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
   assert.match(history, /AppActionSheet/);
-  assert.match(history, /formatHistoryMinute/);
+  assert.match(history, /formatAiHistoryMinute/);
   assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(history, /上次聊天/);
   assert.match(repository, /lastMessageAt/);
@@ -507,11 +507,19 @@ test('AI history archive swipe follows the finger and snaps with animation', () 
 test('AI home recent continue rows show last chat time to the minute', () => {
   const home = fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
 
-  assert.match(home, /formatRecentChatMinute/);
+  assert.match(home, /formatAiHistoryMinute/);
   assert.match(home, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(home, /上次聊天/);
-  assert.match(home, /\$\{month\}-\$\{day\} \$\{hours\}:\$\{minutes\}/);
+  assert.match(home, /上次聊天 \$\{formatAiHistoryMinute/);
   assert.doesNotMatch(home, /formatRecentTime\(thread\.updatedAt\)/);
+});
+
+test('AI history and home use shared AI history time formatter', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+  const home = read('src/screens/AiHomeScreen.tsx');
+
+  assert.match(history, /formatAiHistoryMinute/);
+  assert.match(home, /formatAiHistoryMinute/);
 });
 
 test('AI materials support batch removal and chat history supports rename', () => {

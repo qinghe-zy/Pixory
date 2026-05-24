@@ -159,7 +159,7 @@ test('AI message action row puts version controls after edit regenerate and show
   assert.ok(regenerateIndex >= 0);
   assert.ok(versionIndex > editIndex);
   assert.ok(versionIndex > regenerateIndex);
-  assert.match(bubble, /formatMessageMinute/);
+  assert.match(bubble, /formatAiMessageMinute/);
   assert.match(bubble, /message\.completedAt \?\? message\.updatedAt/);
   assert.match(bubble, /styles\.messageTime/);
 });
@@ -515,6 +515,20 @@ test('AI thinking block expands and collapses with a lightweight animation', () 
   assert.match(thinking, /Animated\.timing/);
   assert.match(thinking, /useNativeDriver: false/);
   assert.match(thinking, /thinkingAnimatedBody/);
+});
+
+test('AI screens use shared time formatting helpers', () => {
+  const formatter = read('src/utils/aiTimeFormatters.ts');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(formatter, /formatAiMessageMinute/);
+  assert.match(formatter, /formatAiFullMinute/);
+  assert.match(formatter, /formatAiHistoryMinute/);
+  assert.match(bubble, /formatAiMessageMinute/);
+  assert.doesNotMatch(bubble, /function formatMessageMinute/);
+  assert.match(board, /formatAiFullMinute/);
+  assert.doesNotMatch(board, /function formatMinute/);
 });
 
 test('AI memory maintenance uses a unified per-thread queue', () => {

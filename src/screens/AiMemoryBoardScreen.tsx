@@ -24,6 +24,7 @@ import { AppDialog } from '../components/AppDialog';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiThreadSummarySegmentRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
+import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 
 interface AiMemoryBoardScreenProps {
   space: PixorySpace;
@@ -255,7 +256,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         <AiLightCard>
           <Text style={styles.sectionTitle}>用户画像</Text>
           <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求。</Text>
-          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
+          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
           <AiLightTextareaRow
             label="画像内容"
             minHeight={112}
@@ -276,10 +277,10 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
           </View>
           <View style={styles.maintenanceBox}>
             <Text style={styles.caption}>
-              上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
+              上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatAiFullMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
             </Text>
             <Text style={styles.caption}>
-              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
+              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatAiFullMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
             </Text>
             {maintenanceStatus?.lastMaintenanceModelProviderId || maintenanceStatus?.lastMaintenanceModelId ? (
               <Text style={styles.caption}>
@@ -422,14 +423,6 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     />
     </>
   );
-}
-
-function formatMinute(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({
