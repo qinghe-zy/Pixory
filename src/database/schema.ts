@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 28;
+export const DATABASE_VERSION = 29;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -742,4 +742,23 @@ WHERE status = 'active'
 CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_memories_active_normalized_content
   ON ai_memories(space, scope, COALESCE(scopeId, ''), normalizedContent)
   WHERE status = 'active';
+`;
+
+export const MIGRATION_STATEMENTS_V29 = `
+ALTER TABLE ai_memories ADD COLUMN supersededByMemoryId TEXT;
+ALTER TABLE ai_memories ADD COLUMN mergeReason TEXT;
+ALTER TABLE ai_memories ADD COLUMN mergedAt TEXT;
+ALTER TABLE ai_memories ADD COLUMN lastReconciledAt TEXT;
+ALTER TABLE ai_memories ADD COLUMN reconcileSourceMessageId TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_ai_memories_reconcile_source
+  ON ai_memories(reconcileSourceMessageId);
+CREATE INDEX IF NOT EXISTS idx_ai_memories_superseded_by
+  ON ai_memories(supersededByMemoryId);
+
+DELETE FROM ai_memory_fts;
+INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
+FROM ai_memories
+WHERE status = 'active' AND supersededByMemoryId IS NULL;
 `;

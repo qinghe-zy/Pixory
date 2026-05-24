@@ -29,6 +29,8 @@ type ManualMemoryInput = Omit<CreateAiMemoryInput, 'id' | 'normalizedContent'> &
 export interface MemoryCaptureNoticeItem {
   id: string;
   content: string;
+  kind?: 'added' | 'updated' | 'staled' | 'conflict' | 'local_fallback';
+  sourceMessageId?: string | null;
 }
 
 export interface BuildMemoryPrefixOptions {
@@ -94,12 +96,13 @@ export function shouldRunImmediateMemoryCapture(text: string): boolean {
   return MEMORY_CAPTURE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord, options?: { limit?: number; offset?: number }): Promise<AiMemoryRecord[]> {
+export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord, options?: { limit?: number; offset?: number; status?: AiMemoryRecord['status'] | 'all' }): Promise<AiMemoryRecord[]> {
   return runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.listMemoryBoardItems(db, {
       ...scopedBoardInput(thread),
       limit: options?.limit,
       offset: options?.offset,
+      status: options?.status,
     })
   );
 }
@@ -195,6 +198,10 @@ export async function saveRecentMemoryCaptures(db: SQLiteDatabase, threadId: str
     threadId,
     lastCaptureNoticeJson: JSON.stringify(captures),
   });
+}
+
+export async function replaceRecentMemoryCaptures(space: PixorySpace, threadId: string, captures: MemoryCaptureNoticeItem[]): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => saveRecentMemoryCaptures(db, threadId, captures));
 }
 
 export async function dismissMemoryCapture(space: PixorySpace, threadId: string): Promise<void> {

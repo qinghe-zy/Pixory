@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 28/);
+  assert.match(schema, /DATABASE_VERSION = 29/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -256,7 +256,8 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(captureService, /buildMemoryModelPrompt/);
   assert.match(captureService, /parseModelMemoryUpdate/);
   assert.match(captureService, /只输出 JSON/);
-  assert.match(captureService, /modelUpdate\?\.memories\.length \? modelUpdate\.memories : extractMemoryCandidates/);
+  assert.match(captureService, /modelUpdate\?\.memories\.length \? modelUpdate\.memories : prepared\.localCandidates/);
+  assert.match(captureService, /parseMemoryReconciliationOperations/);
   assert.match(service, /lastMaintenanceError/);
   assert.match(sessionConfig, /深度记忆/);
   assert.match(sessionConfig, /不会继续注入记忆背景/);
@@ -405,13 +406,16 @@ test('AI chat shows memory capture notice with undo and board actions', () => {
   const notice = read('src/components/ai/AiMemoryCaptureNotice.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(notice, /已记住：\$\{summaryText\}/);
+  assert.match(notice, /\$\{headline\}：\$\{summaryText\}/);
   assert.match(notice, /\+\$\{count - 1\}/);
-  assert.match(notice, /已记住 \$\{count\} 条内容/);
+  assert.match(notice, /\$\{headline\} \$\{count\} 条内容/);
+  assert.match(notice, /记忆已更新/);
+  assert.match(notice, /已修正/);
   assert.match(notice, /撤销/);
   assert.match(notice, /管理/);
   assert.match(chat, /AiMemoryCaptureNotice/);
-  assert.match(chat, /summary=\{memoryCaptures\[0\]\?\.content\}/);
+  assert.match(chat, /summary=\{inlineMemoryCaptures\[0\]\?\.content\}/);
+  assert.match(chat, /summary=\{fallbackMemoryCaptures\[0\]\?\.content\}/);
   assert.match(chat, /onUndoMemoryCapture/);
   assert.match(chat, /onOpenMemoryBoard/);
 });
@@ -584,7 +588,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 28/);
+  assert.match(schema, /DATABASE_VERSION = 29/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);

@@ -17,7 +17,7 @@ import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton'
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
 import { recognizeSpeech } from '../native/pixoryMediaModule';
-import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemoryInaccurate, updateMemoryContent, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
+import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemoryInaccurate, replaceRecentMemoryCaptures, updateMemoryContent, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
 import {
   createThreadFromContext,
   getCurrentChatModelLabel,
@@ -247,6 +247,22 @@ export function AiChatScreen({
     },
     [visibleMessages]
   );
+  const fallbackMemoryCaptures = useMemo(
+    () => memoryCaptures.filter((item) => !item.sourceMessageId),
+    [memoryCaptures]
+  );
+  const memoryCapturesBySourceMessageId = useMemo(() => {
+    const map = new Map<string, MemoryCaptureNoticeItem[]>();
+    for (const item of memoryCaptures) {
+      if (!item.sourceMessageId) {
+        continue;
+      }
+      const list = map.get(item.sourceMessageId) ?? [];
+      list.push(item);
+      map.set(item.sourceMessageId, list);
+    }
+    return map;
+  }, [memoryCaptures]);
   const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
     () => [
       { key: 'image', label: '上传图片', icon: 'image-outline', onPress: () => void pickChatImages() },
@@ -518,14 +534,28 @@ export function AiChatScreen({
     }
   }
 
-  async function onUndoMemoryCapture() {
+  async function persistMemoryCaptures(nextCaptures: MemoryCaptureNoticeItem[]) {
+    if (!activeThreadId) {
+      setMemoryCaptures(nextCaptures);
+      return;
+    }
+    setMemoryCaptures(nextCaptures);
+    if (nextCaptures.length === 0) {
+      await dismissMemoryCapture(space, activeThreadId);
+      return;
+    }
+    await replaceRecentMemoryCaptures(space, activeThreadId, nextCaptures);
+  }
+
+  async function onUndoMemoryCapture(targetItems: MemoryCaptureNoticeItem[] = memoryCaptures) {
     if (!activeThreadId) {
       return;
     }
     try {
-      await Promise.all(memoryCaptures.map((memory) => deleteMemory(space, memory.id)));
-      await dismissMemoryCapture(space, activeThreadId);
-      setMemoryCaptures([]);
+      const targetIds = new Set(targetItems.map((memory) => memory.id));
+      const deletableItems = targetItems.filter((memory) => memory.kind !== 'conflict');
+      await Promise.all(deletableItems.map((memory) => deleteMemory(space, memory.id)));
+      await persistMemoryCaptures(memoryCaptures.filter((memory) => !targetIds.has(memory.id)));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '撤销记忆失败');
     }
@@ -537,7 +567,8 @@ export function AiChatScreen({
     }
     try {
       const memory = await updateMemoryContent(space, memoryId, content);
-      setMemoryCaptures((current) => current.map((item) => item.id === memoryId ? { ...item, content: memory?.content ?? content } : item));
+      const next = memoryCaptures.map((item) => item.id === memoryId ? { ...item, content: memory?.content ?? content } : item);
+      await persistMemoryCaptures(next);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '更新记忆失败');
     }
@@ -550,10 +581,7 @@ export function AiChatScreen({
     try {
       await markMemoryInaccurate(space, memoryId);
       const next = memoryCaptures.filter((item) => item.id !== memoryId);
-      setMemoryCaptures(next);
-      if (next.length === 0) {
-        await dismissMemoryCapture(space, activeThreadId);
-      }
+      await persistMemoryCaptures(next);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '标记记忆失败');
     }
@@ -899,6 +927,7 @@ export function AiChatScreen({
   const renderMessageItem = useCallback(
     ({ item }: { item: VisibleMessageItem }) => {
       const { message } = item;
+      const inlineMemoryCaptures = memoryCapturesBySourceMessageId.get(message.id) ?? [];
       return (
         <>
           {item.showDateSeparator ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
@@ -926,6 +955,19 @@ export function AiChatScreen({
             }}
             streaming={generating && message.id === activeAssistantId}
           />
+          {inlineMemoryCaptures.length > 0 ? (
+            <View style={styles.inlineMemoryNotice}>
+              <AiMemoryCaptureNotice
+                count={inlineMemoryCaptures.length}
+                items={inlineMemoryCaptures}
+                summary={inlineMemoryCaptures[0]?.content}
+                onManage={() => void onOpenMemoryBoardFromChat()}
+                onMarkInaccurate={(memoryId) => void onMarkMemoryCaptureInaccurate(memoryId)}
+                onSave={(memoryId, content) => void onSaveMemoryCapture(memoryId, content)}
+                onUndo={() => void onUndoMemoryCapture(inlineMemoryCaptures)}
+              />
+            </View>
+          ) : null}
         </>
       );
     },
@@ -939,6 +981,7 @@ export function AiChatScreen({
       handleEditUserMessage,
       handleRegenerate,
       handleSubmitInlineRewrite,
+      memoryCapturesBySourceMessageId,
       openCitation,
       space,
     ]
@@ -1014,15 +1057,15 @@ export function AiChatScreen({
         {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
         <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
         <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
-        {memoryCaptures.length > 0 ? (
+        {fallbackMemoryCaptures.length > 0 ? (
           <AiMemoryCaptureNotice
-            count={memoryCaptures.length}
-            items={memoryCaptures}
-            summary={memoryCaptures[0]?.content}
+            count={fallbackMemoryCaptures.length}
+            items={fallbackMemoryCaptures}
+            summary={fallbackMemoryCaptures[0]?.content}
             onManage={() => void onOpenMemoryBoardFromChat()}
             onMarkInaccurate={(memoryId) => void onMarkMemoryCaptureInaccurate(memoryId)}
             onSave={(memoryId, content) => void onSaveMemoryCapture(memoryId, content)}
-            onUndo={() => void onUndoMemoryCapture()}
+            onUndo={() => void onUndoMemoryCapture(fallbackMemoryCaptures)}
           />
         ) : null}
         <AiChatComposer
@@ -1169,5 +1212,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     color: aiLightColors.muted,
     paddingVertical: spacing[1],
+  },
+  inlineMemoryNotice: {
+    alignSelf: 'flex-end',
+    maxWidth: '88%',
   },
 });

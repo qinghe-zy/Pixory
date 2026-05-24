@@ -139,6 +139,11 @@ export interface AiMemoryRecord {
   imageAssetId: number | null;
   assetSnapshotJson: string;
   sourceKind: AiMemorySourceKind;
+  supersededByMemoryId: string | null;
+  mergeReason: string | null;
+  mergedAt: string | null;
+  lastReconciledAt: string | null;
+  reconcileSourceMessageId: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -292,6 +297,11 @@ export interface CreateAiMemoryInput {
   imageAssetId?: number | null;
   assetSnapshotJson?: string;
   sourceKind?: AiMemorySourceKind;
+  supersededByMemoryId?: string | null;
+  mergeReason?: string | null;
+  mergedAt?: string | null;
+  lastReconciledAt?: string | null;
+  reconcileSourceMessageId?: string | null;
 }
 
 export interface ReplaceCitationInput {
@@ -1435,8 +1445,9 @@ export const aiThreadRepository = {
         `INSERT INTO ai_memories (
           id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
           confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
+          supersededByMemoryId, mergeReason, mergedAt, lastReconciledAt, reconcileSourceMessageId,
           createdAt, updatedAt, deletedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         input.id,
         input.space,
         input.scope,
@@ -1452,6 +1463,11 @@ export const aiThreadRepository = {
         input.imageAssetId ?? null,
         input.assetSnapshotJson ?? '{}',
         input.sourceKind ?? 'auto',
+        input.supersededByMemoryId ?? null,
+        input.mergeReason ?? null,
+        input.mergedAt ?? null,
+        input.lastReconciledAt ?? null,
+        input.reconcileSourceMessageId ?? null,
         now,
         now
       );
@@ -1526,10 +1542,19 @@ export const aiThreadRepository = {
       boundKnowledgeBaseId?: string | null;
       limit?: number;
       offset?: number;
+      status?: AiMemoryStatus | 'all';
     }
   ): Promise<AiMemoryRecord[]> {
-    const clauses = ["space = ?", "status = 'active'"];
+    const status = input.status ?? 'active';
+    const clauses = ["space = ?"];
     const values: Array<string | number | null> = [input.space];
+    if (status !== 'all') {
+      clauses.push('status = ?');
+      values.push(status);
+    }
+    if (status === 'active') {
+      clauses.push('supersededByMemoryId IS NULL');
+    }
     const scopeClauses = ["scope = 'global'"];
     if (input.threadId) {
       scopeClauses.push("(scope = 'thread' AND scopeId = ?)");
@@ -1579,7 +1604,7 @@ export const aiThreadRepository = {
     const values = scopePairs.flatMap(([scope, scopeId]) => [scope, scopeId]);
     return db.getAllAsync<AiMemoryRecord>(
       `SELECT * FROM ai_memories
-       WHERE space = ? AND status = 'active' AND (${clauses.join(' OR ')})
+       WHERE space = ? AND status = 'active' AND supersededByMemoryId IS NULL AND (${clauses.join(' OR ')})
        ORDER BY importance DESC, COALESCE(lastUsedAt, updatedAt) DESC, updatedAt DESC
        LIMIT ?`,
       input.space,
@@ -1590,7 +1615,7 @@ export const aiThreadRepository = {
 
   async syncMemoryFts(db: SQLiteDatabase, memory: AiMemoryRecord): Promise<void> {
     await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', memory.id);
-    if (memory.status !== 'active') {
+    if (memory.status !== 'active' || memory.supersededByMemoryId) {
       return;
     }
     await db.runAsync(
@@ -1649,6 +1674,7 @@ export const aiThreadRepository = {
          WHERE ai_memory_fts MATCH ?
            AND ai_memories.space = ?
            AND ai_memories.status = 'active'
+           AND ai_memories.supersededByMemoryId IS NULL
            AND (${scopeClauses.join(' OR ')})
          ORDER BY bm25(ai_memory_fts), ai_memories.importance DESC, COALESCE(ai_memories.lastUsedAt, ai_memories.updatedAt) DESC
          LIMIT ?`,
@@ -1674,6 +1700,119 @@ export const aiThreadRepository = {
       now,
       ...memoryIds
     );
+  },
+
+  async updateMemoryByReconciliation(db: SQLiteDatabase, input: {
+    memoryId: string;
+    content: string;
+    normalizedContent: string;
+    type?: AiMemoryType;
+    confidence?: number;
+    importance?: number;
+    reason?: string | null;
+    sourceMessageId?: string | null;
+  }): Promise<AiMemoryRecord | null> {
+    const now = createTimestamp();
+    const current = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ? AND status = \'active\'', input.memoryId);
+    if (!current || current.sourceKind === 'manual') {
+      return null;
+    }
+    const duplicate = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
+      normalizedContent: input.normalizedContent,
+      scope: current.scope,
+      scopeId: current.scopeId,
+      space: current.space,
+    });
+    if (duplicate && duplicate.id !== input.memoryId) {
+      await aiThreadRepository.markMemoryStaleByReconciliation(db, {
+        memoryId: input.memoryId,
+        reason: input.reason ?? '被现有等价记忆替代',
+        sourceMessageId: input.sourceMessageId ?? null,
+        supersededByMemoryId: duplicate.id,
+      });
+      return duplicate;
+    }
+    await db.runAsync(
+      `UPDATE ai_memories
+       SET content = ?,
+           normalizedContent = ?,
+           type = ?,
+           confidence = ?,
+           importance = ?,
+           mergeReason = ?,
+           mergedAt = ?,
+           lastReconciledAt = ?,
+           reconcileSourceMessageId = ?,
+           updatedAt = ?
+       WHERE id = ? AND status = 'active' AND sourceKind <> 'manual'`,
+      input.content,
+      input.normalizedContent,
+      input.type ?? current.type,
+      input.confidence ?? current.confidence,
+      input.importance ?? current.importance,
+      input.reason ?? null,
+      now,
+      now,
+      input.sourceMessageId ?? null,
+      now,
+      input.memoryId
+    );
+    const memory = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', input.memoryId);
+    if (memory) {
+      await aiThreadRepository.syncMemoryFts(db, memory);
+    }
+    return memory;
+  },
+
+  async markMemoryStaleByReconciliation(db: SQLiteDatabase, input: {
+    memoryId: string;
+    supersededByMemoryId?: string | null;
+    reason?: string | null;
+    sourceMessageId?: string | null;
+  }): Promise<AiMemoryRecord | null> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `UPDATE ai_memories
+       SET status = 'stale',
+           supersededByMemoryId = ?,
+           mergeReason = ?,
+           mergedAt = ?,
+           lastReconciledAt = ?,
+           reconcileSourceMessageId = ?,
+           deletedAt = NULL,
+           updatedAt = ?
+       WHERE id = ? AND status = 'active' AND sourceKind <> 'manual'`,
+      input.supersededByMemoryId ?? null,
+      input.reason ?? null,
+      now,
+      now,
+      input.sourceMessageId ?? null,
+      now,
+      input.memoryId
+    );
+    const memory = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', input.memoryId);
+    if (memory) {
+      await aiThreadRepository.syncMemoryFts(db, memory);
+    }
+    return memory;
+  },
+
+  async touchMemoryReconciled(db: SQLiteDatabase, input: { memoryId: string; reason?: string | null; sourceMessageId?: string | null }): Promise<AiMemoryRecord | null> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `UPDATE ai_memories
+       SET lastReconciledAt = ?,
+           reconcileSourceMessageId = ?,
+           mergeReason = COALESCE(?, mergeReason),
+           updatedAt = ?
+       WHERE id = ? AND status = 'active'`,
+      now,
+      input.sourceMessageId ?? null,
+      input.reason ?? null,
+      now,
+      input.memoryId
+    );
+    return db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', input.memoryId);
   },
 
   async incrementThreadMemoryPendingTurn(db: SQLiteDatabase, threadId: string): Promise<void> {

@@ -6,12 +6,28 @@ import { aiLightColors } from './aiLightTheme';
 
 interface AiMemoryCaptureNoticeProps {
   count: number;
-  items?: Array<{ id: string; content: string }>;
+  items?: Array<{ id: string; content: string; kind?: 'added' | 'updated' | 'staled' | 'conflict' | 'local_fallback'; sourceMessageId?: string | null }>;
   onManage: () => void;
   onMarkInaccurate?: (memoryId: string) => void;
   onSave?: (memoryId: string, content: string) => void;
   onUndo: () => void;
   summary?: string | null;
+}
+
+function labelForKind(kind?: string): string {
+  if (kind === 'updated') {
+    return '记忆已更新';
+  }
+  if (kind === 'staled') {
+    return '已修正';
+  }
+  if (kind === 'conflict') {
+    return '记忆待确认';
+  }
+  if (kind === 'local_fallback') {
+    return '已用本地方式整理记忆';
+  }
+  return '已记住';
 }
 
 function formatSummary(summary?: string | null): string {
@@ -28,12 +44,13 @@ export function AiMemoryCaptureNotice({ count, items = [], onManage, onMarkInacc
   const [draft, setDraft] = useState('');
   const summaryText = formatSummary(summary);
   const visibleItems = useMemo(() => items.slice(0, 4), [items]);
+  const headline = labelForKind(items[0]?.kind);
   return (
     <View style={styles.container}>
       <View style={styles.wrap}>
         <Pressable accessibilityRole="button" onPress={() => setExpanded((value) => !value)} style={styles.noticeTextButton}>
           <Text numberOfLines={1} style={styles.text}>
-            {summaryText ? `已记住：${summaryText}${count > 1 ? ` +${count - 1}` : ''}` : `已记住 ${count} 条内容`}
+            {summaryText ? `${headline}：${summaryText}${count > 1 ? ` +${count - 1}` : ''}` : `${headline} ${count} 条内容`}
           </Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={onUndo} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
@@ -45,7 +62,7 @@ export function AiMemoryCaptureNotice({ count, items = [], onManage, onMarkInacc
       </View>
       {expanded ? (
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>编辑记忆</Text>
+          <Text style={styles.panelTitle}>记忆反馈</Text>
           {visibleItems.map((item) => (
             <View key={item.id} style={styles.memoryRow}>
               {editingId === item.id ? (
@@ -58,7 +75,7 @@ export function AiMemoryCaptureNotice({ count, items = [], onManage, onMarkInacc
                   value={draft}
                 />
               ) : (
-                <Text style={styles.memoryText}>{item.content}</Text>
+                <Text style={styles.memoryText}>{labelForKind(item.kind)}：{item.content}</Text>
               )}
               <View style={styles.rowActions}>
                 {editingId === item.id ? (

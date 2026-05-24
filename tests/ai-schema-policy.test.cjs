@@ -9,7 +9,7 @@ const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'src/database/index.ts'), 'utf8');
 
 test('AI migration bumps database version and creates core local tables', () => {
-  assert.match(schema, /DATABASE_VERSION = 28/);
+  assert.match(schema, /DATABASE_VERSION = 29/);
   assert.match(schema, /MIGRATION_STATEMENTS_V19/);
   assert.match(schema, /MIGRATION_STATEMENTS_V20/);
   assert.match(schema, /MIGRATION_STATEMENTS_V21/);
@@ -20,6 +20,7 @@ test('AI migration bumps database version and creates core local tables', () => 
   assert.match(schema, /MIGRATION_STATEMENTS_V26/);
   assert.match(schema, /MIGRATION_STATEMENTS_V27/);
   assert.match(schema, /MIGRATION_STATEMENTS_V28/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V29/);
   assert.match(schema, /embeddingBaseUrl TEXT/);
   assert.match(schema, /roleInstructionWeight TEXT NOT NULL DEFAULT 'default'/);
   assert.match(schema, /replyPreference TEXT NOT NULL DEFAULT 'auto'/);
@@ -54,7 +55,7 @@ test('AI migration bumps database version and creates core local tables', () => 
 });
 
 test('AI memory performance migration adds normalized content index and active duplicate guard', () => {
-  assert.match(schema, /DATABASE_VERSION = 28/);
+  assert.match(schema, /DATABASE_VERSION = 29/);
   assert.match(schema, /MIGRATION_STATEMENTS_V27/);
   assert.match(schema, /idx_ai_memories_normalized_content/);
   assert.match(schema, /space,\s*scope,\s*scopeId,\s*normalizedContent,\s*status/);
@@ -66,6 +67,13 @@ test('AI memory performance migration adds normalized content index and active d
   assert.match(db, /currentVersion < 27/);
   assert.match(db, /MIGRATION_STATEMENTS_V28/);
   assert.match(db, /currentVersion < 28/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V29/);
+  assert.match(schema, /supersededByMemoryId TEXT/);
+  assert.match(schema, /lastReconciledAt TEXT/);
+  assert.match(schema, /reconcileSourceMessageId TEXT/);
+  assert.match(schema, /WHERE status = 'active' AND supersededByMemoryId IS NULL/);
+  assert.match(db, /MIGRATION_STATEMENTS_V29/);
+  assert.match(db, /currentVersion < 29/);
 });
 
 test('AI data model preserves space isolation and local document ownership', () => {
@@ -89,6 +97,7 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /MIGRATION_STATEMENTS_V26/);
   assert.match(db, /MIGRATION_STATEMENTS_V27/);
   assert.match(db, /MIGRATION_STATEMENTS_V28/);
+  assert.match(db, /MIGRATION_STATEMENTS_V29/);
   assert.match(db, /currentVersion < 17/);
   assert.match(db, /currentVersion < 18/);
   assert.match(db, /currentVersion < 19/);
@@ -101,6 +110,7 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /currentVersion < 26/);
   assert.match(db, /currentVersion < 27/);
   assert.match(db, /currentVersion < 28/);
+  assert.match(db, /currentVersion < 29/);
   assert.match(index, /aiProviderRepository/);
   assert.match(index, /aiThreadRepository/);
   assert.match(index, /aiKnowledgeRepository/);

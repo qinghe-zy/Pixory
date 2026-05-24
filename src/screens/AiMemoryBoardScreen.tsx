@@ -51,6 +51,7 @@ const TYPE_LABELS: Record<AiMemoryType, string> = {
 
 const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', 'knowledge_base'];
 const MEMORY_TYPE_FILTERS: Array<'all' | AiMemoryType> = ['all', 'preference', 'fact', 'correction', 'task', 'instruction', 'decision'];
+const MEMORY_STATUS_FILTERS: Array<'active' | 'stale' | 'all'> = ['active', 'stale', 'all'];
 
 function formatMemoryImportanceLabel(value: number): string {
   if (value >= 4) {
@@ -90,6 +91,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   const [summarySegments, setSummarySegments] = useState<AiThreadSummarySegmentRecord[]>([]);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [memoryTypeFilter, setMemoryTypeFilter] = useState<'all' | AiMemoryType>('all');
+  const [memoryStatusFilter, setMemoryStatusFilter] = useState<'active' | 'stale' | 'all'>('active');
   const [profileDraft, setProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -125,7 +127,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       setSummarySegments(segments);
       setMaintenanceStatus(nextMaintenanceStatus);
       if (nextThread) {
-        setMemories(await listMemoryBoardItems(space, nextThread));
+        setMemories(await listMemoryBoardItems(space, nextThread, { status: memoryStatusFilter }));
       }
       setStatus(null);
     } catch (error) {
@@ -133,7 +135,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     } finally {
       setLoading(false);
     }
-  }, [space, threadId]);
+  }, [memoryStatusFilter, space, threadId]);
 
   useEffect(() => {
     void reload();
@@ -321,6 +323,22 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         ) : null}
 
         <View style={styles.filterRow}>
+          {MEMORY_STATUS_FILTERS.map((statusFilter) => (
+            <Pressable
+              key={statusFilter}
+              accessibilityRole="button"
+              onPress={() => setMemoryStatusFilter(statusFilter)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                memoryStatusFilter === statusFilter && styles.filterChipActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.filterText, memoryStatusFilter === statusFilter && styles.filterTextActive]}>
+                {statusFilter === 'active' ? '当前记忆' : statusFilter === 'stale' ? '已过期' : '全部状态'}
+              </Text>
+            </Pressable>
+          ))}
           {MEMORY_TYPE_FILTERS.map((type) => (
             <Pressable
               key={type}
@@ -360,8 +378,10 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                     <>
                       <Text style={styles.memoryContent}>{memory.content}</Text>
                       <Text style={styles.caption}>
-                        {TYPE_LABELS[memory.type]} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
+                        {TYPE_LABELS[memory.type]} · {memory.sourceKind === 'manual' ? '手动添加' : '自动整理'} · {memory.status === 'stale' ? '已过期' : '当前'} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
                       </Text>
+                      {memory.status === 'stale' && memory.mergeReason ? <Text style={styles.status}>过期原因：{memory.mergeReason}</Text> : null}
+                      {memory.supersededByMemoryId ? <Text style={styles.caption}>替代记忆：{memory.supersededByMemoryId}</Text> : null}
                     </>
                   )}
                   <View style={styles.rowActions}>
@@ -378,17 +398,19 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                       </>
                     ) : (
                       <>
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => {
-                            setEditingId(memory.id);
-                            setEditingText(memory.content);
-                          }}
-                          style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
-                        >
-                          <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
-                          <Text style={styles.actionLabel}>编辑</Text>
-                        </Pressable>
+                        {memory.status === 'active' ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() => {
+                              setEditingId(memory.id);
+                              setEditingText(memory.content);
+                            }}
+                            style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
+                          >
+                            <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
+                            <Text style={styles.actionLabel}>编辑</Text>
+                          </Pressable>
+                        ) : null}
                         <Pressable accessibilityRole="button" onPress={() => setPendingDeleteMemory(memory)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                           <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
                           <Text style={styles.actionLabel}>删除</Text>
