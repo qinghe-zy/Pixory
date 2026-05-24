@@ -16,7 +16,22 @@ test('AI final failure paths keep local records recoverable', () => {
   assert.match(chat, /fallbackAiThreadTitle/);
   assert.match(chat, /partialContent = ''/);
   assert.match(chat, /content: partialContent/);
-  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, event\.message, answerText, reasoningText \|\| null\)/);
+  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, readableError, answerText, reasoningText \|\| null\)/);
+});
+
+test('AI failed assistant bubbles provide readable errors and inline retry', () => {
+  const errors = read('src/ai/aiErrorMessageService.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(errors, /normalizeAiErrorMessage/);
+  assert.match(errors, /API Key 无效或已过期/);
+  assert.match(errors, /额度不足或请求过于频繁/);
+  assert.match(errors, /模型暂时不可用/);
+  assert.match(errors, /网络连接失败/);
+  assert.match(chatService, /normalizeAiErrorMessage/);
+  assert.match(bubble, /inlineRetryButton/);
+  assert.match(bubble, /重试/);
 });
 
 test('new AI chats snapshot the last selected chat provider and model', () => {
@@ -89,8 +104,8 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /ROLE_INSTRUCTION_WEIGHTS/);
   assert.match(sessionConfig, /权重等级/);
   assert.match(sessionConfig, /setRoleInstructionWeight/);
-  assert.match(sessionConfig, /保存并开始聊天/);
-  assert.match(sessionConfig, /仅保存设置/);
+  assert.match(sessionConfig, /保存角色指令并开始聊天/);
+  assert.match(sessionConfig, /仅保存角色指令/);
   assert.match(roleEditor, /onApplyRoleCard/);
   assert.match(roleEditor, /ImagePicker\.launchImageLibraryAsync/);
   assert.match(roleEditor, /copyAiRoleAvatarToAppStorage/);
@@ -159,6 +174,28 @@ test('AI session settings autosave lightweight options and separates dangerous d
   assert.doesNotMatch(sessionConfig, /subtitle=\{`\$\{spaceLabel\}\$\{threadId/);
   assert.match(sessionConfig, /dangerSection/);
   assert.match(sessionConfig, /删除当前会话/);
+});
+
+test('AI session settings clearly distinguish autosaved options from role instruction saves', () => {
+  const session = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(session, /这些选项会自动保存/);
+  assert.match(session, /角色指令需要点击保存后生效/);
+  assert.match(session, /保存角色指令并开始聊天/);
+  assert.match(session, /仅保存角色指令/);
+  assert.match(session, /dangerSection/);
+});
+
+test('AI memory board uses confirmation or undo and human memory quality labels', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /pendingDeleteMemory/);
+  assert.match(board, /AppDialog/);
+  assert.match(board, /删除这条记忆/);
+  assert.match(board, /删除这段摘要/);
+  assert.match(board, /formatMemoryImportanceLabel/);
+  assert.match(board, /formatMemoryConfidenceLabel/);
+  assert.doesNotMatch(board, /重要度 \{memory\.importance\} · 可信度 \{Math\.round\(memory\.confidence \* 100\)\}%/);
 });
 
 test('AI reply preference is per-thread and only adds lightweight prompt hints when selected', () => {

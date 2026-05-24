@@ -20,9 +20,11 @@ import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
+import { AppDialog } from '../components/AppDialog';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiThreadSummarySegmentRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
+import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 
 interface AiMemoryBoardScreenProps {
   space: PixorySpace;
@@ -49,6 +51,27 @@ const TYPE_LABELS: Record<AiMemoryType, string> = {
 
 const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', 'knowledge_base'];
 const MEMORY_TYPE_FILTERS: Array<'all' | AiMemoryType> = ['all', 'preference', 'fact', 'correction', 'task', 'instruction', 'decision'];
+const MEMORY_STATUS_FILTERS: Array<'active' | 'stale' | 'all'> = ['active', 'stale', 'all'];
+
+function formatMemoryImportanceLabel(value: number): string {
+  if (value >= 4) {
+    return '很重要';
+  }
+  if (value >= 2) {
+    return '较重要';
+  }
+  return '普通重要';
+}
+
+function formatMemoryConfidenceLabel(value: number): string {
+  if (value >= 0.85) {
+    return '判断很可信';
+  }
+  if (value >= 0.65) {
+    return '判断较可信';
+  }
+  return '待确认';
+}
 
 interface MemoryMaintenanceStatus {
   lastMaintenanceCompletedAt: string | null;
@@ -68,12 +91,15 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   const [summarySegments, setSummarySegments] = useState<AiThreadSummarySegmentRecord[]>([]);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [memoryTypeFilter, setMemoryTypeFilter] = useState<'all' | AiMemoryType>('all');
+  const [memoryStatusFilter, setMemoryStatusFilter] = useState<'active' | 'stale' | 'all'>('active');
   const [profileDraft, setProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingDeleteMemory, setPendingDeleteMemory] = useState<AiMemoryRecord | null>(null);
+  const [pendingDeleteSummary, setPendingDeleteSummary] = useState<AiThreadSummarySegmentRecord | null>(null);
 
   const grouped = useMemo(() => {
     const map = new Map<AiMemoryScope, AiMemoryRecord[]>();
@@ -101,7 +127,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       setSummarySegments(segments);
       setMaintenanceStatus(nextMaintenanceStatus);
       if (nextThread) {
-        setMemories(await listMemoryBoardItems(space, nextThread));
+        setMemories(await listMemoryBoardItems(space, nextThread, { status: memoryStatusFilter }));
       }
       setStatus(null);
     } catch (error) {
@@ -109,7 +135,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     } finally {
       setLoading(false);
     }
-  }, [space, threadId]);
+  }, [memoryStatusFilter, space, threadId]);
 
   useEffect(() => {
     void reload();
@@ -181,6 +207,22 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
+  async function confirmDeleteMemory() {
+    if (!pendingDeleteMemory) {
+      return;
+    }
+    await handleDelete(pendingDeleteMemory.id);
+    setPendingDeleteMemory(null);
+  }
+
+  async function confirmDeleteSummary() {
+    if (!pendingDeleteSummary) {
+      return;
+    }
+    await handleDeleteSummary(pendingDeleteSummary.id);
+    setPendingDeleteSummary(null);
+  }
+
   async function handleRerunSummaryMaintenance() {
     setLoading(true);
     try {
@@ -209,13 +251,14 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   }
 
   return (
+    <>
     <AiLightScaffold loading={loading} onBack={onBack} scrollable subtitle="本地可控记忆" title="AI 记住了这些">
       <View style={styles.content}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
         <AiLightCard>
           <Text style={styles.sectionTitle}>用户画像</Text>
           <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求。</Text>
-          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
+          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
           <AiLightTextareaRow
             label="画像内容"
             minHeight={112}
@@ -236,10 +279,10 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
           </View>
           <View style={styles.maintenanceBox}>
             <Text style={styles.caption}>
-              上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
+              上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatAiFullMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
             </Text>
             <Text style={styles.caption}>
-              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
+              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatAiFullMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
             </Text>
             {maintenanceStatus?.lastMaintenanceModelProviderId || maintenanceStatus?.lastMaintenanceModelId ? (
               <Text style={styles.caption}>
@@ -256,7 +299,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                 <Text style={styles.caption}>{formatSummaryRange(segment)} · {segment.roundCount} 轮</Text>
                 <Text style={styles.memoryContent}>{segment.summaryText}</Text>
                 <View style={styles.rowActions}>
-                  <Pressable accessibilityRole="button" onPress={() => void handleDeleteSummary(segment.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                  <Pressable accessibilityRole="button" onPress={() => setPendingDeleteSummary(segment)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                     <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
                     <Text style={styles.actionLabel}>删除摘要</Text>
                   </Pressable>
@@ -280,6 +323,22 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         ) : null}
 
         <View style={styles.filterRow}>
+          {MEMORY_STATUS_FILTERS.map((statusFilter) => (
+            <Pressable
+              key={statusFilter}
+              accessibilityRole="button"
+              onPress={() => setMemoryStatusFilter(statusFilter)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                memoryStatusFilter === statusFilter && styles.filterChipActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.filterText, memoryStatusFilter === statusFilter && styles.filterTextActive]}>
+                {statusFilter === 'active' ? '当前记忆' : statusFilter === 'stale' ? '已过期' : '全部状态'}
+              </Text>
+            </Pressable>
+          ))}
           {MEMORY_TYPE_FILTERS.map((type) => (
             <Pressable
               key={type}
@@ -319,8 +378,10 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                     <>
                       <Text style={styles.memoryContent}>{memory.content}</Text>
                       <Text style={styles.caption}>
-                        {TYPE_LABELS[memory.type]} · 重要度 {memory.importance} · 可信度 {Math.round(memory.confidence * 100)}%
+                        {TYPE_LABELS[memory.type]} · {memory.sourceKind === 'manual' ? '手动添加' : '自动整理'} · {memory.status === 'stale' ? '已过期' : '当前'} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
                       </Text>
+                      {memory.status === 'stale' && memory.mergeReason ? <Text style={styles.status}>过期原因：{memory.mergeReason}</Text> : null}
+                      {memory.supersededByMemoryId ? <Text style={styles.caption}>替代记忆：{memory.supersededByMemoryId}</Text> : null}
                     </>
                   )}
                   <View style={styles.rowActions}>
@@ -337,18 +398,20 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                       </>
                     ) : (
                       <>
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => {
-                            setEditingId(memory.id);
-                            setEditingText(memory.content);
-                          }}
-                          style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
-                        >
-                          <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
-                          <Text style={styles.actionLabel}>编辑</Text>
-                        </Pressable>
-                        <Pressable accessibilityRole="button" onPress={() => void handleDelete(memory.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
+                        {memory.status === 'active' ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() => {
+                              setEditingId(memory.id);
+                              setEditingText(memory.content);
+                            }}
+                            style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
+                          >
+                            <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
+                            <Text style={styles.actionLabel}>编辑</Text>
+                          </Pressable>
+                        ) : null}
+                        <Pressable accessibilityRole="button" onPress={() => setPendingDeleteMemory(memory)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
                           <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
                           <Text style={styles.actionLabel}>删除</Text>
                         </Pressable>
@@ -362,15 +425,26 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         ))}
       </View>
     </AiLightScaffold>
+    <AppDialog
+      danger
+      message="删除后，这条记忆不会再进入后续回复。"
+      onClose={() => setPendingDeleteMemory(null)}
+      onPrimary={() => void confirmDeleteMemory()}
+      primaryLabel="删除"
+      title="删除这条记忆"
+      visible={Boolean(pendingDeleteMemory)}
+    />
+    <AppDialog
+      danger
+      message="删除后，这段会话摘要不会再进入后续回复。"
+      onClose={() => setPendingDeleteSummary(null)}
+      onPrimary={() => void confirmDeleteSummary()}
+      primaryLabel="删除"
+      title="删除这段摘要"
+      visible={Boolean(pendingDeleteSummary)}
+    />
+    </>
   );
-}
-
-function formatMinute(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({

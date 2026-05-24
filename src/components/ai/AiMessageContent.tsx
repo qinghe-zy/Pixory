@@ -10,10 +10,11 @@ import { AiInlineFeedback } from './AiInlineFeedback';
 type MarkdownBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; text: string; level: number }
-  | { type: 'list'; items: Array<{ marker: string; text: string; checked?: boolean }> }
+  | { type: 'list'; items: Array<{ marker: string; text: string; checked?: boolean; nestLevel: number }> }
   | { type: 'quote'; text: string }
   | { type: 'code'; text: string; language?: string }
-  | { type: 'table'; rows: string[][] };
+  | { type: 'table'; rows: string[][] }
+  | { type: 'hr' };
 
 interface AiMessageContentProps {
   content: string;
@@ -39,6 +40,10 @@ function isQuoteLine(line: string): boolean {
 function isTableLine(line: string): boolean {
   const trimmed = line.trim();
   return trimmed.includes('|') && trimmed.split('|').filter((cell) => cell.trim()).length >= 2;
+}
+
+function isHorizontalRule(line: string): boolean {
+  return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line);
 }
 
 function isTableSeparator(line: string): boolean {
@@ -85,15 +90,23 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
       continue;
     }
 
+    if (isHorizontalRule(line)) {
+      blocks.push({ type: 'hr' });
+      index += 1;
+      continue;
+    }
+
     if (isListLine(line)) {
-      const items: Array<{ marker: string; text: string; checked?: boolean }> = [];
+      const items: Array<{ marker: string; text: string; checked?: boolean; nestLevel: number }> = [];
       while (index < lines.length && isListLine(lines[index] ?? '')) {
         const item = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(lines[index] ?? '');
         if (item) {
           const task = /^\[(x|X| )\]\s+(.*)$/.exec(item[3]);
+          const indent = item[1].length;
           items.push({
             checked: task ? task[1].toLowerCase() === 'x' : undefined,
             marker: task ? (task[1].toLowerCase() === 'x' ? '☑' : '☐') : item[2].match(/\d+\./) ? item[2] : '•',
+            nestLevel: Math.min(3, Math.floor(indent / 2)),
             text: task?.[2] ?? item[3],
           });
         }
@@ -128,7 +141,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     index += 1;
     while (index < lines.length) {
       const nextLine = lines[index] ?? '';
-      if (!nextLine.trim() || isFence(nextLine) || isHeading(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
+      if (!nextLine.trim() || isFence(nextLine) || isHeading(nextLine) || isHorizontalRule(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
         break;
       }
       paragraphLines.push(nextLine);
@@ -178,7 +191,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
 
   if (variant === 'user') {
-    return <Text style={[styles.body, styles.userText]}>{content}</Text>;
+    return <Text selectable style={[styles.body, styles.userText]}>{content}</Text>;
   }
 
   const blocks = parseMarkdownBlocks(content);
@@ -213,7 +226,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         const key = `${block.type}-${index}`;
         if (block.type === 'heading') {
           return (
-            <Text key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
+            <Text selectable key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
               {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink)}
             </Text>
           );
@@ -222,9 +235,9 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
           return (
             <View key={key} style={styles.list}>
               {block.items.map((item, itemIndex) => (
-                <View key={`${key}-${itemIndex}`} style={styles.listItem}>
+                <View key={`${key}-${itemIndex}`} style={[styles.listItem, item.nestLevel > 0 && { paddingLeft: item.nestLevel * spacing[3] }]}>
                   <Text style={styles.listMarker}>{item.marker}</Text>
-                  <Text style={[styles.body, styles.assistantText, styles.listText]}>
+                  <Text selectable style={[styles.body, styles.assistantText, styles.listText]}>
                     {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink)}
                   </Text>
                 </View>
@@ -235,9 +248,12 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         if (block.type === 'quote') {
           return (
             <View key={key} style={styles.quote}>
-              <Text style={[styles.body, styles.quoteText]}>{renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}</Text>
+              <Text selectable style={[styles.body, styles.quoteText]}>{renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}</Text>
             </View>
           );
+        }
+        if (block.type === 'hr') {
+          return <View key={key} style={styles.horizontalRule} />;
         }
         if (block.type === 'code') {
           return (
@@ -278,7 +294,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
           );
         }
         return (
-          <Text key={key} style={[styles.body, styles.assistantText]}>
+          <Text selectable key={key} style={[styles.body, styles.assistantText]}>
             {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink)}
           </Text>
         );
@@ -356,6 +372,12 @@ const styles = StyleSheet.create({
   },
   quoteText: {
     color: aiLightColors.muted,
+  },
+  horizontalRule: {
+    backgroundColor: aiLightColors.hairline,
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing[2],
+    width: '100%',
   },
   codeBlock: {
     backgroundColor: aiLightColors.dark,

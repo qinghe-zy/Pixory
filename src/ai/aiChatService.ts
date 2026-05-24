@@ -26,6 +26,7 @@ import {
   retrieveDynamicMemoryContext,
 } from './aiMemoryService';
 import { scheduleMemoryMaintenance } from './aiMemoryMaintenanceService';
+import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -447,11 +448,14 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
-  const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => ({
-    companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread),
-    dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage),
-    stableMemoryPrefix: await buildStableMemoryPrefix(db, thread),
-  }));
+  const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => {
+    const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+    return {
+      companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { settings: memorySettings }),
+      dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage, { settings: memorySettings }),
+      stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { settings: memorySettings }),
+    };
+  });
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
@@ -936,18 +940,23 @@ async function streamAssistantReply(input: {
         }
         if (event.type === 'error') {
           streamFailed = true;
-          await markAssistantFailed(input.space, input.assistantMessageId, event.message, answerText, reasoningText || null);
-          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: event.message, completedAt: new Date().toISOString() });
+          const readableError = normalizeAiErrorMessage(event.message);
+          await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
     );
   } catch (error) {
     streamFailed = true;
-    const message = error instanceof Error ? error.message : 'AI 回复失败。';
-    await markAssistantFailed(input.space, input.assistantMessageId, message, answerText, reasoningText || null);
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: message, completedAt: new Date().toISOString() });
+    const readableError = normalizeAiErrorMessage(error);
+    await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
     input.onUpdated?.();
+  }
+
+  if (streamFailed) {
+    return;
   }
 
   await persistStreamingSnapshot(true);
@@ -966,10 +975,6 @@ async function streamAssistantReply(input: {
     );
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
-    return;
-  }
-
-  if (streamFailed) {
     return;
   }
 

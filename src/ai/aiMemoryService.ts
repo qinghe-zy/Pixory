@@ -1,7 +1,12 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMemoryRecord, AiThreadSummarySegmentRecord, CreateAiMemoryInput } from '../database/repositories/aiThreadRepository';
+import type {
+  AiMemoryRecord,
+  AiThreadMemorySettingsRecord,
+  AiThreadSummarySegmentRecord,
+  CreateAiMemoryInput,
+} from '../database/repositories/aiThreadRepository';
 import { buildMainCompanionMemoryTemplate } from './aiMemoryPrompts';
 import type { AiThreadRecord } from './types';
 
@@ -24,6 +29,12 @@ type ManualMemoryInput = Omit<CreateAiMemoryInput, 'id' | 'normalizedContent'> &
 export interface MemoryCaptureNoticeItem {
   id: string;
   content: string;
+  kind?: 'added' | 'updated' | 'staled' | 'conflict' | 'local_fallback';
+  sourceMessageId?: string | null;
+}
+
+export interface BuildMemoryPrefixOptions {
+  settings?: AiThreadMemorySettingsRecord;
 }
 
 const STABLE_MEMORY_LIMIT = 24;
@@ -73,12 +84,27 @@ function memoryContainsQuery(memory: AiMemoryRecord, terms: string[]): boolean {
   return terms.some((term) => content.includes(term));
 }
 
+async function resolveMemorySettings(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+  options?: BuildMemoryPrefixOptions
+): Promise<AiThreadMemorySettingsRecord> {
+  return options?.settings ?? aiThreadRepository.getThreadMemorySettings(db, thread.id);
+}
+
 export function shouldRunImmediateMemoryCapture(text: string): boolean {
   return MEMORY_CAPTURE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord): Promise<AiMemoryRecord[]> {
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread)));
+export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord, options?: { limit?: number; offset?: number; status?: AiMemoryRecord['status'] | 'all' }): Promise<AiMemoryRecord[]> {
+  return runWithDatabaseSpace(space, (db) =>
+    aiThreadRepository.listMemoryBoardItems(db, {
+      ...scopedBoardInput(thread),
+      limit: options?.limit,
+      offset: options?.offset,
+      status: options?.status,
+    })
+  );
 }
 
 export async function createManualMemory(space: PixorySpace, input: ManualMemoryInput): Promise<AiMemoryRecord> {
@@ -174,6 +200,10 @@ export async function saveRecentMemoryCaptures(db: SQLiteDatabase, threadId: str
   });
 }
 
+export async function replaceRecentMemoryCaptures(space: PixorySpace, threadId: string, captures: MemoryCaptureNoticeItem[]): Promise<void> {
+  await runWithDatabaseSpace(space, (db) => saveRecentMemoryCaptures(db, threadId, captures));
+}
+
 export async function dismissMemoryCapture(space: PixorySpace, threadId: string): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateThreadMemoryJob(db, {
@@ -184,11 +214,7 @@ export async function dismissMemoryCapture(space: PixorySpace, threadId: string)
 }
 
 export async function incrementPendingMemoryTurn(db: SQLiteDatabase, threadId: string): Promise<void> {
-  const current = await aiThreadRepository.getThreadMemoryJob(db, threadId);
-  await aiThreadRepository.updateThreadMemoryJob(db, {
-    threadId,
-    pendingTurnCount: current.pendingTurnCount + 1,
-  });
+  await aiThreadRepository.incrementThreadMemoryPendingTurn(db, threadId);
 }
 
 export async function maybeRunLazyMemoryConsolidation(input: {
@@ -215,12 +241,15 @@ function formatMemoryLine(memory: AiMemoryRecord, index: number): string {
   return `${index + 1}. [${source}/${memory.scope}/${memory.type}] ${memory.content}${asset}`;
 }
 
-export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord): Promise<string> {
-  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
+  const settings = await resolveMemorySettings(db, thread, options);
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const memories = await aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread));
+  const memories = await aiThreadRepository.listMemoryBoardItems(db, {
+    ...scopedBoardInput(thread),
+    limit: STABLE_MEMORY_LIMIT * 2,
+  });
   const stable = memories
     .filter((memory) => memory.status === 'active')
     .sort((left, right) => {
@@ -241,8 +270,8 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   return lines.length > 1 ? lines.join('\n') : '';
 }
 
-export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord): Promise<string> {
-  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
+  const settings = await resolveMemorySettings(db, thread, options);
   if (!settings.deepMemoryEnabled) {
     return '';
   }
@@ -306,8 +335,13 @@ export function scoreMemoryForQuery(memory: AiMemoryRecord, query: string, threa
   return keywordScore + scopeScore + importanceScore + recencyScore + assetScore + embeddingScore + fallbackScore;
 }
 
-export async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord, userMessage: string): Promise<string> {
-  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+export async function retrieveDynamicMemoryContext(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+  userMessage: string,
+  options?: BuildMemoryPrefixOptions
+): Promise<string> {
+  const settings = await resolveMemorySettings(db, thread, options);
   if (!settings.deepMemoryEnabled) {
     return '';
   }

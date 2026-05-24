@@ -65,9 +65,10 @@ test('AI chat header shows the current model below the chat title', () => {
 test('AI chat keeps the top bar fixed while only messages scroll', () => {
   const content = chat();
   assert.match(content, /<FlatList/);
-  assert.match(content, /data=\{visibleMessages\}/);
-  assert.match(content, /renderItem=\{\(\{ item: message, index \}\) =>/);
-  assert.match(content, /keyExtractor=\{\(message\) => message\.id\}/);
+  assert.match(content, /data=\{visibleMessageItems\}/);
+  assert.match(content, /type VisibleMessageItem/);
+  assert.match(content, /renderMessageItem/);
+  assert.match(content, /keyExtractor=\{messageKeyExtractor\}/);
   assert.match(content, /style=\{styles\.messageScroller\}/);
   assert.match(content, /contentContainerStyle=\{styles\.messageScrollContent\}/);
   assert.match(content, /styles\.composerPanel/);
@@ -406,8 +407,8 @@ test('AI session settings avoid one overloaded button cluster', () => {
   assert.doesNotMatch(sessionConfig, /<PrimaryButton label="模型账号"/);
   assert.doesNotMatch(sessionConfig, /选择或编辑角色卡/);
   assert.doesNotMatch(sessionConfig, /minHeight=\{132\}/);
-  assert.match(actionsBlock, /保存并开始聊天/);
-  assert.match(actionsBlock, /仅保存设置/);
+  assert.match(actionsBlock, /保存角色指令并开始聊天/);
+  assert.match(actionsBlock, /仅保存角色指令/);
   assert.doesNotMatch(actionsBlock, /模型账号/);
 });
 
@@ -451,7 +452,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /setDeleteThread\(actionThread\)/);
   assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
   assert.match(history, /AppActionSheet/);
-  assert.match(history, /formatHistoryMinute/);
+  assert.match(history, /formatAiHistoryMinute/);
   assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(history, /上次聊天/);
   assert.match(repository, /lastMessageAt/);
@@ -482,14 +483,43 @@ test('AI chat and history expose recent switcher quick new chat and searchable g
   assert.match(repository, /lastMessagePreview LIKE/);
 });
 
+test('AI history search is debounced and older chats are grouped by month', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /debouncedSearchText/);
+  assert.match(history, /setTimeout\(\(\) => setDebouncedSearchText\(searchText\), 300\)/);
+  assert.match(history, /searchText: debouncedSearchText/);
+  assert.match(history, /过去 30 天/);
+  assert.match(history, /toLocaleDateString\('zh-CN', \{ year: 'numeric', month: 'long' \}\)/);
+});
+
+test('AI history archive swipe follows the finger and snaps with animation', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /Animated/);
+  assert.match(history, /swipeAnimatedValuesRef/);
+  assert.match(history, /Animated\.spring/);
+  assert.match(history, /useNativeDriver: true/);
+  assert.match(history, /onPanResponderMove/);
+  assert.match(history, /translateX: swipeTranslateX/);
+});
+
 test('AI home recent continue rows show last chat time to the minute', () => {
   const home = fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
 
-  assert.match(home, /formatRecentChatMinute/);
+  assert.match(home, /formatAiHistoryMinute/);
   assert.match(home, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(home, /上次聊天/);
-  assert.match(home, /\$\{month\}-\$\{day\} \$\{hours\}:\$\{minutes\}/);
+  assert.match(home, /上次聊天 \$\{formatAiHistoryMinute/);
   assert.doesNotMatch(home, /formatRecentTime\(thread\.updatedAt\)/);
+});
+
+test('AI history and home use shared AI history time formatter', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+  const home = read('src/screens/AiHomeScreen.tsx');
+
+  assert.match(history, /formatAiHistoryMinute/);
+  assert.match(home, /formatAiHistoryMinute/);
 });
 
 test('AI materials support batch removal and chat history supports rename', () => {

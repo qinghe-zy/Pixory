@@ -1,7 +1,16 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMemoryRecord, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
-import { saveRecentMemoryCaptures, shouldRunImmediateMemoryCapture } from './aiMemoryService';
+import { saveRecentMemoryCaptures, shouldRunImmediateMemoryCapture, type MemoryCaptureNoticeItem } from './aiMemoryService';
+import {
+  buildMemoryReconciliationPrompt,
+  normalizeMemoryContentForReconciliation,
+  parseMemoryReconciliationOperations,
+  sanitizeMemoryReconciliationOperations,
+  type AiMemoryReconciliationOperation,
+} from './aiMemoryReconciliationService';
 import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
 import type { AiThreadRecord } from './types';
 
@@ -29,9 +38,7 @@ function createAiId(prefix: string): string {
   return `${prefix}_${timestamp}_${random}`;
 }
 
-function normalizeMemoryContent(content: string): string {
-  return content.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 180);
-}
+const normalizeMemoryContent = normalizeMemoryContentForReconciliation;
 
 function truncateForPrompt(value: string, limit: number): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -113,22 +120,21 @@ function parseModelMemoryUpdate(text: string): ModelMemoryUpdate | null {
   }
 }
 
-function buildMemoryModelPrompt(messages: AiMessageRecord[]): string {
-  const recent = messages
+function buildMemoryConversationText(messages: AiMessageRecord[]): string {
+  return messages
     .filter((message) => message.status === 'completed' && message.role !== 'system')
     .slice(-MEMORY_MODEL_CONTEXT_LIMIT)
     .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 420)}`)
     .join('\n\n');
+}
+
+function buildMemoryModelPrompt(messages: AiMessageRecord[], candidateMemories: AiMemoryRecord[]): string {
   return [
-    '请为一个本地离线优先的 AI 聊天应用更新“深度记忆”。',
     '只输出 JSON，不要输出 Markdown 或解释。',
-    '记忆必须保守：只保存用户明确表达、重复出现、纠正 AI、或对后续明显有用的稳定事实。不要保存普通寒暄、临时情绪、一次性闲聊、未经确认的推测。',
-    '记忆使用时只是背景参考，不能覆盖用户当前最新要求、角色指令、安全规则或资料事实。',
-    'JSON 结构：{"summary":"会话摘要","decisions":"已确认事项","openQuestions":"待跟进问题","memories":[{"scope":"global或thread","type":"preference|fact|decision|instruction|task|correction","content":"单条记忆","confidence":0.1到1,"importance":1到5}]}',
-    'scope 只允许 global 或 thread；跨会话稳定偏好用 global，本会话决策和任务用 thread。',
-    '如果没有值得长期保存的记忆，memories 返回空数组。',
-    '聊天片段：',
-    recent || '暂无聊天片段。',
+    buildMemoryReconciliationPrompt({
+      candidateMemories,
+      conversationText: buildMemoryConversationText(messages),
+    }),
   ].join('\n\n');
 }
 
@@ -161,6 +167,81 @@ function stepResult(error: string | null, usedRemote: boolean, usedFallback: boo
   return { error, modelId, providerId, usedFallback, usedRemote };
 }
 
+function scopeIdForMemoryCandidate(thread: AiThreadRecord, candidate: Pick<MemoryCandidate, 'scope'>): string | null {
+  if (candidate.scope === 'thread') {
+    return thread.id;
+  }
+  if (candidate.scope === 'role') {
+    return thread.roleCardId;
+  }
+  if (candidate.scope === 'ip') {
+    return thread.boundIpId == null ? null : String(thread.boundIpId);
+  }
+  if (candidate.scope === 'knowledge_base') {
+    return thread.boundKnowledgeBaseId;
+  }
+  return null;
+}
+
+function allowedMemoryScopes(thread: AiThreadRecord): Array<{ scope: AiMemoryRecord['scope']; scopeId: string | null }> {
+  const scopes: Array<{ scope: AiMemoryRecord['scope']; scopeId: string | null }> = [
+    { scope: 'global', scopeId: null },
+    { scope: 'thread', scopeId: thread.id },
+  ];
+  if (thread.roleCardId) {
+    scopes.push({ scope: 'role', scopeId: thread.roleCardId });
+  }
+  if (thread.boundIpId != null) {
+    scopes.push({ scope: 'ip', scopeId: String(thread.boundIpId) });
+  }
+  if (thread.boundKnowledgeBaseId) {
+    scopes.push({ scope: 'knowledge_base', scopeId: thread.boundKnowledgeBaseId });
+  }
+  return scopes;
+}
+
+async function createMemoryFromCandidate(db: SQLiteDatabase, input: {
+  candidate: MemoryCandidate;
+  sourceMessageId: string;
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  reason?: string | null;
+}): Promise<AiMemoryRecord | null> {
+  const scopeId = scopeIdForMemoryCandidate(input.thread, input.candidate);
+  if (input.candidate.scope !== 'global' && !scopeId) {
+    return null;
+  }
+  const normalizedContent = normalizeMemoryContent(input.candidate.content);
+  const memory = await aiThreadRepository.createMemory(db, {
+    confidence: input.candidate.confidence,
+    content: input.candidate.content,
+    id: createAiId('aimem'),
+    importance: input.candidate.importance,
+    mergeReason: input.reason ?? null,
+    normalizedContent,
+    reconcileSourceMessageId: input.sourceMessageId,
+    scope: input.candidate.scope,
+    scopeId,
+    sourceMessageId: input.sourceMessageId,
+    space: input.space,
+    type: input.candidate.type,
+  });
+  return memory;
+}
+
+function candidateFromAddOperation(operation: AiMemoryReconciliationOperation): MemoryCandidate | null {
+  if (operation.op !== 'add' || !operation.content || !operation.scope || !operation.type) {
+    return null;
+  }
+  return {
+    confidence: operation.confidence,
+    content: operation.content,
+    importance: operation.importance ?? 2,
+    scope: operation.scope,
+    type: operation.type,
+  };
+}
+
 export async function captureDeepMemoryForExchange(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -185,9 +266,22 @@ export async function captureDeepMemoryForExchange(input: {
       return null;
     }
     const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80);
+    const localCandidates = extractMemoryCandidates(input.userMessage.content);
+    const candidateQuery = [input.userMessage.content, ...localCandidates.map((candidate) => candidate.content)].join('\n');
+    const relatedMemories = await aiThreadRepository.searchActiveMemoryFts(db, {
+      boundIpId: input.thread.boundIpId,
+      boundKnowledgeBaseId: input.thread.boundKnowledgeBaseId,
+      limit: 8,
+      query: candidateQuery,
+      roleCardId: input.thread.roleCardId,
+      space: input.space,
+      threadId: input.thread.id,
+    });
     return {
       fallbackSummary: buildThreadSummaryFromMessages(messages),
+      localCandidates,
       messages,
+      relatedMemories: relatedMemories.slice(0, 8),
     };
   });
   if (!prepared) {
@@ -200,9 +294,10 @@ export async function captureDeepMemoryForExchange(input: {
       space: input.space,
       systemPrompt: '你是 Pixory 的后台记忆整理器。你只输出可解析 JSON。',
       thread: input.thread,
-      userPrompt: buildMemoryModelPrompt(prepared.messages),
+      userPrompt: buildMemoryModelPrompt(prepared.messages, prepared.relatedMemories),
     });
   const modelUpdate = modelResult.text ? parseModelMemoryUpdate(modelResult.text) : null;
+  const modelOperations = modelResult.text ? parseMemoryReconciliationOperations(modelResult.text) : [];
 
   await runWithDatabaseSpace(input.space, async (db) => {
     await aiThreadRepository.upsertThreadSummary(db, {
@@ -212,19 +307,101 @@ export async function captureDeepMemoryForExchange(input: {
       summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
       threadId: input.thread.id,
     });
-    const captures: Array<{ id: string; content: string }> = [];
-    const candidates = modelUpdate?.memories.length ? modelUpdate.memories : extractMemoryCandidates(input.userMessage.content);
+    const captures: MemoryCaptureNoticeItem[] = [];
+    const changedNormalizedContents = new Set<string>();
+    const sanitized = sanitizeMemoryReconciliationOperations({
+      allowedScopes: allowedMemoryScopes(input.thread),
+      candidateMemories: prepared.relatedMemories,
+      operations: modelOperations,
+      space: input.space,
+    });
+    let replacementMemoryId: string | null = null;
+    for (const conflict of sanitized.manualConflicts) {
+      captures.push({
+        content: `发现与手动记忆冲突：${conflict.content}`,
+        id: conflict.memoryId,
+        kind: 'conflict',
+        sourceMessageId: input.userMessage.id,
+      });
+    }
+    const addOrUpdateOperations = sanitized.accepted.filter((operation) => operation.op === 'add' || operation.op === 'update');
+    const staleOperations = sanitized.accepted.filter((operation) => operation.op === 'stale');
+    const keepOperations = sanitized.accepted.filter((operation) => operation.op === 'keep');
+    for (const operation of addOrUpdateOperations) {
+      if (operation.op === 'add') {
+        const candidate = candidateFromAddOperation(operation);
+        if (!candidate) {
+          continue;
+        }
+        const memory = await createMemoryFromCandidate(db, {
+          candidate,
+          reason: operation.reason ?? null,
+          sourceMessageId: input.userMessage.id,
+          space: input.space,
+          thread: input.thread,
+        });
+        if (memory) {
+          replacementMemoryId = memory.id;
+          changedNormalizedContents.add(memory.normalizedContent);
+          if (memory.confidence >= 0.75 && memory.importance >= 2) {
+            captures.push({ content: memory.content, id: memory.id, kind: 'added', sourceMessageId: input.userMessage.id });
+          }
+        }
+        continue;
+      }
+      if (operation.op === 'update' && operation.targetMemoryId && operation.content) {
+        const memory = await aiThreadRepository.updateMemoryByReconciliation(db, {
+          confidence: operation.confidence,
+          content: operation.content,
+          importance: operation.importance,
+          memoryId: operation.targetMemoryId,
+          normalizedContent: normalizeMemoryContent(operation.content),
+          reason: operation.reason ?? null,
+          sourceMessageId: input.userMessage.id,
+          type: operation.type,
+        });
+        if (memory) {
+          replacementMemoryId = memory.id;
+          changedNormalizedContents.add(memory.normalizedContent);
+          captures.push({ content: memory.content, id: memory.id, kind: 'updated', sourceMessageId: input.userMessage.id });
+        }
+        continue;
+      }
+    }
+    for (const operation of staleOperations) {
+      if (!operation.targetMemoryId) {
+        continue;
+      }
+      const memory = await aiThreadRepository.markMemoryStaleByReconciliation(db, {
+        memoryId: operation.targetMemoryId,
+        reason: operation.reason ?? null,
+        sourceMessageId: input.userMessage.id,
+        supersededByMemoryId: replacementMemoryId,
+      });
+      if (memory) {
+        captures.push({ content: memory.content, id: memory.id, kind: 'staled', sourceMessageId: input.userMessage.id });
+      }
+    }
+    for (const operation of keepOperations) {
+      if (operation.targetMemoryId) {
+        await aiThreadRepository.touchMemoryReconciled(db, {
+          memoryId: operation.targetMemoryId,
+          reason: operation.reason ?? null,
+          sourceMessageId: input.userMessage.id,
+        });
+      }
+    }
+
+    const candidates = modelUpdate?.memories.length ? modelUpdate.memories : prepared.localCandidates;
     for (const candidate of candidates) {
-      const scopeId = candidate.scope === 'thread'
-        ? input.thread.id
-        : candidate.scope === 'role'
-          ? input.thread.roleCardId
-          : candidate.scope === 'ip'
-            ? String(input.thread.boundIpId ?? '')
-            : candidate.scope === 'knowledge_base'
-              ? input.thread.boundKnowledgeBaseId
-              : null;
       const normalizedContent = normalizeMemoryContent(candidate.content);
+      if (changedNormalizedContents.has(normalizedContent)) {
+        continue;
+      }
+      const scopeId = scopeIdForMemoryCandidate(input.thread, candidate);
+      if (candidate.scope !== 'global' && !scopeId) {
+        continue;
+      }
       const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
         normalizedContent,
         scope: candidate.scope,
@@ -232,20 +409,20 @@ export async function captureDeepMemoryForExchange(input: {
         space: input.space,
       });
       if (!existing) {
-        const memory = await aiThreadRepository.createMemory(db, {
-          confidence: candidate.confidence,
-          content: candidate.content,
-          id: createAiId('aimem'),
-          importance: candidate.importance,
-          normalizedContent,
-          scope: candidate.scope,
-          scopeId,
+        const memory = await createMemoryFromCandidate(db, {
+          candidate,
+          reason: modelResult.text ? '新增稳定记忆' : '本地明确记忆短语',
           sourceMessageId: input.userMessage.id,
           space: input.space,
-          type: candidate.type,
+          thread: input.thread,
         });
-        if (memory.confidence >= 0.75 && memory.importance >= 2) {
-          captures.push({ content: memory.content, id: memory.id });
+        if (memory && memory.confidence >= 0.75 && memory.importance >= 2) {
+          captures.push({
+            content: memory.content,
+            id: memory.id,
+            kind: modelResult.text ? 'added' : 'local_fallback',
+            sourceMessageId: input.userMessage.id,
+          });
         }
       }
     }

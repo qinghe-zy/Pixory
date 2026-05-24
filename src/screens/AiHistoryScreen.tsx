@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -11,6 +11,7 @@ import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBe
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
 
 interface AiHistoryScreenProps {
   space: PixorySpace;
@@ -29,18 +30,6 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
 const ARCHIVE_ACTION_WIDTH = 78;
 const ARCHIVE_SWIPE_THRESHOLD = 52;
 
-function formatHistoryMinute(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${month}-${day} ${hours}:${minutes}`;
-}
-
 function historyGroupLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -50,7 +39,7 @@ function historyGroupLabel(value: string): string {
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const diffDays = Math.floor((startOfToday - startOfDate) / (24 * 60 * 60 * 1000));
-  if (diffDays === 0) {
+  if (diffDays <= 0) {
     return '今天';
   }
   if (diffDays === 1) {
@@ -59,13 +48,17 @@ function historyGroupLabel(value: string): string {
   if (diffDays <= 7) {
     return '过去 7 天';
   }
-  return '更早';
+  if (diffDays <= 30) {
+    return '过去 30 天';
+  }
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
 }
 
 export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreenProps) {
   const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<'delete' | 'move' | null>(null);
@@ -76,6 +69,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   const [swipedThreadId, setSwipedThreadId] = useState<string | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const swipeAnimatedValuesRef = useRef(new Map<string, Animated.Value>());
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const targetSpace: PixorySpace = space === 'normal' ? 'personal' : 'normal';
   const isSelecting = selectedIds.length > 0;
@@ -99,8 +93,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   ) : undefined;
 
   const reload = useCallback(async () => {
-    setItems(await listAiHistoryThreads({ filter, searchText, space }));
-  }, [filter, searchText, space]);
+    setItems(await listAiHistoryThreads({ filter, searchText: debouncedSearchText, space }));
+  }, [debouncedSearchText, filter, space]);
   const actionSheetItems: AppActionSheetItem[] = actionThread
     ? [
         {
@@ -136,6 +130,11 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   }, [reload]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchText(searchText), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
     setSelectedIds([]);
     setPendingAction(null);
     setPersonalPassword('');
@@ -145,6 +144,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
   }, [filter, space]);
 
   async function toggleArchive(thread: AiThreadHistoryItem) {
+    animateSwipe(thread.id, 0);
     setSwipedThreadId(null);
     if (thread.archivedAt) {
       await unarchiveAiThread(space, thread.id);
@@ -156,19 +156,47 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     await reload();
   }
 
+  function getSwipeAnimatedValue(threadId: string): Animated.Value {
+    let value = swipeAnimatedValuesRef.current.get(threadId);
+    if (!value) {
+      value = new Animated.Value(0);
+      swipeAnimatedValuesRef.current.set(threadId, value);
+    }
+    return value;
+  }
+
+  function animateSwipe(threadId: string, toValue: number) {
+    Animated.spring(getSwipeAnimatedValue(threadId), {
+      damping: 18,
+      stiffness: 180,
+      toValue,
+      useNativeDriver: true,
+    }).start();
+  }
+
   function getThreadSwipeHandlers(thread: AiThreadHistoryItem) {
+    const swipeValue = getSwipeAnimatedValue(thread.id);
     return PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+      onPanResponderMove: (_event, gesture) => {
+        if (isSelecting) {
+          return;
+        }
+        const next = Math.max(-ARCHIVE_ACTION_WIDTH, Math.min(0, gesture.dx));
+        swipeValue.setValue(next);
+      },
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx < -ARCHIVE_SWIPE_THRESHOLD) {
           setSwipedThreadId(thread.id);
+          animateSwipe(thread.id, -ARCHIVE_ACTION_WIDTH);
           return;
         }
-        if (gesture.dx > ARCHIVE_SWIPE_THRESHOLD / 2) {
-          setSwipedThreadId(null);
-        }
+        setSwipedThreadId(null);
+        animateSwipe(thread.id, 0);
       },
-      onPanResponderTerminate: () => undefined,
+      onPanResponderTerminate: () => {
+        animateSwipe(thread.id, swipedThreadId === thread.id ? -ARCHIVE_ACTION_WIDTH : 0);
+      },
     }).panHandlers;
   }
 
@@ -182,6 +210,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       return;
     }
     if (swipedThreadId === thread.id) {
+      animateSwipe(thread.id, 0);
       setSwipedThreadId(null);
       return;
     }
@@ -275,7 +304,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           {items.length ? (
             items.map((thread, index) => {
               const selected = selectedIds.includes(thread.id);
-              const swiped = swipedThreadId === thread.id;
+              const swipeTranslateX = getSwipeAnimatedValue(thread.id);
               const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
               const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
               return (
@@ -293,12 +322,14 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                       <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
                     </Pressable>
                   ) : null}
-                  <View
+                  <Animated.View
                     {...getThreadSwipeHandlers(thread)}
                     style={[
                       styles.row,
                       selected && styles.selectedRow,
-                      swiped && !isSelecting ? styles.swipedRow : null,
+                      {
+                        transform: [{ translateX: swipeTranslateX }],
+                      },
                     ]}
                   >
                     <View style={styles.rowContent}>
@@ -314,7 +345,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                         <View style={styles.copy}>
                           <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
                           <Text numberOfLines={1} style={styles.meta}>
-                            {labelForContext(thread)} · 上次聊天 {formatHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                            {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
                           </Text>
                           {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
                         </View>
@@ -330,7 +361,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                         </Pressable>
                       ) : null}
                     </View>
-                  </View>
+                  </Animated.View>
                 </View>
               );
             })
@@ -508,9 +539,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
     padding: spacing[3],
-  },
-  swipedRow: {
-    transform: [{ translateX: -ARCHIVE_ACTION_WIDTH }],
   },
   selectedRow: {
     borderColor: aiLightColors.coral,
