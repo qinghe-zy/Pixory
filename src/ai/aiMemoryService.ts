@@ -77,8 +77,14 @@ export function shouldRunImmediateMemoryCapture(text: string): boolean {
   return MEMORY_CAPTURE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord): Promise<AiMemoryRecord[]> {
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread)));
+export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord, options?: { limit?: number; offset?: number }): Promise<AiMemoryRecord[]> {
+  return runWithDatabaseSpace(space, (db) =>
+    aiThreadRepository.listMemoryBoardItems(db, {
+      ...scopedBoardInput(thread),
+      limit: options?.limit,
+      offset: options?.offset,
+    })
+  );
 }
 
 export async function createManualMemory(space: PixorySpace, input: ManualMemoryInput): Promise<AiMemoryRecord> {
@@ -184,11 +190,7 @@ export async function dismissMemoryCapture(space: PixorySpace, threadId: string)
 }
 
 export async function incrementPendingMemoryTurn(db: SQLiteDatabase, threadId: string): Promise<void> {
-  const current = await aiThreadRepository.getThreadMemoryJob(db, threadId);
-  await aiThreadRepository.updateThreadMemoryJob(db, {
-    threadId,
-    pendingTurnCount: current.pendingTurnCount + 1,
-  });
+  await aiThreadRepository.incrementThreadMemoryPendingTurn(db, threadId);
 }
 
 export async function maybeRunLazyMemoryConsolidation(input: {
@@ -220,7 +222,10 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const memories = await aiThreadRepository.listMemoryBoardItems(db, scopedBoardInput(thread));
+  const memories = await aiThreadRepository.listMemoryBoardItems(db, {
+    ...scopedBoardInput(thread),
+    limit: STABLE_MEMORY_LIMIT * 2,
+  });
   const stable = memories
     .filter((memory) => memory.status === 'active')
     .sort((left, right) => {

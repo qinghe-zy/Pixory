@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 26;
+export const DATABASE_VERSION = 27;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -713,4 +713,9 @@ WHERE status = 'active';
 
 ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceCompletedAt TEXT;
 ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceUsedFallback INTEGER NOT NULL DEFAULT 0;
+`;
+
+export const MIGRATION_STATEMENTS_V27 = `
+CREATE INDEX IF NOT EXISTS idx_ai_memories_normalized_content
+  ON ai_memories(space, scope, scopeId, normalizedContent, status);
 `;

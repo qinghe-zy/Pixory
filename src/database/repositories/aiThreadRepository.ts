@@ -1482,7 +1482,17 @@ export const aiThreadRepository = {
     return memory;
   },
 
-  async listMemoryBoardItems(db: SQLiteDatabase, input: { space: PixorySpace; threadId?: string | null; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null }): Promise<AiMemoryRecord[]> {
+  async listMemoryBoardItems(db: SQLiteDatabase,
+    input: {
+      space: PixorySpace;
+      threadId?: string | null;
+      roleCardId?: string | null;
+      boundIpId?: number | null;
+      boundKnowledgeBaseId?: string | null;
+      limit?: number;
+      offset?: number;
+    }
+  ): Promise<AiMemoryRecord[]> {
     const clauses = ["space = ?", "status = 'active'"];
     const values: Array<string | number | null> = [input.space];
     const scopeClauses = ["scope = 'global'"];
@@ -1503,11 +1513,16 @@ export const aiThreadRepository = {
       values.push(input.boundKnowledgeBaseId);
     }
     clauses.push(`(${scopeClauses.join(' OR ')})`);
+    const limit = Math.max(1, Math.min(input.limit ?? 80, 200));
+    const offset = Math.max(0, input.offset ?? 0);
     return db.getAllAsync<AiMemoryRecord>(
       `SELECT * FROM ai_memories
        WHERE ${clauses.join(' AND ')}
-       ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC`,
-      ...values
+       ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC
+       LIMIT ? OFFSET ?`,
+      ...values,
+      limit,
+      offset
     );
   },
 
@@ -1617,11 +1632,25 @@ export const aiThreadRepository = {
     if (memoryIds.length === 0) {
       return;
     }
+    const now = createTimestamp();
     await db.runAsync(
       `UPDATE ai_memories SET lastUsedAt = ?, updatedAt = ? WHERE id IN (${makeInClause(memoryIds)})`,
-      createTimestamp(),
-      createTimestamp(),
+      now,
+      now,
       ...memoryIds
+    );
+  },
+
+  async incrementThreadMemoryPendingTurn(db: SQLiteDatabase, threadId: string): Promise<void> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_thread_memory_jobs (threadId, pendingTurnCount, lastCaptureNoticeJson, updatedAt)
+       VALUES (?, 1, '[]', ?)
+       ON CONFLICT(threadId) DO UPDATE SET
+         pendingTurnCount = pendingTurnCount + 1,
+         updatedAt = excluded.updatedAt`,
+      threadId,
+      now
     );
   },
 

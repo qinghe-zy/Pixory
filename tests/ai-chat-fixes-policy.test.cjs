@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 26/);
+  assert.match(schema, /DATABASE_VERSION = 27/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -427,6 +427,20 @@ test('AI memory board exposes summary segments and maintenance status controls',
   assert.match(sessionConfig, /远程失败，已使用本地轻量整理/);
 });
 
+test('AI memory repository uses atomic pending increments bounded board queries and stable touch timestamps', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const memoryService = read('src/ai/aiMemoryService.ts');
+
+  assert.match(repository, /incrementThreadMemoryPendingTurn/);
+  assert.match(repository, /pendingTurnCount = pendingTurnCount \+ 1/);
+  assert.match(memoryService, /incrementThreadMemoryPendingTurn\(db, threadId\)/);
+  assert.doesNotMatch(memoryService, /const current = await aiThreadRepository\.getThreadMemoryJob\(db, threadId\)[\s\S]*pendingTurnCount: current\.pendingTurnCount \+ 1/);
+  assert.match(repository, /listMemoryBoardItems\(db:[\s\S]*limit\?: number[\s\S]*offset\?: number/);
+  assert.match(repository, /LIMIT \?/);
+  assert.match(repository, /OFFSET \?/);
+  assert.match(repository, /const now = createTimestamp\(\);[\s\S]*lastUsedAt = \?, updatedAt = \?[\s\S]*now,\s*now/);
+});
+
 test('AI memory maintenance uses a unified per-thread queue', () => {
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');
@@ -460,7 +474,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 26/);
+  assert.match(schema, /DATABASE_VERSION = 27/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);
