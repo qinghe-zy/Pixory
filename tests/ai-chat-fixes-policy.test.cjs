@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 24/);
+  assert.match(schema, /DATABASE_VERSION = 25/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -243,8 +243,12 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(service, /parseModelMemoryUpdate/);
   assert.match(service, /只输出 JSON/);
   assert.match(service, /modelUpdate\?\.memories\.length \? modelUpdate\.memories : extractMemoryCandidates/);
+  assert.match(service, /lastMaintenanceError/);
   assert.match(sessionConfig, /深度记忆/);
   assert.match(sessionConfig, /不会继续注入记忆背景/);
+  assert.match(sessionConfig, /lastMaintenanceError/);
+  assert.match(sessionConfig, /最近一次远程维护失败，已使用本地轻量整理/);
+  assert.match(sessionConfig, /maintenanceWarning/);
   assert.match(sessionConfig, /accessibilityRole="switch"/);
   assert.match(sessionConfig, /deepMemoryEnabled/);
 });
@@ -253,10 +257,25 @@ test('AI chat uses thirty short-term messages and avoids full reload for every s
   const service = read('src/ai/aiChatService.ts');
   const chat = read('src/screens/AiChatScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const streamBlock = /async function streamAssistantReply[\s\S]*?\r?\n}\r?\n\r?\nexport async function sendUserMessage/.exec(service)?.[0] ?? '';
+  const regenerateBlock = /export async function regenerateAssistantMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function retryAssistantMessage/.exec(service)?.[0] ?? '';
+  const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
   assert.match(service, /CHAT_HISTORY_MESSAGE_LIMIT = 30/);
+  assert.match(service, /DEEP_MEMORY_HISTORY_SCAN_LIMIT = 100/);
   assert.match(service, /\.slice\(-CHAT_HISTORY_MESSAGE_LIMIT\)/);
   assert.doesNotMatch(service, /\.slice\(-8\)/);
+  assert.match(repository, /listRecentCompletedMessagesBefore/);
+  assert.match(repository, /countCompletedNonSystemMessagesAfter/);
+  assert.match(repository, /listCompletedNonSystemMessagesAfter/);
+  assert.match(repository, /listRecentCompletedNonSystemMessages/);
+  assert.match(repository, /findPreviousMessageByRole/);
+  assert.match(repository, /findNextMessageByRole/);
+  assert.match(repository, /listMessageIdsAfter/);
+  assert.match(streamBlock, /listRecentCompletedMessagesBefore/);
+  assert.doesNotMatch(streamBlock, /listMessages\(db, input\.thread\.id\)/);
+  assert.doesNotMatch(regenerateBlock, /listMessages\(db, thread\.id\)/);
+  assert.doesNotMatch(rewriteBlock, /listMessages\(db, thread\.id\)/);
   assert.match(service, /onMessagePatch/);
   assert.match(service, /STREAMING_PERSIST_INTERVAL_MS/);
   assert.match(service, /STREAMING_UI_PATCH_INTERVAL_MS/);
@@ -264,8 +283,42 @@ test('AI chat uses thirty short-term messages and avoids full reload for every s
   assert.match(chat, /<FlatList/);
   assert.match(chat, /CHAT_MESSAGE_PAGE_SIZE = 60/);
   assert.match(chat, /加载更早消息/);
+  assert.match(chat, /maintainVisibleContentPosition=\{\{ minIndexForVisible: 0 \}\}/);
+  assert.match(chat, /isLoadingEarlierRef/);
+  assert.match(chat, /onContentSizeChange=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage/);
+  assert.match(chat, /onLayout=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage\(false, true\)/);
   assert.match(repository, /listMessageVersionsForMessages/);
   assert.match(repository, /listCitationsForMessages/);
+});
+
+test('AI companion memory compression is asynchronous and segment based', () => {
+  const summary = read('src/ai/aiMemorySummaryService.ts');
+  const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');
+  const chat = read('src/ai/aiChatService.ts');
+
+  assert.match(summary, /UNCOMPRESSED_ROUND_THRESHOLD = 50/);
+  assert.match(summary, /COMPRESS_OLDEST_ROUND_COUNT = 20/);
+  assert.match(summary, /SUMMARY_SEGMENT_LIMIT = 5/);
+  assert.match(summary, /PRESERVE_LATEST_SEGMENT_COUNT = 2/);
+  assert.match(summary, /compressOldestThreadRounds/);
+  assert.match(summary, /maybeMergeSummarySegments/);
+  assert.match(summary, /buildCompressionPrompt/);
+  assert.match(summary, /buildSummaryMergePrompt/);
+  assert.match(summary, /countCompletedNonSystemMessagesAfter/);
+  assert.match(summary, /listCompletedNonSystemMessagesAfter/);
+  assert.match(summary, /buildLocalCompressionSummary/);
+  assert.match(summary, /buildLocalMergedSummary/);
+  assert.match(maintenance, /scheduleCompanionMemoryMaintenance/);
+  assert.match(maintenance, /activeMaintenanceTasks/);
+  assert.match(maintenance, /maintenanceTaskKey/);
+  assert.match(maintenance, /activeMaintenanceTasks\.get\(key\)/);
+  assert.match(maintenance, /pendingReason/);
+  assert.match(maintenance, /chooseStrongerReason/);
+  assert.match(maintenance, /recordMaintenanceFailure/);
+  assert.match(summary, /remoteFallbackError/);
+  assert.match(chat, /scheduleCompanionMemoryMaintenance/);
+  assert.match(chat, /isThreadMemoryMaintenanceActive/);
+  assert.match(chat, /allowRemoteModel: !isThreadMemoryMaintenanceActive/);
 });
 
 test('AI memory service exposes board lazy capture and prompt helpers', () => {
@@ -283,6 +336,17 @@ test('AI memory service exposes board lazy capture and prompt helpers', () => {
   assert.match(service, /importance DESC/);
 });
 
+test('AI companion memory profile maintenance has bounded queries and local fallback', () => {
+  const profile = read('src/ai/aiMemoryProfileService.ts');
+
+  assert.match(profile, /countCompletedNonSystemMessagesAfter/);
+  assert.match(profile, /listCompletedNonSystemMessagesAfter/);
+  assert.match(profile, /listRecentCompletedNonSystemMessages/);
+  assert.match(profile, /buildLocalProfileJsonFromMessages/);
+  assert.match(profile, /remoteFallbackError/);
+  assert.doesNotMatch(profile, /listMessages\(db, threadId\)/);
+});
+
 test('AI deep memory updates are triggered or lazy instead of every reply', () => {
   const chatService = read('src/ai/aiChatService.ts');
 
@@ -290,17 +354,51 @@ test('AI deep memory updates are triggered or lazy instead of every reply', () =
   assert.match(chatService, /incrementPendingMemoryTurn/);
   assert.match(chatService, /maybeRunLazyMemoryConsolidation/);
   assert.match(chatService, /pendingTurnCount/);
+  assert.match(chatService, /callMemoryMaintenanceModel/);
+  const summarizeBlock =
+    /async function summarizeMemoryWithModel[\s\S]*?\r?\n}\r?\n\r?\nfunction buildThreadSummaryFromMessages/.exec(chatService)?.[0] ?? '';
+  assert.match(summarizeBlock, /callMemoryMaintenanceModel/);
+  assert.doesNotMatch(summarizeBlock, /resolveThreadProvider/);
   assert.doesNotMatch(chatService, /void updateDeepMemoryAfterReply\(\{[\s\S]*\}\);/);
+});
+
+test('AI companion memory maintenance runs on chat leave and app background', () => {
+  const app = read('App.tsx');
+  const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');
+
+  assert.match(maintenance, /type CompanionMaintenanceReason = 'reply_completed' \| 'leave_chat' \| 'app_background'/);
+  assert.match(app, /scheduleAiChatMemoryMaintenanceForRoute/);
+  assert.match(app, /scheduleCompanionMemoryMaintenance/);
+  assert.match(app, /AppState\.addEventListener\('change'[\s\S]*scheduleAiChatMemoryMaintenanceForRoute[\s\S]*'app_background'/);
+  assert.match(app, /function popRoute\(\)[\s\S]*scheduleAiChatMemoryMaintenanceForRoute[\s\S]*'leave_chat'/);
+  assert.match(app, /hardwareBackPress[\s\S]*scheduleAiChatMemoryMaintenanceForRoute[\s\S]*'leave_chat'/);
+  assert.match(app, /function pushRoute\(route: AppRoute\)[\s\S]*route\.name === 'ai-chat'[\s\S]*scheduleAiChatMemoryMaintenanceForRoute[\s\S]*'leave_chat'/);
+});
+
+test('AI early rewrite and regenerate warn before removing later messages and delete in chunks', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(chat, /Alert\.alert\(/);
+  assert.match(chat, /移除后续对话/);
+  assert.match(chat, /hasLaterMessages/);
+  assert.match(chat, /handleSubmitInlineRewrite[\s\S]*confirmRemovingLaterMessages/);
+  assert.match(chat, /handleRegenerate[\s\S]*confirmRemovingLaterMessages/);
+  assert.match(repository, /DELETE_MESSAGE_CHUNK_SIZE = 200/);
+  assert.match(repository, /DELETE FROM ai_messages WHERE id IN/);
 });
 
 test('AI chat shows memory capture notice with undo and board actions', () => {
   const notice = read('src/components/ai/AiMemoryCaptureNotice.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(notice, /已记住 \{count\} 条内容/);
+  assert.match(notice, /已记住：\$\{summaryText\}/);
+  assert.match(notice, /\+\$\{count - 1\}/);
+  assert.match(notice, /已记住 \$\{count\} 条内容/);
   assert.match(notice, /撤销/);
   assert.match(notice, /管理/);
   assert.match(chat, /AiMemoryCaptureNotice/);
+  assert.match(chat, /summary=\{memoryCaptures\[0\]\?\.content\}/);
   assert.match(chat, /onUndoMemoryCapture/);
   assert.match(chat, /onOpenMemoryBoard/);
 });
@@ -320,7 +418,7 @@ test('AI chat feedback voice empty state error and long navigation polish are wi
   assert.match(composer, /voiceState/);
   assert.match(composer, /attachmentThumb/);
   assert.match(composer, /disabledSendButton/);
-  assert.match(chat, /AiEmptyChatSuggestions/);
+  assert.doesNotMatch(chat, /AiEmptyChatSuggestions/);
   assert.match(chat, /AiChatErrorBanner/);
   assert.match(chat, /AiScrollToLatestButton/);
   assert.match(chat, /dateSeparator/);

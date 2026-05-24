@@ -67,6 +67,64 @@ test('provider settings expose test sync and embedding model controls', () => {
   assert.match(chatService, /getDefaultAiProviderId/);
 });
 
+test('AI memory maintenance model resolves status and reuses SecureStore keys', () => {
+  const service = fs.readFileSync(path.join(root, 'src/ai/aiMemoryMaintenanceModelService.ts'), 'utf8');
+  const screen = fs.readFileSync(path.join(root, 'src/screens/AiProviderSettingsScreen.tsx'), 'utf8');
+  const settings = fs.readFileSync(path.join(root, 'src/database/repositories/settingsRepository.ts'), 'utf8');
+
+  assert.match(service, /resolveMemoryMaintenanceModel/);
+  assert.match(service, /testMemoryMaintenanceModel/);
+  assert.match(service, /deepseek-v4-flash/);
+  assert.match(service, /getProviderApiKey/);
+  assert.match(service, /local_fallback/);
+  assert.match(service, /lastTestStatus/);
+  assert.match(service, /hashMaintenanceBaseUrl/);
+  assert.match(service, /memoryMaintenanceTestedProviderId/);
+  assert.match(service, /memoryMaintenanceTestedModelId/);
+  assert.match(service, /memoryMaintenanceTestedBaseUrlHash/);
+  assert.match(service, /配置已变更，请重新测试记忆模型/);
+  assert.match(service, /MemoryMaintenanceModelCallResult/);
+  assert.match(service, /streamError/);
+  assert.match(service, /event\.type === 'error'/);
+  assert.match(service, /return \{ error: streamError, status: 'error', text: null, usedRemote: true \}/);
+  assert.match(service, /测试通过/);
+  assert.match(service, /点击“测试记忆模型”确认链路可用/);
+  assert.match(screen, /记忆维护模型/);
+  assert.match(screen, /当前使用/);
+  assert.match(screen, /配置状态/);
+  assert.match(screen, /链路测试通过/);
+  assert.match(screen, /链路测试失败/);
+  assert.match(screen, /已保存，待测试/);
+  assert.match(screen, /maintenanceResultBanner/);
+  assert.match(screen, /memoryMaintenanceLastTestStatus: null/);
+  assert.match(screen, /maintenanceInfoExpanded/);
+  assert.match(screen, /setMaintenanceInfoExpanded/);
+  assert.match(screen, /远程维护只用于摘要和画像，Key 保存在本机/);
+  assert.match(screen, /pageContent:\s*\{[\s\S]{0,80}gap:\s*rhythm\.listCardGap/);
+  assert.match(screen, /sectionDivider/);
+  assert.doesNotMatch(screen, /<\/AiLightCard>\s*<AiLightCard>\s*<Text style=\{styles\.sectionTitle\}>记忆维护模型/);
+  assert.match(screen, /测试记忆模型/);
+  assert.match(screen, /API Key 仅保存在本机安全存储中/);
+  assert.match(settings, /getMemoryMaintenanceSettings/);
+  assert.match(settings, /updateMemoryMaintenanceSettings/);
+  assert.match(settings, /MEMORY_MAINTENANCE_TESTED_PROVIDER_ID_KEY/);
+  assert.match(settings, /MEMORY_MAINTENANCE_TESTED_MODEL_ID_KEY/);
+  assert.match(settings, /MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY/);
+});
+
+test('provider settings expose maintenance model mode controls', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+
+  assert.match(providerSettings, /memoryMaintenanceMode/);
+  assert.match(providerSettings, /自动/);
+  assert.match(providerSettings, /跟随聊天模型/);
+  assert.match(providerSettings, /DeepSeek V4 Flash/);
+  assert.match(providerSettings, /自定义/);
+  assert.match(providerSettings, /deepseek-v4-flash/);
+  assert.match(providerSettings, /测试通过后，摘要压缩和画像维护会使用该远程模型/);
+  assert.match(providerSettings, /未配置远程维护模型/);
+});
+
 test('OpenAI-compatible built-in providers can manually configure embedding endpoints without marking DeepSeek official embedding support', () => {
   const constants = fs.readFileSync(constantsPath, 'utf8');
   const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');

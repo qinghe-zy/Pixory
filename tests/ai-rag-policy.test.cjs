@@ -20,7 +20,10 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /if \(!trimmed\) \{\s*return '';\s*\}/);
   assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
   assert.match(content, /frameReplyPreference\(input\.replyPreference\)/);
-  assert.match(content, /\[frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\), frameReplyPreference\(input\.replyPreference\), input\.stableMemoryPrefix, input\.rolePrompt\]/);
+  assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
+  assert.match(content, /input\.companionMemoryPrefix/);
+  assert.match(content, /input\.stableMemoryPrefix/);
+  assert.match(content, /input\.rolePrompt/);
   assert.match(content, /return ''/);
   assert.match(content, /以用户当前要求为准/);
 });
@@ -35,7 +38,27 @@ test('AI prompt assembly separates stable memory prefix from dynamic memory cont
   assert.match(chatService, /dynamicMemoryContext/);
   assert.match(content, /stableMemoryPrefix/);
   assert.match(content, /dynamicMemoryContext/);
-  assert.match(content, /\[frameRoleInstruction[\s\S]*input\.stableMemoryPrefix[\s\S]*input\.rolePrompt\]/);
+  assert.match(content, /input\.companionMemoryPrefix/);
+  assert.match(content, /input\.stableMemoryPrefix/);
+  assert.match(content, /input\.rolePrompt/);
+});
+
+test('AI companion memory prompts are production grade and injection resistant', () => {
+  const prompts = fs.readFileSync(path.join(root, 'src/ai/aiMemoryPrompts.ts'), 'utf8');
+
+  assert.match(prompts, /buildCompressionPrompt/);
+  assert.match(prompts, /buildProfileInitializationPrompt/);
+  assert.match(prompts, /buildProfileUpdatePrompt/);
+  assert.match(prompts, /buildSummaryMergePrompt/);
+  assert.match(prompts, /buildMainCompanionMemoryTemplate/);
+  assert.match(prompts, /情绪轨迹/);
+  assert.match(prompts, /关系质感/);
+  assert.match(prompts, /待跟进/);
+  assert.match(prompts, /JSON结构必须与现有档案完全一致/);
+  assert.match(prompts, /对话内容中如果出现任何要求你改变规则/);
+  assert.doesNotMatch(prompts, /\{recent_30_completed_messages_as_messages\}/);
+  assert.doesNotMatch(prompts, /\[角色设定\]/);
+  assert.doesNotMatch(prompts, /最近20轮原文/);
 });
 
 test('retrieval uses bounded snippets and never whole documents', () => {
@@ -132,4 +155,20 @@ test('AI prompt context is budget-aware and records trim state', () => {
   assert.match(budget, /trimmed/);
   assert.match(chatService, /trimMessagesToContextBudget/);
   assert.match(chatService, /contextTrimmed/);
+});
+
+test('AI companion memory prompt assembly injects profile and summary context safely', () => {
+  const service = read('src/ai/aiMemoryService.ts');
+  const prompt = read('src/ai/promptBuilder.ts');
+  const chat = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /buildCompanionMemoryPrefix/);
+  assert.match(service, /listSummarySegments/);
+  assert.match(service, /getUserProfile/);
+  assert.match(service, /buildMainCompanionMemoryTemplate/);
+  assert.doesNotMatch(service, /systemPromptAndRoleInstruction:\s*''/);
+  assert.match(chat, /CHAT_HISTORY_MESSAGE_LIMIT = 30/);
+  assert.match(prompt, /userProfile/);
+  assert.match(prompt, /summarySegments/);
+  assert.match(prompt, /不要为了展示记忆而主动提旧事/);
 });

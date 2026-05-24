@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiMemoryRecord, CreateAiMemoryInput } from '../database/repositories/aiThreadRepository';
+import { buildMainCompanionMemoryTemplate } from './aiMemoryPrompts';
 import type { AiThreadRecord } from './types';
 
 export const MEMORY_CAPTURE_PATTERNS = [
@@ -193,6 +194,27 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     ...stable.map(formatMemoryLine),
   ].filter(Boolean);
   return lines.length > 1 ? lines.join('\n') : '';
+}
+
+export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord): Promise<string> {
+  const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+  if (!settings.deepMemoryEnabled) {
+    return '';
+  }
+  const [profile, segments] = await Promise.all([
+    aiThreadRepository.getUserProfile(db, thread.space),
+    aiThreadRepository.listSummarySegments(db, thread.id),
+  ]);
+  if (!profile?.profileText && segments.length === 0) {
+    return '';
+  }
+  return buildMainCompanionMemoryTemplate({
+    relevantMemoriesText: '',
+    summarySegmentsText: segments
+      .map((segment) => `- ${segment.startAt ?? ''} 至 ${segment.endAt ?? ''}\n${segment.summaryText}`)
+      .join('\n\n'),
+    userProfileText: profile?.profileText ?? '',
+  });
 }
 
 export function buildMemoryAssetSnapshot(input: {

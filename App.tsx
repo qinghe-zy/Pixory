@@ -42,6 +42,7 @@ import { AiMemoryBoardScreen } from './src/screens/AiMemoryBoardScreen';
 import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
+import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
@@ -192,6 +193,17 @@ function isPersonalRoute(route: AppRoute): boolean {
 
 function isExternalEntryRoute(route: AppRoute): boolean {
   return route.name === 'external-video-player' || route.name === 'archive-reader' || route.name === 'external-package-placeholder' || route.name === 'share-collect';
+}
+
+function scheduleAiChatMemoryMaintenanceForRoute(route: AppRoute | undefined, reason: 'leave_chat' | 'app_background'): void {
+  if (route?.name !== 'ai-chat' || !route.threadId) {
+    return;
+  }
+  void scheduleCompanionMemoryMaintenance({
+    reason,
+    space: route.space,
+    threadId: route.threadId,
+  });
 }
 
 function isArchiveMimeType(mimeType: string | null | undefined): boolean {
@@ -461,6 +473,7 @@ export default function App() {
       }
 
       personalBackgroundedAtRef.current = Date.now();
+      scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'app_background');
       schedulePersonalBackgroundLock();
       scheduleBackgroundMemoryCacheCleanup();
     });
@@ -660,11 +673,18 @@ export default function App() {
   }
 
   function pushRoute(route: AppRoute) {
+    if (route.name === 'ai-chat') {
+      scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
+    }
     setRouteStack((current) => [...current, route]);
   }
 
   function popRoute() {
-    setRouteStack((current) => (current.length > 1 ? current.slice(0, -1) : current));
+    const current = routeStackRef.current;
+    if (current.length > 1) {
+      scheduleAiChatMemoryMaintenanceForRoute(current[current.length - 1], 'leave_chat');
+    }
+    setRouteStack((currentStack) => (currentStack.length > 1 ? currentStack.slice(0, -1) : currentStack));
   }
 
   function closeDeletedAiThread(threadId?: string) {
@@ -722,6 +742,7 @@ export default function App() {
         return false;
       }
 
+      scheduleAiChatMemoryMaintenanceForRoute(current[current.length - 1], 'leave_chat');
       routeStackRef.current = nextRouteStack;
       setRouteStack(nextRouteStack);
       return true;

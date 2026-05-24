@@ -99,7 +99,7 @@ test('AI chat composer follows the keyboard and messages stay pinned to the late
   assert.match(content, /keyboardBottomInset/);
   assert.match(content, /messageListRef/);
   assert.match(content, /scrollToEnd/);
-  assert.match(content, /onContentSizeChange=\{\(\) => scrollToLatestMessage\(\)\}/);
+  assert.match(content, /onContentSizeChange=\{\(\) => \{[\s\S]*!isLoadingEarlierRef\.current[\s\S]*scrollToLatestMessage\(\)/);
 });
 
 test('AI chat streaming does not force bottom after the user scrolls upward', () => {

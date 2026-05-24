@@ -48,12 +48,23 @@ export function buildNormalChatPrompt(input: {
   roleInstructionWeight?: AiRoleInstructionWeight;
   replyPreference?: AiReplyPreference;
   stableMemoryPrefix?: string | null;
+  userProfile?: string | null;
+  summarySegments?: string | null;
+  companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
   rolePrompt?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   return {
-    system: [frameRoleInstruction(input.systemPrompt, input.roleInstructionWeight), frameReplyPreference(input.replyPreference), input.stableMemoryPrefix, input.rolePrompt]
+    system: [
+      frameRoleInstruction(input.systemPrompt, input.roleInstructionWeight),
+      frameReplyPreference(input.replyPreference),
+      input.companionMemoryPrefix,
+      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
+      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      input.stableMemoryPrefix,
+      input.rolePrompt,
+    ]
       .filter(Boolean)
       .join('\n\n'),
     materialRules: null,
@@ -66,6 +77,9 @@ export function buildMaterialBoundPrompt(input: {
   roleInstructionWeight?: AiRoleInstructionWeight;
   replyPreference?: AiReplyPreference;
   stableMemoryPrefix?: string | null;
+  userProfile?: string | null;
+  summarySegments?: string | null;
+  companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
   materialRules?: string;
   contextSummary: string;
@@ -74,7 +88,16 @@ export function buildMaterialBoundPrompt(input: {
 }): BuiltPrompt {
   const materialRules = input.materialRules ?? MATERIAL_SESSION_RULES;
   return {
-    system: [frameRoleInstruction(input.editablePrompt, input.roleInstructionWeight), frameReplyPreference(input.replyPreference), input.stableMemoryPrefix, '资料规则：', materialRules]
+    system: [
+      frameRoleInstruction(input.editablePrompt, input.roleInstructionWeight),
+      frameReplyPreference(input.replyPreference),
+      input.companionMemoryPrefix,
+      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
+      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      input.stableMemoryPrefix,
+      '资料规则：',
+      materialRules,
+    ]
       .filter(Boolean)
       .join('\n\n'),
     materialRules,

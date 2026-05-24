@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { createManualMemory, deleteMemory, listMemoryBoardItems, updateMemoryContent } from '../ai/aiMemoryService';
+import { getUserProfile, updateUserProfile } from '../ai/aiMemoryProfileService';
 import type { AiThreadRecord } from '../ai/types';
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
@@ -10,7 +11,7 @@ import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMemoryRecord, AiMemoryScope, AiMemoryType } from '../database/repositories/aiThreadRepository';
+import type { AiMemoryRecord, AiMemoryScope, AiMemoryType, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiMemoryBoardScreenProps {
@@ -41,6 +42,8 @@ const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', '
 export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardScreenProps) {
   const [thread, setThread] = useState<AiThreadRecord | null>(null);
   const [memories, setMemories] = useState<AiMemoryRecord[]>([]);
+  const [profile, setProfile] = useState<AiUserProfileRecord | null>(null);
+  const [profileDraft, setProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -62,6 +65,9 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     try {
       const nextThread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
       setThread(nextThread);
+      const nextProfile = await getUserProfile(space);
+      setProfile(nextProfile);
+      setProfileDraft(nextProfile?.profileText ?? '');
       if (nextThread) {
         setMemories(await listMemoryBoardItems(space, nextThread));
       }
@@ -130,10 +136,38 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
+  async function handleSaveProfile() {
+    setLoading(true);
+    try {
+      const next = await updateUserProfile(space, profileDraft.trim());
+      setProfile(next);
+      setProfileDraft(next.profileText);
+      setStatus('用户画像已保存。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存用户画像失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <AiLightScaffold loading={loading} onBack={onBack} scrollable subtitle="本地可控记忆" title="AI 记住了这些">
       <View style={styles.content}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
+        <AiLightCard>
+          <Text style={styles.sectionTitle}>用户画像</Text>
+          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求。</Text>
+          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
+          <AiLightTextareaRow
+            label="画像内容"
+            minHeight={112}
+            onChangeText={setProfileDraft}
+            placeholder="例如：喜欢简洁直接的解释，正在维护 Pixory 项目。"
+            value={profileDraft}
+          />
+          <AiLightButton label="保存用户画像" loading={loading} onPress={() => void handleSaveProfile()} />
+        </AiLightCard>
+
         <AiLightCard>
           <Text style={styles.sectionTitle}>手动添加</Text>
           <AiLightTextareaRow label="记忆内容" minHeight={72} onChangeText={setDraft} placeholder="例如：这个 IP 的主色调是 #FF0033" value={draft} />
@@ -212,6 +246,14 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       </View>
     </AiLightScaffold>
   );
+}
+
+function formatMinute(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({

@@ -9,13 +9,14 @@ const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'src/database/index.ts'), 'utf8');
 
 test('AI migration bumps database version and creates core local tables', () => {
-  assert.match(schema, /DATABASE_VERSION = 24/);
+  assert.match(schema, /DATABASE_VERSION = 25/);
   assert.match(schema, /MIGRATION_STATEMENTS_V19/);
   assert.match(schema, /MIGRATION_STATEMENTS_V20/);
   assert.match(schema, /MIGRATION_STATEMENTS_V21/);
   assert.match(schema, /MIGRATION_STATEMENTS_V22/);
   assert.match(schema, /MIGRATION_STATEMENTS_V23/);
   assert.match(schema, /MIGRATION_STATEMENTS_V24/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V25/);
   assert.match(schema, /embeddingBaseUrl TEXT/);
   assert.match(schema, /roleInstructionWeight TEXT NOT NULL DEFAULT 'default'/);
   assert.match(schema, /replyPreference TEXT NOT NULL DEFAULT 'auto'/);
@@ -25,6 +26,13 @@ test('AI migration bumps database version and creates core local tables', () => 
   assert.match(schema, /ALTER TABLE ai_memories ADD COLUMN assetSnapshotJson TEXT NOT NULL DEFAULT '\{\}'/);
   assert.match(schema, /ALTER TABLE ai_memories ADD COLUMN sourceKind TEXT NOT NULL DEFAULT 'auto'/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_thread_memory_jobs/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_user_profiles/);
+  assert.match(schema, /profileJson TEXT NOT NULL/);
+  assert.match(schema, /profileText TEXT NOT NULL/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_thread_summary_segments/);
+  assert.match(schema, /kind TEXT NOT NULL CHECK \(kind IN \('compressed', 'merged'\)\)/);
+  assert.match(schema, /lastCompressedMessageId TEXT/);
+  assert.match(schema, /uncompressedRoundCount INTEGER NOT NULL DEFAULT 0/);
   for (const table of [
     'ai_providers',
     'ai_provider_models',
@@ -59,6 +67,7 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /MIGRATION_STATEMENTS_V22/);
   assert.match(db, /MIGRATION_STATEMENTS_V23/);
   assert.match(db, /MIGRATION_STATEMENTS_V24/);
+  assert.match(db, /MIGRATION_STATEMENTS_V25/);
   assert.match(db, /currentVersion < 17/);
   assert.match(db, /currentVersion < 18/);
   assert.match(db, /currentVersion < 19/);
@@ -67,6 +76,7 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /currentVersion < 22/);
   assert.match(db, /currentVersion < 23/);
   assert.match(db, /currentVersion < 24/);
+  assert.match(db, /currentVersion < 25/);
   assert.match(index, /aiProviderRepository/);
   assert.match(index, /aiThreadRepository/);
   assert.match(index, /aiKnowledgeRepository/);

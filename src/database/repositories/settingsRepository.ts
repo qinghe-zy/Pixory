@@ -9,6 +9,15 @@ const BACKUP_EXPORT_DIRECTORY_URI_KEY = 'backupExportDirectoryUri';
 const SKIPPED_UPDATE_VERSION_KEY = 'skippedUpdateVersionKey';
 const DISMISSED_ANNOUNCEMENT_ID_KEY = 'dismissedAnnouncementId';
 export const AI_DEFAULT_CHAT_PROVIDER_ID_KEY = 'aiDefaultChatProviderId';
+export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
+export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
+export const MEMORY_MAINTENANCE_MODEL_ID_KEY = 'memoryMaintenanceModelId';
+export const MEMORY_MAINTENANCE_LAST_TEST_AT_KEY = 'memoryMaintenanceLastTestAt';
+export const MEMORY_MAINTENANCE_LAST_TEST_STATUS_KEY = 'memoryMaintenanceLastTestStatus';
+export const MEMORY_MAINTENANCE_LAST_TEST_MESSAGE_KEY = 'memoryMaintenanceLastTestMessage';
+export const MEMORY_MAINTENANCE_TESTED_PROVIDER_ID_KEY = 'memoryMaintenanceTestedProviderId';
+export const MEMORY_MAINTENANCE_TESTED_MODEL_ID_KEY = 'memoryMaintenanceTestedModelId';
+export const MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY = 'memoryMaintenanceTestedBaseUrlHash';
 export const ASSET_LIST_VIEW_MODE_KEY = 'assetListViewMode';
 export const ASSET_LIST_SORT_ORDER_KEY = 'assetListSortOrder';
 export const IMAGE_IMPORT_SOURCE_MODE_KEY = 'imageImportSourceMode';
@@ -17,6 +26,19 @@ export const VIDEO_IMPORT_NAMING_MODE_KEY = 'videoImportNamingMode';
 export type AssetListViewMode = 'grid' | 'detail';
 export type ImageImportSourceMode = 'copy' | 'move';
 export type VideoImportNamingMode = 'generated' | 'preserveOriginal';
+export type MemoryMaintenanceMode = 'auto' | 'follow_chat' | 'deepseek_flash' | 'custom';
+
+export interface MemoryMaintenanceSettingsRecord {
+  memoryMaintenanceMode: MemoryMaintenanceMode;
+  memoryMaintenanceProviderId: string | null;
+  memoryMaintenanceModelId: string | null;
+  memoryMaintenanceLastTestAt: string | null;
+  memoryMaintenanceLastTestStatus: string | null;
+  memoryMaintenanceLastTestMessage: string | null;
+  memoryMaintenanceTestedBaseUrlHash: string | null;
+  memoryMaintenanceTestedModelId: string | null;
+  memoryMaintenanceTestedProviderId: string | null;
+}
 
 const VALID_SORT_ORDERS: ImageSortOrder[] = [
   'createdAtDesc',
@@ -33,6 +55,10 @@ const VALID_SORT_ORDERS: ImageSortOrder[] = [
 
 function isImageSortOrder(value: string | null): value is ImageSortOrder {
   return Boolean(value && VALID_SORT_ORDERS.includes(value as ImageSortOrder));
+}
+
+function isMemoryMaintenanceMode(value: string | null): value is MemoryMaintenanceMode {
+  return value === 'auto' || value === 'follow_chat' || value === 'deepseek_flash' || value === 'custom';
 }
 
 export const settingsRepository = {
@@ -124,6 +150,60 @@ export const settingsRepository = {
 
   async setDefaultAiProviderId(db: SQLiteDatabase, providerId: string | null): Promise<void> {
     await this.setValue(db, AI_DEFAULT_CHAT_PROVIDER_ID_KEY, providerId);
+  },
+
+  async getMemoryMaintenanceSettings(db: SQLiteDatabase): Promise<MemoryMaintenanceSettingsRecord> {
+    const memoryMaintenanceMode = await this.getValue(db, MEMORY_MAINTENANCE_MODE_KEY);
+    const memoryMaintenanceProviderId = await this.getValue(db, MEMORY_MAINTENANCE_PROVIDER_ID_KEY);
+    const memoryMaintenanceModelId = await this.getValue(db, MEMORY_MAINTENANCE_MODEL_ID_KEY);
+    const memoryMaintenanceLastTestAt = await this.getValue(db, MEMORY_MAINTENANCE_LAST_TEST_AT_KEY);
+    const memoryMaintenanceLastTestStatus = await this.getValue(db, MEMORY_MAINTENANCE_LAST_TEST_STATUS_KEY);
+    const memoryMaintenanceLastTestMessage = await this.getValue(db, MEMORY_MAINTENANCE_LAST_TEST_MESSAGE_KEY);
+    const memoryMaintenanceTestedProviderId = await this.getValue(db, MEMORY_MAINTENANCE_TESTED_PROVIDER_ID_KEY);
+    const memoryMaintenanceTestedModelId = await this.getValue(db, MEMORY_MAINTENANCE_TESTED_MODEL_ID_KEY);
+    const memoryMaintenanceTestedBaseUrlHash = await this.getValue(db, MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY);
+    return {
+      memoryMaintenanceMode: isMemoryMaintenanceMode(memoryMaintenanceMode) ? memoryMaintenanceMode : 'auto',
+      memoryMaintenanceProviderId,
+      memoryMaintenanceModelId,
+      memoryMaintenanceLastTestAt,
+      memoryMaintenanceLastTestStatus,
+      memoryMaintenanceLastTestMessage,
+      memoryMaintenanceTestedBaseUrlHash,
+      memoryMaintenanceTestedModelId,
+      memoryMaintenanceTestedProviderId,
+    };
+  },
+
+  async updateMemoryMaintenanceSettings(db: SQLiteDatabase, patch: Partial<MemoryMaintenanceSettingsRecord>): Promise<MemoryMaintenanceSettingsRecord> {
+    if (patch.memoryMaintenanceMode !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_MODE_KEY, isMemoryMaintenanceMode(patch.memoryMaintenanceMode) ? patch.memoryMaintenanceMode : 'auto');
+    }
+    if (patch.memoryMaintenanceProviderId !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_PROVIDER_ID_KEY, patch.memoryMaintenanceProviderId);
+    }
+    if (patch.memoryMaintenanceModelId !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_MODEL_ID_KEY, patch.memoryMaintenanceModelId);
+    }
+    if (patch.memoryMaintenanceLastTestAt !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_LAST_TEST_AT_KEY, patch.memoryMaintenanceLastTestAt);
+    }
+    if (patch.memoryMaintenanceLastTestStatus !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_LAST_TEST_STATUS_KEY, patch.memoryMaintenanceLastTestStatus);
+    }
+    if (patch.memoryMaintenanceLastTestMessage !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_LAST_TEST_MESSAGE_KEY, patch.memoryMaintenanceLastTestMessage);
+    }
+    if (patch.memoryMaintenanceTestedProviderId !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_TESTED_PROVIDER_ID_KEY, patch.memoryMaintenanceTestedProviderId);
+    }
+    if (patch.memoryMaintenanceTestedModelId !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_TESTED_MODEL_ID_KEY, patch.memoryMaintenanceTestedModelId);
+    }
+    if (patch.memoryMaintenanceTestedBaseUrlHash !== undefined) {
+      await this.setValue(db, MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY, patch.memoryMaintenanceTestedBaseUrlHash);
+    }
+    return this.getMemoryMaintenanceSettings(db);
   },
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {

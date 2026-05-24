@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 24;
+export const DATABASE_VERSION = 25;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -625,4 +625,56 @@ CREATE TABLE IF NOT EXISTS ai_thread_memory_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_ai_memories_asset_refs ON ai_memories(space, ipId, groupId, imageAssetId, status);
 CREATE INDEX IF NOT EXISTS idx_ai_memory_jobs_updated_at ON ai_thread_memory_jobs(updatedAt);
+`;
+
+export const MIGRATION_STATEMENTS_V25 = `
+CREATE TABLE IF NOT EXISTS ai_user_profiles (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  profileJson TEXT NOT NULL,
+  profileText TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  sourceThreadId TEXT,
+  sourceStartMessageId TEXT,
+  sourceEndMessageId TEXT,
+  messageCountAtUpdate INTEGER NOT NULL DEFAULT 0,
+  lastUpdatedAt TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (sourceThreadId) REFERENCES ai_threads(id) ON DELETE SET NULL,
+  FOREIGN KEY (sourceStartMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (sourceEndMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_profiles_space ON ai_user_profiles(space);
+
+CREATE TABLE IF NOT EXISTS ai_thread_summary_segments (
+  id TEXT PRIMARY KEY NOT NULL,
+  threadId TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  kind TEXT NOT NULL CHECK (kind IN ('compressed', 'merged')),
+  summaryText TEXT NOT NULL,
+  startMessageId TEXT,
+  endMessageId TEXT,
+  startAt TEXT,
+  endAt TEXT,
+  roundCount INTEGER NOT NULL DEFAULT 0,
+  sourceSegmentIdsJson TEXT NOT NULL DEFAULT '[]',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (startMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (endMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_summary_segments_thread ON ai_thread_summary_segments(threadId, createdAt);
+
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastCompressedMessageId TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN uncompressedRoundCount INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN completedMessageCountAtProfileUpdate INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastProfileUpdatedAt TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN profileUpdateCooldownUntil TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceError TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceModelProviderId TEXT;
+ALTER TABLE ai_thread_memory_jobs ADD COLUMN lastMaintenanceModelId TEXT;
 `;

@@ -199,6 +199,43 @@ test('AI memory repository supports visible board controls and lazy job state', 
   assert.match(repository, /ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC/);
 });
 
+test('AI companion memory repository supports profiles and summary segments', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const settings = read('src/database/repositories/settingsRepository.ts');
+
+  assert.match(repository, /AiUserProfileRecord/);
+  assert.match(repository, /upsertUserProfile/);
+  assert.match(repository, /getUserProfile/);
+  assert.match(repository, /createSummarySegment/);
+  assert.match(repository, /listSummarySegments/);
+  assert.match(repository, /deleteSummarySegments/);
+  assert.match(repository, /lastCompressedMessageId/);
+  assert.match(settings, /getMemoryMaintenanceSettings/);
+  assert.match(settings, /updateMemoryMaintenanceSettings/);
+});
+
+test('AI companion memory profile service supports initialization and low-frequency updates', () => {
+  const profile = read('src/ai/aiMemoryProfileService.ts');
+  const prompts = read('src/ai/aiMemoryPrompts.ts');
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(profile, /PROFILE_INITIAL_MESSAGE_COUNT = 20/);
+  assert.match(profile, /PROFILE_UPDATE_MESSAGE_INTERVAL = 50/);
+  assert.match(profile, /PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN = 10/);
+  assert.match(profile, /PROFILE_STRONG_SIGNAL_TIME_COOLDOWN_MS/);
+  assert.match(profile, /PROFILE_SIGNAL_PATTERNS/);
+  assert.match(profile, /maybeInitializeUserProfile/);
+  assert.match(profile, /maybeUpdateUserProfile/);
+  assert.match(profile, /buildProfileInitializationPrompt/);
+  assert.match(profile, /buildProfileUpdatePrompt/);
+  assert.match(profile, /profileTextToJson/);
+  assert.match(profile, /用户手动画像/);
+  assert.match(profile, /prepared\.currentProfile\.profileText/);
+  assert.match(prompts, /手动画像优先/);
+  assert.match(board, /用户画像/);
+  assert.match(board, /updateUserProfile/);
+});
+
 test('AI memory board is reachable from session settings and supports user control', () => {
   const app = read('App.tsx');
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
@@ -212,6 +249,16 @@ test('AI memory board is reachable from session settings and supports user contr
   assert.match(board, /createManualMemory/);
   assert.match(board, /updateMemoryContent/);
   assert.match(board, /deleteMemory/);
+});
+
+test('AI memory board supports visible profile management', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /用户画像/);
+  assert.match(board, /画像用于长期理解你，不会覆盖当前要求/);
+  assert.match(board, /profileDraft/);
+  assert.match(board, /handleSaveProfile/);
+  assert.match(board, /lastUpdatedAt/);
 });
 
 test('AI chat title is finalized from the first exchange and refreshed in the chat header', () => {

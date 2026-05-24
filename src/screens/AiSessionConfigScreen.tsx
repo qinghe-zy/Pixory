@@ -75,6 +75,7 @@ export function AiSessionConfigScreen({
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
+  const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,6 +95,7 @@ export function AiSessionConfigScreen({
       setRoleInstructionWeight('default');
       setReplyPreference('auto');
       setDeepMemoryEnabled(false);
+      setLastMaintenanceError(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
@@ -108,6 +110,7 @@ export function AiSessionConfigScreen({
     setRoleInstructionWeight(config.thread.roleInstructionWeight);
     setReplyPreference(config.thread.replyPreference);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
+    setLastMaintenanceError(config.lastMaintenanceError);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
@@ -259,6 +262,11 @@ export function AiSessionConfigScreen({
     await reloadConfig();
   }
 
+  function formatMaintenanceError(error: string): string {
+    const normalized = error.replace(/^remote_failed_used_local_fallback:\s*/, '').trim();
+    return normalized ? `最近一次远程维护失败，已使用本地轻量整理：${normalized}` : '最近一次远程维护失败，已使用本地轻量整理。';
+  }
+
   return (
     <>
       <AiLightScaffold
@@ -370,6 +378,9 @@ export function AiSessionConfigScreen({
           </View>
           {deepMemoryEnabled ? (
             <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
+          ) : null}
+          {deepMemoryEnabled && lastMaintenanceError ? (
+            <Text style={styles.maintenanceWarning}>{formatMaintenanceError(lastMaintenanceError)}</Text>
           ) : null}
           {threadId ? (
             <Pressable accessibilityRole="button" onPress={onOpenMemoryBoard} style={({ pressed }) => [styles.memoryManageButton, pressed && styles.pressed]}>
@@ -537,6 +548,10 @@ const styles = StyleSheet.create({
   caption: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+  },
+  maintenanceWarning: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
   },
   roleRow: {
     alignItems: 'center',

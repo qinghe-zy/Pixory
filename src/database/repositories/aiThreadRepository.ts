@@ -77,6 +77,45 @@ export interface AiThreadMemoryJobRecord {
   pendingTurnCount: number;
   lastConsolidatedMessageId: string | null;
   lastCaptureNoticeJson: string;
+  lastCompressedMessageId: string | null;
+  uncompressedRoundCount: number;
+  completedMessageCountAtProfileUpdate: number;
+  lastProfileUpdatedAt: string | null;
+  profileUpdateCooldownUntil: string | null;
+  lastMaintenanceError: string | null;
+  lastMaintenanceModelProviderId: string | null;
+  lastMaintenanceModelId: string | null;
+  updatedAt: string;
+}
+
+export interface AiUserProfileRecord {
+  id: string;
+  space: PixorySpace;
+  profileJson: string;
+  profileText: string;
+  version: number;
+  sourceThreadId: string | null;
+  sourceStartMessageId: string | null;
+  sourceEndMessageId: string | null;
+  messageCountAtUpdate: number;
+  lastUpdatedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiThreadSummarySegmentRecord {
+  id: string;
+  threadId: string;
+  space: PixorySpace;
+  kind: 'compressed' | 'merged';
+  summaryText: string;
+  startMessageId: string | null;
+  endMessageId: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  roundCount: number;
+  sourceSegmentIdsJson: string;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -350,6 +389,8 @@ function mapMemorySettingsRow(row: AiThreadMemorySettingsRow): AiThreadMemorySet
 function makeInClause(values: string[]): string {
   return values.map(() => '?').join(', ');
 }
+
+const DELETE_MESSAGE_CHUNK_SIZE = 200;
 
 export const aiThreadRepository = {
   async createThread(db: SQLiteDatabase, input: CreateAiThreadInput): Promise<AiThreadRecord> {
@@ -776,8 +817,9 @@ export const aiThreadRepository = {
 
   async deleteMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<number> {
     let deletedCount = 0;
-    for (const messageId of messageIds) {
-      const result = await db.runAsync('DELETE FROM ai_messages WHERE id = ?', messageId);
+    for (let index = 0; index < messageIds.length; index += DELETE_MESSAGE_CHUNK_SIZE) {
+      const chunk = messageIds.slice(index, index + DELETE_MESSAGE_CHUNK_SIZE);
+      const result = await db.runAsync(`DELETE FROM ai_messages WHERE id IN (${makeInClause(chunk)})`, ...chunk);
       deletedCount += result.changes;
     }
     return deletedCount;
@@ -803,6 +845,181 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC`,
       threadId
     );
+  },
+
+  async findMessageById(db: SQLiteDatabase, messageId: string): Promise<AiMessageRecord | null> {
+    return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
+  },
+
+  async listRecentCompletedMessagesBefore(db: SQLiteDatabase, threadId: string, beforeMessageId: string, limit: number): Promise<AiMessageRecord[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM (
+         SELECT candidate.*, candidate.rowid AS rowOrder
+         FROM ai_messages target
+         JOIN ai_messages candidate ON candidate.threadId = target.threadId
+         WHERE target.id = ?
+           AND target.threadId = ?
+           AND candidate.status = 'completed'
+           AND candidate.id <> target.id
+           AND (
+             candidate.createdAt < target.createdAt
+             OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+           )
+         ORDER BY candidate.createdAt DESC, candidate.rowid DESC
+         LIMIT ?
+       )
+       ORDER BY createdAt ASC, rowOrder ASC`,
+      beforeMessageId,
+      threadId,
+      limit
+    );
+  },
+
+  async countCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null): Promise<number> {
+    if (!afterMessageId) {
+      const row = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) AS count
+         FROM ai_messages
+         WHERE threadId = ?
+           AND status = 'completed'
+           AND role <> 'system'`,
+        threadId
+      );
+      return row?.count ?? 0;
+    }
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.status = 'completed'
+         AND candidate.role <> 'system'
+         AND (
+           candidate.createdAt > target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+         )`,
+      afterMessageId,
+      threadId
+    );
+    return row?.count ?? 0;
+  },
+
+  async listCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null, limit: number): Promise<AiMessageRecord[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    if (!afterMessageId) {
+      return db.getAllAsync<AiMessageRecord>(
+        `SELECT * FROM ai_messages
+         WHERE threadId = ?
+           AND status = 'completed'
+           AND role <> 'system'
+         ORDER BY createdAt ASC, rowid ASC
+         LIMIT ?`,
+        threadId,
+        limit
+      );
+    }
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.status = 'completed'
+         AND candidate.role <> 'system'
+         AND (
+           candidate.createdAt > target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+         )
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC
+       LIMIT ?`,
+      afterMessageId,
+      threadId,
+      limit
+    );
+  },
+
+  async listRecentCompletedNonSystemMessages(db: SQLiteDatabase, threadId: string, limit: number): Promise<AiMessageRecord[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM (
+         SELECT *, rowid AS rowOrder
+         FROM ai_messages
+         WHERE threadId = ?
+           AND status = 'completed'
+           AND role <> 'system'
+         ORDER BY createdAt DESC, rowid DESC
+         LIMIT ?
+       )
+       ORDER BY createdAt ASC, rowOrder ASC`,
+      threadId,
+      limit
+    );
+  },
+
+  async findPreviousMessageByRole(db: SQLiteDatabase, threadId: string, beforeMessageId: string, role: AiMessageRole): Promise<AiMessageRecord | null> {
+    return db.getFirstAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.role = ?
+         AND (
+           candidate.createdAt < target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+         )
+       ORDER BY candidate.createdAt DESC, candidate.rowid DESC
+       LIMIT 1`,
+      beforeMessageId,
+      threadId,
+      role
+    );
+  },
+
+  async findNextMessageByRole(db: SQLiteDatabase, threadId: string, afterMessageId: string, role: AiMessageRole): Promise<AiMessageRecord | null> {
+    return db.getFirstAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.role = ?
+         AND (
+           candidate.createdAt > target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+         )
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC
+       LIMIT 1`,
+      afterMessageId,
+      threadId,
+      role
+    );
+  },
+
+  async listMessageIdsAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string): Promise<string[]> {
+    const rows = await db.getAllAsync<{ id: string }>(
+      `SELECT candidate.id
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND (
+           candidate.createdAt > target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+         )
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC`,
+      afterMessageId,
+      threadId
+    );
+    return rows.map((row) => row.id);
   },
 
   async createMessageVersion(db: SQLiteDatabase, input: CreateAiMessageVersionInput): Promise<AiMessageVersionRecord> {
@@ -963,6 +1180,97 @@ export const aiThreadRepository = {
       throw new Error(`AI thread memory settings ${threadId} could not be reloaded.`);
     }
     return mapMemorySettingsRow(row);
+  },
+
+  async getUserProfile(db: SQLiteDatabase, space: PixorySpace): Promise<AiUserProfileRecord | null> {
+    return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ?', space);
+  },
+
+  async upsertUserProfile(
+    db: SQLiteDatabase,
+    input: Omit<AiUserProfileRecord, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }
+  ): Promise<AiUserProfileRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_user_profiles (
+        id, space, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
+        sourceEndMessageId, messageCountAtUpdate, lastUpdatedAt, createdAt, updatedAt
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(space) DO UPDATE SET
+        profileJson = excluded.profileJson,
+        profileText = excluded.profileText,
+        version = ai_user_profiles.version + 1,
+        sourceThreadId = excluded.sourceThreadId,
+        sourceStartMessageId = excluded.sourceStartMessageId,
+        sourceEndMessageId = excluded.sourceEndMessageId,
+        messageCountAtUpdate = excluded.messageCountAtUpdate,
+        lastUpdatedAt = excluded.lastUpdatedAt,
+        updatedAt = excluded.updatedAt`,
+      input.id,
+      input.space,
+      input.profileJson,
+      input.profileText,
+      input.version,
+      input.sourceThreadId,
+      input.sourceStartMessageId,
+      input.sourceEndMessageId,
+      input.messageCountAtUpdate,
+      input.lastUpdatedAt,
+      input.createdAt ?? now,
+      input.updatedAt ?? now
+    );
+    const row = await this.getUserProfile(db, input.space);
+    if (!row) {
+      throw new Error('User profile upsert failed.');
+    }
+    return row;
+  },
+
+  async createSummarySegment(
+    db: SQLiteDatabase,
+    input: Omit<AiThreadSummarySegmentRecord, 'createdAt' | 'updatedAt'>
+  ): Promise<AiThreadSummarySegmentRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_thread_summary_segments (
+        id, threadId, space, kind, summaryText, startMessageId, endMessageId,
+        startAt, endAt, roundCount, sourceSegmentIdsJson, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.threadId,
+      input.space,
+      input.kind,
+      input.summaryText,
+      input.startMessageId,
+      input.endMessageId,
+      input.startAt,
+      input.endAt,
+      input.roundCount,
+      input.sourceSegmentIdsJson,
+      now,
+      now
+    );
+    const row = await db.getFirstAsync<AiThreadSummarySegmentRecord>('SELECT * FROM ai_thread_summary_segments WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error('Summary segment insert failed.');
+    }
+    return row;
+  },
+
+  async listSummarySegments(db: SQLiteDatabase, threadId: string): Promise<AiThreadSummarySegmentRecord[]> {
+    return db.getAllAsync<AiThreadSummarySegmentRecord>(
+      'SELECT * FROM ai_thread_summary_segments WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+  },
+
+  async deleteSummarySegments(db: SQLiteDatabase, ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    const placeholders = makeInClause(ids);
+    await db.runAsync(`DELETE FROM ai_thread_summary_segments WHERE id IN (${placeholders})`, ...ids);
   },
 
   async getThreadSummary(db: SQLiteDatabase, threadId: string): Promise<AiThreadSummaryRecord | null> {
@@ -1154,6 +1462,14 @@ export const aiThreadRepository = {
       pendingTurnCount: 0,
       lastConsolidatedMessageId: null,
       lastCaptureNoticeJson: '[]',
+      lastCompressedMessageId: null,
+      uncompressedRoundCount: 0,
+      completedMessageCountAtProfileUpdate: 0,
+      lastProfileUpdatedAt: null,
+      profileUpdateCooldownUntil: null,
+      lastMaintenanceError: null,
+      lastMaintenanceModelProviderId: null,
+      lastMaintenanceModelId: null,
       updatedAt: createTimestamp(),
     };
   },
@@ -1162,17 +1478,38 @@ export const aiThreadRepository = {
     const current = await aiThreadRepository.getThreadMemoryJob(db, input.threadId);
     const next = { ...current, ...input, updatedAt: createTimestamp() };
     await db.runAsync(
-      `INSERT INTO ai_thread_memory_jobs (threadId, pendingTurnCount, lastConsolidatedMessageId, lastCaptureNoticeJson, updatedAt)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO ai_thread_memory_jobs (
+         threadId, pendingTurnCount, lastConsolidatedMessageId, lastCaptureNoticeJson,
+         lastCompressedMessageId, uncompressedRoundCount, completedMessageCountAtProfileUpdate,
+         lastProfileUpdatedAt, profileUpdateCooldownUntil, lastMaintenanceError,
+         lastMaintenanceModelProviderId, lastMaintenanceModelId, updatedAt
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(threadId) DO UPDATE SET
          pendingTurnCount = excluded.pendingTurnCount,
          lastConsolidatedMessageId = excluded.lastConsolidatedMessageId,
          lastCaptureNoticeJson = excluded.lastCaptureNoticeJson,
+         lastCompressedMessageId = excluded.lastCompressedMessageId,
+         uncompressedRoundCount = excluded.uncompressedRoundCount,
+         completedMessageCountAtProfileUpdate = excluded.completedMessageCountAtProfileUpdate,
+         lastProfileUpdatedAt = excluded.lastProfileUpdatedAt,
+         profileUpdateCooldownUntil = excluded.profileUpdateCooldownUntil,
+         lastMaintenanceError = excluded.lastMaintenanceError,
+         lastMaintenanceModelProviderId = excluded.lastMaintenanceModelProviderId,
+         lastMaintenanceModelId = excluded.lastMaintenanceModelId,
          updatedAt = excluded.updatedAt`,
       next.threadId,
       next.pendingTurnCount,
       next.lastConsolidatedMessageId,
       next.lastCaptureNoticeJson,
+      next.lastCompressedMessageId,
+      next.uncompressedRoundCount,
+      next.completedMessageCountAtProfileUpdate,
+      next.lastProfileUpdatedAt,
+      next.profileUpdateCooldownUntil,
+      next.lastMaintenanceError,
+      next.lastMaintenanceModelProviderId,
+      next.lastMaintenanceModelId,
       next.updatedAt
     );
     return next;

@@ -21,9 +21,15 @@ import {
   syncProviderModels,
   testProvider,
 } from '../ai/aiProviderService';
+import {
+  resolveMemoryMaintenanceModel,
+  testMemoryMaintenanceModel,
+  type ResolvedMemoryMaintenanceModel,
+} from '../ai/aiMemoryMaintenanceModelService';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { AiProviderModelRecord } from '../ai/types';
-import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
+import type { MemoryMaintenanceMode } from '../database/repositories/settingsRepository';
 
 interface AiProviderSettingsScreenProps {
   space: PixorySpace;
@@ -31,9 +37,56 @@ interface AiProviderSettingsScreenProps {
 }
 
 type ProviderCard = Awaited<ReturnType<typeof listProviderCards>>[number];
+const MEMORY_MAINTENANCE_MODES: Array<{ value: MemoryMaintenanceMode; label: string }> = [
+  { value: 'auto', label: '自动' },
+  { value: 'follow_chat', label: '跟随聊天模型' },
+  { value: 'deepseek_flash', label: 'DeepSeek V4 Flash' },
+  { value: 'custom', label: '自定义' },
+];
 
 function isOtherProvider(card: ProviderCard): boolean {
   return card.provider.providerType === 'openai_compatible' || card.provider.providerType === 'custom';
+}
+
+function formatMaintenanceTestTime(value: string | null | undefined): string {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function isMaintenanceTestPassed(status: string | null | undefined): boolean {
+  return status === 'ready' || status === 'follow_chat';
+}
+
+function maintenanceBannerTone(status: ResolvedMemoryMaintenanceModel | null): FeedbackTone {
+  if (isMaintenanceTestPassed(status?.lastTestStatus)) {
+    return 'success';
+  }
+  if (status?.lastTestStatus === 'error') {
+    return 'error';
+  }
+  if (status?.status === 'local_fallback' || status?.status === 'error') {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function maintenanceBannerTitle(status: ResolvedMemoryMaintenanceModel | null): string {
+  if (isMaintenanceTestPassed(status?.lastTestStatus)) {
+    return '链路测试通过';
+  }
+  if (status?.lastTestStatus === 'error') {
+    return '链路测试失败';
+  }
+  if (status?.status === 'local_fallback') {
+    return '未启用远程维护';
+  }
+  return '已保存，待测试';
 }
 
 export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsScreenProps) {
@@ -47,6 +100,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [embeddingBaseUrlDraft, setEmbeddingBaseUrlDraft] = useState('');
   const [manualModelDraft, setManualModelDraft] = useState('');
   const [manualEmbeddingModelDraft, setManualEmbeddingModelDraft] = useState('');
+  const [memoryMaintenanceMode, setMemoryMaintenanceMode] = useState<MemoryMaintenanceMode>('auto');
+  const [memoryMaintenanceProviderId, setMemoryMaintenanceProviderId] = useState<string | null>(null);
+  const [memoryMaintenanceModelDraft, setMemoryMaintenanceModelDraft] = useState('');
+  const [maintenanceStatus, setMaintenanceStatus] = useState<ResolvedMemoryMaintenanceModel | null>(null);
+  const [maintenanceInfoExpanded, setMaintenanceInfoExpanded] = useState(false);
   const [visibleKey, setVisibleKey] = useState(false);
   const [advancedVisible, setAdvancedVisible] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
@@ -59,6 +117,20 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const embeddingModels = selectedCard?.models.filter((model) => model.supportsEmbedding) ?? [];
   const selectedModel = chatModels.find((model) => model.modelId === selectedCard?.provider.defaultChatModelId) ?? null;
   const selectedEmbeddingModel = embeddingModels.find((model) => model.modelId === selectedCard?.provider.defaultEmbeddingModelId) ?? null;
+  const maintenanceTone = maintenanceBannerTone(maintenanceStatus);
+  const maintenanceTestTime = formatMaintenanceTestTime(maintenanceStatus?.lastTestAt);
+  const maintenanceStatusMessage = maintenanceStatus?.lastTestMessage || maintenanceStatus?.statusText || '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型';
+
+  const loadMaintenanceSettings = useCallback(async () => {
+    const [settings, resolved] = await Promise.all([
+      runWithDatabaseSpace(space, (db) => settingsRepository.getMemoryMaintenanceSettings(db)),
+      resolveMemoryMaintenanceModel(space),
+    ]);
+    setMemoryMaintenanceMode(settings.memoryMaintenanceMode);
+    setMemoryMaintenanceProviderId(settings.memoryMaintenanceProviderId);
+    setMemoryMaintenanceModelDraft(settings.memoryMaintenanceModelId ?? '');
+    setMaintenanceStatus(resolved);
+  }, [space]);
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -74,10 +146,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         }
         return nextCards[0]?.provider.id ?? null;
       });
+      await loadMaintenanceSettings();
     } finally {
       setLoading(false);
     }
-  }, [space]);
+  }, [loadMaintenanceSettings, space]);
 
   useEffect(() => {
     void loadProviders();
@@ -135,6 +208,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       const apiKey = apiDraft.trim();
       await selectProvider(space, selectedCard.provider.id);
       await saveProviderApiKey(selectedCard.provider.id, apiKey);
+      await runWithDatabaseSpace(space, (db) =>
+        settingsRepository.updateMemoryMaintenanceSettings(db, {
+          memoryMaintenanceLastTestAt: null,
+          memoryMaintenanceLastTestMessage: null,
+          memoryMaintenanceLastTestStatus: null,
+        })
+      );
       setApiDraft(apiKey);
       setStatus({ message: '模型账号已保存，后续对话会使用当前配置。', tone: 'success', title: '保存成功' });
       await loadProviders();
@@ -149,6 +229,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     setStatus({ message: '正在切换默认对话模型...', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
+      await runWithDatabaseSpace(space, (db) =>
+        settingsRepository.updateMemoryMaintenanceSettings(db, {
+          memoryMaintenanceLastTestAt: null,
+          memoryMaintenanceLastTestMessage: null,
+          memoryMaintenanceLastTestStatus: null,
+        })
+      );
       setModelSheetVisible(false);
       setStatus({ message: `已选择 ${model.displayName}。`, tone: 'success', title: '模型已更新' });
       await loadProviders();
@@ -237,11 +324,70 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     }
   }
 
+  async function saveMemoryMaintenancePatch(patch: {
+    memoryMaintenanceMode?: MemoryMaintenanceMode;
+    memoryMaintenanceProviderId?: string | null;
+    memoryMaintenanceModelId?: string | null;
+  }) {
+    await runWithDatabaseSpace(space, (db) =>
+      settingsRepository.updateMemoryMaintenanceSettings(db, {
+        ...patch,
+        memoryMaintenanceLastTestAt: null,
+        memoryMaintenanceLastTestMessage: null,
+        memoryMaintenanceLastTestStatus: null,
+      })
+    );
+    await loadMaintenanceSettings();
+  }
+
+  async function chooseMemoryMaintenanceMode(mode: MemoryMaintenanceMode) {
+    setMemoryMaintenanceMode(mode);
+    await saveMemoryMaintenancePatch({
+      memoryMaintenanceMode: mode,
+      memoryMaintenanceProviderId: mode === 'custom' ? memoryMaintenanceProviderId ?? selectedCard?.provider.id ?? null : memoryMaintenanceProviderId,
+      memoryMaintenanceModelId: mode === 'deepseek_flash' ? 'deepseek-v4-flash' : memoryMaintenanceModelDraft.trim() || null,
+    });
+  }
+
+  async function saveCustomMemoryMaintenanceModel() {
+    if (!selectedCard || !memoryMaintenanceModelDraft.trim()) {
+      return;
+    }
+    setMemoryMaintenanceProviderId(selectedCard.provider.id);
+    await saveMemoryMaintenancePatch({
+      memoryMaintenanceMode: 'custom',
+      memoryMaintenanceModelId: memoryMaintenanceModelDraft.trim(),
+      memoryMaintenanceProviderId: selectedCard.provider.id,
+    });
+    setStatus({ message: '记忆维护模型已保存。', tone: 'success', title: '设置已更新' });
+  }
+
+  async function testSelectedMemoryMaintenanceModel() {
+    setStatus({ message: '正在测试记忆维护模型...', tone: 'info', title: '测试记忆模型' });
+    const result = await testMemoryMaintenanceModel(space);
+    setMaintenanceStatus(result);
+    setStatus({
+      message: result.statusText,
+      tone: result.status === 'error' ? 'error' : result.status === 'local_fallback' ? 'warning' : 'success',
+      title: '记忆模型状态',
+    });
+  }
+
+  async function focusMaintenanceProviderKey() {
+    const providerId = maintenanceStatus?.providerId ?? memoryMaintenanceProviderId;
+    if (providerId && providerId !== selectedProviderId) {
+      await chooseProvider(providerId);
+    }
+    setVisibleKey(true);
+    setStatus({ message: '请在上方 API 输入框配置当前模型商 Key。API Key 仅保存在本机安全存储中。', tone: 'info' });
+  }
+
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const saveDisabled = !selectedCard || !apiDraft.trim() || (selectedIsOtherProvider && !baseUrlDraft.trim());
 
   return (
     <AiLightScaffold
+      contentContainerStyle={styles.pageContent}
       loading={loading}
       onBack={onBack}
       scrollable
@@ -471,12 +617,100 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         ) : null}
 
         {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
+
+        <View style={styles.sectionDivider} />
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.sectionTitle}>记忆维护模型</Text>
+          <View style={styles.statusPanel}>
+            <View style={[
+              styles.maintenanceResultBanner,
+              maintenanceTone === 'success' && styles.maintenanceResultSuccess,
+              maintenanceTone === 'warning' && styles.maintenanceResultWarning,
+              maintenanceTone === 'error' && styles.maintenanceResultError,
+              maintenanceTone === 'info' && styles.maintenanceResultInfo,
+            ]}>
+              <Ionicons
+                color={maintenanceTone === 'success' ? aiLightColors.coral : maintenanceTone === 'info' ? aiLightColors.muted : aiLightColors.coralActive}
+                name={maintenanceTone === 'success' ? 'checkmark-circle' : maintenanceTone === 'error' ? 'close-circle' : maintenanceTone === 'warning' ? 'alert-circle' : 'information-circle'}
+                size={18}
+              />
+              <View style={styles.maintenanceResultCopy}>
+                <Text style={styles.maintenanceResultTitle}>{maintenanceBannerTitle(maintenanceStatus)}</Text>
+                <Text style={styles.caption}>{maintenanceStatusMessage}</Text>
+                {maintenanceTestTime ? <Text style={styles.caption}>上次测试：{maintenanceTestTime}</Text> : null}
+              </View>
+            </View>
+            <Text style={styles.caption}>当前使用</Text>
+            <Text style={styles.statusValue}>
+              {maintenanceStatus ? `${maintenanceStatus.providerName} · ${maintenanceStatus.modelName}` : '本地 · 未启用远程维护'}
+            </Text>
+            <Text style={styles.caption}>配置状态</Text>
+            <Text style={styles.statusValue}>{maintenanceStatus?.statusText ?? '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型'}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setMaintenanceInfoExpanded((current) => !current)}
+              style={({ pressed }) => [styles.infoToggle, pressed && styles.pressed]}
+            >
+              <Text style={styles.caption}>远程维护只用于摘要和画像，Key 保存在本机。</Text>
+              <Ionicons color={aiLightColors.mutedSoft} name={maintenanceInfoExpanded ? 'chevron-up' : 'chevron-down'} size={16} />
+            </Pressable>
+            {maintenanceInfoExpanded ? (
+              <Text style={styles.caption}>
+                开启后，Pixory 会把需要整理的对话片段发送给你配置的模型服务商；未配置或测试失败时不会调用远程维护模型。API Key 仅保存在本机安全存储中。
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.modeGrid}>
+            {MEMORY_MAINTENANCE_MODES.map((mode) => (
+              <Pressable
+                accessibilityRole="button"
+                key={mode.value}
+                onPress={() => void chooseMemoryMaintenanceMode(mode.value)}
+                style={({ pressed }) => [
+                  styles.modeOption,
+                  memoryMaintenanceMode === mode.value && styles.selectedModeOption,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.modeOptionText, memoryMaintenanceMode === mode.value && styles.selectedModeOptionText]}>{mode.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.caption}>
+            {isMaintenanceTestPassed(maintenanceStatus?.lastTestStatus)
+              ? '测试通过后，摘要压缩和画像维护会使用该远程模型。'
+              : '保存 Key 或切换模型后，请点击“测试记忆模型”，通过后再视为配置成功。'}
+          </Text>
+          <View style={styles.inlineActions}>
+            <AiLightButton label="配置 Key" onPress={() => void focusMaintenanceProviderKey()} variant="outline" />
+            <AiLightButton label="测试记忆模型" onPress={() => void testSelectedMemoryMaintenanceModel()} />
+          </View>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>自定义记忆模型 ID</Text>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setMemoryMaintenanceModelDraft}
+              placeholder="deepseek-v4-flash"
+              placeholderTextColor={aiLightColors.mutedSoft}
+              selectionColor={aiLightColors.coral}
+              style={styles.input}
+              value={memoryMaintenanceModelDraft}
+            />
+            <Text style={styles.caption}>自定义模式复用当前选中的模型商和上方 API Key，不会保存第二份 Key。</Text>
+            <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存自定义记忆模型" onPress={() => void saveCustomMemoryMaintenanceModel()} variant="outline" />
+          </View>
+        </View>
       </AiLightCard>
     </AiLightScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  pageContent: {
+    gap: rhythm.listCardGap,
+  },
   selectBox: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
@@ -536,6 +770,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
   },
+  infoToggle: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
+  },
+  sectionDivider: {
+    backgroundColor: aiLightColors.hairline,
+    height: StyleSheet.hairlineWidth,
+  },
   advancedToggle: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
@@ -553,6 +797,82 @@ const styles = StyleSheet.create({
   fieldLabel: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
+  },
+  sectionTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  statusPanel: {
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    padding: spacing[3],
+  },
+  maintenanceResultBanner: {
+    alignItems: 'flex-start',
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    marginBottom: spacing[1],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  maintenanceResultSuccess: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.coral,
+  },
+  maintenanceResultWarning: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coralActive,
+  },
+  maintenanceResultError: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coralActive,
+  },
+  maintenanceResultInfo: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+  },
+  maintenanceResultCopy: {
+    flex: 1,
+    gap: rhythm.microGap,
+    minWidth: 0,
+  },
+  maintenanceResultTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  statusValue: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  modeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.compactGridGap,
+  },
+  modeOption: {
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 34,
+    paddingHorizontal: spacing[3],
+    justifyContent: 'center',
+  },
+  selectedModeOption: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
+  },
+  modeOptionText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '600',
+  },
+  selectedModeOptionText: {
+    color: aiLightColors.coralActive,
   },
   inputRow: {
     alignItems: 'center',

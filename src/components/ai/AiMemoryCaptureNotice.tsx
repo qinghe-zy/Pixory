@@ -7,12 +7,24 @@ interface AiMemoryCaptureNoticeProps {
   count: number;
   onManage: () => void;
   onUndo: () => void;
+  summary?: string | null;
 }
 
-export function AiMemoryCaptureNotice({ count, onManage, onUndo }: AiMemoryCaptureNoticeProps) {
+function formatSummary(summary?: string | null): string {
+  const normalized = (summary ?? '').replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+  return normalized.length > 28 ? `${normalized.slice(0, 28)}...` : normalized;
+}
+
+export function AiMemoryCaptureNotice({ count, onManage, onUndo, summary }: AiMemoryCaptureNoticeProps) {
+  const summaryText = formatSummary(summary);
   return (
     <View style={styles.wrap}>
-      <Text style={styles.text}>已记住 {count} 条内容</Text>
+      <Text numberOfLines={1} style={styles.text}>
+        {summaryText ? `已记住：${summaryText}${count > 1 ? ` +${count - 1}` : ''}` : `已记住 ${count} 条内容`}
+      </Text>
       <Pressable accessibilityRole="button" onPress={onUndo} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
         <Text style={styles.actionText}>撤销</Text>
       </Pressable>
@@ -39,6 +51,7 @@ const styles = StyleSheet.create({
   text: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+    maxWidth: 220,
   },
   action: {
     paddingHorizontal: spacing[1],
