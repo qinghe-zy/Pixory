@@ -157,6 +157,16 @@ test('AI prompt context is budget-aware and records trim state', () => {
   assert.match(chatService, /contextTrimmed/);
 });
 
+test('AI context budget estimates Chinese text conservatively', () => {
+  const budget = read('src/ai/aiContextBudget.ts');
+
+  assert.match(budget, /CJK_CHAR_PATTERN/);
+  assert.match(budget, /asciiTokenEstimate/);
+  assert.match(budget, /cjkTokenEstimate/);
+  assert.match(budget, /Math\.ceil\(cjkChars \* 0\.8\)/);
+  assert.doesNotMatch(budget, /Math\.ceil\(value\.length \/ 3\)/);
+});
+
 test('AI companion memory prompt assembly injects profile and summary context safely', () => {
   const service = read('src/ai/aiMemoryService.ts');
   const prompt = read('src/ai/promptBuilder.ts');

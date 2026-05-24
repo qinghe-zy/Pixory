@@ -447,11 +447,14 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
-  const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => ({
-    companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread),
-    dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage),
-    stableMemoryPrefix: await buildStableMemoryPrefix(db, thread),
-  }));
+  const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => {
+    const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+    return {
+      companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { settings: memorySettings }),
+      dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage, { settings: memorySettings }),
+      stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { settings: memorySettings }),
+    };
+  });
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({

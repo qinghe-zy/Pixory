@@ -7,9 +7,14 @@ export interface AiContextBudgetResult {
 }
 
 const DEFAULT_CONTEXT_BUDGET_TOKENS = 12000;
+const CJK_CHAR_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/g;
 
 export function estimatePromptTokens(value: string): number {
-  return Math.ceil(value.length / 3);
+  const cjkChars = value.match(CJK_CHAR_PATTERN)?.length ?? 0;
+  const nonCjkChars = Math.max(0, value.length - cjkChars);
+  const cjkTokenEstimate = Math.ceil(cjkChars * 0.8);
+  const asciiTokenEstimate = Math.ceil(nonCjkChars / 4);
+  return Math.max(1, cjkTokenEstimate + asciiTokenEstimate);
 }
 
 export function getConservativeContextBudget(modelContextWindowTokens?: number | null): number {

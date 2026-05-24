@@ -441,6 +441,18 @@ test('AI memory repository uses atomic pending increments bounded board queries 
   assert.match(repository, /const now = createTimestamp\(\);[\s\S]*lastUsedAt = \?, updatedAt = \?[\s\S]*now,\s*now/);
 });
 
+test('AI prompt build reuses deep memory settings instead of repeating settings reads', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const memoryService = read('src/ai/aiMemoryService.ts');
+
+  assert.match(memoryService, /BuildMemoryPrefixOptions/);
+  assert.match(memoryService, /settings\?: AiThreadMemorySettingsRecord/);
+  assert.match(chat, /const memorySettings = await aiThreadRepository\.getThreadMemorySettings\(db, thread\.id\)/);
+  assert.match(chat, /buildCompanionMemoryPrefix\(db, thread, \{ settings: memorySettings/);
+  assert.match(chat, /buildStableMemoryPrefix\(db, thread, \{ settings: memorySettings/);
+  assert.match(chat, /retrieveDynamicMemoryContext\(db, thread, userMessage, \{ settings: memorySettings/);
+});
+
 test('AI memory maintenance uses a unified per-thread queue', () => {
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');
