@@ -97,6 +97,16 @@ The import preview shows:
 - Character-book merge status and truncation notice.
 - A compact error or warning banner for non-fatal import issues.
 
+The role library itself should feel closer to Pixory's image library than a plain settings list:
+
+- Saved roles are shown as visual cards with an avatar/cover area, role name, short description, source badge, and key details.
+- If a manually created role has an avatar, that avatar is the card cover.
+- If a manually created role has no avatar, use a quiet role placeholder icon as the cover.
+- Manual Pixory-created roles are labeled `DIY 角色`.
+- Imported SillyTavern roles are labeled with an import badge such as `酒馆角色`.
+- Cards should remain information-dense but tappable, with long-press selection for batch deletion following the current role-card behavior.
+- Opening a card loads the full role details into the editor; applying to the current session remains available when the screen was opened from session settings.
+
 ## Data Model
 
 Extend `AiRoleCardRecord` and `ai_role_cards` with backward-compatible fields:
@@ -115,14 +125,16 @@ Recommended source type values:
 - `tavern_json_v1`
 - `pixory_manual`
 
-Manual Pixory role cards do not need source fields. Existing cards continue to map safely with null/default values.
+Manual Pixory role cards may save `sourceType: 'pixory_manual'` for display badges, while older manual cards with null source fields continue to map safely.
+
+For display, `sourceType === null` or `sourceType === 'pixory_manual'` is treated as `DIY 角色`.
 
 ## Compatibility Rules
 
 Existing user-created role cards must remain first-class:
 
 - Old role rows with no new fields still load.
-- Manual role save does not require `firstMessage`, `alternateGreetingsJson`, `sourceType`, or `sourceJson`.
+- Manual role save does not require `firstMessage`, `alternateGreetingsJson`, or `sourceJson`; it may set `sourceType` to `pixory_manual`.
 - Applying an existing role continues to use `roleCard.prompt` as the system prompt.
 - No assistant opening message is inserted unless the saved role explicitly has `firstMessage` and the current flow is creating a new chat from that role.
 - Imported SillyTavern cards never rewrite existing roles unless the user manually edits and saves over a role in a future update flow.
@@ -297,4 +309,3 @@ Manual Android validation:
 - Static character-book merge can make prompts long. The implementation must enforce a budget and clearly show truncation.
 - Opening-message insertion touches chat creation behavior. It must be isolated to new-chat-from-role flows.
 - Existing uncommitted AI chat P0 fixes are unrelated and should not be mixed into this feature implementation commit unless intentionally batched later.
-
