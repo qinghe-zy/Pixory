@@ -480,8 +480,20 @@ test('AI chat and history expose recent switcher quick new chat and searchable g
 
   assert.match(chat, /AiRecentThreadSwitcher/);
   assert.match(chat, /onNewChat/);
+  assert.match(chat, /handleNewChatPress/);
+  assert.match(chat, /停止当前回复并新建聊天/);
+  assert.match(chat, /当前已生成内容会保留在原会话/);
+  assert.match(chat, /void handleStop\(\)\.finally/);
+  assert.match(chat, /alreadyBlankNewChat/);
+  assert.match(chat, /showNewChatFeedback/);
+  assert.match(chat, /已在新的空白聊天/);
   assert.match(app, /onNewChat/);
+  assert.match(app, /routeKey\?: string/);
+  assert.match(app, /function openNewAiChat/);
+  assert.match(app, /prepareAiChatRouteForPush/);
+  assert.match(app, /currentRoute\?\.name === 'ai-chat' && !currentRoute\.threadId/);
   assert.match(app, /function aiChatRouteKey/);
+  assert.match(app, /if \(route\.routeKey\) \{\s*return route\.routeKey;\s*\}/);
   assert.match(app, /key=\{aiChatRouteKey\(currentRoute, routeStack\.length\)\}/);
   assert.doesNotMatch(app, /function aiChatRouteKey[\s\S]*route\.threadId/);
   assert.match(history, /searchText/);

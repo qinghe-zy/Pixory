@@ -180,8 +180,12 @@ export function AiChatScreen({
     model: 0,
     title: 0,
   });
+  const screenMountedRef = useRef(true);
   const streamAbortRef = useRef<AbortController | null>(null);
   const activeStreamGenerationRef = useRef(0);
+  const generationBusyRef = useRef(false);
+  const generationActionTokenRef = useRef(0);
+  const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [loadedMessageLimit, setLoadedMessageLimit] = useState(CHAT_MESSAGE_PAGE_SIZE);
@@ -202,8 +206,10 @@ export function AiChatScreen({
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [latestVisible, setLatestVisible] = useState(true);
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
+  const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
+  const inlineEditingActive = Boolean(editingUserMessageId);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
   const visibleMessages = useMemo(
     () =>
@@ -306,6 +312,26 @@ export function AiChatScreen({
     return { controller, generation: activeStreamGenerationRef.current };
   }
 
+  function beginGenerationAction(): number | null {
+    if (generationBusyRef.current) {
+      return null;
+    }
+    generationBusyRef.current = true;
+    generationActionTokenRef.current += 1;
+    return generationActionTokenRef.current;
+  }
+
+  function finishGenerationAction(actionToken: number) {
+    if (generationActionTokenRef.current === actionToken) {
+      generationBusyRef.current = false;
+    }
+  }
+
+  function cancelGenerationAction() {
+    generationActionTokenRef.current += 1;
+    generationBusyRef.current = false;
+  }
+
   function abortActiveStreamingRequest() {
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
@@ -332,6 +358,9 @@ export function AiChatScreen({
   }, [scrollToLatestMessage]);
 
   const handleComposerHeightChange = useCallback(() => {
+    if (editingUserMessageIdRef.current) {
+      return;
+    }
     scrollToLatestMessage(false);
   }, [scrollToLatestMessage]);
 
@@ -539,13 +568,72 @@ export function AiChatScreen({
 
   useEffect(() => {
     return () => {
+      screenMountedRef.current = false;
+      cancelGenerationAction();
       streamAbortRef.current?.abort();
       streamAbortRef.current = null;
       activeStreamGenerationRef.current += 1;
+      if (newChatFeedbackTimeoutRef.current) {
+        clearTimeout(newChatFeedbackTimeoutRef.current);
+        newChatFeedbackTimeoutRef.current = null;
+      }
     };
   }, []);
 
-  async function ensureThread(): Promise<string> {
+  function showNewChatFeedback() {
+    if (newChatFeedbackTimeoutRef.current) {
+      clearTimeout(newChatFeedbackTimeoutRef.current);
+    }
+    setNewChatFeedbackVisible(true);
+    newChatFeedbackTimeoutRef.current = setTimeout(() => {
+      setNewChatFeedbackVisible(false);
+      newChatFeedbackTimeoutRef.current = null;
+    }, 1400);
+  }
+
+  function handleNewChatPress() {
+    if (generating) {
+      Alert.alert(
+        '停止当前回复并新建聊天？',
+        '当前已生成内容会保留在原会话。',
+        [
+          { text: '取消', style: 'cancel' },
+          {
+            text: '停止并新建',
+            style: 'destructive',
+            onPress: () => {
+              setNewChatFeedbackVisible(false);
+              void handleStop().finally(() => {
+                if (screenMountedRef.current) {
+                  onNewChat();
+                }
+              });
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    const alreadyBlankNewChat =
+      !activeThreadId &&
+      messages.length === 0 &&
+      composerText.trim().length === 0 &&
+      pendingAttachments.length === 0 &&
+      !errorMessage;
+
+    if (alreadyBlankNewChat) {
+      showNewChatFeedback();
+      return;
+    }
+    setNewChatFeedbackVisible(false);
+    onNewChat();
+  }
+
+  async function ensureThread(): Promise<string | null> {
+    if (!screenMountedRef.current) {
+      return null;
+    }
     if (activeThreadId) {
       return activeThreadId;
     }
@@ -557,6 +645,9 @@ export function AiChatScreen({
       space,
       title: resolvedContextTitle,
     });
+    if (!screenMountedRef.current) {
+      return null;
+    }
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     onThreadReady?.(thread.id);
@@ -568,8 +659,14 @@ export function AiChatScreen({
   async function handleOpenSessionConfig() {
     try {
       const nextThreadId = await ensureThread();
+      if (!nextThreadId || !screenMountedRef.current) {
+        return;
+      }
       onOpenSessionConfig(nextThreadId);
     } catch (error) {
+      if (!screenMountedRef.current) {
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : '无法打开会话设置');
     }
   }
@@ -577,8 +674,14 @@ export function AiChatScreen({
   async function onOpenMemoryBoardFromChat() {
     try {
       const nextThreadId = await ensureThread();
+      if (!nextThreadId || !screenMountedRef.current) {
+        return;
+      }
       onOpenMemoryBoard(nextThreadId);
     } catch (error) {
+      if (!screenMountedRef.current) {
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : '无法打开记忆管理');
     }
   }
@@ -739,6 +842,10 @@ export function AiChatScreen({
     if ((!typedText && !attachments.length) || generating) {
       return;
     }
+    const actionToken = beginGenerationAction();
+    if (!actionToken) {
+      return;
+    }
     setComposerText('');
     setPendingAttachments([]);
     setGenerating(true);
@@ -749,6 +856,9 @@ export function AiChatScreen({
     let streamGeneration = 0;
     try {
       nextThreadId = await ensureThread();
+      if (!nextThreadId || !screenMountedRef.current) {
+        return;
+      }
       const targetThreadId = nextThreadId;
       const streamRequest = beginStreamingRequest(targetThreadId);
       streamController = streamRequest.controller;
@@ -782,13 +892,17 @@ export function AiChatScreen({
       await reloadMessages(targetThreadId);
       await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
-      if (streamController?.signal.aborted || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
+      if (!screenMountedRef.current || streamController?.signal.aborted || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
         return;
       }
       setComposerText(typedText);
       setPendingAttachments(attachments);
       setErrorMessage(error instanceof Error ? error.message : '发送失败');
     } finally {
+      finishGenerationAction(actionToken);
+      if (!screenMountedRef.current) {
+        return;
+      }
       const stillCurrent = nextThreadId && streamGeneration ? isCurrentStream(nextThreadId, streamGeneration) : true;
       if (stillCurrent) {
         setGenerating(false);
@@ -824,9 +938,18 @@ export function AiChatScreen({
       return;
     }
     const userMessageId = messageId;
+    const actionToken = beginGenerationAction();
+    if (!actionToken) {
+      return;
+    }
     if (hasLaterMessages(userMessageId)) {
       const confirmed = await confirmRemovingLaterMessages();
       if (!confirmed) {
+        finishGenerationAction(actionToken);
+        return;
+      }
+      if (!screenMountedRef.current) {
+        finishGenerationAction(actionToken);
         return;
       }
     }
@@ -877,6 +1000,7 @@ export function AiChatScreen({
       setEditingUserMessageId(userMessageId);
       setErrorMessage(error instanceof Error ? error.message : '重写失败');
     } finally {
+      finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
         setActiveAssistantId(null);
@@ -890,6 +1014,7 @@ export function AiChatScreen({
   async function handleStop() {
     const targetAssistantId = activeAssistantId;
     const targetThreadId = activeThreadIdRef.current;
+    cancelGenerationAction();
     abortActiveStreamingRequest();
     setGenerating(false);
     setActiveAssistantId(null);
@@ -906,13 +1031,31 @@ export function AiChatScreen({
     if (!targetMessageId || !activeThreadId) {
       return;
     }
+    const targetThreadId = activeThreadId;
     if (hasLaterMessages(targetMessageId)) {
-      const confirmed = await confirmRemovingLaterMessages();
-      if (!confirmed) {
+      const actionToken = beginGenerationAction();
+      if (!actionToken) {
         return;
       }
+      const confirmed = await confirmRemovingLaterMessages();
+      if (!confirmed) {
+        finishGenerationAction(actionToken);
+        return;
+      }
+      if (!screenMountedRef.current) {
+        finishGenerationAction(actionToken);
+        return;
+      }
+      return handleConfirmedRegenerate(targetThreadId, targetMessageId, actionToken);
     }
-    const targetThreadId = activeThreadId;
+    const actionToken = beginGenerationAction();
+    if (!actionToken) {
+      return;
+    }
+    return handleConfirmedRegenerate(targetThreadId, targetMessageId, actionToken);
+  }
+
+  async function handleConfirmedRegenerate(targetThreadId: string, targetMessageId: string, actionToken: number) {
     setGenerating(true);
     setActiveAssistantId(targetMessageId);
     setErrorMessage(null);
@@ -946,6 +1089,7 @@ export function AiChatScreen({
       }
       setErrorMessage(error instanceof Error ? error.message : '刷新失败');
     } finally {
+      finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
         setActiveAssistantId(null);
@@ -1133,16 +1277,22 @@ export function AiChatScreen({
         <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
         </Pressable>
-        <Pressable accessibilityLabel="新聊天" accessibilityRole="button" onPress={onNewChat} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+        <Pressable accessibilityLabel="新聊天" accessibilityRole="button" onPress={handleNewChatPress} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="add-outline" size={18} />
         </Pressable>
       </View>
+      {newChatFeedbackVisible ? (
+        <View accessibilityLiveRegion="polite" style={styles.newChatFeedback}>
+          <Ionicons color={aiLightColors.coralActive} name="checkmark-circle-outline" size={14} />
+          <Text style={styles.newChatFeedbackText}>已在新的空白聊天</Text>
+        </View>
+      ) : null}
 
       <FlatList
         ref={messageListRef}
         data={invertedMessageItems}
         inverted
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         keyExtractor={messageKeyExtractor}
         ListFooterComponent={
@@ -1164,44 +1314,46 @@ export function AiChatScreen({
         contentContainerStyle={styles.messageScrollContent}
       />
 
-      <View style={styles.composerPanel}>
-        {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
-        <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
-        <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
-        {fallbackMemoryCaptures.length > 0 ? (
-          <AiMemoryCaptureNotice
-            count={fallbackMemoryCaptures.length}
-            items={fallbackMemoryCaptures}
-            summary={fallbackMemoryCaptures[0]?.content}
-            onManage={() => void onOpenMemoryBoardFromChat()}
-            onMarkInaccurate={(memoryId) => void onMarkMemoryCaptureInaccurate(memoryId)}
-            onSave={(memoryId, content) => void onSaveMemoryCapture(memoryId, content)}
-            onUndo={() => void onUndoMemoryCapture(fallbackMemoryCaptures)}
+      {inlineEditingActive ? null : (
+        <View style={styles.composerPanel}>
+          {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
+          <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
+          <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
+          {fallbackMemoryCaptures.length > 0 ? (
+            <AiMemoryCaptureNotice
+              count={fallbackMemoryCaptures.length}
+              items={fallbackMemoryCaptures}
+              summary={fallbackMemoryCaptures[0]?.content}
+              onManage={() => void onOpenMemoryBoardFromChat()}
+              onMarkInaccurate={(memoryId) => void onMarkMemoryCaptureInaccurate(memoryId)}
+              onSave={(memoryId, content) => void onSaveMemoryCapture(memoryId, content)}
+              onUndo={() => void onUndoMemoryCapture(fallbackMemoryCaptures)}
+            />
+          ) : null}
+          <AiChatComposer
+            attachments={pendingAttachments}
+            generating={generating}
+            onAddAttachment={() => setAttachmentSheetVisible(true)}
+            onChangeText={setComposerText}
+            onComposerHeightChange={handleComposerHeightChange}
+            onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
+            placeholder={getComposerPlaceholder()}
+            onSend={() => {
+              void handleSend();
+            }}
+            onStop={() => {
+              void handleStop();
+            }}
+            onVoiceInput={() => {
+              void handleVoiceInput();
+            }}
+            onCancelVoiceInput={handleCancelVoiceInput}
+            value={composerText}
+            voiceError={voiceError}
+            voiceState={voiceState}
           />
-        ) : null}
-        <AiChatComposer
-          attachments={pendingAttachments}
-          generating={generating}
-          onAddAttachment={() => setAttachmentSheetVisible(true)}
-          onChangeText={setComposerText}
-          onComposerHeightChange={handleComposerHeightChange}
-          onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
-          placeholder={getComposerPlaceholder()}
-          onSend={() => {
-            void handleSend();
-          }}
-          onStop={() => {
-            void handleStop();
-          }}
-          onVoiceInput={() => {
-            void handleVoiceInput();
-          }}
-          onCancelVoiceInput={handleCancelVoiceInput}
-          value={composerText}
-          voiceError={voiceError}
-          voiceState={voiceState}
-        />
-      </View>
+        </View>
+      )}
       <AppActionSheet
         items={attachmentSheetItems}
         onClose={() => setAttachmentSheetVisible(false)}
@@ -1280,6 +1432,23 @@ const styles = StyleSheet.create({
     color: aiLightColors.muted,
     maxWidth: '92%',
     textAlign: 'center',
+  },
+  newChatFeedback: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: spacing[7],
+    paddingHorizontal: spacing[3],
+  },
+  newChatFeedbackText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '600',
   },
   liveDot: {
     backgroundColor: aiLightColors.coral,

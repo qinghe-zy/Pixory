@@ -158,6 +158,7 @@ type AppRoute =
       knowledgeBaseId?: string;
       includeIpDocuments?: boolean;
       threadId?: string;
+      routeKey?: string;
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
@@ -206,7 +207,29 @@ function scheduleAiChatMemoryMaintenanceForRoute(route: AppRoute | undefined, re
   });
 }
 
+let aiChatRouteInstanceCounter = 0;
+
+function createAiChatRouteInstanceKey(): string {
+  aiChatRouteInstanceCounter += 1;
+  return `ai-chat-route-${aiChatRouteInstanceCounter}`;
+}
+
+function prepareAiChatRouteForPush(route: Extract<AppRoute, { name: 'ai-chat' }>): Extract<AppRoute, { name: 'ai-chat' }> {
+  return { ...route, routeKey: route.routeKey ?? createAiChatRouteInstanceKey() };
+}
+
+function prepareAiChatRouteForReplace(
+  route: Extract<AppRoute, { name: 'ai-chat' }>,
+  previousRoute?: AppRoute
+): Extract<AppRoute, { name: 'ai-chat' }> {
+  const previousKey = previousRoute?.name === 'ai-chat' ? previousRoute.routeKey : undefined;
+  return { ...route, routeKey: route.routeKey ?? previousKey ?? createAiChatRouteInstanceKey() };
+}
+
 function aiChatRouteKey(route: Extract<AppRoute, { name: 'ai-chat' }>, stackDepth: number): string {
+  if (route.routeKey) {
+    return route.routeKey;
+  }
   return [
     route.name,
     stackDepth,
@@ -687,8 +710,28 @@ export default function App() {
   function pushRoute(route: AppRoute) {
     if (route.name === 'ai-chat') {
       scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
+      const nextRoute = prepareAiChatRouteForPush(route);
+      setRouteStack((current) => [...current, nextRoute]);
+      return;
     }
     setRouteStack((current) => [...current, route]);
+  }
+
+  function openNewAiChat(space: PixorySpace) {
+    scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
+    const nextRoute = prepareAiChatRouteForPush({
+      name: 'ai-chat',
+      contextTitle: '普通聊天',
+      contextType: 'normal',
+      space,
+    });
+    setRouteStack((current) => {
+      const currentRoute = current[current.length - 1];
+      if (currentRoute?.name === 'ai-chat' && !currentRoute.threadId) {
+        return [...current.slice(0, -1), nextRoute];
+      }
+      return [...current, nextRoute];
+    });
   }
 
   function popRoute() {
@@ -800,7 +843,11 @@ export default function App() {
   }
 
   function replaceCurrentRoute(route: AppRoute) {
-    setRouteStack((current) => [...current.slice(0, -1), route]);
+    setRouteStack((current) => {
+      const previousRoute = current[current.length - 1];
+      const nextRoute = route.name === 'ai-chat' ? prepareAiChatRouteForReplace(route, previousRoute) : route;
+      return [...current.slice(0, -1), nextRoute];
+    });
   }
 
   function openAvailableUpdate() {
@@ -1406,7 +1453,7 @@ export default function App() {
           })
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
-        onNewChat={() => pushRoute({ name: 'ai-chat', contextTitle: '普通聊天', contextType: 'normal', space: currentRoute.space })}
+        onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           pushRoute({
             name: 'ai-chat',

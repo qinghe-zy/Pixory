@@ -98,6 +98,10 @@ test('AI chat relies on Android adjustResize instead of JS keyboard margin lifti
   assert.doesNotMatch(chat, /marginBottom:\s*keyboardBottomInset/);
   assert.match(chat, /function handleEditUserMessage[\s\S]*editingUserMessageIdRef\.current = messageId/);
   assert.match(chat, /function cancelInlineEdit\(\)[\s\S]*editingUserMessageIdRef\.current = null[\s\S]*setEditingUserMessageId\(null\)/);
+  assert.match(chat, /const inlineEditingActive = Boolean\(editingUserMessageId\)/);
+  assert.match(chat, /keyboardDismissMode=\{inlineEditingActive \? 'none' : Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
+  assert.match(chat, /const handleComposerHeightChange = useCallback\(\(\) => \{\s*if \(editingUserMessageIdRef\.current\) \{\s*return;\s*\}/);
+  assert.match(chat, /\{inlineEditingActive \? null : \(\s*<View style=\{styles\.composerPanel\}>/);
 });
 
 test('AI inline edit cancel and send labels are centered in their buttons', () => {
@@ -154,6 +158,17 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.match(chat, /reloadThreadTitle\(threadId \?\? null/);
   assert.match(chat, /reloadMemoryCaptures\(threadId \?\? null/);
   assert.match(chat, /latestRequestRef/);
+  assert.match(chat, /screenMountedRef/);
+  assert.match(chat, /async function ensureThread\(\): Promise<string \| null>/);
+  assert.match(chat, /if \(!screenMountedRef\.current\) \{\s*return null;\s*\}/);
+  assert.match(chat, /if \(!nextThreadId \|\| !screenMountedRef\.current\) \{\s*return;\s*\}/);
+  assert.match(chat, /screenMountedRef\.current = false/);
+  assert.match(chat, /generationBusyRef/);
+  assert.match(chat, /function beginGenerationAction/);
+  assert.match(chat, /if \(generationBusyRef\.current\) \{\s*return null;\s*\}/);
+  assert.match(chat, /const actionToken = beginGenerationAction\(\)/);
+  assert.match(chat, /finishGenerationAction\(actionToken\)/);
+  assert.match(chat, /cancelGenerationAction\(\)/);
 });
 
 test('AI regenerate switches back to the newest generated message version', () => {
