@@ -5,6 +5,7 @@ import type { AiMessageRecord } from '../database/repositories/aiThreadRepositor
 import { buildCompressionPrompt, buildSummaryMergePrompt } from './aiMemoryPrompts';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import type { AiThreadRecord } from './types';
+import { localMemoryMaintenanceResult, type MemoryMaintenanceModelCallResult } from './aiMemoryMaintenanceModelService';
 
 export const UNCOMPRESSED_ROUND_THRESHOLD = 50;
 export const COMPRESS_OLDEST_ROUND_COUNT = 20;
@@ -15,6 +16,28 @@ const UNCOMPRESSED_MESSAGE_SCAN_LIMIT = (UNCOMPRESSED_ROUND_THRESHOLD + COMPRESS
 interface CompleteRound {
   user: AiMessageRecord;
   assistant: AiMessageRecord;
+}
+
+export interface MemoryMaintenanceStepResult {
+  error: string | null;
+  modelId: string | null;
+  providerId: string | null;
+  usedFallback: boolean;
+  usedRemote: boolean;
+}
+
+function stepResultFromModel(modelResult: MemoryMaintenanceModelCallResult, usedFallback: boolean): MemoryMaintenanceStepResult {
+  return {
+    error: modelResult.error,
+    modelId: modelResult.modelId,
+    providerId: modelResult.providerId,
+    usedFallback,
+    usedRemote: modelResult.usedRemote,
+  };
+}
+
+export function emptyMaintenanceStepResult(): MemoryMaintenanceStepResult {
+  return { error: null, modelId: null, providerId: null, usedFallback: false, usedRemote: false };
 }
 
 function createAiMemoryId(prefix: string): string {
@@ -67,7 +90,7 @@ async function loadThreadOrReturn(db: SQLiteDatabase, threadId: string): Promise
   return aiThreadRepository.findThreadById(db, threadId);
 }
 
-export async function compressOldestThreadRounds(space: PixorySpace, threadId: string): Promise<void> {
+export async function compressOldestThreadRounds(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -107,15 +130,17 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
     };
   });
   if (!prepared) {
-    return;
+    return emptyMaintenanceStepResult();
   }
 
-  const modelResult = await callMemoryMaintenanceModel({
-    space,
-    systemPrompt: '你是 Pixory 的后台对话记忆压缩器。只输出指定结构。',
-    thread: prepared.thread,
-    userPrompt: buildCompressionPrompt(prepared.conversation),
-  });
+  const modelResult = options.allowRemoteModel === false
+    ? localMemoryMaintenanceResult()
+    : await callMemoryMaintenanceModel({
+      space,
+      systemPrompt: '你是 Pixory 的后台对话记忆压缩器。只输出指定结构。',
+      thread: prepared.thread,
+      userPrompt: buildCompressionPrompt(prepared.conversation),
+    });
   const summaryText = modelResult.text ?? buildLocalCompressionSummary(prepared.conversation);
 
   await runWithDatabaseSpace(space, async (db) => {
@@ -139,9 +164,10 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
       uncompressedRoundCount: Math.max(0, prepared.uncompressedRoundCount - prepared.roundCount),
     });
   });
+  return stepResultFromModel(modelResult, !modelResult.text);
 }
 
-export async function maybeMergeSummarySegments(space: PixorySpace, threadId: string): Promise<void> {
+export async function maybeMergeSummarySegments(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -168,14 +194,16 @@ export async function maybeMergeSummarySegments(space: PixorySpace, threadId: st
     };
   });
   if (!prepared) {
-    return;
+    return emptyMaintenanceStepResult();
   }
-  const modelResult = await callMemoryMaintenanceModel({
-    space,
-    systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
-    thread: prepared.thread,
-    userPrompt: buildSummaryMergePrompt(prepared.summaries),
-  });
+  const modelResult = options.allowRemoteModel === false
+    ? localMemoryMaintenanceResult()
+    : await callMemoryMaintenanceModel({
+      space,
+      systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
+      thread: prepared.thread,
+      userPrompt: buildSummaryMergePrompt(prepared.summaries),
+    });
   const summaryText = modelResult.text ?? buildLocalMergedSummary(prepared.summaries);
   await runWithDatabaseSpace(space, async (db) => {
     await aiThreadRepository.createSummarySegment(db, {
@@ -197,4 +225,5 @@ export async function maybeMergeSummarySegments(space: PixorySpace, threadId: st
       threadId,
     });
   });
+  return stepResultFromModel(modelResult, !modelResult.text);
 }

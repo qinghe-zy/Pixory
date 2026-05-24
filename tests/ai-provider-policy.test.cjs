@@ -86,7 +86,7 @@ test('AI memory maintenance model resolves status and reuses SecureStore keys', 
   assert.match(service, /MemoryMaintenanceModelCallResult/);
   assert.match(service, /streamError/);
   assert.match(service, /event\.type === 'error'/);
-  assert.match(service, /return \{ error: streamError, status: 'error', text: null, usedRemote: true \}/);
+  assert.match(service, /return \{ error: streamError, modelId: resolved\.modelId, providerId: resolved\.providerId, status: 'error', text: null, usedRemote: true \}/);
   assert.match(service, /测试通过/);
   assert.match(service, /点击“测试记忆模型”确认链路可用/);
   assert.match(screen, /记忆维护模型/);

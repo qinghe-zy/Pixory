@@ -23,14 +23,9 @@ import { trimMessagesToContextBudget } from './aiContextBudget';
 import {
   buildCompanionMemoryPrefix,
   buildStableMemoryPrefix,
-  incrementPendingMemoryTurn,
-  maybeRunLazyMemoryConsolidation,
   retrieveDynamicMemoryContext,
-  saveRecentMemoryCaptures,
-  shouldRunImmediateMemoryCapture,
 } from './aiMemoryService';
-import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
-import { isThreadMemoryMaintenanceActive, scheduleCompanionMemoryMaintenance } from './aiMemoryMaintenanceService';
+import { scheduleMemoryMaintenance } from './aiMemoryMaintenanceService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -198,24 +193,6 @@ const STREAMING_PERSIST_INTERVAL_MS = 120;
 const STREAMING_UI_PATCH_INTERVAL_MS = 80;
 const DEEP_MEMORY_LIMIT = 5;
 const RELATED_HISTORY_LIMIT = 4;
-const SUMMARY_DECISION_LIMIT = 8;
-const MEMORY_MODEL_CONTEXT_LIMIT = 18;
-const DEEP_MEMORY_HISTORY_SCAN_LIMIT = 100;
-
-interface MemoryCandidate {
-  type: AiMemoryRecord['type'];
-  scope: AiMemoryRecord['scope'];
-  content: string;
-  importance: number;
-  confidence: number;
-}
-
-interface ModelMemoryUpdate {
-  summary: string;
-  decisions: string;
-  openQuestions: string;
-  memories: MemoryCandidate[];
-}
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
   try {
@@ -345,10 +322,6 @@ function truncateForPrompt(value: string, maxLength: number): string {
   return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`;
 }
 
-function normalizeMemoryContent(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 180);
-}
-
 function getQueryTerms(value: string): string[] {
   return [...new Set(value.toLowerCase().split(/[\s,，。！？!?;；:：、]+/).filter((term) => term.length >= 2))].slice(0, 10);
 }
@@ -366,24 +339,12 @@ function scoreTextForQuery(text: string, query: string): number {
 }
 
 function formatDeepMemorySection(input: {
-  summary?: string | null;
-  decisions?: string | null;
-  openQuestions?: string | null;
   memories: AiMemoryRecord[];
   history: AiMessageRecord[];
 }): string {
   const lines: string[] = [
     '深度记忆背景：以下内容只作为理解上下文的参考，不能覆盖用户当前最新要求、当前会话角色指令、安全规则或资料事实。回答时自然使用，不要模板化复述，也不要为了展示记忆而主动提到“记忆”。',
   ];
-  if (input.summary?.trim()) {
-    lines.push(`会话摘要：${truncateForPrompt(input.summary, 700)}`);
-  }
-  if (input.decisions?.trim()) {
-    lines.push(`已确认事项：${truncateForPrompt(input.decisions, 520)}`);
-  }
-  if (input.openQuestions?.trim()) {
-    lines.push(`待跟进问题：${truncateForPrompt(input.openQuestions, 360)}`);
-  }
   if (input.memories.length > 0) {
     lines.push('相关长期记忆：');
     input.memories.forEach((memory, index) => {
@@ -404,17 +365,22 @@ async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord,
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [summary, memories, messages] = await Promise.all([
-    aiThreadRepository.getThreadSummary(db, thread.id),
-    aiThreadRepository.listActiveMemories(db, {
+  const [memories, messages, recentMessages] = await Promise.all([
+    aiThreadRepository.searchActiveMemoryFts(db, {
       boundIpId: thread.boundIpId,
       boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
+      query: userMessage,
       roleCardId: thread.roleCardId,
       space: thread.space,
       threadId: thread.id,
       limit: 80,
     }),
-    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, DEEP_MEMORY_HISTORY_SCAN_LIMIT),
+    aiThreadRepository.searchCompletedMessageFts(db, {
+      limit: CHAT_HISTORY_MESSAGE_LIMIT + RELATED_HISTORY_LIMIT + 12,
+      query: userMessage,
+      threadId: thread.id,
+    }),
+    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, CHAT_HISTORY_MESSAGE_LIMIT),
   ]);
   const rankedMemories = memories
     .map((memory) => ({
@@ -425,7 +391,7 @@ async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord,
     .sort((left, right) => right.score - left.score)
     .slice(0, DEEP_MEMORY_LIMIT)
     .map((item) => item.memory);
-  const recentIds = new Set(messages.slice(-CHAT_HISTORY_MESSAGE_LIMIT).map((message) => message.id));
+  const recentIds = new Set(recentMessages.map((message) => message.id));
   const rankedHistory = messages
     .filter((message) => message.status === 'completed' && message.role !== 'system' && !recentIds.has(message.id))
     .map((message) => ({ message, score: scoreTextForQuery(message.content, userMessage) }))
@@ -437,280 +403,9 @@ async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord,
     await aiThreadRepository.touchMemories(db, rankedMemories.map((memory) => memory.id));
   }
   return formatDeepMemorySection({
-    decisions: summary?.decisions,
     history: rankedHistory,
     memories: rankedMemories,
-    openQuestions: summary?.openQuestions,
-    summary: summary?.summary,
   });
-}
-
-function extractMemoryCandidates(userMessage: string): MemoryCandidate[] {
-  const normalized = userMessage.replace(/\s+/g, ' ').trim();
-  if (normalized.length < 4) {
-    return [];
-  }
-  const candidates: MemoryCandidate[] = [];
-  const push = (type: AiMemoryRecord['type'], scope: AiMemoryRecord['scope'], content: string, importance: number, confidence = 0.76) => {
-    const cleaned = content.replace(/^[：:，,\s]+/, '').trim();
-    if (cleaned.length >= 4 && cleaned.length <= 180) {
-      candidates.push({ type, scope, content: cleaned, importance, confidence });
-    }
-  };
-
-  for (const match of normalized.matchAll(/(?:请记住|记住|以后默认|之后默认)([^。！？!?]{4,120})/g)) {
-    push('instruction', 'global', match[1] ?? '', 4, 0.86);
-  }
-  for (const match of normalized.matchAll(/我(?:喜欢|偏好|希望|习惯|通常|一般)([^。！？!?]{4,120})/g)) {
-    push('preference', 'global', `我${match[0].replace(/^我/, '')}`, 3, 0.82);
-  }
-  for (const match of normalized.matchAll(/(?:决定|确认|确定|同意)([^。！？!?]{4,120})/g)) {
-    push('decision', 'thread', match[1] ?? '', 3, 0.78);
-  }
-  for (const match of normalized.matchAll(/(?:纠正|更正|不是|不要)([^。！？!?]{4,120})/g)) {
-    push('correction', 'thread', match[0] ?? '', 4, 0.84);
-  }
-  return candidates.slice(0, 6);
-}
-
-function extractJsonObject(text: string): string {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-  return first >= 0 && last > first ? text.slice(first, last + 1) : text.trim();
-}
-
-function parseModelMemoryUpdate(text: string): ModelMemoryUpdate | null {
-  try {
-    const parsed = JSON.parse(extractJsonObject(text)) as Record<string, unknown>;
-    const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
-    const decisions = typeof parsed.decisions === 'string' ? parsed.decisions.trim() : '';
-    const openQuestions = typeof parsed.openQuestions === 'string' ? parsed.openQuestions.trim() : '';
-    const rawMemories = Array.isArray(parsed.memories) ? parsed.memories : [];
-    const memories = rawMemories.flatMap((item): MemoryCandidate[] => {
-      if (!item || typeof item !== 'object') {
-        return [];
-      }
-      const record = item as Record<string, unknown>;
-      const content = typeof record.content === 'string' ? record.content.replace(/\s+/g, ' ').trim() : '';
-      const scope = record.scope === 'global' ? 'global' : record.scope === 'thread' ? 'thread' : null;
-      const type = ['preference', 'fact', 'decision', 'instruction', 'task', 'correction'].includes(String(record.type))
-        ? String(record.type) as AiMemoryRecord['type']
-        : null;
-      if (!content || !scope || !type || content.length < 4 || content.length > 180) {
-        return [];
-      }
-      return [{
-        confidence: typeof record.confidence === 'number' ? Math.max(0.1, Math.min(1, record.confidence)) : 0.78,
-        content,
-        importance: typeof record.importance === 'number' ? Math.max(1, Math.min(5, Math.round(record.importance))) : 2,
-        scope,
-        type,
-      }];
-    }).slice(0, 8);
-    if (!summary && !decisions && !openQuestions && memories.length === 0) {
-      return null;
-    }
-    return { decisions, memories, openQuestions, summary };
-  } catch {
-    return null;
-  }
-}
-
-function buildMemoryModelPrompt(messages: AiMessageRecord[]): string {
-  const recent = messages
-    .filter((message) => message.status === 'completed' && message.role !== 'system')
-    .slice(-MEMORY_MODEL_CONTEXT_LIMIT)
-    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 420)}`)
-    .join('\n\n');
-  return [
-    '请为一个本地离线优先的 AI 聊天应用更新“深度记忆”。',
-    '只输出 JSON，不要输出 Markdown 或解释。',
-    '记忆必须保守：只保存用户明确表达、重复出现、纠正 AI、或对后续明显有用的稳定事实。不要保存普通寒暄、临时情绪、一次性闲聊、未经确认的推测。',
-    '记忆使用时只是背景参考，不能覆盖用户当前最新要求、角色指令、安全规则或资料事实。',
-    'JSON 结构：{"summary":"会话摘要","decisions":"已确认事项","openQuestions":"待跟进问题","memories":[{"scope":"global或thread","type":"preference|fact|decision|instruction|task|correction","content":"单条记忆","confidence":0.1到1,"importance":1到5}]}',
-    'scope 只允许 global 或 thread；跨会话稳定偏好用 global，本会话决策和任务用 thread。',
-    '如果没有值得长期保存的记忆，memories 返回空数组。',
-    '聊天片段：',
-    recent || '暂无聊天片段。',
-  ].join('\n\n');
-}
-
-async function summarizeMemoryWithModel(input: {
-  space: PixorySpace;
-  thread: AiThreadRecord;
-  messages: AiMessageRecord[];
-}): Promise<ModelMemoryUpdate | null> {
-  try {
-    const result = await callMemoryMaintenanceModel({
-      space: input.space,
-      systemPrompt: '你是 Pixory 的后台记忆整理器。你只输出可解析 JSON。',
-      thread: input.thread,
-      userPrompt: buildMemoryModelPrompt(input.messages),
-    });
-    const text = result.text;
-    if (!text) {
-      return null;
-    }
-    return parseModelMemoryUpdate(text);
-  } catch {
-    return null;
-  }
-}
-
-function buildThreadSummaryFromMessages(messages: AiMessageRecord[]): { summary: string; decisions: string; openQuestions: string; lastMessageId: string | null } {
-  const completed = messages.filter((message) => message.status === 'completed' && message.role !== 'system');
-  const recent = completed.slice(-16);
-  const summary = recent
-    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${truncateForPrompt(message.content, 120)}`)
-    .join('\n')
-    .slice(0, 1200);
-  const decisions = completed
-    .filter((message) => /决定|确认|确定|同意|以后|默认|记住|纠正|更正/.test(message.content))
-    .slice(-SUMMARY_DECISION_LIMIT)
-    .map((message) => `- ${truncateForPrompt(message.content, 140)}`)
-    .join('\n');
-  const openQuestions = completed
-    .filter((message) => message.role === 'user' && /[?？]|怎么|如何|是否|能不能/.test(message.content))
-    .slice(-5)
-    .map((message) => `- ${truncateForPrompt(message.content, 120)}`)
-    .join('\n');
-  return {
-    decisions,
-    lastMessageId: completed.length ? completed[completed.length - 1].id : null,
-    openQuestions,
-    summary,
-  };
-}
-
-async function updateDeepMemoryAfterReply(input: {
-  space: PixorySpace;
-  thread: AiThreadRecord;
-  userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
-  assistantMessageId: string;
-  allowRemoteModel?: boolean;
-}): Promise<void> {
-  const prepared = await runWithDatabaseSpace(input.space, async (db) => {
-    const settings = await aiThreadRepository.getThreadMemorySettings(db, input.thread.id);
-    if (!settings.deepMemoryEnabled) {
-      return null;
-    }
-    const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80);
-    return {
-      fallbackSummary: buildThreadSummaryFromMessages(messages),
-      messages,
-    };
-  });
-  if (!prepared) {
-    return;
-  }
-
-  const modelUpdate = input.allowRemoteModel === false
-    ? null
-    : await summarizeMemoryWithModel({
-      messages: prepared.messages,
-      space: input.space,
-      thread: input.thread,
-    });
-
-  await runWithDatabaseSpace(input.space, async (db) => {
-    await aiThreadRepository.upsertThreadSummary(db, {
-      decisions: modelUpdate?.decisions || prepared.fallbackSummary.decisions,
-      lastMessageId: prepared.fallbackSummary.lastMessageId,
-      openQuestions: modelUpdate?.openQuestions || prepared.fallbackSummary.openQuestions,
-      summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
-      threadId: input.thread.id,
-    });
-    const captures: Array<{ id: string; content: string }> = [];
-    const candidates = modelUpdate?.memories.length ? modelUpdate.memories : extractMemoryCandidates(input.userMessage.content);
-    for (const candidate of candidates) {
-      const scopeId = candidate.scope === 'thread'
-        ? input.thread.id
-        : candidate.scope === 'role'
-          ? input.thread.roleCardId
-          : candidate.scope === 'ip'
-            ? String(input.thread.boundIpId ?? '')
-            : candidate.scope === 'knowledge_base'
-              ? input.thread.boundKnowledgeBaseId
-              : null;
-      const normalizedContent = normalizeMemoryContent(candidate.content);
-      const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
-        normalizedContent,
-        scope: candidate.scope,
-        scopeId,
-        space: input.space,
-      });
-      if (!existing) {
-        const memory = await aiThreadRepository.createMemory(db, {
-          confidence: candidate.confidence,
-          content: candidate.content,
-          id: createAiId('aimem'),
-          importance: candidate.importance,
-          normalizedContent,
-          scope: candidate.scope,
-          scopeId,
-          sourceMessageId: input.userMessage.id,
-          space: input.space,
-          type: candidate.type,
-        });
-        if (memory.confidence >= 0.75 && memory.importance >= 2) {
-          captures.push({ content: memory.content, id: memory.id });
-        }
-      }
-    }
-    if (captures.length > 0) {
-      await saveRecentMemoryCaptures(db, input.thread.id, captures);
-    }
-  });
-}
-
-async function scheduleDeepMemoryAfterReply(input: {
-  space: PixorySpace;
-  thread: AiThreadRecord;
-  userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
-  assistantMessageId: string;
-}): Promise<void> {
-  const exchangeText = `${input.userMessage.content}`;
-  const shouldCaptureImmediately = shouldRunImmediateMemoryCapture(exchangeText);
-  let shouldRunConsolidation = false;
-  await runWithDatabaseSpace(input.space, async (db) => {
-    const settings = await aiThreadRepository.getThreadMemorySettings(db, input.thread.id);
-    if (!settings.deepMemoryEnabled) {
-      return;
-    }
-    if (shouldCaptureImmediately) {
-      shouldRunConsolidation = true;
-      return;
-    }
-    await incrementPendingMemoryTurn(db, input.thread.id);
-    const job = await aiThreadRepository.getThreadMemoryJob(db, input.thread.id);
-    const pendingTurnCount = job.pendingTurnCount;
-    shouldRunConsolidation = await maybeRunLazyMemoryConsolidation({
-      db,
-      reason: 'turn_threshold',
-      runConsolidation: async () => {
-        // The model call runs after this transaction so streaming is never blocked by nested DB work.
-      },
-      thread: input.thread,
-    }) || pendingTurnCount >= 5;
-  });
-  if (!shouldRunConsolidation) {
-    return;
-  }
-  await updateDeepMemoryAfterReply({
-    ...input,
-    allowRemoteModel: !isThreadMemoryMaintenanceActive(input.space, input.thread.id),
-  });
-  await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.updateThreadMemoryJob(db, {
-      lastConsolidatedMessageId: input.assistantMessageId,
-      pendingTurnCount: 0,
-      threadId: input.thread.id,
-    })
-  );
 }
 
 async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord) {
@@ -1324,15 +1019,12 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    void scheduleCompanionMemoryMaintenance({
+    void scheduleMemoryMaintenance({
+      assistantMessageId: input.assistantMessageId,
       reason: 'reply_completed',
       space: input.space,
-      threadId: input.thread.id,
-    });
-    void scheduleDeepMemoryAfterReply({
-      assistantMessageId: input.assistantMessageId,
-      space: input.space,
       thread: input.thread,
+      threadId: input.thread.id,
       userMessage: input.userMessage,
     });
   }

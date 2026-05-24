@@ -27,9 +27,15 @@ export interface ResolvedMemoryMaintenanceModel {
 
 export interface MemoryMaintenanceModelCallResult {
   error: string | null;
+  modelId: string | null;
+  providerId: string | null;
   status: MemoryMaintenanceStatus;
   text: string | null;
   usedRemote: boolean;
+}
+
+export function localMemoryMaintenanceResult(): MemoryMaintenanceModelCallResult {
+  return { error: null, modelId: null, providerId: null, status: 'local_fallback', text: null, usedRemote: false };
 }
 
 export interface ResolvedMemoryMaintenanceModelWithProvider extends ResolvedMemoryMaintenanceModel {
@@ -241,7 +247,7 @@ export async function callMemoryMaintenanceModel(input: {
   try {
     const resolved = await resolveMemoryMaintenanceModel(input.space, input.thread);
     if (!resolved.provider || !resolved.modelId || !resolved.apiKey || resolved.status === 'local_fallback') {
-      return { error: null, status: resolved.status, text: null, usedRemote: false };
+      return { error: null, modelId: resolved.modelId, providerId: resolved.providerId, status: resolved.status, text: null, usedRemote: false };
     }
     let text = '';
     let streamError: string | null = null;
@@ -264,11 +270,11 @@ export async function callMemoryMaintenanceModel(input: {
       }
     );
     if (streamError) {
-      return { error: streamError, status: 'error', text: null, usedRemote: true };
+      return { error: streamError, modelId: resolved.modelId, providerId: resolved.providerId, status: 'error', text: null, usedRemote: true };
     }
-    return { error: null, status: resolved.status, text: text.trim() || null, usedRemote: true };
+    return { error: null, modelId: resolved.modelId, providerId: resolved.providerId, status: resolved.status, text: text.trim() || null, usedRemote: true };
   } catch (error) {
-    return { error: errorMessageFromUnknown(error), status: 'error', text: null, usedRemote: false };
+    return { error: errorMessageFromUnknown(error), modelId: null, providerId: null, status: 'error', text: null, usedRemote: false };
   }
 }
 
