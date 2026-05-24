@@ -230,11 +230,13 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(citations, /onPress=\{\(\) => onOpenCitation\(citation\)\}/);
 });
 
-test('AI session settings keep role instructions visible above the Android keyboard', () => {
+test('AI session settings rely on Android adjustResize without JS keyboard padding', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const scaffold = read('src/components/ai/AiLightScaffold.tsx');
 
-  assert.match(sessionConfig, /keyboardBottomInset/);
+  assert.doesNotMatch(sessionConfig, /keyboardBottomInset/);
+  assert.doesNotMatch(sessionConfig, /Keyboard\.addListener/);
+  assert.doesNotMatch(sessionConfig, /paddingBottom:\s*keyboardBottomInset/);
   assert.match(sessionConfig, /scrollViewRef/);
   assert.match(sessionConfig, /handleSystemPromptFocus/);
   assert.match(sessionConfig, /onFocus=\{handleSystemPromptFocus\}/);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -92,7 +92,6 @@ export function AiSessionConfigScreen({
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [keyboardBottomInset, setKeyboardBottomInset] = useState(0);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const settingsLoadedRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -156,22 +155,6 @@ export function AiSessionConfigScreen({
   useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return undefined;
-    }
-    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
-      setKeyboardBottomInset(event.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardBottomInset(0);
-    });
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   function handleSystemPromptFocus() {
     if (Platform.OS !== 'android') {
@@ -293,7 +276,6 @@ export function AiSessionConfigScreen({
   return (
     <>
       <AiLightScaffold
-        contentContainerStyle={keyboardBottomInset ? { paddingBottom: keyboardBottomInset + spacing[8] } : undefined}
         onBack={onBack}
         scrollable
         scrollViewRef={scrollViewRef}
