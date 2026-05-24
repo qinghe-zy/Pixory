@@ -39,7 +39,7 @@ test('IP cover metadata supports custom cover and personal blur fallback', () =>
   const ipRepositorySource = readProjectFile('src/database/repositories/ipRepository.ts');
   const secureImageSource = readProjectFile('src/components/SecureImage.tsx');
 
-  assert.match(schemaSource, /DATABASE_VERSION = 29/);
+  assert.match(schemaSource, /DATABASE_VERSION = 30/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverImageAssetId INTEGER/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurEnabled INTEGER/);
   assert.match(schemaSource, /ALTER TABLE ips ADD COLUMN coverBlurRadius INTEGER/);

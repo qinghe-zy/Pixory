@@ -9,7 +9,7 @@ const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'src/database/index.ts'), 'utf8');
 
 test('AI migration bumps database version and creates core local tables', () => {
-  assert.match(schema, /DATABASE_VERSION = 29/);
+  assert.match(schema, /DATABASE_VERSION = 30/);
   assert.match(schema, /MIGRATION_STATEMENTS_V19/);
   assert.match(schema, /MIGRATION_STATEMENTS_V20/);
   assert.match(schema, /MIGRATION_STATEMENTS_V21/);
@@ -55,7 +55,7 @@ test('AI migration bumps database version and creates core local tables', () => 
 });
 
 test('AI memory performance migration adds normalized content index and active duplicate guard', () => {
-  assert.match(schema, /DATABASE_VERSION = 29/);
+  assert.match(schema, /DATABASE_VERSION = 30/);
   assert.match(schema, /MIGRATION_STATEMENTS_V27/);
   assert.match(schema, /idx_ai_memories_normalized_content/);
   assert.match(schema, /space,\s*scope,\s*scopeId,\s*normalizedContent,\s*status/);

@@ -1,13 +1,29 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { AiBoundaryMode, AiRoleCardRecord } from '../../ai/types';
+import type { AiBoundaryMode, AiRoleCardRecord, AiRoleCardSourceType } from '../../ai/types';
 import type { PixorySpace } from '../db';
 import { createTimestamp } from '../utils';
 
-type AiRoleCardRow = Omit<AiRoleCardRecord, 'tags' | 'avatarEnabled'> & {
+type AiRoleCardRow = Omit<
+  AiRoleCardRecord,
+  'tags' | 'avatarEnabled' | 'firstMessage' | 'alternateGreetings' | 'sourceType' | 'sourceJson'
+> & {
   avatarEnabled: number;
+  firstMessage?: string | null;
+  alternateGreetingsJson?: string | null;
+  sourceType?: string | null;
+  sourceJson?: string | null;
   tagsJson: string;
 };
+
+const ROLE_CARD_SOURCE_TYPES: readonly AiRoleCardSourceType[] = [
+  'sillytavern_png_v2',
+  'sillytavern_png_v3',
+  'sillytavern_json_v2',
+  'sillytavern_json_v3',
+  'tavern_json_v1',
+  'pixory_manual',
+];
 
 export interface CreateAiRoleCardInput {
   id: string;
@@ -15,6 +31,10 @@ export interface CreateAiRoleCardInput {
   name: string;
   description?: string | null;
   prompt: string;
+  firstMessage?: string | null;
+  alternateGreetings?: string[];
+  sourceType?: AiRoleCardSourceType | null;
+  sourceJson?: string | null;
   defaultLanguage?: string | null;
   defaultModelId?: string | null;
   boundaryMode?: AiBoundaryMode;
@@ -32,14 +52,48 @@ function parseTags(tagsJson: string): string[] {
   }
 }
 
+function parseAlternateGreetings(alternateGreetingsJson?: string | null): string[] {
+  if (!alternateGreetingsJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(alternateGreetingsJson);
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (alternateGreeting: unknown): alternateGreeting is string =>
+            typeof alternateGreeting === 'string' && alternateGreeting.trim().length > 0
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeRoleCardSourceType(sourceType?: string | null): AiRoleCardSourceType | null {
+  return ROLE_CARD_SOURCE_TYPES.includes(sourceType as AiRoleCardSourceType)
+    ? (sourceType as AiRoleCardSourceType)
+    : null;
+}
+
 function mapRoleCardRow(row: AiRoleCardRow): AiRoleCardRecord {
   return {
-    ...row,
+    id: row.id,
+    space: row.space,
+    name: row.name,
     description: row.description ?? null,
+    prompt: row.prompt,
+    firstMessage: row.firstMessage ?? null,
+    alternateGreetings: parseAlternateGreetings(row.alternateGreetingsJson),
+    sourceType: normalizeRoleCardSourceType(row.sourceType),
+    sourceJson: row.sourceJson ?? null,
     defaultLanguage: row.defaultLanguage ?? null,
     defaultModelId: row.defaultModelId ?? null,
+    boundaryMode: row.boundaryMode,
     avatarEnabled: row.avatarEnabled === 1,
     avatarUri: row.avatarUri ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
     tags: parseTags(row.tagsJson),
   };
@@ -55,6 +109,10 @@ export const aiRoleCardRepository = {
         name,
         description,
         prompt,
+        firstMessage,
+        alternateGreetingsJson,
+        sourceType,
+        sourceJson,
         defaultLanguage,
         defaultModelId,
         boundaryMode,
@@ -64,12 +122,16 @@ export const aiRoleCardRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.name,
       input.description ?? null,
       input.prompt,
+      input.firstMessage ?? null,
+      JSON.stringify(input.alternateGreetings ?? []),
+      input.sourceType ?? null,
+      input.sourceJson ?? null,
       input.defaultLanguage ?? null,
       input.defaultModelId ?? null,
       input.boundaryMode ?? 'free',
@@ -85,6 +147,10 @@ export const aiRoleCardRepository = {
       name: input.name,
       description: input.description ?? null,
       prompt: input.prompt,
+      firstMessage: input.firstMessage ?? null,
+      alternateGreetings: input.alternateGreetings ?? [],
+      sourceType: input.sourceType ?? null,
+      sourceJson: input.sourceJson ?? null,
       defaultLanguage: input.defaultLanguage ?? null,
       defaultModelId: input.defaultModelId ?? null,
       boundaryMode: input.boundaryMode ?? 'free',

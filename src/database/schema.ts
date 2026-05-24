@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 29;
+export const DATABASE_VERSION = 30;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -364,6 +364,10 @@ CREATE TABLE IF NOT EXISTS ai_role_cards (
   name TEXT NOT NULL,
   description TEXT,
   prompt TEXT NOT NULL,
+  firstMessage TEXT,
+  alternateGreetingsJson TEXT NOT NULL DEFAULT '[]',
+  sourceType TEXT,
+  sourceJson TEXT,
   defaultLanguage TEXT,
   defaultModelId TEXT,
   boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
@@ -761,4 +765,11 @@ INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent
 SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
 FROM ai_memories
 WHERE status = 'active' AND supersededByMemoryId IS NULL;
+`;
+
+export const MIGRATION_STATEMENTS_V30 = `
+ALTER TABLE ai_role_cards ADD COLUMN firstMessage TEXT;
+ALTER TABLE ai_role_cards ADD COLUMN alternateGreetingsJson TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE ai_role_cards ADD COLUMN sourceType TEXT;
+ALTER TABLE ai_role_cards ADD COLUMN sourceJson TEXT;
 `;

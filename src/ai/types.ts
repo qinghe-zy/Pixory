@@ -6,6 +6,13 @@ export type AiContextType = 'normal' | 'ip' | 'knowledge_base';
 export type AiBoundaryMode = 'free' | 'prefer_material' | 'strict_material';
 export type AiRoleInstructionWeight = 'default' | 'high';
 export type AiReplyPreference = 'auto' | 'concise' | 'detailed';
+export type AiRoleCardSourceType =
+  | 'sillytavern_png_v2'
+  | 'sillytavern_png_v3'
+  | 'sillytavern_json_v2'
+  | 'sillytavern_json_v3'
+  | 'tavern_json_v1'
+  | 'pixory_manual';
 export type AiMemorySourceKind = 'auto' | 'manual';
 export type AiMessageRole = 'user' | 'assistant' | 'system';
 export type AiMessageStatus = 'draft' | 'queued' | 'generating' | 'completed' | 'failed' | 'stopped';
@@ -65,6 +72,10 @@ export interface AiRoleCardRecord {
   name: string;
   description: string | null;
   prompt: string;
+  firstMessage: string | null;
+  alternateGreetings: string[];
+  sourceType: AiRoleCardSourceType | null;
+  sourceJson: string | null;
   defaultLanguage: string | null;
   defaultModelId: string | null;
   boundaryMode: AiBoundaryMode;
