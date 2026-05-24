@@ -34,3 +34,18 @@ test('AI role cards store SillyTavern import metadata without breaking manual ca
   assert.match(service, /sourceJson\?: string \| null/);
   assert.match(service, /sourceType: input\.sourceType \?\? 'pixory_manual'/);
 });
+
+test('imported roles can start a normal chat with a saved assistant greeting', () => {
+  const roleService = read('src/ai/aiRoleCardService.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(roleService, /export async function saveImportedRoleCard/);
+  assert.match(roleService, /NormalizedSillyTavernRoleCard/);
+  assert.match(chatService, /export async function createNormalThreadFromRoleCard/);
+  assert.match(chatService, /firstMessage/);
+  assert.match(chatService, /roleSnapshotJson: JSON\.stringify\(roleCard\)/);
+  assert.match(chatService, /roleCard\.firstMessage/);
+  assert.match(chatService, /createNormalThreadFromRoleCard[\s\S]{0,1800}db\.withTransactionAsync/);
+  assert.match(chatService, /role: 'assistant'/);
+  assert.match(chatService, /status: 'completed'/);
+});

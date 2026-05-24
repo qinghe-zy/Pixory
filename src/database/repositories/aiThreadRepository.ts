@@ -193,6 +193,7 @@ export interface CreateAiThreadInput {
   materialRulesSnapshot?: string | null;
   boundaryMode?: AiBoundaryMode;
   summary?: string | null;
+  lastMessagePreview?: string | null;
 }
 
 export interface AiThreadListQuery {
@@ -457,7 +458,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -477,6 +478,7 @@ export const aiThreadRepository = {
       input.materialRulesSnapshot ?? null,
       input.boundaryMode ?? 'free',
       input.summary ?? null,
+      normalizeOptionalText(input.lastMessagePreview) ?? null,
       now,
       now
     );

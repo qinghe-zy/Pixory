@@ -1,4 +1,5 @@
 import { aiRoleCardRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
+import type { NormalizedSillyTavernRoleCard } from './sillyTavernRoleCardParser';
 import type { AiBoundaryMode, AiRoleCardRecord, AiRoleCardSourceType } from './types';
 
 export async function listRoleCards(space: PixorySpace): Promise<AiRoleCardRecord[]> {
@@ -37,6 +38,27 @@ export async function saveRoleCard(input: {
       tags: input.tags ?? [],
     })
   );
+}
+
+export async function saveImportedRoleCard(input: {
+  space: PixorySpace;
+  imported: NormalizedSillyTavernRoleCard;
+  avatarUri?: string | null;
+  firstMessage?: string | null;
+}): Promise<AiRoleCardRecord> {
+  return saveRoleCard({
+    alternateGreetings: input.imported.alternateGreetings,
+    avatarEnabled: Boolean(input.avatarUri),
+    avatarUri: input.avatarUri ?? null,
+    description: input.imported.description,
+    firstMessage: input.firstMessage ?? input.imported.firstMessage,
+    name: input.imported.name,
+    prompt: input.imported.prompt,
+    sourceJson: input.imported.sourceJson,
+    sourceType: input.imported.sourceType,
+    space: input.space,
+    tags: input.imported.tags,
+  });
 }
 
 export async function deleteRoleCards(space: PixorySpace, roleCardIds: string[]): Promise<number> {

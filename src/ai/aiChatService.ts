@@ -528,6 +528,59 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
   );
 }
 
+export async function createNormalThreadFromRoleCard(input: {
+  roleCardId: string;
+  space: PixorySpace;
+}): Promise<AiThreadRecord> {
+  await ensureBuiltInProviders(input.space);
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const roleCard = await aiRoleCardRepository.findById(db, input.roleCardId);
+    if (!roleCard || roleCard.space !== input.space) {
+      throw new Error('角色卡不存在。');
+    }
+    const { provider, model } = await resolveDefaultThreadProvider(input.space, null, null);
+    let createdThread: AiThreadRecord | null = null;
+    await db.withTransactionAsync(async () => {
+      const thread = await aiThreadRepository.createThread(db, {
+        id: createAiId('aithread'),
+        space: input.space,
+        contextType: 'normal',
+        boundIpId: null,
+        boundKnowledgeBaseId: null,
+        includeIpDocuments: false,
+        title: roleCard.name,
+        titleStatus: 'custom',
+        providerId: provider?.id ?? null,
+        modelId: model?.modelId ?? null,
+        modelSnapshotJson: JSON.stringify(model ?? {}),
+        roleCardId: roleCard.id,
+        roleSnapshotJson: JSON.stringify(roleCard),
+        roleInstructionWeight: 'default',
+        replyPreference: 'auto',
+        systemPrompt: roleCard.prompt,
+        materialRulesSnapshot: null,
+        boundaryMode: roleCard.boundaryMode,
+        lastMessagePreview: roleCard.firstMessage?.slice(0, 80) ?? null,
+      });
+      if (roleCard.firstMessage?.trim()) {
+        await aiThreadRepository.createMessage(db, {
+          id: createAiId('aimsg'),
+          threadId: thread.id,
+          role: 'assistant',
+          status: 'completed',
+          content: roleCard.firstMessage.trim(),
+          completedAt: new Date().toISOString(),
+        });
+      }
+      createdThread = thread;
+    });
+    if (!createdThread) {
+      throw new Error('创建角色聊天失败。');
+    }
+    return createdThread;
+  });
+}
+
 export async function loadThreadTitle(space: PixorySpace, threadId: string): Promise<string | null> {
   return runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
