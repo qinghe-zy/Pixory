@@ -528,22 +528,22 @@ test('AI history archive swipe follows the finger and snaps with animation', () 
   assert.match(history, /translateX: swipeTranslateX/);
 });
 
-test('AI home recent continue rows show last chat time to the minute', () => {
-  const home = fs.readFileSync(path.join(root, 'src/screens/AiHomeScreen.tsx'), 'utf8');
+test('AI drawer recent rows show last chat time to the minute', () => {
+  const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
 
-  assert.match(home, /formatAiHistoryMinute/);
-  assert.match(home, /thread\.lastMessageAt \?\? thread\.updatedAt/);
-  assert.match(home, /上次聊天/);
-  assert.match(home, /上次聊天 \$\{formatAiHistoryMinute/);
-  assert.doesNotMatch(home, /formatRecentTime\(thread\.updatedAt\)/);
+  assert.match(drawer, /formatAiHistoryMinute/);
+  assert.match(drawer, /thread\.lastMessageAt \?\? thread\.updatedAt/);
+  assert.match(drawer, /上次聊天/);
+  assert.match(drawer, /上次聊天 \$\{formatAiHistoryMinute/);
+  assert.doesNotMatch(drawer, /formatRecentTime\(thread\.updatedAt\)/);
 });
 
-test('AI history and home use shared AI history time formatter', () => {
+test('AI history and drawer use shared AI history time formatter', () => {
   const history = read('src/screens/AiHistoryScreen.tsx');
-  const home = read('src/screens/AiHomeScreen.tsx');
+  const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
 
   assert.match(history, /formatAiHistoryMinute/);
-  assert.match(home, /formatAiHistoryMinute/);
+  assert.match(drawer, /formatAiHistoryMinute/);
 });
 
 test('AI materials support batch removal and chat history supports rename', () => {
@@ -574,4 +574,33 @@ test('AI materials support batch removal and chat history supports rename', () =
   assert.match(history, /重命名/);
   assert.match(service, /renameAiThread/);
   assert.match(service, /titleStatus:\s*'custom'/);
+});
+
+test('AI chat exposes comprehensive record drawer from the top-left menu', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const app = read('App.tsx');
+  const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
+
+  assert.match(chat, /onOpenHistory/);
+  assert.match(chat, /onStartNormalChat/);
+  assert.match(chat, /AiComprehensiveRecordDrawer/);
+  assert.match(chat, /accessibilityLabel="打开综合记录"/);
+  assert.match(chat, /menu-outline/);
+  assert.doesNotMatch(chat, /accessibilityLabel="返回"[\s\S]{0,160}chevron-back/);
+  assert.match(app, /onOpenHistory=\{\(\) => pushRoute\(\{ name: 'ai-history'/);
+  assert.match(drawer, /export function AiComprehensiveRecordDrawer/);
+  assert.match(drawer, /新聊天/);
+  assert.match(drawer, /历史记录/);
+  assert.match(drawer, /最近/);
+  assert.match(drawer, /slice\(0,\s*15\)/);
+});
+
+test('AI workbench no longer shows recent continue because recents moved into drawer', () => {
+  const home = read('src/screens/AiHomeScreen.tsx');
+
+  assert.doesNotMatch(home, /最近继续/);
+  assert.doesNotMatch(home, /recentThreads/);
+  assert.doesNotMatch(home, /listAiHistoryThreads/);
+  assert.doesNotMatch(home, /formatAiHistoryMinute/);
+  assert.match(home, /角色库/);
 });
