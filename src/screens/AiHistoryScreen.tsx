@@ -187,6 +187,9 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       },
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx <= -ARCHIVE_SWIPE_THRESHOLD) {
+          if (swipedThreadId && swipedThreadId !== thread.id) {
+            animateSwipe(swipedThreadId, 0);
+          }
           setSwipedThreadId(thread.id);
           animateSwipe(thread.id, -ARCHIVE_ACTION_WIDTH);
           return;
@@ -209,8 +212,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       toggleSelected(thread.id);
       return;
     }
-    if (swipedThreadId === thread.id) {
-      animateSwipe(thread.id, 0);
+    if (swipedThreadId) {
+      animateSwipe(swipedThreadId, 0);
       setSwipedThreadId(null);
       return;
     }

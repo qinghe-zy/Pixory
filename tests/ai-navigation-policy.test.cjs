@@ -598,6 +598,7 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(drawer, /历史记录/);
   assert.match(drawer, /最近/);
   assert.match(drawer, /style=\{styles\.recentScroller\}/);
+  assert.match(drawer, /height:\s*'100%'/);
   assert.match(drawer, /recentScroller:\s*\{[\s\S]*flex:\s*1/);
   assert.match(drawer, /maxHeight:\s*'100%'/);
   assert.match(drawer, /filter\(\(thread\) => thread\.id !== activeThreadId\)\.slice\(0,\s*15\)/);

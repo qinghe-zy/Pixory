@@ -104,6 +104,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.xl,
     flexShrink: 1,
     gap: rhythm.screenSectionGap,
+    height: '100%',
     maxHeight: '100%',
     paddingBottom: spacing[5],
     paddingHorizontal: spacing[5],

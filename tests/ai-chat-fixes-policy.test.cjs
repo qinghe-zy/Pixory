@@ -732,6 +732,8 @@ test('AI history archive restore swipe clips the action background to the row', 
   assert.match(history, /swipeActionClip/);
   assert.match(history, /swipeActionSurface/);
   assert.match(history, /<View key=\{thread\.id\}>\s*\{groupLabel !== previousGroupLabel[\s\S]*<View style=\{styles\.swipeWrap\}>/);
+  assert.match(history, /if \(swipedThreadId && swipedThreadId !== thread\.id\) \{[\s\S]{0,120}animateSwipe\(swipedThreadId, 0\)/);
+  assert.match(history, /if \(swipedThreadId\) \{[\s\S]{0,160}setSwipedThreadId\(null\)[\s\S]{0,80}return;/);
   assert.match(history, /interpolate\(\{[\s\S]*inputRange:\s*\[0,\s*ARCHIVE_ACTION_WIDTH\]/);
   assert.match(history, /outputRange:\s*\[ARCHIVE_ACTION_WIDTH,\s*0\]/);
   assert.match(history, /transform:\s*\[\{ translateX: actionTranslateX \}\]/);
