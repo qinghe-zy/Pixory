@@ -42,6 +42,7 @@ import { AiMemoryBoardScreen } from './src/screens/AiMemoryBoardScreen';
 import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
+import { createNormalThreadFromRoleCard } from './src/ai/aiChatService';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -731,6 +732,18 @@ export default function App() {
         return [...current.slice(0, -1), nextRoute];
       }
       return [...current, nextRoute];
+    });
+  }
+
+  async function startChatWithRoleCard(space: PixorySpace, roleCardId: string) {
+    scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
+    const thread = await createNormalThreadFromRoleCard({ roleCardId, space });
+    replaceCurrentRoute({
+      name: 'ai-chat',
+      contextTitle: thread.title,
+      contextType: 'normal',
+      space,
+      threadId: thread.id,
     });
   }
 
@@ -1499,7 +1512,22 @@ export default function App() {
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-card-editor') {
-    content = <AiRoleCardEditorScreen onApplyRoleCard={popRoute} onBack={popRoute} roleCardId={currentRoute.roleCardId} space={currentRoute.space} threadId={currentRoute.threadId} />;
+    content = (
+      <AiRoleCardEditorScreen
+        onApplyRoleCard={popRoute}
+        onBack={popRoute}
+        onStartChatWithRole={(roleCardId) => {
+          void startChatWithRoleCard(currentRoute.space, roleCardId).catch((error) => {
+            console.warn('Pixory start chat from role card failed.', {
+              message: error instanceof Error ? error.message : 'unknown role chat error',
+            });
+          });
+        }}
+        roleCardId={currentRoute.roleCardId}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
   } else if (currentRoute.name === 'ai-ip-picker') {
     content = (
       <AiIpPickerScreen
@@ -1613,6 +1641,7 @@ export default function App() {
         }
         onOpenMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
+        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
         onStartKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
         onStartNormalChat={() =>
           pushRoute({

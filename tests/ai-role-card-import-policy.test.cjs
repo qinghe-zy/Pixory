@@ -88,3 +88,17 @@ test('role library displays saved roles as visual cards with covers and source b
   assert.match(editor, /已保存/);
   assert.match(editor, /numberOfLines=\{2\} style=\{styles\.caption\}/);
 });
+
+test('AI workbench replaces recent materials with role library while keeping materials route', () => {
+  const home = read('src/screens/AiHomeScreen.tsx');
+  const app = read('App.tsx');
+  assert.match(home, /onOpenRoleLibrary/);
+  assert.match(home, /角色库/);
+  assert.match(home, /管理和导入 AI 角色/);
+  assert.doesNotMatch(home, /listRecentMaterials/);
+  assert.doesNotMatch(home, /最近材料/);
+  assert.match(app, /onOpenRoleLibrary/);
+  assert.match(app, /onStartChatWithRole/);
+  assert.match(app, /createNormalThreadFromRoleCard/);
+  assert.match(app, /onOpenMaterials/);
+});

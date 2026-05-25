@@ -6,9 +6,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { listAiHistoryThreads } from '../ai/aiChatService';
-import { listRecentMaterials } from '../ai/aiDocumentService';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
-import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
@@ -24,6 +22,7 @@ interface AiHomeScreenProps {
   onOpenHistory: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenMaterials: () => void;
+  onOpenRoleLibrary: () => void;
   onOpenProviderSettings: () => void;
 }
 
@@ -36,10 +35,10 @@ export function AiHomeScreen({
   onOpenHistory,
   onOpenThread,
   onOpenMaterials,
+  onOpenRoleLibrary,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
-  const [recentMaterials, setRecentMaterials] = useState<AiDocumentRecord[]>([]);
   const spaceLabel = space === 'personal' ? '私密空间' : undefined;
 
   useEffect(() => {
@@ -47,18 +46,6 @@ export function AiHomeScreen({
     void listAiHistoryThreads({ limit: 3, space }).then((items) => {
       if (isMounted) {
         setRecentThreads(items);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [space]);
-
-  useEffect(() => {
-    let isMounted = true;
-    void listRecentMaterials(space).then((items) => {
-      if (isMounted) {
-        setRecentMaterials(items);
       }
     });
     return () => {
@@ -122,17 +109,17 @@ export function AiHomeScreen({
       </View>
 
       <View style={styles.section}>
-        <SectionTitle actionLabel="管理" title="最近材料" onPress={onOpenMaterials} />
-        <Pressable accessibilityRole="button" onPress={onOpenMaterials} style={({ pressed }) => [styles.recentCard, styles.materialCard, pressed && styles.pressed]}>
+        <SectionTitle actionLabel="打开" title="角色库" onPress={onOpenRoleLibrary} />
+        <Pressable accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.recentCard, styles.materialCard, pressed && styles.pressed]}>
           <View style={styles.threadIcon}>
-            <Ionicons color={aiLightColors.coralActive} name="document-text-outline" size={24} />
+            <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={24} />
           </View>
           <View style={styles.threadCopy}>
             <Text numberOfLines={1} style={styles.threadTitle}>
-              {recentMaterials[0]?.title ?? '知识库材料'}
+              管理和导入 AI 角色
             </Text>
             <Text numberOfLines={2} style={styles.threadDescription}>
-              {recentMaterials.length ? recentMaterials.slice(0, 3).map((item) => item.title).join(' / ') : '导入 TXT、Markdown、PDF、DOCX 或从 IP 生成材料'}
+              导入 SillyTavern 角色卡，保存角色，或直接开始聊天
             </Text>
           </View>
           <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />

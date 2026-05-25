@@ -299,10 +299,14 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.match(constants, /displayName: '其他模型'/);
 });
 
-test('AI workbench exposes materials without a normal-space status badge', () => {
+test('AI workbench exposes role library while material list route remains registered', () => {
   const content = home();
   assert.match(content, /onOpenMaterials/);
-  assert.match(content, /最近材料/);
+  assert.match(content, /onOpenRoleLibrary/);
+  assert.match(content, /角色库/);
+  assert.doesNotMatch(content, /最近材料/);
+  assert.doesNotMatch(content, /listRecentMaterials/);
+  assert.match(app, /ai-material-list/);
   assert.match(content, /私密空间/);
   assert.doesNotMatch(content, /普通空间/);
 });
