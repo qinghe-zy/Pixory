@@ -111,3 +111,14 @@ test('old and manual role cards do not automatically insert greetings into exist
   assert.doesNotMatch(chatService, /function applyRoleCardToThread[\s\S]*createMessage\([\s\S]*firstMessage/);
   assert.match(chatService, /createNormalThreadFromRoleCard[\s\S]*roleCard\.firstMessage/);
 });
+
+test('role card import remains local only', () => {
+  const parser = read('src/ai/sillyTavernRoleCardParser.ts');
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const service = read('src/ai/aiRoleCardService.ts');
+  assert.doesNotMatch(parser, /fetch\(|XMLHttpRequest|https?:\/\//);
+  assert.doesNotMatch(editor, /fetch\(|XMLHttpRequest|https?:\/\//);
+  assert.doesNotMatch(service, /fetch\(|XMLHttpRequest|https?:\/\//);
+  assert.match(editor, /copyAiRoleAvatarToAppStorage/);
+  assert.match(service, /runWithDatabaseSpace/);
+});
