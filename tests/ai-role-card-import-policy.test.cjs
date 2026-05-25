@@ -102,3 +102,12 @@ test('AI workbench replaces recent materials with role library while keeping mat
   assert.match(app, /createNormalThreadFromRoleCard/);
   assert.match(app, /onOpenMaterials/);
 });
+
+test('old and manual role cards do not automatically insert greetings into existing sessions', () => {
+  const chatService = read('src/ai/aiChatService.ts');
+  const roleService = read('src/ai/aiRoleCardService.ts');
+  assert.match(roleService, /sourceType: input\.sourceType \?\? 'pixory_manual'/);
+  assert.match(chatService, /applyRoleCardToThread/);
+  assert.doesNotMatch(chatService, /function applyRoleCardToThread[\s\S]*createMessage\([\s\S]*firstMessage/);
+  assert.match(chatService, /createNormalThreadFromRoleCard[\s\S]*roleCard\.firstMessage/);
+});
