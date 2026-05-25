@@ -197,6 +197,7 @@ export function AiChatScreen({
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
+  const [pendingMessageActionId, setPendingMessageActionId] = useState<string | null>(null);
   const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
@@ -946,6 +947,7 @@ export function AiChatScreen({
       }
     }
     const targetThreadId = activeThreadId;
+    setPendingMessageActionId(userMessageId);
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setGenerating(true);
@@ -992,6 +994,7 @@ export function AiChatScreen({
       setEditingUserMessageId(userMessageId);
       setErrorMessage(error instanceof Error ? error.message : '重写失败');
     } finally {
+      setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
@@ -1048,6 +1051,7 @@ export function AiChatScreen({
   }
 
   async function handleConfirmedRegenerate(targetThreadId: string, targetMessageId: string, actionToken: number) {
+    setPendingMessageActionId(targetMessageId);
     setGenerating(true);
     setActiveAssistantId(targetMessageId);
     setErrorMessage(null);
@@ -1081,6 +1085,7 @@ export function AiChatScreen({
       }
       setErrorMessage(error instanceof Error ? error.message : '刷新失败');
     } finally {
+      setPendingMessageActionId(null);
       finishGenerationAction(actionToken);
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
@@ -1193,6 +1198,7 @@ export function AiChatScreen({
             editingMessageId={editingUserMessageId}
             generating={generating}
             message={message}
+            pendingActionMessageId={pendingMessageActionId}
             showAvatar={item.showAvatar}
             space={space}
             onCopy={(targetMessage) => {
@@ -1240,6 +1246,7 @@ export function AiChatScreen({
       handleSubmitInlineRewrite,
       memoryCapturesBySourceMessageId,
       openCitation,
+      pendingMessageActionId,
       space,
     ]
   );

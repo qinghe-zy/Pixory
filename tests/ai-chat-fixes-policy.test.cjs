@@ -713,3 +713,17 @@ test('AI history archive restore swipe clips the action background to the row', 
   assert.match(history, /ARCHIVE_SWIPE_THRESHOLD/);
   assert.doesNotMatch(history, /style=\{\(\{ pressed \}\) => \[styles\.archiveAction/);
 });
+
+test('AI edit and regenerate actions expose pending guards and call service paths', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(chat, /const \[pendingMessageActionId, setPendingMessageActionId\]/);
+  assert.match(chat, /setPendingMessageActionId\(userMessageId\)/);
+  assert.match(chat, /setPendingMessageActionId\(targetMessageId\)/);
+  assert.match(chat, /rewriteUserMessage\(/);
+  assert.match(chat, /regenerateAssistantMessage\(/);
+  assert.match(chat, /finally \{[\s\S]{0,300}setPendingMessageActionId\(null\)/);
+  assert.match(service, /export async function rewriteUserMessage/);
+  assert.match(service, /export async function regenerateAssistantMessage/);
+});

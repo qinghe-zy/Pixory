@@ -26,6 +26,7 @@ interface AiMessageBubbleProps {
   streaming?: boolean;
   generating?: boolean;
   editingMessageId?: string | null;
+  pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
   onEditUser: (messageId: string, content: string) => void;
   onChangeEditDraft?: (content: string) => void;
@@ -44,6 +45,7 @@ function AiMessageBubbleComponent({
   space,
   streaming = false,
   editingMessageId = null,
+  pendingActionMessageId = null,
   onCopy,
   onCancelEdit,
   onChangeEditDraft,
@@ -60,8 +62,9 @@ function AiMessageBubbleComponent({
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
-  const canEdit = isUser && !generating && message.versionIndex === message.versionTotal;
-  const canRegenerate = !isUser && !generating && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
+  const actionPending = pendingActionMessageId === message.id;
+  const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
+  const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
@@ -240,6 +243,7 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.space === next.space &&
     previous.streaming === next.streaming &&
     previous.generating === next.generating &&
+    previous.pendingActionMessageId === next.pendingActionMessageId &&
     previous.showAvatar === next.showAvatar &&
     previous.editingMessageId === next.editingMessageId &&
     previous.assistantAvatar?.avatarEnabled === next.assistantAvatar?.avatarEnabled &&
