@@ -702,3 +702,14 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
   assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传图片[\s\S]{0,400}上传视频[\s\S]{0,400}上传文档/);
   assert.doesNotMatch(chat, /attachmentSheetVisible/);
 });
+
+test('AI history archive restore swipe clips the action background to the row', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /swipeActionClip/);
+  assert.match(history, /swipeActionSurface/);
+  assert.match(history, /interpolate\(\{[\s\S]*inputRange:\s*\[0,\s*ARCHIVE_ACTION_WIDTH\]/);
+  assert.match(history, /Animated\.spring/);
+  assert.match(history, /ARCHIVE_SWIPE_THRESHOLD/);
+  assert.doesNotMatch(history, /style=\{\(\{ pressed \}\) => \[styles\.archiveAction/);
+});

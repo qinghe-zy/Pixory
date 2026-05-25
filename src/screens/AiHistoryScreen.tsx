@@ -27,8 +27,8 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
   { key: 'customer_project', label: '项目' },
   { key: 'archived', label: '已归档' },
 ];
-const ARCHIVE_ACTION_WIDTH = 78;
-const ARCHIVE_SWIPE_THRESHOLD = 52;
+const ARCHIVE_ACTION_WIDTH = 96;
+const ARCHIVE_SWIPE_THRESHOLD = 72;
 
 function historyGroupLabel(value: string): string {
   const date = new Date(value);
@@ -186,7 +186,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
         swipeValue.setValue(next);
       },
       onPanResponderRelease: (_event, gesture) => {
-        if (gesture.dx < -ARCHIVE_SWIPE_THRESHOLD) {
+        if (gesture.dx <= -ARCHIVE_SWIPE_THRESHOLD) {
           setSwipedThreadId(thread.id);
           animateSwipe(thread.id, -ARCHIVE_ACTION_WIDTH);
           return;
@@ -305,22 +305,30 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             items.map((thread, index) => {
               const selected = selectedIds.includes(thread.id);
               const swipeTranslateX = getSwipeAnimatedValue(thread.id);
+              const swipeActionProgress = Animated.multiply(swipeTranslateX, -1);
+              const actionWidth = swipeActionProgress.interpolate({
+                inputRange: [0, ARCHIVE_ACTION_WIDTH],
+                outputRange: [0, ARCHIVE_ACTION_WIDTH],
+                extrapolate: 'clamp',
+              });
               const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
               const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
               return (
                 <View key={thread.id} style={styles.swipeWrap}>
                   {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
                   {!isSelecting ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => {
-                        void toggleArchive(thread);
-                      }}
-                      style={({ pressed }) => [styles.archiveAction, pressed && styles.pressed]}
-                    >
-                      <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
-                      <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
-                    </Pressable>
+                    <Animated.View style={[styles.swipeActionClip, { width: actionWidth }]}>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => {
+                          void toggleArchive(thread);
+                        }}
+                        style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
+                      >
+                        <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
+                        <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
+                      </Pressable>
+                    </Animated.View>
                   ) : null}
                   <Animated.View
                     {...getThreadSwipeHandlers(thread)}
@@ -515,7 +523,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[1],
     paddingHorizontal: spacing[1],
   },
-  archiveAction: {
+  swipeActionClip: {
+    bottom: 0,
+    overflow: 'hidden',
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  swipeActionSurface: {
     alignItems: 'center',
     backgroundColor: aiLightColors.coral,
     borderRadius: radius.lg,

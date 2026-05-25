@@ -454,7 +454,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   }
   assert.match(history, /PanResponder\.create/);
   assert.match(history, /swipedThreadId/);
-  assert.match(history, /styles\.archiveAction/);
+  assert.match(history, /styles\.swipeActionSurface/);
   assert.match(history, /onLongPress=\{\(\) => toggleSelected\(thread\.id\)\}/);
   assert.match(history, /accessibilityLabel="会话操作"/);
   assert.match(history, /styles\.rowMenuButton/);
