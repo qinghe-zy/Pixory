@@ -1,16 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightInputRow, AiLightTextareaRow } from '../components/ai/AiLightField';
+import { AiRoleCardImportPreview } from '../components/ai/AiRoleCardImportPreview';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
 import { SecureImage } from '../components/SecureImage';
 import { applyRoleCardToThread } from '../ai/aiChatService';
-import { deleteRoleCards, listRoleCards, saveRoleCard } from '../ai/aiRoleCardService';
+import { deleteRoleCards, listRoleCards, saveImportedRoleCard, saveRoleCard } from '../ai/aiRoleCardService';
+import {
+  parseSillyTavernJson,
+  parseSillyTavernPngBase64,
+  type NormalizedSillyTavernRoleCard,
+  type SillyTavernParseResult,
+} from '../ai/sillyTavernRoleCardParser';
 import type { AiRoleCardRecord } from '../ai/types';
 import { copyAiRoleAvatarToAppStorage } from '../services/fileStorageService';
 import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -22,9 +31,17 @@ interface AiRoleCardEditorScreenProps {
   threadId?: string;
   onBack: () => void;
   onApplyRoleCard: (roleCardId?: string | null) => void;
+  onStartChatWithRole?: (roleCardId: string) => void;
 }
 
-export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, onApplyRoleCard }: AiRoleCardEditorScreenProps) {
+export function AiRoleCardEditorScreen({
+  space,
+  roleCardId,
+  threadId,
+  onBack,
+  onApplyRoleCard,
+  onStartChatWithRole,
+}: AiRoleCardEditorScreenProps) {
   const [name, setName] = useState('素材整理助手');
   const [description, setDescription] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -38,6 +55,10 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
   const [confirmingBatchDelete, setConfirmingBatchDelete] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importedRole, setImportedRole] = useState<NormalizedSillyTavernRoleCard | null>(null);
+  const [importedAvatarUri, setImportedAvatarUri] = useState<string | null>(null);
+  const [selectedGreeting, setSelectedGreeting] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   const loadCards = useCallback(async () => {
@@ -102,6 +123,125 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
     }
   }
 
+  function isJsonAsset(asset: DocumentPicker.DocumentPickerAsset): boolean {
+    return asset.mimeType === 'application/json' || asset.name.toLowerCase().endsWith('.json');
+  }
+
+  function isPngAsset(asset: DocumentPicker.DocumentPickerAsset): boolean {
+    return asset.mimeType === 'image/png' || asset.name.toLowerCase().endsWith('.png');
+  }
+
+  async function parsePickedRoleCardAsset(asset: DocumentPicker.DocumentPickerAsset): Promise<SillyTavernParseResult> {
+    if (isJsonAsset(asset)) {
+      const text = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      return parseSillyTavernJson(text);
+    }
+    if (isPngAsset(asset)) {
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      return parseSillyTavernPngBase64(base64);
+    }
+    return { ok: false, code: 'unsupported_file', message: '请选择 PNG 或 JSON 角色卡。' };
+  }
+
+  async function copyImportedAvatar(assetUri: string): Promise<string | null> {
+    try {
+      return await copyAiRoleAvatarToAppStorage(assetUri, space);
+    } catch (error) {
+      setStatus(error instanceof Error ? `头像复制失败：${error.message}` : '头像复制失败');
+      return null;
+    }
+  }
+
+  async function importRoleCard() {
+    setStatus(null);
+    setImportedRole(null);
+    setImportedAvatarUri(null);
+    setSelectedGreeting(null);
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+      type: ['image/png', 'application/json'],
+    });
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    setImporting(true);
+    try {
+      const parsed = await parsePickedRoleCardAsset(asset);
+      if (!parsed.ok) {
+        if (parsed.code === 'missing_chara' && isPngAsset(asset)) {
+          const copiedUri = await copyImportedAvatar(asset.uri);
+          if (copiedUri) {
+            setAvatarUri(copiedUri);
+            setAvatarEnabled(true);
+            setStatus('未检测到角色数据，已将图片作为角色头像。');
+          }
+          return;
+        }
+        setStatus(parsed.message);
+        return;
+      }
+
+      const copiedAvatarUri = isPngAsset(asset) ? await copyImportedAvatar(asset.uri) : null;
+      if (isPngAsset(asset) && !copiedAvatarUri) {
+        return;
+      }
+      setImportedRole(parsed.normalized);
+      setImportedAvatarUri(copiedAvatarUri);
+      setSelectedGreeting(parsed.normalized.firstMessage ?? parsed.normalized.alternateGreetings[0] ?? null);
+    } catch (error) {
+      setStatus(error instanceof Error ? `导入失败：${error.message}` : '导入失败');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function saveImported(startChat: boolean) {
+    if (!importedRole) {
+      return null;
+    }
+    setSaving(true);
+    try {
+      const card = await saveImportedRoleCard({
+        avatarUri: importedAvatarUri,
+        firstMessage: selectedGreeting,
+        imported: importedRole,
+        space,
+      });
+      setImportedRole(null);
+      setImportedAvatarUri(null);
+      setSelectedGreeting(null);
+      setStatus(startChat && onStartChatWithRole ? '已保存，正在开始聊天。' : '已保存角色。');
+      await loadCards();
+      if (startChat) {
+        onStartChatWithRole?.(card.id);
+      }
+      return card;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存失败');
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editImportedRole() {
+    if (!importedRole) {
+      return;
+    }
+    setName(importedRole.name);
+    setDescription(importedRole.description ?? '');
+    setPrompt(importedRole.prompt);
+    setAvatarUri(importedAvatarUri);
+    setAvatarEnabled(Boolean(importedAvatarUri));
+    setImportedRole(null);
+    setImportedAvatarUri(null);
+    setSelectedGreeting(null);
+    setStatus('已填入角色编辑表单。');
+  }
+
   async function deleteSelectedCards() {
     const ids = selectedCardIds;
     if (!ids.length) {
@@ -160,6 +300,16 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
     }
     setStatus('已应用。');
     await applyRoleCard(saved.id);
+  }
+
+  function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
+    if (!card.sourceType || card.sourceType === 'pixory_manual') {
+      return 'DIY 角色';
+    }
+    if (card.sourceType.startsWith('sillytavern_') || card.sourceType === 'tavern_json_v1') {
+      return '酒馆角色';
+    }
+    return '角色';
   }
 
   const selectionFooter = selectedCardIds.length ? (
@@ -259,6 +409,7 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
       </View>
 
       <View style={styles.actions}>
+        <AiLightButton label={importing ? '解析角色卡中' : '导入角色卡'} loading={importing} onPress={() => void importRoleCard()} variant="outline" />
         <AiLightButton label="应用" onPress={() => void applyCurrentRole()} />
         <AiLightButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
         <AiLightButton label="跳过" onPress={() => void applyRoleCard(null)} variant="ghost" />
@@ -266,11 +417,34 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
+      {importedRole ? (
+        <AiRoleCardImportPreview
+          avatarUri={importedAvatarUri}
+          imported={importedRole}
+          selectedGreeting={selectedGreeting}
+          space={space}
+          onCancel={() => {
+            setImportedRole(null);
+            setImportedAvatarUri(null);
+            setSelectedGreeting(null);
+          }}
+          onEdit={editImportedRole}
+          onSave={() => {
+            void saveImported(false);
+          }}
+          onSaveAndStart={() => {
+            void saveImported(true);
+          }}
+          onSelectGreeting={setSelectedGreeting}
+        />
+      ) : null}
+
       {cards.length ? (
         <View style={styles.cardList}>
           <Text style={styles.sectionTitle}>已保存</Text>
           {cards.map((card) => {
             const selected = selectedCardIds.includes(card.id);
+            const sourceLabel = getRoleCardSourceLabel(card);
             return (
               <Pressable
                 accessibilityRole="button"
@@ -286,20 +460,26 @@ export function AiRoleCardEditorScreen({ space, roleCardId, threadId, onBack, on
                 style={({ pressed }) => [styles.savedCard, selected && styles.selectedSavedCard, pressed && styles.pressed]}
               >
                 <View style={styles.savedHeader}>
-                  <View style={styles.savedAvatar}>
+                  <View style={styles.roleCover}>
                     {card.avatarEnabled && card.avatarUri ? (
-                      <SecureImage contentFit="cover" space={space} style={styles.savedAvatarImage} uri={card.avatarUri} />
+                      <SecureImage contentFit="cover" space={space} style={styles.roleCoverImage} uri={card.avatarUri} />
                     ) : (
-                      <Ionicons color={card.avatarEnabled ? aiLightColors.coralActive : aiLightColors.mutedSoft} name={card.avatarEnabled ? 'person-circle-outline' : 'ellipse-outline'} size={metrics.iconSizeMd} />
+                      <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
                     )}
                   </View>
                   <View style={styles.savedCopy}>
-                    <Text style={styles.savedTitle}>{card.name}</Text>
+                    <View style={styles.savedTitleRow}>
+                      <Text numberOfLines={1} style={styles.savedTitle}>{card.name}</Text>
+                      {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeMd} /> : null}
+                    </View>
+                    <View style={styles.sourceBadge}>
+                      <Text style={styles.sourceBadgeText}>{sourceLabel}</Text>
+                    </View>
                     <Text numberOfLines={2} style={styles.caption}>{card.description ?? card.prompt}</Text>
                   </View>
-                  {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeMd} /> : null}
                 </View>
-                {!selectedCardIds.length ? <AiLightButton label="应用到当前会话" onPress={() => void applyRoleCard(card.id)} variant="ghost" /> : null}
+                {!selectedCardIds.length && threadId ? <AiLightButton label="应用到当前会话" onPress={() => void applyRoleCard(card.id)} variant="ghost" /> : null}
+                {!selectedCardIds.length && !threadId ? <AiLightButton label="开始聊天" onPress={() => onStartChatWithRole?.(card.id)} variant="ghost" /> : null}
               </Pressable>
             );
           })}
@@ -440,20 +620,22 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.coral,
   },
   savedHeader: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
   },
-  savedAvatar: {
+  roleCover: {
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
-    height: metrics.minTouchSize,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: metrics.minTouchSize * 2,
     justifyContent: 'center',
     overflow: 'hidden',
-    width: metrics.minTouchSize,
+    width: metrics.minTouchSize * 2,
   },
-  savedAvatarImage: {
+  roleCoverImage: {
     height: '100%',
     width: '100%',
   },
@@ -487,8 +669,28 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.78,
   },
+  savedTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+  },
   savedTitle: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
+    flex: 1,
+  },
+  sourceBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  sourceBadgeText: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.muted,
+    fontWeight: '700',
   },
 });

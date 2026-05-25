@@ -61,3 +61,30 @@ test('role card import preview exposes save start and edit actions', () => {
   assert.match(preview, /SecureImage/);
   assert.doesNotMatch(preview, /唤醒|神经元|呼吸|外发光/);
 });
+
+test('role editor imports local PNG and JSON role cards into preview flow', () => {
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  assert.match(editor, /expo-document-picker/);
+  assert.match(editor, /expo-file-system/);
+  assert.match(editor, /parseSillyTavernJson/);
+  assert.match(editor, /parseSillyTavernPngBase64/);
+  assert.match(editor, /AiRoleCardImportPreview/);
+  assert.match(editor, /导入角色卡/);
+  assert.match(editor, /saveImportedRoleCard/);
+  assert.match(editor, /copyAiRoleAvatarToAppStorage/);
+  assert.match(editor, /onStartChatWithRole/);
+  assert.doesNotMatch(editor, /fetch\(/);
+});
+
+test('role library displays saved roles as visual cards with covers and source badges', () => {
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  assert.match(editor, /function getRoleCardSourceLabel/);
+  assert.match(editor, /DIY 角色/);
+  assert.match(editor, /酒馆角色/);
+  assert.match(editor, /styles\.roleCover/);
+  assert.match(editor, /styles\.sourceBadge/);
+  assert.match(editor, /card\.avatarEnabled && card\.avatarUri/);
+  assert.match(editor, /SecureImage[\s\S]*style=\{styles\.roleCoverImage\}/);
+  assert.match(editor, /已保存/);
+  assert.match(editor, /numberOfLines=\{2\} style=\{styles\.caption\}/);
+});
