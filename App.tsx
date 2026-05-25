@@ -1516,13 +1516,7 @@ export default function App() {
       <AiRoleCardEditorScreen
         onApplyRoleCard={popRoute}
         onBack={popRoute}
-        onStartChatWithRole={(roleCardId) => {
-          void startChatWithRoleCard(currentRoute.space, roleCardId).catch((error) => {
-            console.warn('Pixory start chat from role card failed.', {
-              message: error instanceof Error ? error.message : 'unknown role chat error',
-            });
-          });
-        }}
+        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
         roleCardId={currentRoute.roleCardId}
         space={currentRoute.space}
         threadId={currentRoute.threadId}

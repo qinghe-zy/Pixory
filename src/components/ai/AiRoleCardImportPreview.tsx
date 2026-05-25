@@ -9,8 +9,11 @@ import { AiLightButton } from './AiLightButton';
 import { aiLightColors } from './aiLightTheme';
 
 interface AiRoleCardImportPreviewProps {
+  allowStartChat?: boolean;
   avatarUri: string | null;
   imported: NormalizedSillyTavernRoleCard;
+  saveLabel?: string;
+  saving?: boolean;
   selectedGreeting: string | null;
   space: PixorySpace;
   onCancel: () => void;
@@ -21,8 +24,11 @@ interface AiRoleCardImportPreviewProps {
 }
 
 export function AiRoleCardImportPreview({
+  allowStartChat = true,
   avatarUri,
   imported,
+  saveLabel = '保存角色',
+  saving = false,
   selectedGreeting,
   space,
   onCancel,
@@ -107,9 +113,11 @@ export function AiRoleCardImportPreview({
       </View>
 
       <View style={styles.actions}>
-        <AiLightButton label="保存角色" onPress={onSave} />
-        <AiLightButton label="保存并开始聊天" onPress={onSaveAndStart} variant="outline" />
-        <AiLightButton label="编辑后保存" onPress={onEdit} variant="ghost" />
+        <AiLightButton disabled={saving} label={saveLabel} loading={saving} onPress={onSave} />
+        {allowStartChat ? (
+          <AiLightButton disabled={saving} label="保存并开始聊天" onPress={onSaveAndStart} variant="outline" />
+        ) : null}
+        <AiLightButton disabled={saving} label="编辑后保存" onPress={onEdit} variant="ghost" />
       </View>
     </View>
   );

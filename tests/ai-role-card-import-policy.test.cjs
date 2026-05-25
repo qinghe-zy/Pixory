@@ -53,8 +53,14 @@ test('imported roles can start a normal chat with a saved assistant greeting', (
 test('role card import preview exposes save start and edit actions', () => {
   const preview = read('src/components/ai/AiRoleCardImportPreview.tsx');
   assert.match(preview, /AiRoleCardImportPreview/);
+  assert.match(preview, /allowStartChat\?: boolean/);
+  assert.match(preview, /saving\?: boolean/);
+  assert.match(preview, /saveLabel\?: string/);
   assert.match(preview, /保存角色/);
   assert.match(preview, /保存并开始聊天/);
+  assert.match(preview, /allowStartChat \? \(/);
+  assert.match(preview, /loading=\{saving\}/);
+  assert.match(preview, /disabled=\{saving\}/);
   assert.match(preview, /编辑后保存/);
   assert.match(preview, /默认开场白/);
   assert.match(preview, /worldBookTruncated/);
@@ -73,7 +79,22 @@ test('role editor imports local PNG and JSON role cards into preview flow', () =
   assert.match(editor, /saveImportedRoleCard/);
   assert.match(editor, /copyAiRoleAvatarToAppStorage/);
   assert.match(editor, /onStartChatWithRole/);
+  assert.match(editor, /allowStartChat=\{!threadId\}/);
+  assert.match(editor, /saveLabel=\{threadId \? '保存并应用' : '保存角色'\}/);
+  assert.match(editor, /saving=\{saving\}/);
+  assert.match(editor, /savingImportedRef\.current/);
+  assert.match(editor, /else if \(threadId\) \{[\s\S]{0,120}await applyRoleCard\(card\.id\)/);
   assert.doesNotMatch(editor, /fetch\(/);
+});
+
+test('role card start-chat failures surface as visible editor status', () => {
+  const app = read('App.tsx');
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  assert.match(editor, /onStartChatWithRole\?: \(roleCardId: string\) => Promise<void> \| void/);
+  assert.match(editor, /await onStartChatWithRole\?\.\(card\.id\)/);
+  assert.match(editor, /角色已保存，但开始聊天失败/);
+  assert.match(app, /onStartChatWithRole=\{\(roleCardId\) => startChatWithRoleCard\(currentRoute\.space, roleCardId\)\}/);
+  assert.doesNotMatch(app, /Pixory start chat from role card failed/);
 });
 
 test('role library displays saved roles as visual cards with covers and source badges', () => {

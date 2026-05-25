@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -31,7 +31,7 @@ interface AiRoleCardEditorScreenProps {
   threadId?: string;
   onBack: () => void;
   onApplyRoleCard: (roleCardId?: string | null) => void;
-  onStartChatWithRole?: (roleCardId: string) => void;
+  onStartChatWithRole?: (roleCardId: string) => Promise<void> | void;
 }
 
 export function AiRoleCardEditorScreen({
@@ -59,6 +59,7 @@ export function AiRoleCardEditorScreen({
   const [importedAvatarUri, setImportedAvatarUri] = useState<string | null>(null);
   const [selectedGreeting, setSelectedGreeting] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const savingImportedRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   const loadCards = useCallback(async () => {
@@ -199,9 +200,10 @@ export function AiRoleCardEditorScreen({
   }
 
   async function saveImported(startChat: boolean) {
-    if (!importedRole) {
+    if (!importedRole || saving || savingImportedRef.current) {
       return null;
     }
+    savingImportedRef.current = true;
     setSaving(true);
     try {
       const card = await saveImportedRoleCard({
@@ -213,16 +215,29 @@ export function AiRoleCardEditorScreen({
       setImportedRole(null);
       setImportedAvatarUri(null);
       setSelectedGreeting(null);
-      setStatus(startChat && onStartChatWithRole ? '已保存，正在开始聊天。' : '已保存角色。');
+      setStatus(
+        startChat && !threadId && onStartChatWithRole
+          ? '已保存，正在开始聊天。'
+          : threadId
+            ? '已保存并应用。'
+            : '已保存角色。'
+      );
       await loadCards();
-      if (startChat) {
-        onStartChatWithRole?.(card.id);
+      if (startChat && !threadId) {
+        try {
+          await onStartChatWithRole?.(card.id);
+        } catch (error) {
+          setStatus(error instanceof Error ? `角色已保存，但开始聊天失败：${error.message}` : '角色已保存，但开始聊天失败');
+        }
+      } else if (threadId) {
+        await applyRoleCard(card.id);
       }
       return card;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '保存失败');
       return null;
     } finally {
+      savingImportedRef.current = false;
       setSaving(false);
     }
   }
@@ -419,8 +434,11 @@ export function AiRoleCardEditorScreen({
 
       {importedRole ? (
         <AiRoleCardImportPreview
+          allowStartChat={!threadId}
           avatarUri={importedAvatarUri}
           imported={importedRole}
+          saveLabel={threadId ? '保存并应用' : '保存角色'}
+          saving={saving}
           selectedGreeting={selectedGreeting}
           space={space}
           onCancel={() => {
