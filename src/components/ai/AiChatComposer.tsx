@@ -322,9 +322,9 @@ const styles = StyleSheet.create({
   composerShell: {
     alignItems: 'flex-end',
     backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
+    borderColor: aiLightColors.mutedSoft,
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: spacing[2],
     minHeight: spacing[10],

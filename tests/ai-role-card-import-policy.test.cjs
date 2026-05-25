@@ -13,7 +13,7 @@ test('AI role cards store SillyTavern import metadata without breaking manual ca
   const repository = read('src/database/repositories/aiRoleCardRepository.ts');
   const service = read('src/ai/aiRoleCardService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 30/);
+  assert.match(schema, /DATABASE_VERSION = 32/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN firstMessage TEXT/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN alternateGreetingsJson TEXT NOT NULL DEFAULT '\[\]'/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN sourceType TEXT/);
@@ -179,4 +179,18 @@ test('role card import remains local only', () => {
   assert.doesNotMatch(service, /fetch\(|XMLHttpRequest|https?:\/\//);
   assert.match(editor, /copyAiRoleAvatarToAppStorage/);
   assert.match(service, /runWithDatabaseSpace/);
+});
+
+test('role editor keeps IP avatar images collapsed until the user selects an IP', () => {
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+
+  assert.match(editor, /ROLE_CONTENT_TEXTAREA_MIN_HEIGHT = 168/);
+  assert.match(editor, /minHeight=\{ROLE_CONTENT_TEXTAREA_MIN_HEIGHT\}/);
+  assert.doesNotMatch(editor, /minHeight=\{240\}/);
+  assert.match(editor, /setAvatarIpId\(\(current\) => current && nextIps\.some\(\(ip\) => ip\.id === current\) \? current : null\)/);
+  assert.match(editor, /avatarIpId == null \? null : avatarCandidates\.length \? \(/);
+  assert.match(editor, /styles\.avatarGrid/);
+  assert.match(editor, /当前 IP 还没有可用图片。/);
+  assert.match(editor, /avatarPanel:\s*\{[\s\S]{0,220}gap:\s*rhythm\.inlineGap[\s\S]{0,120}padding:\s*spacing\[2\]/);
+  assert.match(editor, /avatarChoice:\s*\{[\s\S]{0,180}height:\s*metrics\.minTouchSize[\s\S]{0,80}width:\s*metrics\.minTouchSize/);
 });

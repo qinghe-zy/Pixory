@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { AppDialog } from '../AppDialog';
 import type { AiThreadHistoryItem } from '../../database/repositories/aiThreadRepository';
 import { metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { formatAiHistoryMinute } from '../../utils/aiTimeFormatters';
@@ -14,6 +16,8 @@ interface AiComprehensiveRecordDrawerProps {
   onNewChat: () => void;
   onOpenHistory: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
+  onRenameThread?: (thread: AiThreadHistoryItem, title: string) => Promise<void> | void;
+  onDeleteThread?: (thread: AiThreadHistoryItem) => Promise<void> | void;
 }
 
 export function AiComprehensiveRecordDrawer({
@@ -24,47 +28,169 @@ export function AiComprehensiveRecordDrawer({
   onNewChat,
   onOpenHistory,
   onOpenThread,
+  onRenameThread,
+  onDeleteThread,
 }: AiComprehensiveRecordDrawerProps) {
+  const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
+  const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteThread, setDeleteThread] = useState<AiThreadHistoryItem | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
+
   if (!visible) {
     return null;
   }
 
   const visibleRecents = recentThreads.filter((thread) => thread.id !== activeThreadId).slice(0, 15);
 
+  function openRecentActionPopover(thread: AiThreadHistoryItem) {
+    setStatusText(null);
+    setActionThread((current) => current?.id === thread.id ? null : thread);
+  }
+
+  function startRenameThread(thread: AiThreadHistoryItem) {
+    setActionThread(null);
+    setRenameThread(thread);
+    setRenameValue(thread.title);
+    setStatusText(null);
+  }
+
+  function startDeleteThread(thread: AiThreadHistoryItem) {
+    setActionThread(null);
+    setDeleteThread(thread);
+    setStatusText(null);
+  }
+
+  async function confirmRenameThread() {
+    if (!renameThread || !onRenameThread) {
+      return;
+    }
+    const title = renameValue.trim();
+    if (!title) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRenameThread(renameThread, title);
+      setRenameThread(null);
+      setRenameValue('');
+      setStatusText('已重命名会话。');
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '重命名失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDeleteThread() {
+    if (!deleteThread || !onDeleteThread) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await onDeleteThread(deleteThread);
+      setDeleteThread(null);
+      setStatusText('已删除会话。');
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : '删除失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <View pointerEvents="box-none" style={styles.overlay}>
-      <Pressable accessibilityLabel="关闭综合记录" accessibilityRole="button" onPress={onClose} style={styles.scrim} />
-      <View style={styles.drawer}>
-        <Text style={styles.brand}>Pixory AI</Text>
-        <View style={styles.primaryActions}>
-          <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
-          <DrawerAction icon="chatbubbles-outline" label="历史记录" onPress={onOpenHistory} />
+    <>
+      <View pointerEvents="box-none" style={styles.overlay}>
+        <Pressable accessibilityLabel="关闭综合记录" accessibilityRole="button" onPress={onClose} style={styles.scrim} />
+        <View style={styles.drawer}>
+          <Text style={styles.brand}>Pixory AI</Text>
+          <View style={styles.primaryActions}>
+            <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
+            <DrawerAction icon="chatbubbles-outline" label="历史记录" onPress={onOpenHistory} />
+          </View>
+          <View style={styles.divider} />
+          <Text style={styles.sectionTitle}>最近</Text>
+          {statusText ? <Text accessibilityLiveRegion="polite" style={styles.statusText}>{statusText}</Text> : null}
+          <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
+            {visibleRecents.length ? (
+              visibleRecents.map((thread) => (
+                <Pressable
+                  accessibilityHint="长按可重命名或删除"
+                  accessibilityRole="button"
+                  key={thread.id}
+                  onLongPress={() => openRecentActionPopover(thread)}
+                  onPress={() => {
+                    if (actionThread) {
+                      setActionThread(null);
+                      return;
+                    }
+                    onOpenThread(thread);
+                  }}
+                  style={({ pressed }) => [styles.recentRow, actionThread?.id === thread.id && styles.recentRowActive, pressed && styles.pressed]}
+                >
+                  <Text numberOfLines={1} style={styles.recentTitle}>
+                    {thread.title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.recentMeta}>
+                    {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
+                  </Text>
+                  {actionThread?.id === thread.id ? (
+                    <View style={styles.recentActionPopover}>
+                      <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                        <Ionicons color={aiLightColors.ink} name="create-outline" size={16} />
+                        <Text style={styles.recentActionText}>重命名</Text>
+                      </Pressable>
+                      <View style={styles.recentActionDivider} />
+                      <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                        <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                        <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>暂无最近会话</Text>
+            )}
+          </ScrollView>
         </View>
-        <View style={styles.divider} />
-        <Text style={styles.sectionTitle}>最近</Text>
-        <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
-          {visibleRecents.length ? (
-            visibleRecents.map((thread) => (
-              <Pressable
-                accessibilityRole="button"
-                key={thread.id}
-                onPress={() => onOpenThread(thread)}
-                style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
-              >
-                <Text numberOfLines={1} style={styles.recentTitle}>
-                  {thread.title}
-                </Text>
-                <Text numberOfLines={1} style={styles.recentMeta}>
-                  {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
-                </Text>
-              </Pressable>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>暂无最近会话</Text>
-          )}
-        </ScrollView>
       </View>
-    </View>
+      <AppDialog
+        compactActions
+        onClose={() => {
+          setRenameThread(null);
+          setRenameValue('');
+        }}
+        onPrimary={confirmRenameThread}
+        primaryDisabled={busy || !renameValue.trim()}
+        primaryLabel={busy ? '保存中' : '保存'}
+        title="重命名会话"
+        visible={Boolean(renameThread)}
+      >
+        <TextInput
+          autoFocus
+          cursorColor={aiLightColors.coralActive}
+          onChangeText={setRenameValue}
+          placeholder="输入新的会话标题"
+          placeholderTextColor={aiLightColors.muted}
+          selectionColor={aiLightColors.coralActive}
+          style={styles.renameInput}
+          value={renameValue}
+        />
+      </AppDialog>
+      <AppDialog
+        compactActions
+        danger
+        message={deleteThread ? `删除「${deleteThread.title}」这条会话记录？` : ''}
+        onClose={() => setDeleteThread(null)}
+        onPrimary={confirmDeleteThread}
+        primaryDisabled={busy}
+        primaryLabel={busy ? '删除中' : '删除'}
+        title="删除会话"
+        visible={Boolean(deleteThread)}
+      />
+    </>
   );
 }
 
@@ -151,7 +277,11 @@ const styles = StyleSheet.create({
   recentRow: {
     borderRadius: radius.md,
     gap: rhythm.microGap,
+    paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
+  },
+  recentRowActive: {
+    backgroundColor: aiLightColors.surface,
   },
   recentTitle: {
     ...typography.textStyles.body,
@@ -164,6 +294,51 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+  },
+  statusText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+  },
+  recentActionPopover: {
+    alignSelf: 'flex-start',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    marginTop: spacing[1],
+    overflow: 'hidden',
+    ...shadows.floating,
+  },
+  recentActionButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+  },
+  recentActionText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '700',
+  },
+  recentActionDangerText: {
+    color: aiLightColors.coralActive,
+  },
+  recentActionDivider: {
+    backgroundColor: aiLightColors.hairline,
+    width: StyleSheet.hairlineWidth,
+  },
+  renameInput: {
+    ...typography.textStyles.body,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: aiLightColors.ink,
+    minHeight: metrics.minTouchSize,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   pressed: {
     opacity: 0.72,

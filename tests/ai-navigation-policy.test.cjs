@@ -198,7 +198,8 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(composer, /scrollEnabled=\{/);
   assert.match(composer, /borderRadius:\s*radius\.md/);
   assert.match(composer, /backgroundColor:\s*aiLightColors\.canvas/);
-  assert.match(composer, /borderColor:\s*aiLightColors\.hairline/);
+  assert.match(composer, /borderColor:\s*aiLightColors\.mutedSoft/);
+  assert.match(composer, /borderWidth:\s*1/);
   assert.match(composer, /\.\.\.shadows\.hairline/);
   assert.match(composer, /styles\.addButton/);
   assert.match(composer, /name="add"/);
@@ -490,15 +491,25 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(chat, /handleNewChatPress/);
   assert.match(chat, /停止当前回复并新建聊天/);
   assert.match(chat, /当前已生成内容会保留在原会话/);
-  assert.match(chat, /void handleStop\(\)\.finally/);
+  assert.match(chat, /onNewChat\(\);[\s\S]{0,240}void stopCurrentGeneration\(\{ reloadAfterStop: false \}\)/);
+  assert.doesNotMatch(chat, /void handleStop\(\)\.finally/);
   assert.match(chat, /alreadyBlankNewChat/);
   assert.match(chat, /showNewChatFeedback/);
   assert.match(chat, /已在新的空白聊天/);
+  assert.match(chat, /renameAiThread/);
+  assert.match(chat, /deleteAiThreads/);
+  assert.match(chat, /if \(thread\.id === activeThreadIdRef\.current\) \{\s*applyDisplayTitle\(title\);\s*\}/);
+  assert.match(chat, /if \(thread\.id === activeThreadIdRef\.current\) \{\s*onNewChat\(\);\s*\}/);
+  assert.match(chat, /onRenameThread=\{\(thread, title\) => renameRecentThread\(thread, title\)\}/);
+  assert.match(chat, /onDeleteThread=\{\(thread\) => deleteRecentThread\(thread\)\}/);
   assert.match(app, /onNewChat/);
   assert.match(app, /routeKey\?: string/);
   assert.match(app, /function openNewAiChat/);
+  assert.match(app, /function openAiChatRoute/);
   assert.match(app, /prepareAiChatRouteForPush/);
-  assert.match(app, /currentRoute\?\.name === 'ai-chat' && !currentRoute\.threadId/);
+  assert.match(app, /currentRoute\?\.name === 'ai-chat'[\s\S]{0,120}return \[\.\.\.current\.slice\(0, -1\), nextRoute\]/);
+  assert.match(app, /currentRoute\?\.name === 'ai-history'/);
+  assert.match(app, /previousRoute\?\.name === 'ai-chat'[\s\S]{0,160}return \[\.\.\.current\.slice\(0, -2\), nextRoute\]/);
   assert.match(app, /function aiChatRouteKey/);
   assert.match(app, /if \(route\.routeKey\) \{\s*return route\.routeKey;\s*\}/);
   assert.match(app, /key=\{aiChatRouteKey\(currentRoute, routeStack\.length\)\}/);
@@ -508,6 +519,27 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(history, /historyGroupLabel/);
   assert.match(history, /过去 7 天/);
   assert.match(repository, /lastMessagePreview LIKE/);
+  const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
+  assert.match(drawer, /onLongPress=\{\(\) => openRecentActionPopover\(thread\)\}/);
+  assert.match(drawer, /recentActionPopover/);
+  assert.match(drawer, /accessibilityLabel="重命名最近会话"/);
+  assert.match(drawer, /accessibilityLabel="删除最近会话"/);
+  assert.match(drawer, /title="重命名会话"/);
+  assert.match(drawer, /title="删除会话"/);
+  assert.match(drawer, /onRenameThread/);
+  assert.match(drawer, /onDeleteThread/);
+});
+
+test('AI chat switching replaces the active chat route instead of stacking chats behind back', () => {
+  const app = read('App.tsx');
+
+  assert.match(app, /function openAiChatRoute\(route: Extract<AppRoute, \{ name: 'ai-chat' \}>\)/);
+  assert.match(app, /const nextRoute = prepareAiChatRouteForPush\(route\)/);
+  assert.match(app, /if \(currentRoute\?\.name === 'ai-chat'\) \{[\s\S]{0,120}return \[\.\.\.current\.slice\(0, -1\), nextRoute\]/);
+  assert.match(app, /if \(currentRoute\?\.name === 'ai-history'\) \{[\s\S]*previousRoute\?\.name === 'ai-chat'[\s\S]{0,160}return \[\.\.\.current\.slice\(0, -2\), nextRoute\]/);
+  assert.match(app, /function openNewAiChat\(space: PixorySpace\) \{[\s\S]{0,220}openAiChatRoute\(\{/);
+  assert.match(app, /onOpenThread=\{\(thread\) =>\s*openAiChatRoute\(\{/);
+  assert.doesNotMatch(app, /function openNewAiChat[\s\S]*return \[\.\.\.current, nextRoute\]/);
 });
 
 test('AI history search is debounced and older chats are grouped by month', () => {
@@ -583,11 +615,16 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
+  const headerBlock = /<View style=\{styles\.header\}>([\s\S]*?)<\/View>\s*\{newChatFeedbackVisible/.exec(chat)?.[1] ?? '';
 
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
+  assert.match(headerBlock, /accessibilityLabel="会话设置"/);
+  assert.match(headerBlock, /name="options-outline"/);
+  assert.doesNotMatch(headerBlock, /accessibilityLabel="新聊天"/);
+  assert.doesNotMatch(headerBlock, /name="add-outline"/);
   assert.match(chat, /listAiHistoryThreads\(\{ limit: 15, space \}\)/);
   assert.match(chat, /onNewChat=\{\(\) => \{[\s\S]*handleNewChatPress\(\)/);
   assert.doesNotMatch(chat, /onStartNormalChat/);
@@ -631,6 +668,19 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
   assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}generating/);
   assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}handleComposerHeightChange/);
   assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}onContentSizeChange/);
+});
+
+test('AI chat route updates merge into the latest route so first message keeps the created thread', () => {
+  const app = read('App.tsx');
+
+  assert.match(app, /function updateCurrentAiChatRoute/);
+  assert.match(app, /currentRoute\?\.name !== 'ai-chat'/);
+  assert.match(app, /\.\.\.currentRoute,[\s\S]{0,120}\.\.\.patch/);
+  assert.match(app, /expectedRouteKey && currentRoute\.routeKey !== expectedRouteKey/);
+  assert.match(app, /onThreadReady=\{\(threadId\) => updateCurrentAiChatRoute\(\{ threadId \}, currentRoute\.routeKey\)\}/);
+  assert.match(app, /onThreadTitleChange=\{\(title\) => updateCurrentAiChatRoute\(\{ contextTitle: title \}, currentRoute\.routeKey\)\}/);
+  assert.doesNotMatch(app, /onThreadReady=\{\(threadId\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, threadId \}\)\}/);
+  assert.doesNotMatch(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, contextTitle: title \}\)\}/);
 });
 
 test('AI workbench no longer shows recent continue because recents moved into drawer', () => {

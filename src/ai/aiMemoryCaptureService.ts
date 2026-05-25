@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMemoryRecord, AiMessageRecord } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { saveRecentMemoryCaptures, shouldRunImmediateMemoryCapture, type MemoryCaptureNoticeItem } from './aiMemoryService';
 import {
@@ -247,6 +247,7 @@ export async function captureDeepMemoryForExchange(input: {
   thread: AiThreadRecord;
   userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId: string;
+  branchScopes?: AiBranchScope[];
   allowRemoteModel?: boolean;
 }): Promise<MemoryMaintenanceStepResult> {
   const exchangeText = `${input.userMessage.content}`;
@@ -265,10 +266,11 @@ export async function captureDeepMemoryForExchange(input: {
       });
       return null;
     }
-    const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80);
+    const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80, input.branchScopes);
     const localCandidates = extractMemoryCandidates(input.userMessage.content);
     const candidateQuery = [input.userMessage.content, ...localCandidates.map((candidate) => candidate.content)].join('\n');
     const relatedMemories = await aiThreadRepository.searchActiveMemoryFts(db, {
+      branchScopes: input.branchScopes,
       boundIpId: input.thread.boundIpId,
       boundKnowledgeBaseId: input.thread.boundKnowledgeBaseId,
       limit: 8,

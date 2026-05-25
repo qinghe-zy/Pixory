@@ -29,10 +29,10 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(Date.now());
   const thinking = status === 'generating' || status === 'queued';
-  const expandedProgress = useRef(new Animated.Value(expanded || thinking ? 1 : 0)).current;
+  const expandedProgress = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const duration = useMemo(() => elapsedSeconds(createdAt, thinking ? null : completedAt, now), [completedAt, createdAt, now, thinking]);
   const label = `${thinking ? '正在思考中…' : '思考完成'} ${duration.toFixed(1)}秒`;
-  const bodyVisible = (expanded || thinking) && Boolean(reasoningText);
+  const bodyVisible = expanded && Boolean(reasoningText);
 
   useEffect(() => {
     if (!thinking) {
@@ -52,7 +52,7 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
 
   return (
     <View style={styles.wrap}>
-      <Pressable accessibilityRole="button" disabled={!reasoningText} onPress={() => setExpanded((current) => !current)} style={styles.header}>
+      <Pressable accessibilityRole="button" disabled={!reasoningText && !thinking} onPress={() => setExpanded((current) => !current)} style={styles.header}>
         {thinking ? <ActivityIndicator color={aiLightColors.coralActive} size="small" /> : null}
         <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
@@ -61,10 +61,6 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
         style={[
           styles.thinkingAnimatedBody,
           {
-            maxHeight: expandedProgress.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 320],
-            }),
             opacity: expandedProgress,
           },
         ]}

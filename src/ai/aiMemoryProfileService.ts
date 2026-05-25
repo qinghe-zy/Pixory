@@ -1,5 +1,5 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMessageRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMessageRecord, AiUserProfileRecord } from '../database/repositories/aiThreadRepository';
 import { EMPTY_USER_PROFILE_JSON, buildProfileInitializationPrompt, buildProfileUpdatePrompt } from './aiMemoryPrompts';
 import { callMemoryMaintenanceModel, localMemoryMaintenanceResult, type MemoryMaintenanceModelCallResult } from './aiMemoryMaintenanceModelService';
 import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
@@ -212,7 +212,7 @@ export async function updateUserProfile(space: PixorySpace, profileText: string)
   });
 }
 
-export async function maybeInitializeUserProfile(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function maybeInitializeUserProfile(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
     if (!thread) {
@@ -223,11 +223,11 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
     if (!settings.deepMemoryEnabled || existing) {
       return null;
     }
-    const messageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, null);
+    const messageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, null, options.branchScopes);
     if (messageCount < PROFILE_INITIAL_MESSAGE_COUNT) {
       return null;
     }
-    const selected = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, null, PROFILE_INITIAL_MESSAGE_COUNT);
+    const selected = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, null, PROFILE_INITIAL_MESSAGE_COUNT, options.branchScopes);
     return {
       conversation: formatConversation(selected),
       endMessageId: selected[selected.length - 1].id,
@@ -294,7 +294,7 @@ export async function maybeUpdateUserProfile(
   space: PixorySpace,
   threadId: string,
   reason: ProfileUpdateReason,
-  options: { allowRemoteModel?: boolean } = {}
+  options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
@@ -307,7 +307,7 @@ export async function maybeUpdateUserProfile(
       return null;
     }
     const job = await aiThreadRepository.getThreadMemoryJob(db, threadId);
-    const messageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, null);
+    const messageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, null, options.branchScopes);
     const completedSinceLastUpdate = messageCount - (profile.messageCountAtUpdate || job.completedMessageCountAtProfileUpdate || 0);
     const nowMs = Date.now();
     if (!reasonIsEligible({
@@ -319,7 +319,7 @@ export async function maybeUpdateUserProfile(
     })) {
       return null;
     }
-    const selected = await aiThreadRepository.listRecentCompletedNonSystemMessages(db, threadId, 30);
+    const selected = await aiThreadRepository.listRecentCompletedNonSystemMessages(db, threadId, 30, options.branchScopes);
     return {
       conversation: formatConversation(selected),
       currentProfile: profile,

@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type {
+  AiBranchScope,
   AiMemoryRecord,
   AiThreadMemorySettingsRecord,
   AiThreadSummarySegmentRecord,
@@ -34,6 +35,7 @@ export interface MemoryCaptureNoticeItem {
 }
 
 export interface BuildMemoryPrefixOptions {
+  branchScopes?: AiBranchScope[];
   settings?: AiThreadMemorySettingsRecord;
 }
 
@@ -248,6 +250,7 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   }
   const memories = await aiThreadRepository.listMemoryBoardItems(db, {
     ...scopedBoardInput(thread),
+    branchScopes: options?.branchScopes,
     limit: STABLE_MEMORY_LIMIT * 2,
   });
   const stable = memories
@@ -277,7 +280,7 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
   }
   const [profile, segments] = await Promise.all([
     aiThreadRepository.getUserProfile(db, thread.space),
-    aiThreadRepository.listSummarySegments(db, thread.id),
+    aiThreadRepository.listSummarySegments(db, thread.id, options?.branchScopes),
   ]);
   if (!profile?.profileText && segments.length === 0) {
     return '';
@@ -350,6 +353,7 @@ export async function retrieveDynamicMemoryContext(
     return '';
   }
   const memories = await aiThreadRepository.searchActiveMemoryFts(db, {
+    branchScopes: options?.branchScopes,
     boundIpId: thread.boundIpId,
     boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
     query: userMessage,

@@ -18,6 +18,8 @@ import { booleanToSqlite, buildUpdateStatement, createTimestamp, normalizeOption
 export interface AiMessageRecord {
   id: string;
   threadId: string;
+  branchRootMessageId: string | null;
+  branchVersionIndex: number | null;
   role: AiMessageRole;
   status: AiMessageStatus;
   content: string;
@@ -30,6 +32,11 @@ export interface AiMessageRecord {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+export interface AiBranchScope {
+  branchRootMessageId: string;
+  branchVersionIndex: number;
 }
 
 export interface AiMessageVersionRecord {
@@ -239,6 +246,8 @@ export type UpdateAiThreadPatch = Partial<
 export interface CreateAiMessageInput {
   id: string;
   threadId: string;
+  branchRootMessageId?: string | null;
+  branchVersionIndex?: number | null;
   role: AiMessageRole;
   status: AiMessageStatus;
   content?: string;
@@ -426,6 +435,165 @@ function buildSearchTerms(value: string): string[] {
 function buildFtsQuery(value: string): string | null {
   const terms = buildSearchTerms(value).slice(0, 8);
   return terms.length > 0 ? terms.map((term) => `"${term}"`).join(' OR ') : null;
+}
+
+function normalizeBranchScopes(branchScopes?: AiBranchScope[]): AiBranchScope[] | null {
+  if (!branchScopes) {
+    return null;
+  }
+  const seen = new Set<string>();
+  return branchScopes.filter((scope) => {
+    const key = `${scope.branchRootMessageId}:${scope.branchVersionIndex}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildVisibleBranchClause(alias: string, branchScopes?: AiBranchScope[]): { clause: string; values: Array<string | number> } {
+  const normalized = normalizeBranchScopes(branchScopes);
+  if (!normalized) {
+    return { clause: '', values: [] };
+  }
+  if (normalized.length === 0) {
+    return {
+      clause: `AND ${alias}.branchRootMessageId IS NULL`,
+      values: [],
+    };
+  }
+  const branchPairs = normalized.map(() => `(${alias}.branchRootMessageId = ? AND ${alias}.branchVersionIndex = ?)`).join(' OR ');
+  return {
+    clause: `AND (${alias}.branchRootMessageId IS NULL OR ${branchPairs})`,
+    values: normalized.flatMap((scope) => [scope.branchRootMessageId, scope.branchVersionIndex]),
+  };
+}
+
+function applyBranchVersionContent(message: AiMessageRecord, version: AiMessageVersionRecord): AiMessageRecord {
+  return {
+    ...message,
+    status: version.status,
+    content: version.content,
+    reasoningText: version.reasoningText,
+    errorMessage: version.errorMessage,
+    providerId: version.providerId,
+    modelId: version.modelId,
+    modelSnapshotJson: version.modelSnapshotJson,
+    promptSnapshotJson: version.promptSnapshotJson,
+    createdAt: version.messageCreatedAt,
+    updatedAt: version.messageUpdatedAt,
+    completedAt: version.messageCompletedAt,
+  };
+}
+
+async function listBranchVersionRowsForScopes(
+  db: SQLiteDatabase,
+  branchScopes?: AiBranchScope[],
+  candidateMessageIds?: Set<string>
+): Promise<AiMessageVersionRecord[]> {
+  const normalized = normalizeBranchScopes(branchScopes) ?? [];
+  const scopedRoots = normalized.filter((scope) => !candidateMessageIds || candidateMessageIds.has(scope.branchRootMessageId));
+  if (scopedRoots.length === 0) {
+    return [];
+  }
+  const pairClause = scopedRoots.map(() => '(originalMessageId = ? AND versionIndex = ?)').join(' OR ');
+  const rows = await db.getAllAsync<AiMessageVersionRow>(
+    `SELECT * FROM ai_message_versions
+     WHERE ${pairClause}`,
+    ...scopedRoots.flatMap((scope) => [scope.branchRootMessageId, scope.branchVersionIndex])
+  );
+  return rows.map(mapMessageVersionRow);
+}
+
+async function materializeMessagesForBranchScopes(
+  db: SQLiteDatabase,
+  messages: AiMessageRecord[],
+  branchScopes?: AiBranchScope[]
+): Promise<AiMessageRecord[]> {
+  if (!branchScopes || messages.length === 0) {
+    return messages;
+  }
+  const messageIds = new Set(messages.map((message) => message.id));
+  const versions = await listBranchVersionRowsForScopes(db, branchScopes, messageIds);
+  if (versions.length === 0) {
+    return messages;
+  }
+  const versionByMessageId = new Map(versions.map((version) => [version.originalMessageId, version]));
+  return messages.map((message) => {
+    const version = versionByMessageId.get(message.id);
+    return version ? applyBranchVersionContent(message, version) : message;
+  });
+}
+
+function buildBranchVersionSearchClause(branchScopes?: AiBranchScope[]): { clause: string; values: Array<string | number> } | null {
+  const normalized = normalizeBranchScopes(branchScopes);
+  if (!normalized || normalized.length === 0) {
+    return null;
+  }
+  return {
+    clause: normalized.map(() => '(ai_message_versions.originalMessageId = ? AND ai_message_versions.versionIndex = ?)').join(' OR '),
+    values: normalized.flatMap((scope) => [scope.branchRootMessageId, scope.branchVersionIndex]),
+  };
+}
+
+function mergeMessageSearchRows(primaryRows: AiMessageRecord[], secondaryRows: AiMessageRecord[], limit: number): AiMessageRecord[] {
+  const seen = new Set<string>();
+  const merged: AiMessageRecord[] = [];
+  for (const row of [...primaryRows, ...secondaryRows]) {
+    if (seen.has(row.id)) {
+      continue;
+    }
+    seen.add(row.id);
+    merged.push(row);
+    if (merged.length >= limit) {
+      break;
+    }
+  }
+  return merged;
+}
+
+function buildMemorySourceVisibilityClause(
+  alias: string,
+  threadId: string,
+  branchScopes?: AiBranchScope[]
+): { clause: string; values: Array<string | number> } {
+  const visibleBranchClause = buildVisibleBranchClause('source_message', branchScopes);
+  if (!visibleBranchClause.clause) {
+    return { clause: '', values: [] };
+  }
+  return {
+    clause: `(${alias}.sourceMessageId IS NULL OR NOT EXISTS (
+        SELECT 1 FROM ai_messages source_message_any
+        WHERE source_message_any.id = ${alias}.sourceMessageId
+          AND source_message_any.threadId = ?
+      ) OR EXISTS (
+        SELECT 1 FROM ai_messages source_message
+        WHERE source_message.id = ${alias}.sourceMessageId
+          AND source_message.threadId = ?
+          ${visibleBranchClause.clause}
+      ))`,
+    values: [threadId, threadId, ...visibleBranchClause.values],
+  };
+}
+
+function buildSummarySegmentVisibilityClause(
+  alias: string,
+  branchScopes?: AiBranchScope[]
+): { clause: string; values: Array<string | number> } {
+  const visibleBranchClause = buildVisibleBranchClause('source_message', branchScopes);
+  if (!visibleBranchClause.clause) {
+    return { clause: '', values: [] };
+  }
+  return {
+    clause: `(${alias}.endMessageId IS NULL OR EXISTS (
+        SELECT 1 FROM ai_messages source_message
+        WHERE source_message.id = ${alias}.endMessageId
+          AND source_message.threadId = ${alias}.threadId
+          ${visibleBranchClause.clause}
+      ))`,
+    values: visibleBranchClause.values,
+  };
 }
 
 const DELETE_MESSAGE_CHUNK_SIZE = 200;
@@ -616,6 +784,8 @@ export const aiThreadRepository = {
         `INSERT INTO ai_messages (
           id,
           threadId,
+          branchRootMessageId,
+          branchVersionIndex,
           role,
           status,
           content,
@@ -628,9 +798,11 @@ export const aiThreadRepository = {
           createdAt,
           updatedAt,
           completedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         message.id,
         message.threadId,
+        message.branchRootMessageId ?? null,
+        message.branchVersionIndex ?? null,
         message.role,
         message.status,
         message.content,
@@ -708,6 +880,7 @@ export const aiThreadRepository = {
         version.messageCompletedAt,
         version.createdAt
       );
+      await aiThreadRepository.syncMessageVersionFts(db, mapMessageVersionRow(version));
     }
   },
 
@@ -798,6 +971,8 @@ export const aiThreadRepository = {
       `INSERT INTO ai_messages (
         id,
         threadId,
+        branchRootMessageId,
+        branchVersionIndex,
         role,
         status,
         content,
@@ -810,9 +985,11 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         completedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
+      input.branchRootMessageId ?? null,
+      input.branchVersionIndex ?? null,
       input.role,
       input.status,
       input.content ?? '',
@@ -837,6 +1014,8 @@ export const aiThreadRepository = {
   async updateMessage(db: SQLiteDatabase, messageId: string, patch: UpdateAiMessagePatch): Promise<AiMessageRecord | null> {
     const updates = buildUpdateStatement({
       status: patch.status,
+      branchRootMessageId: patch.branchRootMessageId,
+      branchVersionIndex: patch.branchVersionIndex,
       content: patch.content,
       reasoningText: patch.reasoningText,
       errorMessage: normalizeOptionalText(patch.errorMessage),
@@ -870,6 +1049,48 @@ export const aiThreadRepository = {
     return deletedCount;
   },
 
+  async markVisibleMessagesAfterAsBranch(
+    db: SQLiteDatabase,
+    threadId: string,
+    afterMessageId: string,
+    branchRootMessageId: string,
+    branchVersionIndex: number,
+    parentMessage: Pick<AiMessageRecord, 'branchRootMessageId' | 'branchVersionIndex'>
+  ): Promise<number> {
+    const now = createTimestamp();
+    const sameBranchClause = parentMessage.branchRootMessageId && parentMessage.branchVersionIndex
+      ? 'candidate.branchRootMessageId = ? AND candidate.branchVersionIndex = ?'
+      : 'candidate.branchRootMessageId IS NULL';
+    const sameBranchValues = parentMessage.branchRootMessageId && parentMessage.branchVersionIndex
+      ? [parentMessage.branchRootMessageId, parentMessage.branchVersionIndex]
+      : [];
+    const result = await db.runAsync(
+      `UPDATE ai_messages
+       SET branchRootMessageId = ?,
+           branchVersionIndex = ?,
+           updatedAt = ?
+       WHERE id IN (
+         SELECT candidate.id
+         FROM ai_messages target
+          JOIN ai_messages candidate ON candidate.threadId = target.threadId
+          WHERE target.id = ?
+            AND target.threadId = ?
+            AND ${sameBranchClause}
+            AND (
+              candidate.createdAt > target.createdAt
+              OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+           )
+       )`,
+      branchRootMessageId,
+      branchVersionIndex,
+      now,
+      afterMessageId,
+      threadId,
+      ...sameBranchValues
+    );
+    return result.changes;
+  },
+
   async syncMessageFts(db: SQLiteDatabase, message: AiMessageRecord): Promise<void> {
     await db.runAsync('DELETE FROM ai_message_fts WHERE id = ?', message.id);
     if (message.status !== 'completed' || message.role === 'system' || !message.content.trim()) {
@@ -885,96 +1106,262 @@ export const aiThreadRepository = {
     );
   },
 
-  async searchCompletedMessageFts(db: SQLiteDatabase, input: { threadId: string; query: string; excludeIds?: string[]; limit: number }): Promise<AiMessageRecord[]> {
+  async syncMessageVersionFts(db: SQLiteDatabase, version: AiMessageVersionRecord): Promise<void> {
+    await db.runAsync('DELETE FROM ai_message_version_fts WHERE id = ?', version.id);
+    if (version.status !== 'completed' || version.role === 'system' || !version.content.trim()) {
+      return;
+    }
+    await db.runAsync(
+      'INSERT INTO ai_message_version_fts (id, originalMessageId, threadId, role, content, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+      version.id,
+      version.originalMessageId,
+      version.threadId,
+      version.role,
+      version.content,
+      version.messageUpdatedAt
+    );
+  },
+
+  async searchVersionedCompletedMessages(db: SQLiteDatabase, input: { threadId: string; ftsQuery: string; rawQuery: string; excludeIds?: string[]; limit: number; branchScopes?: AiBranchScope[] }): Promise<AiMessageRecord[]> {
+    const branchVersionClause = buildBranchVersionSearchClause(input.branchScopes);
+    if (!branchVersionClause || input.limit <= 0) {
+      return [];
+    }
+    const excludeIds = input.excludeIds ?? [];
+    const excludeClause = excludeIds.length > 0 ? `AND ai_messages.id NOT IN (${makeInClause(excludeIds)})` : '';
+    const fallbackTerms = buildSearchTerms(input.rawQuery).slice(0, 8);
+    const fallbackClause = fallbackTerms.length > 0
+      ? `AND (${fallbackTerms.map(() => 'ai_message_versions.content LIKE ?').join(' OR ')})`
+      : 'AND ai_message_versions.content LIKE ?';
+    const fallbackValues = fallbackTerms.length > 0 ? fallbackTerms.map((term) => `%${term}%`) : [`%${input.rawQuery.trim()}%`];
+    const fallbackSearch = async () => {
+      const rows = await db.getAllAsync<AiMessageRecord>(
+        `SELECT ai_messages.*
+         FROM ai_message_versions
+         JOIN ai_messages ON ai_messages.id = ai_message_versions.originalMessageId
+         WHERE ai_message_versions.threadId = ?
+           AND ai_message_versions.status = 'completed'
+           AND ai_message_versions.role <> 'system'
+           AND (${branchVersionClause.clause})
+           ${fallbackClause}
+           ${excludeClause}
+         ORDER BY ai_message_versions.messageUpdatedAt DESC
+         LIMIT ?`,
+        input.threadId,
+        ...branchVersionClause.values,
+        ...fallbackValues,
+        ...excludeIds,
+        input.limit
+      );
+      return materializeMessagesForBranchScopes(db, rows, input.branchScopes);
+    };
+    try {
+      const rows = await db.getAllAsync<AiMessageRecord>(
+        `SELECT ai_messages.*
+         FROM ai_message_version_fts
+         JOIN ai_message_versions ON ai_message_versions.id = ai_message_version_fts.id
+         JOIN ai_messages ON ai_messages.id = ai_message_versions.originalMessageId
+         WHERE ai_message_version_fts MATCH ?
+           AND ai_message_versions.threadId = ?
+           AND ai_message_versions.status = 'completed'
+           AND ai_message_versions.role <> 'system'
+           AND (${branchVersionClause.clause})
+           ${excludeClause}
+         ORDER BY bm25(ai_message_version_fts), ai_message_versions.messageUpdatedAt DESC
+         LIMIT ?`,
+        input.ftsQuery,
+        input.threadId,
+        ...branchVersionClause.values,
+        ...excludeIds,
+        input.limit
+      );
+      return rows.length > 0 ? materializeMessagesForBranchScopes(db, rows, input.branchScopes) : fallbackSearch();
+    } catch {
+      return fallbackSearch();
+    }
+  },
+
+  async searchCompletedMessageFts(db: SQLiteDatabase, input: { threadId: string; query: string; excludeIds?: string[]; limit: number; branchScopes?: AiBranchScope[] }): Promise<AiMessageRecord[]> {
     const ftsQuery = buildFtsQuery(input.query);
     if (!ftsQuery || input.limit <= 0) {
       return [];
     }
     const excludeIds = input.excludeIds ?? [];
     const excludeClause = excludeIds.length > 0 ? `AND ai_messages.id NOT IN (${makeInClause(excludeIds)})` : '';
+    const fallbackExcludeClause = excludeIds.length > 0 ? `AND candidate.id NOT IN (${makeInClause(excludeIds)})` : '';
     const fallbackTerms = buildSearchTerms(input.query).slice(0, 8);
-    const fallbackClause = fallbackTerms.length > 0 ? `AND (${fallbackTerms.map(() => 'content LIKE ?').join(' OR ')})` : 'AND content LIKE ?';
+    const fallbackClause = fallbackTerms.length > 0 ? `AND (${fallbackTerms.map(() => 'candidate.content LIKE ?').join(' OR ')})` : 'AND candidate.content LIKE ?';
     const fallbackValues = fallbackTerms.length > 0 ? fallbackTerms.map((term) => `%${term}%`) : [`%${input.query.trim()}%`];
-    const fallbackSearch = () => db.getAllAsync<AiMessageRecord>(
-      `SELECT *
-       FROM ai_messages
-       WHERE threadId = ?
-         AND status = 'completed'
-         AND role <> 'system'
-         ${fallbackClause}
-         ${excludeClause}
-       ORDER BY updatedAt DESC
-       LIMIT ?`,
-      input.threadId,
-      ...fallbackValues,
-      ...excludeIds,
-      input.limit
-    );
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', input.branchScopes);
+    const fallbackVisibleBranchClause = buildVisibleBranchClause('candidate', input.branchScopes);
+    const fallbackSearch = async () => {
+      const [currentRows, versionRows] = await Promise.all([
+        db.getAllAsync<AiMessageRecord>(
+          `SELECT candidate.*
+           FROM ai_messages candidate
+           WHERE candidate.threadId = ?
+             AND candidate.status = 'completed'
+             AND candidate.role <> 'system'
+             ${fallbackClause}
+             ${fallbackVisibleBranchClause.clause}
+             ${fallbackExcludeClause}
+           ORDER BY candidate.updatedAt DESC
+           LIMIT ?`,
+          input.threadId,
+          ...fallbackValues,
+          ...fallbackVisibleBranchClause.values,
+          ...excludeIds,
+          input.limit
+        ),
+        aiThreadRepository.searchVersionedCompletedMessages(db, {
+          branchScopes: input.branchScopes,
+          excludeIds,
+          ftsQuery,
+          limit: input.limit,
+          rawQuery: input.query,
+          threadId: input.threadId,
+        }),
+      ]);
+      const rows = mergeMessageSearchRows(currentRows, versionRows, input.limit);
+      return materializeMessagesForBranchScopes(db, rows, input.branchScopes);
+    };
     try {
-      const rows = await db.getAllAsync<AiMessageRecord>(
-        `SELECT ai_messages.*
-         FROM ai_message_fts
-         JOIN ai_messages ON ai_messages.id = ai_message_fts.id
-         WHERE ai_message_fts MATCH ?
-           AND ai_messages.threadId = ?
-           AND ai_messages.status = 'completed'
-           AND ai_messages.role <> 'system'
-           ${excludeClause}
-         ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
-         LIMIT ?`,
-        ftsQuery,
-        input.threadId,
-        ...excludeIds,
-        input.limit
-      );
-      return rows.length > 0 ? rows : fallbackSearch();
+      const [currentRows, versionRows] = await Promise.all([
+        db.getAllAsync<AiMessageRecord>(
+          `SELECT ai_messages.*
+           FROM ai_message_fts
+           JOIN ai_messages ON ai_messages.id = ai_message_fts.id
+           WHERE ai_message_fts MATCH ?
+              AND ai_messages.threadId = ?
+              AND ai_messages.status = 'completed'
+              AND ai_messages.role <> 'system'
+              ${visibleBranchClause.clause}
+              ${excludeClause}
+            ORDER BY bm25(ai_message_fts), ai_messages.updatedAt DESC
+            LIMIT ?`,
+          ftsQuery,
+          input.threadId,
+          ...visibleBranchClause.values,
+          ...excludeIds,
+          input.limit
+        ),
+        aiThreadRepository.searchVersionedCompletedMessages(db, {
+          branchScopes: input.branchScopes,
+          excludeIds,
+          ftsQuery,
+          limit: input.limit,
+          rawQuery: input.query,
+          threadId: input.threadId,
+        }),
+      ]);
+      const rows = mergeMessageSearchRows(currentRows, versionRows, input.limit);
+      return rows.length > 0 ? materializeMessagesForBranchScopes(db, rows, input.branchScopes) : fallbackSearch();
     } catch {
       return fallbackSearch();
     }
   },
 
-  async listMessages(db: SQLiteDatabase, threadId: string, limit?: number): Promise<AiMessageRecord[]> {
+  async listMessages(db: SQLiteDatabase, threadId: string, limit?: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
     if (limit && limit > 0) {
-      return db.getAllAsync<AiMessageRecord>(
+      const rows = await db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM (
            SELECT * FROM ai_messages
            WHERE threadId = ?
+             ${visibleBranchClause.clause}
            ORDER BY createdAt DESC
            LIMIT ?
-         )
-         ORDER BY createdAt ASC`,
+          )
+          ORDER BY createdAt ASC`,
         threadId,
+        ...visibleBranchClause.values,
         limit
       );
+      return materializeMessagesForBranchScopes(db, rows, branchScopes);
     }
-    return db.getAllAsync<AiMessageRecord>(
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM ai_messages
        WHERE threadId = ?
+         ${visibleBranchClause.clause}
        ORDER BY createdAt ASC`,
-      threadId
+      threadId,
+      ...visibleBranchClause.values
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
   async findMessageById(db: SQLiteDatabase, messageId: string): Promise<AiMessageRecord | null> {
     return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
   },
 
-  async listRecentCompletedMessagesBefore(db: SQLiteDatabase, threadId: string, beforeMessageId: string, limit: number): Promise<AiMessageRecord[]> {
-    if (limit <= 0) {
+  async findMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<AiMessageRecord[]> {
+    if (messageIds.length === 0) {
       return [];
     }
     return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM ai_messages
+       WHERE id IN (${makeInClause(messageIds)})
+       ORDER BY createdAt ASC, rowid ASC`,
+      ...messageIds
+    );
+  },
+
+  async resolveBranchLineage(
+    db: SQLiteDatabase,
+    branchRootMessageId?: string | null,
+    branchVersionIndex?: number | null
+  ): Promise<AiBranchScope[]> {
+    if (!branchRootMessageId || !branchVersionIndex) {
+      return [];
+    }
+    const scopes: AiBranchScope[] = [];
+    const seen = new Set<string>();
+    let currentRootMessageId: string | null = branchRootMessageId;
+    let currentVersionIndex: number | null = branchVersionIndex;
+    while (currentRootMessageId && currentVersionIndex) {
+      const key = `${currentRootMessageId}:${currentVersionIndex}`;
+      if (seen.has(key)) {
+        return [];
+      }
+      seen.add(key);
+      const root: AiMessageRecord | null = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', currentRootMessageId);
+      if (!root) {
+        return [];
+      }
+      scopes.push({
+        branchRootMessageId: currentRootMessageId,
+        branchVersionIndex: currentVersionIndex,
+      });
+      currentRootMessageId = root.branchRootMessageId;
+      currentVersionIndex = root.branchVersionIndex;
+    }
+    return scopes;
+  },
+
+  async listRecentCompletedMessagesBefore(
+    db: SQLiteDatabase,
+    threadId: string,
+    beforeMessageId: string,
+    limit: number,
+    branchScopes?: AiBranchScope[]
+  ): Promise<AiMessageRecord[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM (
          SELECT candidate.*, candidate.rowid AS rowOrder
          FROM ai_messages target
          JOIN ai_messages candidate ON candidate.threadId = target.threadId
          WHERE target.id = ?
-           AND target.threadId = ?
-           AND candidate.status = 'completed'
-           AND candidate.id <> target.id
-           AND (
-             candidate.createdAt < target.createdAt
-             OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+            AND target.threadId = ?
+            AND candidate.status = 'completed'
+            AND candidate.id <> target.id
+            ${visibleBranchClause.clause}
+            AND (
+              candidate.createdAt < target.createdAt
+              OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
            )
          ORDER BY candidate.createdAt DESC, candidate.rowid DESC
          LIMIT ?
@@ -982,19 +1369,24 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC, rowOrder ASC`,
       beforeMessageId,
       threadId,
+      ...visibleBranchClause.values,
       limit
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
-  async countCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null): Promise<number> {
+  async countCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null, branchScopes?: AiBranchScope[]): Promise<number> {
+    const visibleBranchClause = buildVisibleBranchClause(afterMessageId ? 'candidate' : 'ai_messages', branchScopes);
     if (!afterMessageId) {
       const row = await db.getFirstAsync<{ count: number }>(
         `SELECT COUNT(*) AS count
          FROM ai_messages
          WHERE threadId = ?
-           AND status = 'completed'
-           AND role <> 'system'`,
-        threadId
+            AND status = 'completed'
+            AND role <> 'system'
+            ${visibleBranchClause.clause}`,
+        threadId,
+        ...visibleBranchClause.values
       );
       return row?.count ?? 0;
     }
@@ -1003,93 +1395,114 @@ export const aiThreadRepository = {
        FROM ai_messages target
        JOIN ai_messages candidate ON candidate.threadId = target.threadId
        WHERE target.id = ?
-         AND target.threadId = ?
-         AND candidate.status = 'completed'
-         AND candidate.role <> 'system'
-         AND (
-           candidate.createdAt > target.createdAt
-           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
-         )`,
+          AND target.threadId = ?
+          AND candidate.status = 'completed'
+          AND candidate.role <> 'system'
+          ${visibleBranchClause.clause}
+          AND (
+            candidate.createdAt > target.createdAt
+            OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+          )`,
       afterMessageId,
-      threadId
+      threadId,
+      ...visibleBranchClause.values
     );
     return row?.count ?? 0;
   },
 
-  async listCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null, limit: number): Promise<AiMessageRecord[]> {
+  async listCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null, limit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     if (limit <= 0) {
       return [];
     }
+    const visibleBranchClause = buildVisibleBranchClause(afterMessageId ? 'candidate' : 'ai_messages', branchScopes);
     if (!afterMessageId) {
-      return db.getAllAsync<AiMessageRecord>(
+      const rows = await db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM ai_messages
          WHERE threadId = ?
-           AND status = 'completed'
-           AND role <> 'system'
-         ORDER BY createdAt ASC, rowid ASC
-         LIMIT ?`,
+            AND status = 'completed'
+            AND role <> 'system'
+            ${visibleBranchClause.clause}
+          ORDER BY createdAt ASC, rowid ASC
+          LIMIT ?`,
         threadId,
+        ...visibleBranchClause.values,
         limit
       );
+      return materializeMessagesForBranchScopes(db, rows, branchScopes);
     }
-    return db.getAllAsync<AiMessageRecord>(
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT candidate.*
        FROM ai_messages target
        JOIN ai_messages candidate ON candidate.threadId = target.threadId
        WHERE target.id = ?
-         AND target.threadId = ?
-         AND candidate.status = 'completed'
-         AND candidate.role <> 'system'
-         AND (
-           candidate.createdAt > target.createdAt
-           OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
+          AND target.threadId = ?
+          AND candidate.status = 'completed'
+          AND candidate.role <> 'system'
+          ${visibleBranchClause.clause}
+          AND (
+            candidate.createdAt > target.createdAt
+            OR (candidate.createdAt = target.createdAt AND candidate.rowid > target.rowid)
          )
        ORDER BY candidate.createdAt ASC, candidate.rowid ASC
        LIMIT ?`,
       afterMessageId,
       threadId,
+      ...visibleBranchClause.values,
       limit
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
-  async listRecentCompletedNonSystemMessages(db: SQLiteDatabase, threadId: string, limit: number): Promise<AiMessageRecord[]> {
+  async listRecentCompletedNonSystemMessages(db: SQLiteDatabase, threadId: string, limit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     if (limit <= 0) {
       return [];
     }
-    return db.getAllAsync<AiMessageRecord>(
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM (
          SELECT *, rowid AS rowOrder
          FROM ai_messages
          WHERE threadId = ?
-           AND status = 'completed'
-           AND role <> 'system'
-         ORDER BY createdAt DESC, rowid DESC
-         LIMIT ?
-       )
-       ORDER BY createdAt ASC, rowOrder ASC`,
+            AND status = 'completed'
+            AND role <> 'system'
+            ${visibleBranchClause.clause}
+          ORDER BY createdAt DESC, rowid DESC
+          LIMIT ?
+        )
+        ORDER BY createdAt ASC, rowOrder ASC`,
       threadId,
+      ...visibleBranchClause.values,
       limit
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
-  async findPreviousMessageByRole(db: SQLiteDatabase, threadId: string, beforeMessageId: string, role: AiMessageRole): Promise<AiMessageRecord | null> {
-    return db.getFirstAsync<AiMessageRecord>(
+  async findPreviousMessageByRole(db: SQLiteDatabase, threadId: string, beforeMessageId: string, role: AiMessageRole, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord | null> {
+    const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
+    const row = await db.getFirstAsync<AiMessageRecord>(
       `SELECT candidate.*
        FROM ai_messages target
        JOIN ai_messages candidate ON candidate.threadId = target.threadId
        WHERE target.id = ?
-         AND target.threadId = ?
-         AND candidate.role = ?
-         AND (
-           candidate.createdAt < target.createdAt
-           OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+          AND target.threadId = ?
+          AND candidate.role = ?
+          ${visibleBranchClause.clause}
+          AND (
+            candidate.createdAt < target.createdAt
+            OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
          )
        ORDER BY candidate.createdAt DESC, candidate.rowid DESC
        LIMIT 1`,
       beforeMessageId,
       threadId,
-      role
+      role,
+      ...visibleBranchClause.values
     );
+    if (!row) {
+      return null;
+    }
+    const [materialized] = await materializeMessagesForBranchScopes(db, [row], branchScopes);
+    return materialized ?? row;
   },
 
   async findNextMessageByRole(db: SQLiteDatabase, threadId: string, afterMessageId: string, role: AiMessageRole): Promise<AiMessageRecord | null> {
@@ -1184,7 +1597,9 @@ export const aiThreadRepository = {
     if (!row) {
       throw new Error(`AI message version ${input.id} was created but could not be reloaded.`);
     }
-    return mapMessageVersionRow(row);
+    const version = mapMessageVersionRow(row);
+    await aiThreadRepository.syncMessageVersionFts(db, version);
+    return version;
   },
 
   async listMessageVersions(db: SQLiteDatabase, messageId: string): Promise<AiMessageVersionRecord[]> {
@@ -1366,10 +1781,15 @@ export const aiThreadRepository = {
     return row;
   },
 
-  async listSummarySegments(db: SQLiteDatabase, threadId: string): Promise<AiThreadSummarySegmentRecord[]> {
+  async listSummarySegments(db: SQLiteDatabase, threadId: string, branchScopes?: AiBranchScope[]): Promise<AiThreadSummarySegmentRecord[]> {
+    const visibilityClause = buildSummarySegmentVisibilityClause('ai_thread_summary_segments', branchScopes);
     return db.getAllAsync<AiThreadSummarySegmentRecord>(
-      'SELECT * FROM ai_thread_summary_segments WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
-      threadId
+      `SELECT * FROM ai_thread_summary_segments
+       WHERE threadId = ?
+         ${visibilityClause.clause ? `AND ${visibilityClause.clause}` : ''}
+       ORDER BY createdAt ASC, id ASC`,
+      threadId,
+      ...visibilityClause.values
     );
   },
 
@@ -1542,6 +1962,7 @@ export const aiThreadRepository = {
       roleCardId?: string | null;
       boundIpId?: number | null;
       boundKnowledgeBaseId?: string | null;
+      branchScopes?: AiBranchScope[];
       limit?: number;
       offset?: number;
       status?: AiMemoryStatus | 'all';
@@ -1575,6 +1996,13 @@ export const aiThreadRepository = {
       values.push(input.boundKnowledgeBaseId);
     }
     clauses.push(`(${scopeClauses.join(' OR ')})`);
+    if (input.threadId) {
+      const sourceVisibilityClause = buildMemorySourceVisibilityClause('ai_memories', input.threadId, input.branchScopes);
+      if (sourceVisibilityClause.clause) {
+        clauses.push(sourceVisibilityClause.clause);
+        values.push(...sourceVisibilityClause.values);
+      }
+    }
     const limit = Math.max(1, Math.min(input.limit ?? 80, 200));
     const offset = Math.max(0, input.offset ?? 0);
     return db.getAllAsync<AiMemoryRecord>(
@@ -1588,7 +2016,7 @@ export const aiThreadRepository = {
     );
   },
 
-  async listActiveMemories(db: SQLiteDatabase, input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; limit?: number }): Promise<AiMemoryRecord[]> {
+  async listActiveMemories(db: SQLiteDatabase, input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; branchScopes?: AiBranchScope[]; limit?: number }): Promise<AiMemoryRecord[]> {
     const scopePairs: Array<[AiMemoryScope, string | null]> = [
       ['global', null],
       ['thread', input.threadId],
@@ -1604,13 +2032,16 @@ export const aiThreadRepository = {
     }
     const clauses = scopePairs.map(() => '(scope = ? AND COALESCE(scopeId, \'\') = COALESCE(?, \'\'))');
     const values = scopePairs.flatMap(([scope, scopeId]) => [scope, scopeId]);
+    const sourceVisibilityClause = buildMemorySourceVisibilityClause('ai_memories', input.threadId, input.branchScopes);
     return db.getAllAsync<AiMemoryRecord>(
       `SELECT * FROM ai_memories
        WHERE space = ? AND status = 'active' AND supersededByMemoryId IS NULL AND (${clauses.join(' OR ')})
+         ${sourceVisibilityClause.clause ? `AND ${sourceVisibilityClause.clause}` : ''}
        ORDER BY importance DESC, COALESCE(lastUsedAt, updatedAt) DESC, updatedAt DESC
        LIMIT ?`,
       input.space,
       ...values,
+      ...sourceVisibilityClause.values,
       input.limit ?? 80
     );
   },
@@ -1637,7 +2068,7 @@ export const aiThreadRepository = {
 
   async searchActiveMemoryFts(
     db: SQLiteDatabase,
-    input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; query: string; limit: number }
+    input: { space: PixorySpace; threadId: string; roleCardId?: string | null; boundIpId?: number | null; boundKnowledgeBaseId?: string | null; branchScopes?: AiBranchScope[]; query: string; limit: number }
   ): Promise<AiMemoryRecord[]> {
     const ftsQuery = buildFtsQuery(input.query);
     if (!ftsQuery || input.limit <= 0) {
@@ -1658,6 +2089,7 @@ export const aiThreadRepository = {
     }
     const scopeClauses = scopePairs.map(() => '(ai_memories.scope = ? AND COALESCE(ai_memories.scopeId, \'\') = COALESCE(?, \'\'))');
     const scopeValues = scopePairs.flatMap(([scope, scopeId]) => [scope, scopeId]);
+    const sourceVisibilityClause = buildMemorySourceVisibilityClause('ai_memories', input.threadId, input.branchScopes);
     const fallbackSearch = async () => {
       const memories = await aiThreadRepository.listActiveMemories(db, input);
       const terms = buildSearchTerms(input.query);
@@ -1678,11 +2110,13 @@ export const aiThreadRepository = {
            AND ai_memories.status = 'active'
            AND ai_memories.supersededByMemoryId IS NULL
            AND (${scopeClauses.join(' OR ')})
+           ${sourceVisibilityClause.clause ? `AND ${sourceVisibilityClause.clause}` : ''}
          ORDER BY bm25(ai_memory_fts), ai_memories.importance DESC, COALESCE(ai_memories.lastUsedAt, ai_memories.updatedAt) DESC
          LIMIT ?`,
         ftsQuery,
         input.space,
         ...scopeValues,
+        ...sourceVisibilityClause.values,
         input.limit
       );
       return rows.length > 0 ? rows : fallbackSearch();

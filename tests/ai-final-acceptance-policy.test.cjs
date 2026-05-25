@@ -321,7 +321,7 @@ test('AI chat title is finalized from the first exchange and refreshed in the ch
   assert.match(chatScreen, /displayTitle/);
   assert.match(chatScreen, /displayTitleRef/);
   assert.match(chatScreen, /onThreadTitleChange/);
-  assert.match(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute/);
+  assert.match(app, /onThreadTitleChange=\{\(title\) => updateCurrentAiChatRoute\(\{ contextTitle: title \}, currentRoute\.routeKey\)\}/);
 });
 
 test('AI chat can show role avatars while keeping no-avatar mode', () => {

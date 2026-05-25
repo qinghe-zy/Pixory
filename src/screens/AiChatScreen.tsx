@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Easing, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -19,18 +19,25 @@ import { recognizeSpeech } from '../native/pixoryMediaModule';
 import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemoryInaccurate, replaceRecentMemoryCaptures, updateMemoryContent, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
 import {
   createThreadFromContext,
+  deleteAiThreads,
   getCurrentChatModelLabel,
   listThreadMessages,
   loadThreadTitle,
   loadThreadAvatarConfig,
   listAiHistoryThreads,
   regenerateAssistantMessage,
+  renameAiThread,
   rewriteUserMessage,
   sendUserMessage,
   stopStreamingMessage,
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
 } from '../ai/aiChatService';
+import {
+  getActiveBranchForNextMessageFromVisibleMessages,
+  getSelectedMessageVersionIndex as resolveSelectedMessageVersionIndex,
+  messageMatchesSelectedBranchPath,
+} from '../ai/aiBranching';
 import {
   createComposerEntranceRun,
   isCurrentComposerEntranceRun,
@@ -47,6 +54,8 @@ import type { PixorySpace } from '../database';
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
+const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
+const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
 // Scroll affordance copy: 回到最新.
 
 const CHAT_DOCUMENT_TYPES = [
@@ -181,6 +190,15 @@ export function AiChatScreen({
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
+  const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
+  const inlineEditViewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 82 });
+  const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
+    inlineEditSafeVisibleMessageIdsRef.current = new Set(
+      viewableItems
+        .filter((item) => item.isViewable && item.item?.message?.id)
+        .map((item) => item.item.message.id)
+    );
+  });
   const isLoadingEarlierRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
   const activeThreadIdRef = useRef<string | null>(threadId ?? null);
@@ -197,6 +215,7 @@ export function AiChatScreen({
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
   const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
   const composerEntranceRunRef = useRef<ComposerEntranceRun | null>(null);
@@ -241,10 +260,34 @@ export function AiChatScreen({
     transform: [{ translateY: composerEntranceTranslateY }],
   };
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+  const messagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
+
+  function getSelectedMessageVersionIndex(messageId: string, versionTotal: number): number {
+    return resolveSelectedMessageVersionIndex(selectedVersionByMessageId, messageId, versionTotal);
+  }
+
+  function getBoundMessageVersionIndex(message: AiMessageWithCitations, previousMessage?: AiMessageWithCitations): number {
+    if (
+      message.role === 'assistant' &&
+      !message.branchRootMessageId &&
+      previousMessage?.role === 'user'
+    ) {
+      const selectedUserVersionIndex = selectedVersionByMessageId[previousMessage.id];
+      if (selectedUserVersionIndex && selectedUserVersionIndex <= message.versionTotal) {
+        return selectedUserVersionIndex;
+      }
+    }
+    return getSelectedMessageVersionIndex(message.id, message.versionTotal);
+  }
+
+  function messageMatchesSelectedBranch(message: AiMessageWithCitations): boolean {
+    return messageMatchesSelectedBranchPath(message, messagesById, selectedVersionByMessageId);
+  }
+
   const visibleMessages = useMemo(
     () =>
-      messages.map((message) => {
-        const selectedVersionIndex = selectedVersionByMessageId[message.id] ?? message.versionTotal;
+      messages.filter(messageMatchesSelectedBranch).map((message, index, filteredMessages) => {
+        const selectedVersionIndex = getBoundMessageVersionIndex(message, filteredMessages[index - 1]);
         if (selectedVersionIndex >= message.versionTotal) {
           return message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal };
         }
@@ -385,6 +428,54 @@ export function AiChatScreen({
     scrollToLatestMessage(false);
   }, [scrollToLatestMessage]);
 
+  function clearInlineEditVisibilityTimeouts() {
+    inlineEditVisibilityTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    inlineEditVisibilityTimeoutsRef.current = [];
+  }
+
+  function scrollInlineEditMessageIntoView(messageId: string) {
+    if (editingUserMessageIdRef.current !== messageId) {
+      return;
+    }
+    if (inlineEditSafeVisibleMessageIdsRef.current.has(messageId)) {
+      return;
+    }
+    const index = invertedMessageItems.findIndex((item) => item.message.id === messageId);
+    if (index < 0) {
+      return;
+    }
+    messageListRef.current?.scrollToIndex({
+      animated: true,
+      index,
+      viewPosition: 0.42,
+    });
+  }
+
+  function retryInlineEditScrollToIndex(info: { averageItemLength: number; index: number }) {
+    const failedMessageId = invertedMessageItems[info.index]?.message.id;
+    if (
+      !failedMessageId ||
+      editingUserMessageIdRef.current !== failedMessageId ||
+      inlineEditSafeVisibleMessageIdsRef.current.has(failedMessageId)
+    ) {
+      return;
+    }
+    messageListRef.current?.scrollToOffset({
+      animated: true,
+      offset: Math.max(0, info.averageItemLength * info.index),
+    });
+    inlineEditVisibilityTimeoutsRef.current.push(
+      setTimeout(() => scrollInlineEditMessageIntoView(failedMessageId), INLINE_EDIT_SCROLL_RETRY_DELAY_MS)
+    );
+  }
+
+  function scheduleInlineEditVisibility(messageId: string) {
+    clearInlineEditVisibilityTimeouts();
+    inlineEditVisibilityTimeoutsRef.current = INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS.map((delay) =>
+      setTimeout(() => scrollInlineEditMessageIntoView(messageId), delay)
+    );
+  }
+
   function showLatestMessageVersion(messageId: string) {
     setSelectedVersionByMessageId((current) => {
       if (!(messageId in current)) {
@@ -394,6 +485,10 @@ export function AiChatScreen({
       delete next[messageId];
       return next;
     });
+  }
+
+  function getActiveBranchForNextMessage(): { branchRootMessageId: string; branchVersionIndex: number } | null {
+    return getActiveBranchForNextMessageFromVisibleMessages(visibleMessages, selectedVersionByMessageId);
   }
 
   const applyDisplayTitle = useCallback(
@@ -534,10 +629,28 @@ export function AiChatScreen({
     setRecentThreads(await listAiHistoryThreads({ limit: 15, space }));
   }, [space]);
 
+  async function renameRecentThread(thread: AiThreadHistoryItem, title: string) {
+    await renameAiThread(space, thread.id, title);
+    await reloadRecentThreads();
+    if (thread.id === activeThreadIdRef.current) {
+      applyDisplayTitle(title);
+    }
+  }
+
+  async function deleteRecentThread(thread: AiThreadHistoryItem) {
+    await deleteAiThreads(space, [thread.id]);
+    await reloadRecentThreads();
+    if (thread.id === activeThreadIdRef.current) {
+      onNewChat();
+    }
+  }
+
   useEffect(() => {
     const nextThreadId = threadId ?? null;
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
+    clearInlineEditVisibilityTimeouts();
+    inlineEditSafeVisibleMessageIdsRef.current = new Set();
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setSelectedVersionByMessageId({});
@@ -590,6 +703,7 @@ export function AiChatScreen({
   useEffect(() => {
     return () => {
       screenMountedRef.current = false;
+      clearInlineEditVisibilityTimeouts();
       cancelGenerationAction();
       streamAbortRef.current?.abort();
       streamAbortRef.current = null;
@@ -675,11 +789,8 @@ export function AiChatScreen({
             style: 'destructive',
             onPress: () => {
               setNewChatFeedbackVisible(false);
-              void handleStop().finally(() => {
-                if (screenMountedRef.current) {
-                  onNewChat();
-                }
-              });
+              onNewChat();
+              void stopCurrentGeneration({ reloadAfterStop: false }).catch(() => undefined);
             },
           },
         ]
@@ -935,7 +1046,10 @@ export function AiChatScreen({
       const streamRequest = beginStreamingRequest(targetThreadId);
       streamController = streamRequest.controller;
       streamGeneration = streamRequest.generation;
+      const activeBranch = getActiveBranchForNextMessage();
       await sendUserMessage({
+        branchRootMessageId: activeBranch?.branchRootMessageId,
+        branchVersionIndex: activeBranch?.branchVersionIndex,
         content,
         onCreated: ({ assistantMessageId }) => {
           if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
@@ -986,24 +1100,6 @@ export function AiChatScreen({
     }
   }
 
-  function hasLaterMessages(messageId: string): boolean {
-    const index = messages.findIndex((message) => message.id === messageId);
-    return index >= 0 && index < messages.length - 1;
-  }
-
-  function confirmRemovingLaterMessages(): Promise<boolean> {
-    return new Promise((resolve) => {
-      Alert.alert(
-        '移除后续对话？',
-        '编辑或重新生成这条早期消息会移除它后面的对话。当前版本会保留被编辑消息的版本记录，但不会保留完整后续分支。',
-        [
-          { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-          { text: '继续', style: 'destructive', onPress: () => resolve(true) },
-        ]
-      );
-    });
-  }
-
   async function handleSubmitInlineRewrite(messageId: string, nextContent: string) {
     const content = nextContent.trim();
     if (!content || generating || !activeThreadId) {
@@ -1013,17 +1109,6 @@ export function AiChatScreen({
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
-    }
-    if (hasLaterMessages(userMessageId)) {
-      const confirmed = await confirmRemovingLaterMessages();
-      if (!confirmed) {
-        finishGenerationAction(actionToken);
-        return;
-      }
-      if (!screenMountedRef.current) {
-        finishGenerationAction(actionToken);
-        return;
-      }
     }
     const targetThreadId = activeThreadId;
     setPendingMessageActionId(userMessageId);
@@ -1085,7 +1170,7 @@ export function AiChatScreen({
     }
   }
 
-  async function handleStop() {
+  async function stopCurrentGeneration({ reloadAfterStop }: { reloadAfterStop: boolean }) {
     const targetAssistantId = activeAssistantId;
     const targetThreadId = activeThreadIdRef.current;
     cancelGenerationAction();
@@ -1097,7 +1182,13 @@ export function AiChatScreen({
       return;
     }
     await stopStreamingMessage({ assistantMessageId: targetAssistantId, space });
-    await reloadMessages(targetThreadId);
+    if (reloadAfterStop && screenMountedRef.current) {
+      await reloadMessages(targetThreadId);
+    }
+  }
+
+  async function handleStop() {
+    await stopCurrentGeneration({ reloadAfterStop: true });
   }
 
   async function handleRegenerate(messageId?: string) {
@@ -1106,22 +1197,6 @@ export function AiChatScreen({
       return;
     }
     const targetThreadId = activeThreadId;
-    if (hasLaterMessages(targetMessageId)) {
-      const actionToken = beginGenerationAction();
-      if (!actionToken) {
-        return;
-      }
-      const confirmed = await confirmRemovingLaterMessages();
-      if (!confirmed) {
-        finishGenerationAction(actionToken);
-        return;
-      }
-      if (!screenMountedRef.current) {
-        finishGenerationAction(actionToken);
-        return;
-      }
-      return handleConfirmedRegenerate(targetThreadId, targetMessageId, actionToken);
-    }
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
@@ -1183,9 +1258,11 @@ export function AiChatScreen({
     editingUserMessageIdRef.current = messageId;
     setEditingUserMessageId(messageId);
     setErrorMessage(null);
+    scheduleInlineEditVisibility(messageId);
   }
 
   function cancelInlineEdit() {
+    clearInlineEditVisibilityTimeouts();
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
   }
@@ -1335,6 +1412,7 @@ export function AiChatScreen({
       backgroundColor={aiLightColors.canvas}
       contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
     >
+      <KeyboardAvoidingView behavior="height" enabled={Platform.OS === 'android'} style={styles.keyboardResizeHost}>
       <View style={styles.header}>
         <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
@@ -1354,9 +1432,6 @@ export function AiChatScreen({
         </View>
         <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
-        </Pressable>
-        <Pressable accessibilityLabel="新聊天" accessibilityRole="button" onPress={handleNewChatPress} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.ink} name="add-outline" size={18} />
         </Pressable>
       </View>
       {newChatFeedbackVisible ? (
@@ -1385,11 +1460,14 @@ export function AiChatScreen({
           </>
         }
         onScroll={handleMessageScroll}
+        onViewableItemsChanged={handleInlineEditViewableItemsChangedRef.current}
+        onScrollToIndexFailed={retryInlineEditScrollToIndex}
         renderItem={renderMessageItem}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         style={styles.messageScroller}
         contentContainerStyle={styles.messageScrollContent}
+        viewabilityConfig={inlineEditViewabilityConfigRef.current}
       />
 
       {inlineEditingActive ? null : (
@@ -1450,7 +1528,10 @@ export function AiChatScreen({
           setRecordDrawerVisible(false);
           onOpenThread(thread);
         }}
+        onRenameThread={(thread, title) => renameRecentThread(thread, title)}
+        onDeleteThread={(thread) => deleteRecentThread(thread)}
       />
+      </KeyboardAvoidingView>
     </AppScreen>
   );
 }
@@ -1460,6 +1541,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: rhythm.cardContentGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
+  },
+  keyboardResizeHost: {
+    flex: 1,
+    gap: rhythm.cardContentGap,
   },
   composerPanel: {
     backgroundColor: aiLightColors.canvas,

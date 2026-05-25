@@ -33,6 +33,8 @@ import {
   MIGRATION_STATEMENTS_V28,
   MIGRATION_STATEMENTS_V29,
   MIGRATION_STATEMENTS_V30,
+  MIGRATION_STATEMENTS_V31,
+  MIGRATION_STATEMENTS_V32,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -193,6 +195,14 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
 
     if (currentVersion >= 17 && currentVersion < 30) {
       await database.execAsync(MIGRATION_STATEMENTS_V30);
+    }
+
+    if (currentVersion < 31) {
+      await database.execAsync(MIGRATION_STATEMENTS_V31);
+    }
+
+    if (currentVersion < 32) {
+      await database.execAsync(MIGRATION_STATEMENTS_V32);
     }
 
     await ensureImportTemplatesSchema(database);

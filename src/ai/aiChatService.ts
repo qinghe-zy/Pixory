@@ -14,7 +14,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
@@ -23,7 +23,6 @@ import { trimMessagesToContextBudget } from './aiContextBudget';
 import {
   buildCompanionMemoryPrefix,
   buildStableMemoryPrefix,
-  retrieveDynamicMemoryContext,
 } from './aiMemoryService';
 import { scheduleMemoryMaintenance } from './aiMemoryMaintenanceService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
@@ -55,6 +54,8 @@ export interface SendUserMessageInput {
   space: PixorySpace;
   threadId: string;
   content: string;
+  branchRootMessageId?: string | null;
+  branchVersionIndex?: number | null;
   signal?: AbortSignal;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
@@ -364,13 +365,14 @@ function formatDeepMemorySection(input: {
   return lines.join('\n');
 }
 
-async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord, userMessage: string): Promise<string> {
+async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]): Promise<string> {
   const settings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
   if (!settings.deepMemoryEnabled) {
     return '';
   }
   const [memories, messages, recentMessages] = await Promise.all([
     aiThreadRepository.searchActiveMemoryFts(db, {
+      branchScopes,
       boundIpId: thread.boundIpId,
       boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
       query: userMessage,
@@ -380,11 +382,12 @@ async function loadDeepMemoryContext(db: SQLiteDatabase, thread: AiThreadRecord,
       limit: 80,
     }),
     aiThreadRepository.searchCompletedMessageFts(db, {
+      branchScopes,
       limit: CHAT_HISTORY_MESSAGE_LIMIT + RELATED_HISTORY_LIMIT + 12,
       query: userMessage,
       threadId: thread.id,
     }),
-    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, CHAT_HISTORY_MESSAGE_LIMIT),
+    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, CHAT_HISTORY_MESSAGE_LIMIT, branchScopes),
   ]);
   const rankedMemories = memories
     .map((memory) => ({
@@ -450,13 +453,28 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
   return { provider, model };
 }
 
-async function buildPromptForThread(thread: AiThreadRecord, userMessage: string) {
+async function resolveStreamingBranchScopes(
+  db: SQLiteDatabase,
+  input: { userMessageId: string; assistantMessageId: string }
+): Promise<AiBranchScope[]> {
+  const assistantMessage = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
+  if (assistantMessage?.branchRootMessageId && assistantMessage.branchVersionIndex) {
+    return aiThreadRepository.resolveBranchLineage(db, assistantMessage.branchRootMessageId, assistantMessage.branchVersionIndex);
+  }
+  const userMessage = await aiThreadRepository.findMessageById(db, input.userMessageId);
+  if (userMessage?.branchRootMessageId && userMessage.branchVersionIndex) {
+    return aiThreadRepository.resolveBranchLineage(db, userMessage.branchRootMessageId, userMessage.branchVersionIndex);
+  }
+  return [];
+}
+
+async function buildPromptForThread(thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]) {
   const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => {
     const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
     return {
-      companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { settings: memorySettings }),
-      dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage, { settings: memorySettings }),
-      stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { settings: memorySettings }),
+      companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+      dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage, branchScopes),
+      stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
     };
   });
   if (thread.contextType === 'normal') {
@@ -599,15 +617,46 @@ export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: st
   return modelName ? `${provider.displayName} · ${modelName}` : provider.displayName;
 }
 
+async function loadBranchRootMessages(
+  db: SQLiteDatabase,
+  threadId: string,
+  messages: AiMessageRecord[]
+): Promise<AiMessageRecord[]> {
+  const messagesById = new Map(messages.map((message) => [message.id, message]));
+  let pendingRootIds = [...new Set(messages
+    .map((message) => message.branchRootMessageId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .filter((id) => !messagesById.has(id)))];
+  while (pendingRootIds.length > 0) {
+    const roots = (await aiThreadRepository.findMessagesByIds(db, pendingRootIds))
+      .filter((message) => message.threadId === threadId);
+    pendingRootIds = [];
+    for (const root of roots) {
+      if (messagesById.has(root.id)) {
+        continue;
+      }
+      messagesById.set(root.id, root);
+      if (root.branchRootMessageId && !messagesById.has(root.branchRootMessageId)) {
+        pendingRootIds.push(root.branchRootMessageId);
+      }
+    }
+    pendingRootIds = [...new Set(pendingRootIds)];
+  }
+  return [...messagesById.values()].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+  );
+}
+
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, async (db) => {
     const messages = await aiThreadRepository.listMessages(db, threadId, options.limit);
-    const messageIds = messages.map((message) => message.id);
+    const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
+    const messageIds = messagesWithBranchRoots.map((message) => message.id);
     const [versionsByMessageId, citationsByMessageId] = await Promise.all([
       aiThreadRepository.listMessageVersionsForMessages(db, messageIds),
       aiThreadRepository.listCitationsForMessages(db, messageIds),
     ]);
-    return messages.map((message) => {
+    return messagesWithBranchRoots.map((message) => {
       const messageVersions = versionsByMessageId[message.id] ?? [];
       return {
         ...message,
@@ -982,12 +1031,24 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  const { prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content);
+  const branchScopes = await runWithDatabaseSpace(input.space, (db) =>
+    resolveStreamingBranchScopes(db, {
+      assistantMessageId: input.assistantMessageId,
+      userMessageId: input.userMessage.id,
+    })
+  );
+  const { prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes);
   if (await stopForAbort()) {
     return;
   }
   const historySource = await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.listRecentCompletedMessagesBefore(db, input.thread.id, input.userMessage.id, CHAT_HISTORY_MESSAGE_LIMIT + 1)
+    aiThreadRepository.listRecentCompletedMessagesBefore(
+      db,
+      input.thread.id,
+      input.userMessage.id,
+      CHAT_HISTORY_MESSAGE_LIMIT + 1,
+      branchScopes
+    )
   );
   if (await stopForAbort()) {
     return;
@@ -1149,6 +1210,7 @@ async function streamAssistantReply(input: {
     });
     void scheduleMemoryMaintenance({
       assistantMessageId: input.assistantMessageId,
+      branchScopes,
       reason: 'reply_completed',
       space: input.space,
       thread: input.thread,
@@ -1173,6 +1235,8 @@ export async function sendUserMessage(
     await aiThreadRepository.createMessage(db, {
       id: userMessageId,
       threadId: thread.id,
+      branchRootMessageId: input.branchRootMessageId ?? null,
+      branchVersionIndex: input.branchVersionIndex ?? null,
       role: 'user',
       status: 'completed',
       content: input.content,
@@ -1181,6 +1245,8 @@ export async function sendUserMessage(
     await aiThreadRepository.createMessage(db, {
       id: assistantMessageId,
       threadId: thread.id,
+      branchRootMessageId: input.branchRootMessageId ?? null,
+      branchVersionIndex: input.branchVersionIndex ?? null,
       role: 'assistant',
       status: 'generating',
       content: '',
@@ -1220,16 +1286,18 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     if (!assistantMessage || assistantMessage.threadId !== thread.id || assistantMessage.role !== 'assistant') {
       throw new Error('AI assistant message was not found.');
     }
-    const previousUserMessage = await aiThreadRepository.findPreviousMessageByRole(db, thread.id, input.assistantMessageId, 'user');
+    const assistantBranchScopes = await aiThreadRepository.resolveBranchLineage(
+      db,
+      assistantMessage.branchRootMessageId,
+      assistantMessage.branchVersionIndex
+    );
+    const previousUserMessage = await aiThreadRepository.findPreviousMessageByRole(db, thread.id, input.assistantMessageId, 'user', assistantBranchScopes);
     if (!previousUserMessage) {
       throw new Error('没有可用于重新生成的用户消息。');
     }
-    const trailingIds = await aiThreadRepository.listMessageIdsAfter(db, thread.id, input.assistantMessageId);
     await db.withTransactionAsync(async () => {
-      await snapshotMessageVersion(db, assistantMessage);
-      if (trailingIds.length > 0) {
-        await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
-      }
+      const previousAssistantVersion = await snapshotMessageVersion(db, assistantMessage);
+      await aiThreadRepository.markVisibleMessagesAfterAsBranch(db, thread.id, input.assistantMessageId, input.assistantMessageId, previousAssistantVersion.versionIndex, assistantMessage);
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: previousUserMessage.content.slice(0, 80),
       });
@@ -1263,40 +1331,31 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     throw new Error('AI thread was not found.');
   }
 
-  let assistantMessageId = createAiId('aimsg');
+  const assistantMessageId = createAiId('aimsg');
   await runWithDatabaseSpace(input.space, async (db) => {
     const userMessage = await aiThreadRepository.findMessageById(db, input.userMessageId);
     if (!userMessage || userMessage.threadId !== thread.id || userMessage.role !== 'user') {
       throw new Error('AI user message was not found.');
     }
-    const nextAssistant = await aiThreadRepository.findNextMessageByRole(db, thread.id, input.userMessageId, 'assistant');
-    if (nextAssistant) {
-      assistantMessageId = nextAssistant.id;
-    }
-    const trailingIds = await aiThreadRepository.listMessageIdsAfter(db, thread.id, nextAssistant?.id ?? input.userMessageId);
     await db.withTransactionAsync(async () => {
-      await snapshotMessageVersion(db, userMessage);
-      if (nextAssistant) {
-        await snapshotMessageVersion(db, nextAssistant);
-      }
+      const previousUserVersion = await snapshotMessageVersion(db, userMessage);
+      const nextBranchVersionIndex = previousUserVersion.versionIndex + 1;
+      await aiThreadRepository.markVisibleMessagesAfterAsBranch(db, thread.id, input.userMessageId, input.userMessageId, previousUserVersion.versionIndex, userMessage);
       await aiThreadRepository.updateMessage(db, input.userMessageId, {
         status: 'completed',
         content,
         errorMessage: null,
         completedAt: new Date().toISOString(),
       });
-      if (trailingIds.length > 0) {
-        await aiThreadRepository.deleteMessagesByIds(db, trailingIds);
-      }
-      if (!nextAssistant) {
-        await aiThreadRepository.createMessage(db, {
-          id: assistantMessageId,
-          threadId: thread.id,
-          role: 'assistant',
-          status: 'generating',
-          content: '',
-        });
-      }
+      await aiThreadRepository.createMessage(db, {
+        id: assistantMessageId,
+        threadId: thread.id,
+        branchRootMessageId: input.userMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        role: 'assistant',
+        status: 'generating',
+        content: '',
+      });
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: content.slice(0, 80),
       });

@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 30;
+export const DATABASE_VERSION = 32;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -416,6 +416,8 @@ CREATE TABLE IF NOT EXISTS ai_threads (
 CREATE TABLE IF NOT EXISTS ai_messages (
   id TEXT PRIMARY KEY NOT NULL,
   threadId TEXT NOT NULL,
+  branchRootMessageId TEXT,
+  branchVersionIndex INTEGER,
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
   status TEXT NOT NULL CHECK (status IN ('draft', 'queued', 'generating', 'completed', 'failed', 'stopped')),
   content TEXT NOT NULL DEFAULT '',
@@ -428,7 +430,8 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   completedAt TEXT,
-  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (branchRootMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS ai_documents (
@@ -514,6 +517,7 @@ CREATE TABLE IF NOT EXISTS ai_message_versions (
 CREATE INDEX IF NOT EXISTS idx_ai_threads_space_updated_at ON ai_threads(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextType, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
 CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
@@ -772,4 +776,29 @@ ALTER TABLE ai_role_cards ADD COLUMN firstMessage TEXT;
 ALTER TABLE ai_role_cards ADD COLUMN alternateGreetingsJson TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE ai_role_cards ADD COLUMN sourceType TEXT;
 ALTER TABLE ai_role_cards ADD COLUMN sourceJson TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V31 = `
+ALTER TABLE ai_messages ADD COLUMN branchRootMessageId TEXT;
+ALTER TABLE ai_messages ADD COLUMN branchVersionIndex INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_branch
+  ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V32 = `
+CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5(
+  id UNINDEXED,
+  originalMessageId UNINDEXED,
+  threadId UNINDEXED,
+  role UNINDEXED,
+  content,
+  updatedAt UNINDEXED
+);
+
+DELETE FROM ai_message_version_fts;
+INSERT INTO ai_message_version_fts (id, originalMessageId, threadId, role, content, updatedAt)
+SELECT id, originalMessageId, threadId, role, content, messageUpdatedAt
+FROM ai_message_versions
+WHERE status = 'completed' AND role <> 'system' AND content <> '';
 `;

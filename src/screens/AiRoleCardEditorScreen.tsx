@@ -60,6 +60,8 @@ const DEFAULT_ROLE_CARD_DRAFT: RoleCardEditorDraft = {
   tags: [],
 };
 
+const ROLE_CONTENT_TEXTAREA_MIN_HEIGHT = 168;
+
 function serializeRoleEditorDraft(draft: RoleCardEditorDraft): string {
   return JSON.stringify(draft);
 }
@@ -109,7 +111,7 @@ export function AiRoleCardEditorScreen({
   const loadIps = useCallback(async () => {
     const nextIps = await runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItems(db));
     setIps(nextIps);
-    setAvatarIpId((current) => current ?? nextIps[0]?.id ?? null);
+    setAvatarIpId((current) => current && nextIps.some((ip) => ip.id === current) ? current : null);
   }, [space]);
 
   useEffect(() => {
@@ -489,7 +491,7 @@ export function AiRoleCardEditorScreen({
       />
       <AiLightTextareaRow
         label="角色内容"
-        minHeight={240}
+        minHeight={ROLE_CONTENT_TEXTAREA_MIN_HEIGHT}
         onChangeText={setPrompt}
         placeholder="粘贴或输入角色内容"
         value={prompt}
@@ -529,7 +531,7 @@ export function AiRoleCardEditorScreen({
                 </Pressable>
               ))}
             </View>
-            {avatarCandidates.length ? (
+            {avatarIpId == null ? null : avatarCandidates.length ? (
               <View style={styles.avatarGrid}>
                 {avatarCandidates.map((image) => {
                   const candidateUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri ?? image.originalFileUri;
@@ -690,8 +692,8 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
+    gap: rhythm.inlineGap,
+    padding: spacing[2],
   },
   avatarHeader: {
     alignItems: 'center',
@@ -702,10 +704,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
-    height: metrics.iconButtonSize,
+    height: metrics.minTouchSize,
     justifyContent: 'center',
     overflow: 'hidden',
-    width: metrics.iconButtonSize,
+    width: metrics.minTouchSize,
   },
   avatarImage: {
     height: '100%',
@@ -717,7 +719,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   ipAvatarPicker: {
-    gap: rhythm.cardContentGap,
+    gap: rhythm.inlineGap,
   },
   ipChipRow: {
     flexDirection: 'row',
@@ -755,9 +757,9 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    height: metrics.iconButtonSize,
+    height: metrics.minTouchSize,
     overflow: 'hidden',
-    width: metrics.iconButtonSize,
+    width: metrics.minTouchSize,
   },
   avatarChoiceActive: {
     borderColor: aiLightColors.coral,

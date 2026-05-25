@@ -1,5 +1,5 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMessageRecord } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { captureDeepMemoryForExchange } from './aiMemoryCaptureService';
 import {
   hasStrongProfileSignal,
@@ -16,6 +16,7 @@ interface ScheduleMemoryMaintenanceInput {
   space: PixorySpace;
   threadId: string;
   reason: MemoryMaintenanceReason;
+  branchScopes?: AiBranchScope[];
   thread?: AiThreadRecord;
   userMessage?: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId?: string;
@@ -100,14 +101,15 @@ async function recordMaintenanceFailure(space: PixorySpace, threadId: string, er
   ).catch(() => undefined);
 }
 
-async function loadLastUserMessage(space: PixorySpace, threadId: string): Promise<AiMessageRecord | null> {
+async function loadLastUserMessage(space: PixorySpace, threadId: string, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord | null> {
   return runWithDatabaseSpace(space, async (db) => {
-    const messages = await aiThreadRepository.listRecentCompletedNonSystemMessages(db, threadId, 12);
+    const messages = await aiThreadRepository.listRecentCompletedNonSystemMessages(db, threadId, 12, branchScopes);
     return [...messages].reverse().find((message) => message.role === 'user' && message.status === 'completed') ?? null;
   });
 }
 
 export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaintenanceInput): Promise<void> {
+  const branchScopes = input.branchScopes ?? [];
   const accumulator: MaintenancePassAccumulator = {
     error: null,
     modelId: null,
@@ -125,26 +127,27 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     }
   };
 
-  await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel }));
-  await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel }));
-  await runStep(maybeUpdateUserProfile(input.space, input.threadId, profileReasonForMaintenance(input.reason), { allowRemoteModel }));
+  await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes }));
+  await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes }));
+  await runStep(maybeUpdateUserProfile(input.space, input.threadId, profileReasonForMaintenance(input.reason), { allowRemoteModel, branchScopes }));
 
-  const lastUserMessage = await loadLastUserMessage(input.space, input.threadId);
+  const lastUserMessage = await loadLastUserMessage(input.space, input.threadId, branchScopes);
   if (lastUserMessage && hasStrongProfileSignal(lastUserMessage.content)) {
-    await runStep(maybeUpdateUserProfile(input.space, input.threadId, 'strong_signal', { allowRemoteModel }));
+    await runStep(maybeUpdateUserProfile(input.space, input.threadId, 'strong_signal', { allowRemoteModel, branchScopes }));
   }
 
   if (input.thread && input.userMessage && input.assistantMessageId) {
     await runStep(captureDeepMemoryForExchange({
       allowRemoteModel,
       assistantMessageId: input.assistantMessageId,
+      branchScopes,
       space: input.space,
       thread: input.thread,
       userMessage: input.userMessage,
     }));
   }
 
-  await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel }));
+  await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel, branchScopes }));
   await recordMaintenanceResult(input.space, input.threadId, accumulator);
 }
 

@@ -29,7 +29,7 @@ test('AI regenerated and rewritten replies reset the thinking timer for the new 
   assert.match(resetBlock, /createdAt:\s*startedAt/);
   assert.match(resetBlock, /completedAt:\s*null/);
   assert.match(service, /snapshotMessageVersion\(db, assistantMessage\)/);
-  assert.match(service, /snapshotMessageVersion\(db, nextAssistant\)/);
+  assert.match(service, /snapshotMessageVersion\(db, userMessage\)/);
   assert.match(repository, /createdAt\?: string/);
   assert.match(repository, /createdAt:\s*patch\.createdAt/);
 });
@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 30/);
+  assert.match(schema, /DATABASE_VERSION = 32/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -92,6 +92,9 @@ test('AI chat hides the voice input entry while keeping Android speech recogniti
 test('AI chat relies on Android adjustResize instead of JS keyboard margin lifting', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
+  assert.match(chat, /KeyboardAvoidingView/);
+  assert.match(chat, /<KeyboardAvoidingView behavior="height" enabled=\{Platform\.OS === 'android'\} style=\{styles\.keyboardResizeHost\}>/);
+  assert.match(chat, /keyboardResizeHost:\s*\{\s*flex:\s*1/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
@@ -122,6 +125,36 @@ test('AI inline edit cursor stays visible on the user bubble', () => {
   assert.match(editorInput, /cursorColor=\{aiLightColors\.onDark\}/);
   assert.match(editorInput, /selectionColor=\{aiLightColors\.onDark\}/);
   assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.coral\}/);
+});
+
+test('AI inline edit keeps the edited user message visible above the keyboard', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS/);
+  assert.match(chat, /INLINE_EDIT_SCROLL_RETRY_DELAY_MS/);
+  assert.match(chat, /inlineEditVisibilityTimeoutsRef/);
+  assert.match(chat, /inlineEditSafeVisibleMessageIdsRef/);
+  assert.match(chat, /inlineEditViewabilityConfigRef/);
+  assert.match(chat, /function clearInlineEditVisibilityTimeouts/);
+  assert.match(chat, /function scrollInlineEditMessageIntoView/);
+  assert.match(chat, /function retryInlineEditScrollToIndex/);
+  assert.match(chat, /function scheduleInlineEditVisibility/);
+  assert.match(chat, /editingUserMessageIdRef\.current !== messageId/);
+  assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current = new Set/);
+  assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current\.has\(messageId\)/);
+  assert.match(chat, /const failedMessageId = invertedMessageItems\[info\.index\]\?\.message\.id/);
+  assert.match(chat, /editingUserMessageIdRef\.current !== failedMessageId/);
+  assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current\.has\(failedMessageId\)/);
+  assert.match(chat, /inlineEditVisibilityTimeoutsRef\.current\.push\(\s*setTimeout/);
+  assert.match(chat, /invertedMessageItems\.findIndex\(\(item\) => item\.message\.id === messageId\)/);
+  assert.match(chat, /messageListRef\.current\?\.scrollToIndex\(\{\s*animated:\s*true,\s*index,[\s\S]{0,80}viewPosition:\s*0\.42/);
+  assert.match(chat, /viewabilityConfig=\{inlineEditViewabilityConfigRef\.current\}/);
+  assert.match(chat, /onViewableItemsChanged=\{handleInlineEditViewableItemsChangedRef\.current\}/);
+  assert.match(chat, /onScrollToIndexFailed=\{retryInlineEditScrollToIndex\}/);
+  assert.match(chat, /scheduleInlineEditVisibility\(messageId\)/);
+  assert.match(chat, /clearInlineEditVisibilityTimeouts\(\)/);
+  assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.doesNotMatch(chat, /keyboardBottomInset/);
 });
 
 test('AI chat uses an inverted list pinned to offset zero without forced scrollToEnd loops', () => {
@@ -291,7 +324,7 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(repository, /upsertThreadSummary/);
   assert.match(repository, /listActiveMemories/);
   assert.match(service, /if \(!settings\.deepMemoryEnabled\)/);
-  assert.match(service, /loadDeepMemoryContext/);
+  assert.match(service, /retrieveDynamicMemoryContext/);
   assert.match(captureService, /captureDeepMemoryForExchange/);
   assert.match(captureService, /callMemoryMaintenanceModel/);
   assert.match(captureService, /buildMemoryModelPrompt/);
@@ -438,17 +471,173 @@ test('AI companion memory maintenance runs on chat leave and app background', ()
   assert.match(app, /function pushRoute\(route: AppRoute\)[\s\S]*route\.name === 'ai-chat'[\s\S]*scheduleAiChatMemoryMaintenanceForRoute[\s\S]*'leave_chat'/);
 });
 
-test('AI early rewrite and regenerate warn before removing later messages and delete in chunks', () => {
+test('AI early rewrite and regenerate keep later messages as branches without destructive prompts', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const rewriteHandler = /async function handleSubmitInlineRewrite[\s\S]*?\n  }\n\n  async function handleStop/.exec(chat)?.[0] ?? '';
+  const regenerateHandler = /async function handleRegenerate[\s\S]*?\n  }\n\n  async function handleConfirmedRegenerate/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /Alert\.alert\(/);
-  assert.match(chat, /移除后续对话/);
-  assert.match(chat, /hasLaterMessages/);
-  assert.match(chat, /handleSubmitInlineRewrite[\s\S]*confirmRemovingLaterMessages/);
-  assert.match(chat, /handleRegenerate[\s\S]*confirmRemovingLaterMessages/);
+  assert.doesNotMatch(chat, /移除后续对话/);
+  assert.doesNotMatch(chat, /hasLaterMessages/);
+  assert.doesNotMatch(rewriteHandler, /confirmRemovingLaterMessages/);
+  assert.doesNotMatch(regenerateHandler, /confirmRemovingLaterMessages/);
+  assert.match(repository, /markVisibleMessagesAfterAsBranch/);
   assert.match(repository, /DELETE_MESSAGE_CHUNK_SIZE = 200/);
   assert.match(repository, /DELETE FROM ai_messages WHERE id IN/);
+});
+
+test('AI editing a user message keeps full branch history instead of deleting later messages', () => {
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const service = read('src/ai/aiChatService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
+
+  assert.match(schema, /DATABASE_VERSION = 32/);
+  assert.match(schema, /branchRootMessageId TEXT/);
+  assert.match(schema, /branchVersionIndex INTEGER/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V31/);
+  assert.match(db, /MIGRATION_STATEMENTS_V31/);
+  assert.match(repository, /branchRootMessageId: string \| null/);
+  assert.match(repository, /branchVersionIndex: number \| null/);
+  assert.match(repository, /markVisibleMessagesAfterAsBranch/);
+  assert.match(repository, /branchRootMessageId IS NULL/);
+  assert.match(service, /const previousUserVersion = await snapshotMessageVersion\(db, userMessage\)/);
+  assert.match(service, /const nextBranchVersionIndex = previousUserVersion\.versionIndex \+ 1/);
+  assert.match(rewriteBlock, /markVisibleMessagesAfterAsBranch\(db, thread\.id, input\.userMessageId, input\.userMessageId, previousUserVersion\.versionIndex, userMessage\)/);
+  assert.match(rewriteBlock, /branchRootMessageId:\s*input\.userMessageId/);
+  assert.match(rewriteBlock, /branchVersionIndex:\s*nextBranchVersionIndex/);
+  assert.doesNotMatch(rewriteBlock, /deleteMessagesByIds/);
+  assert.doesNotMatch(/async function handleSubmitInlineRewrite[\s\S]*?\n  }\n\n  async function handleStop/.exec(chat)?.[0] ?? '', /confirmRemovingLaterMessages/);
+});
+
+test('AI message version selection filters descendant branch messages and future sends inherit the active branch', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const service = read('src/ai/aiChatService.ts');
+  const branching = read('src/ai/aiBranching.ts');
+
+  assert.match(chat, /function getSelectedMessageVersionIndex/);
+  assert.match(chat, /function getBoundMessageVersionIndex/);
+  assert.match(branching, /export function messageMatchesSelectedBranchPath/);
+  assert.match(branching, /const path: AiBranchMessageLike\[\] = \[\]/);
+  assert.match(branching, /while \(current\?\.branchRootMessageId && current\.branchVersionIndex\)/);
+  assert.match(branching, /return false/);
+  assert.doesNotMatch(branching, /messageMatchesSelectedBranchPath\(branchRoot/);
+  assert.match(chat, /messageMatchesSelectedBranchPath/);
+  assert.match(chat, /message\.branchRootMessageId/);
+  assert.match(chat, /branchVersionIndex/);
+  assert.match(chat, /previousMessage\?\.role === 'user'/);
+  assert.match(chat, /selectedVersionByMessageId\[previousMessage\.id\]/);
+  assert.match(chat, /visibleMessages = useMemo\([\s\S]*\.filter\(messageMatchesSelectedBranch\)/);
+  assert.match(chat, /function getActiveBranchForNextMessage/);
+  assert.match(chat, /getActiveBranchForNextMessageFromVisibleMessages/);
+  assert.match(chat, /branchRootMessageId:\s*activeBranch\?\.branchRootMessageId/);
+  assert.match(chat, /branchVersionIndex:\s*activeBranch\?\.branchVersionIndex/);
+  assert.match(service, /branchRootMessageId\?: string \| null/);
+  assert.match(service, /branchVersionIndex\?: number \| null/);
+  assert.match(service, /branchRootMessageId:\s*input\.branchRootMessageId/);
+  assert.match(service, /branchVersionIndex:\s*input\.branchVersionIndex/);
+});
+
+test('AI branch scoping keeps hidden branches out of prompts retrieval and memory maintenance', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+  const maintenance = read('src/ai/aiMemoryMaintenanceQueue.ts');
+  const capture = read('src/ai/aiMemoryCaptureService.ts');
+  const memoryService = read('src/ai/aiMemoryService.ts');
+  const profile = read('src/ai/aiMemoryProfileService.ts');
+  const summary = read('src/ai/aiMemorySummaryService.ts');
+
+  assert.match(schema, /DATABASE_VERSION = 32/);
+  assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
+  assert.match(db, /MIGRATION_STATEMENTS_V32/);
+  assert.match(db, /currentVersion < 32/);
+  assert.match(repository, /export interface AiBranchScope/);
+  assert.match(repository, /async resolveBranchLineage/);
+  assert.match(repository, /buildVisibleBranchClause/);
+  assert.match(repository, /materializeMessagesForBranchScopes/);
+  assert.match(repository, /listBranchVersionRowsForScopes/);
+  assert.match(repository, /applyBranchVersionContent/);
+  assert.match(repository, /syncMessageVersionFts/);
+  assert.match(repository, /searchVersionedCompletedMessages/);
+  assert.match(repository, /candidate\.branchRootMessageId IS NULL/);
+  assert.match(repository, /buildMemorySourceVisibilityClause/);
+  assert.match(repository, /buildSummarySegmentVisibilityClause/);
+  assert.match(repository, /searchCompletedMessageFts\(db: SQLiteDatabase, input: \{[\s\S]*branchScopes\?: AiBranchScope\[\]/);
+  assert.match(repository, /searchActiveMemoryFts\([\s\S]*branchScopes\?: AiBranchScope\[\]/);
+  assert.match(repository, /listSummarySegments\(db: SQLiteDatabase, threadId: string, branchScopes\?: AiBranchScope\[\]/);
+  assert.match(repository, /listRecentCompletedMessagesBefore\([\s\S]*branchScopes\?: AiBranchScope\[\]/);
+  assert.match(service, /resolveStreamingBranchScopes/);
+  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes\)/);
+  assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
+  assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
+  assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
+  assert.match(service, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes/);
+  assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, CHAT_HISTORY_MESSAGE_LIMIT, branchScopes\)/);
+  assert.match(service, /scheduleMemoryMaintenance\(\{[\s\S]*branchScopes/);
+  assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
+  assert.match(memoryService, /listMemoryBoardItems\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
+  assert.match(memoryService, /listSummarySegments\(db, thread\.id, options\?\.branchScopes\)/);
+  assert.match(memoryService, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
+  assert.match(maintenance, /branchScopes\?: AiBranchScope\[\]/);
+  assert.match(maintenance, /const branchScopes = input\.branchScopes \?\? \[\]/);
+  assert.match(maintenance, /compressOldestThreadRounds\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes \}\)/);
+  assert.match(maintenance, /maybeMergeSummarySegments\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes \}\)/);
+  assert.match(maintenance, /loadLastUserMessage\(input\.space, input\.threadId, branchScopes\)/);
+  assert.match(capture, /branchScopes\?: AiBranchScope\[\]/);
+  assert.match(capture, /listMessages\(db, input\.thread\.id, 80, input\.branchScopes\)/);
+  assert.match(capture, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes: input\.branchScopes/);
+  assert.match(profile, /branchScopes\?: AiBranchScope\[\]/);
+  assert.match(profile, /listRecentCompletedNonSystemMessages\(db, threadId, 30, options\.branchScopes\)/);
+  assert.match(summary, /branchScopes\?: AiBranchScope\[\]/);
+  assert.match(summary, /listSummarySegments\(db, threadId, options\.branchScopes\)/);
+  assert.match(summary, /listCompletedNonSystemMessagesAfter\(db, threadId, job\.lastCompressedMessageId, UNCOMPRESSED_MESSAGE_SCAN_LIMIT, options\.branchScopes\)/);
+});
+
+test('AI stop-and-new-chat routes immediately while generation cleanup runs in the background', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const newChatBlock = /function handleNewChatPress\(\)[\s\S]*?function handleSessionSettingsPress/.exec(chat)?.[0]
+    ?? /function handleNewChatPress\(\)[\s\S]*?async function stopCurrentGeneration/.exec(chat)?.[0]
+    ?? '';
+  const stopBlock = /async function handleStop\([\s\S]*?\r?\n  }\r?\n\r?\n  async function handleRegenerate/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /async function stopCurrentGeneration/);
+  assert.match(stopBlock, /stopCurrentGeneration\(\{ reloadAfterStop: true \}\)/);
+  assert.match(newChatBlock, /onNewChat\(\);[\s\S]{0,240}void stopCurrentGeneration\(\{ reloadAfterStop: false \}\)/);
+  assert.doesNotMatch(newChatBlock, /handleStop\(\)\.finally/);
+});
+
+test('AI paged chat loads branch root messages before recursive visibility filtering', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(repository, /findMessagesByIds/);
+  assert.match(service, /async function loadBranchRootMessages/);
+  assert.match(service, /pendingRootIds/);
+  assert.match(service, /message\.branchRootMessageId/);
+  assert.match(service, /const messagesWithBranchRoots = await loadBranchRootMessages\(db, threadId, messages\)/);
+  assert.match(service, /messagesWithBranchRoots\.map/);
+});
+
+test('AI edit and regenerate branch descendants instead of deleting or leaking later messages', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const service = read('src/ai/aiChatService.ts');
+  const regenerateBlock = /export async function regenerateAssistantMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function retryAssistantMessage/.exec(service)?.[0] ?? '';
+  const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
+
+  assert.match(repository, /markVisibleMessagesAfterAsBranch/);
+  assert.match(repository, /sameBranchClause/);
+  assert.match(repository, /candidate\.branchRootMessageId = \?/);
+  assert.doesNotMatch(repository, /markUnbranchedMessagesAfterAsBranch/);
+  assert.match(rewriteBlock, /markVisibleMessagesAfterAsBranch\(db, thread\.id, input\.userMessageId, input\.userMessageId, previousUserVersion\.versionIndex, userMessage\)/);
+  assert.match(regenerateBlock, /const previousAssistantVersion = await snapshotMessageVersion\(db, assistantMessage\)/);
+  assert.match(regenerateBlock, /markVisibleMessagesAfterAsBranch\(db, thread\.id, input\.assistantMessageId, input\.assistantMessageId, previousAssistantVersion\.versionIndex, assistantMessage\)/);
+  assert.doesNotMatch(regenerateBlock, /deleteMessagesByIds/);
+  assert.doesNotMatch(regenerateBlock, /listMessageIdsAfter/);
 });
 
 test('AI chat shows memory capture notice with undo and board actions', () => {
@@ -515,11 +704,12 @@ test('AI prompt build reuses deep memory settings instead of repeating settings 
   const memoryService = read('src/ai/aiMemoryService.ts');
 
   assert.match(memoryService, /BuildMemoryPrefixOptions/);
+  assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(memoryService, /settings\?: AiThreadMemorySettingsRecord/);
   assert.match(chat, /const memorySettings = await aiThreadRepository\.getThreadMemorySettings\(db, thread\.id\)/);
-  assert.match(chat, /buildCompanionMemoryPrefix\(db, thread, \{ settings: memorySettings/);
-  assert.match(chat, /buildStableMemoryPrefix\(db, thread, \{ settings: memorySettings/);
-  assert.match(chat, /retrieveDynamicMemoryContext\(db, thread, userMessage, \{ settings: memorySettings/);
+  assert.match(chat, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings/);
+  assert.match(chat, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings/);
+  assert.match(chat, /retrieveDynamicMemoryContext\(db, thread, userMessage, branchScopes\)/);
 });
 
 test('AI long chat rendering memoizes message rows and precomputes avatar grouping', () => {
@@ -591,6 +781,18 @@ test('AI thinking block expands and collapses with a lightweight animation', () 
   assert.match(thinking, /thinkingAnimatedBody/);
 });
 
+test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fixed-height clipping', () => {
+  const thinking = read('src/components/ai/AiThinkingBlock.tsx');
+
+  assert.match(thinking, /new Animated\.Value\(expanded \? 1 : 0\)/);
+  assert.match(thinking, /const bodyVisible = expanded && Boolean\(reasoningText\)/);
+  assert.match(thinking, /disabled=\{!reasoningText && !thinking\}/);
+  assert.doesNotMatch(thinking, /expanded \|\| thinking/);
+  assert.doesNotMatch(thinking, /bodyVisible = \(expanded \|\| thinking\)/);
+  assert.doesNotMatch(thinking, /outputRange:\s*\[0,\s*320\]/);
+  assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
+});
+
 test('AI screens use shared time formatting helpers', () => {
   const formatter = read('src/utils/aiTimeFormatters.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
@@ -638,7 +840,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 30/);
+  assert.match(schema, /DATABASE_VERSION = 32/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);

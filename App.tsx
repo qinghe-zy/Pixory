@@ -720,21 +720,32 @@ export default function App() {
     setRouteStack((current) => [...current, route]);
   }
 
-  function openNewAiChat(space: PixorySpace) {
+  function openAiChatRoute(route: Extract<AppRoute, { name: 'ai-chat' }>) {
     scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
-    const nextRoute = prepareAiChatRouteForPush({
+    const nextRoute = prepareAiChatRouteForPush(route);
+    setRouteStack((current) => {
+      const currentRoute = current[current.length - 1];
+      if (currentRoute?.name === 'ai-chat') {
+        return [...current.slice(0, -1), nextRoute];
+      }
+      if (currentRoute?.name === 'ai-history') {
+        const previousRoute = current[current.length - 2];
+        if (previousRoute?.name === 'ai-chat') {
+          return [...current.slice(0, -2), nextRoute];
+        }
+        return [...current.slice(0, -1), nextRoute];
+      }
+      return [...current, nextRoute];
+    });
+  }
+
+  function openNewAiChat(space: PixorySpace) {
+    openAiChatRoute({
       name: 'ai-chat',
       composerEntranceReason: 'new_chat',
       contextTitle: '普通聊天',
       contextType: 'normal',
       space,
-    });
-    setRouteStack((current) => {
-      const currentRoute = current[current.length - 1];
-      if (currentRoute?.name === 'ai-chat' && !currentRoute.threadId) {
-        return [...current.slice(0, -1), nextRoute];
-      }
-      return [...current, nextRoute];
     });
   }
 
@@ -862,6 +873,20 @@ export default function App() {
     setRouteStack((current) => {
       const previousRoute = current[current.length - 1];
       const nextRoute = route.name === 'ai-chat' ? prepareAiChatRouteForReplace(route, previousRoute) : route;
+      return [...current.slice(0, -1), nextRoute];
+    });
+  }
+
+  function updateCurrentAiChatRoute(patch: Partial<Extract<AppRoute, { name: 'ai-chat' }>>, expectedRouteKey?: string) {
+    setRouteStack((current) => {
+      const currentRoute = current[current.length - 1];
+      if (currentRoute?.name !== 'ai-chat') {
+        return current;
+      }
+      if (expectedRouteKey && currentRoute.routeKey !== expectedRouteKey) {
+        return current;
+      }
+      const nextRoute = prepareAiChatRouteForReplace({ ...currentRoute, ...patch }, currentRoute);
       return [...current.slice(0, -1), nextRoute];
     });
   }
@@ -1473,7 +1498,7 @@ export default function App() {
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
-          pushRoute({
+          openAiChatRoute({
             name: 'ai-chat',
             composerEntranceReason: 'open_thread',
             contextTitle: thread.title,
@@ -1488,8 +1513,8 @@ export default function App() {
         onOpenImageSource={(imageId) => pushRoute({ name: 'image-detail', imageId, space: currentRoute.space })}
         onOpenIpSource={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: currentRoute.space })}
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
-        onThreadReady={(threadId) => replaceCurrentRoute({ ...currentRoute, threadId })}
-        onThreadTitleChange={(title) => replaceCurrentRoute({ ...currentRoute, contextTitle: title })}
+        onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
+        onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />
@@ -1581,8 +1606,9 @@ export default function App() {
       <AiHistoryScreen
         onBack={popRoute}
         onOpenThread={(thread) =>
-          pushRoute({
+          openAiChatRoute({
             name: 'ai-chat',
+            composerEntranceReason: 'open_thread',
             contextTitle: thread.title,
             contextType: thread.contextType,
             includeIpDocuments: thread.includeIpDocuments,

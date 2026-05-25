@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiMessageRecord } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { buildCompressionPrompt, buildSummaryMergePrompt } from './aiMemoryPrompts';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import type { AiThreadRecord } from './types';
@@ -90,7 +90,7 @@ async function loadThreadOrReturn(db: SQLiteDatabase, threadId: string): Promise
   return aiThreadRepository.findThreadById(db, threadId);
 }
 
-export async function compressOldestThreadRounds(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function compressOldestThreadRounds(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -101,7 +101,7 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
       return null;
     }
     const job = await aiThreadRepository.getThreadMemoryJob(db, threadId);
-    const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId);
+    const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, options.branchScopes);
     const estimatedRoundCount = Math.floor(completedMessageCount / 2);
     await aiThreadRepository.updateThreadMemoryJob(db, {
       threadId,
@@ -110,7 +110,7 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
     if (estimatedRoundCount <= UNCOMPRESSED_ROUND_THRESHOLD) {
       return null;
     }
-    const messages = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, UNCOMPRESSED_MESSAGE_SCAN_LIMIT);
+    const messages = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, UNCOMPRESSED_MESSAGE_SCAN_LIMIT, options.branchScopes);
     const rounds = pairCompletedRounds(messages);
     if (rounds.length <= UNCOMPRESSED_ROUND_THRESHOLD) {
       return null;
@@ -167,7 +167,7 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
   return stepResultFromModel(modelResult, !modelResult.text);
 }
 
-export async function maybeMergeSummarySegments(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function maybeMergeSummarySegments(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -177,7 +177,7 @@ export async function maybeMergeSummarySegments(space: PixorySpace, threadId: st
     if (!settings.deepMemoryEnabled) {
       return null;
     }
-    const segments = await aiThreadRepository.listSummarySegments(db, threadId);
+    const segments = await aiThreadRepository.listSummarySegments(db, threadId, options.branchScopes);
     if (segments.length <= SUMMARY_SEGMENT_LIMIT) {
       return null;
     }
