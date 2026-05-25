@@ -151,12 +151,14 @@ test('AI chat composer supports image, video, and document attachments', () => {
   assert.match(content, /pickChatDocuments/);
   assert.match(content, /buildChatMessageContent/);
   assert.match(content, /\[附件\]/);
-  assert.match(content, /上传图片/);
-  assert.match(content, /上传视频/);
-  assert.match(content, /上传文档/);
+  assert.match(composer, /上传图片/);
+  assert.match(composer, /上传视频/);
+  assert.match(composer, /上传文档/);
   assert.match(composer, /AiComposerAttachment/);
   assert.match(composer, /attachments/);
-  assert.match(composer, /onAddAttachment/);
+  assert.match(composer, /onAddImageAttachment/);
+  assert.match(composer, /onAddVideoAttachment/);
+  assert.match(composer, /onAddDocumentAttachment/);
   assert.match(composer, /onRemoveAttachment/);
   assert.match(composer, /styles\.attachmentRail/);
   assert.match(composer, /添加附件/);

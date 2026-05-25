@@ -688,3 +688,17 @@ test('AI chat feedback voice empty state error and long navigation polish are wi
   assert.match(chat, /最新/);
   assert.match(chat, /voiceState/);
 });
+
+test('AI composer uses compact icon-only attachment popover anchored above add button', () => {
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(composer, /attachmentPopoverVisible/);
+  assert.match(composer, /styles\.attachmentPopover/);
+  assert.match(composer, /accessibilityLabel="上传图片"/);
+  assert.match(composer, /accessibilityLabel="上传视频"/);
+  assert.match(composer, /accessibilityLabel="上传文档"/);
+  assert.match(composer, /flexDirection: 'row'/);
+  assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传图片[\s\S]{0,400}上传视频[\s\S]{0,400}上传文档/);
+  assert.doesNotMatch(chat, /attachmentSheetVisible/);
+});

@@ -14,7 +14,6 @@ import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme
 import { AiMemoryCaptureNotice } from '../components/ai/AiMemoryCaptureNotice';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
 import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton';
-import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
 import { recognizeSpeech } from '../native/pixoryMediaModule';
 import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemoryInaccurate, replaceRecentMemoryCaptures, updateMemoryContent, type MemoryCaptureNoticeItem } from '../ai/aiMemoryService';
@@ -199,7 +198,6 @@ export function AiChatScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
   const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
-  const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
@@ -284,15 +282,6 @@ export function AiChatScreen({
     }
     return map;
   }, [memoryCaptures]);
-  const attachmentSheetItems = useMemo<AppActionSheetItem[]>(
-    () => [
-      { key: 'image', label: '上传图片', icon: 'image-outline', onPress: () => void pickChatImages() },
-      { key: 'video', label: '上传视频', icon: 'videocam-outline', onPress: () => void pickChatVideos() },
-      { key: 'document', label: '上传文档', icon: 'document-text-outline', onPress: () => void pickChatDocuments() },
-    ],
-    []
-  );
-
   function nextRequestId(kind: keyof typeof latestRequestRef.current): number {
     latestRequestRef.current[kind] += 1;
     return latestRequestRef.current[kind];
@@ -1335,7 +1324,9 @@ export function AiChatScreen({
           <AiChatComposer
             attachments={pendingAttachments}
             generating={generating}
-            onAddAttachment={() => setAttachmentSheetVisible(true)}
+            onAddDocumentAttachment={() => void pickChatDocuments()}
+            onAddImageAttachment={() => void pickChatImages()}
+            onAddVideoAttachment={() => void pickChatVideos()}
             onChangeText={setComposerText}
             onComposerHeightChange={handleComposerHeightChange}
             onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
@@ -1356,12 +1347,6 @@ export function AiChatScreen({
           />
         </View>
       )}
-      <AppActionSheet
-        items={attachmentSheetItems}
-        onClose={() => setAttachmentSheetVisible(false)}
-        title="添加附件"
-        visible={attachmentSheetVisible}
-      />
       <AiComprehensiveRecordDrawer
         activeThreadId={activeThreadId}
         recentThreads={recentThreads}

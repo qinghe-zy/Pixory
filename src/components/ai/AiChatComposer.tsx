@@ -28,7 +28,9 @@ interface AiChatComposerProps {
   placeholder?: string;
   voiceState?: AiVoiceInputState;
   voiceError?: string | null;
-  onAddAttachment: () => void;
+  onAddImageAttachment: () => void;
+  onAddVideoAttachment: () => void;
+  onAddDocumentAttachment: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onComposerHeightChange?: () => void;
@@ -58,6 +60,22 @@ function formatAttachmentSize(size?: number | null): string | null {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
+function AttachmentOption({
+  accessibilityLabel,
+  icon,
+  onPress,
+}: {
+  accessibilityLabel: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.attachmentOption, pressed && styles.pressed]}>
+      <Ionicons color={aiLightColors.ink} name={icon} size={spacing[5]} />
+    </Pressable>
+  );
+}
+
 export function AiChatComposer({
   value,
   generating,
@@ -65,7 +83,9 @@ export function AiChatComposer({
   placeholder = '输入提示或需求',
   voiceState = 'idle',
   voiceError = null,
-  onAddAttachment,
+  onAddImageAttachment,
+  onAddVideoAttachment,
+  onAddDocumentAttachment,
   onChangeText,
   onComposerHeightChange,
   onRemoveAttachment,
@@ -78,6 +98,7 @@ export function AiChatComposer({
   const inputRef = useRef<TextInput>(null);
   const attachmentCountRef = useRef(attachments.length);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
+  const [attachmentPopoverVisible, setAttachmentPopoverVisible] = useState(false);
 
   useEffect(() => {
     if (attachmentCountRef.current === attachments.length) {
@@ -120,9 +141,46 @@ export function AiChatComposer({
         </View>
       ) : null}
       <View style={styles.composerShell}>
-        <Pressable accessibilityLabel="添加附件" accessibilityRole="button" disabled={generating} hitSlop={spacing[2]} onPress={onAddAttachment} style={({ pressed }) => [styles.addButton, generating && styles.disabled, pressed && !generating && styles.pressed]}>
-          <Ionicons color={aiLightColors.coral} name="add" size={spacing[6]} />
-        </Pressable>
+        <View style={styles.addButtonWrap}>
+          {attachmentPopoverVisible ? (
+            <View style={styles.attachmentPopover}>
+              <AttachmentOption
+                accessibilityLabel="上传图片"
+                icon="image-outline"
+                onPress={() => {
+                  setAttachmentPopoverVisible(false);
+                  onAddImageAttachment();
+                }}
+              />
+              <AttachmentOption
+                accessibilityLabel="上传视频"
+                icon="videocam-outline"
+                onPress={() => {
+                  setAttachmentPopoverVisible(false);
+                  onAddVideoAttachment();
+                }}
+              />
+              <AttachmentOption
+                accessibilityLabel="上传文档"
+                icon="document-text-outline"
+                onPress={() => {
+                  setAttachmentPopoverVisible(false);
+                  onAddDocumentAttachment();
+                }}
+              />
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityLabel="添加附件"
+            accessibilityRole="button"
+            disabled={generating}
+            hitSlop={spacing[2]}
+            onPress={() => setAttachmentPopoverVisible((current) => !current)}
+            style={({ pressed }) => [styles.addButton, generating && styles.disabled, pressed && !generating && styles.pressed]}
+          >
+            <Ionicons color={aiLightColors.coral} name="add" size={spacing[6]} />
+          </Pressable>
+        </View>
         <TextInput
           allowFontScaling={false}
           maxFontSizeMultiplier={1}
@@ -218,6 +276,31 @@ const styles = StyleSheet.create({
     height: 24,
     justifyContent: 'center',
     width: 24,
+  },
+  addButtonWrap: {
+    position: 'relative',
+  },
+  attachmentPopover: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: spacing[10],
+    flexDirection: 'row',
+    gap: spacing[1],
+    left: 0,
+    padding: spacing[1],
+    position: 'absolute',
+    ...shadows.floating,
+  },
+  attachmentOption: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.pill,
+    height: spacing[8],
+    justifyContent: 'center',
+    width: spacing[8],
   },
   composerShell: {
     alignItems: 'flex-end',
