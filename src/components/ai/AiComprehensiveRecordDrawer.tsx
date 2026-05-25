@@ -42,7 +42,7 @@ export function AiComprehensiveRecordDrawer({
         </View>
         <View style={styles.divider} />
         <Text style={styles.sectionTitle}>最近</Text>
-        <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
           {visibleRecents.length ? (
             visibleRecents.map((thread) => (
               <Pressable
@@ -102,7 +102,9 @@ const styles = StyleSheet.create({
     backgroundColor: aiLightColors.canvas,
     borderBottomRightRadius: radius.xl,
     borderTopRightRadius: radius.xl,
+    flexShrink: 1,
     gap: rhythm.screenSectionGap,
+    maxHeight: '100%',
     paddingBottom: spacing[5],
     paddingHorizontal: spacing[5],
     paddingTop: spacing[10],
@@ -137,6 +139,9 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.muted,
+  },
+  recentScroller: {
+    flex: 1,
   },
   recentList: {
     gap: rhythm.inlineGap,

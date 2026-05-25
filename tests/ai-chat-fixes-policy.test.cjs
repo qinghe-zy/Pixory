@@ -222,6 +222,7 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
   assert.match(content, /trailingInline\?: ReactNode/);
   assert.match(content, /trailingTargetIndex/);
+  assert.match(content, /block\.type === 'hr' \? targetIndex : index/);
   assert.match(content, /parseMarkdownBlocks/);
   assert.match(content, /type: 'heading'/);
   assert.match(content, /type: 'list'/);
@@ -718,6 +719,8 @@ test('AI streaming cursor is rendered inline with assistant text', () => {
   assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
   assert.match(content, /appendTrailingInline/);
   assert.match(content, /\{appendTrailingInline \? trailingInline : null\}/);
+  assert.match(content, /block\.type === 'code'[\s\S]*\{appendTrailingInline \? trailingInline : null\}/);
+  assert.match(content, /block\.type === 'table'[\s\S]*rowIndex === block\.rows\.length - 1 && cellIndex === row\.length - 1 \? trailingInline : null/);
   assert.doesNotMatch(bubble, /streamingCursorBlock/);
   assert.doesNotMatch(bubble, /assistantContentWithCursor/);
   assert.doesNotMatch(bubble, /\\n\s*<InlineStreamingCursor/);
@@ -728,6 +731,7 @@ test('AI history archive restore swipe clips the action background to the row', 
 
   assert.match(history, /swipeActionClip/);
   assert.match(history, /swipeActionSurface/);
+  assert.match(history, /<View key=\{thread\.id\}>\s*\{groupLabel !== previousGroupLabel[\s\S]*<View style=\{styles\.swipeWrap\}>/);
   assert.match(history, /interpolate\(\{[\s\S]*inputRange:\s*\[0,\s*ARCHIVE_ACTION_WIDTH\]/);
   assert.match(history, /outputRange:\s*\[ARCHIVE_ACTION_WIDTH,\s*0\]/);
   assert.match(history, /transform:\s*\[\{ translateX: actionTranslateX \}\]/);

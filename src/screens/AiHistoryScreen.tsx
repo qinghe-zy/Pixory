@@ -314,62 +314,64 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
               const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
               const previousGroupLabel = index > 0 ? historyGroupLabel(items[index - 1].lastMessageAt ?? items[index - 1].updatedAt) : null;
               return (
-                <View key={thread.id} style={styles.swipeWrap}>
+                <View key={thread.id}>
                   {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
-                  {!isSelecting ? (
-                    <Animated.View style={[styles.swipeActionClip, { transform: [{ translateX: actionTranslateX }] }]}>
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => {
-                          void toggleArchive(thread);
-                        }}
-                        style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
-                      >
-                        <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
-                        <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
-                      </Pressable>
-                    </Animated.View>
-                  ) : null}
-                  <Animated.View
-                    {...getThreadSwipeHandlers(thread)}
-                    style={[
-                      styles.row,
-                      selected && styles.selectedRow,
-                      {
-                        transform: [{ translateX: swipeTranslateX }],
-                      },
-                    ]}
-                  >
-                    <View style={styles.rowContent}>
-                      <Pressable
-                        accessibilityRole="button"
-                        onLongPress={() => toggleSelected(thread.id)}
-                        onPress={() => handleRowPress(thread)}
-                        style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
-                      >
-                        <View style={styles.iconWrap}>
-                          <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
-                        </View>
-                        <View style={styles.copy}>
-                          <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
-                          <Text numberOfLines={1} style={styles.meta}>
-                            {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
-                          </Text>
-                          {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
-                        </View>
-                      </Pressable>
-                      {!isSelecting ? (
+                  <View style={styles.swipeWrap}>
+                    {!isSelecting ? (
+                      <Animated.View style={[styles.swipeActionClip, { transform: [{ translateX: actionTranslateX }] }]}>
                         <Pressable
-                          accessibilityLabel="会话操作"
                           accessibilityRole="button"
-                          onPress={() => setActionThread(thread)}
-                          style={({ pressed }) => [styles.rowMenuButton, pressed && styles.pressed]}
+                          onPress={() => {
+                            void toggleArchive(thread);
+                          }}
+                          style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
                         >
-                          <Ionicons color={aiLightColors.muted} name="ellipsis-horizontal" size={18} />
+                          <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
+                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
                         </Pressable>
-                      ) : null}
-                    </View>
-                  </Animated.View>
+                      </Animated.View>
+                    ) : null}
+                    <Animated.View
+                      {...getThreadSwipeHandlers(thread)}
+                      style={[
+                        styles.row,
+                        selected && styles.selectedRow,
+                        {
+                          transform: [{ translateX: swipeTranslateX }],
+                        },
+                      ]}
+                    >
+                      <View style={styles.rowContent}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onLongPress={() => toggleSelected(thread.id)}
+                          onPress={() => handleRowPress(thread)}
+                          style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+                        >
+                          <View style={styles.iconWrap}>
+                            <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                          </View>
+                          <View style={styles.copy}>
+                            <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
+                            <Text numberOfLines={1} style={styles.meta}>
+                              {labelForContext(thread)} · 上次聊天 {formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}
+                            </Text>
+                            {thread.lastMessagePreview ? <Text numberOfLines={2} style={styles.preview}>{thread.lastMessagePreview}</Text> : null}
+                          </View>
+                        </Pressable>
+                        {!isSelecting ? (
+                          <Pressable
+                            accessibilityLabel="会话操作"
+                            accessibilityRole="button"
+                            onPress={() => setActionThread(thread)}
+                            style={({ pressed }) => [styles.rowMenuButton, pressed && styles.pressed]}
+                          >
+                            <Ionicons color={aiLightColors.muted} name="ellipsis-horizontal" size={18} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </Animated.View>
+                  </View>
                 </View>
               );
             })

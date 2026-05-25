@@ -197,7 +197,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
 
   const blocks = parseMarkdownBlocks(content);
   const trailingTargetIndex = trailingInline
-    ? blocks.reduce((targetIndex, block, index) => (block.type === 'paragraph' || block.type === 'heading' || block.type === 'list' || block.type === 'quote' ? index : targetIndex), -1)
+    ? blocks.reduce((targetIndex, block, index) => (block.type === 'hr' ? targetIndex : index), -1)
     : -1;
 
   async function copyCodeBlock(blockKey: string, code: string) {
@@ -281,7 +281,10 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                 </Pressable>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Text selectable style={styles.codeText}>{block.text || ' '}</Text>
+                <Text selectable style={styles.codeText}>
+                  {block.text || ' '}
+                  {appendTrailingInline ? trailingInline : null}
+                </Text>
               </ScrollView>
             </View>
           );
@@ -295,6 +298,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                     {row.map((cell, cellIndex) => (
                       <Text key={`${key}-${rowIndex}-${cellIndex}`} style={[styles.tableCell, rowIndex === 0 && styles.tableHeaderCell]}>
                         {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink)}
+                        {appendTrailingInline && rowIndex === block.rows.length - 1 && cellIndex === row.length - 1 ? trailingInline : null}
                       </Text>
                     ))}
                   </View>
