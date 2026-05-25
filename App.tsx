@@ -43,6 +43,7 @@ import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { createNormalThreadFromRoleCard } from './src/ai/aiChatService';
+import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -160,6 +161,7 @@ type AppRoute =
       includeIpDocuments?: boolean;
       threadId?: string;
       routeKey?: string;
+      composerEntranceReason?: ComposerEntranceReason;
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
@@ -216,7 +218,7 @@ function createAiChatRouteInstanceKey(): string {
 }
 
 function prepareAiChatRouteForPush(route: Extract<AppRoute, { name: 'ai-chat' }>): Extract<AppRoute, { name: 'ai-chat' }> {
-  return { ...route, routeKey: route.routeKey ?? createAiChatRouteInstanceKey() };
+  return { ...route, composerEntranceReason: route.composerEntranceReason ?? 'open_thread', routeKey: route.routeKey ?? createAiChatRouteInstanceKey() };
 }
 
 function prepareAiChatRouteForReplace(
@@ -224,7 +226,7 @@ function prepareAiChatRouteForReplace(
   previousRoute?: AppRoute
 ): Extract<AppRoute, { name: 'ai-chat' }> {
   const previousKey = previousRoute?.name === 'ai-chat' ? previousRoute.routeKey : undefined;
-  return { ...route, routeKey: route.routeKey ?? previousKey ?? createAiChatRouteInstanceKey() };
+  return { ...route, composerEntranceReason: route.composerEntranceReason ?? 'replace_current', routeKey: route.routeKey ?? previousKey ?? createAiChatRouteInstanceKey() };
 }
 
 function aiChatRouteKey(route: Extract<AppRoute, { name: 'ai-chat' }>, stackDepth: number): string {
@@ -722,6 +724,7 @@ export default function App() {
     scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
     const nextRoute = prepareAiChatRouteForPush({
       name: 'ai-chat',
+      composerEntranceReason: 'new_chat',
       contextTitle: '普通聊天',
       contextType: 'normal',
       space,
@@ -1450,6 +1453,8 @@ export default function App() {
     content = (
       <AiChatScreen
         key={aiChatRouteKey(currentRoute, routeStack.length)}
+        composerEntranceKey={currentRoute.routeKey}
+        composerEntranceReason={currentRoute.composerEntranceReason ?? 'replace_current'}
         contextTitle={currentRoute.contextTitle}
         contextType={currentRoute.contextType ?? 'normal'}
         boundIpId={currentRoute.ipId}
@@ -1470,6 +1475,7 @@ export default function App() {
         onOpenThread={(thread) =>
           pushRoute({
             name: 'ai-chat',
+            composerEntranceReason: 'open_thread',
             contextTitle: thread.title,
             contextType: thread.contextType,
             includeIpDocuments: thread.includeIpDocuments,

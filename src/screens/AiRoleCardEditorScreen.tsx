@@ -20,7 +20,7 @@ import {
   type NormalizedSillyTavernRoleCard,
   type SillyTavernParseResult,
 } from '../ai/sillyTavernRoleCardParser';
-import type { AiRoleCardRecord } from '../ai/types';
+import type { AiRoleCardRecord, AiRoleCardSourceType } from '../ai/types';
 import { copyAiRoleAvatarToAppStorage } from '../services/fileStorageService';
 import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type ImageListItem, type IpListItem, type PixorySpace } from '../database';
@@ -32,6 +32,36 @@ interface AiRoleCardEditorScreenProps {
   onBack: () => void;
   onApplyRoleCard: (roleCardId?: string | null) => void;
   onStartChatWithRole?: (roleCardId: string) => Promise<void> | void;
+}
+
+interface RoleCardEditorDraft {
+  name: string;
+  description: string;
+  prompt: string;
+  avatarEnabled: boolean;
+  avatarUri: string | null;
+  firstMessage: string | null;
+  alternateGreetings: string[];
+  sourceType: AiRoleCardSourceType | null;
+  sourceJson: string | null;
+  tags: string[];
+}
+
+const DEFAULT_ROLE_CARD_DRAFT: RoleCardEditorDraft = {
+  name: '素材整理助手',
+  description: '',
+  prompt: '',
+  avatarEnabled: false,
+  avatarUri: null,
+  firstMessage: null,
+  alternateGreetings: [],
+  sourceType: 'pixory_manual',
+  sourceJson: null,
+  tags: [],
+};
+
+function serializeRoleEditorDraft(draft: RoleCardEditorDraft): string {
+  return JSON.stringify(draft);
 }
 
 export function AiRoleCardEditorScreen({
@@ -47,6 +77,12 @@ export function AiRoleCardEditorScreen({
   const [prompt, setPrompt] = useState('');
   const [avatarEnabled, setAvatarEnabled] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [firstMessage, setFirstMessage] = useState<string | null>(null);
+  const [alternateGreetings, setAlternateGreetings] = useState<string[]>([]);
+  const [sourceType, setSourceType] = useState<AiRoleCardSourceType | null>('pixory_manual');
+  const [sourceJson, setSourceJson] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
   const [cards, setCards] = useState<AiRoleCardRecord[]>([]);
   const [ips, setIps] = useState<IpListItem[]>([]);
   const [avatarIpId, setAvatarIpId] = useState<number | null>(null);
@@ -59,7 +95,10 @@ export function AiRoleCardEditorScreen({
   const [importedAvatarUri, setImportedAvatarUri] = useState<string | null>(null);
   const [selectedGreeting, setSelectedGreeting] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pendingLoadCard, setPendingLoadCard] = useState<AiRoleCardRecord | null>(null);
+  const [editorBaseline, setEditorBaseline] = useState(() => serializeRoleEditorDraft(DEFAULT_ROLE_CARD_DRAFT));
   const savingImportedRef = useRef(false);
+  const loadedInitialRoleIdRef = useRef<string | null>(null);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
 
   const loadCards = useCallback(async () => {
@@ -88,13 +127,109 @@ export function AiRoleCardEditorScreen({
     });
   }, [avatarIpId, space]);
 
-  function loadCardIntoEditor(card: AiRoleCardRecord) {
-    setName(card.name);
-    setDescription(card.description ?? '');
-    setPrompt(card.prompt);
-    setAvatarEnabled(card.avatarEnabled);
-    setAvatarUri(card.avatarUri);
+  function createCurrentDraft(): RoleCardEditorDraft {
+    return {
+      name,
+      description,
+      prompt,
+      avatarEnabled,
+      avatarUri,
+      firstMessage,
+      alternateGreetings,
+      sourceType,
+      sourceJson,
+      tags,
+    };
   }
+
+  function createDraftFromCard(card: AiRoleCardRecord): RoleCardEditorDraft {
+    return {
+      name: card.name,
+      description: card.description ?? '',
+      prompt: card.prompt,
+      avatarEnabled: card.avatarEnabled,
+      avatarUri: card.avatarUri,
+      firstMessage: card.firstMessage,
+      alternateGreetings: card.alternateGreetings,
+      sourceType: card.sourceType,
+      sourceJson: card.sourceJson,
+      tags: card.tags,
+    };
+  }
+
+  function applyDraftToEditor(draft: RoleCardEditorDraft) {
+    setName(draft.name);
+    setDescription(draft.description);
+    setPrompt(draft.prompt);
+    setAvatarEnabled(draft.avatarEnabled);
+    setAvatarUri(draft.avatarUri);
+    setFirstMessage(draft.firstMessage);
+    setAlternateGreetings(draft.alternateGreetings);
+    setSourceType(draft.sourceType);
+    setSourceJson(draft.sourceJson);
+    setTags(draft.tags);
+  }
+
+  function hasUnsavedEditorChanges() {
+    return Boolean(importedRole) || serializeRoleEditorDraft(createCurrentDraft()) !== editorBaseline;
+  }
+
+  function loadCardIntoEditor(card: AiRoleCardRecord) {
+    const draft = createDraftFromCard(card);
+    setEditingRoleId(card.id);
+    applyDraftToEditor(draft);
+    resetImportedPreview();
+    setEditorBaseline(serializeRoleEditorDraft(draft));
+    setStatus('已载入角色，可继续编辑。');
+  }
+
+  function requestLoadCardIntoEditor(card: AiRoleCardRecord) {
+    if (hasUnsavedEditorChanges()) {
+      setPendingLoadCard(card);
+      return;
+    }
+    loadCardIntoEditor(card);
+  }
+
+  function resetImportedPreview() {
+    setImportedRole(null);
+    setImportedAvatarUri(null);
+    setSelectedGreeting(null);
+  }
+
+  function loadImportedRoleIntoEditor() {
+    if (!importedRole) {
+      return;
+    }
+    const draft: RoleCardEditorDraft = {
+      name: importedRole.name,
+      description: importedRole.description ?? '',
+      prompt: importedRole.prompt,
+      avatarEnabled: Boolean(importedAvatarUri),
+      avatarUri: importedAvatarUri,
+      firstMessage: selectedGreeting ?? importedRole.firstMessage,
+      alternateGreetings: importedRole.alternateGreetings,
+      sourceType: importedRole.sourceType,
+      sourceJson: importedRole.sourceJson,
+      tags: importedRole.tags,
+    };
+    setEditingRoleId(null);
+    applyDraftToEditor(draft);
+    resetImportedPreview();
+    setStatus('已填入角色编辑表单，导入元数据会随保存保留。');
+  }
+
+  useEffect(() => {
+    if (!roleCardId || loadedInitialRoleIdRef.current === roleCardId || hasUnsavedEditorChanges()) {
+      return;
+    }
+    const card = cards.find((candidate) => candidate.id === roleCardId);
+    if (!card) {
+      return;
+    }
+    loadedInitialRoleIdRef.current = roleCardId;
+    loadCardIntoEditor(card);
+  }, [cards, roleCardId]);
 
   function toggleSelected(cardId: string) {
     setSelectedCardIds((current) => current.includes(cardId) ? current.filter((id) => id !== cardId) : [...current, cardId]);
@@ -243,18 +378,7 @@ export function AiRoleCardEditorScreen({
   }
 
   function editImportedRole() {
-    if (!importedRole) {
-      return;
-    }
-    setName(importedRole.name);
-    setDescription(importedRole.description ?? '');
-    setPrompt(importedRole.prompt);
-    setAvatarUri(importedAvatarUri);
-    setAvatarEnabled(Boolean(importedAvatarUri));
-    setImportedRole(null);
-    setImportedAvatarUri(null);
-    setSelectedGreeting(null);
-    setStatus('已填入角色编辑表单。');
+    loadImportedRoleIntoEditor();
   }
 
   async function deleteSelectedCards() {
@@ -278,14 +402,23 @@ export function AiRoleCardEditorScreen({
     setSaving(true);
     try {
       const card = await saveRoleCard({
+        roleCardId: editingRoleId,
         description,
         name: name.trim() || '未命名角色卡',
         prompt,
+        firstMessage,
+        alternateGreetings,
+        sourceType,
+        sourceJson,
         avatarEnabled,
         avatarUri,
         space,
+        tags,
       });
-      setStatus('已保存。');
+      const savedDraft = createDraftFromCard(card);
+      setEditingRoleId(card.id);
+      setEditorBaseline(serializeRoleEditorDraft(savedDraft));
+      setStatus(editingRoleId ? '已更新角色卡。' : '已保存角色。');
       await loadCards();
       return card;
     } catch (error) {
@@ -441,11 +574,7 @@ export function AiRoleCardEditorScreen({
           saving={saving}
           selectedGreeting={selectedGreeting}
           space={space}
-          onCancel={() => {
-            setImportedRole(null);
-            setImportedAvatarUri(null);
-            setSelectedGreeting(null);
-          }}
+          onCancel={resetImportedPreview}
           onEdit={editImportedRole}
           onSave={() => {
             void saveImported(false);
@@ -473,7 +602,7 @@ export function AiRoleCardEditorScreen({
                     toggleSelected(card.id);
                     return;
                   }
-                  loadCardIntoEditor(card);
+                  requestLoadCardIntoEditor(card);
                 }}
                 style={({ pressed }) => [styles.savedCard, selected && styles.selectedSavedCard, pressed && styles.pressed]}
               >
@@ -514,6 +643,19 @@ export function AiRoleCardEditorScreen({
         primaryLabel="批量删除"
         title="删除所选角色卡？"
         visible={confirmingBatchDelete}
+      />
+      <AppDialog
+        message="当前角色内容还没有保存，载入其他角色会放弃这次编辑。"
+        onClose={() => setPendingLoadCard(null)}
+        onPrimary={() => {
+          if (pendingLoadCard) {
+            loadCardIntoEditor(pendingLoadCard);
+          }
+          setPendingLoadCard(null);
+        }}
+        primaryLabel="放弃并载入"
+        title="放弃当前编辑？"
+        visible={Boolean(pendingLoadCard)}
       />
     </AiLightScaffold>
   );

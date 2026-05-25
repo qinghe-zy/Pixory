@@ -43,6 +43,8 @@ export interface CreateAiRoleCardInput {
   tags?: string[];
 }
 
+export type UpdateAiRoleCardInput = Omit<CreateAiRoleCardInput, 'id'>;
+
 function parseTags(tagsJson: string): string[] {
   try {
     const parsed = JSON.parse(tagsJson);
@@ -174,6 +176,53 @@ export const aiRoleCardRepository = {
   },
 
   async findById(db: SQLiteDatabase, roleCardId: string): Promise<AiRoleCardRecord | null> {
+    const row = await db.getFirstAsync<AiRoleCardRow>(
+      'SELECT * FROM ai_role_cards WHERE id = ? AND archivedAt IS NULL',
+      roleCardId
+    );
+    return row ? mapRoleCardRow(row) : null;
+  },
+
+  async update(db: SQLiteDatabase, roleCardId: string, input: UpdateAiRoleCardInput): Promise<AiRoleCardRecord | null> {
+    const now = createTimestamp();
+    const result = await db.runAsync(
+      `UPDATE ai_role_cards
+       SET
+        name = ?,
+        description = ?,
+        prompt = ?,
+        firstMessage = ?,
+        alternateGreetingsJson = ?,
+        sourceType = ?,
+        sourceJson = ?,
+        defaultLanguage = ?,
+        defaultModelId = ?,
+        boundaryMode = ?,
+        avatarEnabled = ?,
+        avatarUri = ?,
+        tagsJson = ?,
+        updatedAt = ?
+       WHERE id = ? AND space = ? AND archivedAt IS NULL`,
+      input.name,
+      input.description ?? null,
+      input.prompt,
+      input.firstMessage ?? null,
+      JSON.stringify(input.alternateGreetings ?? []),
+      input.sourceType ?? null,
+      input.sourceJson ?? null,
+      input.defaultLanguage ?? null,
+      input.defaultModelId ?? null,
+      input.boundaryMode ?? 'free',
+      input.avatarEnabled ? 1 : 0,
+      input.avatarUri ?? null,
+      JSON.stringify(input.tags ?? []),
+      now,
+      roleCardId,
+      input.space
+    );
+    if (!result.changes) {
+      return null;
+    }
     const row = await db.getFirstAsync<AiRoleCardRow>(
       'SELECT * FROM ai_role_cards WHERE id = ? AND archivedAt IS NULL',
       roleCardId

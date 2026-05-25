@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Easing, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -31,6 +31,13 @@ import {
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
 } from '../ai/aiChatService';
+import {
+  createComposerEntranceRun,
+  isCurrentComposerEntranceRun,
+  shouldStartComposerEntrance,
+  type ComposerEntranceReason,
+  type ComposerEntranceRun,
+} from '../ai/aiComposerEntrancePolicy';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
@@ -39,6 +46,7 @@ import type { PixorySpace } from '../database';
 
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
+const COMPOSER_ENTRANCE_DURATION_MS = 500;
 // Scroll affordance copy: 回到最新.
 
 const CHAT_DOCUMENT_TYPES = [
@@ -131,6 +139,8 @@ interface AiChatScreenProps {
   contextTitle?: string;
   boundIpId?: number;
   boundKnowledgeBaseId?: string;
+  composerEntranceKey?: string;
+  composerEntranceReason?: ComposerEntranceReason;
   includeIpDocuments?: boolean;
   threadId?: string;
   onOpenHistory: () => void;
@@ -151,6 +161,8 @@ export function AiChatScreen({
   contextTitle,
   boundIpId,
   boundKnowledgeBaseId,
+  composerEntranceKey,
+  composerEntranceReason = 'replace_current',
   includeIpDocuments = false,
   threadId,
   onOpenHistory,
@@ -185,6 +197,16 @@ export function AiChatScreen({
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playedComposerEntranceKeysRef = useRef(new Set<string>());
+  const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
+  const composerEntranceRunRef = useRef<ComposerEntranceRun | null>(null);
+  const shouldPrimeComposerEntrance = shouldStartComposerEntrance({
+    nextRouteKey: composerEntranceKey,
+    playedRouteKeys: playedComposerEntranceKeysRef.current,
+    previousRouteKey: previousComposerEntranceKeyRef.current,
+    reason: composerEntranceReason,
+  });
+  const composerEntranceProgress = useRef(new Animated.Value(shouldPrimeComposerEntrance ? 0 : 1)).current;
   const [activeThreadId, setActiveThreadId] = useState<string | null>(threadId ?? null);
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [loadedMessageLimit, setLoadedMessageLimit] = useState(CHAT_MESSAGE_PAGE_SIZE);
@@ -210,6 +232,14 @@ export function AiChatScreen({
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
+  const composerEntranceTranslateY = composerEntranceProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [spacing[7], 0],
+  });
+  const composerEntranceStyle = {
+    opacity: composerEntranceProgress,
+    transform: [{ translateY: composerEntranceTranslateY }],
+  };
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
   const visibleMessages = useMemo(
     () =>
@@ -570,6 +600,57 @@ export function AiChatScreen({
       }
     };
   }, []);
+
+  useEffect(() => {
+    const shouldStart = shouldStartComposerEntrance({
+      nextRouteKey: composerEntranceKey,
+      playedRouteKeys: playedComposerEntranceKeysRef.current,
+      previousRouteKey: previousComposerEntranceKeyRef.current,
+      reason: composerEntranceReason,
+    });
+    previousComposerEntranceKeyRef.current = composerEntranceKey;
+    if (!composerEntranceKey || !shouldStart) {
+      composerEntranceRunRef.current = null;
+      composerEntranceProgress.setValue(1);
+      return;
+    }
+
+    const run = createComposerEntranceRun(composerEntranceKey);
+    composerEntranceRunRef.current = run;
+
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((reduceMotionEnabled) => {
+        if (cancelled || !isCurrentComposerEntranceRun(composerEntranceRunRef.current, run.key, run.token)) {
+          return;
+        }
+        playedComposerEntranceKeysRef.current.add(composerEntranceKey);
+        if (reduceMotionEnabled) {
+          composerEntranceProgress.setValue(1);
+          return;
+        }
+        composerEntranceProgress.setValue(0);
+        Animated.timing(composerEntranceProgress, {
+          duration: COMPOSER_ENTRANCE_DURATION_MS,
+          easing: Easing.out(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: true,
+        }).start();
+      })
+      .catch(() => {
+        if (cancelled || !isCurrentComposerEntranceRun(composerEntranceRunRef.current, run.key, run.token)) {
+          return;
+        }
+        playedComposerEntranceKeysRef.current.add(composerEntranceKey);
+        composerEntranceProgress.setValue(1);
+      });
+
+    return () => {
+      cancelled = true;
+      composerEntranceRunRef.current = null;
+      composerEntranceProgress.stopAnimation();
+    };
+  }, [composerEntranceKey, composerEntranceProgress, composerEntranceReason]);
 
   function showNewChatFeedback() {
     if (newChatFeedbackTimeoutRef.current) {
@@ -1312,7 +1393,7 @@ export function AiChatScreen({
       />
 
       {inlineEditingActive ? null : (
-        <View style={styles.composerPanel}>
+        <Animated.View style={[styles.composerPanel, composerEntranceStyle]}>
           {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
           <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
           {fallbackMemoryCaptures.length > 0 ? (
@@ -1350,7 +1431,7 @@ export function AiChatScreen({
             voiceError={voiceError}
             voiceState={voiceState}
           />
-        </View>
+        </Animated.View>
       )}
       <AiComprehensiveRecordDrawer
         activeThreadId={activeThreadId}

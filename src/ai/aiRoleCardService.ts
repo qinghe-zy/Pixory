@@ -7,6 +7,7 @@ export async function listRoleCards(space: PixorySpace): Promise<AiRoleCardRecor
 }
 
 export async function saveRoleCard(input: {
+  roleCardId?: string | null;
   space: PixorySpace;
   name: string;
   description?: string | null;
@@ -20,10 +21,7 @@ export async function saveRoleCard(input: {
   avatarUri?: string | null;
   tags?: string[];
 }): Promise<AiRoleCardRecord> {
-  const id = `role_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  return runWithDatabaseSpace(input.space, (db) =>
-    aiRoleCardRepository.create(db, {
-      id,
+  const roleCardInput = {
       space: input.space,
       name: input.name.trim(),
       description: input.description?.trim() || null,
@@ -36,8 +34,22 @@ export async function saveRoleCard(input: {
       avatarEnabled: input.avatarEnabled ?? false,
       avatarUri: input.avatarUri ?? null,
       tags: input.tags ?? [],
-    })
-  );
+    };
+  return runWithDatabaseSpace(input.space, async (db) => {
+    if (input.roleCardId) {
+      const updated = await aiRoleCardRepository.update(db, input.roleCardId, roleCardInput);
+      if (!updated) {
+        throw new Error('角色卡不存在或已删除。');
+      }
+      return updated;
+    }
+
+    const id = `role_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    return aiRoleCardRepository.create(db, {
+      id,
+      ...roleCardInput,
+    });
+  });
 }
 
 export async function saveImportedRoleCard(input: {

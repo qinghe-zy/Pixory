@@ -87,6 +87,43 @@ test('role editor imports local PNG and JSON role cards into preview flow', () =
   assert.doesNotMatch(editor, /fetch\(/);
 });
 
+test('editing imported role cards preserves advanced SillyTavern metadata', () => {
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const service = read('src/ai/aiRoleCardService.ts');
+
+  assert.match(editor, /firstMessage: card\.firstMessage/);
+  assert.match(editor, /alternateGreetings: card\.alternateGreetings/);
+  assert.match(editor, /sourceType: card\.sourceType/);
+  assert.match(editor, /sourceJson: card\.sourceJson/);
+  assert.match(editor, /tags: card\.tags/);
+  assert.match(editor, /firstMessage: selectedGreeting \?\? importedRole\.firstMessage/);
+  assert.match(editor, /alternateGreetings: importedRole\.alternateGreetings/);
+  assert.match(editor, /sourceType: importedRole\.sourceType/);
+  assert.match(editor, /sourceJson: importedRole\.sourceJson/);
+  assert.match(editor, /tags: importedRole\.tags/);
+  assert.match(editor, /firstMessage,\s*alternateGreetings,\s*sourceType,\s*sourceJson,[\s\S]{0,120}tags,/);
+  assert.match(service, /roleCardId\?: string \| null/);
+});
+
+test('role editor protects unsaved drafts and updates loaded cards instead of duplicating them', () => {
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const repository = read('src/database/repositories/aiRoleCardRepository.ts');
+  const service = read('src/ai/aiRoleCardService.ts');
+
+  assert.match(editor, /editingRoleId/);
+  assert.match(editor, /editorBaseline/);
+  assert.match(editor, /Boolean\(importedRole\) \|\| serializeRoleEditorDraft\(createCurrentDraft\(\)\) !== editorBaseline/);
+  assert.match(editor, /pendingLoadCard/);
+  assert.match(editor, /放弃当前编辑/);
+  assert.match(editor, /放弃并载入/);
+  assert.match(editor, /requestLoadCardIntoEditor\(card\)/);
+  assert.match(service, /input\.roleCardId/);
+  assert.match(service, /aiRoleCardRepository\.update/);
+  assert.match(repository, /async update\(/);
+  assert.match(repository, /UPDATE ai_role_cards/);
+  assert.match(repository, /WHERE id = \? AND space = \? AND archivedAt IS NULL/);
+});
+
 test('role card start-chat failures surface as visible editor status', () => {
   const app = read('App.tsx');
   const editor = read('src/screens/AiRoleCardEditorScreen.tsx');

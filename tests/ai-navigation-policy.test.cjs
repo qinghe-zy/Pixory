@@ -604,6 +604,35 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(drawer, /filter\(\(thread\) => thread\.id !== activeThreadId\)\.slice\(0,\s*15\)/);
 });
 
+test('AI chat composer only floats in for new chat or another opened thread', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const app = read('App.tsx');
+
+  assert.match(chat, /composerEntranceKey\?: string/);
+  assert.match(chat, /composerEntranceReason\?: ComposerEntranceReason/);
+  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 500/);
+  assert.match(chat, /Animated\.Value\(shouldPrimeComposerEntrance \? 0 : 1\)/);
+  assert.match(chat, /playedComposerEntranceKeysRef/);
+  assert.match(chat, /composerEntranceRunRef/);
+  assert.match(chat, /shouldStartComposerEntrance/);
+  assert.match(chat, /isCurrentComposerEntranceRun/);
+  assert.match(chat, /AccessibilityInfo\.isReduceMotionEnabled/);
+  assert.match(chat, /Animated\.timing\(composerEntranceProgress/);
+  assert.match(chat, /Easing\.out\(Easing\.cubic\)/);
+  assert.match(chat, /useNativeDriver: true/);
+  assert.match(chat, /opacity: composerEntranceProgress/);
+  assert.match(chat, /translateY: composerEntranceTranslateY/);
+  assert.match(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
+  assert.match(app, /composerEntranceKey=\{currentRoute\.routeKey\}/);
+  assert.match(app, /composerEntranceReason=\{currentRoute\.composerEntranceReason \?\? 'replace_current'\}/);
+  assert.match(app, /prepareAiChatRouteForPush/);
+  assert.match(app, /prepareAiChatRouteForReplace/);
+  assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}generating/);
+  assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}handleComposerHeightChange/);
+  assert.doesNotMatch(chat, /composerEntranceProgress[\s\S]{0,220}onContentSizeChange/);
+});
+
 test('AI workbench no longer shows recent continue because recents moved into drawer', () => {
   const home = read('src/screens/AiHomeScreen.tsx');
 
