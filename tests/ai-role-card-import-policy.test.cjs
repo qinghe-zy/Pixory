@@ -49,3 +49,15 @@ test('imported roles can start a normal chat with a saved assistant greeting', (
   assert.match(chatService, /role: 'assistant'/);
   assert.match(chatService, /status: 'completed'/);
 });
+
+test('role card import preview exposes save start and edit actions', () => {
+  const preview = read('src/components/ai/AiRoleCardImportPreview.tsx');
+  assert.match(preview, /AiRoleCardImportPreview/);
+  assert.match(preview, /保存角色/);
+  assert.match(preview, /保存并开始聊天/);
+  assert.match(preview, /编辑后保存/);
+  assert.match(preview, /默认开场白/);
+  assert.match(preview, /worldBookTruncated/);
+  assert.match(preview, /SecureImage/);
+  assert.doesNotMatch(preview, /唤醒|神经元|呼吸|外发光/);
+});
