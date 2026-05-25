@@ -476,13 +476,14 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(repository, /deleteThreads/);
 });
 
-test('AI chat and history expose recent switcher quick new chat and searchable grouped history', () => {
+test('AI chat and history expose drawer quick new chat and searchable grouped history', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
   const history = read('src/screens/AiHistoryScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(chat, /AiRecentThreadSwitcher/);
+  assert.match(chat, /AiComprehensiveRecordDrawer/);
+  assert.doesNotMatch(chat, /AiRecentThreadSwitcher/);
   assert.match(chat, /onNewChat/);
   assert.match(chat, /handleNewChatPress/);
   assert.match(chat, /停止当前回复并新建聊天/);

@@ -1,15 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { listAiHistoryThreads } from '../ai/aiChatService';
-import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { layout, radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
-import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
@@ -19,8 +15,6 @@ interface AiHomeScreenProps {
   onStartNormalChat: () => void;
   onStartIpChat: () => void;
   onStartKnowledgeBase: () => void;
-  onOpenHistory: () => void;
-  onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenMaterials: () => void;
   onOpenRoleLibrary: () => void;
   onOpenProviderSettings: () => void;
@@ -32,26 +26,11 @@ export function AiHomeScreen({
   onStartNormalChat,
   onStartIpChat,
   onStartKnowledgeBase,
-  onOpenHistory,
-  onOpenThread,
   onOpenMaterials,
   onOpenRoleLibrary,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
-  const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const spaceLabel = space === 'personal' ? '私密空间' : undefined;
-
-  useEffect(() => {
-    let isMounted = true;
-    void listAiHistoryThreads({ limit: 3, space }).then((items) => {
-      if (isMounted) {
-        setRecentThreads(items);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [space]);
 
   return (
     <AiLightScaffold
@@ -125,47 +104,6 @@ export function AiHomeScreen({
           <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
         </Pressable>
       </View>
-
-      <View style={styles.section}>
-        <SectionTitle actionLabel="查看全部" title="最近继续" onPress={onOpenHistory} />
-        <View style={styles.recentCard}>
-          {recentThreads.length ? (
-            recentThreads.map((thread, index) => (
-              <Pressable
-                accessibilityRole="button"
-                key={thread.id}
-                onPress={() => onOpenThread(thread)}
-                style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
-              >
-                <View style={[styles.threadIcon, { backgroundColor: backgroundForContext(thread.contextType) }]}>
-                  <Ionicons color={colorForContext(thread.contextType)} name={iconForContext(thread.contextType)} size={24} />
-                </View>
-                <View style={styles.threadCopy}>
-                  <Text numberOfLines={1} style={styles.threadTitle}>
-                    {thread.title}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.threadDescription}>
-                    {thread.lastMessagePreview ?? '继续'}
-                  </Text>
-                </View>
-                <Text style={styles.threadTime}>{`上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}</Text>
-                <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
-              </Pressable>
-            ))
-          ) : (
-            <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
-              <View style={styles.threadIcon}>
-                <Ionicons color={aiLightColors.coralActive} name="chatbubble-ellipses-outline" size={24} />
-              </View>
-              <View style={styles.threadCopy}>
-                <Text style={styles.threadTitle}>普通聊天</Text>
-                <Text style={styles.threadDescription}>暂无最近会话</Text>
-              </View>
-              <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
-            </Pressable>
-          )}
-        </View>
-      </View>
     </AiLightScaffold>
   );
 }
@@ -213,36 +151,6 @@ function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
       ) : null}
     </View>
   );
-}
-
-function iconForContext(contextType: AiThreadHistoryItem['contextType']): keyof typeof Ionicons.glyphMap {
-  if (contextType === 'ip') {
-    return 'albums-outline';
-  }
-  if (contextType === 'knowledge_base') {
-    return 'library-outline';
-  }
-  return 'chatbubble-ellipses-outline';
-}
-
-function colorForContext(contextType: AiThreadHistoryItem['contextType']) {
-  if (contextType === 'ip') {
-    return aiLightColors.coralActive;
-  }
-  if (contextType === 'knowledge_base') {
-    return aiLightColors.coralActive;
-  }
-  return aiLightColors.coralActive;
-}
-
-function backgroundForContext(contextType: AiThreadHistoryItem['contextType']) {
-  if (contextType === 'ip') {
-    return aiLightColors.card;
-  }
-  if (contextType === 'knowledge_base') {
-    return aiLightColors.surface;
-  }
-  return aiLightColors.canvas;
 }
 
 const styles = StyleSheet.create({

@@ -1455,7 +1455,7 @@ export default function App() {
         boundIpId={currentRoute.ipId}
         boundKnowledgeBaseId={currentRoute.knowledgeBaseId}
         includeIpDocuments={currentRoute.includeIpDocuments}
-        onBack={popRoute}
+        onOpenHistory={() => pushRoute({ name: 'ai-history', space: currentRoute.space })}
         onOpenSessionConfig={(threadId) =>
           pushRoute({
             name: 'ai-session-config',
@@ -1467,6 +1467,7 @@ export default function App() {
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
+        onStartNormalChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           pushRoute({
             name: 'ai-chat',
@@ -1626,19 +1627,6 @@ export default function App() {
     content = (
       <AiHomeScreen
         footer={rootFooter}
-        onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
-        onOpenThread={(thread) =>
-          pushRoute({
-            name: 'ai-chat',
-            contextTitle: thread.title,
-            contextType: thread.contextType,
-            includeIpDocuments: thread.includeIpDocuments,
-            ipId: thread.boundIpId ?? undefined,
-            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
-            space: activeSpace,
-            threadId: thread.id,
-          })
-        }
         onOpenMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
         onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}

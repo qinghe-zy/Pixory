@@ -8,11 +8,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
 import { AiChatErrorBanner } from '../components/ai/AiChatErrorBanner';
+import { AiComprehensiveRecordDrawer } from '../components/ai/AiComprehensiveRecordDrawer';
 import type { AiVoiceInputState } from '../components/ai/AiVoiceInputStatus';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { AiMemoryCaptureNotice } from '../components/ai/AiMemoryCaptureNotice';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
-import { AiRecentThreadSwitcher } from '../components/ai/AiRecentThreadSwitcher';
 import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton';
 import { AppActionSheet, type AppActionSheetItem } from '../components/AppActionSheet';
 import { AppScreen } from '../components/AppScreen';
@@ -134,10 +134,11 @@ interface AiChatScreenProps {
   boundKnowledgeBaseId?: string;
   includeIpDocuments?: boolean;
   threadId?: string;
-  onBack: () => void;
+  onOpenHistory: () => void;
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onNewChat: () => void;
+  onStartNormalChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
   onOpenIpSource: (ipId: number) => void;
@@ -154,10 +155,11 @@ export function AiChatScreen({
   boundKnowledgeBaseId,
   includeIpDocuments = false,
   threadId,
-  onBack,
+  onOpenHistory,
   onOpenSessionConfig,
   onOpenMemoryBoard,
   onNewChat,
+  onStartNormalChat,
   onOpenThread,
   onOpenSource,
   onOpenIpSource,
@@ -207,6 +209,7 @@ export function AiChatScreen({
   const [latestVisible, setLatestVisible] = useState(true);
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
+  const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
@@ -1258,8 +1261,8 @@ export function AiChatScreen({
       contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
     >
       <View style={styles.header}>
-        <Pressable accessibilityLabel="返回" accessibilityRole="button" onPress={onBack} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
+        <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+          <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
         </Pressable>
         <View style={styles.titleBlock}>
           <View style={styles.titleLine}>
@@ -1318,7 +1321,6 @@ export function AiChatScreen({
         <View style={styles.composerPanel}>
           {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
           <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
-          <AiRecentThreadSwitcher items={recentThreads.filter((thread) => thread.id !== activeThreadId)} onOpenThread={onOpenThread} />
           {fallbackMemoryCaptures.length > 0 ? (
             <AiMemoryCaptureNotice
               count={fallbackMemoryCaptures.length}
@@ -1359,6 +1361,24 @@ export function AiChatScreen({
         onClose={() => setAttachmentSheetVisible(false)}
         title="添加附件"
         visible={attachmentSheetVisible}
+      />
+      <AiComprehensiveRecordDrawer
+        activeThreadId={activeThreadId}
+        recentThreads={recentThreads}
+        visible={recordDrawerVisible}
+        onClose={() => setRecordDrawerVisible(false)}
+        onNewChat={() => {
+          setRecordDrawerVisible(false);
+          onStartNormalChat();
+        }}
+        onOpenHistory={() => {
+          setRecordDrawerVisible(false);
+          onOpenHistory();
+        }}
+        onOpenThread={(thread) => {
+          setRecordDrawerVisible(false);
+          onOpenThread(thread);
+        }}
       />
     </AppScreen>
   );
