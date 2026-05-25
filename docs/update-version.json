@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.17",
-  "versionCode": 231,
+  "version": "2.1.18",
+  "versionCode": 232,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.17 已发布，AI 记忆更可控，长聊天体验更稳。",
+  "message": "Pixory 2.1.18 已发布，角色卡编辑更安全，新聊天提示更稳。",
   "releaseNotes": [
-    "AI 长期记忆支持更新、修正和过期标记，避免新旧偏好互相干扰。",
-    "聊天内联显示记忆反馈，可直接撤销、编辑或进入记忆管理。",
-    "记忆管理页可查看当前和已过期记忆，手动记忆不会被模型自动覆盖。"
+    "角色卡编辑后保存会保留开场白、候选开场白、标签和原始导入数据。",
+    "载入已保存角色前会保护未保存草稿，编辑已有角色时更新原卡。",
+    "新聊天和打开其他聊天线程时，输入框会以受控动画浮出提示。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
