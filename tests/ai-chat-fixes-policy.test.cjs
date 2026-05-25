@@ -738,3 +738,16 @@ test('AI edit and regenerate actions expose pending guards and call service path
   assert.match(service, /export async function rewriteUserMessage/);
   assert.match(service, /export async function regenerateAssistantMessage/);
 });
+
+test('AI chat keeps no-jitter scroll policy during streaming keyboard and return flows', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /userScrolledAwayFromBottomRef/);
+  assert.match(chat, /followLatestMessage/);
+  assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
+  assert.match(chat, /reloadMessages\(targetThreadId\)/);
+  assert.doesNotMatch(chat, /keyboardBottomInset/);
+  assert.doesNotMatch(chat, /scrollToEnd/);
+  assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*followLatestMessage/);
+  assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*scrollToOffset/);
+});
