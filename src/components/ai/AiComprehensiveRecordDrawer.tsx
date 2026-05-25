@@ -115,40 +115,57 @@ export function AiComprehensiveRecordDrawer({
           <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
             {visibleRecents.length ? (
               visibleRecents.map((thread) => (
-                <Pressable
-                  accessibilityHint="长按可重命名或删除"
-                  accessibilityRole="button"
-                  key={thread.id}
-                  onLongPress={() => openRecentActionPopover(thread)}
-                  onPress={() => {
-                    if (actionThread) {
-                      setActionThread(null);
-                      return;
-                    }
-                    onOpenThread(thread);
-                  }}
-                  style={({ pressed }) => [styles.recentRow, actionThread?.id === thread.id && styles.recentRowActive, pressed && styles.pressed]}
-                >
-                  <Text numberOfLines={1} style={styles.recentTitle}>
-                    {thread.title}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.recentMeta}>
-                    {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
-                  </Text>
-                  {actionThread?.id === thread.id ? (
-                    <View style={styles.recentActionPopover}>
-                      <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
-                        <Ionicons color={aiLightColors.ink} name="create-outline" size={16} />
-                        <Text style={styles.recentActionText}>重命名</Text>
-                      </Pressable>
-                      <View style={styles.recentActionDivider} />
-                      <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
-                        <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
-                        <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
-                      </Pressable>
+                <View key={thread.id} style={styles.recentItem}>
+                  <Pressable
+                    accessibilityHint="长按可重命名或删除"
+                    accessibilityRole="button"
+                    onLongPress={() => openRecentActionPopover(thread)}
+                    onPress={() => {
+                      if (actionThread || deleteThread) {
+                        setActionThread(null);
+                        setDeleteThread(null);
+                        return;
+                      }
+                      onOpenThread(thread);
+                    }}
+                    style={({ pressed }) => [styles.recentRow, actionThread?.id === thread.id && styles.recentRowActive, pressed && styles.pressed]}
+                  >
+                    <Text numberOfLines={1} style={styles.recentTitle}>
+                      {thread.title}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.recentMeta}>
+                      {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
+                    </Text>
+                    {actionThread?.id === thread.id ? (
+                      <View style={styles.recentActionPopover}>
+                        <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                          <Ionicons color={aiLightColors.ink} name="create-outline" size={16} />
+                          <Text style={styles.recentActionText}>重命名</Text>
+                        </Pressable>
+                        <View style={styles.recentActionDivider} />
+                        <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                          <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                          <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  {deleteThread?.id === thread.id ? (
+                    <View style={styles.recentDeleteConfirm}>
+                      <Text numberOfLines={2} style={styles.recentDeleteText}>
+                        删除「{thread.title}」这条会话记录？
+                      </Text>
+                      <View style={styles.recentDeleteActions}>
+                        <Pressable accessibilityLabel="确认删除最近会话" accessibilityRole="button" disabled={busy} onPress={confirmDeleteThread} style={({ pressed }) => [styles.recentDeleteButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                          <Text style={styles.recentDeleteButtonText}>{busy ? '删除中' : '删除'}</Text>
+                        </Pressable>
+                        <Pressable accessibilityLabel="取消删除最近会话" accessibilityRole="button" disabled={busy} onPress={() => setDeleteThread(null)} style={({ pressed }) => [styles.recentCancelButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                          <Text style={styles.recentCancelButtonText}>取消</Text>
+                        </Pressable>
+                      </View>
                     </View>
                   ) : null}
-                </Pressable>
+                </View>
               ))
             ) : (
               <Text style={styles.emptyText}>暂无最近会话</Text>
@@ -179,17 +196,6 @@ export function AiComprehensiveRecordDrawer({
           value={renameValue}
         />
       </AppDialog>
-      <AppDialog
-        compactActions
-        danger
-        message={deleteThread ? `删除「${deleteThread.title}」这条会话记录？` : ''}
-        onClose={() => setDeleteThread(null)}
-        onPrimary={confirmDeleteThread}
-        primaryDisabled={busy}
-        primaryLabel={busy ? '删除中' : '删除'}
-        title="删除会话"
-        visible={Boolean(deleteThread)}
-      />
     </>
   );
 }
@@ -274,6 +280,9 @@ const styles = StyleSheet.create({
     gap: rhythm.inlineGap,
     paddingBottom: spacing[8],
   },
+  recentItem: {
+    gap: spacing[1],
+  },
   recentRow: {
     borderRadius: radius.md,
     gap: rhythm.microGap,
@@ -329,6 +338,54 @@ const styles = StyleSheet.create({
     backgroundColor: aiLightColors.hairline,
     width: StyleSheet.hairlineWidth,
   },
+  recentDeleteConfirm: {
+    alignSelf: 'stretch',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing[2],
+    marginHorizontal: spacing[2],
+    padding: spacing[3],
+    ...shadows.floating,
+  },
+  recentDeleteText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    lineHeight: 20,
+  },
+  recentDeleteActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  recentDeleteButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.coralActive,
+    borderRadius: radius.pill,
+    flex: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  recentDeleteButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.onDark,
+    fontWeight: '700',
+  },
+  recentCancelButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flex: 1,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  recentCancelButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '700',
+  },
   renameInput: {
     ...typography.textStyles.body,
     backgroundColor: aiLightColors.surface,
@@ -342,5 +399,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.72,
+  },
+  disabled: {
+    opacity: 0.52,
   },
 });

@@ -86,3 +86,24 @@
 - 抽屉最近项删除命中当前会话时，删除完成后立即切到新聊天，避免当前页面继续挂在已删除 thread 上。
 - 涉及文件：`src/screens/AiChatScreen.tsx`、`tests/ai-navigation-policy.test.cjs`。
 - 验证：`node --test tests/ai-navigation-policy.test.cjs` 通过。
+
+## 2026-05-25 综合记录抽屉全屏覆盖修复
+
+- 修复综合记录抽屉被聊天页内容内边距限制的问题：抽屉现在挂在聊天主体外层，覆盖范围不再从聊天标题下方开始。
+- 聊天页原有顶部安全区和横向内边距转移到聊天主体容器，避免影响抽屉遮罩和抽屉宽度。
+- 涉及文件：`src/screens/AiChatScreen.tsx`、`tests/ai-navigation-policy.test.cjs`。
+- 验证：`node --test tests/ai-navigation-policy.test.cjs` 通过。
+
+## 2026-05-25 回到最新按钮浮层修复
+
+- “回到最新”触发阈值从 48px 提高到 120px，减少轻微滚动时误显示。
+- 按钮移出输入框容器，改为独立绝对定位浮动按钮，去掉输入框上方白色包裹区域。
+- 涉及文件：`src/screens/AiChatScreen.tsx`、`src/components/ai/AiScrollToLatestButton.tsx`、`tests/ai-chat-fixes-policy.test.cjs`。
+- 验证：`node --test tests/ai-chat-fixes-policy.test.cjs`、`node --test tests/ai-navigation-policy.test.cjs`、`pnpm.cmd typecheck` 通过。
+
+## 2026-05-25 综合记录抽屉删除确认轻量化
+
+- 最近项删除确认不再使用全局大弹窗，改为在当前会话项下方展示轻量确认块。
+- 删除按钮改用 AI 珊瑚危险色，取消按钮为浅色描边，避免绿色主按钮误导危险操作。
+- 涉及文件：`src/components/ai/AiComprehensiveRecordDrawer.tsx`、`tests/ai-navigation-policy.test.cjs`。
+- 验证：`node --test tests/ai-navigation-policy.test.cjs`、`node --test tests/ai-chat-fixes-policy.test.cjs`、`pnpm.cmd typecheck` 通过。

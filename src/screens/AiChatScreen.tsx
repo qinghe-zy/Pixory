@@ -51,7 +51,7 @@ import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepos
 import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
-const MESSAGE_BOTTOM_LOCK_THRESHOLD = 48;
+const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
@@ -1410,9 +1410,9 @@ export function AiChatScreen({
   return (
     <AppScreen
       backgroundColor={aiLightColors.canvas}
-      contentStyle={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
+      contentStyle={styles.drawerHost}
     >
-      <KeyboardAvoidingView behavior="height" enabled={Platform.OS === 'android'} style={styles.keyboardResizeHost}>
+      <KeyboardAvoidingView behavior="height" enabled={Platform.OS === 'android'} style={[styles.keyboardResizeHost, styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
       <View style={styles.header}>
         <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
@@ -1470,10 +1470,11 @@ export function AiChatScreen({
         viewabilityConfig={inlineEditViewabilityConfigRef.current}
       />
 
+      <AiScrollToLatestButton visible={!latestVisible && !inlineEditingActive} onPress={() => followLatestMessage()} />
+
       {inlineEditingActive ? null : (
         <Animated.View style={[styles.composerPanel, composerEntranceStyle]}>
           {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
-          <AiScrollToLatestButton visible={!latestVisible} onPress={() => followLatestMessage()} />
           {fallbackMemoryCaptures.length > 0 ? (
             <AiMemoryCaptureNotice
               count={fallbackMemoryCaptures.length}
@@ -1511,6 +1512,7 @@ export function AiChatScreen({
           />
         </Animated.View>
       )}
+      </KeyboardAvoidingView>
       <AiComprehensiveRecordDrawer
         activeThreadId={activeThreadId}
         recentThreads={recentThreads}
@@ -1531,12 +1533,16 @@ export function AiChatScreen({
         onRenameThread={(thread, title) => renameRecentThread(thread, title)}
         onDeleteThread={(thread) => deleteRecentThread(thread)}
       />
-      </KeyboardAvoidingView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  drawerHost: {
+    flex: 1,
+    gap: 0,
+    paddingHorizontal: 0,
+  },
   screenContent: {
     flex: 1,
     gap: rhythm.cardContentGap,

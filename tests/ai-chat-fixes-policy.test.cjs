@@ -93,7 +93,7 @@ test('AI chat relies on Android adjustResize instead of JS keyboard margin lifti
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(chat, /KeyboardAvoidingView/);
-  assert.match(chat, /<KeyboardAvoidingView behavior="height" enabled=\{Platform\.OS === 'android'\} style=\{styles\.keyboardResizeHost\}>/);
+  assert.match(chat, /<KeyboardAvoidingView behavior="height" enabled=\{Platform\.OS === 'android'\} style=\{\[styles\.keyboardResizeHost, styles\.screenContent/);
   assert.match(chat, /keyboardResizeHost:\s*\{\s*flex:\s*1/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
@@ -166,7 +166,10 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /\binverted\b/);
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
+  assert.match(chat, /const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120/);
   assert.match(chat, /contentOffset\.y > MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.match(chat, /<AiScrollToLatestButton visible=\{!latestVisible && !inlineEditingActive\}/);
+  assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /setTimeout\(scroll/);
   assert.doesNotMatch(chat, /onContentSizeChange=/);

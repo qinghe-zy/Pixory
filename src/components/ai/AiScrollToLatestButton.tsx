@@ -27,10 +27,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
+    bottom: spacing[12] + spacing[10],
     flexDirection: 'row',
     gap: rhythm.microGap,
     minHeight: 32,
     paddingHorizontal: spacing[3],
+    position: 'absolute',
+    zIndex: 5,
   },
   text: {
     ...typography.textStyles.caption,

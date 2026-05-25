@@ -525,7 +525,9 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(drawer, /accessibilityLabel="重命名最近会话"/);
   assert.match(drawer, /accessibilityLabel="删除最近会话"/);
   assert.match(drawer, /title="重命名会话"/);
-  assert.match(drawer, /title="删除会话"/);
+  assert.match(drawer, /recentDeleteConfirm/);
+  assert.match(drawer, /accessibilityLabel="确认删除最近会话"/);
+  assert.doesNotMatch(drawer, /title="删除会话"/);
   assert.match(drawer, /onRenameThread/);
   assert.match(drawer, /onDeleteThread/);
 });
@@ -619,6 +621,9 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
 
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
+  assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
+  assert.match(chat, /<KeyboardAvoidingView[\s\S]{0,180}styles\.screenContent/);
+  assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
   assert.match(headerBlock, /accessibilityLabel="会话设置"/);
