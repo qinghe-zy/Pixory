@@ -217,7 +217,8 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   const citations = read('src/components/ai/AiCitationList.tsx');
 
   assert.match(bubble, /import \{ AiMessageContent \} from '\.\/AiMessageContent'/);
-  assert.match(bubble, /isUser \? \([\s\S]*<Text selectable style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*<AiMessageContent content=\{content\} \/>/);
+  assert.match(bubble, /isUser \? \([\s\S]*<Text selectable style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*renderAssistantContentWithCursor\(content, streaming\)/);
+  assert.match(bubble, /return <AiMessageContent content=\{content\} \/>/);
   assert.match(content, /parseMarkdownBlocks/);
   assert.match(content, /type: 'heading'/);
   assert.match(content, /type: 'list'/);
@@ -521,7 +522,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(bubble, /import \{ memo, useEffect, useRef, useState \} from 'react'/);
+  assert.match(bubble, /import \{ memo, useEffect, useState \} from 'react'/);
   assert.match(bubble, /showAvatar\?: boolean/);
   assert.match(bubble, /function AiMessageBubbleComponent/);
   assert.match(bubble, /showAssistantAvatar = !isUser && showAvatar && assistantAvatar\?\.avatarEnabled/);
@@ -548,8 +549,8 @@ test('AI assistant waiting and streaming states use lightweight animated feedbac
   assert.match(typing, /typingDot/);
   assert.match(bubble, /AiTypingIndicator/);
   assert.match(bubble, /waitingForFirstToken/);
-  assert.match(bubble, /Animated\.loop/);
-  assert.match(bubble, /streamingCursorOpacity/);
+  assert.match(bubble, /InlineStreamingCursor/);
+  assert.doesNotMatch(bubble, /streamingCursorOpacity/);
 });
 
 test('AI chat surfaces a subtle notice when older context was trimmed', () => {
@@ -701,6 +702,16 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
   assert.match(composer, /flexDirection: 'row'/);
   assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传图片[\s\S]{0,400}上传视频[\s\S]{0,400}上传文档/);
   assert.doesNotMatch(chat, /attachmentSheetVisible/);
+});
+
+test('AI streaming cursor is rendered inline with assistant text', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(bubble, /InlineStreamingCursor/);
+  assert.match(bubble, /renderAssistantContentWithCursor/);
+  assert.match(bubble, /<Text selectable style=\{styles\.assistantContentWithCursor\}/);
+  assert.doesNotMatch(bubble, /streamingCursorBlock/);
+  assert.doesNotMatch(bubble, /\\n\s*<InlineStreamingCursor/);
 });
 
 test('AI history archive restore swipe clips the action background to the row', () => {

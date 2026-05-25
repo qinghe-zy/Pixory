@@ -1,5 +1,5 @@
-import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { memo, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { SecureImage } from '../SecureImage';
@@ -37,6 +37,22 @@ interface AiMessageBubbleProps {
   onOpenCitation: (citation: AiCitationRecord) => void;
 }
 
+function InlineStreamingCursor() {
+  return <Text style={styles.inlineStreamingCursor}>▍</Text>;
+}
+
+function renderAssistantContentWithCursor(content: string, streaming: boolean) {
+  if (!streaming || !content.trim()) {
+    return <AiMessageContent content={content} />;
+  }
+  return (
+    <Text selectable style={styles.assistantContentWithCursor}>
+      {content}
+      <InlineStreamingCursor />
+    </Text>
+  );
+}
+
 function AiMessageBubbleComponent({
   assistantAvatar,
   generating = false,
@@ -68,28 +84,12 @@ function AiMessageBubbleComponent({
   const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
-  const streamingCursorOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (editing) {
       setEditDraft(message.content);
     }
   }, [editing, message.content]);
-
-  useEffect(() => {
-    if (!streaming) {
-      streamingCursorOpacity.setValue(1);
-      return undefined;
-    }
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(streamingCursorOpacity, { duration: 520, toValue: 0.2, useNativeDriver: true }),
-        Animated.timing(streamingCursorOpacity, { duration: 520, toValue: 1, useNativeDriver: true }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [streaming, streamingCursorOpacity]);
 
   function updateEditDraft(nextDraft: string) {
     setEditDraft(nextDraft);
@@ -154,7 +154,7 @@ function AiMessageBubbleComponent({
             <Text selectable style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
             <>
-              {waitingForFirstToken ? <AiTypingIndicator /> : <AiMessageContent content={content} />}
+              {waitingForFirstToken ? <AiTypingIndicator /> : renderAssistantContentWithCursor(content, streaming)}
               {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
               {isFailed && canRegenerate ? (
                 <Pressable accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.inlineRetryButton, pressed && styles.pressed]}>
@@ -162,7 +162,6 @@ function AiMessageBubbleComponent({
                   <Text style={styles.inlineRetryText}>重试</Text>
                 </Pressable>
               ) : null}
-              {streaming && !waitingForFirstToken ? <Animated.Text style={[styles.streamingCursor, { opacity: streamingCursorOpacity }]}>▌</Animated.Text> : null}
             </>
           )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
@@ -316,15 +315,19 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     lineHeight: 22,
   },
+  assistantContentWithCursor: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+  },
+  inlineStreamingCursor: {
+    color: aiLightColors.coralActive,
+    fontWeight: '700',
+  },
   userText: {
     color: aiLightColors.onDark,
   },
   assistantText: {
     color: aiLightColors.ink,
-  },
-  streamingCursor: {
-    ...typography.textStyles.body,
-    color: aiLightColors.coralActive,
   },
   errorText: {
     ...typography.textStyles.caption,
