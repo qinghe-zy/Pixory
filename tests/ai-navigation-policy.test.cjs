@@ -585,17 +585,19 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
 
   assert.match(chat, /onOpenHistory/);
-  assert.match(chat, /onStartNormalChat/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
+  assert.match(chat, /listAiHistoryThreads\(\{ limit: 15, space \}\)/);
+  assert.match(chat, /onNewChat=\{\(\) => \{[\s\S]*handleNewChatPress\(\)/);
+  assert.doesNotMatch(chat, /onStartNormalChat/);
   assert.doesNotMatch(chat, /accessibilityLabel="返回"[\s\S]{0,160}chevron-back/);
   assert.match(app, /onOpenHistory=\{\(\) => pushRoute\(\{ name: 'ai-history'/);
   assert.match(drawer, /export function AiComprehensiveRecordDrawer/);
   assert.match(drawer, /新聊天/);
   assert.match(drawer, /历史记录/);
   assert.match(drawer, /最近/);
-  assert.match(drawer, /slice\(0,\s*15\)/);
+  assert.match(drawer, /filter\(\(thread\) => thread\.id !== activeThreadId\)\.slice\(0,\s*15\)/);
 });
 
 test('AI workbench no longer shows recent continue because recents moved into drawer', () => {

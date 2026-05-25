@@ -62,15 +62,23 @@ function formatAttachmentSize(size?: number | null): string | null {
 
 function AttachmentOption({
   accessibilityLabel,
+  disabled = false,
   icon,
   onPress,
 }: {
   accessibilityLabel: string;
+  disabled?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
   return (
-    <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.attachmentOption, pressed && styles.pressed]}>
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.attachmentOption, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
+    >
       <Ionicons color={aiLightColors.ink} name={icon} size={spacing[5]} />
     </Pressable>
   );
@@ -99,6 +107,12 @@ export function AiChatComposer({
   const attachmentCountRef = useRef(attachments.length);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
   const [attachmentPopoverVisible, setAttachmentPopoverVisible] = useState(false);
+
+  useEffect(() => {
+    if (generating) {
+      setAttachmentPopoverVisible(false);
+    }
+  }, [generating]);
 
   useEffect(() => {
     if (attachmentCountRef.current === attachments.length) {
@@ -146,6 +160,7 @@ export function AiChatComposer({
             <View style={styles.attachmentPopover}>
               <AttachmentOption
                 accessibilityLabel="上传图片"
+                disabled={generating}
                 icon="image-outline"
                 onPress={() => {
                   setAttachmentPopoverVisible(false);
@@ -154,6 +169,7 @@ export function AiChatComposer({
               />
               <AttachmentOption
                 accessibilityLabel="上传视频"
+                disabled={generating}
                 icon="videocam-outline"
                 onPress={() => {
                   setAttachmentPopoverVisible(false);
@@ -162,6 +178,7 @@ export function AiChatComposer({
               />
               <AttachmentOption
                 accessibilityLabel="上传文档"
+                disabled={generating}
                 icon="document-text-outline"
                 onPress={() => {
                   setAttachmentPopoverVisible(false);

@@ -137,7 +137,6 @@ interface AiChatScreenProps {
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onNewChat: () => void;
-  onStartNormalChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (documentId: string, title: string, locator?: AiDocumentReaderLocator) => void;
   onOpenIpSource: (ipId: number) => void;
@@ -158,7 +157,6 @@ export function AiChatScreen({
   onOpenSessionConfig,
   onOpenMemoryBoard,
   onNewChat,
-  onStartNormalChat,
   onOpenThread,
   onOpenSource,
   onOpenIpSource,
@@ -503,7 +501,7 @@ export function AiChatScreen({
   );
 
   const reloadRecentThreads = useCallback(async () => {
-    setRecentThreads(await listAiHistoryThreads({ limit: 5, space }));
+    setRecentThreads(await listAiHistoryThreads({ limit: 15, space }));
   }, [space]);
 
   useEffect(() => {
@@ -1361,7 +1359,7 @@ export function AiChatScreen({
         onClose={() => setRecordDrawerVisible(false)}
         onNewChat={() => {
           setRecordDrawerVisible(false);
-          onStartNormalChat();
+          handleNewChatPress();
         }}
         onOpenHistory={() => {
           setRecordDrawerVisible(false);

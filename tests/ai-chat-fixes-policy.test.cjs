@@ -219,6 +219,9 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(bubble, /import \{ AiMessageContent \} from '\.\/AiMessageContent'/);
   assert.match(bubble, /isUser \? \([\s\S]*<Text selectable style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*renderAssistantContentWithCursor\(content, streaming\)/);
   assert.match(bubble, /return <AiMessageContent content=\{content\} \/>/);
+  assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
+  assert.match(content, /trailingInline\?: ReactNode/);
+  assert.match(content, /trailingTargetIndex/);
   assert.match(content, /parseMarkdownBlocks/);
   assert.match(content, /type: 'heading'/);
   assert.match(content, /type: 'list'/);
@@ -699,6 +702,8 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
   assert.match(composer, /accessibilityLabel="上传图片"/);
   assert.match(composer, /accessibilityLabel="上传视频"/);
   assert.match(composer, /accessibilityLabel="上传文档"/);
+  assert.match(composer, /disabled=\{generating\}/);
+  assert.match(composer, /if \(generating\) \{[\s\S]{0,120}setAttachmentPopoverVisible\(false\)/);
   assert.match(composer, /flexDirection: 'row'/);
   assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传图片[\s\S]{0,400}上传视频[\s\S]{0,400}上传文档/);
   assert.doesNotMatch(chat, /attachmentSheetVisible/);
@@ -706,11 +711,15 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
 
 test('AI streaming cursor is rendered inline with assistant text', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
 
   assert.match(bubble, /InlineStreamingCursor/);
   assert.match(bubble, /renderAssistantContentWithCursor/);
-  assert.match(bubble, /<Text selectable style=\{styles\.assistantContentWithCursor\}/);
+  assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
+  assert.match(content, /appendTrailingInline/);
+  assert.match(content, /\{appendTrailingInline \? trailingInline : null\}/);
   assert.doesNotMatch(bubble, /streamingCursorBlock/);
+  assert.doesNotMatch(bubble, /assistantContentWithCursor/);
   assert.doesNotMatch(bubble, /\\n\s*<InlineStreamingCursor/);
 });
 
@@ -720,8 +729,12 @@ test('AI history archive restore swipe clips the action background to the row', 
   assert.match(history, /swipeActionClip/);
   assert.match(history, /swipeActionSurface/);
   assert.match(history, /interpolate\(\{[\s\S]*inputRange:\s*\[0,\s*ARCHIVE_ACTION_WIDTH\]/);
+  assert.match(history, /outputRange:\s*\[ARCHIVE_ACTION_WIDTH,\s*0\]/);
+  assert.match(history, /transform:\s*\[\{ translateX: actionTranslateX \}\]/);
   assert.match(history, /Animated\.spring/);
+  assert.match(history, /useNativeDriver: true/);
   assert.match(history, /ARCHIVE_SWIPE_THRESHOLD/);
+  assert.doesNotMatch(history, /width: actionWidth/);
   assert.doesNotMatch(history, /style=\{\(\{ pressed \}\) => \[styles\.archiveAction/);
 });
 

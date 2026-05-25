@@ -18,6 +18,7 @@ type MarkdownBlock =
 
 interface AiMessageContentProps {
   content: string;
+  trailingInline?: ReactNode;
   variant?: 'assistant' | 'user';
 }
 
@@ -186,7 +187,7 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
   });
 }
 
-export function AiMessageContent({ content, variant = 'assistant' }: AiMessageContentProps) {
+export function AiMessageContent({ content, trailingInline, variant = 'assistant' }: AiMessageContentProps) {
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
 
@@ -195,6 +196,9 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
   }
 
   const blocks = parseMarkdownBlocks(content);
+  const trailingTargetIndex = trailingInline
+    ? blocks.reduce((targetIndex, block, index) => (block.type === 'paragraph' || block.type === 'heading' || block.type === 'list' || block.type === 'quote' ? index : targetIndex), -1)
+    : -1;
 
   async function copyCodeBlock(blockKey: string, code: string) {
     try {
@@ -224,10 +228,12 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
       {feedback ? <AiInlineFeedback message={feedback.message} tone={feedback.tone} /> : null}
       {blocks.map((block, index) => {
         const key = `${block.type}-${index}`;
+        const appendTrailingInline = trailingInline && index === trailingTargetIndex;
         if (block.type === 'heading') {
           return (
             <Text selectable key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
               {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink)}
+              {appendTrailingInline ? trailingInline : null}
             </Text>
           );
         }
@@ -239,6 +245,7 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
                   <Text style={styles.listMarker}>{item.marker}</Text>
                   <Text selectable style={[styles.body, styles.assistantText, styles.listText]}>
                     {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink)}
+                    {appendTrailingInline && itemIndex === block.items.length - 1 ? trailingInline : null}
                   </Text>
                 </View>
               ))}
@@ -248,7 +255,10 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         if (block.type === 'quote') {
           return (
             <View key={key} style={styles.quote}>
-              <Text selectable style={[styles.body, styles.quoteText]}>{renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}</Text>
+              <Text selectable style={[styles.body, styles.quoteText]}>
+                {renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}
+                {appendTrailingInline ? trailingInline : null}
+              </Text>
             </View>
           );
         }
@@ -296,9 +306,15 @@ export function AiMessageContent({ content, variant = 'assistant' }: AiMessageCo
         return (
           <Text selectable key={key} style={[styles.body, styles.assistantText]}>
             {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink)}
+            {appendTrailingInline ? trailingInline : null}
           </Text>
         );
       })}
+      {trailingInline && trailingTargetIndex < 0 ? (
+        <Text selectable style={[styles.body, styles.assistantText]}>
+          {trailingInline}
+        </Text>
+      ) : null}
     </View>
   );
 }

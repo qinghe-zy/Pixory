@@ -45,12 +45,7 @@ function renderAssistantContentWithCursor(content: string, streaming: boolean) {
   if (!streaming || !content.trim()) {
     return <AiMessageContent content={content} />;
   }
-  return (
-    <Text selectable style={styles.assistantContentWithCursor}>
-      {content}
-      <InlineStreamingCursor />
-    </Text>
-  );
+  return <AiMessageContent content={content} trailingInline={<InlineStreamingCursor />} />;
 }
 
 function AiMessageBubbleComponent({
@@ -314,10 +309,6 @@ const styles = StyleSheet.create({
   content: {
     ...typography.textStyles.body,
     lineHeight: 22,
-  },
-  assistantContentWithCursor: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
   },
   inlineStreamingCursor: {
     color: aiLightColors.coralActive,

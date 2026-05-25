@@ -1467,7 +1467,6 @@ export default function App() {
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
-        onStartNormalChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           pushRoute({
             name: 'ai-chat',

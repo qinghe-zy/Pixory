@@ -29,7 +29,7 @@ export function AiComprehensiveRecordDrawer({
     return null;
   }
 
-  const visibleRecents = recentThreads.slice(0, 15).filter((thread) => thread.id !== activeThreadId);
+  const visibleRecents = recentThreads.filter((thread) => thread.id !== activeThreadId).slice(0, 15);
 
   return (
     <View pointerEvents="box-none" style={styles.overlay}>

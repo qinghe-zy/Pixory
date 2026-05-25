@@ -306,9 +306,9 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
               const selected = selectedIds.includes(thread.id);
               const swipeTranslateX = getSwipeAnimatedValue(thread.id);
               const swipeActionProgress = Animated.multiply(swipeTranslateX, -1);
-              const actionWidth = swipeActionProgress.interpolate({
+              const actionTranslateX = swipeActionProgress.interpolate({
                 inputRange: [0, ARCHIVE_ACTION_WIDTH],
-                outputRange: [0, ARCHIVE_ACTION_WIDTH],
+                outputRange: [ARCHIVE_ACTION_WIDTH, 0],
                 extrapolate: 'clamp',
               });
               const groupLabel = historyGroupLabel(thread.lastMessageAt ?? thread.updatedAt);
@@ -317,7 +317,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                 <View key={thread.id} style={styles.swipeWrap}>
                   {groupLabel !== previousGroupLabel ? <Text style={styles.groupLabel}>{groupLabel}</Text> : null}
                   {!isSelecting ? (
-                    <Animated.View style={[styles.swipeActionClip, { width: actionWidth }]}>
+                    <Animated.View style={[styles.swipeActionClip, { transform: [{ translateX: actionTranslateX }] }]}>
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => {
@@ -529,6 +529,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 0,
+    width: ARCHIVE_ACTION_WIDTH,
   },
   swipeActionSurface: {
     alignItems: 'center',
