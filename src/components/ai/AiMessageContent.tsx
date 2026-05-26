@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
@@ -14,6 +14,7 @@ type MarkdownBlock =
   | { type: 'quote'; text: string }
   | { type: 'code'; text: string; language?: string }
   | { type: 'table'; rows: string[][] }
+  | { type: 'image'; alt: string; uri: string }
   | { type: 'hr' };
 
 interface AiMessageContentProps {
@@ -45,6 +46,15 @@ function isTableLine(line: string): boolean {
 
 function isHorizontalRule(line: string): boolean {
   return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line);
+}
+
+function isImageMarkdownLine(line: string): boolean {
+  return /^!\[[^\]]*\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/.test(line.trim());
+}
+
+function parseImageMarkdown(line: string): { alt: string; uri: string } | null {
+  const match = /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/.exec(line.trim());
+  return match ? { alt: match[1].trim(), uri: match[2] } : null;
 }
 
 function isTableSeparator(line: string): boolean {
@@ -97,6 +107,15 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
       continue;
     }
 
+    if (isImageMarkdownLine(line)) {
+      const image = parseImageMarkdown(line);
+      if (image) {
+        blocks.push({ type: 'image', alt: image.alt, uri: image.uri });
+        index += 1;
+        continue;
+      }
+    }
+
     if (isListLine(line)) {
       const items: Array<{ marker: string; text: string; checked?: boolean; nestLevel: number }> = [];
       while (index < lines.length && isListLine(lines[index] ?? '')) {
@@ -142,7 +161,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     index += 1;
     while (index < lines.length) {
       const nextLine = lines[index] ?? '';
-      if (!nextLine.trim() || isFence(nextLine) || isHeading(nextLine) || isHorizontalRule(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
+      if (!nextLine.trim() || isFence(nextLine) || isHeading(nextLine) || isHorizontalRule(nextLine) || isImageMarkdownLine(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
         break;
       }
       paragraphLines.push(nextLine);
@@ -187,17 +206,45 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
   });
 }
 
+function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (loadFailed) {
+    return (
+      <View style={styles.imageFallback}>
+        <Ionicons color={aiLightColors.muted} name="image-outline" size={16} />
+        <Text style={styles.imageFallbackText}>{alt || '图片无法预览'}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.imageBlock}>
+      <Image onError={() => setLoadFailed(true)} resizeMode="cover" source={{ uri }} style={styles.markdownImage} />
+      {alt ? <Text numberOfLines={2} style={styles.imageCaption}>{alt}</Text> : null}
+    </View>
+  );
+}
+
 export function AiMessageContent({ content, trailingInline, variant = 'assistant' }: AiMessageContentProps) {
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+
+  function clearFeedbackTimer() {
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = null;
+    }
+  }
+
+  useEffect(() => clearFeedbackTimer, []);
 
   if (variant === 'user') {
     return <Text selectable style={[styles.body, styles.userText]}>{content}</Text>;
   }
 
-  const blocks = parseMarkdownBlocks(content);
   const trailingTargetIndex = trailingInline
-    ? blocks.reduce((targetIndex, block, index) => (block.type === 'hr' ? targetIndex : index), -1)
+    ? blocks.reduce((targetIndex, block, index) => (block.type === 'hr' || block.type === 'image' ? targetIndex : index), -1)
     : -1;
 
   async function copyCodeBlock(blockKey: string, code: string) {
@@ -205,7 +252,11 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
       await Clipboard.setStringAsync(code);
       setCopiedBlockKey(blockKey);
       setFeedback({ message: '代码已复制', tone: 'success' });
-      setTimeout(() => setFeedback(null), 1600);
+      clearFeedbackTimer();
+      feedbackTimeoutRef.current = setTimeout(() => {
+        setFeedback(null);
+        feedbackTimeoutRef.current = null;
+      }, 1600);
     } catch {
       setFeedback({ message: '复制失败', tone: 'error' });
     }
@@ -264,6 +315,9 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         }
         if (block.type === 'hr') {
           return <View key={key} style={styles.horizontalRule} />;
+        }
+        if (block.type === 'image') {
+          return <AiMarkdownImage alt={block.alt} key={key} uri={block.uri} />;
         }
         if (block.type === 'code') {
           return (
@@ -398,6 +452,36 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginVertical: spacing[2],
     width: '100%',
+  },
+  imageBlock: {
+    gap: rhythm.microGap,
+    maxWidth: '100%',
+  },
+  markdownImage: {
+    aspectRatio: 16 / 10,
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.md,
+    maxWidth: '100%',
+    width: 260,
+  },
+  imageCaption: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  imageFallback: {
+    alignItems: 'center',
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  imageFallbackText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    flex: 1,
   },
   codeBlock: {
     backgroundColor: aiLightColors.dark,
