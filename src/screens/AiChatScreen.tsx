@@ -1501,43 +1501,46 @@ export function AiChatScreen({
         </View>
       ) : null}
 
-      <FlatList
-        ref={messageListRef}
-        data={invertedMessageItems}
-        inverted
-        initialNumToRender={10}
-        keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        keyboardShouldPersistTaps="handled"
-        keyExtractor={messageKeyExtractor}
-        maxToRenderPerBatch={8}
-        removeClippedSubviews={Platform.OS === 'android'}
-        windowSize={11}
-        ListEmptyComponent={invertedMessageItems.length === 0 ? (
-          <AiChatStarterHints onPickSuggestion={setComposerText} />
+      <View style={styles.messageArea}>
+        <FlatList
+          ref={messageListRef}
+          data={invertedMessageItems}
+          inverted
+          initialNumToRender={10}
+          keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          keyExtractor={messageKeyExtractor}
+          maxToRenderPerBatch={8}
+          removeClippedSubviews={Platform.OS === 'android'}
+          windowSize={11}
+          ListFooterComponent={
+            <>
+              {errorMessage ? <AiChatErrorBanner message={errorMessage} onRetry={latestAssistantMessage?.status === 'failed' ? () => void handleRegenerate(latestAssistantMessage.id) : undefined} /> : null}
+              {hasEarlierMessages ? (
+                <Pressable accessibilityLabel="加载更早消息" accessibilityRole="button" onPress={loadEarlierMessages} style={({ pressed }) => [styles.loadEarlierButton, pressed && styles.pressed]}>
+                  <Ionicons color={aiLightColors.muted} name="chevron-up" size={15} />
+                  <Text style={styles.loadEarlierText}>加载更早消息</Text>
+                </Pressable>
+              ) : null}
+            </>
+          }
+          onScroll={handleMessageScroll}
+          onViewableItemsChanged={handleInlineEditViewableItemsChangedRef.current}
+          onScrollToIndexFailed={retryInlineEditScrollToIndex}
+          renderItem={renderMessageItem}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          style={styles.messageScroller}
+          contentContainerStyle={styles.messageScrollContent}
+          viewabilityConfig={inlineEditViewabilityConfigRef.current}
+        />
+        {invertedMessageItems.length === 0 ? (
+          <View style={styles.starterOverlay}>
+            <AiChatStarterHints onPickSuggestion={setComposerText} />
+          </View>
         ) : null}
-        ListFooterComponent={
-          <>
-            {errorMessage ? <AiChatErrorBanner message={errorMessage} onRetry={latestAssistantMessage?.status === 'failed' ? () => void handleRegenerate(latestAssistantMessage.id) : undefined} /> : null}
-            {hasEarlierMessages ? (
-              <Pressable accessibilityLabel="加载更早消息" accessibilityRole="button" onPress={loadEarlierMessages} style={({ pressed }) => [styles.loadEarlierButton, pressed && styles.pressed]}>
-                <Ionicons color={aiLightColors.muted} name="chevron-up" size={15} />
-                <Text style={styles.loadEarlierText}>加载更早消息</Text>
-              </Pressable>
-            ) : null}
-          </>
-        }
-        onScroll={handleMessageScroll}
-        onViewableItemsChanged={handleInlineEditViewableItemsChangedRef.current}
-        onScrollToIndexFailed={retryInlineEditScrollToIndex}
-        renderItem={renderMessageItem}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        style={styles.messageScroller}
-        contentContainerStyle={styles.messageScrollContent}
-        viewabilityConfig={inlineEditViewabilityConfigRef.current}
-      />
-
-      <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={!latestVisible && !inlineEditingActive} onPress={() => followLatestMessage()} />
+        <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={!latestVisible && !inlineEditingActive} onPress={() => followLatestMessage()} />
+      </View>
 
       {inlineEditingActive ? null : (
         <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
@@ -1717,11 +1720,21 @@ const styles = StyleSheet.create({
   messageScroller: {
     flex: 1,
   },
+  messageArea: {
+    flex: 1,
+  },
   messageScrollContent: {
     flexGrow: 1,
     gap: rhythm.listCardGap,
     paddingBottom: spacing[4],
     paddingTop: spacing[3],
+  },
+  starterOverlay: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   starterWrap: {
     alignItems: 'center',

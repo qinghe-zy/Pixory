@@ -104,10 +104,10 @@ export function AiRoleCardDetailScreen({
               <Text style={styles.meta}>
                 {card.avatarEnabled && card.avatarUri ? '头像开启' : '无头像'} · {card.firstMessage || card.alternateGreetings.length ? '有开场白' : '无开场白'}
               </Text>
+              <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
             </View>
           </View>
 
-          <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
           {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
 
           <AiRoleDetailSection title="角色指令" previewLines={8}>
@@ -138,10 +138,10 @@ export function AiRoleCardDetailScreen({
 
 const styles = StyleSheet.create({
   content: {
-    gap: rhythm.screenSectionGap,
+    gap: rhythm.entryCardGap,
   },
   hero: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
   },
@@ -149,10 +149,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
     borderRadius: radius.lg,
-    height: 128,
+    height: 96,
     justifyContent: 'center',
     overflow: 'hidden',
-    width: 112,
+    width: 96,
   },
   coverImage: {
     height: '100%',
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
   },
   heroCopy: {
     flex: 1,
-    gap: rhythm.microGap,
+    gap: rhythm.cardContentGap,
     minWidth: 0,
   },
   titleRow: {
@@ -173,6 +173,8 @@ const styles = StyleSheet.create({
     ...typography.textStyles.pageTitle,
     color: aiLightColors.ink,
     flexShrink: 1,
+    fontSize: 30,
+    lineHeight: 36,
   },
   sourceBadge: {
     ...typography.textStyles.micro,

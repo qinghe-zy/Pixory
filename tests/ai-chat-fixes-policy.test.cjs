@@ -810,7 +810,10 @@ test('AI chat empty start uses a Claude-like greeting and faint starter suggesti
   assert.match(chat, /今天想聊点什么？/);
   assert.match(chat, /现在想聊点什么？/);
   assert.match(chat, /今晚想聊点什么？/);
-  assert.match(chat, /ListEmptyComponent=\{invertedMessageItems\.length === 0 \? /);
+  assert.doesNotMatch(chat, /ListEmptyComponent=\{invertedMessageItems\.length === 0 \? /);
+  assert.match(chat, /\{invertedMessageItems\.length === 0 \? \(\s*<View style=\{styles\.starterOverlay\}>/);
+  assert.match(chat, /starterOverlay:\s*\{[\s\S]{0,180}position:\s*'absolute'/);
+  assert.doesNotMatch(chat, /scaleY:\s*-1/);
   assert.match(chat, /AiChatStarterHints/);
   assert.match(chat, /fontSize:\s*28/);
   assert.match(chat, /lineHeight:\s*36/);
