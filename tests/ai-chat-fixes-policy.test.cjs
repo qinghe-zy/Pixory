@@ -839,8 +839,8 @@ test('AI message content memoizes markdown and renders image markdown inline', (
 
 test('AI chat long histories chunk attached data lookups', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
-  const versionsBody = /async listMessageVersionsForMessages[\s\S]*?\n  \},\n\n  async replaceCitations/.exec(repository)?.[0] ?? '';
-  const citationsBody = /async listCitationsForMessages[\s\S]*?\n  \},\n\n  async getThreadMemorySettings/.exec(repository)?.[0] ?? '';
+  const versionsBody = /async listMessageVersionsForMessages[\s\S]*?\r?\n  \},\r?\n\r?\n  async replaceCitations/.exec(repository)?.[0] ?? '';
+  const citationsBody = /async listCitationsForMessages[\s\S]*?\r?\n  \},\r?\n\r?\n  async getThreadMemorySettings/.exec(repository)?.[0] ?? '';
 
   assert.match(repository, /MESSAGE_LOOKUP_CHUNK_SIZE = 200|DELETE_MESSAGE_CHUNK_SIZE = 200/);
   assert.match(versionsBody, /for \(let index = 0; index < messageIds\.length; index \+= MESSAGE_LOOKUP_CHUNK_SIZE\)/);

@@ -597,6 +597,7 @@ function buildSummarySegmentVisibilityClause(
 }
 
 const DELETE_MESSAGE_CHUNK_SIZE = 200;
+const MESSAGE_LOOKUP_CHUNK_SIZE = 200;
 
 export const aiThreadRepository = {
   async createThread(db: SQLiteDatabase, input: CreateAiThreadInput): Promise<AiThreadRecord> {
@@ -1636,12 +1637,18 @@ export const aiThreadRepository = {
     if (messageIds.length === 0) {
       return {};
     }
-    const rows = await db.getAllAsync<AiMessageVersionRow>(
-      `SELECT * FROM ai_message_versions
-       WHERE originalMessageId IN (${makeInClause(messageIds)})
-       ORDER BY originalMessageId ASC, versionIndex ASC`,
-      ...messageIds
-    );
+    const rows: AiMessageVersionRow[] = [];
+    for (let index = 0; index < messageIds.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = messageIds.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      rows.push(
+        ...(await db.getAllAsync<AiMessageVersionRow>(
+          `SELECT * FROM ai_message_versions
+           WHERE originalMessageId IN (${makeInClause(chunk)})
+           ORDER BY originalMessageId ASC, versionIndex ASC`,
+          ...chunk
+        ))
+      );
+    }
     return rows.reduce<Record<string, AiMessageVersionRecord[]>>((grouped, row) => {
       const mapped = mapMessageVersionRow(row);
       grouped[mapped.originalMessageId] = grouped[mapped.originalMessageId] ?? [];
@@ -1689,12 +1696,18 @@ export const aiThreadRepository = {
     if (messageIds.length === 0) {
       return {};
     }
-    const rows = await db.getAllAsync<AiCitationRow>(
-      `SELECT * FROM ai_message_citations
-       WHERE messageId IN (${makeInClause(messageIds)})
-       ORDER BY messageId ASC, createdAt ASC`,
-      ...messageIds
-    );
+    const rows: AiCitationRow[] = [];
+    for (let index = 0; index < messageIds.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = messageIds.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      rows.push(
+        ...(await db.getAllAsync<AiCitationRow>(
+          `SELECT * FROM ai_message_citations
+           WHERE messageId IN (${makeInClause(chunk)})
+           ORDER BY messageId ASC, createdAt ASC`,
+          ...chunk
+        ))
+      );
+    }
     return rows.reduce<Record<string, AiCitationRecord[]>>((grouped, row) => {
       const mapped = mapCitationRow(row);
       grouped[mapped.messageId] = grouped[mapped.messageId] ?? [];
