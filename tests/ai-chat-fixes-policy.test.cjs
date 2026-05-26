@@ -844,24 +844,24 @@ test('AI user text supports selection while assistant markdown stays Android lay
   assert.match(content, /nestLevel/);
 });
 
-test('AI markdown code blocks avoid selectable text inside horizontal scroll on Android', () => {
+test('AI markdown code blocks avoid horizontal scroll and selectable text on Android', () => {
   const content = read('src/components/ai/AiMessageContent.tsx');
   const codeBranch = /if \(block\.type === 'code'\) \{[\s\S]*?if \(block\.type === 'table'\)/.exec(content)?.[0] ?? '';
 
-  assert.match(content, /useWindowDimensions/);
-  assert.match(content, /horizontalBlockWidth/);
-  assert.match(codeBranch, /style=\{\[styles\.codeBlock, \{ width: horizontalBlockWidth \}\]\}/);
-  assert.match(codeBranch, /<ScrollView horizontal/);
-  assert.match(codeBranch, /style=\{styles\.codeScroll\}/);
+  assert.doesNotMatch(content, /ScrollView/);
+  assert.doesNotMatch(content, /useWindowDimensions/);
+  assert.doesNotMatch(content, /horizontalBlockWidth/);
+  assert.match(codeBranch, /style=\{styles\.codeBlock\}/);
   assert.match(codeBranch, /accessibilityLabel="复制代码块"/);
   assert.doesNotMatch(codeBranch, /<Text selectable/);
 });
 
-test('AI markdown tables use a hard horizontal width constraint on Android', () => {
+test('AI markdown tables render in bounded views without horizontal scroll on Android', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const content = read('src/components/ai/AiMessageContent.tsx');
 
-  assert.match(content, /style=\{\[styles\.tableScroll, \{ width: horizontalBlockWidth \}\]\}/);
+  assert.doesNotMatch(content, /<ScrollView/);
+  assert.match(content, /style=\{styles\.tableBlock\}/);
   assert.match(bubble, /bubble:\s*\{[\s\S]*maxWidth:\s*'100%'/);
   assert.match(content, /wrap:\s*\{[\s\S]*maxWidth:\s*'100%'/);
 });

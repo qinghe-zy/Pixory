@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type TextStyle } from 'react-native';
+import { Image, Linking, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
@@ -246,12 +246,10 @@ function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
 }
 
 export function AiMessageContent({ content, trailingInline, variant = 'assistant' }: AiMessageContentProps) {
-  const { width: windowWidth } = useWindowDimensions();
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
-  const horizontalBlockWidth = Math.max(180, Math.min(520, Math.floor(windowWidth * 0.72)));
 
   function clearFeedbackTimer() {
     if (feedbackTimeoutRef.current) {
@@ -346,7 +344,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         }
         if (block.type === 'code') {
           return (
-            <View key={key} style={[styles.codeBlock, { width: horizontalBlockWidth }]}>
+            <View key={key} style={styles.codeBlock}>
               <View style={styles.codeHeader}>
                 <Text numberOfLines={1} style={styles.codeLanguage}>{block.language ?? 'code'}</Text>
                 <Pressable
@@ -359,31 +357,27 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                   <Ionicons color={aiLightColors.onDark} name={copiedBlockKey === key ? 'checkmark' : 'copy-outline'} size={14} />
                 </Pressable>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
-                <Text style={styles.codeText}>
-                  {block.text || ' '}
-                  {appendTrailingInline ? trailingInline : null}
-                </Text>
-              </ScrollView>
+              <Text style={styles.codeText}>
+                {block.text || ' '}
+                {appendTrailingInline ? trailingInline : null}
+              </Text>
             </View>
           );
         }
         if (block.type === 'table') {
           return (
-            <ScrollView key={key} horizontal showsHorizontalScrollIndicator={false} style={[styles.tableScroll, { width: horizontalBlockWidth }]}>
-              <View style={styles.table}>
-                {block.rows.map((row, rowIndex) => (
-                  <View key={`${key}-${rowIndex}`} style={[styles.tableRow, rowIndex === 0 && styles.tableHeaderRow]}>
-                    {row.map((cell, cellIndex) => (
-                      <Text key={`${key}-${rowIndex}-${cellIndex}`} style={[styles.tableCell, rowIndex === 0 && styles.tableHeaderCell]}>
-                        {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink)}
-                        {appendTrailingInline && rowIndex === block.rows.length - 1 && cellIndex === row.length - 1 ? trailingInline : null}
-                      </Text>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+            <View key={key} style={styles.tableBlock}>
+              {block.rows.map((row, rowIndex) => (
+                <View key={`${key}-${rowIndex}`} style={[styles.tableRow, rowIndex === 0 && styles.tableHeaderRow]}>
+                  {row.map((cell, cellIndex) => (
+                    <Text key={`${key}-${rowIndex}-${cellIndex}`} style={[styles.tableCell, rowIndex === 0 && styles.tableHeaderCell]}>
+                      {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink)}
+                      {appendTrailingInline && rowIndex === block.rows.length - 1 && cellIndex === row.length - 1 ? trailingInline : null}
+                    </Text>
+                  ))}
+                </View>
+              ))}
+            </View>
           );
         }
         return (
@@ -516,6 +510,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     overflow: 'hidden',
     padding: spacing[2],
+    width: '100%',
   },
   codeHeader: {
     alignItems: 'center',
@@ -542,17 +537,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.mono,
     lineHeight: 20,
   },
-  codeScroll: {
-    maxWidth: '100%',
-  },
-  tableScroll: {
-    maxWidth: '100%',
-  },
-  table: {
+  tableBlock: {
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
+    maxWidth: '100%',
     overflow: 'hidden',
+    width: '100%',
   },
   tableRow: {
     flexDirection: 'row',
@@ -565,7 +556,8 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
     borderRightWidth: StyleSheet.hairlineWidth,
     color: aiLightColors.ink,
-    minWidth: spacing[12] * 2,
+    flex: 1,
+    minWidth: 0,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
