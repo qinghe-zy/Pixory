@@ -820,6 +820,9 @@ test('AI chat empty start uses a Claude-like greeting and faint starter suggesti
   assert.match(chat, /帮我发散想法/);
   assert.match(chat, /总结当前设定/);
   assert.match(chat, /onPickSuggestion=\{setComposerText\}/);
+  assert.match(chat, /placeholder=""/);
+  assert.doesNotMatch(chat, /placeholder=\{getComposerPlaceholder\(\)\}/);
+  assert.doesNotMatch(chat, /function getComposerPlaceholder/);
   assert.doesNotMatch(chat, /onPickSuggestion=\{handleSend\}/);
   assert.doesNotMatch(chat, /emptyStateCard/);
 });
@@ -830,6 +833,11 @@ test('AI message content memoizes markdown and renders image markdown inline', (
   assert.match(content, /import \{ useEffect, useMemo, useRef, useState, type ReactNode \} from 'react'/);
   assert.match(content, /Image/);
   assert.match(content, /type: 'image'/);
+  assert.match(content, /IMAGE_MARKDOWN_TOKEN_PATTERN/);
+  assert.match(content, /appendParagraphBlocksWithImages/);
+  assert.match(content, /while \(\(match = IMAGE_MARKDOWN_TOKEN_PATTERN\.exec\(text\)\) !== null\)/);
+  assert.match(content, /appendParagraphBlocksWithImages\(blocks, paragraphLines\.join\('\\n'\)\)/);
+  assert.doesNotMatch(content, /blocks\.push\(\{ type: 'paragraph', text: paragraphLines\.join\('\\n'\) \}\)/);
   assert.match(content, /isImageMarkdownLine/);
   assert.match(content, /AiMarkdownImage/);
   assert.match(content, /const blocks = useMemo\(\(\) => parseMarkdownBlocks\(content\), \[content\]\)/);

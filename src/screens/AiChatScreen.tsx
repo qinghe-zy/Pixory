@@ -1380,16 +1380,6 @@ export function AiChatScreen({
     }, 1200);
   }
 
-  function getComposerPlaceholder() {
-    if (contextType === 'ip') {
-      return '询问这个 IP 的整理、标签或资料';
-    }
-    if (contextType === 'knowledge_base') {
-      return '询问知识库内容';
-    }
-    return '输入提示或需求';
-  }
-
   function openCitation(citation: AiCitationRecord) {
     if (citation.sourceType === 'document_chunk') {
       onOpenSource(citation.sourceId, citation.label, citation.locator as AiDocumentReaderLocator);
@@ -1572,7 +1562,7 @@ export function AiChatScreen({
             onChangeText={setComposerText}
             onComposerHeightChange={handleComposerHeightChange}
             onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
-            placeholder={getComposerPlaceholder()}
+            placeholder=""
             onSend={() => {
               void handleSend();
             }}

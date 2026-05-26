@@ -48,13 +48,34 @@ function isHorizontalRule(line: string): boolean {
   return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line);
 }
 
+const IMAGE_MARKDOWN_LINE_PATTERN = /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/;
+const IMAGE_MARKDOWN_TOKEN_PATTERN = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)/g;
+
 function isImageMarkdownLine(line: string): boolean {
-  return /^!\[[^\]]*\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/.test(line.trim());
+  return IMAGE_MARKDOWN_LINE_PATTERN.test(line.trim());
 }
 
 function parseImageMarkdown(line: string): { alt: string; uri: string } | null {
-  const match = /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/.exec(line.trim());
+  const match = IMAGE_MARKDOWN_LINE_PATTERN.exec(line.trim());
   return match ? { alt: match[1].trim(), uri: match[2] } : null;
+}
+
+function appendParagraphBlocksWithImages(blocks: MarkdownBlock[], text: string) {
+  IMAGE_MARKDOWN_TOKEN_PATTERN.lastIndex = 0;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = IMAGE_MARKDOWN_TOKEN_PATTERN.exec(text)) !== null) {
+    const precedingText = text.slice(cursor, match.index);
+    if (precedingText.trim()) {
+      blocks.push({ type: 'paragraph', text: precedingText });
+    }
+    blocks.push({ type: 'image', alt: match[1].trim(), uri: match[2] });
+    cursor = match.index + match[0].length;
+  }
+  const trailingText = text.slice(cursor);
+  if (cursor === 0 || trailingText.trim()) {
+    blocks.push({ type: 'paragraph', text: trailingText });
+  }
 }
 
 function isTableSeparator(line: string): boolean {
@@ -167,7 +188,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
       paragraphLines.push(nextLine);
       index += 1;
     }
-    blocks.push({ type: 'paragraph', text: paragraphLines.join('\n') });
+    appendParagraphBlocksWithImages(blocks, paragraphLines.join('\n'));
   }
 
   return blocks.length ? blocks : [{ type: 'paragraph', text: content }];
