@@ -26,6 +26,14 @@ function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
   return !card.sourceType || card.sourceType === 'pixory_manual' ? '自建' : '导入';
 }
 
+const ROLE_HERO_HEIGHT = 560;
+
+function getRoleCardMeta(card: AiRoleCardRecord): string {
+  const avatarMeta = card.avatarEnabled && card.avatarUri ? '头像开启' : '无头像';
+  const greetingMeta = card.firstMessage || card.alternateGreetings.length ? '有开场白' : '无开场白';
+  return `${avatarMeta} · ${greetingMeta}`;
+}
+
 export function AiRoleCardDetailScreen({
   roleCardId,
   space,
@@ -70,6 +78,8 @@ export function AiRoleCardDetailScreen({
 
   return (
     <AiLightScaffold
+      contentContainerStyle={styles.screenContent}
+      headerDividerVisible={false}
       onBack={onBack}
       rightAction={card ? (
         <Pressable accessibilityLabel="编辑角色" accessibilityRole="button" onPress={() => onEditRole(card.id)} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
@@ -87,23 +97,31 @@ export function AiRoleCardDetailScreen({
         </View>
       ) : (
         <View style={styles.content}>
-          <View style={styles.hero}>
-            <View style={styles.cover}>
-              {card.avatarEnabled && card.avatarUri ? (
-                <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={card.avatarUri} />
-              ) : (
-                <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
-              )}
-            </View>
-            <View style={styles.heroCopy}>
-              <View style={styles.titleRow}>
-                <Text numberOfLines={2} style={styles.title}>{card.name}</Text>
-                <Text style={styles.sourceBadge}>{getRoleCardSourceLabel(card)}</Text>
+          <View style={styles.heroPoster}>
+            {card.avatarEnabled && card.avatarUri ? (
+              <View style={styles.heroImageLayer}>
+                <SecureImage contentFit="cover" space={space} style={styles.heroImage} uri={card.avatarUri} />
+                <View pointerEvents="none" style={styles.heroWarmOverlay} />
+                <View pointerEvents="none" style={styles.heroFadeRight} />
+                <View pointerEvents="none" style={styles.heroFadeBottom} />
               </View>
-              {card.description ? <Text style={styles.description}>{card.description}</Text> : null}
-              <Text style={styles.meta}>
-                {card.avatarEnabled && card.avatarUri ? '头像开启' : '无头像'} · {card.firstMessage || card.alternateGreetings.length ? '有开场白' : '无开场白'}
-              </Text>
+            ) : (
+              <View style={styles.heroFallback}>
+                <View style={styles.heroFallbackMoon} />
+                <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize * 1.4} />
+              </View>
+            )}
+
+            <View pointerEvents="none" style={styles.heroPaperMark} />
+
+            <View style={styles.heroCopy}>
+              <Text numberOfLines={2} style={styles.heroTitle}>{card.name}</Text>
+              <Text style={styles.sourceBadge}>{getRoleCardSourceLabel(card)}</Text>
+              {card.description ? <Text numberOfLines={4} style={styles.heroDescription}>{card.description}</Text> : null}
+              <Text style={styles.meta}>{getRoleCardMeta(card)}</Text>
+            </View>
+
+            <View style={styles.heroActionWrap}>
               <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
             </View>
           </View>
@@ -137,44 +155,99 @@ export function AiRoleCardDetailScreen({
 }
 
 const styles = StyleSheet.create({
+  screenContent: {
+    gap: 0,
+  },
   content: {
     gap: rhythm.entryCardGap,
   },
-  hero: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
+  heroPoster: {
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.lg,
+    height: ROLE_HERO_HEIGHT,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    position: 'relative',
   },
-  cover: {
+  heroImageLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroImage: {
+    bottom: spacing[8],
+    height: ROLE_HERO_HEIGHT - spacing[6],
+    left: -spacing[8],
+    position: 'absolute',
+    width: '68%',
+  },
+  heroWarmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(250, 249, 245, 0.14)',
+  },
+  heroFadeRight: {
+    backgroundColor: 'rgba(250, 249, 245, 0.82)',
+    bottom: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '58%',
+  },
+  heroFadeBottom: {
+    backgroundColor: 'rgba(250, 249, 245, 0.92)',
+    bottom: 0,
+    height: 118,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  heroFallback: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
-    borderRadius: radius.lg,
-    height: 96,
     justifyContent: 'center',
-    overflow: 'hidden',
-    width: 96,
   },
-  coverImage: {
-    height: '100%',
-    width: '100%',
+  heroFallbackMoon: {
+    backgroundColor: aiLightColors.card,
+    borderRadius: radius.pill,
+    height: 220,
+    position: 'absolute',
+    width: 220,
+  },
+  heroPaperMark: {
+    backgroundColor: 'rgba(204, 120, 92, 0.08)',
+    borderRadius: radius.pill,
+    height: 260,
+    left: -spacing[8],
+    position: 'absolute',
+    top: spacing[6],
+    width: 260,
   },
   heroCopy: {
-    flex: 1,
+    alignItems: 'flex-start',
     gap: rhythm.cardContentGap,
-    minWidth: 0,
+    marginLeft: '45%',
+    paddingBottom: spacing[12] + spacing[10],
+    paddingHorizontal: spacing[5],
+    zIndex: 2,
   },
-  titleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[2],
-  },
-  title: {
+  heroTitle: {
     ...typography.textStyles.pageTitle,
     color: aiLightColors.ink,
-    flexShrink: 1,
-    fontSize: 30,
-    lineHeight: 36,
+    fontFamily: 'serif',
+    fontSize: 48,
+    fontWeight: '400',
+    lineHeight: 56,
+  },
+  heroDescription: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    lineHeight: 27,
+  },
+  heroActionWrap: {
+    bottom: spacing[5],
+    left: spacing[5],
+    position: 'absolute',
+    right: spacing[5],
+    zIndex: 3,
   },
   sourceBadge: {
     ...typography.textStyles.micro,
