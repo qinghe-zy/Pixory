@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import {
   aiKnowledgeRepository,
+  aiThreadRepository,
   groupRepository,
   imageRepository,
   importBatchRepository,
@@ -17,6 +18,7 @@ import type {
 } from '../database/repositories/aiKnowledgeRepository';
 import type { AiReadableDocument } from './readers/readerTypes';
 import type {
+  AiContextType,
   AiDocumentOwnerType,
   AiDocumentSourceType,
 } from './types';
@@ -74,6 +76,39 @@ export interface GenerateIpMaterialInput {
   space: PixorySpace;
   ipId: number;
   title?: string;
+}
+
+export interface ThreadMaterialInput {
+  space: PixorySpace;
+  threadId: string;
+}
+
+export interface ImportManualThreadMaterialInput extends ThreadMaterialInput {
+  title: string;
+  text: string;
+}
+
+export interface ImportPickedThreadDocumentsInput extends ThreadMaterialInput {
+  assets: ImportPickedDocumentsInput['assets'];
+}
+
+export interface GenerateThreadIpSnapshotMaterialInput extends ThreadMaterialInput {
+  ipId: number;
+  title?: string;
+}
+
+export interface RefreshThreadIpSnapshotMaterialInput {
+  space: PixorySpace;
+  documentId: string;
+}
+
+export interface AiMaterialConversationGroup {
+  threadId: string;
+  threadTitle: string;
+  contextType: AiContextType | 'unknown';
+  updatedAt: string;
+  materialCount: number;
+  materials: AiDocumentRecord[];
 }
 
 export interface ParseAndChunkDocumentInput {
@@ -192,6 +227,76 @@ async function createDocumentRecord(input: CreateDocumentInput): Promise<AiDocum
   return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.createDocument(db, input));
 }
 
+async function assertThreadBelongsToSpace(space: PixorySpace, threadId: string): Promise<void> {
+  const thread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
+  if (!thread || thread.space !== space) {
+    throw new Error('未找到当前会话。');
+  }
+}
+
+async function buildIpMaterialText(space: PixorySpace, ipId: number): Promise<string> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const ip = await ipRepository.findDetailById(db, ipId);
+    if (!ip) {
+      throw new Error('未找到要生成资料的 IP。');
+    }
+    const groups = await groupRepository.findByIpId(db, ipId);
+    const tags = await tagRepository.findUsageOverviewByIpId(db, ipId);
+    const assets = await imageRepository.findByIpId(db, ipId, { includeDeleted: false, mediaType: 'all' });
+    const batches = await importBatchRepository.findByIpId(db, ipId, 10);
+
+    const assetLines = assets.slice(0, 80).map((asset) => {
+      const note = asset.note ? `，备注：${asset.note}` : '';
+      return `- ${asset.originalFilename}，${asset.mediaType}，${asset.isFavorite ? '收藏' : '未收藏'}${note}`;
+    });
+
+    return [
+      `IP：${ip.name}`,
+      ip.description ? `备注：${ip.description}` : '备注：无',
+      `统计：图片 ${ip.imageCount}，视频 ${ip.videoCount}，分组 ${ip.groupCount}，标签 ${ip.tagCount}，总大小 ${ip.totalBytes} 字节。`,
+      `分组：${groups.map((group) => `${group.name}(${group.type})`).join('、') || '无'}`,
+      `标签：${tags.map((tag) => `${tag.name}(${tag.imageCount})`).join('、') || '无'}`,
+      `最近导入：${batches.map((batch) => `${batch.name} ${batch.createdAt}`).join('；') || '无'}`,
+      '素材文件：',
+      assetLines.join('\n') || '无',
+    ].join('\n\n');
+  });
+}
+
+async function createGeneratedTextMaterial(input: {
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  title: string;
+  text: string;
+  metadata: Record<string, unknown>;
+}): Promise<AiDocumentRecord> {
+  await ensureAppDirectories(input.space);
+  const ownerDir = resolveOwnerDirectory(input.space, input.ownerType, input.ownerId);
+  await ensureLocalDirectory(ownerDir);
+  const fileName = `${sanitizeFileNamePart(input.title)}_${Date.now()}.txt`;
+  const localUri = joinStoragePath(ownerDir, fileName);
+  await writeTextFile(localUri, input.text);
+  const document = await createDocumentRecord({
+    id: createAiId('aidoc'),
+    space: input.space,
+    ownerType: input.ownerType,
+    ownerId: input.ownerId,
+    sourceType: 'ip_generated',
+    title: input.title,
+    originalFilename: fileName,
+    localUri,
+    mimeType: 'text/plain',
+    fileSize: input.text.length,
+    parserStatus: 'pending',
+    metadataJson: JSON.stringify(input.metadata),
+  });
+  await parseAndChunkDocument({ space: input.space, documentId: document.id });
+  return runWithDatabaseSpace(input.space, async (db) => {
+    return (await aiKnowledgeRepository.findDocumentById(db, document.id)) ?? document;
+  });
+}
+
 export async function createKnowledgeBase(input: CreateKnowledgeBaseMaterialInput): Promise<AiKnowledgeBaseRecord> {
   const name = input.name.trim();
   if (!name) {
@@ -304,57 +409,15 @@ export async function importPickedDocuments(input: ImportPickedDocumentsInput): 
 }
 
 export async function generateIpMaterial(input: GenerateIpMaterialInput): Promise<AiDocumentRecord> {
-  const text = await runWithDatabaseSpace(input.space, async (db) => {
-    const ip = await ipRepository.findDetailById(db, input.ipId);
-    if (!ip) {
-      throw new Error('未找到要生成资料的 IP。');
-    }
-    const groups = await groupRepository.findByIpId(db, input.ipId);
-    const tags = await tagRepository.findUsageOverviewByIpId(db, input.ipId);
-    const assets = await imageRepository.findByIpId(db, input.ipId, { includeDeleted: false, mediaType: 'all' });
-    const batches = await importBatchRepository.findByIpId(db, input.ipId, 10);
-
-    const assetLines = assets.slice(0, 80).map((asset) => {
-      const note = asset.note ? `，备注：${asset.note}` : '';
-      return `- ${asset.originalFilename}，${asset.mediaType}，${asset.isFavorite ? '收藏' : '未收藏'}${note}`;
-    });
-
-    return [
-      `IP：${ip.name}`,
-      ip.description ? `备注：${ip.description}` : '备注：无',
-      `统计：图片 ${ip.imageCount}，视频 ${ip.videoCount}，分组 ${ip.groupCount}，标签 ${ip.tagCount}，总大小 ${ip.totalBytes} 字节。`,
-      `分组：${groups.map((group) => `${group.name}(${group.type})`).join('、') || '无'}`,
-      `标签：${tags.map((tag) => `${tag.name}(${tag.imageCount})`).join('、') || '无'}`,
-      `最近导入：${batches.map((batch) => `${batch.name} ${batch.createdAt}`).join('；') || '无'}`,
-      '素材文件：',
-      assetLines.join('\n') || '无',
-    ].join('\n\n');
-  });
-
-  await ensureAppDirectories(input.space);
-  const ownerDir = resolveOwnerDirectory(input.space, 'ip', String(input.ipId));
-  await ensureLocalDirectory(ownerDir);
   const title = input.title ?? 'IP 结构化资料';
-  const fileName = `${sanitizeFileNamePart(title)}_${Date.now()}.txt`;
-  const localUri = joinStoragePath(ownerDir, fileName);
-  await writeTextFile(localUri, text);
-  const document = await createDocumentRecord({
-    id: createAiId('aidoc'),
+  const text = await buildIpMaterialText(input.space, input.ipId);
+  return createGeneratedTextMaterial({
     space: input.space,
     ownerType: 'ip',
     ownerId: String(input.ipId),
-    sourceType: 'ip_generated',
     title,
-    originalFilename: fileName,
-    localUri,
-    mimeType: 'text/plain',
-    fileSize: text.length,
-    parserStatus: 'pending',
-    metadataJson: JSON.stringify({ importedAs: 'ip_generated' }),
-  });
-  await parseAndChunkDocument({ space: input.space, documentId: document.id });
-  return runWithDatabaseSpace(input.space, async (db) => {
-    return (await aiKnowledgeRepository.findDocumentById(db, document.id)) ?? document;
+    text,
+    metadata: { importedAs: 'ip_generated', sourceIpId: input.ipId },
   });
 }
 
@@ -444,6 +507,127 @@ export async function listMaterials(input: {
       space: input.space,
     })
   );
+}
+
+export async function listThreadMaterials(input: ThreadMaterialInput): Promise<AiDocumentRecord[]> {
+  return runWithDatabaseSpace(input.space, (db) =>
+    aiKnowledgeRepository.listDocuments(db, {
+      ownerId: input.threadId,
+      ownerType: 'thread',
+      space: input.space,
+    })
+  );
+}
+
+export async function countThreadMaterials(input: ThreadMaterialInput): Promise<number> {
+  const materials = await listThreadMaterials(input);
+  return materials.length;
+}
+
+export async function listGlobalMaterialsGroupedByThread(input: {
+  space: PixorySpace;
+  limit?: number;
+}): Promise<AiMaterialConversationGroup[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const [documents, threads] = await Promise.all([
+      aiKnowledgeRepository.listDocuments(db, {
+        ownerType: 'thread',
+        space: input.space,
+      }),
+      aiThreadRepository.listThreads(db, {
+        contextType: 'all',
+        includeArchived: true,
+        limit: 500,
+        space: input.space,
+      }),
+    ]);
+    const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+    const grouped = new Map<string, AiDocumentRecord[]>();
+    for (const document of documents) {
+      const list = grouped.get(document.ownerId) ?? [];
+      list.push(document);
+      grouped.set(document.ownerId, list);
+    }
+    return Array.from(grouped.entries())
+      .map(([threadId, materials]) => {
+        const thread = threadById.get(threadId);
+        const contextType: AiContextType | 'unknown' = thread?.contextType ?? 'unknown';
+        const updatedAt = materials.reduce(
+          (latest, material) => (material.updatedAt > latest ? material.updatedAt : latest),
+          materials[0]?.updatedAt ?? ''
+        );
+        return {
+          threadId,
+          threadTitle: thread?.title?.trim() || '已删除会话',
+          contextType,
+          updatedAt,
+          materialCount: materials.length,
+          materials,
+        };
+      })
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, input.limit ?? 100);
+  });
+}
+
+export async function importManualTextToThread(input: ImportManualThreadMaterialInput): Promise<AiDocumentRecord> {
+  await assertThreadBelongsToSpace(input.space, input.threadId);
+  return importManualTextMaterial({
+    ownerId: input.threadId,
+    ownerType: 'thread',
+    space: input.space,
+    text: input.text,
+    title: input.title,
+  });
+}
+
+export async function importPickedDocumentsToThread(input: ImportPickedThreadDocumentsInput): Promise<AiDocumentRecord[]> {
+  await assertThreadBelongsToSpace(input.space, input.threadId);
+  return importPickedDocuments({
+    assets: input.assets,
+    ownerId: input.threadId,
+    ownerType: 'thread',
+    space: input.space,
+  });
+}
+
+export async function generateThreadIpSnapshotMaterial(input: GenerateThreadIpSnapshotMaterialInput): Promise<AiDocumentRecord> {
+  await assertThreadBelongsToSpace(input.space, input.threadId);
+  const title = input.title ?? 'IP 信息';
+  const text = await buildIpMaterialText(input.space, input.ipId);
+  return createGeneratedTextMaterial({
+    metadata: { importedAs: 'thread_ip_snapshot', sourceIpId: input.ipId },
+    ownerId: input.threadId,
+    ownerType: 'thread',
+    space: input.space,
+    text,
+    title,
+  });
+}
+
+export async function refreshThreadIpSnapshotMaterial(input: RefreshThreadIpSnapshotMaterialInput): Promise<AiDocumentRecord> {
+  const document = await runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.findDocumentById(db, input.documentId));
+  if (!document || document.space !== input.space || document.ownerType !== 'thread') {
+    throw new Error('未找到要刷新的会话资料。');
+  }
+  let metadata: Record<string, unknown> = {};
+  try {
+    metadata = JSON.parse(document.metadataJson || '{}') as Record<string, unknown>;
+  } catch {
+    metadata = {};
+  }
+  const ipId = Number(metadata.sourceIpId);
+  if (!Number.isFinite(ipId) || ipId <= 0) {
+    throw new Error('该资料不是从 IP 导入的快照。');
+  }
+  const refreshed = await generateThreadIpSnapshotMaterial({
+    ipId,
+    space: input.space,
+    threadId: document.ownerId,
+    title: document.title,
+  });
+  await removeMaterial({ documentId: document.id, space: input.space });
+  return refreshed;
 }
 
 export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): Promise<void> {
