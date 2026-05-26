@@ -28,6 +28,7 @@ yarn-error.*
 .codex-logs/
 .codex-expo-android*.log
 .superpowers/
+.worktrees/
 
 # macOS
 .DS_Store
