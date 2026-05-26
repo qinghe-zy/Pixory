@@ -57,7 +57,7 @@ test('role card import preview exposes save start and edit actions', () => {
   assert.match(preview, /saving\?: boolean/);
   assert.match(preview, /saveLabel\?: string/);
   assert.match(preview, /保存角色/);
-  assert.match(preview, /保存并开始聊天/);
+  assert.match(preview, /保存并开聊/);
   assert.match(preview, /allowStartChat \? \(/);
   assert.match(preview, /loading=\{saving\}/);
   assert.match(preview, /disabled=\{saving\}/);
@@ -80,7 +80,7 @@ test('role editor imports local PNG and JSON role cards into preview flow', () =
   assert.match(editor, /copyAiRoleAvatarToAppStorage/);
   assert.match(editor, /onStartChatWithRole/);
   assert.match(editor, /allowStartChat=\{!threadId\}/);
-  assert.match(editor, /saveLabel=\{threadId \? '保存并应用' : '保存角色'\}/);
+  assert.match(editor, /saveLabel=\{threadId \? '保存并应用' : '仅保存'\}/);
   assert.match(editor, /saving=\{saving\}/);
   assert.match(editor, /savingImportedRef\.current/);
   assert.match(editor, /else if \(threadId\) \{[\s\S]{0,120}await applyRoleCard\(card\.id\)/);
@@ -113,10 +113,8 @@ test('role editor protects unsaved drafts and updates loaded cards instead of du
   assert.match(editor, /editingRoleId/);
   assert.match(editor, /editorBaseline/);
   assert.match(editor, /Boolean\(importedRole\) \|\| serializeRoleEditorDraft\(createCurrentDraft\(\)\) !== editorBaseline/);
-  assert.match(editor, /pendingLoadCard/);
-  assert.match(editor, /放弃当前编辑/);
-  assert.match(editor, /放弃并载入/);
-  assert.match(editor, /requestLoadCardIntoEditor\(card\)/);
+  assert.match(editor, /roleCardId/);
+  assert.match(editor, /loadCardIntoEditor\(card\)/);
   assert.match(service, /input\.roleCardId/);
   assert.match(service, /aiRoleCardRepository\.update/);
   assert.match(repository, /async update\(/);
@@ -135,16 +133,19 @@ test('role card start-chat failures surface as visible editor status', () => {
 });
 
 test('role library displays saved roles as visual cards with covers and source badges', () => {
-  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
-  assert.match(editor, /function getRoleCardSourceLabel/);
-  assert.match(editor, /DIY 角色/);
-  assert.match(editor, /酒馆角色/);
-  assert.match(editor, /styles\.roleCover/);
-  assert.match(editor, /styles\.sourceBadge/);
-  assert.match(editor, /card\.avatarEnabled && card\.avatarUri/);
-  assert.match(editor, /SecureImage[\s\S]*style=\{styles\.roleCoverImage\}/);
-  assert.match(editor, /已保存/);
-  assert.match(editor, /numberOfLines=\{2\} style=\{styles\.caption\}/);
+  const library = read('src/screens/AiRoleLibraryScreen.tsx');
+  const item = read('src/components/ai/AiRoleLibraryItem.tsx');
+  assert.match(library, /AiRoleLibraryItem/);
+  assert.match(library, /deleteRoleCards/);
+  assert.match(item, /function getRoleCardSourceLabel/);
+  assert.match(item, /自建/);
+  assert.match(item, /导入/);
+  assert.match(item, /styles\.cover/);
+  assert.match(item, /styles\.sourceBadge/);
+  assert.match(item, /card\.avatarEnabled && card\.avatarUri/);
+  assert.match(item, /SecureImage[\s\S]*style=\{styles\.coverImage\}/);
+  assert.match(item, /开聊/);
+  assert.match(item, /numberOfLines=\{2\} style=\{styles\.description\}/);
 });
 
 test('AI workbench replaces recent materials with role library while keeping materials route', () => {

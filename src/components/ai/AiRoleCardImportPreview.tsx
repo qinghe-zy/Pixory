@@ -115,7 +115,7 @@ export function AiRoleCardImportPreview({
       <View style={styles.actions}>
         <AiLightButton disabled={saving} label={saveLabel} loading={saving} onPress={onSave} />
         {allowStartChat ? (
-          <AiLightButton disabled={saving} label="保存并开始聊天" onPress={onSaveAndStart} variant="outline" />
+          <AiLightButton disabled={saving} label="保存并开聊" onPress={onSaveAndStart} variant="outline" />
         ) : null}
         <AiLightButton disabled={saving} label="编辑后保存" onPress={onEdit} variant="ghost" />
       </View>

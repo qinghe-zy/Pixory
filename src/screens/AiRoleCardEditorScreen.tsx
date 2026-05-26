@@ -3,17 +3,16 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightInputRow, AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiRoleCardImportPreview } from '../components/ai/AiRoleCardImportPreview';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { AppDialog } from '../components/AppDialog';
 import { SecureImage } from '../components/SecureImage';
 import { applyRoleCardToThread } from '../ai/aiChatService';
-import { deleteRoleCards, listRoleCards, saveImportedRoleCard, saveRoleCard } from '../ai/aiRoleCardService';
+import { listRoleCards, saveImportedRoleCard, saveRoleCard } from '../ai/aiRoleCardService';
 import {
   parseSillyTavernJson,
   parseSillyTavernPngBase64,
@@ -89,15 +88,12 @@ export function AiRoleCardEditorScreen({
   const [ips, setIps] = useState<IpListItem[]>([]);
   const [avatarIpId, setAvatarIpId] = useState<number | null>(null);
   const [avatarCandidates, setAvatarCandidates] = useState<ImageListItem[]>([]);
-  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
-  const [confirmingBatchDelete, setConfirmingBatchDelete] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [importedRole, setImportedRole] = useState<NormalizedSillyTavernRoleCard | null>(null);
   const [importedAvatarUri, setImportedAvatarUri] = useState<string | null>(null);
   const [selectedGreeting, setSelectedGreeting] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
-  const [pendingLoadCard, setPendingLoadCard] = useState<AiRoleCardRecord | null>(null);
   const [editorBaseline, setEditorBaseline] = useState(() => serializeRoleEditorDraft(DEFAULT_ROLE_CARD_DRAFT));
   const savingImportedRef = useRef(false);
   const loadedInitialRoleIdRef = useRef<string | null>(null);
@@ -125,7 +121,7 @@ export function AiRoleCardEditorScreen({
       return;
     }
     void runWithDatabaseSpace(space, (db) => imageRepository.findByIpId(db, avatarIpId, { mediaType: 'image' })).then((images) => {
-      setAvatarCandidates(images.slice(0, 12));
+      setAvatarCandidates(images);
     });
   }, [avatarIpId, space]);
 
@@ -185,14 +181,6 @@ export function AiRoleCardEditorScreen({
     setStatus('已载入角色，可继续编辑。');
   }
 
-  function requestLoadCardIntoEditor(card: AiRoleCardRecord) {
-    if (hasUnsavedEditorChanges()) {
-      setPendingLoadCard(card);
-      return;
-    }
-    loadCardIntoEditor(card);
-  }
-
   function resetImportedPreview() {
     setImportedRole(null);
     setImportedAvatarUri(null);
@@ -218,7 +206,7 @@ export function AiRoleCardEditorScreen({
     setEditingRoleId(null);
     applyDraftToEditor(draft);
     resetImportedPreview();
-    setStatus('已填入角色编辑表单，导入元数据会随保存保留。');
+      setStatus('已填入角色编辑表单，保存后生效。');
   }
 
   useEffect(() => {
@@ -232,10 +220,6 @@ export function AiRoleCardEditorScreen({
     loadedInitialRoleIdRef.current = roleCardId;
     loadCardIntoEditor(card);
   }, [cards, roleCardId]);
-
-  function toggleSelected(cardId: string) {
-    setSelectedCardIds((current) => current.includes(cardId) ? current.filter((id) => id !== cardId) : [...current, cardId]);
-  }
 
   async function pickAvatarFromAlbum() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -352,13 +336,7 @@ export function AiRoleCardEditorScreen({
       setImportedRole(null);
       setImportedAvatarUri(null);
       setSelectedGreeting(null);
-      setStatus(
-        startChat && !threadId && onStartChatWithRole
-          ? '已保存，正在开始聊天。'
-          : threadId
-            ? '已保存并应用。'
-            : '已保存角色。'
-      );
+      setStatus(startChat && !threadId && onStartChatWithRole ? '已保存，正在开始新对话。' : threadId ? '已保存并应用。' : '已保存角色。');
       await loadCards();
       if (startChat && !threadId) {
         try {
@@ -381,19 +359,6 @@ export function AiRoleCardEditorScreen({
 
   function editImportedRole() {
     loadImportedRoleIntoEditor();
-  }
-
-  async function deleteSelectedCards() {
-    const ids = selectedCardIds;
-    if (!ids.length) {
-      setConfirmingBatchDelete(false);
-      return;
-    }
-    const count = await deleteRoleCards(space, ids);
-    setSelectedCardIds([]);
-    setConfirmingBatchDelete(false);
-    setStatus(`已删除 ${count} 张角色卡。`);
-    await loadCards();
   }
 
   async function saveReusableRoleCard() {
@@ -438,50 +403,36 @@ export function AiRoleCardEditorScreen({
     onApplyRoleCard(roleId);
   }
 
-  async function applyCurrentRole() {
+  async function saveCurrentRole(startChat: boolean) {
     if (!prompt.trim()) {
-      setStatus('使用默认角色。');
-      await applyRoleCard(null);
+      setStatus('请先填写角色内容。');
       return;
     }
     const saved = await saveReusableRoleCard();
     if (!saved) {
       return;
     }
-    setStatus('已应用。');
-    await applyRoleCard(saved.id);
-  }
-
-  function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
-    if (!card.sourceType || card.sourceType === 'pixory_manual') {
-      return 'DIY 角色';
+    if (startChat && !threadId) {
+      try {
+        setStatus('已保存，正在开始新对话。');
+        await onStartChatWithRole?.(saved.id);
+      } catch (error) {
+        setStatus(error instanceof Error ? `角色已保存，但开始聊天失败：${error.message}` : '角色已保存，但开始聊天失败');
+      }
+      return;
     }
-    if (card.sourceType.startsWith('sillytavern_') || card.sourceType === 'tavern_json_v1') {
-      return '酒馆角色';
+    if (threadId) {
+      setStatus('已保存并应用。');
+      await applyRoleCard(saved.id);
     }
-    return '角色';
   }
-
-  const selectionFooter = selectedCardIds.length ? (
-    <View style={styles.selectionFooter}>
-      <View style={styles.selectionCopy}>
-        <Text style={styles.selectionTitle}>已选择 {selectedCardIds.length} 张角色卡</Text>
-        <Text style={styles.selectionMeta}>只删除已保存的角色卡，不影响已有聊天记录。</Text>
-      </View>
-      <View style={styles.selectionActions}>
-        <AiLightButton label="批量删除" onPress={() => setConfirmingBatchDelete(true)} variant="outline" />
-        <AiLightButton label="取消选择" onPress={() => setSelectedCardIds([])} variant="ghost" />
-      </View>
-    </View>
-  ) : null;
 
   return (
     <AiLightScaffold
-      footer={selectionFooter}
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
-      title="角色"
+      title={editingRoleId ? '编辑角色' : '创建角色'}
     >
       <AiLightInputRow
         label="名称"
@@ -532,25 +483,27 @@ export function AiRoleCardEditorScreen({
               ))}
             </View>
             {avatarIpId == null ? null : avatarCandidates.length ? (
-              <View style={styles.avatarGrid}>
-                {avatarCandidates.map((image) => {
-                  const candidateUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri ?? image.originalFileUri;
-                  const active = avatarUri === candidateUri;
-                  return (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={image.id}
-                      onPress={() => {
-                        setAvatarUri(candidateUri);
-                        setAvatarEnabled(true);
-                      }}
-                      style={({ pressed }) => [styles.avatarChoice, active && styles.avatarChoiceActive, pressed && styles.pressed]}
-                    >
-                      <SecureImage contentFit="cover" space={space} style={styles.avatarChoiceImage} uri={candidateUri} />
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.avatarGridScroll}>
+                <View style={styles.avatarGrid}>
+                  {avatarCandidates.map((image) => {
+                    const candidateUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri ?? image.originalFileUri;
+                    const active = avatarUri === candidateUri;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        key={image.id}
+                        onPress={() => {
+                          setAvatarUri(candidateUri);
+                          setAvatarEnabled(true);
+                        }}
+                        style={({ pressed }) => [styles.avatarChoice, active && styles.avatarChoiceActive, pressed && styles.pressed]}
+                      >
+                        <SecureImage contentFit="cover" space={space} style={styles.avatarChoiceImage} uri={candidateUri} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
             ) : (
               <Text style={styles.caption}>当前 IP 还没有可用图片。</Text>
             )}
@@ -560,9 +513,9 @@ export function AiRoleCardEditorScreen({
 
       <View style={styles.actions}>
         <AiLightButton label={importing ? '解析角色卡中' : '导入角色卡'} loading={importing} onPress={() => void importRoleCard()} variant="outline" />
-        <AiLightButton label="应用" onPress={() => void applyCurrentRole()} />
-        <AiLightButton label="保存" loading={saving} onPress={saveReusableRoleCard} variant="outline" />
-        <AiLightButton label="跳过" onPress={() => void applyRoleCard(null)} variant="ghost" />
+        <AiLightButton label={threadId ? '保存并应用' : '保存并开聊'} loading={saving} onPress={() => void saveCurrentRole(true)} />
+        <AiLightButton label="仅保存" loading={saving} onPress={() => void saveCurrentRole(false)} variant="outline" />
+        {threadId ? <AiLightButton label="使用默认角色" onPress={() => void applyRoleCard(null)} variant="ghost" /> : null}
       </View>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
@@ -572,7 +525,7 @@ export function AiRoleCardEditorScreen({
           allowStartChat={!threadId}
           avatarUri={importedAvatarUri}
           imported={importedRole}
-          saveLabel={threadId ? '保存并应用' : '保存角色'}
+          saveLabel={threadId ? '保存并应用' : '仅保存'}
           saving={saving}
           selectedGreeting={selectedGreeting}
           space={space}
@@ -588,77 +541,6 @@ export function AiRoleCardEditorScreen({
         />
       ) : null}
 
-      {cards.length ? (
-        <View style={styles.cardList}>
-          <Text style={styles.sectionTitle}>已保存</Text>
-          {cards.map((card) => {
-            const selected = selectedCardIds.includes(card.id);
-            const sourceLabel = getRoleCardSourceLabel(card);
-            return (
-              <Pressable
-                accessibilityRole="button"
-                key={card.id}
-                onLongPress={() => toggleSelected(card.id)}
-                onPress={() => {
-                  if (selectedCardIds.length) {
-                    toggleSelected(card.id);
-                    return;
-                  }
-                  requestLoadCardIntoEditor(card);
-                }}
-                style={({ pressed }) => [styles.savedCard, selected && styles.selectedSavedCard, pressed && styles.pressed]}
-              >
-                <View style={styles.savedHeader}>
-                  <View style={styles.roleCover}>
-                    {card.avatarEnabled && card.avatarUri ? (
-                      <SecureImage contentFit="cover" space={space} style={styles.roleCoverImage} uri={card.avatarUri} />
-                    ) : (
-                      <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
-                    )}
-                  </View>
-                  <View style={styles.savedCopy}>
-                    <View style={styles.savedTitleRow}>
-                      <Text numberOfLines={1} style={styles.savedTitle}>{card.name}</Text>
-                      {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeMd} /> : null}
-                    </View>
-                    <View style={styles.sourceBadge}>
-                      <Text style={styles.sourceBadgeText}>{sourceLabel}</Text>
-                    </View>
-                    <Text numberOfLines={2} style={styles.caption}>{card.description ?? card.prompt}</Text>
-                  </View>
-                </View>
-                {!selectedCardIds.length && threadId ? <AiLightButton label="应用到当前会话" onPress={() => void applyRoleCard(card.id)} variant="ghost" /> : null}
-                {!selectedCardIds.length && !threadId ? <AiLightButton label="开始聊天" onPress={() => onStartChatWithRole?.(card.id)} variant="ghost" /> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
-      <AppDialog
-        danger
-        message={`将删除 ${selectedCardIds.length} 张已保存角色卡。已有聊天记录会保留当时的角色快照。`}
-        onClose={() => setConfirmingBatchDelete(false)}
-        onPrimary={() => {
-          void deleteSelectedCards();
-        }}
-        primaryDisabled={!selectedCardIds.length}
-        primaryLabel="批量删除"
-        title="删除所选角色卡？"
-        visible={confirmingBatchDelete}
-      />
-      <AppDialog
-        message="当前角色内容还没有保存，载入其他角色会放弃这次编辑。"
-        onClose={() => setPendingLoadCard(null)}
-        onPrimary={() => {
-          if (pendingLoadCard) {
-            loadCardIntoEditor(pendingLoadCard);
-          }
-          setPendingLoadCard(null);
-        }}
-        primaryLabel="放弃并载入"
-        title="放弃当前编辑？"
-        visible={Boolean(pendingLoadCard)}
-      />
     </AiLightScaffold>
   );
 }
@@ -683,9 +565,6 @@ const styles = StyleSheet.create({
   status: {
     ...typography.textStyles.caption,
     color: aiLightColors.coralActive,
-  },
-  cardList: {
-    gap: rhythm.listCardGap,
   },
   avatarPanel: {
     backgroundColor: aiLightColors.surface,
@@ -753,6 +632,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
   },
+  avatarGridScroll: {
+    maxHeight: metrics.minTouchSize * 4 + spacing[2] * 3,
+  },
   avatarChoice: {
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
@@ -769,90 +651,7 @@ const styles = StyleSheet.create({
     height: '100%',
     width: '100%',
   },
-  savedCard: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.microGap,
-    padding: spacing[3],
-  },
-  selectedSavedCard: {
-    backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
-  },
-  savedHeader: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
-  },
-  roleCover: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: metrics.minTouchSize * 2,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: metrics.minTouchSize * 2,
-  },
-  roleCoverImage: {
-    height: '100%',
-    width: '100%',
-  },
-  savedCopy: {
-    flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  selectionFooter: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  selectionCopy: {
-    gap: rhythm.microGap,
-  },
-  selectionTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  selectionMeta: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-  },
-  selectionActions: {
-    gap: rhythm.inlineGap,
-  },
   pressed: {
     opacity: 0.78,
-  },
-  savedTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-  },
-  savedTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-    flex: 1,
-  },
-  sourceBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-  },
-  sourceBadgeText: {
-    ...typography.textStyles.micro,
-    color: aiLightColors.muted,
-    fontWeight: '700',
   },
 });
