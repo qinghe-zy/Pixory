@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
 interface AiTextReaderProps {
@@ -35,13 +35,11 @@ const styles = StyleSheet.create({
   },
   paragraph: {
     ...typography.textStyles.body,
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: spacing[3],
+    color: aiLightColors.ink,
+    lineHeight: 25,
   },
   highlighted: {
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.card,
+    paddingHorizontal: spacing[1],
   },
 });

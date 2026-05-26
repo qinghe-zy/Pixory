@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { radius, rhythm, spacing, typography } from '../../design/tokens';
+import { rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 
 interface AiMarkdownReaderProps {
@@ -26,6 +26,9 @@ export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
         if (trimmed.startsWith('#')) {
           return <Text key={`${index}-${trimmed}`} style={[styles.heading, highlighted && styles.highlighted]}>{trimmed.replace(/^#+\s*/, '')}</Text>;
         }
+        if (trimmed.startsWith('>')) {
+          return <Text key={`${index}-${trimmed}`} style={[styles.quote, highlighted && styles.highlighted]}>{trimmed.replace(/^>\s?/, '')}</Text>;
+        }
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           return <Text key={`${index}-${trimmed}`} style={[styles.body, highlighted && styles.highlighted]}>• {trimmed.slice(2)}</Text>;
         }
@@ -40,12 +43,7 @@ export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.cardContentGap,
-    padding: spacing[4],
   },
   heading: {
     ...typography.textStyles.sectionTitle,
@@ -56,14 +54,22 @@ const styles = StyleSheet.create({
   body: {
     ...typography.textStyles.body,
     color: aiLightColors.ink,
+    lineHeight: 25,
+  },
+  quote: {
+    ...typography.textStyles.body,
+    color: aiLightColors.muted,
+    fontStyle: 'italic',
+    lineHeight: 25,
+    paddingLeft: spacing[2],
   },
   code: {
     ...typography.textStyles.caption,
-    backgroundColor: aiLightColors.dark,
-    borderRadius: radius.md,
-    color: aiLightColors.onDark,
+    backgroundColor: aiLightColors.surface,
+    color: aiLightColors.ink,
     fontFamily: typography.family.mono,
-    padding: spacing[2],
+    lineHeight: 20,
+    paddingVertical: spacing[1],
   },
   highlighted: {
     backgroundColor: aiLightColors.card,
