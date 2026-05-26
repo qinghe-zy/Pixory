@@ -76,6 +76,79 @@ export function AiRoleCardDetailScreen({
     }
   }
 
+  function renderCardDetail(card: AiRoleCardRecord) {
+    const moreGreetingsText = card.alternateGreetings.map((greeting, index) => `• ${index + 1}. ${greeting}`).join('\n\n');
+    const moreGreetingsFooter = (
+      <Text style={styles.sectionFooterText}>
+        查看全部 {card.alternateGreetings.length} 条
+      </Text>
+    );
+
+    return (
+      <View style={styles.content}>
+        <View style={styles.heroPoster}>
+          {card.avatarEnabled && card.avatarUri ? (
+            <View style={styles.heroImageLayer}>
+              <SecureImage contentFit="cover" space={space} style={styles.heroImage} uri={card.avatarUri} />
+              <View pointerEvents="none" style={styles.heroWarmOverlay} />
+              <View pointerEvents="none" style={styles.heroFadeRight} />
+              <View pointerEvents="none" style={styles.heroFadeBottom} />
+            </View>
+          ) : (
+            <View style={styles.heroFallback}>
+              <View style={styles.heroFallbackMoon} />
+              <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize * 1.4} />
+            </View>
+          )}
+
+          <View pointerEvents="none" style={styles.heroPaperMark} />
+
+          <View style={styles.heroCopy}>
+            <Text numberOfLines={2} style={styles.heroTitle}>{card.name}</Text>
+            <Text style={styles.sourceBadge}>{getRoleCardSourceLabel(card)}</Text>
+            {card.description ? <Text numberOfLines={4} style={styles.heroDescription}>{card.description}</Text> : null}
+            <Text style={styles.meta}>{getRoleCardMeta(card)}</Text>
+          </View>
+
+          <View style={styles.heroActionWrap}>
+            <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
+          </View>
+        </View>
+
+        {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
+
+        <AiRoleDetailSection title="角色指令" iconName="book-outline" previewLines={8}>
+          {card.prompt || '暂无角色指令。'}
+        </AiRoleDetailSection>
+        {card.firstMessage ? (
+          <AiRoleDetailSection title="默认开场白" iconName="chatbubble-ellipses-outline" previewLines={4} variant="quote">
+            {card.firstMessage}
+          </AiRoleDetailSection>
+        ) : null}
+        {card.alternateGreetings.length ? (
+          <AiRoleDetailSection title="更多开场白" footer={moreGreetingsFooter} iconName="chatbubbles-outline" previewLines={6} variant="list">
+            {moreGreetingsText}
+          </AiRoleDetailSection>
+        ) : null}
+        {card.tags.length ? (
+          <View style={styles.tagSection}>
+            <View style={styles.tagHeader}>
+              <View style={styles.tagIconBubble}>
+                <Ionicons color={aiLightColors.coralActive} name="pricetag-outline" size={16} />
+              </View>
+              <Text style={styles.tagTitle}>标签</Text>
+            </View>
+            <View style={styles.tagRow}>
+              {card.tags.map((tag) => (
+                <Text key={tag} style={styles.tagChip}>{tag}</Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <AiLightScaffold
       contentContainerStyle={styles.screenContent}
@@ -96,59 +169,7 @@ export function AiRoleCardDetailScreen({
           <Text style={styles.emptyText}>角色不存在或已删除。</Text>
         </View>
       ) : (
-        <View style={styles.content}>
-          <View style={styles.heroPoster}>
-            {card.avatarEnabled && card.avatarUri ? (
-              <View style={styles.heroImageLayer}>
-                <SecureImage contentFit="cover" space={space} style={styles.heroImage} uri={card.avatarUri} />
-                <View pointerEvents="none" style={styles.heroWarmOverlay} />
-                <View pointerEvents="none" style={styles.heroFadeRight} />
-                <View pointerEvents="none" style={styles.heroFadeBottom} />
-              </View>
-            ) : (
-              <View style={styles.heroFallback}>
-                <View style={styles.heroFallbackMoon} />
-                <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize * 1.4} />
-              </View>
-            )}
-
-            <View pointerEvents="none" style={styles.heroPaperMark} />
-
-            <View style={styles.heroCopy}>
-              <Text numberOfLines={2} style={styles.heroTitle}>{card.name}</Text>
-              <Text style={styles.sourceBadge}>{getRoleCardSourceLabel(card)}</Text>
-              {card.description ? <Text numberOfLines={4} style={styles.heroDescription}>{card.description}</Text> : null}
-              <Text style={styles.meta}>{getRoleCardMeta(card)}</Text>
-            </View>
-
-            <View style={styles.heroActionWrap}>
-              <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
-            </View>
-          </View>
-
-          {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
-
-          <AiRoleDetailSection title="角色指令" previewLines={8}>
-            {card.prompt || '暂无角色指令。'}
-          </AiRoleDetailSection>
-          {card.firstMessage ? (
-            <AiRoleDetailSection title="默认开场白" previewLines={3}>
-              {card.firstMessage}
-            </AiRoleDetailSection>
-          ) : null}
-          {card.alternateGreetings.length ? (
-            <AiRoleDetailSection title="更多开场白" previewLines={5}>
-              {card.alternateGreetings.map((greeting, index) => `${index + 1}. ${greeting}`).join('\n\n')}
-            </AiRoleDetailSection>
-          ) : null}
-          {card.tags.length ? (
-            <View style={styles.tagRow}>
-              {card.tags.map((tag) => (
-                <Text key={tag} style={styles.tag}>{tag}</Text>
-              ))}
-            </View>
-          ) : null}
-        </View>
+        renderCardDetail(card)
       )}
     </AiLightScaffold>
   );
@@ -258,10 +279,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
-  description: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
-  },
   meta: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
@@ -270,15 +287,44 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.coralActive,
   },
+  sectionFooterText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+  },
+  tagSection: {
+    borderTopColor: aiLightColors.hairline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    paddingTop: spacing[4],
+  },
+  tagHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
+  tagIconBubble: {
+    alignItems: 'center',
+    backgroundColor: '#F4E2D4',
+    borderRadius: radius.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  tagTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[1],
   },
-  tag: {
+  tagChip: {
     ...typography.textStyles.micro,
-    backgroundColor: aiLightColors.surface,
+    backgroundColor: 'rgba(255, 250, 242, 0.78)',
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
     color: aiLightColors.muted,
     overflow: 'hidden',
     paddingHorizontal: spacing[2],
