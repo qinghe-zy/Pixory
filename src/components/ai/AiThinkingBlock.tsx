@@ -38,7 +38,7 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
     if (!thinking) {
       return undefined;
     }
-    const timer = setInterval(() => setNow(Date.now()), 100);
+    const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, [thinking]);
 
@@ -46,7 +46,7 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
     Animated.timing(expandedProgress, {
       duration: 180,
       toValue: bodyVisible ? 1 : 0,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
   }, [bodyVisible, expandedProgress]);
 
