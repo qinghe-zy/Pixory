@@ -10,6 +10,8 @@ import { aiLightColors } from './aiLightTheme';
 interface AiRoleLibraryItemProps {
   card: AiRoleCardRecord;
   selected?: boolean;
+  selectionMode?: boolean;
+  actionLabel?: string;
   space: PixorySpace;
   onLongPress?: (card: AiRoleCardRecord) => void;
   onPress: (card: AiRoleCardRecord) => void;
@@ -26,7 +28,7 @@ function getRoleCardMeta(card: AiRoleCardRecord): string {
   return `${avatarMeta} · ${greetingMeta}`;
 }
 
-export function AiRoleLibraryItem({ card, selected = false, space, onLongPress, onPress, onStartChat }: AiRoleLibraryItemProps) {
+export function AiRoleLibraryItem({ card, selected = false, selectionMode = false, actionLabel = '开聊', space, onLongPress, onPress, onStartChat }: AiRoleLibraryItemProps) {
   const sourceLabel = getRoleCardSourceLabel(card);
 
   return (
@@ -52,17 +54,19 @@ export function AiRoleLibraryItem({ card, selected = false, space, onLongPress, 
         <Text numberOfLines={2} style={styles.description}>{card.description ?? card.prompt}</Text>
         <Text numberOfLines={1} style={styles.meta}>{getRoleCardMeta(card)}</Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        hitSlop={spacing[2]}
-        onPress={(event) => {
-          event.stopPropagation();
-          onStartChat(card);
-        }}
-        style={({ pressed }) => [styles.startPill, pressed && styles.pressed]}
-      >
-        <Text style={styles.startText}>开聊</Text>
-      </Pressable>
+      {!selectionMode ? (
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={spacing[2]}
+          onPress={(event) => {
+            event.stopPropagation();
+            onStartChat(card);
+          }}
+          style={({ pressed }) => [styles.startPill, pressed && styles.pressed]}
+        >
+          <Text style={styles.startText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }

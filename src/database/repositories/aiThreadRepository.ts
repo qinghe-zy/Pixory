@@ -694,6 +694,26 @@ export const aiThreadRepository = {
     return row ? mapThreadRow(row) : null;
   },
 
+  async findThreadsByIds(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<AiThreadRecord[]> {
+    const ids = Array.from(new Set(threadIds.filter(Boolean)));
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows: AiThreadRow[] = [];
+    for (let index = 0; index < ids.length; index += 400) {
+      const chunk = ids.slice(index, index + 400);
+      rows.push(
+        ...(await db.getAllAsync<AiThreadRow>(
+          `SELECT * FROM ai_threads
+           WHERE space = ? AND id IN (${makeInClause(chunk)})`,
+          space,
+          ...chunk
+        ))
+      );
+    }
+    return rows.map(mapThreadRow);
+  },
+
   async exportThread(db: SQLiteDatabase, threadId: string): Promise<AiThreadExportSnapshot | null> {
     const thread = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', threadId);
     if (!thread) {

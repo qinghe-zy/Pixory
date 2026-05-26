@@ -85,6 +85,16 @@ export interface CreateDocumentInput {
   metadataJson?: string;
 }
 
+export interface UpdateDocumentContentInput {
+  documentId: string;
+  title?: string;
+  localUri?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  parserStatus?: AiDocumentStatus;
+  metadataJson?: string;
+}
+
 export interface DocumentListQuery {
   space: PixorySpace;
   ownerType?: AiDocumentOwnerType;
@@ -120,6 +130,18 @@ export interface ReplaceEmbeddingInput {
   modelId: string;
   dimensions: number;
   vectorJson: string;
+}
+
+export interface CopyDocumentWithChunksInput {
+  document: AiDocumentRecord;
+  chunks: AiChunkRecord[];
+  embeddings: AiEmbeddingRecord[];
+  targetSpace: PixorySpace;
+  targetLocalUri: string | null;
+}
+
+function makeInClause(values: string[]): string {
+  return values.map(() => '?').join(', ');
 }
 
 export const aiKnowledgeRepository = {
@@ -249,6 +271,30 @@ export const aiKnowledgeRepository = {
     return db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', documentId);
   },
 
+  async updateDocumentContent(db: SQLiteDatabase, input: UpdateDocumentContentInput): Promise<AiDocumentRecord | null> {
+    await db.runAsync(
+      `UPDATE ai_documents
+       SET title = COALESCE(?, title),
+           localUri = ?,
+           mimeType = ?,
+           fileSize = ?,
+           parserStatus = COALESCE(?, parserStatus),
+           parserError = NULL,
+           metadataJson = COALESCE(?, metadataJson),
+           updatedAt = ?
+       WHERE id = ?`,
+      normalizeOptionalText(input.title) ?? null,
+      input.localUri ?? null,
+      input.mimeType ?? null,
+      input.fileSize ?? null,
+      input.parserStatus ?? null,
+      input.metadataJson ?? null,
+      createTimestamp(),
+      input.documentId
+    );
+    return db.getFirstAsync<AiDocumentRecord>('SELECT * FROM ai_documents WHERE id = ?', input.documentId);
+  },
+
   async listDocuments(db: SQLiteDatabase, query: DocumentListQuery): Promise<AiDocumentRecord[]> {
     const clauses = ['space = ?'];
     const values: string[] = [query.space];
@@ -286,6 +332,7 @@ export const aiKnowledgeRepository = {
   async deleteDocument(db: SQLiteDatabase, documentId: string): Promise<number> {
     const chunkRows = await db.getAllAsync<{ id: string }>('SELECT id FROM ai_chunks WHERE documentId = ?', documentId);
     const chunkIds = chunkRows.map((row) => row.id);
+    await db.runAsync("DELETE FROM ai_message_citations WHERE sourceType = 'document_chunk' AND sourceId = ?", documentId);
     for (const chunkId of chunkIds) {
       await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId = ?', chunkId);
       await db.runAsync('DELETE FROM ai_message_citations WHERE sourceId = ?', chunkId);
@@ -352,6 +399,114 @@ export const aiKnowledgeRepository = {
        ORDER BY chunkIndex ASC`,
       documentId
     );
+  },
+
+  async listEmbeddingsByChunkIds(db: SQLiteDatabase, chunkIds: string[]): Promise<AiEmbeddingRecord[]> {
+    if (chunkIds.length === 0) {
+      return [];
+    }
+    const rows: AiEmbeddingRecord[] = [];
+    for (let index = 0; index < chunkIds.length; index += 400) {
+      const chunk = chunkIds.slice(index, index + 400);
+      rows.push(
+        ...(await db.getAllAsync<AiEmbeddingRecord>(
+          `SELECT * FROM ai_embeddings
+           WHERE chunkId IN (${makeInClause(chunk)})
+           ORDER BY createdAt ASC`,
+          ...chunk
+        ))
+      );
+    }
+    return rows;
+  },
+
+  async copyDocumentWithChunks(db: SQLiteDatabase, input: CopyDocumentWithChunksInput): Promise<void> {
+    const document = input.document;
+    await db.runAsync(
+      `INSERT OR REPLACE INTO ai_documents (
+        id,
+        space,
+        ownerType,
+        ownerId,
+        sourceType,
+        title,
+        originalFilename,
+        localUri,
+        mimeType,
+        fileSize,
+        parserStatus,
+        parserError,
+        metadataJson,
+        createdAt,
+        updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      document.id,
+      input.targetSpace,
+      document.ownerType,
+      document.ownerId,
+      document.sourceType,
+      document.title,
+      document.originalFilename,
+      input.targetLocalUri,
+      document.mimeType,
+      document.fileSize,
+      document.parserStatus,
+      document.parserError,
+      document.metadataJson,
+      document.createdAt,
+      document.updatedAt
+    );
+    await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', document.id);
+    for (const chunk of input.chunks) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO ai_chunks (
+          id,
+          documentId,
+          space,
+          ownerType,
+          ownerId,
+          chunkIndex,
+          text,
+          normalizedText,
+          sourceLabel,
+          locatorJson,
+          tokenEstimate,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        chunk.id,
+        document.id,
+        input.targetSpace,
+        chunk.ownerType,
+        chunk.ownerId,
+        chunk.chunkIndex,
+        chunk.text,
+        chunk.normalizedText,
+        chunk.sourceLabel,
+        chunk.locatorJson,
+        chunk.tokenEstimate,
+        chunk.createdAt
+      );
+    }
+    for (const embedding of input.embeddings) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO ai_embeddings (
+          id,
+          chunkId,
+          providerId,
+          modelId,
+          dimensions,
+          vectorJson,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        embedding.id,
+        embedding.chunkId,
+        embedding.providerId,
+        embedding.modelId,
+        embedding.dimensions,
+        embedding.vectorJson,
+        embedding.createdAt
+      );
+    }
   },
 
   async replaceEmbeddings(db: SQLiteDatabase, chunkEmbeddings: ReplaceEmbeddingInput[]): Promise<void> {

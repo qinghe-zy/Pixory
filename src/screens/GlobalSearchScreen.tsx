@@ -406,6 +406,7 @@ const styles = StyleSheet.create({
   },
   suggestionPill: {
     alignItems: 'center',
+    minHeight: 32,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.pill,
@@ -413,7 +414,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[2],
     maxWidth: '48%',
-    minHeight: 32,
     paddingHorizontal: spacing[2],
   },
   suggestionLabel: {

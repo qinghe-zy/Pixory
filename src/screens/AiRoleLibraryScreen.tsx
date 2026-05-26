@@ -14,20 +14,24 @@ import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiRoleLibraryScreenProps {
   space: PixorySpace;
+  mode?: 'library' | 'apply_to_thread';
   onBack: () => void;
   onCreateRole: () => void;
   onImportRole: () => void;
   onOpenRoleDetail: (roleCardId: string) => void;
   onStartChatWithRole: (roleCardId: string) => Promise<void> | void;
+  onApplyRoleToThread?: (roleCardId: string) => Promise<void> | void;
 }
 
 export function AiRoleLibraryScreen({
   space,
+  mode = 'library',
   onBack,
   onCreateRole,
   onImportRole,
   onOpenRoleDetail,
   onStartChatWithRole,
+  onApplyRoleToThread,
 }: AiRoleLibraryScreenProps) {
   const [cards, setCards] = useState<AiRoleCardRecord[]>([]);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
@@ -52,9 +56,14 @@ export function AiRoleLibraryScreen({
     setBusyRoleId(card.id);
     setStatus(null);
     try {
-      await onStartChatWithRole(card.id);
+      if (mode === 'apply_to_thread' && onApplyRoleToThread) {
+        await onApplyRoleToThread(card.id);
+      } else {
+        await onStartChatWithRole(card.id);
+      }
     } catch (error) {
-      setStatus(error instanceof Error ? `开始对话失败：${error.message}` : '开始对话失败');
+      const action = mode === 'apply_to_thread' ? '应用角色失败' : '开始对话失败';
+      setStatus(error instanceof Error ? `${action}：${error.message}` : action);
     } finally {
       setBusyRoleId(null);
     }
@@ -96,7 +105,7 @@ export function AiRoleLibraryScreen({
         </Pressable>
       )}
       scrollable
-      subtitle="选择角色开始新对话"
+      subtitle={mode === 'apply_to_thread' ? '选择角色应用到当前会话' : '选择角色开始新对话'}
       title="角色库"
     >
       {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
@@ -105,8 +114,10 @@ export function AiRoleLibraryScreen({
           {cards.map((card) => (
             <AiRoleLibraryItem
               card={card}
+              actionLabel={mode === 'apply_to_thread' ? '应用' : '开聊'}
               key={card.id}
               selected={selectedCardIds.includes(card.id)}
+              selectionMode={selectedCardIds.length > 0}
               space={space}
               onLongPress={toggleSelected}
               onPress={(nextCard) => {

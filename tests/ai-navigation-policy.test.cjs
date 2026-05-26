@@ -600,7 +600,8 @@ test('AI materials support batch removal and chat history supports rename', () =
 
   assert.match(materialList, /selectedIds/);
   assert.match(materialList, /removeMaterials/);
-  assert.match(materialList, /批量移除/);
+  assert.match(materialList, /批量删除/);
+  assert.match(materialList, /应用内资料文件/);
   assert.match(materialList, /selectionFooter/);
   assert.match(materialList, /selectedRow/);
   assert.doesNotMatch(materialList, /selectionBar/);

@@ -19,6 +19,7 @@ import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES }
 import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
 import { retrieveForThread } from './aiRetrievalService';
+import { cleanupDeletedMaterialFiles, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
 import { trimMessagesToContextBudget } from './aiContextBudget';
 import {
   buildCompanionMemoryPrefix,
@@ -477,6 +478,14 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
       stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
     };
   });
+  const threadMaterialRetrieval = await retrieveForThread({
+    space: thread.space,
+    ownerType: 'thread',
+    ownerId: thread.id,
+    query: userMessage,
+  });
+  const threadMaterialSnippets = threadMaterialRetrieval.snippets;
+
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
@@ -486,15 +495,16 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
         companionMemoryPrefix,
         stableMemoryPrefix,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
+        materialSnippets: threadMaterialSnippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
         userMessage,
       }),
-      snippets: [],
+      snippets: threadMaterialSnippets,
     };
   }
 
   const ownerType = thread.contextType === 'ip' ? 'ip' : 'knowledge_base';
   const ownerId = thread.contextType === 'ip' ? String(thread.boundIpId ?? '') : thread.boundKnowledgeBaseId ?? '';
-  const retrieval = ownerId
+  const boundOwnerRetrieval = ownerId
     ? await retrieveForThread({
         space: thread.space,
         ownerType,
@@ -502,6 +512,8 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
         query: userMessage,
       })
     : { mode: 'keyword' as const, snippets: [] };
+  const boundOwnerSnippets = boundOwnerRetrieval.snippets;
+  const snippets = [...threadMaterialSnippets, ...boundOwnerSnippets];
 
   return {
     prompt: buildMaterialBoundPrompt({
@@ -513,10 +525,10 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
       stableMemoryPrefix,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
-      snippets: retrieval.snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
+      snippets: snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
       userMessage,
     }),
-    snippets: retrieval.snippets,
+    snippets,
   };
 }
 
@@ -773,14 +785,24 @@ export async function unarchiveAiThread(space: PixorySpace, threadId: string): P
 }
 
 export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
-  if (threadIds.length === 0) {
+  const uniqueThreadIds = Array.from(new Set(threadIds));
+  if (uniqueThreadIds.length === 0) {
     return 0;
   }
+  const deletedFileUris: string[] = [];
   return runWithDatabaseSpace(space, async (db) => {
     let deletedCount = 0;
     await db.withTransactionAsync(async () => {
-      deletedCount = await aiThreadRepository.deleteThreads(db, threadIds);
+      await removeMaterialsByOwner({
+        db,
+        deletedFileUris,
+        space,
+        ownerType: 'thread',
+        ownerIds: uniqueThreadIds,
+      });
+      deletedCount = await aiThreadRepository.deleteThreads(db, uniqueThreadIds);
     });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
     return deletedCount;
   });
 }
@@ -815,19 +837,51 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
     return 0;
   }
 
-  await runWithDatabaseSpace(input.targetSpace, async (db) => {
-    await db.withTransactionAsync(async () => {
-      for (const snapshot of snapshots) {
-        await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
-      }
+  const movedThreadIds = snapshots.map((snapshot) => snapshot.thread.id);
+  let targetImported = false;
+  try {
+    await runWithDatabaseSpace(input.targetSpace, async (db) => {
+      await db.withTransactionAsync(async () => {
+        for (const snapshot of snapshots) {
+          await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
+        }
+      });
     });
-  });
+    targetImported = true;
 
-  await runWithDatabaseSpace(input.sourceSpace, async (db) => {
-    await db.withTransactionAsync(async () => {
-      await aiThreadRepository.deleteThreads(db, snapshots.map((snapshot) => snapshot.thread.id));
+    await moveThreadOwnedMaterialsBetweenSpaces({
+      cleanupSource: false,
+      sourceSpace: input.sourceSpace,
+      targetSpace: input.targetSpace,
+      threadIds: movedThreadIds,
     });
-  });
+
+    const deletedFileUris: string[] = [];
+    await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+      await db.withTransactionAsync(async () => {
+        await removeMaterialsByOwner({
+          db,
+          deletedFileUris,
+          space: input.sourceSpace,
+          ownerType: 'thread',
+          ownerIds: movedThreadIds,
+        });
+        await aiThreadRepository.deleteThreads(db, movedThreadIds);
+      });
+    });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
+  } catch (error) {
+    if (targetImported) {
+      try {
+        await deleteAiThreads(input.targetSpace, movedThreadIds);
+      } catch (rollbackError) {
+        console.warn('Pixory AI thread move rollback failed.', {
+          message: rollbackError instanceof Error ? rollbackError.message : 'unknown rollback error',
+        });
+      }
+    }
+    throw error;
+  }
 
   return snapshots.length;
 }

@@ -15,9 +15,11 @@ import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 interface AiRoleCardDetailScreenProps {
   roleCardId: string;
   space: PixorySpace;
+  mode?: 'library' | 'apply_to_thread';
   onBack: () => void;
   onEditRole: (roleCardId: string) => void;
   onStartChatWithRole: (roleCardId: string) => Promise<void> | void;
+  onApplyRoleToThread?: (roleCardId: string) => Promise<void> | void;
 }
 
 function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
@@ -27,9 +29,11 @@ function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
 export function AiRoleCardDetailScreen({
   roleCardId,
   space,
+  mode = 'library',
   onBack,
   onEditRole,
   onStartChatWithRole,
+  onApplyRoleToThread,
 }: AiRoleCardDetailScreenProps) {
   const [card, setCard] = useState<AiRoleCardRecord | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -51,9 +55,14 @@ export function AiRoleCardDetailScreen({
     setStarting(true);
     setStatus(null);
     try {
-      await onStartChatWithRole(card.id);
+      if (mode === 'apply_to_thread' && onApplyRoleToThread) {
+        await onApplyRoleToThread(card.id);
+      } else {
+        await onStartChatWithRole(card.id);
+      }
     } catch (error) {
-      setStatus(error instanceof Error ? `开始对话失败：${error.message}` : '开始对话失败');
+      const action = mode === 'apply_to_thread' ? '应用角色失败' : '开始对话失败';
+      setStatus(error instanceof Error ? `${action}：${error.message}` : action);
     } finally {
       setStarting(false);
     }
@@ -98,7 +107,7 @@ export function AiRoleCardDetailScreen({
             </View>
           </View>
 
-          <AiLightButton disabled={starting} label={starting ? '正在开聊' : '开始新对话'} loading={starting} onPress={() => void startChat()} />
+          <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
           {status ? <Text accessibilityLiveRegion="polite" style={styles.status}>{status}</Text> : null}
 
           <AiRoleDetailSection title="角色指令" previewLines={8}>

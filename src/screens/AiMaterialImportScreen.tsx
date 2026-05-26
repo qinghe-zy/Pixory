@@ -6,6 +6,7 @@ import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import type { AiMaterialSourceKind } from '../components/ai/AiMaterialSourceSheet';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   createKnowledgeBase,
@@ -25,6 +26,7 @@ interface AiMaterialImportScreenProps {
   space: PixorySpace;
   knowledgeBaseId?: string;
   threadId?: string;
+  initialSource?: AiMaterialSourceKind;
   onBack: () => void;
 }
 
@@ -33,7 +35,13 @@ interface ImportFeedback {
   tone: FeedbackTone;
 }
 
-export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, onBack }: AiMaterialImportScreenProps) {
+const SOURCE_TITLES: Record<AiMaterialSourceKind, string> = {
+  file: '从系统文件导入',
+  ip: '从 IP 导入',
+  manual_text: '手动文本',
+};
+
+export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initialSource, onBack }: AiMaterialImportScreenProps) {
   const [title, setTitle] = useState('角色资料');
   const [text, setText] = useState('');
   const [targetKnowledgeBaseId, setTargetKnowledgeBaseId] = useState<string | undefined>(knowledgeBaseId);
@@ -43,6 +51,9 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, onBac
   const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const targetLabel = threadId ? '当前会话资料库' : '总资料库';
+  const showManualText = !initialSource || initialSource === 'manual_text';
+  const showFileImport = !initialSource || initialSource === 'file';
+  const showIpImport = !initialSource || initialSource === 'ip';
 
   useEffect(() => {
     void runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItems(db)).then((nextIps) => {
@@ -191,50 +202,56 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, onBac
       onBack={onBack}
       scrollable
       subtitle={`${spaceLabel} · ${targetLabel}`}
-      title="导入材料"
+      title={initialSource ? SOURCE_TITLES[initialSource] : '导入材料'}
     >
       <View style={styles.contentStack}>
         {feedback ? <AiLightFeedbackBanner message={feedback.message} tone={feedback.tone} /> : null}
 
-        <AiLightCard>
-          <Text style={styles.sectionTitle}>手动文本</Text>
-          <TextInput
-            onChangeText={setTitle}
-            placeholder="材料标题"
-            placeholderTextColor={aiLightColors.mutedSoft}
-            selectionColor={aiLightColors.coral}
-            style={styles.input}
-            value={title}
-          />
-          <TextInput
-            multiline
-            onChangeText={setText}
-            placeholder="粘贴角色资料、研究记录或标签体系"
-            placeholderTextColor={aiLightColors.mutedSoft}
-            selectionColor={aiLightColors.coral}
-            style={[styles.input, styles.textarea]}
-            textAlignVertical="top"
-            value={text}
-          />
-          <AiLightButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
-        </AiLightCard>
+        {showManualText ? (
+          <AiLightCard>
+            <Text style={styles.sectionTitle}>手动文本</Text>
+            <TextInput
+              onChangeText={setTitle}
+              placeholder="材料标题"
+              placeholderTextColor={aiLightColors.mutedSoft}
+              selectionColor={aiLightColors.coral}
+              style={styles.input}
+              value={title}
+            />
+            <TextInput
+              multiline
+              onChangeText={setText}
+              placeholder="粘贴角色资料、研究记录或标签体系"
+              placeholderTextColor={aiLightColors.mutedSoft}
+              selectionColor={aiLightColors.coral}
+              style={[styles.input, styles.textarea]}
+              textAlignVertical="top"
+              value={text}
+            />
+            <AiLightButton disabled={!text.trim()} label="导入手动文本" onPress={() => void runImport(importManualText)} />
+          </AiLightCard>
+        ) : null}
 
-        <AiLightCard>
-          <Text style={styles.sectionTitle}>从系统文件导入</Text>
-          <AiLightButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
-        </AiLightCard>
+        {showFileImport ? (
+          <AiLightCard>
+            <Text style={styles.sectionTitle}>从系统文件导入</Text>
+            <AiLightButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
+          </AiLightCard>
+        ) : null}
 
-        <AiLightCard>
-          <Text style={styles.sectionTitle}>从 IP 导入</Text>
-          <View style={styles.ipChoiceList}>
-            {ips.map((ip) => (
-              <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
-                {selectedIpId === ip.id ? '● ' : '○ '}{ip.name}
-              </Text>
-            ))}
-          </View>
-          <AiLightButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
-        </AiLightCard>
+        {showIpImport ? (
+          <AiLightCard>
+            <Text style={styles.sectionTitle}>从 IP 导入</Text>
+            <View style={styles.ipChoiceList}>
+              {ips.map((ip) => (
+                <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
+                  {selectedIpId === ip.id ? '● ' : '○ '}{ip.name}
+                </Text>
+              ))}
+            </View>
+            <AiLightButton disabled={selectedIpId == null} label="从选中 IP 生成材料" onPress={() => void runImport(importFromIp)} variant="outline" />
+          </AiLightCard>
+        ) : null}
       </View>
     </AiLightScaffold>
   );

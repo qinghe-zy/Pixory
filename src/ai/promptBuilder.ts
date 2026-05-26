@@ -53,8 +53,16 @@ export function buildNormalChatPrompt(input: {
   companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
   rolePrompt?: string | null;
+  materialSnippets?: Array<{ label: string; text: string }>;
   userMessage: string;
 }): BuiltPrompt {
+  const materialSection = input.materialSnippets?.length
+    ? [
+        '当前会话资料：',
+        ...input.materialSnippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
+      ].join('\n\n')
+    : '';
+
   return {
     system: [
       frameRoleInstruction(input.systemPrompt, input.roleInstructionWeight),
@@ -68,7 +76,11 @@ export function buildNormalChatPrompt(input: {
       .filter(Boolean)
       .join('\n\n'),
     materialRules: null,
-    user: [input.dynamicMemoryContext, input.userMessage].filter(Boolean).join('\n\n用户当前问题：\n'),
+    user: [
+      input.dynamicMemoryContext,
+      materialSection,
+      `用户当前问题：\n${input.userMessage}`,
+    ].filter(Boolean).join('\n\n'),
   };
 }
 

@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   aiKnowledgeRepository,
@@ -12,7 +13,9 @@ import {
   type PixorySpace,
 } from '../database';
 import type {
+  AiChunkRecord,
   AiDocumentRecord,
+  AiEmbeddingRecord,
   AiKnowledgeBaseRecord,
   CreateDocumentInput,
 } from '../database/repositories/aiKnowledgeRepository';
@@ -24,6 +27,7 @@ import type {
 } from './types';
 import {
   copyLocalFile,
+  deleteLocalFile,
   ensureAppDirectories,
   ensureLocalDirectory,
   getAiDocumentsDir,
@@ -103,6 +107,10 @@ export interface RefreshThreadIpSnapshotMaterialInput {
 }
 
 export interface AiMaterialConversationGroup {
+  ownerType: AiDocumentOwnerType;
+  ownerId: string;
+  ownerLabel: string;
+  canOpenThreadMaterials: boolean;
   threadId: string;
   threadTitle: string;
   contextType: AiContextType | 'unknown';
@@ -114,6 +122,27 @@ export interface AiMaterialConversationGroup {
 export interface ParseAndChunkDocumentInput {
   space: PixorySpace;
   documentId: string;
+}
+
+interface MoveThreadOwnedMaterialsInput {
+  sourceSpace: PixorySpace;
+  targetSpace: PixorySpace;
+  threadIds: string[];
+  cleanupSource?: boolean;
+}
+
+interface MaterialPayload {
+  document: AiDocumentRecord;
+  chunks: AiChunkRecord[];
+  embeddings: AiEmbeddingRecord[];
+}
+
+interface RemoveMaterialsByOwnerInput {
+  db?: SQLiteDatabase;
+  space: PixorySpace;
+  ownerType: AiDocumentOwnerType;
+  ownerIds: string[];
+  deletedFileUris?: string[];
 }
 
 export interface CreateKnowledgeBaseMaterialInput {
@@ -174,6 +203,70 @@ function resolveOwnerDirectory(space: PixorySpace, ownerType: AiDocumentOwnerTyp
     return getAiIpDocumentsDir(space, Number(ownerId));
   }
   return `${joinStoragePath(getAiDocumentsDir(space), `thread_${ownerId}`)}/`;
+}
+
+function makeInClause(values: unknown[]): string {
+  return values.map(() => '?').join(', ');
+}
+
+function chunkValues<T>(values: T[], size = 400): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function getFileNameFromUri(fileUri: string): string {
+  const [cleanUri] = fileUri.split('?');
+  return cleanUri.split('/').pop() || `material_${Date.now()}.txt`;
+}
+
+function isAppPrivateAiDocumentFile(space: PixorySpace, fileUri: string | null): fileUri is string {
+  return Boolean(fileUri && fileUri.startsWith(getAiDocumentsDir(space)));
+}
+
+export async function cleanupDeletedMaterialFiles(fileUris: string[]): Promise<void> {
+  const uniqueUris = Array.from(new Set(fileUris.filter(Boolean)));
+  for (const fileUri of uniqueUris) {
+    try {
+      await deleteLocalFile(fileUri);
+    } catch (error) {
+      console.warn('Pixory AI material file cleanup failed.', {
+        fileUri,
+        message: error instanceof Error ? error.message : 'unknown file cleanup error',
+      });
+    }
+  }
+}
+
+async function deleteMaterialRecordAndCollectFile(input: {
+  db: SQLiteDatabase;
+  document: AiDocumentRecord;
+  space: PixorySpace;
+}): Promise<{ deleted: number; fileUri: string | null }> {
+  const document = input.document;
+  const deleted = await aiKnowledgeRepository.deleteDocument(input.db, document.id);
+  const fileUri = deleted > 0 && isAppPrivateAiDocumentFile(input.space, document.localUri)
+    ? document.localUri
+    : null;
+  return { deleted, fileUri };
+}
+
+async function copyDocumentFileToOwnerDirectory(input: {
+  document: AiDocumentRecord;
+  sourceSpace: PixorySpace;
+  targetSpace: PixorySpace;
+}): Promise<string | null> {
+  const document = input.document;
+  if (!isAppPrivateAiDocumentFile(input.sourceSpace, document.localUri)) {
+    return document.localUri;
+  }
+  const targetDir = resolveOwnerDirectory(input.targetSpace, document.ownerType, document.ownerId);
+  await ensureLocalDirectory(targetDir);
+  const targetLocalUri = joinStoragePath(targetDir, getFileNameFromUri(document.localUri));
+  await copyLocalFile(document.localUri, targetLocalUri);
+  return targetLocalUri;
 }
 
 function chunkDocumentText(text: string): Array<{ text: string; tokenEstimate: number }> {
@@ -322,13 +415,22 @@ export async function deleteKnowledgeBases(input: { space: PixorySpace; knowledg
   if (uniqueIds.length === 0) {
     return 0;
   }
+  const deletedFileUris: string[] = [];
   return runWithDatabaseSpace(input.space, async (db) => {
     let count = 0;
     await db.withTransactionAsync(async () => {
       for (const knowledgeBaseId of uniqueIds) {
+        await removeMaterialsByOwner({
+          db,
+          deletedFileUris,
+          ownerIds: [knowledgeBaseId],
+          ownerType: 'knowledge_base',
+          space: input.space,
+        });
         count += await aiKnowledgeRepository.deleteKnowledgeBase(db, input.space, knowledgeBaseId);
       }
     });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
     return count;
   });
 }
@@ -529,44 +631,86 @@ export async function listGlobalMaterialsGroupedByThread(input: {
   limit?: number;
 }): Promise<AiMaterialConversationGroup[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
-    const [documents, threads] = await Promise.all([
-      aiKnowledgeRepository.listDocuments(db, {
-        ownerType: 'thread',
-        space: input.space,
-      }),
-      aiThreadRepository.listThreads(db, {
-        contextType: 'all',
-        includeArchived: true,
-        limit: 500,
-        space: input.space,
-      }),
+    const documents = await aiKnowledgeRepository.listDocuments(db, {
+      space: input.space,
+    });
+    const threadOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'thread').map((document) => document.ownerId))];
+    const knowledgeBaseOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'knowledge_base').map((document) => document.ownerId))];
+    const ipOwnerIds = [...new Set(documents.filter((document) => document.ownerType === 'ip').map((document) => document.ownerId))];
+    const numericIpOwnerIds = ipOwnerIds.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+    const loadKnowledgeBasesById = async () => {
+      const rows: Array<{ id: string; name: string }> = [];
+      for (const ids of chunkValues(knowledgeBaseOwnerIds)) {
+        rows.push(
+          ...(await db.getAllAsync<{ id: string; name: string }>(
+            `SELECT id, name FROM ai_knowledge_bases WHERE space = ? AND id IN (${makeInClause(ids)})`,
+            input.space,
+            ...ids
+          ))
+        );
+      }
+      return rows;
+    };
+    const loadIpsById = async () => {
+      const rows: Array<{ id: number; name: string }> = [];
+      for (const ids of chunkValues(numericIpOwnerIds)) {
+        rows.push(
+          ...(await db.getAllAsync<{ id: number; name: string }>(
+            `SELECT id, name FROM ips WHERE id IN (${makeInClause(ids)})`,
+            ...ids
+          ))
+        );
+      }
+      return rows;
+    };
+    const [threads, knowledgeBases, ips] = await Promise.all([
+      aiThreadRepository.findThreadsByIds(db, input.space, threadOwnerIds),
+      loadKnowledgeBasesById(),
+      loadIpsById(),
     ]);
     const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+    const knowledgeBaseById = new Map(knowledgeBases.map((knowledgeBase) => [knowledgeBase.id, knowledgeBase]));
+    const ipById = new Map(ips.map((ip) => [String(ip.id), ip]));
     const grouped = new Map<string, AiDocumentRecord[]>();
     for (const document of documents) {
-      const list = grouped.get(document.ownerId) ?? [];
+      const key = `${document.ownerType}:${document.ownerId}`;
+      const list = grouped.get(key) ?? [];
       list.push(document);
-      grouped.set(document.ownerId, list);
+      grouped.set(key, list);
     }
-    return Array.from(grouped.entries())
-      .map(([threadId, materials]) => {
-        const thread = threadById.get(threadId);
-        const contextType: AiContextType | 'unknown' = thread?.contextType ?? 'unknown';
+    const groups = Array.from(grouped.entries())
+      .map(([, materials]) => {
+        const first = materials[0];
+        const thread = first.ownerType === 'thread' ? threadById.get(first.ownerId) : null;
+        const knowledgeBase = first.ownerType === 'knowledge_base' ? knowledgeBaseById.get(first.ownerId) : null;
+        const ip = first.ownerType === 'ip' ? ipById.get(first.ownerId) : null;
+        const contextType: AiContextType | 'unknown' = first.ownerType === 'thread'
+          ? thread?.contextType ?? 'unknown'
+          : first.ownerType;
+        const ownerLabel = first.ownerType === 'thread'
+          ? thread?.title?.trim() || '已删除会话'
+          : first.ownerType === 'knowledge_base'
+            ? knowledgeBase?.name?.trim() || '已删除知识库'
+            : ip?.name?.trim() || '已删除 IP';
         const updatedAt = materials.reduce(
           (latest, material) => (material.updatedAt > latest ? material.updatedAt : latest),
           materials[0]?.updatedAt ?? ''
         );
         return {
-          threadId,
-          threadTitle: thread?.title?.trim() || '已删除会话',
+          ownerType: first.ownerType,
+          ownerId: first.ownerId,
+          ownerLabel,
+          canOpenThreadMaterials: first.ownerType === 'thread' && Boolean(thread),
+          threadId: first.ownerId,
+          threadTitle: ownerLabel,
           contextType,
           updatedAt,
           materialCount: materials.length,
           materials,
         };
       })
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, input.limit ?? 100);
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    return input.limit == null ? groups : groups.slice(0, input.limit);
   });
 }
 
@@ -620,14 +764,29 @@ export async function refreshThreadIpSnapshotMaterial(input: RefreshThreadIpSnap
   if (!Number.isFinite(ipId) || ipId <= 0) {
     throw new Error('该资料不是从 IP 导入的快照。');
   }
-  const refreshed = await generateThreadIpSnapshotMaterial({
-    ipId,
-    space: input.space,
-    threadId: document.ownerId,
-    title: document.title,
+  const text = await buildIpMaterialText(input.space, ipId);
+  await ensureAppDirectories(input.space);
+  const ownerDir = resolveOwnerDirectory(input.space, document.ownerType, document.ownerId);
+  const localUri = isAppPrivateAiDocumentFile(input.space, document.localUri)
+    ? document.localUri
+    : joinStoragePath(ownerDir, `${sanitizeFileNamePart(document.title)}_${Date.now()}.txt`);
+  await ensureLocalDirectory(ownerDir);
+  await writeTextFile(localUri, text);
+  await runWithDatabaseSpace(input.space, (db) =>
+    aiKnowledgeRepository.updateDocumentContent(db, {
+      documentId: document.id,
+      fileSize: text.length,
+      localUri,
+      metadataJson: JSON.stringify({ ...metadata, refreshedAt: new Date().toISOString() }),
+      mimeType: 'text/plain',
+      parserStatus: 'pending',
+      title: document.title,
+    })
+  );
+  await parseAndChunkDocument({ space: input.space, documentId: document.id });
+  return runWithDatabaseSpace(input.space, async (db) => {
+    return (await aiKnowledgeRepository.findDocumentById(db, document.id)) ?? document;
   });
-  await removeMaterial({ documentId: document.id, space: input.space });
-  return refreshed;
 }
 
 export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): Promise<void> {
@@ -635,7 +794,23 @@ export async function retryMaterialParsing(input: ParseAndChunkDocumentInput): P
 }
 
 export async function removeMaterial(input: ParseAndChunkDocumentInput): Promise<number> {
-  return runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.deleteDocument(db, input.documentId));
+  const deletedFileUris: string[] = [];
+  return runWithDatabaseSpace(input.space, async (db) => {
+    let count = 0;
+    await db.withTransactionAsync(async () => {
+      const document = await aiKnowledgeRepository.findDocumentById(db, input.documentId);
+      if (!document || document.space !== input.space) {
+        return;
+      }
+      const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
+      count += result.deleted;
+      if (result.fileUri) {
+        deletedFileUris.push(result.fileUri);
+      }
+    });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
+    return count;
+  });
 }
 
 export async function removeMaterials(input: { space: PixorySpace; documentIds: string[] }): Promise<number> {
@@ -645,13 +820,143 @@ export async function removeMaterials(input: { space: PixorySpace; documentIds: 
   }
   return runWithDatabaseSpace(input.space, async (db) => {
     let count = 0;
+    const deletedFileUris: string[] = [];
     await db.withTransactionAsync(async () => {
       for (const documentId of uniqueIds) {
-        count += await aiKnowledgeRepository.deleteDocument(db, documentId);
+        const document = await aiKnowledgeRepository.findDocumentById(db, documentId);
+        if (document && document.space === input.space) {
+          const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
+          count += result.deleted;
+          if (result.fileUri) {
+            deletedFileUris.push(result.fileUri);
+          }
+        }
       }
     });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
     return count;
   });
+}
+
+export async function removeMaterialsByOwner(input: RemoveMaterialsByOwnerInput): Promise<number> {
+  const ownerIds = Array.from(new Set(input.ownerIds.filter(Boolean)));
+  if (ownerIds.length === 0) {
+    return 0;
+  }
+  const deletedFileUris = input.deletedFileUris ?? [];
+  const removeWithDb = async (db: SQLiteDatabase) => {
+    let count = 0;
+    for (const ownerId of ownerIds) {
+      const documents = await aiKnowledgeRepository.listDocuments(db, {
+        ownerId,
+        ownerType: input.ownerType,
+        space: input.space,
+      });
+      for (const document of documents) {
+        const result = await deleteMaterialRecordAndCollectFile({ db, document, space: input.space });
+        count += result.deleted;
+        if (result.fileUri) {
+          deletedFileUris.push(result.fileUri);
+        }
+      }
+    }
+    return count;
+  };
+  if (input.db) {
+    const count = await removeWithDb(input.db);
+    if (!input.deletedFileUris) {
+      await cleanupDeletedMaterialFiles(deletedFileUris);
+    }
+    return count;
+  }
+  return runWithDatabaseSpace(input.space, async (db) => {
+    let count = 0;
+    await db.withTransactionAsync(async () => {
+      count = await removeWithDb(db);
+    });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
+    return count;
+  });
+}
+
+export async function moveThreadOwnedMaterialsBetweenSpaces(input: MoveThreadOwnedMaterialsInput): Promise<number> {
+  const threadIds = Array.from(new Set(input.threadIds.filter(Boolean)));
+  if (threadIds.length === 0 || input.sourceSpace === input.targetSpace) {
+    return 0;
+  }
+
+  const payloads = await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+    const loaded: MaterialPayload[] = [];
+    for (const threadId of threadIds) {
+      const documents = await aiKnowledgeRepository.listDocuments(db, {
+        ownerId: threadId,
+        ownerType: 'thread',
+        space: input.sourceSpace,
+      });
+      for (const document of documents) {
+        const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, document.id);
+        const embeddings = await aiKnowledgeRepository.listEmbeddingsByChunkIds(db, chunks.map((chunk) => chunk.id));
+        loaded.push({ chunks, document, embeddings });
+      }
+    }
+    return loaded;
+  });
+
+  if (payloads.length === 0) {
+    return 0;
+  }
+
+  await ensureAppDirectories(input.targetSpace);
+  const copiedPayloads: Array<MaterialPayload & { targetLocalUri: string | null }> = [];
+  const copiedTargetFileUris: string[] = [];
+  try {
+    for (const payload of payloads) {
+      const targetLocalUri = await copyDocumentFileToOwnerDirectory({
+        document: payload.document,
+        sourceSpace: input.sourceSpace,
+        targetSpace: input.targetSpace,
+      });
+      if (targetLocalUri && isAppPrivateAiDocumentFile(input.targetSpace, targetLocalUri)) {
+        copiedTargetFileUris.push(targetLocalUri);
+      }
+      copiedPayloads.push({ ...payload, targetLocalUri });
+    }
+
+    await runWithDatabaseSpace(input.targetSpace, async (db) => {
+      await db.withTransactionAsync(async () => {
+        for (const payload of copiedPayloads) {
+          await aiKnowledgeRepository.copyDocumentWithChunks(db, {
+            chunks: payload.chunks,
+            document: payload.document,
+            embeddings: payload.embeddings,
+            targetLocalUri: payload.targetLocalUri,
+            targetSpace: input.targetSpace,
+          });
+        }
+      });
+    });
+  } catch (error) {
+    await cleanupDeletedMaterialFiles(copiedTargetFileUris);
+    throw error;
+  }
+
+  if (input.cleanupSource ?? true) {
+    const deletedFileUris: string[] = [];
+    await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+      await db.withTransactionAsync(async () => {
+        await removeMaterialsByOwner({
+          db,
+          deletedFileUris,
+          space: input.sourceSpace,
+          ownerType: 'thread',
+          ownerIds: threadIds,
+        });
+      });
+    });
+    await cleanupDeletedMaterialFiles(deletedFileUris);
+  }
+
+  return copiedPayloads.length;
 }
 
 export async function readDocumentForReader(input: ParseAndChunkDocumentInput): Promise<AiReadableDocument> {
@@ -661,6 +966,19 @@ export async function readDocumentForReader(input: ParseAndChunkDocumentInput): 
       throw new Error('未找到要阅读的 AI 文档。');
     }
     const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, input.documentId);
+    if (document.localUri && (document.sourceType === 'txt' || document.sourceType === 'markdown' || document.sourceType === 'manual_text' || document.sourceType === 'ip_generated')) {
+      try {
+        return {
+          document,
+          chunks,
+          text: await FileSystem.readAsStringAsync(document.localUri, {
+            encoding: FileSystem.EncodingType.UTF8,
+          }),
+        };
+      } catch {
+        // Fall back to retrieval chunks if the app-private readable file is missing.
+      }
+    }
     return {
       document,
       chunks,

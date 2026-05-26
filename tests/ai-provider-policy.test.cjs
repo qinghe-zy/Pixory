@@ -128,7 +128,7 @@ test('provider settings expose maintenance model mode controls', () => {
 test('OpenAI-compatible built-in providers can manually configure embedding endpoints without marking DeepSeek official embedding support', () => {
   const constants = fs.readFileSync(constantsPath, 'utf8');
   const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
-  const deepSeekBlock = /providerType: 'deepseek'[\s\S]*?visionEnabled: false,\n  \}/.exec(constants)?.[0] ?? '';
+  const deepSeekBlock = /providerType: 'deepseek'[\s\S]*?visionEnabled: false,\r?\n  \}/.exec(constants)?.[0] ?? '';
 
   assert.match(deepSeekBlock, /embeddingEnabled:\s*false/);
   assert.match(providerSettings, /selectedSupportsManualEmbedding/);

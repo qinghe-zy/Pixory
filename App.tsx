@@ -44,7 +44,7 @@ import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
-import { createNormalThreadFromRoleCard } from './src/ai/aiChatService';
+import { applyRoleCardToThread, createNormalThreadFromRoleCard } from './src/ai/aiChatService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
@@ -168,12 +168,12 @@ type AppRoute =
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
-  | { name: 'ai-role-library'; space: PixorySpace }
-  | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string }
+  | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
+  | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string; threadId?: string; mode?: 'library' | 'apply_to_thread' }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
-  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string }
+  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string; initialSource?: 'ip' | 'file' | 'manual_text' }
   | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string }
   | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
@@ -757,7 +757,7 @@ export default function App() {
   async function startChatWithRoleCard(space: PixorySpace, roleCardId: string) {
     scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'leave_chat');
     const thread = await createNormalThreadFromRoleCard({ roleCardId, space });
-    replaceCurrentRoute({
+    replaceAiChatFlowWithRoute({
       name: 'ai-chat',
       contextTitle: thread.title,
       contextType: 'normal',
@@ -879,6 +879,40 @@ export default function App() {
       const previousRoute = current[current.length - 1];
       const nextRoute = route.name === 'ai-chat' ? prepareAiChatRouteForReplace(route, previousRoute) : route;
       return [...current.slice(0, -1), nextRoute];
+    });
+  }
+
+  function replaceAiChatFlowWithRoute(route: Extract<AppRoute, { name: 'ai-chat' }>) {
+    const nextRoute = prepareAiChatRouteForPush(route);
+    setRouteStack((current) => {
+      const stableRoutes = current.filter((entry) => ![
+        'ai-chat',
+        'ai-role-library',
+        'ai-role-card-detail',
+        'ai-role-card-editor',
+      ].includes(entry.name));
+      return [...(stableRoutes.length ? stableRoutes : [INITIAL_ROUTE]), nextRoute];
+    });
+  }
+
+  async function applyRoleToCurrentThread(space: PixorySpace, threadId: string | undefined, roleCardId: string) {
+    if (!threadId) {
+      throw new Error('未找到当前会话，无法应用角色。');
+    }
+    const updated = await applyRoleCardToThread({ roleCardId, space, threadId });
+    if (!updated) {
+      throw new Error('当前会话不存在或已被删除。');
+    }
+    setRouteStack((current) => {
+      const next = [...current];
+      while (next.length > 1) {
+        const top = next[next.length - 1];
+        if (!['ai-role-library', 'ai-role-card-detail', 'ai-role-card-editor'].includes(top.name)) {
+          break;
+        }
+        next.pop();
+      }
+      return next.length ? next : [INITIAL_ROUTE];
     });
   }
 
@@ -1534,7 +1568,7 @@ export default function App() {
         onBack={popRoute}
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
+        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space, threadId: currentRoute.threadId, mode: 'apply_to_thread' })}
         onOpenThreadMaterials={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })
@@ -1558,10 +1592,12 @@ export default function App() {
     content = (
       <AiRoleLibraryScreen
         onBack={popRoute}
-        onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
-        onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
-        onOpenRoleDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
+        onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
+        onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
+        onApplyRoleToThread={(roleCardId) => applyRoleToCurrentThread(currentRoute.space, currentRoute.threadId, roleCardId)}
+        onOpenRoleDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space, threadId: currentRoute.threadId, mode: currentRoute.mode })}
         onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        mode={currentRoute.mode ?? 'library'}
         space={currentRoute.space}
       />
     );
@@ -1569,8 +1605,10 @@ export default function App() {
     content = (
       <AiRoleCardDetailScreen
         onBack={popRoute}
-        onEditRole={(roleCardId) => pushRoute({ name: 'ai-role-card-editor', roleCardId, space: currentRoute.space })}
+        onEditRole={(roleCardId) => pushRoute({ name: 'ai-role-card-editor', roleCardId, space: currentRoute.space, threadId: currentRoute.threadId })}
+        onApplyRoleToThread={(roleCardId) => applyRoleToCurrentThread(currentRoute.space, currentRoute.threadId, roleCardId)}
         onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        mode={currentRoute.mode ?? 'library'}
         roleCardId={currentRoute.roleCardId}
         space={currentRoute.space}
       />
@@ -1622,7 +1660,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'ai-material-import') {
-    content = <AiMaterialImportScreen knowledgeBaseId={currentRoute.knowledgeBaseId} onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
+    content = <AiMaterialImportScreen initialSource={currentRoute.initialSource} knowledgeBaseId={currentRoute.knowledgeBaseId} onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'ai-material-list') {
     content = (
       <AiMaterialListScreen
@@ -1637,7 +1675,7 @@ export default function App() {
     content = (
       <AiMaterialListScreen
         onBack={popRoute}
-        onImportMaterial={(threadId) => pushRoute({ name: 'ai-material-import', space: currentRoute.space, threadId })}
+        onImportMaterial={(threadId, source) => pushRoute({ name: 'ai-material-import', initialSource: source, space: currentRoute.space, threadId })}
         onOpenDocument={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
         space={currentRoute.space}
         threadId={currentRoute.threadId}

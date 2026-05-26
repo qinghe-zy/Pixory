@@ -491,7 +491,7 @@ export function AiSessionConfigScreen({
 
       <AppDialog
         danger
-        message="删除后会移除当前会话及其聊天记录。此操作不能撤销。"
+        message="删除后会移除当前会话、聊天记录，以及只添加到此会话的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。"
         onClose={() => {
           if (!saving) {
             setDeleteDialogVisible(false);

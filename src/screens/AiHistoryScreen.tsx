@@ -389,7 +389,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
 
       <AppDialog
         danger
-        message={`删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录。`}
+        message={`删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。`}
         onClose={() => {
           if (!busy) {
             setPendingAction(null);

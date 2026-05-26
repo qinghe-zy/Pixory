@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiMaterialSourceSheet, type AiMaterialSourceKind } from '../components/ai/AiMaterialSourceSheet';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
 import {
@@ -26,7 +27,7 @@ interface AiMaterialListScreenProps {
   threadId?: string;
   onBack: () => void;
   onOpenDocument: (documentId: string, title: string) => void;
-  onImportMaterial?: (threadId?: string) => void;
+  onImportMaterial?: (threadId?: string, source?: AiMaterialSourceKind) => void;
   onOpenThreadMaterials?: (threadId: string, title: string) => void;
 }
 
@@ -49,9 +50,10 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmingBatchRemove, setConfirmingBatchRemove] = useState(false);
+  const [sourceSheetVisible, setSourceSheetVisible] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const isGlobalView = !knowledgeBaseId && !threadId;
-  const screenTitle = threadId ? '会话资料库' : '总资料库';
+  const screenTitle = threadId ? '会话资料库' : knowledgeBaseId ? '知识库资料' : '总资料库';
 
   const reload = useCallback(async () => {
     if (threadId) {
@@ -84,7 +86,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
 
   async function removeDocument(documentId: string) {
     await removeMaterial({ documentId, space });
-    setStatus('材料记录已移除。');
+    setStatus('资料及应用内副本已删除。');
     setSelectedIds((current) => current.filter((id) => id !== documentId));
     await reload();
   }
@@ -102,18 +104,68 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
     await removeMaterials({ documentIds: ids, space });
     setSelectedIds([]);
     setConfirmingBatchRemove(false);
-    setStatus(`已批量移除 ${ids.length} 个材料。`);
+    setStatus(`已删除 ${ids.length} 个资料及应用内副本。`);
     await reload();
   }
+
+  function selectMaterialSource(source: AiMaterialSourceKind) {
+    setSourceSheetVisible(false);
+    onImportMaterial?.(threadId, source);
+  }
+
+  function renderMaterialRow(item: AiDocumentRecord, compact = false) {
+    const selected = selectedIds.includes(item.id);
+    return (
+      <View key={item.id} style={[compact ? styles.groupMaterialRow : styles.row, selected && styles.selectedRow]}>
+        <Pressable
+          accessibilityRole="button"
+          onLongPress={() => toggleSelected(item.id)}
+          onPress={() => {
+            if (selectedIds.length) {
+              toggleSelected(item.id);
+              return;
+            }
+            onOpenDocument(item.id, item.title);
+          }}
+          style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
+        >
+          <View style={styles.iconWrap}>
+            <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
+          </View>
+          <View style={styles.copy}>
+            <Text numberOfLines={compact ? 1 : undefined} style={styles.title}>{item.title}</Text>
+            <Text numberOfLines={1} style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
+            {!compact && item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
+          </View>
+        </Pressable>
+        {!compact && item.parserStatus === 'failed' ? (
+          <View style={styles.failedActions}>
+            <AiLightButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
+            <AiLightButton label="删除" onPress={() => void removeDocument(item.id)} variant="ghost" />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  const affectedOwnerCount = isGlobalView
+    ? new Set(
+        conversationGroups.flatMap((group) =>
+          group.materials
+            .filter((material) => selectedIds.includes(material.id))
+            .map(() => `${group.ownerType}:${group.ownerId}`)
+        )
+      ).size
+    : selectedIds.length ? 1 : 0;
 
   const selectionFooter = selectedIds.length ? (
     <View style={styles.selectionFooter}>
       <View style={styles.selectionCopy}>
-        <Text style={styles.selectionText}>已选择 {selectedIds.length} 个材料</Text>
-        <Text style={styles.selectionMeta}>只移除材料记录和本地索引，不会删除原始素材。</Text>
+        <Text style={styles.selectionText}>已选择 {selectedIds.length} 个资料</Text>
+        <Text style={styles.selectionMeta}>将删除应用内资料文件和索引；原始 IP 素材与系统文件不受影响。{affectedOwnerCount ? `受影响 ${affectedOwnerCount} 个来源。` : ''}</Text>
       </View>
       <View style={styles.selectionActions}>
-        <AiLightButton label="批量移除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
+        <AiLightButton label="批量删除" onPress={() => setConfirmingBatchRemove(true)} variant="outline" />
         <AiLightButton label="取消选择" onPress={() => setSelectedIds([])} variant="ghost" />
       </View>
     </View>
@@ -130,78 +182,47 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
       <View style={styles.contentStack}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
         {threadId && onImportMaterial ? (
-          <AiLightButton label="添加资料" onPress={() => onImportMaterial(threadId)} />
+          <AiLightButton label="添加资料" onPress={() => setSourceSheetVisible(true)} />
         ) : null}
         <View style={styles.list}>
           {isGlobalView ? (
             conversationGroups.length ? (
               conversationGroups.map((group) => (
-                <Pressable
-                  accessibilityRole="button"
+                <View
                   key={group.threadId}
-                  onPress={() => onOpenThreadMaterials?.(group.threadId, group.threadTitle)}
-                  style={({ pressed }) => [styles.groupRow, pressed && styles.pressed]}
+                  style={styles.groupRow}
                 >
                   <View style={styles.groupHeader}>
                     <View style={styles.copy}>
                       <Text numberOfLines={1} style={styles.title}>{group.threadTitle}</Text>
-                      <Text style={styles.meta}>{group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}</Text>
+                      <Text style={styles.meta}>{group.ownerLabel} · {group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}</Text>
                     </View>
-                    <Text style={styles.textActionLabel}>进入</Text>
+                    {group.canOpenThreadMaterials ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => {
+                          if (!selectedIds.length) {
+                            onOpenThreadMaterials?.(group.threadId, group.threadTitle);
+                          }
+                        }}
+                        style={({ pressed }) => [styles.openGroupButton, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.textActionLabel}>进入</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
-                  {group.materials[0] ? (
-                    <View style={styles.groupMaterialPreview}>
-                      <View style={styles.iconWrap}>
-                        <Ionicons color={aiLightColors.coralActive} name={iconForStatus(group.materials[0].parserStatus)} size={18} />
-                      </View>
-                      <View style={styles.copy}>
-                        <Text numberOfLines={1} style={styles.previewTitle}>{group.materials[0].title}</Text>
-                        <Text numberOfLines={1} style={styles.meta}>{STATUS_LABELS[group.materials[0].parserStatus]} · {group.materials[0].originalFilename ?? '手动文本'}</Text>
-                      </View>
-                    </View>
-                  ) : null}
-                </Pressable>
+                  <View style={styles.groupMaterialList}>
+                    {group.materials.map((material) => renderMaterialRow(material, true))}
+                  </View>
+                </View>
               ))
             ) : (
               <View style={styles.emptyState}>
-                <Text style={styles.title}>还没有会话资料</Text>
+                <Text style={styles.title}>还没有资料</Text>
               </View>
             )
           ) : items.length ? (
-            items.map((item) => {
-              const selected = selectedIds.includes(item.id);
-              return (
-              <View key={item.id} style={[styles.row, selected && styles.selectedRow]}>
-                <Pressable
-                  accessibilityRole="button"
-                  onLongPress={() => toggleSelected(item.id)}
-                  onPress={() => {
-                    if (selectedIds.length) {
-                      toggleSelected(item.id);
-                      return;
-                    }
-                    onOpenDocument(item.id, item.title);
-                  }}
-                  style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
-                >
-                  <View style={styles.iconWrap}>
-                    <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
-                  </View>
-                  <View style={styles.copy}>
-                    <Text style={styles.title}>{item.title}</Text>
-                    <Text style={styles.meta}>{STATUS_LABELS[item.parserStatus]} · {item.originalFilename ?? '手动文本'}</Text>
-                    {item.parserError ? <Text style={styles.error}>{item.parserError}</Text> : null}
-                  </View>
-                </Pressable>
-                {item.parserStatus === 'failed' ? (
-                  <View style={styles.failedActions}>
-                    <AiLightButton label="重试" onPress={() => void retryDocument(item.id)} variant="outline" />
-                    <AiLightButton label="移除" onPress={() => void removeDocument(item.id)} variant="ghost" />
-                  </View>
-                ) : null}
-              </View>
-            );
-            })
+            items.map((item) => renderMaterialRow(item))
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.title}>还没有材料</Text>
@@ -211,15 +232,20 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
       </View>
       <AppDialog
         danger
-        message="将从材料列表和本地知识索引中移除所选记录。原始导入文件仍在应用材料目录中按普通文件保存。"
+        message={`将删除 ${selectedIds.length} 个资料的数据库记录、检索索引和应用内资料文件。原始 IP 素材与系统原文件不会被删除。${affectedOwnerCount ? `受影响 ${affectedOwnerCount} 个来源。` : ''}`}
         onClose={() => setConfirmingBatchRemove(false)}
         onPrimary={() => {
           void batchRemoveSelected();
         }}
         primaryDisabled={!selectedIds.length}
-        primaryLabel="批量移除"
-        title="移除所选材料？"
+        primaryLabel="批量删除"
+        title="删除所选资料？"
         visible={confirmingBatchRemove}
+      />
+      <AiMaterialSourceSheet
+        onClose={() => setSourceSheetVisible(false)}
+        onSelectSource={selectMaterialSource}
+        visible={sourceSheetVisible}
       />
     </AiLightScaffold>
   );
@@ -275,6 +301,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     padding: spacing[2],
+  },
+  groupMaterialList: {
+    gap: rhythm.microGap,
+  },
+  groupMaterialRow: {
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.md,
+    padding: spacing[2],
+  },
+  openGroupButton: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
   selectedRow: {
     backgroundColor: aiLightColors.card,
