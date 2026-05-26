@@ -95,13 +95,15 @@ test('AI chat uses the design.md light mode surface', () => {
   assert.doesNotMatch(content, /backgroundVariant="aiChat"/);
 });
 
-test('AI chat relies on inverted native list positioning and Android adjustResize', () => {
+test('AI chat relies on inverted native list positioning and scoped Android keyboard avoidance', () => {
   const content = chat();
   assert.match(content, /messageListRef/);
   assert.match(content, /\binverted\b/);
   assert.match(content, /data=\{invertedMessageItems\}/);
   assert.match(content, /ListFooterComponent=/);
   assert.match(content, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
+  assert.match(content, /KeyboardAvoidingView/);
+  assert.match(content, /behavior=\{Platform\.OS === 'android' \? 'height' : undefined\}/);
   assert.doesNotMatch(content, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(content, /keyboardBottomInset/);
   assert.doesNotMatch(content, /scrollToEnd/);
@@ -630,9 +632,10 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
   assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
-  assert.doesNotMatch(chat, /KeyboardAvoidingView/);
+  assert.match(chat, /KeyboardAvoidingView/);
+  assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
-  assert.match(chat, /<\/View>\s*<AiComprehensiveRecordDrawer/);
+  assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
   assert.match(headerBlock, /accessibilityLabel="会话设置"/);

@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Easing, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -1498,6 +1498,11 @@ export function AiChatScreen({
       backgroundColor={aiLightColors.canvas}
       contentStyle={styles.drawerHost}
     >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'android' ? 'height' : undefined}
+        enabled={Platform.OS === 'android'}
+        style={styles.keyboardAvoidingHost}
+      >
       <View style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
       <View style={styles.header}>
         <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
@@ -1610,6 +1615,7 @@ export function AiChatScreen({
         </Animated.View>
       )}
       </View>
+      </KeyboardAvoidingView>
       <AiComprehensiveRecordDrawer
         activeThreadId={activeThreadId}
         recentThreads={recentThreads}
@@ -1647,6 +1653,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 0,
     paddingHorizontal: 0,
+  },
+  keyboardAvoidingHost: {
+    flex: 1,
   },
   screenContent: {
     flex: 1,

@@ -89,13 +89,15 @@ test('AI chat hides the voice input entry while keeping Android speech recogniti
   assert.doesNotMatch(pluginManifest, /RECORD_AUDIO" tools:node="remove"/);
 });
 
-test('AI chat relies on Android adjustResize instead of JS keyboard margin lifting', () => {
+test('AI chat keeps the composer above Android keyboard with a scoped avoiding host', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.doesNotMatch(chat, /KeyboardAvoidingView/);
-  assert.doesNotMatch(chat, /KeyboardAvoidingView behavior="height"/);
-  assert.doesNotMatch(chat, /enabled=\{Platform\.OS === 'android'\}/);
   assert.doesNotMatch(chat, /keyboardResizeHost/);
+  assert.match(chat, /KeyboardAvoidingView/);
+  assert.match(chat, /behavior=\{Platform\.OS === 'android' \? 'height' : undefined\}/);
+  assert.match(chat, /enabled=\{Platform\.OS === 'android'\}/);
+  assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
+  assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
   assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
