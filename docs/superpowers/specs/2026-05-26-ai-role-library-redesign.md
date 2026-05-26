@@ -25,6 +25,13 @@ The material library should:
 - Support importing material from IP snapshots, system files, and manual text.
 - Preserve local-only storage, private copied files, and explicit user control over material deletion.
 
+The document reader should:
+
+- Make TXT and Markdown open as native-feeling continuous reading surfaces.
+- Avoid card-like wrappers around body text.
+- Preserve citation/highlight navigation without fragmenting the reading flow.
+- Adapt DOCX and PDF as well as practical within existing parser/native capabilities.
+
 ## Current Context
 
 The current `AiRoleCardEditorScreen` mixes several responsibilities:
@@ -67,6 +74,9 @@ The following decisions are fixed:
 - Conversation material library uses a top-right framed `+` to add material.
 - Adding material supports `从 IP 导入`, `从系统文件导入`, and `手动文本`.
 - IP import creates a snapshot and supports manual refresh; it does not dynamically track IP changes.
+- TXT and Markdown readers use continuous, unboxed reading layouts.
+- Text reader body must not be rendered as per-chunk cards.
+- Other document formats should be adapted for readability as much as practical.
 - During implementation, UX and UI should be polished beyond the wireframe, using existing design tokens and calm Pixory styling.
 
 ## Navigation Model
@@ -443,6 +453,63 @@ The old `问问某个 IP` behavior is replaced by:
 - Add IP snapshot material.
 - Continue chatting with that material in context.
 
+## Document Reader Redesign
+
+Material reading should feel like opening a native document, not a debug view of retrieval chunks.
+
+The current plain text reader renders each chunk as a bordered card. This is useful for seeing retrieval segmentation but poor for reading. The redesign should remove that card-like body treatment.
+
+Core rules:
+
+- TXT opens as continuous readable text.
+- Markdown opens with native-feeling Markdown structure.
+- Body text must not be wrapped in per-paragraph or per-chunk cards.
+- Avoid borders, shadows, floating cards, and boxed chunks around normal body content.
+- Use calm margins, readable line height, and stable typography.
+- Citation or locator highlights should be soft inline/paragraph highlights that do not break the text flow.
+- Header and metadata can remain structured, but the document body should feel unboxed.
+
+Reader header:
+
+- Keep a compact top bar with back action and document title.
+- Show useful metadata below or near the title when space allows: source type, word/character estimate, parser status, and update time.
+- Avoid turning metadata into a dense toolbar.
+
+TXT behavior:
+
+- Render readable text continuously.
+- Preserve paragraphs and line breaks where meaningful.
+- Use comfortable line height.
+- If a locator points to a chunk, scroll to or visually highlight the relevant paragraph/section without turning it into a card.
+
+Markdown behavior:
+
+- Support headings, paragraphs, lists, blockquotes, and code blocks.
+- Headings should create clear hierarchy.
+- Lists should be readable and aligned.
+- Code blocks may use a subtle background because code needs separation, but they should not make the whole document feel card-based.
+- Markdown should not display raw syntax for common structures when it can be rendered simply.
+
+DOCX behavior:
+
+- Continue using parsed text when full layout rendering is not available.
+- Render parsed DOCX text with the same continuous reading surface as TXT.
+- Preserve paragraph breaks as much as possible.
+- If parser quality is limited, show a concise note in the metadata/status area rather than interrupting body reading.
+
+PDF behavior:
+
+- PDF can remain page-based because it is a fixed-layout format.
+- Reduce unnecessary frame heaviness around pages.
+- Keep page rendering stable, readable, and vertically scrollable.
+- If page rendering fails, show a clear error state and file metadata.
+
+Failure and empty states:
+
+- If parsing fails, show the failure reason and the original file name when available.
+- Avoid blank screens.
+- If no readable text exists, say so plainly and offer the safest available action, such as returning to the material list.
+
 ## Data And Safety
 
 This redesign should not require a schema change by default for role cards or thread-owned materials.
@@ -525,6 +592,8 @@ Create or refactor toward these units:
 - Material source picker/action sheet
 - Thread material list row component
 - Conversation material group card component
+- Continuous TXT reader component or refactored `AiTextReader`
+- Markdown renderer that supports core Markdown blocks without card-wrapping the body
 
 Keep each unit focused:
 
@@ -536,6 +605,7 @@ Keep each unit focused:
 - Thread material library owns adding, reading, deleting, and refreshing thread materials.
 - Import flow writes to the selected target owner, especially `thread`.
 - Reader screens remain responsible for reading parsed document content.
+- Reader components should present documents as reading surfaces, not retrieval chunk debug cards.
 
 ## Verification
 
@@ -568,6 +638,12 @@ Manual verification should cover:
 - Global material library search matches material titles and conversation names while preserving grouping.
 - Global material library supports multi-select delete with confirmation that names affected conversation count and material count.
 - Material rows open the existing reader/text reader path.
+- TXT material opens as continuous unboxed text.
+- Markdown material renders headings, lists, quotes, code, and paragraphs in a native-feeling layout.
+- DOCX material renders parsed text continuously when available.
+- PDF material remains readable and page-based with reduced frame heaviness.
+- Locator/citation highlight works without converting text into chunk cards.
+- Parse failure and empty readable-content states are clear and nonblank.
 - Normal chats with thread-owned materials retrieve from `ownerType = 'thread'`.
 - Existing old IP or knowledge-base threads remain readable.
 - Typecheck and tests pass.
@@ -583,6 +659,10 @@ Android visual verification should use real role data, including:
 - A chat with multiple imported files.
 - A global material library containing materials from at least two conversations.
 - A deleted or missing thread ownership edge case if local data can produce it.
+- A long TXT document.
+- A Markdown document with headings, lists, blockquotes, and code.
+- A DOCX document parsed to text.
+- A PDF document with multiple pages.
 
 ## Open Notes For Implementation
 
@@ -592,3 +672,4 @@ Android visual verification should use real role data, including:
 - The exact icon for `总资料库` should be chosen during UI polish.
 - The first implementation should avoid rebuilding the old knowledge-base creation UI unless needed for backward compatibility.
 - The material retrieval update is the highest-risk part because it changes how normal chats gather context.
+- The reader redesign should avoid the current per-chunk card feeling while still preserving citation locator behavior.
