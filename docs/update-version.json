@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.3.6",
-  "versionCode": 236,
+  "version": "2.3.7",
+  "versionCode": 237,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.3.6 已发布，角色详情和聊天输入体验更清楚。",
+  "message": "Pixory 2.3.7 已发布，AI 聊天生成和 Markdown 显示更稳定。",
   "releaseNotes": [
-    "AI 角色详情页升级为海报式大图布局，角色信息、标签和开场白更聚焦。",
-    "角色指令、默认开场白和更多开场白改为轻量内容卡片，展开和查看更多更清晰。",
-    "聊天页输入框聚焦时会主动避让 Android 键盘并跟随最新消息，降低输入区被遮挡的概率。"
+    "修复 Android 上 AI 回复代码块可能导致聊天页出现大面积空白遮挡的问题。",
+    "AI 回复生成改为页面外任务管理，离开聊天页后可继续生成，返回时自动接续状态。",
+    "聊天抽屉的最近列表会显示当前会话，并标记为当前聊天。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

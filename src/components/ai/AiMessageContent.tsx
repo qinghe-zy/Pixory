@@ -358,7 +358,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                 </Pressable>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Text selectable style={styles.codeText}>
+                <Text style={styles.codeText}>
                   {block.text || ' '}
                   {appendTrailingInline ? trailingInline : null}
                 </Text>

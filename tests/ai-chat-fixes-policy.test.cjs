@@ -641,6 +641,46 @@ test('AI stop-and-new-chat routes immediately while generation cleanup runs in t
   assert.doesNotMatch(newChatBlock, /handleStop\(\)\.finally/);
 });
 
+test('AI background generation is owned by a runtime manager instead of chat screen unmount', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const managerPath = path.join(root, 'src/ai/aiGenerationManager.ts');
+
+  assert.ok(fs.existsSync(managerPath));
+  const manager = read('src/ai/aiGenerationManager.ts');
+  const unmountCleanup = /useEffect\(\(\) => \{\s*return \(\) => \{[\s\S]*?\n\s*\};\s*\}, \[\]\);/.exec(chat)?.[0] ?? '';
+
+  assert.match(manager, /const tasksByThreadId = new Map/);
+  assert.match(manager, /const tasksByAssistantId = new Map/);
+  assert.match(manager, /function taskKey\(space: PixorySpace, threadId: string\)/);
+  assert.match(manager, /tasksByThreadId\.get\(taskKey\(space, threadId\)\)/);
+  assert.match(manager, /subscribeToThread/);
+  assert.match(manager, /getActiveTaskForThread/);
+  assert.match(manager, /hasActiveTask/);
+  assert.match(manager, /startSendUserMessage/);
+  assert.match(manager, /startRegenerateAssistantMessage/);
+  assert.match(manager, /startRewriteUserMessage/);
+  assert.match(manager, /stopGeneration/);
+  assert.match(manager, /sendUserMessage\(/);
+  assert.match(manager, /regenerateAssistantMessage\(/);
+  assert.match(manager, /rewriteUserMessage\(/);
+  assert.match(manager, /stopStreamingMessage\(/);
+  assert.match(manager, /stopGeneration\(\{ assistantMessageId, space, threadId \}/);
+  assert.match(manager, /if \(!stoppedAssistantId && task\) \{[\s\S]{0,160}await task\.promise\.catch/);
+  assert.match(chat, /function isGenerationActionCurrent\(actionToken: number\)/);
+  assert.match(chat, /if \(!isGenerationActionCurrent\(actionToken\)\) \{[\s\S]{0,120}return/);
+  assert.match(chat, /aiGenerationManager\.stopGeneration\(\{ assistantMessageId: targetAssistantId, space, threadId: targetThreadId \}\)/);
+  assert.match(chat, /aiGenerationManager/);
+  assert.doesNotMatch(unmountCleanup, /abort\(/);
+});
+
+test('AI startup cleanup stops interrupted generating messages in SQLite', () => {
+  const db = read('src/database/db.ts');
+
+  assert.match(db, /cleanupInterruptedAiGenerations/);
+  assert.match(db, /UPDATE ai_messages[\s\S]*status = 'stopped'[\s\S]*completedAt = \?[\s\S]*errorMessage = '生成被系统中断。'[\s\S]*WHERE status = 'generating'/);
+  assert.match(db, /await cleanupInterruptedAiGenerations\(db\)/);
+});
+
 test('AI paged chat loads branch root messages before recursive visibility filtering', () => {
   const service = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
@@ -800,6 +840,15 @@ test('AI message text supports selection and lightweight markdown separators', (
   assert.match(content, /isHorizontalRule/);
   assert.match(content, /styles\.horizontalRule/);
   assert.match(content, /nestLevel/);
+});
+
+test('AI markdown code blocks avoid selectable text inside horizontal scroll on Android', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const codeBranch = /if \(block\.type === 'code'\) \{[\s\S]*?if \(block\.type === 'table'\)/.exec(content)?.[0] ?? '';
+
+  assert.match(codeBranch, /<ScrollView horizontal/);
+  assert.match(codeBranch, /accessibilityLabel="复制代码块"/);
+  assert.doesNotMatch(codeBranch, /<Text selectable/);
 });
 
 test('AI thinking block expands and collapses with a lightweight animation', () => {
@@ -1084,12 +1133,15 @@ test('AI history archive restore swipe clips the action background to the row', 
 test('AI edit and regenerate actions expose pending guards and call service paths', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const service = read('src/ai/aiChatService.ts');
+  const manager = read('src/ai/aiGenerationManager.ts');
 
   assert.match(chat, /const \[pendingMessageActionId, setPendingMessageActionId\]/);
   assert.match(chat, /setPendingMessageActionId\(userMessageId\)/);
   assert.match(chat, /setPendingMessageActionId\(targetMessageId\)/);
-  assert.match(chat, /rewriteUserMessage\(/);
-  assert.match(chat, /regenerateAssistantMessage\(/);
+  assert.match(chat, /aiGenerationManager\.startRewriteUserMessage\(/);
+  assert.match(chat, /aiGenerationManager\.startRegenerateAssistantMessage\(/);
+  assert.match(manager, /rewriteUserMessage\(/);
+  assert.match(manager, /regenerateAssistantMessage\(/);
   assert.match(chat, /finally \{[\s\S]{0,300}setPendingMessageActionId\(null\)/);
   assert.match(service, /export async function rewriteUserMessage/);
   assert.match(service, /export async function regenerateAssistantMessage/);

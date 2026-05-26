@@ -25,14 +25,11 @@ import {
   loadThreadTitle,
   loadThreadAvatarConfig,
   listAiHistoryThreads,
-  regenerateAssistantMessage,
   renameAiThread,
-  rewriteUserMessage,
-  sendUserMessage,
-  stopStreamingMessage,
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
 } from '../ai/aiChatService';
+import { aiGenerationManager, type AiGenerationSubscriber } from '../ai/aiGenerationManager';
 import {
   getActiveBranchForNextMessageFromVisibleMessages,
   getSelectedMessageVersionIndex as resolveSelectedMessageVersionIndex,
@@ -258,7 +255,7 @@ export function AiChatScreen({
     title: 0,
   });
   const screenMountedRef = useRef(true);
-  const streamAbortRef = useRef<AbortController | null>(null);
+  const generationSubscriptionRef = useRef<(() => void) | null>(null);
   const activeStreamGenerationRef = useRef(0);
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
@@ -418,13 +415,53 @@ export function AiChatScreen({
     return activeStreamGenerationRef.current === generation && activeThreadIdRef.current === targetThreadId;
   }
 
-  function beginStreamingRequest(targetThreadId: string): { controller: AbortController; generation: number } {
-    streamAbortRef.current?.abort();
-    const controller = new AbortController();
-    streamAbortRef.current = controller;
+  function clearGenerationSubscription() {
+    generationSubscriptionRef.current?.();
+    generationSubscriptionRef.current = null;
+  }
+
+  function createGenerationSubscriber(targetThreadId: string, generation: number): AiGenerationSubscriber {
+    return {
+      onCreated: ({ assistantMessageId }) => {
+        if (!isCurrentStream(targetThreadId, generation)) {
+          return;
+        }
+        setActiveAssistantId(assistantMessageId);
+        followLatestMessage();
+        void reloadMessages(targetThreadId);
+      },
+      onMessagePatch: (patch) => {
+        if (!isCurrentStream(targetThreadId, generation)) {
+          return;
+        }
+        applyStreamingMessagePatch(patch);
+      },
+      onSettled: () => {
+        if (!isCurrentStream(targetThreadId, generation) || !screenMountedRef.current) {
+          return;
+        }
+        setGenerating(false);
+        setActiveAssistantId(null);
+        setPendingMessageActionId(null);
+        clearGenerationSubscription();
+        void reloadMessages(targetThreadId);
+        void reloadMemoryCaptures(targetThreadId);
+      },
+      onUpdated: () => {
+        if (!isCurrentStream(targetThreadId, generation)) {
+          return;
+        }
+        void reloadMessages(targetThreadId);
+      },
+    };
+  }
+
+  function beginStreamingRequest(targetThreadId: string): { generation: number; subscriber: AiGenerationSubscriber } {
+    clearGenerationSubscription();
     activeStreamGenerationRef.current += 1;
     activeThreadIdRef.current = targetThreadId;
-    return { controller, generation: activeStreamGenerationRef.current };
+    const generation = activeStreamGenerationRef.current;
+    return { generation, subscriber: createGenerationSubscriber(targetThreadId, generation) };
   }
 
   function beginGenerationAction(): number | null {
@@ -442,14 +479,17 @@ export function AiChatScreen({
     }
   }
 
+  function isGenerationActionCurrent(actionToken: number): boolean {
+    return generationBusyRef.current && generationActionTokenRef.current === actionToken;
+  }
+
   function cancelGenerationAction() {
     generationActionTokenRef.current += 1;
     generationBusyRef.current = false;
   }
 
   function abortActiveStreamingRequest() {
-    streamAbortRef.current?.abort();
-    streamAbortRef.current = null;
+    clearGenerationSubscription();
     activeStreamGenerationRef.current += 1;
   }
 
@@ -743,6 +783,10 @@ export function AiChatScreen({
     setEditingUserMessageId(null);
     setSelectedVersionByMessageId({});
     setPendingAttachments([]);
+    clearGenerationSubscription();
+    activeStreamGenerationRef.current += 1;
+    setGenerating(false);
+    setActiveAssistantId(null);
     setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
     setHasEarlierMessages(false);
     if (!nextThreadId) {
@@ -758,6 +802,29 @@ export function AiChatScreen({
   useEffect(() => {
     void reloadMessages(threadId ?? null);
   }, [reloadMessages, threadId]);
+
+  useEffect(() => {
+    const targetThreadId = threadId ?? null;
+    if (!targetThreadId) {
+      return undefined;
+    }
+    const activeTask = aiGenerationManager.getActiveTaskForThread(space, targetThreadId);
+    if (!activeTask || (activeTask.assistantMessageId && !aiGenerationManager.hasActiveTask(activeTask.assistantMessageId))) {
+      return undefined;
+    }
+    const { generation, subscriber } = beginStreamingRequest(targetThreadId);
+    const unsubscribe = aiGenerationManager.subscribeToThread(space, targetThreadId, subscriber);
+    generationSubscriptionRef.current = unsubscribe;
+    setGenerating(true);
+    setActiveAssistantId(activeTask.assistantMessageId);
+    return () => {
+      if (isCurrentStream(targetThreadId, generation) && generationSubscriptionRef.current === unsubscribe) {
+        clearGenerationSubscription();
+      } else {
+        unsubscribe();
+      }
+    };
+  }, [threadId, space]);
 
   useEffect(() => {
     void reloadModelLabel(threadId ?? null);
@@ -795,8 +862,7 @@ export function AiChatScreen({
       clearComposerFocusVisibilityTimeouts();
       clearInlineEditVisibilityTimeouts();
       cancelGenerationAction();
-      streamAbortRef.current?.abort();
-      streamAbortRef.current = null;
+      clearGenerationSubscription();
       activeStreamGenerationRef.current += 1;
       clearVoiceResetTimeout();
       if (newChatFeedbackTimeoutRef.current) {
@@ -1126,50 +1192,35 @@ export function AiChatScreen({
     setErrorMessage(null);
     followLatestMessage();
     let nextThreadId: string | null = null;
-    let streamController: AbortController | null = null;
+    let streamUnsubscribe: (() => void) | null = null;
     let streamGeneration = 0;
     try {
       nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
         return;
       }
+      if (!isGenerationActionCurrent(actionToken)) {
+        return;
+      }
       const targetThreadId = nextThreadId;
       const streamRequest = beginStreamingRequest(targetThreadId);
-      streamController = streamRequest.controller;
       streamGeneration = streamRequest.generation;
       const activeBranch = getActiveBranchForNextMessage();
-      await sendUserMessage({
+      const managedGeneration = aiGenerationManager.startSendUserMessage({
         branchRootMessageId: activeBranch?.branchRootMessageId,
         branchVersionIndex: activeBranch?.branchVersionIndex,
         content,
-        onCreated: ({ assistantMessageId }) => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
-            return;
-          }
-          setActiveAssistantId(assistantMessageId);
-          followLatestMessage();
-          void reloadMessages(targetThreadId);
-        },
-        onMessagePatch: (patch) => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
-            return;
-          }
-          applyStreamingMessagePatch(patch);
-        },
-        onUpdated: () => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController?.signal.aborted) {
-            return;
-          }
-          void reloadMessages(targetThreadId);
-        },
-        signal: streamController.signal,
         space,
+        subscriber: streamRequest.subscriber,
         threadId: targetThreadId,
       });
+      streamUnsubscribe = managedGeneration.unsubscribe;
+      generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      await managedGeneration.promise;
       await reloadMessages(targetThreadId);
       await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
-      if (!screenMountedRef.current || streamController?.signal.aborted || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
+      if (!screenMountedRef.current || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
         return;
       }
       setComposerText(typedText);
@@ -1184,8 +1235,8 @@ export function AiChatScreen({
       if (stillCurrent) {
         setGenerating(false);
         setActiveAssistantId(null);
-        if (streamAbortRef.current === streamController) {
-          streamAbortRef.current = null;
+        if (generationSubscriptionRef.current === streamUnsubscribe) {
+          clearGenerationSubscription();
         }
       }
     }
@@ -1208,41 +1259,33 @@ export function AiChatScreen({
     setGenerating(true);
     setErrorMessage(null);
     followLatestMessage();
-    const { controller: streamController, generation: streamGeneration } = beginStreamingRequest(targetThreadId);
+    let streamUnsubscribe: (() => void) | null = null;
+    const { generation: streamGeneration, subscriber } = beginStreamingRequest(targetThreadId);
     try {
-      await rewriteUserMessage({
+      const managedGeneration = aiGenerationManager.startRewriteUserMessage({
         content,
-        onCreated: ({ assistantMessageId }) => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
-            return;
-          }
-          setActiveAssistantId(assistantMessageId);
-          showLatestMessageVersion(userMessageId);
-          showLatestMessageVersion(assistantMessageId);
-          followLatestMessage();
-          void reloadMessages(targetThreadId);
-        },
-        onMessagePatch: (patch) => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
-            return;
-          }
-          applyStreamingMessagePatch(patch);
-        },
-        onUpdated: () => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
-            return;
-          }
-          void reloadMessages(targetThreadId);
-        },
-        signal: streamController.signal,
         space,
+        subscriber: {
+          ...subscriber,
+          onCreated: ({ assistantMessageId }) => {
+            if (!isCurrentStream(targetThreadId, streamGeneration)) {
+              return;
+            }
+            subscriber.onCreated?.({ userMessageId, assistantMessageId });
+            showLatestMessageVersion(userMessageId);
+            showLatestMessageVersion(assistantMessageId);
+          },
+        },
         threadId: targetThreadId,
         userMessageId,
       });
+      streamUnsubscribe = managedGeneration.unsubscribe;
+      generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      await managedGeneration.promise;
       await reloadMessages(targetThreadId);
       await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
-      if (streamController.signal.aborted || !isCurrentStream(targetThreadId, streamGeneration)) {
+      if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
       }
       editingUserMessageIdRef.current = userMessageId;
@@ -1254,8 +1297,8 @@ export function AiChatScreen({
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
         setActiveAssistantId(null);
-        if (streamAbortRef.current === streamController) {
-          streamAbortRef.current = null;
+        if (generationSubscriptionRef.current === streamUnsubscribe) {
+          clearGenerationSubscription();
         }
       }
     }
@@ -1268,11 +1311,11 @@ export function AiChatScreen({
     abortActiveStreamingRequest();
     setGenerating(false);
     setActiveAssistantId(null);
-    if (!targetAssistantId) {
+    if (!targetAssistantId && !targetThreadId) {
       setGenerating(false);
       return;
     }
-    await stopStreamingMessage({ assistantMessageId: targetAssistantId, space });
+    await aiGenerationManager.stopGeneration({ assistantMessageId: targetAssistantId, space, threadId: targetThreadId });
     if (reloadAfterStop && screenMountedRef.current) {
       await reloadMessages(targetThreadId);
     }
@@ -1302,30 +1345,22 @@ export function AiChatScreen({
     setErrorMessage(null);
     showLatestMessageVersion(targetMessageId);
     followLatestMessage();
-    const { controller: streamController, generation: streamGeneration } = beginStreamingRequest(targetThreadId);
+    let streamUnsubscribe: (() => void) | null = null;
+    const { generation: streamGeneration, subscriber } = beginStreamingRequest(targetThreadId);
     try {
-      await regenerateAssistantMessage({
+      const managedGeneration = aiGenerationManager.startRegenerateAssistantMessage({
         assistantMessageId: targetMessageId,
-        onMessagePatch: (patch) => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
-            return;
-          }
-          applyStreamingMessagePatch(patch);
-        },
-        onUpdated: () => {
-          if (!isCurrentStream(targetThreadId, streamGeneration) || streamController.signal.aborted) {
-            return;
-          }
-          void reloadMessages(targetThreadId);
-        },
-        signal: streamController.signal,
         space,
+        subscriber,
         threadId: targetThreadId,
       });
+      streamUnsubscribe = managedGeneration.unsubscribe;
+      generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      await managedGeneration.promise;
       await reloadMessages(targetThreadId);
       await reloadMemoryCaptures(targetThreadId);
     } catch (error) {
-      if (streamController.signal.aborted || !isCurrentStream(targetThreadId, streamGeneration)) {
+      if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
       }
       setErrorMessage(error instanceof Error ? error.message : '刷新失败');
@@ -1335,8 +1370,8 @@ export function AiChatScreen({
       if (isCurrentStream(targetThreadId, streamGeneration)) {
         setGenerating(false);
         setActiveAssistantId(null);
-        if (streamAbortRef.current === streamController) {
-          streamAbortRef.current = null;
+        if (generationSubscriptionRef.current === streamUnsubscribe) {
+          clearGenerationSubscription();
         }
       }
     }

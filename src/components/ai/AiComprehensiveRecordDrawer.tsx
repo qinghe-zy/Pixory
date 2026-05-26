@@ -46,7 +46,7 @@ export function AiComprehensiveRecordDrawer({
     return null;
   }
 
-  const visibleRecents = recentThreads.filter((thread) => thread.id !== activeThreadId).slice(0, 15);
+  const visibleRecents = recentThreads.slice(0, 15);
 
   function openRecentActionPopover(thread: AiThreadHistoryItem) {
     setStatusText(null);
@@ -120,59 +120,72 @@ export function AiComprehensiveRecordDrawer({
           {statusText ? <Text accessibilityLiveRegion="polite" style={styles.statusText}>{statusText}</Text> : null}
           <ScrollView contentContainerStyle={styles.recentList} showsVerticalScrollIndicator={false} style={styles.recentScroller}>
             {visibleRecents.length ? (
-              visibleRecents.map((thread) => (
-                <View key={thread.id} style={styles.recentItem}>
-                  <Pressable
-                    accessibilityHint="长按可重命名或删除"
-                    accessibilityRole="button"
-                    onLongPress={() => openRecentActionPopover(thread)}
-                    onPress={() => {
-                      if (actionThread || deleteThread) {
-                        setActionThread(null);
-                        setDeleteThread(null);
-                        return;
-                      }
-                      onOpenThread(thread);
-                    }}
-                    style={({ pressed }) => [styles.recentRow, actionThread?.id === thread.id && styles.recentRowActive, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={styles.recentTitle}>
-                      {thread.title}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.recentMeta}>
-                      {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
-                    </Text>
-                    {actionThread?.id === thread.id ? (
-                      <View style={styles.recentActionPopover}>
-                        <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
-                          <Ionicons color={aiLightColors.ink} name="create-outline" size={16} />
-                          <Text style={styles.recentActionText}>重命名</Text>
-                        </Pressable>
-                        <View style={styles.recentActionDivider} />
-                        <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
-                          <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
-                          <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
-                        </Pressable>
+              visibleRecents.map((thread) => {
+                const isActiveThread = thread.id === activeThreadId;
+                return (
+                  <View key={thread.id} style={styles.recentItem}>
+                    <Pressable
+                      accessibilityHint="长按可重命名或删除"
+                      accessibilityRole="button"
+                      onLongPress={() => openRecentActionPopover(thread)}
+                      onPress={() => {
+                        if (actionThread || deleteThread) {
+                          setActionThread(null);
+                          setDeleteThread(null);
+                          return;
+                        }
+                        if (isActiveThread) {
+                          return;
+                        }
+                        onOpenThread(thread);
+                      }}
+                      style={({ pressed }) => [
+                        styles.recentRow,
+                        (isActiveThread || actionThread?.id === thread.id) && styles.recentRowActive,
+                        pressed && !isActiveThread && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.recentTitleRow}>
+                        <Text numberOfLines={1} style={styles.recentTitle}>
+                          {thread.title}
+                        </Text>
+                        {isActiveThread ? <Text style={styles.currentThreadBadge}>当前聊天</Text> : null}
+                      </View>
+                      <Text numberOfLines={1} style={styles.recentMeta}>
+                        {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
+                      </Text>
+                      {actionThread?.id === thread.id ? (
+                        <View style={styles.recentActionPopover}>
+                          <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                            <Ionicons color={aiLightColors.ink} name="create-outline" size={16} />
+                            <Text style={styles.recentActionText}>重命名</Text>
+                          </Pressable>
+                          <View style={styles.recentActionDivider} />
+                          <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                            <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                            <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                    {deleteThread?.id === thread.id ? (
+                      <View style={styles.recentDeleteConfirm}>
+                        <Text numberOfLines={2} style={styles.recentDeleteText}>
+                          删除「{thread.title}」这条会话记录？
+                        </Text>
+                        <View style={styles.recentDeleteActions}>
+                          <Pressable accessibilityLabel="确认删除最近会话" accessibilityRole="button" disabled={busy} onPress={confirmDeleteThread} style={({ pressed }) => [styles.recentDeleteButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                            <Text style={styles.recentDeleteButtonText}>{busy ? '删除中' : '删除'}</Text>
+                          </Pressable>
+                          <Pressable accessibilityLabel="取消删除最近会话" accessibilityRole="button" disabled={busy} onPress={() => setDeleteThread(null)} style={({ pressed }) => [styles.recentCancelButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                            <Text style={styles.recentCancelButtonText}>取消</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     ) : null}
-                  </Pressable>
-                  {deleteThread?.id === thread.id ? (
-                    <View style={styles.recentDeleteConfirm}>
-                      <Text numberOfLines={2} style={styles.recentDeleteText}>
-                        删除「{thread.title}」这条会话记录？
-                      </Text>
-                      <View style={styles.recentDeleteActions}>
-                        <Pressable accessibilityLabel="确认删除最近会话" accessibilityRole="button" disabled={busy} onPress={confirmDeleteThread} style={({ pressed }) => [styles.recentDeleteButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
-                          <Text style={styles.recentDeleteButtonText}>{busy ? '删除中' : '删除'}</Text>
-                        </Pressable>
-                        <Pressable accessibilityLabel="取消删除最近会话" accessibilityRole="button" disabled={busy} onPress={() => setDeleteThread(null)} style={({ pressed }) => [styles.recentCancelButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
-                          <Text style={styles.recentCancelButtonText}>取消</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              ))
+                  </View>
+                );
+              })
             ) : (
               <Text style={styles.emptyText}>暂无最近会话</Text>
             )}
@@ -298,9 +311,20 @@ const styles = StyleSheet.create({
   recentRowActive: {
     backgroundColor: aiLightColors.surface,
   },
+  recentTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
   recentTitle: {
     ...typography.textStyles.body,
     color: aiLightColors.ink,
+    flex: 1,
+  },
+  currentThreadBadge: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+    fontWeight: '700',
   },
   recentMeta: {
     ...typography.textStyles.caption,

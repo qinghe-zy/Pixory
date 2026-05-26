@@ -125,13 +125,15 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
 test('AI chat supports stopping, regenerating replies, and rewriting user messages', () => {
   const content = chat();
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const manager = fs.readFileSync(path.join(root, 'src/ai/aiGenerationManager.ts'), 'utf8');
   const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
   const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
 
   for (const expected of ['stopStreamingMessage', 'regenerateAssistantMessage', 'rewriteUserMessage']) {
-    assert.match(content, new RegExp(expected));
+    assert.match(manager, new RegExp(expected));
     assert.match(service, new RegExp(expected));
   }
+  assert.match(content, /aiGenerationManager/);
   assert.match(bubble, /onEditUser/);
   assert.match(bubble, /editingMessageId/);
   assert.match(bubble, /onSubmitEdit/);
@@ -655,7 +657,10 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(drawer, /height:\s*'100%'/);
   assert.match(drawer, /recentScroller:\s*\{[\s\S]*flex:\s*1/);
   assert.match(drawer, /maxHeight:\s*'100%'/);
-  assert.match(drawer, /filter\(\(thread\) => thread\.id !== activeThreadId\)\.slice\(0,\s*15\)/);
+  assert.match(drawer, /const visibleRecents = recentThreads\.slice\(0,\s*15\)/);
+  assert.match(drawer, /thread\.id === activeThreadId/);
+  assert.match(drawer, /当前聊天/);
+  assert.doesNotMatch(drawer, /filter\(\(thread\) => thread\.id !== activeThreadId\)/);
 });
 
 test('AI chat composer only floats in for new chat or another opened thread', () => {

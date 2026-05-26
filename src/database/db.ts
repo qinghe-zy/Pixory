@@ -70,6 +70,17 @@ async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
   }
 }
 
+async function cleanupInterruptedAiGenerations(db: SQLiteDatabase): Promise<void> {
+  await db.runAsync(
+    `UPDATE ai_messages
+     SET status = 'stopped',
+         completedAt = ?,
+         errorMessage = '生成被系统中断。'
+     WHERE status = 'generating'`,
+    new Date().toISOString()
+  );
+}
+
 export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'normal'): Promise<void> {
   const database = db ?? (await openPixoryDatabase(space));
 
@@ -219,6 +230,7 @@ export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLit
       const db = await openPixoryDatabase(space);
       await configureDatabase(db);
       await runMigrations(db, space);
+      await cleanupInterruptedAiGenerations(db);
       return db;
     })().catch((error) => {
       initializationPromises[space] = undefined;
