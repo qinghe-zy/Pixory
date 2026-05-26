@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -79,12 +79,22 @@ function AiMessageBubbleComponent({
   const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearCopyFeedbackTimer() {
+    if (copyFeedbackTimeoutRef.current) {
+      clearTimeout(copyFeedbackTimeoutRef.current);
+      copyFeedbackTimeoutRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (editing) {
       setEditDraft(message.content);
     }
   }, [editing, message.content]);
+
+  useEffect(() => clearCopyFeedbackTimer, []);
 
   function updateEditDraft(nextDraft: string) {
     setEditDraft(nextDraft);
@@ -170,7 +180,11 @@ function AiMessageBubbleComponent({
             onPress={() => {
               onCopy(message);
               setCopyFeedbackVisible(true);
-              setTimeout(() => setCopyFeedbackVisible(false), 1400);
+              clearCopyFeedbackTimer();
+              copyFeedbackTimeoutRef.current = setTimeout(() => {
+                setCopyFeedbackVisible(false);
+                copyFeedbackTimeoutRef.current = null;
+              }, 1400);
             }}
             style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
           >
