@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:writing-plans to create the implementation plan after this spec is approved.
 
-**Goal:** Polish the AI chat page so first-run, streaming, markdown image, and Android keyboard behavior feel closer to Claude/ChatGPT: quiet, smooth, and local-first.
+**Goal:** Polish the AI chat page so first-run, streaming, markdown image, Android keyboard, and long-chat micro-performance behavior feel closer to Claude/ChatGPT: quiet, smooth, and local-first.
 
-**Architecture:** Keep the existing AI chat screen and message renderer. Make small targeted changes in the current components: `AiThinkingBlock` for opacity animation, `AiChatScreen` for first-message greeting and Android keyboard behavior, and `AiMessageContent` for image markdown rendering.
+**Architecture:** Keep the existing AI chat screen and message renderer. Make targeted changes in the current components: `AiThinkingBlock` for native opacity animation and lower-frequency timing, `AiChatScreen` for first-message greeting, Android keyboard behavior, guarded scroll state, and dynamic scroll affordance placement, `AiMessageContent` for memoized markdown and image rendering, and `AiMessageBubble` for timeout cleanup.
 
 **Tech Stack:** Expo, React Native, TypeScript, SQLite/local-only data model, existing Pixory design tokens, existing AI light theme.
 
@@ -16,6 +16,12 @@
 - `src/screens/AiChatScreen.tsx` renders an inverted `FlatList` without a first-message greeting or lightweight starter hints.
 - `src/components/ai/AiMessageContent.tsx` parses `[text](https://...)` links but not `![alt](url)` image markdown.
 - `src/screens/AiChatScreen.tsx` wraps the chat layout in `KeyboardAvoidingView behavior="height"` on Android, while `android/app/src/main/AndroidManifest.xml` already uses `windowSoftInputMode="adjustResize"` for `MainActivity`.
+- `src/components/ai/AiThinkingBlock.tsx` updates elapsed thinking time every `100ms`, which adds avoidable React updates while a reply is streaming.
+- `src/components/ai/AiMessageContent.tsx` reparses markdown on every render, including feedback-only state changes such as code-copy success.
+- `src/components/ai/AiMessageContent.tsx`, `src/components/ai/AiMessageBubble.tsx`, and the voice-cancel path in `src/screens/AiChatScreen.tsx` use one-shot timers that should be cleaned up on unmount.
+- `src/screens/AiChatScreen.tsx` can call `setLatestVisible` on every scroll event even when the boolean value has not changed.
+- `src/screens/AiChatScreen.tsx` uses copied `reverse()` scans to find latest assistant state. Remove these scans while touching the chat render path.
+- `src/components/ai/AiScrollToLatestButton.tsx` positions itself with a fixed bottom offset, so it can drift when the composer grows because of multi-line input or attachments.
 
 ## Experience Direction
 
@@ -89,6 +95,8 @@ Rules:
 
 This avoids putting a purely opacity-based animation on the JS thread while streaming markdown parsing and React updates are active.
 
+The elapsed-time display should also stop updating at `100ms` cadence. Use a `500ms` interval while thinking is active. Keep the current one-decimal label format, but do not force ten React updates per second for every active thinking block.
+
 ## Markdown Image Rendering
 
 `AiMessageContent` should treat image markdown as a first-class inline/block element instead of rendering a stray `!` and a normal link.
@@ -118,6 +126,17 @@ Security and locality:
 - Do not introduce network fetching logic beyond React Native image rendering of the provided URI.
 - Do not add cloud or backend behavior.
 
+## Markdown Render Cost
+
+`AiMessageContent` should memoize parsed markdown blocks by `content`.
+
+Rules:
+
+- Use `useMemo(() => parseMarkdownBlocks(content), [content])`.
+- Feedback state changes such as copy-success banners must not re-run markdown block parsing.
+- Image markdown parsing should integrate with the same block/inline render path rather than adding a second full parse pass.
+- Keep the parser local and dependency-free in this pass.
+
 ## Android Keyboard Behavior
 
 For Android, remove the extra `KeyboardAvoidingView behavior="height"` from the chat screen path and rely on the existing `adjustResize`.
@@ -130,6 +149,60 @@ Expected behavior:
 - iOS: no behavior regression should be introduced. If the existing wrapper is removed globally, verify composer visibility manually or keep an iOS-only wrapper only if needed.
 - The inverted list should remain pinned to offset zero and keep the existing no-jitter scroll policy.
 
+## Scroll and Long-Chat Smoothness
+
+The chat list should keep the current inverted-list strategy, but avoid avoidable React work during scroll and streaming.
+
+### Latest Visibility Guard
+
+`handleMessageScroll` should update `latestVisible` only when the computed value changes.
+
+Implementation direction:
+
+- Add a `latestVisibleRef`.
+- Compute `nextLatestVisible` from `contentOffset.y <= MESSAGE_BOTTOM_LOCK_THRESHOLD`.
+- Only call `setLatestVisible(nextLatestVisible)` when `latestVisibleRef.current !== nextLatestVisible`.
+
+### Latest Assistant Lookup
+
+Avoid copied-array `reverse()` scans for latest assistant lookup.
+
+Implementation direction:
+
+- Replace `[...messages].reverse().find(...)` and `[...visibleMessages].reverse().find(...)` with a tiny helper that scans from the end.
+- Keep the helper local to `AiChatScreen` unless another file needs it.
+
+### Scroll-To-Latest Button Placement
+
+`AiScrollToLatestButton` should not rely on a fixed bottom offset that assumes one composer height.
+
+Implementation direction:
+
+- Track composer panel height in `AiChatScreen` with `onLayout`.
+- Pass a numeric bottom offset into `AiScrollToLatestButton`.
+- Place the button above the current composer height plus a small tokenized gap.
+- Keep the visual style quiet and compact; do not redesign the button.
+
+### FlatList Virtualization
+
+Do not add a broad FlatList virtualization rewrite in this pass. Do not add `windowSize`, `initialNumToRender`, or `maxToRenderPerBatch` changes unless a failing verification explicitly proves they are necessary. The required work is the scroll state guard and latest lookup cleanup.
+
+## Timer Cleanup
+
+One-shot UI timers should be cleaned up on unmount.
+
+Required cleanup:
+
+- Code-copy feedback timer in `AiMessageContent`.
+- Message-copy feedback timer in `AiMessageBubble`.
+- Voice-cancel reset timer in `AiChatScreen`.
+
+Implementation direction:
+
+- Store timeout handles in refs.
+- Clear existing timeout before setting a new one.
+- Clear timeout refs in component unmount effects.
+
 ## Tests and Verification
 
 Add policy/regression coverage that checks:
@@ -140,6 +213,12 @@ Add policy/regression coverage that checks:
 - Greeting suggestions fill composer text and do not directly call send.
 - `AiMessageContent` parses and renders image markdown separately from normal links.
 - Android chat screen no longer combines `KeyboardAvoidingView behavior="height"` with an inverted `FlatList`.
+- `AiThinkingBlock` no longer uses a `100ms` thinking timer.
+- `AiMessageContent` memoizes `parseMarkdownBlocks(content)`.
+- UI feedback timeout handles are stored in refs and cleared on unmount.
+- `AiChatScreen` guards `setLatestVisible` behind a value-change check.
+- Latest assistant lookup avoids copied-array `reverse()` scans.
+- `AiScrollToLatestButton` receives a dynamic bottom offset from the chat screen.
 
 Run:
 
