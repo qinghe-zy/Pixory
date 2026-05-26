@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:writing-plans to create the implementation plan after this spec is approved.
 
-**Goal:** Polish the AI chat page so first-run, streaming, markdown image, Android keyboard, and long-chat micro-performance behavior feel closer to Claude/ChatGPT: quiet, smooth, and local-first.
+**Goal:** Polish the AI chat page so first-run, streaming, markdown image, Android keyboard, and thousand-plus-message long-chat behavior feel closer to Claude/ChatGPT: quiet, smooth, stable, and local-first.
 
-**Architecture:** Keep the existing AI chat screen and message renderer. Make targeted changes in the current components: `AiThinkingBlock` for native opacity animation and lower-frequency timing, `AiChatScreen` for first-message greeting, Android keyboard behavior, guarded scroll state, and dynamic scroll affordance placement, `AiMessageContent` for memoized markdown and image rendering, and `AiMessageBubble` for timeout cleanup.
+**Architecture:** Keep the existing AI chat screen and message renderer. Make targeted changes in the current components and repository layer: `AiThinkingBlock` for native opacity animation and lower-frequency timing, `AiChatScreen` for first-message greeting, Android keyboard behavior, FlatList memory controls, guarded scroll state, and dynamic scroll affordance placement, `AiMessageContent` for memoized markdown and image rendering, `AiMessageBubble` for timeout cleanup, and `aiThreadRepository` for chunked message-version/citation queries.
 
 **Tech Stack:** Expo, React Native, TypeScript, SQLite/local-only data model, existing Pixory design tokens, existing AI light theme.
 
@@ -22,6 +22,8 @@
 - `src/screens/AiChatScreen.tsx` can call `setLatestVisible` on every scroll event even when the boolean value has not changed.
 - `src/screens/AiChatScreen.tsx` uses copied `reverse()` scans to find latest assistant state. Remove these scans while touching the chat render path.
 - `src/components/ai/AiScrollToLatestButton.tsx` positions itself with a fixed bottom offset, so it can drift when the composer grows because of multi-line input or attachments.
+- `src/database/repositories/aiThreadRepository.ts` loads message versions and citations with a single `IN (${makeInClause(messageIds)})` query. When a user pages into 1000+ visible messages, SQLite can exceed the binding-variable limit and throw.
+- `src/screens/AiChatScreen.tsx` leaves FlatList virtualization at defaults. For thousand-message histories with markdown-heavy bubbles, default resident windows can keep too many complex rows mounted and cause memory spikes or UI freezes.
 
 ## Experience Direction
 
@@ -41,7 +43,7 @@ Show exactly one of these greetings based on local time:
 - Afternoon: `现在想聊点什么？`
 - Evening/night: `今晚想聊点什么？`
 
-Do not put these strings in the composer placeholder. The composer placeholder should remain the existing Pixory behavior unless a future spec changes it.
+Do not put these strings in the composer placeholder. The composer placeholder must remain the existing Pixory behavior in this pass.
 
 ### Visibility
 
@@ -151,7 +153,49 @@ Expected behavior:
 
 ## Scroll and Long-Chat Smoothness
 
-The chat list should keep the current inverted-list strategy, but avoid avoidable React work during scroll and streaming.
+The chat list should keep the current inverted-list strategy, but avoid avoidable React work during scroll and streaming. Pixory should support thousand-plus-message local conversations without SQLite variable-limit crashes or runaway resident row memory.
+
+### SQLite Attached Data Chunking
+
+Repository methods that hydrate message attachments must chunk large message-id inputs.
+
+Required methods:
+
+- `aiThreadRepository.listMessageVersionsForMessages`
+- `aiThreadRepository.listCitationsForMessages`
+
+Implementation direction:
+
+- Reuse `DELETE_MESSAGE_CHUNK_SIZE = 200` or introduce a nearby `MESSAGE_LOOKUP_CHUNK_SIZE = 200`.
+- For each chunk, run the existing ordered query with `IN (${makeInClause(chunk)})`.
+- Append rows into one array.
+- Preserve existing grouping output: `Record<string, AiMessageVersionRecord[]>` and `Record<string, AiCitationRecord[]>`.
+- Preserve deterministic order inside each message group by keeping SQL `ORDER BY originalMessageId ASC, versionIndex ASC` for versions and `ORDER BY messageId ASC, createdAt ASC` for citations.
+- Do not silently drop ids, versions, or citations when chunking.
+
+Tests should fail if either method still uses `makeInClause(messageIds)` directly.
+
+### FlatList Memory Controls
+
+The chat FlatList must set conservative virtualization props for long histories.
+
+Required props:
+
+```tsx
+initialNumToRender={10}
+maxToRenderPerBatch={8}
+windowSize={11}
+removeClippedSubviews={Platform.OS === 'android'}
+```
+
+Rationale:
+
+- `initialNumToRender={10}` keeps cold render bounded.
+- `maxToRenderPerBatch={8}` avoids large JS render batches while scrolling.
+- `windowSize={11}` reduces mounted offscreen rows compared with the default window.
+- `removeClippedSubviews={Platform.OS === 'android'}` lets Android aggressively detach offscreen native views while avoiding iOS clipping surprises.
+
+These props must be applied to the existing inverted `FlatList`, not a replacement list component.
 
 ### Latest Visibility Guard
 
@@ -170,7 +214,7 @@ Avoid copied-array `reverse()` scans for latest assistant lookup.
 Implementation direction:
 
 - Replace `[...messages].reverse().find(...)` and `[...visibleMessages].reverse().find(...)` with a tiny helper that scans from the end.
-- Keep the helper local to `AiChatScreen` unless another file needs it.
+- Keep the helper local to `AiChatScreen`.
 
 ### Scroll-To-Latest Button Placement
 
@@ -182,10 +226,6 @@ Implementation direction:
 - Pass a numeric bottom offset into `AiScrollToLatestButton`.
 - Place the button above the current composer height plus a small tokenized gap.
 - Keep the visual style quiet and compact; do not redesign the button.
-
-### FlatList Virtualization
-
-Do not add a broad FlatList virtualization rewrite in this pass. Do not add `windowSize`, `initialNumToRender`, or `maxToRenderPerBatch` changes unless a failing verification explicitly proves they are necessary. The required work is the scroll state guard and latest lookup cleanup.
 
 ## Timer Cleanup
 
@@ -219,6 +259,8 @@ Add policy/regression coverage that checks:
 - `AiChatScreen` guards `setLatestVisible` behind a value-change check.
 - Latest assistant lookup avoids copied-array `reverse()` scans.
 - `AiScrollToLatestButton` receives a dynamic bottom offset from the chat screen.
+- `aiThreadRepository.listMessageVersionsForMessages` and `listCitationsForMessages` chunk message-id input instead of binding every id in one SQL statement.
+- `AiChatScreen` sets `initialNumToRender={10}`, `maxToRenderPerBatch={8}`, `windowSize={11}`, and `removeClippedSubviews={Platform.OS === 'android'}` on the chat FlatList.
 
 Run:
 
