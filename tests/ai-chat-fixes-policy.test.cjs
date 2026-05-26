@@ -830,12 +830,14 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
   assert.match(chat, /promptSnapshotJson/);
 });
 
-test('AI message text supports selection and lightweight markdown separators', () => {
+test('AI user text supports selection while assistant markdown stays Android layout safe', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const content = read('src/components/ai/AiMessageContent.tsx');
+  const assistantRender = /const trailingTargetIndex[\s\S]*?return \([\s\S]*?\n  \);/m.exec(content)?.[0] ?? '';
 
   assert.match(bubble, /<Text selectable style=\{\[styles\.content, styles\.userText\]\}/);
-  assert.match(content, /selectable/);
+  assert.match(content, /return <Text selectable style=\{\[styles\.body, styles\.userText\]\}>\{content\}<\/Text>/);
+  assert.doesNotMatch(assistantRender, /<Text selectable/);
   assert.match(content, /type: 'hr'/);
   assert.match(content, /isHorizontalRule/);
   assert.match(content, /styles\.horizontalRule/);
@@ -846,9 +848,22 @@ test('AI markdown code blocks avoid selectable text inside horizontal scroll on 
   const content = read('src/components/ai/AiMessageContent.tsx');
   const codeBranch = /if \(block\.type === 'code'\) \{[\s\S]*?if \(block\.type === 'table'\)/.exec(content)?.[0] ?? '';
 
+  assert.match(content, /useWindowDimensions/);
+  assert.match(content, /horizontalBlockWidth/);
+  assert.match(codeBranch, /style=\{\[styles\.codeBlock, \{ width: horizontalBlockWidth \}\]\}/);
   assert.match(codeBranch, /<ScrollView horizontal/);
+  assert.match(codeBranch, /style=\{styles\.codeScroll\}/);
   assert.match(codeBranch, /accessibilityLabel="复制代码块"/);
   assert.doesNotMatch(codeBranch, /<Text selectable/);
+});
+
+test('AI markdown tables use a hard horizontal width constraint on Android', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /style=\{\[styles\.tableScroll, \{ width: horizontalBlockWidth \}\]\}/);
+  assert.match(bubble, /bubble:\s*\{[\s\S]*maxWidth:\s*'100%'/);
+  assert.match(content, /wrap:\s*\{[\s\S]*maxWidth:\s*'100%'/);
 });
 
 test('AI thinking block expands and collapses with a lightweight animation', () => {

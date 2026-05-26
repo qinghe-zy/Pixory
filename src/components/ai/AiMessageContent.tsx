@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type TextStyle } from 'react-native';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
@@ -246,10 +246,12 @@ function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
 }
 
 export function AiMessageContent({ content, trailingInline, variant = 'assistant' }: AiMessageContentProps) {
+  const { width: windowWidth } = useWindowDimensions();
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+  const horizontalBlockWidth = Math.max(180, Math.min(520, Math.floor(windowWidth * 0.72)));
 
   function clearFeedbackTimer() {
     if (feedbackTimeoutRef.current) {
@@ -305,7 +307,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         const appendTrailingInline = trailingInline && index === trailingTargetIndex;
         if (block.type === 'heading') {
           return (
-            <Text selectable key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
+            <Text key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
               {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink)}
               {appendTrailingInline ? trailingInline : null}
             </Text>
@@ -317,7 +319,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
               {block.items.map((item, itemIndex) => (
                 <View key={`${key}-${itemIndex}`} style={[styles.listItem, item.nestLevel > 0 && { paddingLeft: item.nestLevel * spacing[3] }]}>
                   <Text style={styles.listMarker}>{item.marker}</Text>
-                  <Text selectable style={[styles.body, styles.assistantText, styles.listText]}>
+                  <Text style={[styles.body, styles.assistantText, styles.listText]}>
                     {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink)}
                     {appendTrailingInline && itemIndex === block.items.length - 1 ? trailingInline : null}
                   </Text>
@@ -329,7 +331,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         if (block.type === 'quote') {
           return (
             <View key={key} style={styles.quote}>
-              <Text selectable style={[styles.body, styles.quoteText]}>
+              <Text style={[styles.body, styles.quoteText]}>
                 {renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}
                 {appendTrailingInline ? trailingInline : null}
               </Text>
@@ -344,7 +346,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         }
         if (block.type === 'code') {
           return (
-            <View key={key} style={styles.codeBlock}>
+            <View key={key} style={[styles.codeBlock, { width: horizontalBlockWidth }]}>
               <View style={styles.codeHeader}>
                 <Text numberOfLines={1} style={styles.codeLanguage}>{block.language ?? 'code'}</Text>
                 <Pressable
@@ -357,7 +359,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                   <Ionicons color={aiLightColors.onDark} name={copiedBlockKey === key ? 'checkmark' : 'copy-outline'} size={14} />
                 </Pressable>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
                 <Text style={styles.codeText}>
                   {block.text || ' '}
                   {appendTrailingInline ? trailingInline : null}
@@ -368,7 +370,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         }
         if (block.type === 'table') {
           return (
-            <ScrollView key={key} horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>
+            <ScrollView key={key} horizontal showsHorizontalScrollIndicator={false} style={[styles.tableScroll, { width: horizontalBlockWidth }]}>
               <View style={styles.table}>
                 {block.rows.map((row, rowIndex) => (
                   <View key={`${key}-${rowIndex}`} style={[styles.tableRow, rowIndex === 0 && styles.tableHeaderRow]}>
@@ -385,14 +387,14 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
           );
         }
         return (
-          <Text selectable key={key} style={[styles.body, styles.assistantText]}>
+          <Text key={key} style={[styles.body, styles.assistantText]}>
             {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink)}
             {appendTrailingInline ? trailingInline : null}
           </Text>
         );
       })}
       {trailingInline && trailingTargetIndex < 0 ? (
-        <Text selectable style={[styles.body, styles.assistantText]}>
+        <Text style={[styles.body, styles.assistantText]}>
           {trailingInline}
         </Text>
       ) : null}
@@ -403,6 +405,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
 const styles = StyleSheet.create({
   wrap: {
     gap: rhythm.microGap,
+    maxWidth: '100%',
   },
   body: {
     ...typography.textStyles.body,
@@ -510,6 +513,7 @@ const styles = StyleSheet.create({
     backgroundColor: aiLightColors.dark,
     borderRadius: radius.md,
     gap: rhythm.microGap,
+    maxWidth: '100%',
     overflow: 'hidden',
     padding: spacing[2],
   },
@@ -537,6 +541,9 @@ const styles = StyleSheet.create({
     color: aiLightColors.onDark,
     fontFamily: typography.family.mono,
     lineHeight: 20,
+  },
+  codeScroll: {
+    maxWidth: '100%',
   },
   tableScroll: {
     maxWidth: '100%',

@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.3.7",
-  "versionCode": 237,
+  "version": "2.3.8",
+  "versionCode": 238,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.3.7 已发布，AI 聊天生成和 Markdown 显示更稳定。",
+  "message": "Pixory 2.3.8 已发布，AI 聊天 Markdown 显示更稳定，并加入热更新底包能力。",
   "releaseNotes": [
-    "修复 Android 上 AI 回复代码块可能导致聊天页出现大面积空白遮挡的问题。",
-    "AI 回复生成改为页面外任务管理，离开聊天页后可继续生成，返回时自动接续状态。",
-    "聊天抽屉的最近列表会显示当前会话，并标记为当前聊天。"
+    "进一步修复 Android 上 AI 回复 Markdown 可能导致聊天页出现大面积空白遮挡的问题。",
+    "加入 EAS Update 热更新底包能力，后续兼容的 JS 与样式修复可通过 production channel 下发。",
+    "代码块和表格横向滚动区域增加宽度约束，减少流式渲染重排风险。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

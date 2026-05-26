@@ -305,6 +305,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     gap: rhythm.cardContentGap,
+    maxWidth: '100%',
     padding: spacing[3],
   },
   userBubble: {

@@ -18,6 +18,21 @@ test('update check is configured as a passive version file lookup', () => {
   assert.equal(updateConfig.timeoutMs, 5000);
 });
 
+test('EAS Update is configured for production OTA bundles', () => {
+  const appConfig = JSON.parse(readProjectFile('app.json'));
+  const packageJson = JSON.parse(readProjectFile('package.json'));
+  const easConfig = JSON.parse(readProjectFile('eas.json'));
+
+  assert.equal(packageJson.dependencies['expo-updates'], '~29.0.17');
+  assert.deepEqual(appConfig.expo.runtimeVersion, { policy: 'appVersion' });
+  assert.equal(appConfig.expo.updates.enabled, true);
+  assert.equal(appConfig.expo.updates.url, 'https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae');
+  assert.equal(appConfig.expo.updates.checkAutomatically, 'ON_LOAD');
+  assert.equal(appConfig.expo.updates.fallbackToCacheTimeout, 0);
+  assert.equal(appConfig.expo.updates.requestHeaders['expo-channel-name'], 'production');
+  assert.equal(easConfig.build['release-apk'].channel, 'production');
+});
+
 test('announcement check is configured as a passive remote notice lookup', () => {
   const appConfig = JSON.parse(readProjectFile('app.json'));
   const announcementConfig = appConfig.expo.extra.announcement;
