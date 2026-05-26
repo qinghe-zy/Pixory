@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.20",
-  "versionCode": 234,
+  "version": "2.1.21",
+  "versionCode": 235,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.20 已发布，综合记录抽屉和聊天浮动按钮更稳。",
+  "message": "Pixory 2.1.21 已发布，AI 资料库和长对话体验更稳。",
   "releaseNotes": [
-    "综合记录抽屉现在覆盖完整聊天页，打开时不再被标题栏和内容内边距截断。",
-    "最近会话删除确认改为当前位置轻量确认块，删除按钮使用危险色。",
-    "回到最新按钮改为独立浮动按钮，触发阈值提升，减少白色包裹和误显示。"
+    "AI 会话资料、知识库资料和引用链路的删除、迁移、刷新行为更稳定。",
+    "总资料库、批量删除、当前会话添加资料和文本阅读器流程更清晰。",
+    "AI 聊天优化了冷启动问候、思考动画、图片 Markdown、键盘和长历史性能。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
