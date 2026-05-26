@@ -92,9 +92,11 @@ test('AI chat hides the voice input entry while keeping Android speech recogniti
 test('AI chat relies on Android adjustResize instead of JS keyboard margin lifting', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(chat, /KeyboardAvoidingView/);
-  assert.match(chat, /<KeyboardAvoidingView behavior="height" enabled=\{Platform\.OS === 'android'\} style=\{\[styles\.keyboardResizeHost, styles\.screenContent/);
-  assert.match(chat, /keyboardResizeHost:\s*\{\s*flex:\s*1/);
+  assert.doesNotMatch(chat, /KeyboardAvoidingView/);
+  assert.doesNotMatch(chat, /KeyboardAvoidingView behavior="height"/);
+  assert.doesNotMatch(chat, /enabled=\{Platform\.OS === 'android'\}/);
+  assert.doesNotMatch(chat, /keyboardResizeHost/);
+  assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
@@ -757,7 +759,8 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
   assert.match(service, /contextTrimmedByBudget/);
   assert.match(service, /contextTrimmedByCount/);
   assert.match(chat, /contextTrimNotice/);
-  assert.match(chat, /const latestAssistant = \[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
+  assert.match(chat, /function findLatestAssistantMessage/);
+  assert.match(chat, /const latestAssistant = findLatestAssistantMessage\(visibleMessages\)/);
   assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
   assert.match(chat, /promptSnapshotJson/);
 });
@@ -780,7 +783,10 @@ test('AI thinking block expands and collapses with a lightweight animation', () 
   assert.match(thinking, /Animated/);
   assert.match(thinking, /expandedProgress/);
   assert.match(thinking, /Animated\.timing/);
-  assert.match(thinking, /useNativeDriver: false/);
+  assert.match(thinking, /useNativeDriver: true/);
+  assert.doesNotMatch(thinking, /useNativeDriver: false/);
+  assert.match(thinking, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 500\)/);
+  assert.doesNotMatch(thinking, /setInterval\(\(\) => setNow\(Date\.now\(\)\), 100\)/);
   assert.match(thinking, /thinkingAnimatedBody/);
 });
 
@@ -794,6 +800,96 @@ test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fi
   assert.doesNotMatch(thinking, /bodyVisible = \(expanded \|\| thinking\)/);
   assert.doesNotMatch(thinking, /outputRange:\s*\[0,\s*320\]/);
   assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
+});
+
+test('AI chat empty start uses a Claude-like greeting and faint starter suggestions', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /function getAiChatGreeting/);
+  assert.match(chat, /今天想聊点什么？/);
+  assert.match(chat, /现在想聊点什么？/);
+  assert.match(chat, /今晚想聊点什么？/);
+  assert.match(chat, /ListEmptyComponent=\{invertedMessageItems\.length === 0 \? /);
+  assert.match(chat, /AiChatStarterHints/);
+  assert.match(chat, /fontSize:\s*28/);
+  assert.match(chat, /lineHeight:\s*36/);
+  assert.match(chat, /fontWeight:\s*'400'/);
+  assert.match(chat, /letterSpacing:\s*0/);
+  assert.match(chat, /整理这段资料/);
+  assert.match(chat, /帮我发散想法/);
+  assert.match(chat, /总结当前设定/);
+  assert.match(chat, /onPickSuggestion=\{setComposerText\}/);
+  assert.doesNotMatch(chat, /onPickSuggestion=\{handleSend\}/);
+  assert.doesNotMatch(chat, /emptyStateCard/);
+});
+
+test('AI message content memoizes markdown and renders image markdown inline', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /import \{ useEffect, useMemo, useRef, useState, type ReactNode \} from 'react'/);
+  assert.match(content, /Image/);
+  assert.match(content, /type: 'image'/);
+  assert.match(content, /isImageMarkdownLine/);
+  assert.match(content, /AiMarkdownImage/);
+  assert.match(content, /const blocks = useMemo\(\(\) => parseMarkdownBlocks\(content\), \[content\]\)/);
+  assert.match(content, /onError=\{\(\) => setLoadFailed\(true\)\}/);
+  assert.match(content, /图片无法预览/);
+  assert.doesNotMatch(content, /!\[alt\]\(url\)/);
+});
+
+test('AI chat long histories chunk attached data lookups', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const versionsBody = /async listMessageVersionsForMessages[\s\S]*?\n  \},\n\n  async replaceCitations/.exec(repository)?.[0] ?? '';
+  const citationsBody = /async listCitationsForMessages[\s\S]*?\n  \},\n\n  async getThreadMemorySettings/.exec(repository)?.[0] ?? '';
+
+  assert.match(repository, /MESSAGE_LOOKUP_CHUNK_SIZE = 200|DELETE_MESSAGE_CHUNK_SIZE = 200/);
+  assert.match(versionsBody, /for \(let index = 0; index < messageIds\.length; index \+= MESSAGE_LOOKUP_CHUNK_SIZE\)/);
+  assert.match(versionsBody, /const chunk = messageIds\.slice\(index, index \+ MESSAGE_LOOKUP_CHUNK_SIZE\)/);
+  assert.match(versionsBody, /makeInClause\(chunk\)/);
+  assert.doesNotMatch(versionsBody, /makeInClause\(messageIds\)/);
+  assert.match(citationsBody, /for \(let index = 0; index < messageIds\.length; index \+= MESSAGE_LOOKUP_CHUNK_SIZE\)/);
+  assert.match(citationsBody, /const chunk = messageIds\.slice\(index, index \+ MESSAGE_LOOKUP_CHUNK_SIZE\)/);
+  assert.match(citationsBody, /makeInClause\(chunk\)/);
+  assert.doesNotMatch(citationsBody, /makeInClause\(messageIds\)/);
+});
+
+test('AI chat long histories keep FlatList resident rows bounded', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /initialNumToRender=\{10\}/);
+  assert.match(chat, /maxToRenderPerBatch=\{8\}/);
+  assert.match(chat, /windowSize=\{11\}/);
+  assert.match(chat, /removeClippedSubviews=\{Platform\.OS === 'android'\}/);
+});
+
+test('AI chat polish avoids redundant scroll state updates and clears transient timers', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const latestButton = read('src/components/ai/AiScrollToLatestButton.tsx');
+
+  assert.match(chat, /latestVisibleRef/);
+  assert.match(chat, /const nextLatestVisible = contentOffset\.y <= MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.match(chat, /if \(latestVisibleRef\.current !== nextLatestVisible\)/);
+  assert.match(chat, /latestVisibleRef\.current = nextLatestVisible/);
+  assert.match(chat, /findLatestAssistantMessage/);
+  assert.doesNotMatch(chat, /\[\.\.\.messages\]\.reverse\(\)\.find/);
+  assert.doesNotMatch(chat, /\[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
+  assert.match(chat, /composerPanelHeight/);
+  assert.match(chat, /onLayout=\{\(event\) => setComposerPanelHeight\(event\.nativeEvent\.layout\.height\)\}/);
+  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[4\]\}/);
+  assert.match(latestButton, /bottomOffset: number/);
+  assert.match(latestButton, /bottom:\s*bottomOffset/);
+  assert.doesNotMatch(latestButton, /bottom:\s*spacing\[12\] \+ spacing\[10\]/);
+
+  assert.match(content, /feedbackTimeoutRef/);
+  assert.match(content, /clearFeedbackTimer/);
+  assert.match(content, /return clearFeedbackTimer/);
+  assert.match(bubble, /copyFeedbackTimeoutRef/);
+  assert.match(bubble, /clearCopyFeedbackTimer/);
+  assert.match(bubble, /return clearCopyFeedbackTimer/);
+  assert.match(chat, /voiceResetTimeoutRef/);
+  assert.match(chat, /clearVoiceResetTimeout/);
 });
 
 test('AI screens use shared time formatting helpers', () => {
