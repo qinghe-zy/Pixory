@@ -83,6 +83,7 @@ test('AI provider setup supports SecureStore keys and manual model IDs', () => {
 test('AI session settings persist role cards system prompt and boundary mode to the thread', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const roleEditor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const roleLibrary = read('src/screens/AiRoleLibraryScreen.tsx');
   const app = read('App.tsx');
   const chatScreen = read('src/screens/AiChatScreen.tsx');
   const chatService = read('src/ai/aiChatService.ts');
@@ -110,10 +111,10 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(roleEditor, /ImagePicker\.launchImageLibraryAsync/);
   assert.match(roleEditor, /copyAiRoleAvatarToAppStorage/);
   assert.match(roleEditor, /imageRepository\.findByIpId/);
-  assert.match(roleEditor, /deleteRoleCards/);
-  assert.match(roleEditor, /selectedCardIds/);
-  assert.match(roleEditor, /selectionFooter/);
-  assert.match(roleEditor, /onLongPress=\{\(\) => toggleSelected\(card\.id\)\}/);
+  assert.match(roleLibrary, /deleteRoleCards/);
+  assert.match(roleLibrary, /selectedCardIds/);
+  assert.match(roleLibrary, /selectionFooter/);
+  assert.match(roleLibrary, /onLongPress=\{toggleSelected\}/);
   assert.match(app, /onThreadReady/);
   assert.match(chatScreen, /handleOpenSessionConfig/);
   assert.match(chatScreen, /loadThreadAvatarConfig/);
