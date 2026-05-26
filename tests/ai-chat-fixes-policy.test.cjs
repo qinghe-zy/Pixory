@@ -169,7 +169,8 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
   assert.match(chat, /const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120/);
-  assert.match(chat, /contentOffset\.y > MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.match(chat, /const nextLatestVisible = contentOffset\.y <= MESSAGE_BOTTOM_LOCK_THRESHOLD/);
+  assert.match(chat, /userScrolledAwayFromBottomRef\.current = !nextLatestVisible/);
   assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} visible=\{!latestVisible && !inlineEditingActive\}/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
   assert.doesNotMatch(chat, /scrollToEnd/);
@@ -260,7 +261,7 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
   assert.match(content, /trailingInline\?: ReactNode/);
   assert.match(content, /trailingTargetIndex/);
-  assert.match(content, /block\.type === 'hr' \? targetIndex : index/);
+  assert.match(content, /block\.type === 'hr' \|\| block\.type === 'image' \? targetIndex : index/);
   assert.match(content, /parseMarkdownBlocks/);
   assert.match(content, /type: 'heading'/);
   assert.match(content, /type: 'list'/);
@@ -721,7 +722,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(bubble, /import \{ memo, useEffect, useState \} from 'react'/);
+  assert.match(bubble, /import \{ memo, useEffect, useRef, useState \} from 'react'/);
   assert.match(bubble, /showAvatar\?: boolean/);
   assert.match(bubble, /function AiMessageBubbleComponent/);
   assert.match(bubble, /showAssistantAvatar = !isUser && showAvatar && assistantAvatar\?\.avatarEnabled/);

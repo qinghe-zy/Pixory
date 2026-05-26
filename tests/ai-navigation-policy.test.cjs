@@ -673,7 +673,7 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
   assert.match(chat, /useNativeDriver: true/);
   assert.match(chat, /opacity: composerEntranceProgress/);
   assert.match(chat, /translateY: composerEntranceTranslateY/);
-  assert.match(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
+  assert.match(chat, /<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
   assert.match(app, /composerEntranceKey=\{currentRoute\.routeKey\}/);
   assert.match(app, /composerEntranceReason=\{currentRoute\.composerEntranceReason \?\? 'replace_current'\}/);
   assert.match(app, /prepareAiChatRouteForPush/);
