@@ -153,6 +153,8 @@ interface AiChatScreenProps {
   includeIpDocuments?: boolean;
   threadId?: string;
   onOpenHistory: () => void;
+  onOpenRoleLibrary: () => void;
+  onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onNewChat: () => void;
@@ -175,6 +177,8 @@ export function AiChatScreen({
   includeIpDocuments = false,
   threadId,
   onOpenHistory,
+  onOpenRoleLibrary,
+  onOpenGlobalMaterials,
   onOpenSessionConfig,
   onOpenMemoryBoard,
   onNewChat,
@@ -1522,9 +1526,17 @@ export function AiChatScreen({
           setRecordDrawerVisible(false);
           handleNewChatPress();
         }}
+        onOpenRoleLibrary={() => {
+          setRecordDrawerVisible(false);
+          onOpenRoleLibrary();
+        }}
         onOpenHistory={() => {
           setRecordDrawerVisible(false);
           onOpenHistory();
+        }}
+        onOpenGlobalMaterials={() => {
+          setRecordDrawerVisible(false);
+          onOpenGlobalMaterials();
         }}
         onOpenThread={(thread) => {
           setRecordDrawerVisible(false);

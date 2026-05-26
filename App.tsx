@@ -41,6 +41,8 @@ import { AiMaterialListScreen } from './src/screens/AiMaterialListScreen';
 import { AiMemoryBoardScreen } from './src/screens/AiMemoryBoardScreen';
 import { AiProviderSettingsScreen } from './src/screens/AiProviderSettingsScreen';
 import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
+import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
+import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { createNormalThreadFromRoleCard } from './src/ai/aiChatService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
@@ -166,6 +168,8 @@ type AppRoute =
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
+  | { name: 'ai-role-library'; space: PixorySpace }
+  | { name: 'ai-role-card-detail'; space: PixorySpace; roleCardId: string }
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
@@ -1486,6 +1490,8 @@ export default function App() {
         boundKnowledgeBaseId={currentRoute.knowledgeBaseId}
         includeIpDocuments={currentRoute.includeIpDocuments}
         onOpenHistory={() => pushRoute({ name: 'ai-history', space: currentRoute.space })}
+        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
+        onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: currentRoute.space })}
         onOpenSessionConfig={(threadId) =>
           pushRoute({
             name: 'ai-session-config',
@@ -1527,7 +1533,7 @@ export default function App() {
         onBack={popRoute}
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
+        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
         onOpenMemoryBoard={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId: currentRoute.threadId as string })
@@ -1542,6 +1548,27 @@ export default function App() {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
+  } else if (currentRoute.name === 'ai-role-library') {
+    content = (
+      <AiRoleLibraryScreen
+        onBack={popRoute}
+        onCreateRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
+        onImportRole={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space })}
+        onOpenRoleDetail={(roleCardId) => pushRoute({ name: 'ai-role-card-detail', roleCardId, space: currentRoute.space })}
+        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ai-role-card-detail') {
+    content = (
+      <AiRoleCardDetailScreen
+        onBack={popRoute}
+        onEditRole={(roleCardId) => pushRoute({ name: 'ai-role-card-editor', roleCardId, space: currentRoute.space })}
+        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(currentRoute.space, roleCardId)}
+        roleCardId={currentRoute.roleCardId}
+        space={currentRoute.space}
+      />
+    );
   } else if (currentRoute.name === 'ai-role-card-editor') {
     content = (
       <AiRoleCardEditorScreen
@@ -1652,10 +1679,8 @@ export default function App() {
     content = (
       <AiHomeScreen
         footer={rootFooter}
-        onOpenMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
-        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-card-editor', space: activeSpace })}
-        onStartKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
+        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
         onStartNormalChat={() =>
           pushRoute({
             name: 'ai-chat',
@@ -1664,7 +1689,6 @@ export default function App() {
             space: activeSpace,
           })
         }
-        onStartIpChat={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
         space={activeSpace}
       />
     );

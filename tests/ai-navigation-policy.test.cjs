@@ -26,13 +26,11 @@ test('AI routes are registered for workbench, chat, settings, history, materials
   }
 });
 
-test('AI workbench exposes the three first-version starts and no disconnected default warning', () => {
+test('AI workbench exposes chat and role library without old knowledge starts', () => {
   const content = home();
   assert.match(content, /开始聊天/);
-  assert.match(content, /问问某个 IP/);
-  assert.match(content, /连接知识库/);
+  assert.match(content, /角色库/);
   assert.match(content, /primaryChatCard/);
-  assert.match(content, /secondaryAction/);
   assert.match(content, /backgroundVariant="aiChat"/);
   assert.match(content, /headerDividerVisible=\{false\}/);
   assert.doesNotMatch(content, /START_ENTRIES/);
@@ -41,6 +39,9 @@ test('AI workbench exposes the three first-version starts and no disconnected de
   assert.match(content, /title="AI 工作台"/);
   assert.doesNotMatch(content, />Pixory</);
   assert.doesNotMatch(content, /brandName/);
+  assert.doesNotMatch(content, /问问某个 IP/);
+  assert.doesNotMatch(content, /连接知识库/);
+  assert.doesNotMatch(content, /SillyTavern/);
   assert.doesNotMatch(content, /当前未连接知识库/);
 });
 
@@ -304,11 +305,17 @@ test('AI provider and model screens keep preset providers simple and custom addr
 
 test('AI workbench exposes role library while material list route remains registered', () => {
   const content = home();
-  assert.match(content, /onOpenMaterials/);
   assert.match(content, /onOpenRoleLibrary/);
   assert.match(content, /角色库/);
+  assert.match(content, /管理和导入 AI 角色/);
+  assert.doesNotMatch(content, /onOpenMaterials/);
   assert.doesNotMatch(content, /最近材料/);
   assert.doesNotMatch(content, /listRecentMaterials/);
+  assert.match(app, /ai-role-library/);
+  assert.match(app, /AiRoleLibraryScreen/);
+  assert.match(app, /AiRoleCardDetailScreen/);
+  assert.match(app, /onStartChatWithRole/);
+  assert.match(app, /createNormalThreadFromRoleCard/);
   assert.match(app, /ai-material-list/);
   assert.match(content, /私密空间/);
   assert.doesNotMatch(content, /普通空间/);

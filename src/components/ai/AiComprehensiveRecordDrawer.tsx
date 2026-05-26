@@ -14,7 +14,9 @@ interface AiComprehensiveRecordDrawerProps {
   activeThreadId?: string | null;
   onClose: () => void;
   onNewChat: () => void;
+  onOpenRoleLibrary: () => void;
   onOpenHistory: () => void;
+  onOpenGlobalMaterials: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onRenameThread?: (thread: AiThreadHistoryItem, title: string) => Promise<void> | void;
   onDeleteThread?: (thread: AiThreadHistoryItem) => Promise<void> | void;
@@ -26,7 +28,9 @@ export function AiComprehensiveRecordDrawer({
   activeThreadId = null,
   onClose,
   onNewChat,
+  onOpenRoleLibrary,
   onOpenHistory,
+  onOpenGlobalMaterials,
   onOpenThread,
   onRenameThread,
   onDeleteThread,
@@ -107,7 +111,9 @@ export function AiComprehensiveRecordDrawer({
           <Text style={styles.brand}>Pixory AI</Text>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
+            <DrawerAction icon="person-circle-outline" label="角色库" onPress={onOpenRoleLibrary} />
             <DrawerAction icon="chatbubbles-outline" label="历史记录" onPress={onOpenHistory} />
+            <DrawerAction icon="folder-open-outline" label="总资料库" onPress={onOpenGlobalMaterials} />
           </View>
           <View style={styles.divider} />
           <Text style={styles.sectionTitle}>最近</Text>

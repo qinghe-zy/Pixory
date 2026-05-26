@@ -13,9 +13,6 @@ interface AiHomeScreenProps {
   footer?: ReactNode;
   space: PixorySpace;
   onStartNormalChat: () => void;
-  onStartIpChat: () => void;
-  onStartKnowledgeBase: () => void;
-  onOpenMaterials: () => void;
   onOpenRoleLibrary: () => void;
   onOpenProviderSettings: () => void;
 }
@@ -24,9 +21,6 @@ export function AiHomeScreen({
   footer,
   space,
   onStartNormalChat,
-  onStartIpChat,
-  onStartKnowledgeBase,
-  onOpenMaterials,
   onOpenRoleLibrary,
   onOpenProviderSettings,
 }: AiHomeScreenProps) {
@@ -71,20 +65,6 @@ export function AiHomeScreen({
           </View>
         </Pressable>
 
-        <View style={styles.secondaryActionRow}>
-          <SecondaryAction
-            description="带着 IP 资料聊"
-            icon="albums-outline"
-            onPress={onStartIpChat}
-            title="问问某个 IP"
-          />
-          <SecondaryAction
-            description="引用材料回答"
-            icon="library-outline"
-            onPress={onStartKnowledgeBase}
-            title="连接知识库"
-          />
-        </View>
       </View>
 
       <View style={styles.section}>
@@ -98,7 +78,7 @@ export function AiHomeScreen({
               管理和导入 AI 角色
             </Text>
             <Text numberOfLines={2} style={styles.threadDescription}>
-              导入 SillyTavern 角色卡，保存角色，或直接开始聊天
+              创建、导入和管理角色，并直接开始聊天
             </Text>
           </View>
           <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={20} />
@@ -112,28 +92,6 @@ interface SectionTitleProps {
   actionLabel?: string;
   title: string;
   onPress?: () => void;
-}
-
-interface SecondaryActionProps {
-  description: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  onPress: () => void;
-}
-
-function SecondaryAction({ description, icon, onPress, title }: SecondaryActionProps) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}>
-      <View style={styles.secondaryIcon}>
-        <Ionicons color={aiLightColors.coralActive} name={icon} size={20} />
-      </View>
-      <View style={styles.secondaryCopy}>
-        <Text numberOfLines={1} style={styles.secondaryTitle}>{title}</Text>
-        <Text numberOfLines={1} style={styles.secondaryDescription}>{description}</Text>
-      </View>
-      <Ionicons color={aiLightColors.mutedSoft} name="chevron-forward" size={19} />
-    </Pressable>
-  );
 }
 
 function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
@@ -252,48 +210,6 @@ const styles = StyleSheet.create({
     height: 52,
     justifyContent: 'center',
     width: 52,
-  },
-  secondaryActionRow: {
-    flexDirection: 'row',
-    gap: rhythm.compactGridGap,
-  },
-  secondaryAction: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    flex: 1,
-    flexDirection: 'row',
-    gap: rhythm.microGap,
-    minHeight: 86,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[3],
-  },
-  secondaryIcon: {
-    alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
-    borderRadius: radius.pill,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  secondaryCopy: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
-  },
-  secondaryTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  secondaryDescription: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-    fontSize: 11,
-    lineHeight: 15,
   },
   section: {
     gap: rhythm.cardContentGap,
