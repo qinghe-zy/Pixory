@@ -106,7 +106,7 @@ test('AI chat relies on Android adjustResize instead of JS keyboard margin lifti
   assert.match(chat, /const inlineEditingActive = Boolean\(editingUserMessageId\)/);
   assert.match(chat, /keyboardDismissMode=\{inlineEditingActive \? 'none' : Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
   assert.match(chat, /const handleComposerHeightChange = useCallback\(\(\) => \{\s*if \(editingUserMessageIdRef\.current\) \{\s*return;\s*\}/);
-  assert.match(chat, /\{inlineEditingActive \? null : \(\s*<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>/);
+  assert.match(chat, /\{inlineEditingActive \? null : \(\s*<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>/);
 });
 
 test('AI inline edit cancel and send labels are centered in their buttons', () => {
@@ -170,7 +170,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
   assert.match(chat, /const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120/);
   assert.match(chat, /contentOffset\.y > MESSAGE_BOTTOM_LOCK_THRESHOLD/);
-  assert.match(chat, /<AiScrollToLatestButton visible=\{!latestVisible && !inlineEditingActive\}/);
+  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} visible=\{!latestVisible && !inlineEditingActive\}/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /setTimeout\(scroll/);

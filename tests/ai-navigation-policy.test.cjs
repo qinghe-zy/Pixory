@@ -630,8 +630,9 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
   assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
-  assert.match(chat, /<KeyboardAvoidingView[\s\S]{0,180}styles\.screenContent/);
-  assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
+  assert.doesNotMatch(chat, /KeyboardAvoidingView/);
+  assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
+  assert.match(chat, /<\/View>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
   assert.match(headerBlock, /accessibilityLabel="会话设置"/);

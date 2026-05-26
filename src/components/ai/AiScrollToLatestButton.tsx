@@ -5,16 +5,17 @@ import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
 interface AiScrollToLatestButtonProps {
+  bottomOffset: number;
   visible: boolean;
   onPress: () => void;
 }
 
-export function AiScrollToLatestButton({ visible, onPress }: AiScrollToLatestButtonProps) {
+export function AiScrollToLatestButton({ bottomOffset, visible, onPress }: AiScrollToLatestButtonProps) {
   if (!visible) {
     return null;
   }
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.button, { bottom: bottomOffset }, pressed && styles.pressed]}>
       <Ionicons color={aiLightColors.onDark} name="arrow-down" size={14} />
       <Text style={styles.text}>回到最新</Text>
     </Pressable>
@@ -27,7 +28,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
-    bottom: spacing[12] + spacing[10],
     flexDirection: 'row',
     gap: rhythm.microGap,
     minHeight: 32,

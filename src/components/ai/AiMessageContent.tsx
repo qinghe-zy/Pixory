@@ -237,7 +237,9 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
     }
   }
 
-  useEffect(() => clearFeedbackTimer, []);
+  useEffect(() => {
+    return clearFeedbackTimer;
+  }, []);
 
   if (variant === 'user') {
     return <Text selectable style={[styles.body, styles.userText]}>{content}</Text>;

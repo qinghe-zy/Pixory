@@ -94,7 +94,9 @@ function AiMessageBubbleComponent({
     }
   }, [editing, message.content]);
 
-  useEffect(() => clearCopyFeedbackTimer, []);
+  useEffect(() => {
+    return clearCopyFeedbackTimer;
+  }, []);
 
   function updateEditDraft(nextDraft: string) {
     setEditDraft(nextDraft);

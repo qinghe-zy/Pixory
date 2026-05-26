@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Easing, FlatList, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -114,6 +114,19 @@ function formatDateSeparator(value: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function getAiChatGreeting(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 12) {
+    return '今天想聊点什么？';
+  }
+  if (hour < 18) {
+    return '现在想聊点什么？';
+  }
+  return '今晚想聊点什么？';
+}
+
+const STARTER_SUGGESTIONS = ['整理这段资料', '帮我发散想法', '总结当前设定'] as const;
+
 function shouldShowDateSeparator(messages: AiMessageWithCitations[], index: number): boolean {
   if (index <= 0) {
     return true;
@@ -141,6 +154,35 @@ type VisibleMessageItem = {
   showAvatar: boolean;
   showDateSeparator: boolean;
 };
+
+function findLatestAssistantMessage(messages: AiMessageWithCitations[]): AiMessageWithCitations | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'assistant') {
+      return messages[index];
+    }
+  }
+  return undefined;
+}
+
+function AiChatStarterHints({ onPickSuggestion }: { onPickSuggestion: (value: string) => void }) {
+  return (
+    <View style={styles.starterWrap}>
+      <Text style={styles.starterGreeting}>{getAiChatGreeting()}</Text>
+      <View style={styles.starterSuggestions}>
+        {STARTER_SUGGESTIONS.map((suggestion) => (
+          <Pressable
+            accessibilityRole="button"
+            key={suggestion}
+            onPress={() => onPickSuggestion(suggestion)}
+            style={({ pressed }) => [styles.starterChip, pressed && styles.pressed]}
+          >
+            <Text style={styles.starterChipText}>{suggestion}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 interface AiChatScreenProps {
   space: PixorySpace;
@@ -194,6 +236,7 @@ export function AiChatScreen({
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
+  const latestVisibleRef = useRef(true);
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 82 });
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
@@ -220,6 +263,7 @@ export function AiChatScreen({
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
   const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
   const composerEntranceRunRef = useRef<ComposerEntranceRun | null>(null);
@@ -249,6 +293,7 @@ export function AiChatScreen({
   const [voiceState, setVoiceState] = useState<AiVoiceInputState>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [latestVisible, setLatestVisible] = useState(true);
+  const [composerPanelHeight, setComposerPanelHeight] = useState(0);
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
@@ -263,7 +308,7 @@ export function AiChatScreen({
     opacity: composerEntranceProgress,
     transform: [{ translateY: composerEntranceTranslateY }],
   };
-  const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+  const latestAssistantMessage = useMemo(() => findLatestAssistantMessage(messages), [messages]);
   const messagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
 
   function getSelectedMessageVersionIndex(messageId: string, versionTotal: number): number {
@@ -337,7 +382,7 @@ export function AiChatScreen({
   );
   const contextTrimNotice = useMemo(
     () => {
-      const latestAssistant = [...visibleMessages].reverse().find((message) => message.role === 'assistant');
+      const latestAssistant = findLatestAssistantMessage(visibleMessages);
       return latestAssistant ? messageHasContextTrim(latestAssistant) : false;
     },
     [visibleMessages]
@@ -415,12 +460,17 @@ export function AiChatScreen({
 
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset } = event.nativeEvent;
-    userScrolledAwayFromBottomRef.current = contentOffset.y > MESSAGE_BOTTOM_LOCK_THRESHOLD;
-    setLatestVisible(!userScrolledAwayFromBottomRef.current);
+    const nextLatestVisible = contentOffset.y <= MESSAGE_BOTTOM_LOCK_THRESHOLD;
+    userScrolledAwayFromBottomRef.current = !nextLatestVisible;
+    if (latestVisibleRef.current !== nextLatestVisible) {
+      latestVisibleRef.current = nextLatestVisible;
+      setLatestVisible(nextLatestVisible);
+    }
   }, []);
 
   const followLatestMessage = useCallback((animated = true) => {
     userScrolledAwayFromBottomRef.current = false;
+    latestVisibleRef.current = true;
     setLatestVisible(true);
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
@@ -435,6 +485,13 @@ export function AiChatScreen({
   function clearInlineEditVisibilityTimeouts() {
     inlineEditVisibilityTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
     inlineEditVisibilityTimeoutsRef.current = [];
+  }
+
+  function clearVoiceResetTimeout() {
+    if (voiceResetTimeoutRef.current) {
+      clearTimeout(voiceResetTimeoutRef.current);
+      voiceResetTimeoutRef.current = null;
+    }
   }
 
   function scrollInlineEditMessageIntoView(messageId: string) {
@@ -517,6 +574,7 @@ export function AiChatScreen({
         setMemoryCaptures([]);
         isLoadingEarlierRef.current = false;
         userScrolledAwayFromBottomRef.current = false;
+        latestVisibleRef.current = true;
         setLatestVisible(true);
         return;
       }
@@ -527,6 +585,7 @@ export function AiChatScreen({
       setHasEarlierMessages(nextMessages.length >= loadedMessageLimit);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
+        latestVisibleRef.current = true;
         setLatestVisible(true);
       }
       setMessages(nextMessages);
@@ -666,6 +725,7 @@ export function AiChatScreen({
       setMemoryCaptures([]);
     }
     userScrolledAwayFromBottomRef.current = false;
+    latestVisibleRef.current = true;
     setLatestVisible(true);
     applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
@@ -712,6 +772,7 @@ export function AiChatScreen({
       streamAbortRef.current?.abort();
       streamAbortRef.current = null;
       activeStreamGenerationRef.current += 1;
+      clearVoiceResetTimeout();
       if (newChatFeedbackTimeoutRef.current) {
         clearTimeout(newChatFeedbackTimeoutRef.current);
         newChatFeedbackTimeoutRef.current = null;
@@ -1273,6 +1334,7 @@ export function AiChatScreen({
 
   async function handleVoiceInput() {
     try {
+      clearVoiceResetTimeout();
       setVoiceState('listening');
       setVoiceError(null);
       if (Platform.OS === 'android') {
@@ -1311,7 +1373,11 @@ export function AiChatScreen({
 
   function handleCancelVoiceInput() {
     setVoiceState('cancelled');
-    setTimeout(() => setVoiceState('idle'), 1200);
+    clearVoiceResetTimeout();
+    voiceResetTimeoutRef.current = setTimeout(() => {
+      setVoiceState('idle');
+      voiceResetTimeoutRef.current = null;
+    }, 1200);
   }
 
   function getComposerPlaceholder() {
@@ -1416,7 +1482,7 @@ export function AiChatScreen({
       backgroundColor={aiLightColors.canvas}
       contentStyle={styles.drawerHost}
     >
-      <KeyboardAvoidingView behavior="height" enabled={Platform.OS === 'android'} style={[styles.keyboardResizeHost, styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+      <View style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
       <View style={styles.header}>
         <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
@@ -1449,9 +1515,16 @@ export function AiChatScreen({
         ref={messageListRef}
         data={invertedMessageItems}
         inverted
+        initialNumToRender={10}
         keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         keyboardShouldPersistTaps="handled"
         keyExtractor={messageKeyExtractor}
+        maxToRenderPerBatch={8}
+        removeClippedSubviews={Platform.OS === 'android'}
+        windowSize={11}
+        ListEmptyComponent={invertedMessageItems.length === 0 ? (
+          <AiChatStarterHints onPickSuggestion={setComposerText} />
+        ) : null}
         ListFooterComponent={
           <>
             {errorMessage ? <AiChatErrorBanner message={errorMessage} onRetry={latestAssistantMessage?.status === 'failed' ? () => void handleRegenerate(latestAssistantMessage.id) : undefined} /> : null}
@@ -1474,10 +1547,10 @@ export function AiChatScreen({
         viewabilityConfig={inlineEditViewabilityConfigRef.current}
       />
 
-      <AiScrollToLatestButton visible={!latestVisible && !inlineEditingActive} onPress={() => followLatestMessage()} />
+      <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={!latestVisible && !inlineEditingActive} onPress={() => followLatestMessage()} />
 
       {inlineEditingActive ? null : (
-        <Animated.View style={[styles.composerPanel, composerEntranceStyle]}>
+        <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
           {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
           {fallbackMemoryCaptures.length > 0 ? (
             <AiMemoryCaptureNotice
@@ -1516,7 +1589,7 @@ export function AiChatScreen({
           />
         </Animated.View>
       )}
-      </KeyboardAvoidingView>
+      </View>
       <AiComprehensiveRecordDrawer
         activeThreadId={activeThreadId}
         recentThreads={recentThreads}
@@ -1559,10 +1632,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: rhythm.cardContentGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
-  },
-  keyboardResizeHost: {
-    flex: 1,
-    gap: rhythm.cardContentGap,
   },
   composerPanel: {
     backgroundColor: aiLightColors.canvas,
@@ -1663,6 +1732,41 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
     paddingBottom: spacing[4],
     paddingTop: spacing[3],
+  },
+  starterWrap: {
+    alignItems: 'center',
+    flex: 1,
+    gap: rhythm.inlineGap,
+    justifyContent: 'flex-end',
+    paddingBottom: spacing[8],
+    paddingHorizontal: spacing[2],
+  },
+  starterGreeting: {
+    color: aiLightColors.ink,
+    fontFamily: aiLightDisplayFont,
+    fontSize: 28,
+    fontWeight: '400',
+    letterSpacing: 0,
+    lineHeight: 36,
+    opacity: 0.78,
+    textAlign: 'center',
+  },
+  starterSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.microGap,
+    justifyContent: 'center',
+  },
+  starterChip: {
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1],
+  },
+  starterChipText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   loadEarlierButton: {
     alignItems: 'center',
