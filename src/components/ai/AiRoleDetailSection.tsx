@@ -35,6 +35,7 @@ export function AiRoleDetailSection({
   return (
     <View style={styles.section}>
       <Pressable
+        accessibilityState={{ expanded }}
         accessibilityRole="button"
         onPress={() => setExpanded((current) => !current)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
@@ -55,7 +56,19 @@ export function AiRoleDetailSection({
         ) : (
           children
         )}
-        {!expanded && footer ? <View style={styles.footer}>{footer}</View> : null}
+        {!expanded && footer ? (
+          <Pressable
+            accessibilityLabel={`展开${title}`}
+            accessibilityRole="button"
+            onPress={() => setExpanded(true)}
+            style={({ pressed }) => [styles.footer, pressed && styles.pressed]}
+          >
+            <View style={styles.footerContent}>
+              {footer}
+              <Ionicons color={aiLightColors.muted} name="chevron-forward" size={16} />
+            </View>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -84,7 +97,7 @@ const styles = StyleSheet.create({
   },
   iconBubble: {
     alignItems: 'center',
-    backgroundColor: '#F4E2D4',
+    backgroundColor: aiLightColors.coralSoft,
     borderRadius: radius.pill,
     height: 40,
     justifyContent: 'center',
@@ -96,7 +109,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   previewCard: {
-    backgroundColor: 'rgba(255, 250, 242, 0.72)',
+    backgroundColor: aiLightColors.cardWash,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -106,7 +119,7 @@ const styles = StyleSheet.create({
   body: {
     ...typography.textStyles.body,
     color: aiLightColors.ink,
-    lineHeight: 24,
+    lineHeight: typography.textStyles.body.lineHeight,
   },
   quoteBody: {
     color: aiLightColors.dark,
@@ -119,6 +132,12 @@ const styles = StyleSheet.create({
     borderTopColor: aiLightColors.hairline,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: spacing[2],
+  },
+  footerContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    justifyContent: 'space-between',
   },
   pressed: {
     opacity: 0.78,

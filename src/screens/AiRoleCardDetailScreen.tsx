@@ -7,7 +7,7 @@ import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiRoleDetailSection } from '../components/ai/AiRoleDetailSection';
-import { aiLightColors } from '../components/ai/aiLightTheme';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
 import type { PixorySpace } from '../database';
 import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
@@ -26,7 +26,18 @@ function getRoleCardSourceLabel(card: AiRoleCardRecord): string {
   return !card.sourceType || card.sourceType === 'pixory_manual' ? '自建' : '导入';
 }
 
+const MORE_GREETING_PREVIEW_COUNT = 3;
+
+// Hero art-board constants preserve the poster composition; they are not reusable spacing/rhythm tokens.
 const ROLE_HERO_HEIGHT = 560;
+const ROLE_HERO_FADE_BOTTOM_HEIGHT = 118;
+const ROLE_HERO_COPY_OFFSET = '45%';
+const ROLE_HERO_FALLBACK_MARK_SIZE = 220;
+const ROLE_HERO_IMAGE_WIDTH = '68%';
+const ROLE_HERO_MARK_SIZE = 260;
+const ROLE_HERO_RIGHT_FADE_WIDTH = '58%';
+const ROLE_HERO_TITLE_LINE_HEIGHT = 56;
+const ROLE_HERO_TITLE_SIZE = 48;
 
 function getRoleCardMeta(card: AiRoleCardRecord): string {
   const avatarMeta = card.avatarEnabled && card.avatarUri ? '头像开启' : '无头像';
@@ -77,6 +88,7 @@ export function AiRoleCardDetailScreen({
   }
 
   function renderCardDetail(card: AiRoleCardRecord) {
+    const hasHiddenAlternateGreetings = card.alternateGreetings.length > MORE_GREETING_PREVIEW_COUNT;
     const moreGreetingsText = card.alternateGreetings.map((greeting, index) => `• ${index + 1}. ${greeting}`).join('\n\n');
     const moreGreetingsFooter = (
       <Text style={styles.sectionFooterText}>
@@ -126,7 +138,7 @@ export function AiRoleCardDetailScreen({
           </AiRoleDetailSection>
         ) : null}
         {card.alternateGreetings.length ? (
-          <AiRoleDetailSection title="更多开场白" footer={moreGreetingsFooter} iconName="chatbubbles-outline" previewLines={6} variant="list">
+          <AiRoleDetailSection title="更多开场白" footer={hasHiddenAlternateGreetings ? moreGreetingsFooter : undefined} iconName="chatbubbles-outline" previewLines={6} variant="list">
             {moreGreetingsText}
           </AiRoleDetailSection>
         ) : null}
@@ -198,24 +210,24 @@ const styles = StyleSheet.create({
     height: ROLE_HERO_HEIGHT - spacing[6],
     left: -spacing[8],
     position: 'absolute',
-    width: '68%',
+    width: ROLE_HERO_IMAGE_WIDTH,
   },
   heroWarmOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(250, 249, 245, 0.14)',
+    backgroundColor: aiLightColors.posterWarmOverlay,
   },
   heroFadeRight: {
-    backgroundColor: 'rgba(250, 249, 245, 0.82)',
+    backgroundColor: aiLightColors.posterRightFade,
     bottom: 0,
     position: 'absolute',
     right: 0,
     top: 0,
-    width: '58%',
+    width: ROLE_HERO_RIGHT_FADE_WIDTH,
   },
   heroFadeBottom: {
-    backgroundColor: 'rgba(250, 249, 245, 0.92)',
+    backgroundColor: aiLightColors.posterBottomFade,
     bottom: 0,
-    height: 118,
+    height: ROLE_HERO_FADE_BOTTOM_HEIGHT,
     left: 0,
     position: 'absolute',
     right: 0,
@@ -229,23 +241,23 @@ const styles = StyleSheet.create({
   heroFallbackMoon: {
     backgroundColor: aiLightColors.card,
     borderRadius: radius.pill,
-    height: 220,
+    height: ROLE_HERO_FALLBACK_MARK_SIZE,
     position: 'absolute',
-    width: 220,
+    width: ROLE_HERO_FALLBACK_MARK_SIZE,
   },
   heroPaperMark: {
-    backgroundColor: 'rgba(204, 120, 92, 0.08)',
+    backgroundColor: aiLightColors.paperMark,
     borderRadius: radius.pill,
-    height: 260,
+    height: ROLE_HERO_MARK_SIZE,
     left: -spacing[8],
     position: 'absolute',
     top: spacing[6],
-    width: 260,
+    width: ROLE_HERO_MARK_SIZE,
   },
   heroCopy: {
     alignItems: 'flex-start',
     gap: rhythm.cardContentGap,
-    marginLeft: '45%',
+    marginLeft: ROLE_HERO_COPY_OFFSET,
     paddingBottom: spacing[12] + spacing[10],
     paddingHorizontal: spacing[5],
     zIndex: 2,
@@ -253,10 +265,10 @@ const styles = StyleSheet.create({
   heroTitle: {
     ...typography.textStyles.pageTitle,
     color: aiLightColors.ink,
-    fontFamily: 'serif',
-    fontSize: 48,
+    fontFamily: aiLightDisplayFont,
+    fontSize: ROLE_HERO_TITLE_SIZE,
     fontWeight: '400',
-    lineHeight: 56,
+    lineHeight: ROLE_HERO_TITLE_LINE_HEIGHT,
   },
   heroDescription: {
     ...typography.textStyles.body,
@@ -304,7 +316,7 @@ const styles = StyleSheet.create({
   },
   tagIconBubble: {
     alignItems: 'center',
-    backgroundColor: '#F4E2D4',
+    backgroundColor: aiLightColors.coralSoft,
     borderRadius: radius.pill,
     height: 36,
     justifyContent: 'center',
@@ -321,7 +333,7 @@ const styles = StyleSheet.create({
   },
   tagChip: {
     ...typography.textStyles.micro,
-    backgroundColor: 'rgba(255, 250, 242, 0.78)',
+    backgroundColor: aiLightColors.cardWash,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,

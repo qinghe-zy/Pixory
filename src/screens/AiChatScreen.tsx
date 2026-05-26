@@ -54,6 +54,7 @@ import type { PixorySpace } from '../database';
 const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
+const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
 const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
 // Scroll affordance copy: 回到最新.
@@ -262,6 +263,7 @@ export function AiChatScreen({
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composerFocusVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
@@ -474,6 +476,28 @@ export function AiChatScreen({
     setLatestVisible(true);
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
+
+  function clearComposerFocusVisibilityTimeouts() {
+    composerFocusVisibilityTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    composerFocusVisibilityTimeoutsRef.current = [];
+  }
+
+  function scheduleComposerFocusVisibility() {
+    clearComposerFocusVisibilityTimeouts();
+    followLatestMessage(false);
+    COMPOSER_FOCUS_VISIBILITY_DELAYS_MS.forEach((delay) => {
+      composerFocusVisibilityTimeoutsRef.current.push(
+        setTimeout(() => followLatestMessage(false), delay)
+      );
+    });
+  }
+
+  function handleComposerFocus() {
+    if (editingUserMessageIdRef.current) {
+      return;
+    }
+    scheduleComposerFocusVisibility();
+  }
 
   const handleComposerHeightChange = useCallback(() => {
     if (editingUserMessageIdRef.current) {
@@ -712,6 +736,7 @@ export function AiChatScreen({
     const nextThreadId = threadId ?? null;
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
+    clearComposerFocusVisibilityTimeouts();
     clearInlineEditVisibilityTimeouts();
     inlineEditSafeVisibleMessageIdsRef.current = new Set();
     editingUserMessageIdRef.current = null;
@@ -767,6 +792,7 @@ export function AiChatScreen({
   useEffect(() => {
     return () => {
       screenMountedRef.current = false;
+      clearComposerFocusVisibilityTimeouts();
       clearInlineEditVisibilityTimeouts();
       cancelGenerationAction();
       streamAbortRef.current?.abort();
@@ -1534,7 +1560,7 @@ export function AiChatScreen({
           contentContainerStyle={styles.messageScrollContent}
           viewabilityConfig={inlineEditViewabilityConfigRef.current}
         />
-        {invertedMessageItems.length === 0 ? (
+        {invertedMessageItems.length === 0 && !errorMessage ? (
           <View style={styles.starterOverlay}>
             <AiChatStarterHints onPickSuggestion={setComposerText} />
           </View>
@@ -1564,6 +1590,7 @@ export function AiChatScreen({
             onAddVideoAttachment={() => void pickChatVideos()}
             onChangeText={setComposerText}
             onComposerHeightChange={handleComposerHeightChange}
+            onFocus={handleComposerFocus}
             onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
             placeholder=""
             onSend={() => {

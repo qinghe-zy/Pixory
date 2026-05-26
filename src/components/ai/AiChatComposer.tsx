@@ -33,6 +33,7 @@ interface AiChatComposerProps {
   onAddDocumentAttachment: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
+  onFocus?: () => void;
   onComposerHeightChange?: () => void;
   onVoiceInput: () => void;
   onCancelVoiceInput?: () => void;
@@ -95,6 +96,7 @@ export function AiChatComposer({
   onAddVideoAttachment,
   onAddDocumentAttachment,
   onChangeText,
+  onFocus,
   onComposerHeightChange,
   onRemoveAttachment,
   onVoiceInput,
@@ -215,6 +217,7 @@ export function AiChatComposer({
             }
           }}
           onChangeText={onChangeText}
+          onFocus={onFocus}
           placeholder={placeholder}
           placeholderTextColor={aiLightColors.mutedSoft}
           selectionColor={aiLightColors.coral}

@@ -109,6 +109,28 @@ test('AI chat relies on Android adjustResize instead of JS keyboard margin lifti
   assert.match(chat, /\{inlineEditingActive \? null : \(\s*<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>/);
 });
 
+test('AI chat composer focus keeps the input visible without keyboard height hacks', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+
+  assert.match(chat, /COMPOSER_FOCUS_VISIBILITY_DELAYS_MS/);
+  assert.match(chat, /composerFocusVisibilityTimeoutsRef/);
+  assert.match(chat, /function clearComposerFocusVisibilityTimeouts/);
+  assert.match(chat, /function scheduleComposerFocusVisibility/);
+  assert.match(chat, /function handleComposerFocus/);
+  assert.match(chat, /COMPOSER_FOCUS_VISIBILITY_DELAYS_MS\.forEach\(\(delay\) =>/);
+  assert.match(chat, /setTimeout\(\(\) => followLatestMessage\(false\), delay\)/);
+  assert.match(chat, /editingUserMessageIdRef\.current/);
+  assert.match(chat, /onFocus=\{handleComposerFocus\}/);
+  assert.match(chat, /clearComposerFocusVisibilityTimeouts\(\)/);
+  assert.doesNotMatch(chat, /Keyboard\.addListener/);
+  assert.doesNotMatch(chat, /keyboardBottomInset/);
+
+  assert.match(composer, /onFocus\?: \(\) => void/);
+  assert.match(composer, /onFocus,/);
+  assert.match(composer, /onFocus=\{onFocus\}/);
+});
+
 test('AI inline edit cancel and send labels are centered in their buttons', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const buttonStyle = /inlineEditorButton:\s*\{([\s\S]*?)\n  \}/.exec(bubble)?.[1] ?? '';
@@ -811,7 +833,7 @@ test('AI chat empty start uses a Claude-like greeting and faint starter suggesti
   assert.match(chat, /现在想聊点什么？/);
   assert.match(chat, /今晚想聊点什么？/);
   assert.doesNotMatch(chat, /ListEmptyComponent=\{invertedMessageItems\.length === 0 \? /);
-  assert.match(chat, /\{invertedMessageItems\.length === 0 \? \(\s*<View style=\{styles\.starterOverlay\}>/);
+  assert.match(chat, /\{invertedMessageItems\.length === 0 && !errorMessage \? \(\s*<View style=\{styles\.starterOverlay\}>/);
   assert.match(chat, /starterOverlay:\s*\{[\s\S]{0,180}position:\s*'absolute'/);
   assert.doesNotMatch(chat, /scaleY:\s*-1/);
   assert.match(chat, /AiChatStarterHints/);

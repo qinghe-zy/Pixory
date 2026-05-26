@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.1.21",
-  "versionCode": 235,
+  "version": "2.3.6",
+  "versionCode": 236,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.1.21 已发布，AI 资料库和长对话体验更稳。",
+  "message": "Pixory 2.3.6 已发布，角色详情和聊天输入体验更清楚。",
   "releaseNotes": [
-    "AI 会话资料、知识库资料和引用链路的删除、迁移、刷新行为更稳定。",
-    "总资料库、批量删除、当前会话添加资料和文本阅读器流程更清晰。",
-    "AI 聊天优化了冷启动问候、思考动画、图片 Markdown、键盘和长历史性能。"
+    "AI 角色详情页升级为海报式大图布局，角色信息、标签和开场白更聚焦。",
+    "角色指令、默认开场白和更多开场白改为轻量内容卡片，展开和查看更多更清晰。",
+    "聊天页输入框聚焦时会主动跟随最新消息，降低 Android 键盘遮挡输入区的概率。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
