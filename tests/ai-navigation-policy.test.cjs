@@ -581,8 +581,12 @@ test('AI drawer recent rows show last chat time to the minute', () => {
 
   assert.match(drawer, /formatAiHistoryMinute/);
   assert.match(drawer, /thread\.lastMessageAt \?\? thread\.updatedAt/);
-  assert.match(drawer, /上次聊天/);
-  assert.match(drawer, /上次聊天 \$\{formatAiHistoryMinute/);
+  assert.match(drawer, /const lastChatTime = formatAiHistoryMinute\(thread\.lastMessageAt \?\? thread\.updatedAt\)/);
+  assert.match(drawer, /<Text numberOfLines=\{1\} style=\{styles\.recentTime\}>\{lastChatTime\}<\/Text>/);
+  assert.match(drawer, /recentMetaRow/);
+  assert.match(drawer, /alignSelf:\s*'center'/);
+  assert.match(drawer, /opacity:\s*0\.58/);
+  assert.doesNotMatch(drawer, /上次聊天/);
   assert.doesNotMatch(drawer, /formatRecentTime\(thread\.updatedAt\)/);
 });
 

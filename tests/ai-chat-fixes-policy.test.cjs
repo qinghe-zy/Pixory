@@ -192,7 +192,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /\binverted\b/);
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
-  assert.match(chat, /const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120/);
+  assert.match(chat, /const MESSAGE_BOTTOM_LOCK_THRESHOLD = 1200/);
   assert.match(chat, /const nextLatestVisible = contentOffset\.y <= MESSAGE_BOTTOM_LOCK_THRESHOLD/);
   assert.match(chat, /userScrolledAwayFromBottomRef\.current = !nextLatestVisible/);
   assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} visible=\{!latestVisible && !inlineEditingActive\}/);
@@ -232,6 +232,20 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.match(chat, /const actionToken = beginGenerationAction\(\)/);
   assert.match(chat, /finishGenerationAction\(actionToken\)/);
   assert.match(chat, /cancelGenerationAction\(\)/);
+});
+
+test('AI chat keeps first-message streaming alive when a new thread is written back to the route', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const routeEffect = /useEffect\(\(\) => \{[\s\S]*?activeThreadIdRef\.current = nextThreadId[\s\S]*?\}, \[applyDisplayTitle, contextTitle, contextType, threadId\]\);/.exec(chat)?.[0] ?? '';
+
+  assert.match(routeEffect, /if \(activeThreadIdRef\.current === nextThreadId\)/);
+  assert.match(routeEffect, /applyDisplayTitle\(nextDisplayTitle\)/);
+  assert.match(routeEffect, /return;/);
+  assert.match(routeEffect, /clearGenerationSubscription\(\)/);
+  assert.match(routeEffect, /activeStreamGenerationRef\.current \+= 1/);
+  assert.match(chat, /setMessages\(\(current\) =>\s*current\.some\(\(message\) => message\.id === assistantMessageId\)/);
+  assert.match(chat, /role:\s*'assistant'/);
+  assert.match(chat, /status:\s*'generating'/);
 });
 
 test('AI regenerate switches back to the newest generated message version', () => {
@@ -297,7 +311,7 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(content, /italicText/);
   assert.match(content, /strikeText/);
   assert.match(content, /linkText/);
-  assert.match(content, /https\?:\\\/\\\/\[\^\)\\s\]\+/);
+  assert.match(content, /https\?:\\\/\\\/\[\^\\s\)\]\+/);
   assert.match(content, /☑/);
   assert.match(content, /☐/);
   assert.match(content, /Clipboard\.setStringAsync/);
@@ -311,6 +325,40 @@ test('AI assistant replies use lightweight Claude-style markdown without changin
   assert.match(bubble, /messageActionButton:\s*\{[\s\S]*height:\s*28[\s\S]*width:\s*28/);
   assert.match(citations, /来源 · \{citations\.length\}/);
   assert.match(citations, /onPress=\{\(\) => onOpenCitation\(citation\)\}/);
+});
+
+test('AI markdown renderer covers common GFM and lightweight inline HTML without unsafe scrolling', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /\^#\{1,6\}/);
+  assert.match(content, /parseMarkdownContent/);
+  assert.match(content, /collectReferenceLinks/);
+  assert.match(content, /REFERENCE_LINK_DEFINITION_PATTERN/);
+  assert.match(content, /normalizeReferenceLabel/);
+  assert.match(content, /REFERENCE_LINK_TOKEN_PATTERN/);
+  assert.match(content, /collectFootnotes/);
+  assert.match(content, /FOOTNOTE_DEFINITION_PATTERN/);
+  assert.match(content, /FOOTNOTE_TOKEN_PATTERN/);
+  assert.match(content, /type: 'footnote'/);
+  assert.match(content, /AUTO_LINK_TOKEN_PATTERN/);
+  assert.match(content, /EMAIL_AUTO_LINK_TOKEN_PATTERN/);
+  assert.match(content, /HTML_INLINE_TOKEN_PATTERN/);
+  assert.match(content, /ESCAPED_MARKDOWN_TOKEN_PATTERN/);
+  assert.match(content, /type: 'definitionList'/);
+  assert.match(content, /definitionTerm/);
+  assert.match(content, /definitionText/);
+  assert.match(content, /parseTableAlignments/);
+  assert.match(content, /alignments: parseTableAlignments/);
+  assert.match(content, /tableCellCenter/);
+  assert.match(content, /tableCellRight/);
+  assert.match(content, /kbdText/);
+  assert.match(content, /supText/);
+  assert.match(content, /subText/);
+  assert.match(content, /footnoteMarker/);
+  assert.match(content, /footnoteText/);
+  assert.match(content, /part\.match\(HTML_INLINE_TOKEN_PATTERN\)/);
+  assert.match(content, /message:\s*'不支持打开该链接'/);
+  assert.doesNotMatch(content, /<ScrollView/);
 });
 
 test('AI session settings rely on Android adjustResize without JS keyboard padding', () => {
@@ -931,7 +979,8 @@ test('AI message content memoizes markdown and renders image markdown inline', (
   assert.doesNotMatch(content, /blocks\.push\(\{ type: 'paragraph', text: paragraphLines\.join\('\\n'\) \}\)/);
   assert.match(content, /isImageMarkdownLine/);
   assert.match(content, /AiMarkdownImage/);
-  assert.match(content, /const blocks = useMemo\(\(\) => parseMarkdownBlocks\(content\), \[content\]\)/);
+  assert.match(content, /const parsedMarkdown = useMemo\(\(\) => parseMarkdownContent\(content\), \[content\]\)/);
+  assert.match(content, /const \{ blocks, footnotes, referenceLinks \} = parsedMarkdown/);
   assert.match(content, /onError=\{\(\) => setLoadFailed\(true\)\}/);
   assert.match(content, /图片无法预览/);
   assert.doesNotMatch(content, /!\[alt\]\(url\)/);
@@ -1080,7 +1129,7 @@ test('AI chat feedback voice empty state error and long navigation polish are wi
   assert.match(bubble, /AiInlineFeedback/);
   assert.match(bubble, /setCopyFeedbackVisible\(true\)/);
   assert.match(content, /Linking\.openURL/);
-  assert.match(content, /isSafeHttpUrl/);
+  assert.match(content, /isSafeLinkUrl/);
   assert.match(content, /代码已复制/);
   assert.match(composer, /AiVoiceInputStatus/);
   assert.match(composer, /voiceState/);

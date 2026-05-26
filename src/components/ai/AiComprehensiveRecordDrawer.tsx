@@ -122,6 +122,7 @@ export function AiComprehensiveRecordDrawer({
             {visibleRecents.length ? (
               visibleRecents.map((thread) => {
                 const isActiveThread = thread.id === activeThreadId;
+                const lastChatTime = formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt);
                 return (
                   <View key={thread.id} style={styles.recentItem}>
                     <Pressable
@@ -149,11 +150,14 @@ export function AiComprehensiveRecordDrawer({
                         <Text numberOfLines={1} style={styles.recentTitle}>
                           {thread.title}
                         </Text>
+                        <Text numberOfLines={1} style={styles.recentTime}>{lastChatTime}</Text>
+                      </View>
+                      <View style={styles.recentMetaRow}>
+                        <Text numberOfLines={1} style={styles.recentMeta}>
+                          {thread.lastMessagePreview ?? '暂无消息'}
+                        </Text>
                         {isActiveThread ? <Text style={styles.currentThreadBadge}>当前聊天</Text> : null}
                       </View>
-                      <Text numberOfLines={1} style={styles.recentMeta}>
-                        {thread.lastMessagePreview ?? `上次聊天 ${formatAiHistoryMinute(thread.lastMessageAt ?? thread.updatedAt)}`}
-                      </Text>
                       {actionThread?.id === thread.id ? (
                         <View style={styles.recentActionPopover}>
                           <Pressable accessibilityLabel="重命名最近会话" accessibilityRole="button" onPress={() => startRenameThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
@@ -305,6 +309,8 @@ const styles = StyleSheet.create({
   recentRow: {
     borderRadius: radius.md,
     gap: rhythm.microGap,
+    minHeight: metrics.minTouchSize,
+    justifyContent: 'center',
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
@@ -320,15 +326,31 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     color: aiLightColors.ink,
     flex: 1,
+    minWidth: 0,
+  },
+  recentTime: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.muted,
+    flexShrink: 0,
+    opacity: 0.58,
+  },
+  recentMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
   },
   currentThreadBadge: {
     ...typography.textStyles.caption,
+    alignSelf: 'center',
     color: aiLightColors.coralActive,
+    flexShrink: 0,
     fontWeight: '700',
   },
   recentMeta: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+    flex: 1,
+    minWidth: 0,
   },
   emptyText: {
     ...typography.textStyles.caption,

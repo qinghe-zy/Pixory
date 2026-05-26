@@ -96,6 +96,24 @@ test('App shows update and announcement prompts without adding push notification
   assert.doesNotMatch(appSource, /Notifications|expo-notifications|getExpoPushToken|FCM|pushToken/);
 });
 
+test('App shows a small one-time toast after an OTA update has been applied', () => {
+  const appSource = readProjectFile('App.tsx');
+  const settingsRepositorySource = readProjectFile('src/database/repositories/settingsRepository.ts');
+
+  assert.match(appSource, /import \* as Updates from 'expo-updates'/);
+  assert.match(appSource, /function AppUpdateAppliedNotice/);
+  assert.match(appSource, /Updates\.isEnabled/);
+  assert.match(appSource, /Updates\.isEmbeddedLaunch/);
+  assert.match(appSource, /Updates\.updateId/);
+  assert.match(appSource, /getLastAppliedUpdateNoticeId/);
+  assert.match(appSource, /setLastAppliedUpdateNoticeId/);
+  assert.match(appSource, /message:\s*'已在后台热更新'/);
+  assert.match(appSource, /<AppUpdateAppliedNotice isReady=\{isReady\} \/>/);
+  assert.match(settingsRepositorySource, /LAST_APPLIED_UPDATE_NOTICE_ID_KEY/);
+  assert.match(settingsRepositorySource, /getLastAppliedUpdateNoticeId/);
+  assert.match(settingsRepositorySource, /setLastAppliedUpdateNoticeId/);
+});
+
 test('update prompt uses compact themed split action layout', () => {
   const dialogSource = readProjectFile('src/components/AppDialog.tsx');
   const primaryButtonSource = readProjectFile('src/components/PrimaryButton.tsx');

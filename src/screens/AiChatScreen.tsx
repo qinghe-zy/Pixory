@@ -48,7 +48,7 @@ import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepos
 import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
-const MESSAGE_BOTTOM_LOCK_THRESHOLD = 120;
+const MESSAGE_BOTTOM_LOCK_THRESHOLD = 1200;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
@@ -93,6 +93,32 @@ function buildChatMessageContent(text: string, attachments: AiComposerAttachment
     return `- ${describeAttachmentKind(attachment.kind)}：${attachment.name}${type}`;
   });
   return [text || '请根据以下附件继续对话。', '', '[附件]', ...attachmentLines].join('\n');
+}
+
+function createStreamingAssistantMessage(threadId: string, assistantMessageId: string): AiMessageWithCitations {
+  const now = new Date().toISOString();
+  return {
+    branchRootMessageId: null,
+    branchVersionIndex: null,
+    citations: [],
+    completedAt: null,
+    content: '',
+    createdAt: now,
+    errorMessage: null,
+    id: assistantMessageId,
+    messageVersions: [],
+    modelId: null,
+    modelSnapshotJson: '',
+    promptSnapshotJson: '',
+    providerId: null,
+    reasoningText: null,
+    role: 'assistant',
+    status: 'generating',
+    threadId,
+    updatedAt: now,
+    versionIndex: 0,
+    versionTotal: 1,
+  };
 }
 
 function formatDateSeparator(value: string): string {
@@ -427,6 +453,11 @@ export function AiChatScreen({
           return;
         }
         setActiveAssistantId(assistantMessageId);
+        setMessages((current) =>
+          current.some((message) => message.id === assistantMessageId)
+            ? current
+            : [...current, createStreamingAssistantMessage(targetThreadId, assistantMessageId)]
+        );
         followLatestMessage();
         void reloadMessages(targetThreadId);
       },
@@ -774,6 +805,12 @@ export function AiChatScreen({
 
   useEffect(() => {
     const nextThreadId = threadId ?? null;
+    const nextDisplayTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
+    if (activeThreadIdRef.current === nextThreadId) {
+      setActiveThreadId(nextThreadId);
+      applyDisplayTitle(nextDisplayTitle);
+      return;
+    }
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
     clearComposerFocusVisibilityTimeouts();
@@ -796,7 +833,7 @@ export function AiChatScreen({
     userScrolledAwayFromBottomRef.current = false;
     latestVisibleRef.current = true;
     setLatestVisible(true);
-    applyDisplayTitle(contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天'));
+    applyDisplayTitle(nextDisplayTitle);
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
   useEffect(() => {

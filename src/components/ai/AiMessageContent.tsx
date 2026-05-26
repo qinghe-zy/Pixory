@@ -7,15 +7,27 @@ import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 import { AiInlineFeedback } from './AiInlineFeedback';
 
+type MarkdownTableAlignment = 'left' | 'center' | 'right' | null;
+type ReferenceLinks = Map<string, { title?: string; url: string }>;
+type Footnotes = Map<string, { index: number; text: string }>;
+
 type MarkdownBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'heading'; text: string; level: number }
   | { type: 'list'; items: Array<{ marker: string; text: string; checked?: boolean; nestLevel: number }> }
+  | { type: 'definitionList'; items: Array<{ term: string; definitions: string[] }> }
+  | { type: 'footnote'; index: number; label: string; text: string }
   | { type: 'quote'; text: string }
   | { type: 'code'; text: string; language?: string }
-  | { type: 'table'; rows: string[][] }
+  | { type: 'table'; rows: string[][]; alignments: MarkdownTableAlignment[] }
   | { type: 'image'; alt: string; uri: string }
   | { type: 'hr' };
+
+interface ParsedMarkdownContent {
+  blocks: MarkdownBlock[];
+  footnotes: Footnotes;
+  referenceLinks: ReferenceLinks;
+}
 
 interface AiMessageContentProps {
   content: string;
@@ -28,7 +40,7 @@ function isFence(line: string): boolean {
 }
 
 function isHeading(line: string): boolean {
-  return /^#{1,4}\s+\S/.test(line.trim());
+  return /^#{1,6}\s+\S/.test(line.trim());
 }
 
 function isListLine(line: string): boolean {
@@ -48,8 +60,24 @@ function isHorizontalRule(line: string): boolean {
   return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(line);
 }
 
-const IMAGE_MARKDOWN_LINE_PATTERN = /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)\s*$/;
-const IMAGE_MARKDOWN_TOKEN_PATTERN = /!\[([^\]]*)\]\((https?:\/\/[^)\s]+|file:\/\/[^)\s]+|content:\/\/[^)\s]+)\)/g;
+function isDefinitionLine(line: string): boolean {
+  return /^\s{0,3}:\s+\S/.test(line);
+}
+
+const OPTIONAL_MARKDOWN_TITLE_PATTERN = String.raw`(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?`;
+const IMAGE_MARKDOWN_LINE_PATTERN = new RegExp(String.raw`^!\[([^\]]*)\]\((https?:\/\/[^\s)]+|file:\/\/[^\s)]+|content:\/\/[^\s)]+)${OPTIONAL_MARKDOWN_TITLE_PATTERN}\)\s*$`);
+const IMAGE_MARKDOWN_TOKEN_PATTERN = new RegExp(String.raw`!\[([^\]]*)\]\((https?:\/\/[^\s)]+|file:\/\/[^\s)]+|content:\/\/[^\s)]+)${OPTIONAL_MARKDOWN_TITLE_PATTERN}\)`, 'g');
+const DIRECT_LINK_TOKEN_PATTERN = new RegExp(String.raw`^\[([^\]]+)\]\((https?:\/\/[^\s)]+)${OPTIONAL_MARKDOWN_TITLE_PATTERN}\)$`);
+const REFERENCE_LINK_DEFINITION_PATTERN = /^\s{0,3}\[([^\]]+)\]:\s*<?(https?:\/\/[^>\s]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*$/;
+const REFERENCE_LINK_TOKEN_PATTERN = /^\[([^\]]+)\]\[([^\]]*)\]$/;
+const FOOTNOTE_DEFINITION_PATTERN = /^\s{0,3}\[\^([^\]]+)\]:\s+(.+)$/;
+const FOOTNOTE_TOKEN_PATTERN = /^\[\^([^\]]+)\]$/;
+const AUTO_LINK_TOKEN_PATTERN = /^<(https?:\/\/[^>\s]+)>$/i;
+const EMAIL_AUTO_LINK_TOKEN_PATTERN = /^<([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})>$/i;
+const HTML_INLINE_TOKEN_PATTERN = /^<(kbd|sup|sub)>(.*?)<\/\1>$/i;
+const HTML_BREAK_TOKEN_PATTERN = /^<br\s*\/?>$/i;
+const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])$/;
+const INLINE_TOKEN_PATTERN = /(<(?:kbd|sup|sub)>.*?<\/(?:kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
 
 function isImageMarkdownLine(line: string): boolean {
   return IMAGE_MARKDOWN_LINE_PATTERN.test(line.trim());
@@ -87,8 +115,83 @@ function parseTableRow(line: string): string[] {
   return cells.map((cell) => cell.trim());
 }
 
-function parseMarkdownBlocks(content: string): MarkdownBlock[] {
+function parseTableAlignments(line: string): MarkdownTableAlignment[] {
+  return parseTableRow(line).map((cell) => {
+    const trimmed = cell.trim();
+    const starts = trimmed.startsWith(':');
+    const ends = trimmed.endsWith(':');
+    if (starts && ends) {
+      return 'center';
+    }
+    if (ends) {
+      return 'right';
+    }
+    if (starts) {
+      return 'left';
+    }
+    return null;
+  });
+}
+
+function normalizeReferenceLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeFootnoteLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function parseReferenceDefinition(line: string): { label: string; title?: string; url: string } | null {
+  const match = REFERENCE_LINK_DEFINITION_PATTERN.exec(line);
+  if (!match) {
+    return null;
+  }
+  return {
+    label: normalizeReferenceLabel(match[1]),
+    url: match[2],
+  };
+}
+
+function collectReferenceLinks(lines: string[]): ReferenceLinks {
+  const referenceLinks: ReferenceLinks = new Map();
+  for (const line of lines) {
+    const definition = parseReferenceDefinition(line);
+    if (definition) {
+      referenceLinks.set(definition.label, { title: definition.title, url: definition.url });
+    }
+  }
+  return referenceLinks;
+}
+
+function parseFootnoteDefinition(line: string): { label: string; text: string } | null {
+  const match = FOOTNOTE_DEFINITION_PATTERN.exec(line);
+  if (!match) {
+    return null;
+  }
+  return {
+    label: normalizeFootnoteLabel(match[1]),
+    text: match[2].trim(),
+  };
+}
+
+function collectFootnotes(lines: string[]): Footnotes {
+  const footnotes: Footnotes = new Map();
+  for (const line of lines) {
+    const definition = parseFootnoteDefinition(line);
+    if (definition && !footnotes.has(definition.label)) {
+      footnotes.set(definition.label, {
+        index: footnotes.size + 1,
+        text: definition.text,
+      });
+    }
+  }
+  return footnotes;
+}
+
+function parseMarkdownContent(content: string): ParsedMarkdownContent {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const referenceLinks = collectReferenceLinks(lines);
+  const footnotes = collectFootnotes(lines);
   const blocks: MarkdownBlock[] = [];
   let index = 0;
 
@@ -96,6 +199,23 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     const line = lines[index] ?? '';
     const trimmed = line.trim();
     if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (parseReferenceDefinition(line)) {
+      index += 1;
+      continue;
+    }
+
+    const footnote = parseFootnoteDefinition(line);
+    if (footnote) {
+      blocks.push({
+        index: footnotes.get(footnote.label)?.index ?? footnotes.size + 1,
+        label: footnote.label,
+        text: footnote.text,
+        type: 'footnote',
+      });
       index += 1;
       continue;
     }
@@ -116,7 +236,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     }
 
     if (isHeading(line)) {
-      const match = /^(#{1,4})\s+(.*)$/.exec(trimmed);
+      const match = /^(#{1,6})\s+(.*)$/.exec(trimmed);
       blocks.push({ type: 'heading', level: match?.[1].length ?? 1, text: match?.[2] ?? trimmed });
       index += 1;
       continue;
@@ -167,14 +287,31 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
       continue;
     }
 
+    if (isDefinitionLine(lines[index + 1] ?? '')) {
+      const items: Array<{ term: string; definitions: string[] }> = [];
+      while (index < lines.length && lines[index]?.trim() && isDefinitionLine(lines[index + 1] ?? '')) {
+        const term = lines[index]?.trim() ?? '';
+        index += 1;
+        const definitions: string[] = [];
+        while (index < lines.length && isDefinitionLine(lines[index] ?? '')) {
+          definitions.push((lines[index] ?? '').replace(/^\s{0,3}:\s+/, '').trim());
+          index += 1;
+        }
+        items.push({ definitions, term });
+      }
+      blocks.push({ type: 'definitionList', items });
+      continue;
+    }
+
     if (isTableLine(line) && isTableSeparator(lines[index + 1] ?? '')) {
       const rows: string[][] = [parseTableRow(line)];
+      const separatorLine = lines[index + 1] ?? '';
       index += 2;
       while (index < lines.length && isTableLine(lines[index] ?? '')) {
         rows.push(parseTableRow(lines[index] ?? ''));
         index += 1;
       }
-      blocks.push({ type: 'table', rows });
+      blocks.push({ alignments: parseTableAlignments(separatorLine), rows, type: 'table' });
       continue;
     }
 
@@ -182,7 +319,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     index += 1;
     while (index < lines.length) {
       const nextLine = lines[index] ?? '';
-      if (!nextLine.trim() || isFence(nextLine) || isHeading(nextLine) || isHorizontalRule(nextLine) || isImageMarkdownLine(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
+      if (!nextLine.trim() || parseReferenceDefinition(nextLine) || parseFootnoteDefinition(nextLine) || isFence(nextLine) || isHeading(nextLine) || isHorizontalRule(nextLine) || isImageMarkdownLine(nextLine) || isListLine(nextLine) || isQuoteLine(nextLine) || isDefinitionLine(lines[index + 1] ?? '') || (isTableLine(nextLine) && isTableSeparator(lines[index + 1] ?? ''))) {
         break;
       }
       paragraphLines.push(nextLine);
@@ -191,40 +328,119 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     appendParagraphBlocksWithImages(blocks, paragraphLines.join('\n'));
   }
 
-  return blocks.length ? blocks : [{ type: 'paragraph', text: content }];
+  return { blocks: blocks.length ? blocks : [{ type: 'paragraph', text: content }], footnotes, referenceLinks };
 }
 
-function isSafeHttpUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url);
+function parseMarkdownBlocks(content: string): MarkdownBlock[] {
+  return parseMarkdownContent(content).blocks;
 }
 
-function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void): ReactNode {
-  return text.split(/(\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/g).map((part, index) => {
-    if (!part) {
-      return null;
+function isSafeLinkUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(url);
+}
+
+function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void, referenceLinks: ReferenceLinks, footnotes: Footnotes): ReactNode {
+  INLINE_TOKEN_PATTERN.lastIndex = 0;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let tokenIndex = 0;
+
+  function renderPlain(part: string, key: string): ReactNode {
+    return <Text key={key} style={style}>{part}</Text>;
+  }
+
+  function renderToken(part: string, key: string): ReactNode {
+    const escaped = part.match(ESCAPED_MARKDOWN_TOKEN_PATTERN);
+    if (escaped) {
+      return <Text key={key} style={style}>{escaped[1]}</Text>;
     }
-    const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(part);
+    const htmlBreak = part.match(HTML_BREAK_TOKEN_PATTERN);
+    if (htmlBreak) {
+      return <Text key={key} style={style}>{'\n'}</Text>;
+    }
+    const htmlInline = part.match(HTML_INLINE_TOKEN_PATTERN);
+    if (htmlInline) {
+      const tagName = htmlInline[1].toLowerCase();
+      const innerText = htmlInline[2];
+      const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
+      return <Text key={key} style={[style, htmlStyle]}>{innerText}</Text>;
+    }
+    const footnoteToken = part.match(FOOTNOTE_TOKEN_PATTERN);
+    if (footnoteToken) {
+      const footnote = footnotes.get(normalizeFootnoteLabel(footnoteToken[1]));
+      return (
+        <Text key={key} style={[style, styles.supText, styles.footnoteMarker]}>
+          [{footnote?.index ?? footnoteToken[1]}]
+        </Text>
+      );
+    }
+    const autoLink = part.match(AUTO_LINK_TOKEN_PATTERN);
+    if (autoLink) {
+      return (
+        <Text key={key} onPress={() => onLinkPress(autoLink[1])} style={[style, styles.linkText]}>
+          {autoLink[1]}
+        </Text>
+      );
+    }
+    const emailAutoLink = part.match(EMAIL_AUTO_LINK_TOKEN_PATTERN);
+    if (emailAutoLink) {
+      const mailtoUrl = `mailto:${emailAutoLink[1]}`;
+      return (
+        <Text key={key} onPress={() => onLinkPress(mailtoUrl)} style={[style, styles.linkText]}>
+          {emailAutoLink[1]}
+        </Text>
+      );
+    }
+    const referenceLink = part.match(REFERENCE_LINK_TOKEN_PATTERN);
+    if (referenceLink) {
+      const label = normalizeReferenceLabel(referenceLink[2] || referenceLink[1]);
+      const reference = referenceLinks.get(label);
+      if (reference) {
+        return (
+          <Text key={key} onPress={() => onLinkPress(reference.url)} style={[style, styles.linkText]}>
+            {referenceLink[1]}
+          </Text>
+        );
+      }
+    }
+    const link = part.match(DIRECT_LINK_TOKEN_PATTERN);
     if (link) {
       return (
-        <Text key={`${index}-${part}`} onPress={() => onLinkPress(link[2])} style={[style, styles.linkText]}>
+        <Text key={key} onPress={() => onLinkPress(link[2])} style={[style, styles.linkText]}>
           {link[1]}
         </Text>
       );
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
-      return <Text key={`${index}-${part}`} style={styles.inlineCode}>{part.slice(1, -1)}</Text>;
+      return <Text key={key} style={styles.inlineCode}>{part.slice(1, -1)}</Text>;
     }
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
-      return <Text key={`${index}-${part}`} style={[style, styles.boldText]}>{part.slice(2, -2)}</Text>;
+      return <Text key={key} style={[style, styles.boldText]}>{part.slice(2, -2)}</Text>;
     }
     if (part.startsWith('~~') && part.endsWith('~~')) {
-      return <Text key={`${index}-${part}`} style={[style, styles.strikeText]}>{part.slice(2, -2)}</Text>;
+      return <Text key={key} style={[style, styles.strikeText]}>{part.slice(2, -2)}</Text>;
     }
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
-      return <Text key={`${index}-${part}`} style={[style, styles.italicText]}>{part.slice(1, -1)}</Text>;
+      return <Text key={key} style={[style, styles.italicText]}>{part.slice(1, -1)}</Text>;
     }
-    return <Text key={`${index}-${part}`} style={style}>{part}</Text>;
-  });
+    return renderPlain(part, key);
+  }
+
+  let match: RegExpExecArray | null;
+  while ((match = INLINE_TOKEN_PATTERN.exec(text)) !== null) {
+    const token = match[0];
+    if (match.index > cursor) {
+      nodes.push(renderPlain(text.slice(cursor, match.index), `plain-${tokenIndex}`));
+      tokenIndex += 1;
+    }
+    nodes.push(renderToken(token, `token-${tokenIndex}`));
+    tokenIndex += 1;
+    cursor = match.index + token.length;
+  }
+  if (cursor < text.length) {
+    nodes.push(renderPlain(text.slice(cursor), `plain-${tokenIndex}`));
+  }
+  return nodes;
 }
 
 function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
@@ -249,7 +465,8 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+  const parsedMarkdown = useMemo(() => parseMarkdownContent(content), [content]);
+  const { blocks, footnotes, referenceLinks } = parsedMarkdown;
 
   function clearFeedbackTimer() {
     if (feedbackTimeoutRef.current) {
@@ -286,7 +503,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
   }
 
   async function openSafeLink(url: string) {
-    if (!isSafeHttpUrl(url)) {
+    if (!isSafeLinkUrl(url)) {
       setFeedback({ message: '不支持打开该链接', tone: 'error' });
       return;
     }
@@ -306,7 +523,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         if (block.type === 'heading') {
           return (
             <Text key={key} style={[styles.heading, block.level > 2 && styles.smallHeading]}>
-              {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink)}
+              {renderInlineText(block.text, [styles.heading, block.level > 2 && styles.smallHeading], openSafeLink, referenceLinks, footnotes)}
               {appendTrailingInline ? trailingInline : null}
             </Text>
           );
@@ -318,9 +535,28 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
                 <View key={`${key}-${itemIndex}`} style={[styles.listItem, item.nestLevel > 0 && { paddingLeft: item.nestLevel * spacing[3] }]}>
                   <Text style={styles.listMarker}>{item.marker}</Text>
                   <Text style={[styles.body, styles.assistantText, styles.listText]}>
-                    {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink)}
+                    {renderInlineText(item.text, [styles.body, styles.assistantText], openSafeLink, referenceLinks, footnotes)}
                     {appendTrailingInline && itemIndex === block.items.length - 1 ? trailingInline : null}
                   </Text>
+                </View>
+              ))}
+            </View>
+          );
+        }
+        if (block.type === 'definitionList') {
+          return (
+            <View key={key} style={styles.definitionList}>
+              {block.items.map((item, itemIndex) => (
+                <View key={`${key}-${itemIndex}`} style={styles.definitionItem}>
+                  <Text style={styles.definitionTerm}>
+                    {renderInlineText(item.term, [styles.definitionTerm], openSafeLink, referenceLinks, footnotes)}
+                  </Text>
+                  {item.definitions.map((definition, definitionIndex) => (
+                    <Text key={`${key}-${itemIndex}-${definitionIndex}`} style={styles.definitionText}>
+                      {renderInlineText(definition, [styles.definitionText], openSafeLink, referenceLinks, footnotes)}
+                      {appendTrailingInline && itemIndex === block.items.length - 1 && definitionIndex === item.definitions.length - 1 ? trailingInline : null}
+                    </Text>
+                  ))}
                 </View>
               ))}
             </View>
@@ -330,7 +566,18 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
           return (
             <View key={key} style={styles.quote}>
               <Text style={[styles.body, styles.quoteText]}>
-                {renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink)}
+                {renderInlineText(block.text, [styles.body, styles.quoteText], openSafeLink, referenceLinks, footnotes)}
+                {appendTrailingInline ? trailingInline : null}
+              </Text>
+            </View>
+          );
+        }
+        if (block.type === 'footnote') {
+          return (
+            <View key={key} style={styles.footnote}>
+              <Text style={styles.footnoteMarker}>{`[${block.index}]`}</Text>
+              <Text style={styles.footnoteText}>
+                {renderInlineText(block.text, [styles.footnoteText], openSafeLink, referenceLinks, footnotes)}
                 {appendTrailingInline ? trailingInline : null}
               </Text>
             </View>
@@ -370,8 +617,16 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
               {block.rows.map((row, rowIndex) => (
                 <View key={`${key}-${rowIndex}`} style={[styles.tableRow, rowIndex === 0 && styles.tableHeaderRow]}>
                   {row.map((cell, cellIndex) => (
-                    <Text key={`${key}-${rowIndex}-${cellIndex}`} style={[styles.tableCell, rowIndex === 0 && styles.tableHeaderCell]}>
-                      {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink)}
+                    <Text
+                      key={`${key}-${rowIndex}-${cellIndex}`}
+                      style={[
+                        styles.tableCell,
+                        block.alignments[cellIndex] === 'center' && styles.tableCellCenter,
+                        block.alignments[cellIndex] === 'right' && styles.tableCellRight,
+                        rowIndex === 0 && styles.tableHeaderCell,
+                      ]}
+                    >
+                      {renderInlineText(cell, [styles.tableCell, rowIndex === 0 && styles.tableHeaderCell], openSafeLink, referenceLinks, footnotes)}
                       {appendTrailingInline && rowIndex === block.rows.length - 1 && cellIndex === row.length - 1 ? trailingInline : null}
                     </Text>
                   ))}
@@ -382,7 +637,7 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
         }
         return (
           <Text key={key} style={[styles.body, styles.assistantText]}>
-            {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink)}
+            {renderInlineText(block.text, [styles.body, styles.assistantText], openSafeLink, referenceLinks, footnotes)}
             {appendTrailingInline ? trailingInline : null}
           </Text>
         );
@@ -443,6 +698,37 @@ const styles = StyleSheet.create({
   linkText: {
     color: aiLightColors.coralActive,
   },
+  kbdText: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontFamily: typography.family.mono,
+    paddingHorizontal: spacing[1],
+  },
+  supText: {
+    fontSize: typography.size.micro,
+    lineHeight: 14,
+  },
+  subText: {
+    fontSize: typography.size.micro,
+    lineHeight: 24,
+  },
+  footnote: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+  },
+  footnoteMarker: {
+    color: aiLightColors.coralActive,
+    fontWeight: '700',
+  },
+  footnoteText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    flex: 1,
+    lineHeight: 20,
+  },
   list: {
     gap: rhythm.microGap,
   },
@@ -458,6 +744,26 @@ const styles = StyleSheet.create({
   },
   listText: {
     flex: 1,
+  },
+  definitionList: {
+    gap: rhythm.microGap,
+  },
+  definitionItem: {
+    gap: rhythm.microGap,
+  },
+  definitionTerm: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  definitionText: {
+    ...typography.textStyles.body,
+    borderLeftColor: aiLightColors.coral,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    color: aiLightColors.muted,
+    lineHeight: 22,
+    paddingLeft: spacing[2],
   },
   quote: {
     borderLeftColor: aiLightColors.coral,
@@ -563,6 +869,12 @@ const styles = StyleSheet.create({
   },
   tableHeaderCell: {
     fontWeight: '600',
+  },
+  tableCellCenter: {
+    textAlign: 'center',
+  },
+  tableCellRight: {
+    textAlign: 'right',
   },
   pressed: {
     opacity: 0.78,

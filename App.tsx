@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,7 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppDialog } from './src/components/AppDialog';
 import { AppScreen } from './src/components/AppScreen';
-import { AppToastProvider } from './src/components/AppToast';
+import { AppToastProvider, useToast } from './src/components/AppToast';
 import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
 import { BackupExportManagerScreen } from './src/screens/BackupExportManagerScreen';
 import { BackupScreen } from './src/screens/BackupScreen';
@@ -195,6 +196,7 @@ type SpaceSession = {
 
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
 const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 60 * 1000;
+const APPLIED_UPDATE_NOTICE_DURATION_MS = 2200;
 
 function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
@@ -1787,6 +1789,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppToastProvider>
+        <AppUpdateAppliedNotice isReady={isReady} />
         {content}
         <PersonalUnlockModal
           hasCredential={personalCredentialAvailable}
@@ -1854,6 +1857,54 @@ export default function App() {
       </AppToastProvider>
     </SafeAreaProvider>
   );
+}
+
+function AppUpdateAppliedNotice({ isReady }: { isReady: boolean }) {
+  const { showToast } = useToast();
+  const notifiedUpdateIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isReady || !Updates.isEnabled || Updates.isEmbeddedLaunch || !Updates.updateId) {
+      return undefined;
+    }
+
+    const updateId = Updates.updateId;
+    if (notifiedUpdateIdRef.current === updateId) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    void runWithDatabaseSpace('normal', async (db) => {
+      const lastNoticeId = await settingsRepository.getLastAppliedUpdateNoticeId(db);
+      if (lastNoticeId === updateId) {
+        return false;
+      }
+      await settingsRepository.setLastAppliedUpdateNoticeId(db, updateId);
+      return true;
+    })
+      .then((shouldShowNotice) => {
+        if (!isMounted || !shouldShowNotice) {
+          return;
+        }
+        notifiedUpdateIdRef.current = updateId;
+        showToast({
+          durationMs: APPLIED_UPDATE_NOTICE_DURATION_MS,
+          message: '已在后台热更新',
+          tone: 'success',
+        });
+      })
+      .catch((error) => {
+        console.warn('Pixory applied update notice failed.', {
+          message: error instanceof Error ? error.message : 'unknown applied update notice error',
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReady, showToast]);
+
+  return null;
 }
 
 function PersonalModeBanner() {
