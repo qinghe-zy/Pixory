@@ -173,8 +173,9 @@ type AppRoute =
   | { name: 'ai-role-card-editor'; space: PixorySpace; roleCardId?: string; threadId?: string }
   | { name: 'ai-ip-picker'; space: PixorySpace }
   | { name: 'ai-knowledge-base'; space: PixorySpace }
-  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string }
+  | { name: 'ai-material-import'; space: PixorySpace; knowledgeBaseId?: string; threadId?: string }
   | { name: 'ai-material-list'; space: PixorySpace; knowledgeBaseId?: string }
+  | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
   | { name: 'ai-history'; space: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
@@ -1534,6 +1535,11 @@ export default function App() {
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
+        onOpenThreadMaterials={
+          currentRoute.threadId
+            ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })
+            : undefined
+        }
         onOpenMemoryBoard={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId: currentRoute.threadId as string })
@@ -1616,14 +1622,25 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'ai-material-import') {
-    content = <AiMaterialImportScreen knowledgeBaseId={currentRoute.knowledgeBaseId} onBack={popRoute} space={currentRoute.space} />;
+    content = <AiMaterialImportScreen knowledgeBaseId={currentRoute.knowledgeBaseId} onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'ai-material-list') {
     content = (
       <AiMaterialListScreen
         knowledgeBaseId={currentRoute.knowledgeBaseId}
         onBack={popRoute}
         onOpenDocument={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
+        onOpenThreadMaterials={(threadId, title) => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId, title })}
         space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'ai-thread-material-list') {
+    content = (
+      <AiMaterialListScreen
+        onBack={popRoute}
+        onImportMaterial={(threadId) => pushRoute({ name: 'ai-material-import', space: currentRoute.space, threadId })}
+        onOpenDocument={(documentId, title) => pushRoute({ name: 'ai-document-reader', documentId, title, space: currentRoute.space })}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
       />
     );
   } else if (currentRoute.name === 'ai-document-reader') {

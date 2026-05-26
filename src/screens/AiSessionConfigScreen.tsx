@@ -25,6 +25,7 @@ interface AiSessionConfigScreenProps {
   onBack: () => void;
   onOpenProviderSettings: () => void;
   onOpenRoleCardEditor: () => void;
+  onOpenThreadMaterials?: () => void;
   onOpenMemoryBoard?: () => void;
   onStartChat: () => void;
   onCurrentThreadDeleted?: () => void;
@@ -70,6 +71,7 @@ export function AiSessionConfigScreen({
   onBack,
   onOpenProviderSettings,
   onOpenRoleCardEditor,
+  onOpenThreadMaterials,
   onOpenMemoryBoard,
   onStartChat,
   onCurrentThreadDeleted,
@@ -307,6 +309,11 @@ export function AiSessionConfigScreen({
               <Pressable accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
                 <Text style={styles.textActionLabel}>模型账号</Text>
               </Pressable>
+              {threadId && onOpenThreadMaterials ? (
+                <Pressable accessibilityRole="button" onPress={onOpenThreadMaterials} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
+                  <Text style={styles.textActionLabel}>资料库</Text>
+                </Pressable>
+              ) : null}
             </View>
             <View style={styles.summaryMetaRow}>
               <Text style={styles.metaPill}>{spaceLabel}</Text>
@@ -507,6 +514,7 @@ const styles = StyleSheet.create({
   summaryHeader: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: rhythm.inlineGap,
     justifyContent: 'space-between',
   },

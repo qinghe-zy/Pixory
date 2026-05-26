@@ -6,7 +6,15 @@ import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppDialog } from '../components/AppDialog';
-import { listMaterials, removeMaterial, removeMaterials, retryMaterialParsing } from '../ai/aiDocumentService';
+import {
+  listGlobalMaterialsGroupedByThread,
+  listMaterials,
+  listThreadMaterials,
+  removeMaterial,
+  removeMaterials,
+  retryMaterialParsing,
+  type AiMaterialConversationGroup,
+} from '../ai/aiDocumentService';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentStatus } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
@@ -15,8 +23,11 @@ import type { PixorySpace } from '../database';
 interface AiMaterialListScreenProps {
   space: PixorySpace;
   knowledgeBaseId?: string;
+  threadId?: string;
   onBack: () => void;
   onOpenDocument: (documentId: string, title: string) => void;
+  onImportMaterial?: (threadId?: string) => void;
+  onOpenThreadMaterials?: (threadId: string, title: string) => void;
 }
 
 const STATUS_LABELS: Record<AiDocumentStatus, string> = {
@@ -32,16 +43,30 @@ const STATUS_LABELS: Record<AiDocumentStatus, string> = {
 
 const RECOVERABLE_PARSE_ACTION = '重试解析';
 
-export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDocument }: AiMaterialListScreenProps) {
+export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack, onOpenDocument, onImportMaterial, onOpenThreadMaterials }: AiMaterialListScreenProps) {
   const [items, setItems] = useState<AiDocumentRecord[]>([]);
+  const [conversationGroups, setConversationGroups] = useState<AiMaterialConversationGroup[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [confirmingBatchRemove, setConfirmingBatchRemove] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const isGlobalView = !knowledgeBaseId && !threadId;
+  const screenTitle = threadId ? '会话资料库' : '总资料库';
 
   const reload = useCallback(async () => {
+    if (threadId) {
+      setConversationGroups([]);
+      setItems(await listThreadMaterials({ space, threadId }));
+      return;
+    }
+    if (isGlobalView) {
+      setItems([]);
+      setConversationGroups(await listGlobalMaterialsGroupedByThread({ space }));
+      return;
+    }
+    setConversationGroups([]);
     setItems(await listMaterials({ knowledgeBaseId, space }));
-  }, [knowledgeBaseId, space]);
+  }, [isGlobalView, knowledgeBaseId, space, threadId]);
 
   useEffect(() => {
     void reload();
@@ -99,13 +124,50 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, onBack, onOpenDoc
       footer={selectionFooter}
       onBack={onBack}
       scrollable
-      subtitle={`${spaceLabel} · ${knowledgeBaseId ? '当前知识库' : '最近材料'}`}
-      title="材料列表"
+      subtitle={`${spaceLabel} · ${threadId ? '当前会话' : knowledgeBaseId ? '当前知识库' : '按对话展示'}`}
+      title={screenTitle}
     >
       <View style={styles.contentStack}>
         {status ? <Text style={styles.status}>{status}</Text> : null}
+        {threadId && onImportMaterial ? (
+          <AiLightButton label="添加资料" onPress={() => onImportMaterial(threadId)} />
+        ) : null}
         <View style={styles.list}>
-          {items.length ? (
+          {isGlobalView ? (
+            conversationGroups.length ? (
+              conversationGroups.map((group) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={group.threadId}
+                  onPress={() => onOpenThreadMaterials?.(group.threadId, group.threadTitle)}
+                  style={({ pressed }) => [styles.groupRow, pressed && styles.pressed]}
+                >
+                  <View style={styles.groupHeader}>
+                    <View style={styles.copy}>
+                      <Text numberOfLines={1} style={styles.title}>{group.threadTitle}</Text>
+                      <Text style={styles.meta}>{group.materialCount} 份资料 · 最近更新 {group.updatedAt.slice(5, 10)}</Text>
+                    </View>
+                    <Text style={styles.textActionLabel}>进入</Text>
+                  </View>
+                  {group.materials[0] ? (
+                    <View style={styles.groupMaterialPreview}>
+                      <View style={styles.iconWrap}>
+                        <Ionicons color={aiLightColors.coralActive} name={iconForStatus(group.materials[0].parserStatus)} size={18} />
+                      </View>
+                      <View style={styles.copy}>
+                        <Text numberOfLines={1} style={styles.previewTitle}>{group.materials[0].title}</Text>
+                        <Text numberOfLines={1} style={styles.meta}>{STATUS_LABELS[group.materials[0].parserStatus]} · {group.materials[0].originalFilename ?? '手动文本'}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={styles.title}>还没有会话资料</Text>
+              </View>
+            )
+          ) : items.length ? (
             items.map((item) => {
               const selected = selectedIds.includes(item.id);
               return (
@@ -192,6 +254,28 @@ const styles = StyleSheet.create({
     gap: rhythm.cardContentGap,
     padding: spacing[3],
   },
+  groupRow: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.cardContentGap,
+    padding: spacing[3],
+  },
+  groupHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    justifyContent: 'space-between',
+  },
+  groupMaterialPreview: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    padding: spacing[2],
+  },
   selectedRow: {
     backgroundColor: aiLightColors.card,
     borderColor: aiLightColors.coral,
@@ -220,9 +304,20 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
   },
+  previewTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+    fontSize: 14,
+    lineHeight: 19,
+  },
   meta: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+  },
+  textActionLabel: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+    fontWeight: '600',
   },
   error: {
     ...typography.textStyles.caption,

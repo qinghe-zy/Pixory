@@ -10,8 +10,11 @@ import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   createKnowledgeBase,
   generateIpMaterial,
+  generateThreadIpSnapshotMaterial,
   importPickedDocuments,
+  importPickedDocumentsToThread,
   importManualTextMaterial,
+  importManualTextToThread,
   listKnowledgeBases,
 } from '../ai/aiDocumentService';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
@@ -21,6 +24,7 @@ import { metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 interface AiMaterialImportScreenProps {
   space: PixorySpace;
   knowledgeBaseId?: string;
+  threadId?: string;
   onBack: () => void;
 }
 
@@ -29,7 +33,7 @@ interface ImportFeedback {
   tone: FeedbackTone;
 }
 
-export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMaterialImportScreenProps) {
+export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, onBack }: AiMaterialImportScreenProps) {
   const [title, setTitle] = useState('角色资料');
   const [text, setText] = useState('');
   const [targetKnowledgeBaseId, setTargetKnowledgeBaseId] = useState<string | undefined>(knowledgeBaseId);
@@ -38,6 +42,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
   const [feedback, setFeedback] = useState<ImportFeedback | null>(null);
   const [busy, setBusy] = useState(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
+  const targetLabel = threadId ? '当前会话资料库' : '总资料库';
 
   useEffect(() => {
     void runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItems(db)).then((nextIps) => {
@@ -92,6 +97,15 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
   }
 
   async function importManualText(): Promise<ImportFeedback> {
+    if (threadId) {
+      const document = await importManualTextToThread({
+        space,
+        text,
+        threadId,
+        title: title.trim() || '手动材料',
+      });
+      return feedbackForDocument(document, '已导入');
+    }
     const ownerId = await ensureKnowledgeBaseId();
     const document = await importManualTextMaterial({
       ownerId,
@@ -118,18 +132,24 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
     if (result.canceled) {
       return { message: '已取消选择。', tone: 'info' };
     }
-    const ownerId = await ensureKnowledgeBaseId();
-    const documents = await importPickedDocuments({
-      assets: result.assets.map((asset) => ({
-        fileName: asset.name ?? 'material.txt',
-        fileSize: asset.size ?? null,
-        mimeType: asset.mimeType ?? null,
-        sourceUri: asset.uri,
-      })),
-      ownerId,
-      ownerType: 'knowledge_base',
-      space,
-    });
+    const assets = result.assets.map((asset) => ({
+      fileName: asset.name ?? 'material.txt',
+      fileSize: asset.size ?? null,
+      mimeType: asset.mimeType ?? null,
+      sourceUri: asset.uri,
+    }));
+    const documents = threadId
+      ? await importPickedDocumentsToThread({
+          assets,
+          space,
+          threadId,
+        })
+      : await importPickedDocuments({
+          assets,
+          ownerId: await ensureKnowledgeBaseId(),
+          ownerType: 'knowledge_base',
+          space,
+        });
     if (documents.length === 1) {
       return feedbackForDocument(documents[0], '已导入');
     }
@@ -150,11 +170,18 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
     if (selectedIpId == null) {
       return { message: '请先选择一个 IP。', tone: 'warning' };
     }
-    const document = await generateIpMaterial({
-      ipId: selectedIpId,
-      space,
-      title: title.trim() || 'IP 结构化资料',
-    });
+    const document = threadId
+      ? await generateThreadIpSnapshotMaterial({
+        ipId: selectedIpId,
+        space,
+        threadId,
+        title: title.trim() || 'IP 信息',
+      })
+      : await generateIpMaterial({
+        ipId: selectedIpId,
+        space,
+        title: title.trim() || 'IP 结构化资料',
+      });
     return feedbackForDocument(document, '已生成');
   }
 
@@ -163,7 +190,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
       loading={busy}
       onBack={onBack}
       scrollable
-      subtitle={spaceLabel}
+      subtitle={`${spaceLabel} · ${targetLabel}`}
       title="导入材料"
     >
       <View style={styles.contentStack}>
@@ -193,12 +220,12 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, onBack }: AiMat
         </AiLightCard>
 
         <AiLightCard>
-          <Text style={styles.sectionTitle}>文件材料</Text>
+          <Text style={styles.sectionTitle}>从系统文件导入</Text>
           <AiLightButton label="选择文件导入" onPress={() => void runImport(pickAndImportDocument)} variant="outline" />
         </AiLightCard>
 
         <AiLightCard>
-          <Text style={styles.sectionTitle}>从已有 IP 生成</Text>
+          <Text style={styles.sectionTitle}>从 IP 导入</Text>
           <View style={styles.ipChoiceList}>
             {ips.map((ip) => (
               <Text key={ip.id} onPress={() => setSelectedIpId(ip.id)} style={[styles.ipChoice, selectedIpId === ip.id && styles.selectedIpChoice]}>
