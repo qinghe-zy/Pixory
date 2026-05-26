@@ -7,7 +7,7 @@
   "releaseNotes": [
     "AI 角色详情页升级为海报式大图布局，角色信息、标签和开场白更聚焦。",
     "角色指令、默认开场白和更多开场白改为轻量内容卡片，展开和查看更多更清晰。",
-    "聊天页输入框聚焦时会主动跟随最新消息，降低 Android 键盘遮挡输入区的概率。"
+    "聊天页输入框聚焦时会主动避让 Android 键盘并跟随最新消息，降低输入区被遮挡的概率。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
