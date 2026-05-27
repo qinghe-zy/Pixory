@@ -27,7 +27,7 @@ test('EAS Update is configured for production OTA bundles', () => {
   assert.deepEqual(appConfig.expo.runtimeVersion, { policy: 'appVersion' });
   assert.equal(appConfig.expo.updates.enabled, true);
   assert.equal(appConfig.expo.updates.url, 'https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae');
-  assert.equal(appConfig.expo.updates.checkAutomatically, 'ON_LOAD');
+  assert.equal(appConfig.expo.updates.checkAutomatically, 'NEVER');
   assert.equal(appConfig.expo.updates.fallbackToCacheTimeout, 0);
   assert.equal(appConfig.expo.updates.requestHeaders['expo-channel-name'], 'production');
   assert.equal(easConfig.build['release-apk'].channel, 'production');
@@ -112,6 +112,18 @@ test('App shows a small one-time toast after an OTA update has been applied', ()
   assert.match(settingsRepositorySource, /LAST_APPLIED_UPDATE_NOTICE_ID_KEY/);
   assert.match(settingsRepositorySource, /getLastAppliedUpdateNoticeId/);
   assert.match(settingsRepositorySource, /setLastAppliedUpdateNoticeId/);
+});
+
+test('App shows a tiny toast when a production OTA update starts downloading', () => {
+  const appSource = readProjectFile('App.tsx');
+
+  assert.match(appSource, /function AppOtaUpdateFetchNotice/);
+  assert.match(appSource, /Updates\.checkForUpdateAsync\(\)/);
+  assert.match(appSource, /Updates\.fetchUpdateAsync\(\)/);
+  assert.match(appSource, /message:\s*'发现热更新，正在后台更新'/);
+  assert.match(appSource, /message:\s*'热更新已准备好，下次打开生效'/);
+  assert.match(appSource, /<AppOtaUpdateFetchNotice isReady=\{isReady\} \/>/);
+  assert.doesNotMatch(appSource, /Updates\.reloadAsync\(/);
 });
 
 test('update prompt uses compact themed split action layout', () => {

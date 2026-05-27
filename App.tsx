@@ -198,6 +198,7 @@ type SpaceSession = {
 const INITIAL_ROUTE: AppRoute = { name: 'root', tab: 'home' };
 const PERSONAL_BACKGROUND_LOCK_GRACE_MS = 60 * 1000;
 const APPLIED_UPDATE_NOTICE_DURATION_MS = 2200;
+const OTA_UPDATE_FETCH_NOTICE_DURATION_MS = 2200;
 
 function isPersonalRoute(route: AppRoute): boolean {
   return 'space' in route && route.space === 'personal';
@@ -1810,6 +1811,7 @@ export default function App() {
     <SafeAreaProvider>
       <AppToastProvider>
         <AppUpdateAppliedNotice isReady={isReady} />
+        <AppOtaUpdateFetchNotice isReady={isReady} />
         {content}
         <PersonalUnlockModal
           hasCredential={personalCredentialAvailable}
@@ -1916,6 +1918,52 @@ function AppUpdateAppliedNotice({ isReady }: { isReady: boolean }) {
       .catch((error) => {
         console.warn('Pixory applied update notice failed.', {
           message: error instanceof Error ? error.message : 'unknown applied update notice error',
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isReady, showToast]);
+
+  return null;
+}
+
+function AppOtaUpdateFetchNotice({ isReady }: { isReady: boolean }) {
+  const { showToast } = useToast();
+  const hasCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isReady || !Updates.isEnabled || hasCheckedRef.current) {
+      return undefined;
+    }
+
+    hasCheckedRef.current = true;
+    let isMounted = true;
+    void Updates.checkForUpdateAsync()
+      .then(async (checkResult) => {
+        if (!isMounted || !checkResult.isAvailable) {
+          return;
+        }
+        showToast({
+          durationMs: OTA_UPDATE_FETCH_NOTICE_DURATION_MS,
+          message: '发现热更新，正在后台更新',
+          tone: 'info',
+        });
+
+        const fetchResult = await Updates.fetchUpdateAsync();
+        if (!isMounted || (!fetchResult.isNew && !fetchResult.isRollBackToEmbedded)) {
+          return;
+        }
+        showToast({
+          durationMs: OTA_UPDATE_FETCH_NOTICE_DURATION_MS,
+          message: '热更新已准备好，下次打开生效',
+          tone: 'success',
+        });
+      })
+      .catch((error) => {
+        console.warn('Pixory OTA update fetch notice failed.', {
+          message: error instanceof Error ? error.message : 'unknown OTA update fetch notice error',
         });
       });
 
