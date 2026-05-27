@@ -54,3 +54,23 @@ test('AI session model resolver documents invalid and partial-null cases', () =>
   assert.match(service, /thread\.modelId\s*\?/);
   assert.match(service, /supportsChat/);
 });
+
+test('new AI chats follow global default unless a model is explicitly supplied', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /const shouldUseFixedModel = Boolean\(input\.providerId \|\| input\.modelId\)/);
+  assert.match(service, /providerId: shouldUseFixedModel && provider \? provider\.id : null/);
+  assert.match(service, /modelId: shouldUseFixedModel && model \? model\.modelId : null/);
+  assert.match(service, /createNormalThreadFromRoleCard[\s\S]*providerId: null/);
+  assert.match(service, /createNormalThreadFromRoleCard[\s\S]*modelId: null/);
+  assert.doesNotMatch(service, /providerId: provider\?\.id \?\? null/);
+  assert.doesNotMatch(service, /modelId: model\?\.modelId \?\? null/);
+});
+
+test('session model settings uses the same resolver as generation', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, thread\)/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolvedModel\.status !== 'ready'/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*currentStatus[\s\S]*'invalid'/);
+});

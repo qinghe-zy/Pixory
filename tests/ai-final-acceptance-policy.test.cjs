@@ -36,7 +36,7 @@ test('AI failed assistant bubbles provide readable errors and inline retry', () 
   assert.match(bubble, /重试/);
 });
 
-test('new AI chats snapshot the last selected chat provider and model', () => {
+test('new AI chats follow the global default until a session model is explicitly set', () => {
   const chat = read('src/ai/aiChatService.ts');
   const providerService = read('src/ai/aiProviderService.ts');
   const settingsRepository = read('src/database/repositories/settingsRepository.ts');
@@ -46,8 +46,9 @@ test('new AI chats snapshot the last selected chat provider and model', () => {
   assert.match(settingsRepository, /AI_DEFAULT_CHAT_PROVIDER_ID_KEY/);
   assert.match(chat, /provider\.defaultChatModelId/);
   assert.match(chat, /item\.supportsChat/);
-  assert.match(chat, /providerId: provider\?\.id \?\? null/);
-  assert.match(chat, /modelId: model\?\.modelId \?\? null/);
+  assert.match(chat, /const shouldUseFixedModel = Boolean\(input\.providerId \|\| input\.modelId\)/);
+  assert.match(chat, /providerId: shouldUseFixedModel && provider \? provider\.id : null/);
+  assert.match(chat, /modelId: shouldUseFixedModel && model \? model\.modelId : null/);
 });
 
 test('AI documents are copied locally and parse failures remain recoverable', () => {

@@ -528,7 +528,10 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
     }
     const providers = await aiProviderRepository.listProviders(db);
     const defaultProviderId = await settingsRepository.getDefaultAiProviderId(db);
-    return providers.find((item) => item.id === defaultProviderId) ?? providers[0] ?? null;
+    if (defaultProviderId) {
+      return providers.find((item) => item.id === defaultProviderId) ?? null;
+    }
+    return providers[0] ?? null;
   });
   if (!provider) {
     return { provider: null, model: null };
@@ -622,7 +625,10 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
 
 export async function createThreadFromContext(input: CreateThreadFromContextInput): Promise<AiThreadRecord> {
   await ensureBuiltInProviders(input.space);
-  const { provider, model } = await resolveDefaultThreadProvider(input.space, input.providerId, input.modelId);
+  const shouldUseFixedModel = Boolean(input.providerId || input.modelId);
+  const { provider, model } = shouldUseFixedModel
+    ? await resolveDefaultThreadProvider(input.space, input.providerId, input.modelId)
+    : { provider: null, model: null };
 
   return runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.createThread(db, {
@@ -634,9 +640,9 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       includeIpDocuments: input.includeIpDocuments ?? false,
       title: fallbackTitle(input),
       titleStatus: isCustomInitialTitle(input) ? 'custom' : 'fallback',
-      providerId: provider?.id ?? null,
-      modelId: model?.modelId ?? null,
-      modelSnapshotJson: JSON.stringify(model ?? {}),
+      providerId: shouldUseFixedModel && provider ? provider.id : null,
+      modelId: shouldUseFixedModel && model ? model.modelId : null,
+      modelSnapshotJson: shouldUseFixedModel ? JSON.stringify(model ?? {}) : '{}',
       roleInstructionWeight: input.roleInstructionWeight ?? 'default',
       replyPreference: input.replyPreference ?? 'auto',
       systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
@@ -656,7 +662,6 @@ export async function createNormalThreadFromRoleCard(input: {
     if (!roleCard || roleCard.space !== input.space) {
       throw new Error('角色卡不存在。');
     }
-    const { provider, model } = await resolveDefaultThreadProvider(input.space, null, null);
     let createdThread: AiThreadRecord | null = null;
     await db.withTransactionAsync(async () => {
       const thread = await aiThreadRepository.createThread(db, {
@@ -668,9 +673,9 @@ export async function createNormalThreadFromRoleCard(input: {
         includeIpDocuments: false,
         title: roleCard.name,
         titleStatus: 'custom',
-        providerId: provider?.id ?? null,
-        modelId: model?.modelId ?? null,
-        modelSnapshotJson: JSON.stringify(model ?? {}),
+        providerId: null,
+        modelId: null,
+        modelSnapshotJson: '{}',
         roleCardId: roleCard.id,
         roleSnapshotJson: JSON.stringify(roleCard),
         roleInstructionWeight: 'default',
@@ -833,33 +838,24 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
         providerLabel: card.provider.displayName,
       }))
   );
-  const currentOption = thread.providerId && thread.modelId
-    ? options.find((option) => option.providerId === thread.providerId && option.modelId === thread.modelId) ?? null
-    : null;
-  const providerOnlyCard = thread.providerId && !thread.modelId
-    ? cards.find((card) => card.provider.id === thread.providerId) ?? null
-    : null;
-  const providerOnlyModel = providerOnlyCard
-    ? providerOnlyCard.models.find((model) => model.modelId === providerOnlyCard.provider.defaultChatModelId && model.supportsChat)
-      ?? providerOnlyCard.models.find((model) => model.supportsChat)
-      ?? null
+  const resolvedModel = await resolveThreadChatModel(space, thread);
+  const resolvedOption = resolvedModel.status === 'ready'
+    ? options.find((option) => option.providerId === resolvedModel.provider.id && option.modelId === resolvedModel.modelId) ?? null
     : null;
   const currentStatus: AiThreadSessionModelConfig['currentStatus'] = !thread.providerId
     ? 'follow_default'
-    : currentOption
-      ? 'fixed_model'
-      : providerOnlyCard && providerOnlyModel
-        ? 'fixed_provider'
-        : 'invalid';
+    : resolvedModel.status !== 'ready'
+      ? 'invalid'
+      : thread.modelId
+        ? 'fixed_model'
+        : 'fixed_provider';
 
   return {
     currentLabel:
       currentStatus === 'follow_default'
         ? `跟随全局默认（当前：${defaultLabel}）`
-        : currentStatus === 'fixed_model' && currentOption
-          ? `${currentOption.providerLabel} · ${currentOption.label}`
-          : currentStatus === 'fixed_provider' && providerOnlyCard && providerOnlyModel
-            ? `${providerOnlyCard.provider.displayName} · ${providerOnlyModel.displayName}`
+        : resolvedModel.status === 'ready'
+          ? `${resolvedModel.provider.displayName} · ${resolvedOption?.label ?? resolvedModel.modelId}`
             : '模型配置已失效',
     currentStatus,
     followDefaultLabel: `跟随全局默认（当前：${defaultLabel}）`,
