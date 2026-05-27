@@ -47,7 +47,7 @@ test('session settings opens current thread material library near provider accou
 
   assert.match(source, /onOpenThreadMaterials/);
   assert.match(source, /资料库/);
-  assert.ok(source.indexOf('资料库') > source.indexOf('模型账号'));
+  assert.ok(source.indexOf('资料库') > source.indexOf('全局默认'));
   assert.match(app, /ai-thread-material-list/);
   assert.match(app, /ai-material-import/);
   assert.match(app, /threadId/);

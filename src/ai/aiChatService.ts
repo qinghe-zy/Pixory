@@ -9,6 +9,7 @@ import {
   type AiBoundaryMode,
   type AiCitationRecord,
   type AiContextType,
+  type AiProviderRecord,
   type AiReplyPreference,
   type AiRoleInstructionWeight,
   type AiThreadRecord,
@@ -16,7 +17,7 @@ import {
 } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
-import { getAdapterForProvider, ensureBuiltInProviders } from './aiProviderService';
+import { getAdapterForProvider, ensureBuiltInProviders, listProviderCards } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
 import { retrieveForThread } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
@@ -103,6 +104,23 @@ export interface AiThreadSessionConfig {
   lastMaintenanceError: string | null;
 }
 
+export interface AiSessionModelOption {
+  hasApiKey: boolean;
+  label: string;
+  modelId: string;
+  providerId: string;
+  providerLabel: string;
+}
+
+export interface AiThreadSessionModelConfig {
+  currentLabel: string;
+  currentStatus: 'follow_default' | 'fixed_provider' | 'fixed_model' | 'invalid';
+  followDefaultLabel: string;
+  options: AiSessionModelOption[];
+  providerId: string | null;
+  modelId: string | null;
+}
+
 export interface UpdateAiThreadSessionConfigInput {
   space: PixorySpace;
   threadId: string;
@@ -121,6 +139,21 @@ export interface ApplyRoleCardToThreadInput {
   threadId: string;
   roleCardId: string | null;
 }
+
+type ThreadModelSource = 'global_default' | 'provider_default' | 'thread_model';
+
+type ThreadModelConfig = Pick<AiThreadRecord, 'providerId' | 'modelId'>;
+
+type ResolvedThreadChatModel =
+  | {
+      status: 'ready';
+      apiKey: string | null;
+      modelId: string;
+      provider: AiProviderRecord;
+      source: ThreadModelSource;
+    }
+  | { status: 'invalid_global_default'; message: string; providerId?: string | null; modelId?: string | null }
+  | { status: 'invalid_thread_model'; message: string; providerId?: string | null; modelId?: string | null };
 
 const stoppedMessageIds = new Set<string>();
 
@@ -416,21 +449,76 @@ async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: AiThread
   });
 }
 
-async function resolveThreadProvider(space: PixorySpace, thread: AiThreadRecord) {
+function invalidThreadModel(message: string, providerId?: string | null, modelId?: string | null): ResolvedThreadChatModel {
+  return { message, modelId, providerId, status: 'invalid_thread_model' };
+}
+
+function invalidGlobalDefault(message: string, providerId?: string | null, modelId?: string | null): ResolvedThreadChatModel {
+  return { message, modelId, providerId, status: 'invalid_global_default' };
+}
+
+function modelInvalidMessage(source: ThreadModelSource): string {
+  return source === 'global_default'
+    ? '全局默认模型已失效，请重新配置默认模型，或为当前会话选择一个可用模型。'
+    : '当前会话模型已失效，请重新选择模型，或切换为跟随全局默认。';
+}
+
+async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelConfig): Promise<ResolvedThreadChatModel> {
   await ensureBuiltInProviders(space);
-  const providers = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listProviders(db));
-  const defaultProviderId = await runWithDatabaseSpace(space, (db) => settingsRepository.getDefaultAiProviderId(db));
-  const provider = providers.find((item) => item.id === thread.providerId) ?? providers.find((item) => item.id === defaultProviderId) ?? providers[0] ?? null;
-  if (!provider) {
-    return { provider: null, modelId: null, apiKey: null };
-  }
-  const models = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listModels(db, provider.id));
-  const modelId = thread.modelId ?? provider.defaultChatModelId ?? models.find((model) => model.supportsChat)?.modelId ?? null;
-  return {
-    provider,
-    modelId,
-    apiKey: await getProviderApiKey(provider.id),
-  };
+  return runWithDatabaseSpace(space, async (db) => {
+    const providers = await aiProviderRepository.listProviders(db);
+
+    async function resolveProviderModel(provider: AiProviderRecord, modelId: string | null, source: ThreadModelSource): Promise<ResolvedThreadChatModel> {
+      const models = await aiProviderRepository.listModels(db, provider.id);
+      const explicitModel = modelId ? models.find((model) => model.modelId === modelId && model.supportsChat) ?? null : null;
+      if (modelId && !explicitModel) {
+        const message = modelInvalidMessage(source);
+        return source === 'global_default'
+          ? invalidGlobalDefault(message, provider.id, modelId)
+          : invalidThreadModel(message, provider.id, modelId);
+      }
+      const defaultModel = provider.defaultChatModelId
+        ? models.find((model) => model.modelId === provider.defaultChatModelId && model.supportsChat) ?? null
+        : null;
+      if (provider.defaultChatModelId && !defaultModel && !explicitModel) {
+        const message = modelInvalidMessage(source);
+        return source === 'global_default'
+          ? invalidGlobalDefault(message, provider.id, provider.defaultChatModelId)
+          : invalidThreadModel(message, provider.id, provider.defaultChatModelId);
+      }
+      const resolvedModel = explicitModel ?? defaultModel ?? models.find((model) => model.supportsChat) ?? null;
+      if (!resolvedModel) {
+        const message = modelInvalidMessage(source);
+        return source === 'global_default'
+          ? invalidGlobalDefault(message, provider.id, modelId)
+          : invalidThreadModel(message, provider.id, modelId);
+      }
+      return {
+        apiKey: await getProviderApiKey(provider.id),
+        modelId: resolvedModel.modelId,
+        provider,
+        source,
+        status: 'ready',
+      };
+    }
+
+    if (thread.providerId) {
+      const provider = providers.find((item) => item.id === thread.providerId) ?? null;
+      if (!provider) {
+        return invalidThreadModel('当前会话模型已失效，请重新选择模型，或切换为跟随全局默认。', thread.providerId, thread.modelId);
+      }
+      return resolveProviderModel(provider, thread.modelId, thread.modelId ? 'thread_model' : 'provider_default');
+    }
+
+    const defaultProviderId = await settingsRepository.getDefaultAiProviderId(db);
+    const provider = defaultProviderId
+      ? providers.find((item) => item.id === defaultProviderId) ?? null
+      : providers[0] ?? null;
+    if (!provider) {
+      return invalidGlobalDefault('全局默认模型已失效，请重新配置默认模型，或为当前会话选择一个可用模型。', defaultProviderId, null);
+    }
+    return resolveProviderModel(provider, null, 'global_default');
+  });
 }
 
 async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: string | null, modelId?: string | null) {
@@ -621,12 +709,13 @@ export async function loadThreadTitle(space: PixorySpace, threadId: string): Pro
 export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: string | null): Promise<string> {
   await ensureBuiltInProviders(space);
   const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
-  const { provider, model } = await resolveDefaultThreadProvider(space, thread?.providerId ?? null, thread?.modelId ?? null);
-  if (!provider) {
-    return '未选择模型';
+  const resolved = await resolveThreadChatModel(space, thread ?? { providerId: null, modelId: null });
+  if (resolved.status !== 'ready') {
+    return resolved.status === 'invalid_global_default' ? '全局默认模型已失效' : '当前会话模型已失效';
   }
-  const modelName = model?.displayName ?? thread?.modelId ?? provider.defaultChatModelId ?? null;
-  return modelName ? `${provider.displayName} · ${modelName}` : provider.displayName;
+  const model = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findModel(db, resolved.provider.id, resolved.modelId));
+  const modelName = model?.displayName ?? resolved.modelId;
+  return `${resolved.provider.displayName} · ${modelName}`;
 }
 
 async function loadBranchRootMessages(
@@ -721,6 +810,63 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       lastMaintenanceError: memoryJob.lastMaintenanceError,
     };
   });
+}
+
+export async function loadThreadSessionModelConfig(space: PixorySpace, threadId: string): Promise<AiThreadSessionModelConfig | null> {
+  const [thread, cards, defaultLabel] = await Promise.all([
+    runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)),
+    listProviderCards(space),
+    getCurrentChatModelLabel(space, null),
+  ]);
+  if (!thread || thread.space !== space) {
+    return null;
+  }
+
+  const options: AiSessionModelOption[] = cards.flatMap((card) =>
+    card.models
+      .filter((model) => model.supportsChat)
+      .map((model) => ({
+        hasApiKey: card.hasApiKey,
+        label: model.displayName,
+        modelId: model.modelId,
+        providerId: card.provider.id,
+        providerLabel: card.provider.displayName,
+      }))
+  );
+  const currentOption = thread.providerId && thread.modelId
+    ? options.find((option) => option.providerId === thread.providerId && option.modelId === thread.modelId) ?? null
+    : null;
+  const providerOnlyCard = thread.providerId && !thread.modelId
+    ? cards.find((card) => card.provider.id === thread.providerId) ?? null
+    : null;
+  const providerOnlyModel = providerOnlyCard
+    ? providerOnlyCard.models.find((model) => model.modelId === providerOnlyCard.provider.defaultChatModelId && model.supportsChat)
+      ?? providerOnlyCard.models.find((model) => model.supportsChat)
+      ?? null
+    : null;
+  const currentStatus: AiThreadSessionModelConfig['currentStatus'] = !thread.providerId
+    ? 'follow_default'
+    : currentOption
+      ? 'fixed_model'
+      : providerOnlyCard && providerOnlyModel
+        ? 'fixed_provider'
+        : 'invalid';
+
+  return {
+    currentLabel:
+      currentStatus === 'follow_default'
+        ? `跟随全局默认（当前：${defaultLabel}）`
+        : currentStatus === 'fixed_model' && currentOption
+          ? `${currentOption.providerLabel} · ${currentOption.label}`
+          : currentStatus === 'fixed_provider' && providerOnlyCard && providerOnlyModel
+            ? `${providerOnlyCard.provider.displayName} · ${providerOnlyModel.displayName}`
+            : '模型配置已失效',
+    currentStatus,
+    followDefaultLabel: `跟随全局默认（当前：${defaultLabel}）`,
+    modelId: thread.modelId,
+    options,
+    providerId: thread.providerId,
+  };
 }
 
 export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionConfigInput): Promise<AiThreadRecord | null> {
@@ -1068,19 +1214,21 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  const { provider, modelId, apiKey } = await resolveThreadProvider(input.space, input.thread);
+  const resolvedModel = await resolveThreadChatModel(input.space, input.thread);
   if (await stopForAbort()) {
     return;
   }
-  if (!provider || !modelId) {
-    await markAssistantFailed(input.space, input.assistantMessageId, '请先选择可用的 AI provider 和模型。');
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: '请先选择可用的 AI provider 和模型。', completedAt: new Date().toISOString() });
+  if (resolvedModel.status !== 'ready') {
+    await markAssistantFailed(input.space, input.assistantMessageId, resolvedModel.message);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
     input.onUpdated?.();
     return;
   }
+  const { apiKey, modelId, provider } = resolvedModel;
   if (!apiKey) {
-    await markAssistantFailed(input.space, input.assistantMessageId, '请先在 AI 设置中填写 API key。');
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: '请先在 AI 设置中填写 API key。', completedAt: new Date().toISOString() });
+    const apiKeyMessage = '当前模型账号不可用，请检查 API key 或切换当前会话模型。';
+    await markAssistantFailed(input.space, input.assistantMessageId, apiKeyMessage);
+    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
     input.onUpdated?.();
     return;
   }
@@ -1275,6 +1423,14 @@ async function streamAssistantReply(input: {
   input.onUpdated?.();
 }
 
+async function loadThreadForGeneration(space: PixorySpace, threadId: string): Promise<AiThreadRecord> {
+  const thread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
+  if (!thread || thread.space !== space) {
+    throw new Error('AI thread was not found.');
+  }
+  return thread;
+}
+
 export async function sendUserMessage(
   input: SendUserMessageInput
 ): Promise<{ userMessageId: string; assistantMessageId: string }> {
@@ -1315,6 +1471,7 @@ export async function sendUserMessage(
   });
   input.onCreated?.({ userMessageId, assistantMessageId });
   input.onUpdated?.();
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
     assistantMessageId,
@@ -1322,7 +1479,7 @@ export async function sendUserMessage(
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
-    thread,
+    thread: latestThread,
     userMessage: { id: userMessageId, content: input.content },
   });
 
@@ -1358,6 +1515,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     });
     return previousUserMessage;
   });
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
     assistantMessageId: input.assistantMessageId,
@@ -1365,7 +1523,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
-    thread,
+    thread: latestThread,
     userMessage,
   });
 }
@@ -1418,6 +1576,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
 
   input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId });
   input.onUpdated?.();
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
     assistantMessageId,
@@ -1425,7 +1584,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
-    thread,
+    thread: latestThread,
     userMessage: { id: input.userMessageId, content },
   });
 

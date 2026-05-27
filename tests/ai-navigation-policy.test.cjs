@@ -57,6 +57,8 @@ test('AI chat header shows the current model below the chat title', () => {
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   assert.match(content, /getCurrentChatModelLabel/);
   assert.match(content, /modelLabel/);
+  assert.match(content, /modelRefreshKey/);
+  assert.match(content, /\[modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
   assert.match(content, /styles\.modelSubtitle/);
   assert.match(service, /getCurrentChatModelLabel/);
   assert.match(service, /provider\.displayName/);
@@ -426,13 +428,13 @@ test('AI session settings avoid one overloaded button cluster', () => {
 
   assert.match(sessionConfig, /高级角色指令/);
   assert.match(sessionConfig, /advancedPromptVisible/);
-  assert.match(sessionConfig, /模型账号/);
-  assert.doesNotMatch(sessionConfig, /<PrimaryButton label="模型账号"/);
+  assert.match(sessionConfig, /全局默认/);
+  assert.doesNotMatch(sessionConfig, /<PrimaryButton label="全局默认"/);
   assert.doesNotMatch(sessionConfig, /选择或编辑角色卡/);
   assert.doesNotMatch(sessionConfig, /minHeight=\{132\}/);
   assert.match(actionsBlock, /保存角色指令并开始聊天/);
   assert.match(actionsBlock, /仅保存角色指令/);
-  assert.doesNotMatch(actionsBlock, /模型账号/);
+  assert.doesNotMatch(actionsBlock, /全局默认/);
 });
 
 test('AI session settings can rename and delete the current thread', () => {
@@ -705,6 +707,9 @@ test('AI chat route updates merge into the latest route so first message keeps t
   assert.match(app, /expectedRouteKey && currentRoute\.routeKey !== expectedRouteKey/);
   assert.match(app, /onThreadReady=\{\(threadId\) => updateCurrentAiChatRoute\(\{ threadId \}, currentRoute\.routeKey\)\}/);
   assert.match(app, /onThreadTitleChange=\{\(title\) => updateCurrentAiChatRoute\(\{ contextTitle: title \}, currentRoute\.routeKey\)\}/);
+  assert.match(app, /modelRefreshKey=\{currentRoute\.modelRefreshKey\}/);
+  assert.match(app, /function popRouteStack/);
+  assert.match(app, /modelRefreshKey:\s*\(previousRoute\.modelRefreshKey \?\? 0\) \+ 1/);
   assert.doesNotMatch(app, /onThreadReady=\{\(threadId\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, threadId \}\)\}/);
   assert.doesNotMatch(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, contextTitle: title \}\)\}/);
 });

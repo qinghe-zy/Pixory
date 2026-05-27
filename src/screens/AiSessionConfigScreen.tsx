@@ -10,7 +10,15 @@ import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLig
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { applyRoleCardToThread, deleteAiThreads, loadThreadSessionConfig, renameAiThread, updateAiThreadSessionConfig } from '../ai/aiChatService';
+import {
+  applyRoleCardToThread,
+  deleteAiThreads,
+  loadThreadSessionConfig,
+  loadThreadSessionModelConfig,
+  renameAiThread,
+  updateAiThreadSessionConfig,
+  type AiThreadSessionModelConfig,
+} from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
@@ -91,9 +99,12 @@ export function AiSessionConfigScreen({
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
+  const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingModel, setSavingModel] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const settingsLoadedRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
@@ -111,6 +122,7 @@ export function AiSessionConfigScreen({
       setDeepMemoryEnabled(false);
       setLastMaintenanceError(null);
       setMaintenanceStatus(null);
+      setSessionModelConfig(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
@@ -127,6 +139,7 @@ export function AiSessionConfigScreen({
     setDeepMemoryEnabled(config.deepMemoryEnabled);
     setLastMaintenanceError(config.lastMaintenanceError);
     setMaintenanceStatus(await loadMemoryMaintenanceStatus(space, threadId));
+    setSessionModelConfig(await loadThreadSessionModelConfig(space, threadId));
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
@@ -195,6 +208,37 @@ export function AiSessionConfigScreen({
       return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveSessionModel(providerId: string | null, modelId: string | null) {
+    if (!threadId || savingModel) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const updated = await updateAiThreadSessionConfig({
+        avatarEnabled,
+        boundaryMode,
+        deepMemoryEnabled,
+        modelId,
+        providerId,
+        replyPreference,
+        roleInstructionWeight,
+        space,
+        systemPrompt,
+        threadId,
+      });
+      if (!updated) {
+        throw new Error('没有找到当前会话，模型未保存。');
+      }
+      setModelPickerVisible(false);
+      setSessionModelConfig(await loadThreadSessionModelConfig(space, threadId));
+      setStatus({ message: '已切换当前会话模型，可返回聊天重新生成上一条回复。', tone: 'success', title: '模型已更新' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '模型保存失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSavingModel(false);
     }
   }
 
@@ -307,7 +351,7 @@ export function AiSessionConfigScreen({
                 </View>
               </View>
               <Pressable accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
-                <Text style={styles.textActionLabel}>模型账号</Text>
+                <Text style={styles.textActionLabel}>全局默认</Text>
               </Pressable>
               {threadId && onOpenThreadMaterials ? (
                 <Pressable accessibilityRole="button" onPress={onOpenThreadMaterials} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
@@ -321,6 +365,27 @@ export function AiSessionConfigScreen({
               <Text numberOfLines={1} style={styles.metaPill}>{roleCardSummary}</Text>
             </View>
           </AiLightCard>
+
+        <AiLightCard>
+          <View style={styles.roleRow}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.sectionTitle}>当前会话模型</Text>
+              <Text numberOfLines={1} style={styles.body}>{sessionModelConfig?.currentLabel ?? '加载中'}</Text>
+              <Text style={styles.caption}>仅在当前会话生效。切换后，下一次发送或重新生成会使用新模型。</Text>
+              {sessionModelConfig?.currentStatus === 'invalid' ? (
+                <Text style={styles.maintenanceWarning}>模型配置已失效，请重新选择模型，或切换为跟随全局默认。</Text>
+              ) : null}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!threadId || saving || savingModel}
+              onPress={() => setModelPickerVisible(true)}
+              style={({ pressed }) => [styles.textAction, (!threadId || saving || savingModel) && styles.disabled, pressed && threadId && !saving && !savingModel && styles.pressed]}
+            >
+              <Text style={styles.textActionLabel}>{savingModel ? '保存中' : '更换'}</Text>
+            </Pressable>
+          </View>
+        </AiLightCard>
 
         <AiLightCard>
           <View style={styles.roleRow}>
@@ -464,6 +529,46 @@ export function AiSessionConfigScreen({
           {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
         </View>
       </AiLightScaffold>
+
+      <AppDialog
+        message="选择跟随全局默认后，此会话会使用模型账号页里的全局默认模型。选择具体模型后，只影响当前会话。"
+        onClose={() => {
+          if (!savingModel) {
+            setModelPickerVisible(false);
+          }
+        }}
+        onPrimary={() => setModelPickerVisible(false)}
+        primaryDisabled={savingModel}
+        primaryLabel="关闭"
+        title="当前会话模型"
+        visible={modelPickerVisible}
+      >
+        <ScrollView style={styles.modelPickerScroll}>
+          <View style={styles.modelPickerList}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={savingModel}
+              onPress={() => void saveSessionModel(null, null)}
+              style={({ pressed }) => [styles.modelOption, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+            >
+              <Text style={styles.modelOptionTitle}>跟随全局默认</Text>
+              <Text style={styles.caption}>{sessionModelConfig?.followDefaultLabel ?? '使用全局默认模型'}</Text>
+            </Pressable>
+            {sessionModelConfig?.options.map((option) => (
+              <Pressable
+                accessibilityRole="button"
+                disabled={savingModel}
+                key={`${option.providerId}:${option.modelId}`}
+                onPress={() => void saveSessionModel(option.providerId, option.modelId)}
+                style={({ pressed }) => [styles.modelOption, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+              >
+                <Text style={styles.modelOptionTitle}>{option.providerLabel} · {option.label}</Text>
+                <Text style={styles.caption}>{option.hasApiKey ? '可用于当前会话' : '未填写 API key'}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      </AppDialog>
 
       <AppDialog
         message="修改后会同步显示在聊天页、最近继续和历史列表。"
@@ -717,6 +822,26 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
     minHeight: spacing[10],
     paddingHorizontal: spacing[3],
+  },
+  modelPickerList: {
+    gap: rhythm.microGap,
+  },
+  modelPickerScroll: {
+    maxHeight: 320,
+  },
+  modelOption: {
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  modelOptionTitle: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.78,

@@ -10,7 +10,7 @@ test('AI final failure paths keep local records recoverable', () => {
   const chat = read('src/ai/aiChatService.ts');
   assert.match(chat, /createMessage\(db,\s*{\s*id: userMessageId/s);
   assert.match(chat, /createMessage\(db,\s*{\s*id: assistantMessageId/s);
-  assert.match(chat, /请先在 AI 设置中填写 API key/);
+  assert.match(chat, /当前模型账号不可用，请检查 API key 或切换当前会话模型/);
   assert.match(chat, /retryAssistantMessage/);
   assert.match(chat, /stopStreamingMessage/);
   assert.match(chat, /fallbackAiThreadTitle/);
@@ -30,6 +30,8 @@ test('AI failed assistant bubbles provide readable errors and inline retry', () 
   assert.match(errors, /模型暂时不可用/);
   assert.match(errors, /网络连接失败/);
   assert.match(chatService, /normalizeAiErrorMessage/);
+  assert.match(chatService, /invalid_global_default/);
+  assert.match(chatService, /invalid_thread_model/);
   assert.match(bubble, /inlineRetryButton/);
   assert.match(bubble, /重试/);
 });
@@ -96,6 +98,8 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /头像开启|头像关闭/);
   assert.match(sessionConfig, /高级角色指令/);
   assert.match(sessionConfig, /回复设置/);
+  assert.match(sessionConfig, /当前会话模型/);
+  assert.match(sessionConfig, /跟随全局默认/);
   assert.match(sessionConfig, /资料范围/);
   assert.match(sessionConfig, /回复倾向/);
   assert.match(sessionConfig, /REPLY_PREFERENCES/);

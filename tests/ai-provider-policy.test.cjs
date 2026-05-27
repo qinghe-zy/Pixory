@@ -67,6 +67,15 @@ test('provider settings expose test sync and embedding model controls', () => {
   assert.match(chatService, /getDefaultAiProviderId/);
 });
 
+test('provider settings labels chat model selection as a global default', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+
+  assert.match(providerSettings, /全局默认模型/);
+  assert.match(providerSettings, /新创建会话的默认选择/);
+  assert.match(providerSettings, /不会影响已有独立设置的会话/);
+  assert.match(providerSettings, /saveProviderDefaultModels/);
+});
+
 test('AI memory maintenance model resolves status and reuses SecureStore keys', () => {
   const service = fs.readFileSync(path.join(root, 'src/ai/aiMemoryMaintenanceModelService.ts'), 'utf8');
   const screen = fs.readFileSync(path.join(root, 'src/screens/AiProviderSettingsScreen.tsx'), 'utf8');

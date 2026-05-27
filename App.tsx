@@ -164,6 +164,7 @@ type AppRoute =
       includeIpDocuments?: boolean;
       threadId?: string;
       routeKey?: string;
+      modelRefreshKey?: number;
       composerEntranceReason?: ComposerEntranceReason;
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
@@ -249,6 +250,24 @@ function aiChatRouteKey(route: Extract<AppRoute, { name: 'ai-chat' }>, stackDept
     route.knowledgeBaseId ?? 'none',
     route.includeIpDocuments ? 'with-docs' : 'without-docs',
   ].join(':');
+}
+
+function popRouteStack(current: AppRoute[]): AppRoute[] {
+  const closingRoute = current[current.length - 1];
+  const next = current.slice(0, -1);
+  const previousRoute = next[next.length - 1];
+  if (
+    closingRoute?.name === 'ai-session-config' &&
+    previousRoute?.name === 'ai-chat' &&
+    previousRoute.space === closingRoute.space &&
+    (!closingRoute.threadId || previousRoute.threadId === closingRoute.threadId)
+  ) {
+    next[next.length - 1] = {
+      ...previousRoute,
+      modelRefreshKey: (previousRoute.modelRefreshKey ?? 0) + 1,
+    };
+  }
+  return next;
 }
 
 function isArchiveMimeType(mimeType: string | null | undefined): boolean {
@@ -773,7 +792,7 @@ export default function App() {
     if (current.length > 1) {
       scheduleAiChatMemoryMaintenanceForRoute(current[current.length - 1], 'leave_chat');
     }
-    setRouteStack((currentStack) => (currentStack.length > 1 ? currentStack.slice(0, -1) : currentStack));
+    setRouteStack((currentStack) => (currentStack.length > 1 ? popRouteStack(currentStack) : currentStack));
   }
 
   function closeDeletedAiThread(threadId?: string) {
@@ -813,7 +832,7 @@ export default function App() {
       let nextRouteStack: AppRoute[] | null = null;
 
       if (current.length > 1) {
-        nextRouteStack = current.slice(0, -1);
+        nextRouteStack = popRouteStack(current);
       } else {
         const [rootRoute] = current;
         if (rootRoute && isExternalEntryRoute(rootRoute)) {
@@ -1558,6 +1577,7 @@ export default function App() {
         onOpenSource={(documentId, title, locator) => pushRoute({ name: 'ai-document-reader', documentId, locator, title, space: currentRoute.space })}
         onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
         onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}
+        modelRefreshKey={currentRoute.modelRefreshKey}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />

@@ -216,7 +216,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         })
       );
       setApiDraft(apiKey);
-      setStatus({ message: '模型账号已保存，后续对话会使用当前配置。', tone: 'success', title: '保存成功' });
+      setStatus({ message: '模型账号已保存。全局默认模型只影响后续新创建会话。', tone: 'success', title: '保存成功' });
       await loadProviders();
       return true;
     } catch (error) {
@@ -392,9 +392,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       onBack={onBack}
       scrollable
       subtitle={spaceLabel}
-      title="模型账号"
+      title="全局默认模型"
     >
       <AiLightCard>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>全局默认模型</Text>
+          <Text style={styles.caption}>新创建会话的默认选择。修改此项不会影响已有独立设置的会话。</Text>
+        </View>
+
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>模型商</Text>
           <Pressable
@@ -475,7 +480,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         </View>
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>模型</Text>
+          <Text style={styles.fieldLabel}>默认对话模型</Text>
           <Pressable
             accessibilityRole="button"
             disabled={chatModels.length === 0}

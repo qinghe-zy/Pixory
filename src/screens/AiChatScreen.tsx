@@ -217,6 +217,7 @@ interface AiChatScreenProps {
   composerEntranceKey?: string;
   composerEntranceReason?: ComposerEntranceReason;
   includeIpDocuments?: boolean;
+  modelRefreshKey?: number;
   threadId?: string;
   onOpenHistory: () => void;
   onOpenRoleLibrary: () => void;
@@ -241,6 +242,7 @@ export function AiChatScreen({
   composerEntranceKey,
   composerEntranceReason = 'replace_current',
   includeIpDocuments = false,
+  modelRefreshKey,
   threadId,
   onOpenHistory,
   onOpenRoleLibrary,
@@ -865,7 +867,7 @@ export function AiChatScreen({
 
   useEffect(() => {
     void reloadModelLabel(threadId ?? null);
-  }, [reloadModelLabel, threadId]);
+  }, [modelRefreshKey, reloadModelLabel, threadId]);
 
   useEffect(() => {
     void reloadAvatarConfig(threadId ?? null);
