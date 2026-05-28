@@ -914,6 +914,24 @@ export const aiThreadRepository = {
     return deletedCount;
   },
 
+  async softDeleteThreads(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<number> {
+    const now = createTimestamp();
+    let deletedCount = 0;
+    for (const threadId of threadIds) {
+      const result = await db.runAsync(
+        `UPDATE ai_threads
+         SET archivedAt = ?, updatedAt = ?
+         WHERE id = ? AND space = ? AND archivedAt IS NULL`,
+        now,
+        now,
+        threadId,
+        space
+      );
+      deletedCount += result.changes;
+    }
+    return deletedCount;
+  },
+
   async listRecentThreads(db: SQLiteDatabase, space: PixorySpace, limit = 5): Promise<AiThreadRecord[]> {
     const rows = await db.getAllAsync<AiThreadRow>(
       `SELECT * FROM ai_threads

@@ -7,7 +7,7 @@ import { AppDialog } from '../components/AppDialog';
 import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
-import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
+import { archiveAiThread, deleteAiThreads, listAiHistoryThreads, moveAiThreadsBetweenSpaces, permanentlyDeleteAiThreads, renameAiThread, unarchiveAiThread } from '../ai/aiChatService';
 import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -25,7 +25,7 @@ const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
   { key: 'ip', label: 'IP 聊天' },
   { key: 'knowledge_base', label: '知识库' },
   { key: 'customer_project', label: '项目' },
-  { key: 'archived', label: '已归档' },
+  { key: 'archived', label: '回收站' },
 ];
 const ARCHIVE_ACTION_WIDTH = 96;
 const ARCHIVE_SWIPE_THRESHOLD = 72;
@@ -83,7 +83,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={18} />
-          <Text style={styles.dangerText}>删除</Text>
+          <Text style={styles.dangerText}>{filter === 'archived' ? '永久删除' : '删除到回收站'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.muted} name="close" size={18} />
@@ -114,7 +114,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
         },
         {
           key: 'delete',
-          label: '删除',
+          label: actionThread.archivedAt ? '永久删除' : '移入回收站',
           icon: 'trash-outline',
           danger: true,
           onPress: () => {
@@ -151,7 +151,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       setStatus('会话已恢复。');
     } else {
       await archiveAiThread(space, thread.id);
-      setStatus('会话已归档。');
+      setStatus('会话已移入回收站。');
     }
     await reload();
   }
@@ -224,14 +224,14 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     const threadIds = deleteThread ? [deleteThread.id] : selectedIds;
     setBusy(true);
     try {
-      const count = await deleteAiThreads(space, threadIds);
-      setStatus(`已删除 ${count} 条。`);
+      const count = await (filter === 'archived' ? permanentlyDeleteAiThreads(space, threadIds) : deleteAiThreads(space, threadIds));
+      setStatus(filter === 'archived' ? `已永久删除 ${count} 条。` : `已移入回收站 ${count} 条。`);
       setSelectedIds([]);
       setDeleteThread(null);
       setPendingAction(null);
       await reload();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '删除失败');
+      setStatus(error instanceof Error ? error.message : (filter === 'archived' ? '永久删除失败' : '移入回收站失败'));
     } finally {
       setBusy(false);
     }
@@ -329,8 +329,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                           }}
                           style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
                         >
-                          <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'archive-outline'} size={17} />
-                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '归档'}</Text>
+                          <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'trash-outline'} size={17} />
+                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '回收站'}</Text>
                         </Pressable>
                       </Animated.View>
                     ) : null}
@@ -389,7 +389,9 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
 
       <AppDialog
         danger
-        message={`删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。`}
+        message={filter === 'archived'
+          ? `永久删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。`
+          : `将 ${deleteThread ? 1 : selectedIds.length} 条聊天记录移入回收站。聊天记录和会话资料会保留，之后可在回收站中恢复或永久删除。`}
         onClose={() => {
           if (!busy) {
             setPendingAction(null);
@@ -397,8 +399,8 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           }
         }}
         onPrimary={() => void confirmDeleteSelected()}
-        primaryLabel={busy ? '正在删除' : '删除'}
-        title="删除聊天记录"
+        primaryLabel={busy ? (filter === 'archived' ? '正在永久删除' : '正在移入') : (filter === 'archived' ? '永久删除' : '移入回收站')}
+        title={filter === 'archived' ? '永久删除聊天记录' : '移入回收站'}
         visible={pendingAction === 'delete'}
       />
 

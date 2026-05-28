@@ -461,6 +461,8 @@ test('AI session settings can rename and delete the current thread', () => {
   assert.match(sessionConfig, /onPrimary=\{\(\) => void confirmRenameThread\(\)\}/);
   assert.match(sessionConfig, /deleteAiThreads\(space, \[threadId\]\)/);
   assert.match(sessionConfig, /删除当前会话/);
+  assert.match(sessionConfig, /移入回收站/);
+  assert.match(sessionConfig, /回收站中恢复/);
   assert.match(sessionConfig, /name="trash-outline"/);
   assert.match(sessionConfig, /onCurrentThreadDeleted/);
   assert.match(app, /function closeDeletedAiThread/);
@@ -474,9 +476,10 @@ test('AI history long-press enters batch mode while single actions stay in a com
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
 
-  for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
+  for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'permanentlyDeleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
     assert.match(history, new RegExp(expected));
   }
+  assert.match(history, /\{ key: 'archived', label: '回收站' \}/);
   assert.match(history, /PanResponder\.create/);
   assert.match(history, /swipedThreadId/);
   assert.match(history, /styles\.swipeActionSurface/);
@@ -487,6 +490,8 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /key:\s*'delete'/);
   assert.match(history, /setDeleteThread\(actionThread\)/);
   assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
+  assert.match(history, /filter === 'archived' \? permanentlyDeleteAiThreads\(space, threadIds\) : deleteAiThreads\(space, threadIds\)/);
+  assert.match(history, /filter === 'archived' \? `已永久删除 \$\{count\} 条。` : `已移入回收站 \$\{count\} 条。`/);
   assert.match(history, /AppActionSheet/);
   assert.match(history, /formatAiHistoryMinute/);
   assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
@@ -500,6 +505,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(service, /verifyPersonalPassword/);
   assert.match(repository, /exportThread/);
   assert.match(repository, /importThread/);
+  assert.match(repository, /softDeleteThreads/);
   assert.match(repository, /deleteThreads/);
 });
 
@@ -547,10 +553,11 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(drawer, /onLongPress=\{\(\) => openRecentActionPopover\(thread\)\}/);
   assert.match(drawer, /recentActionPopover/);
   assert.match(drawer, /accessibilityLabel="重命名最近会话"/);
-  assert.match(drawer, /accessibilityLabel="删除最近会话"/);
+  assert.match(drawer, /accessibilityLabel="移入回收站最近会话"/);
   assert.match(drawer, /title="重命名会话"/);
   assert.match(drawer, /recentDeleteConfirm/);
-  assert.match(drawer, /accessibilityLabel="确认删除最近会话"/);
+  assert.match(drawer, /accessibilityLabel="确认移入回收站最近会话"/);
+  assert.match(drawer, /已移入回收站。/);
   assert.doesNotMatch(drawer, /title="删除会话"/);
   assert.match(drawer, /onRenameThread/);
   assert.match(drawer, /onDeleteThread/);

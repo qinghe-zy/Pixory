@@ -54,27 +54,34 @@ test('prompt assembly retrieves thread-owned materials for every chat type', () 
   assert.doesNotMatch(normalPromptSection, /\.join\('\\n\\n用户当前问题：\\n'\)/);
 });
 
-test('thread deletion and material deletion clean thread-owned documents and app-private files', () => {
+test('AI thread delete moves chats to recycle bin while permanent delete cleans thread-owned documents and files', () => {
   const chatService = read('src/ai/aiChatService.ts');
   const documentService = read('src/ai/aiDocumentService.ts');
   const knowledgeRepository = read('src/database/repositories/aiKnowledgeRepository.ts');
+  const threadRepository = read('src/database/repositories/aiThreadRepository.ts');
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const historyScreen = read('src/screens/AiHistoryScreen.tsx');
-  const deleteBody = extractBlockAfter(chatService, 'export async function deleteAiThreads');
+  const softDeleteBody = extractBlockAfter(chatService, 'export async function deleteAiThreads');
+  const permanentDeleteBody = extractBlockAfter(chatService, 'export async function permanentlyDeleteAiThreads');
   const removeBody = documentService.slice(documentService.indexOf('async function deleteMaterialRecordAndCollectFile'));
 
-  assert.match(deleteBody, /const deletedFileUris: string\[\] = \[\]/);
-  assert.match(deleteBody, /removeMaterialsByOwner\(\{\s*db,\s*deletedFileUris,\s*space,\s*ownerType:\s*'thread',\s*ownerIds:\s*uniqueThreadIds/s);
-  assertOccursBefore(deleteBody, 'removeMaterialsByOwner', 'aiThreadRepository.deleteThreads');
-  assertOccursBefore(deleteBody, 'aiThreadRepository.deleteThreads', 'cleanupDeletedMaterialFiles');
+  assert.match(softDeleteBody, /aiThreadRepository\.softDeleteThreads\(db, space, uniqueThreadIds/);
+  assert.doesNotMatch(softDeleteBody, /removeMaterialsByOwner/);
+  assert.doesNotMatch(softDeleteBody, /cleanupDeletedMaterialFiles/);
+  assert.match(threadRepository, /async softDeleteThreads/);
+  assert.match(threadRepository, /UPDATE ai_threads\s+SET archivedAt = \?, updatedAt = \?[\s\S]*WHERE id = \? AND space = \? AND archivedAt IS NULL/);
+  assert.match(permanentDeleteBody, /const deletedFileUris: string\[\] = \[\]/);
+  assert.match(permanentDeleteBody, /removeMaterialsByOwner\(\{\s*db,\s*deletedFileUris,\s*space,\s*ownerType:\s*'thread',\s*ownerIds:\s*uniqueThreadIds/s);
+  assertOccursBefore(permanentDeleteBody, 'removeMaterialsByOwner', 'aiThreadRepository.deleteThreads');
+  assertOccursBefore(permanentDeleteBody, 'aiThreadRepository.deleteThreads', 'cleanupDeletedMaterialFiles');
   assert.match(documentService, /export async function removeMaterialsByOwner/);
   assert.match(removeBody, /document\.localUri/);
   assert.match(removeBody, /isAppPrivateAiDocumentFile/);
   assert.match(documentService, /export async function cleanupDeletedMaterialFiles/);
   assert.match(documentService, /deleteLocalFile\(fileUri\)/);
   assert.match(knowledgeRepository, /DELETE FROM ai_message_citations WHERE sourceType = 'document_chunk' AND sourceId = \?/);
-  assert.match(sessionConfig, /会话资料/);
-  assert.match(historyScreen, /会话资料/);
+  assert.match(sessionConfig, /移入回收站/);
+  assert.match(historyScreen, /回收站/);
 });
 
 test('knowledge-base deletion uses the same material file cleanup path', () => {
@@ -102,7 +109,7 @@ test('cross-space thread moves migrate thread-owned materials before deleting th
   assert.match(documentService, /aiKnowledgeRepository\.copyDocumentWithChunks/);
   assert.match(moveBody, /removeMaterialsByOwner\(\{\s*db,\s*deletedFileUris,\s*space:\s*input\.sourceSpace,\s*ownerType:\s*'thread'/s);
   assertOccursBefore(moveBody, 'removeMaterialsByOwner', 'aiThreadRepository.deleteThreads');
-  assert.match(moveBody, /catch \(error\)[\s\S]*deleteAiThreads\(input\.targetSpace,\s*movedThreadIds\)/);
+  assert.match(moveBody, /catch \(error\)[\s\S]*permanentlyDeleteAiThreads\(input\.targetSpace,\s*movedThreadIds\)/);
   assert.match(documentService, /cleanupSource \?\? true/);
 });
 

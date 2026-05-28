@@ -931,6 +931,14 @@ export async function deleteAiThreads(space: PixorySpace, threadIds: string[]): 
   if (uniqueThreadIds.length === 0) {
     return 0;
   }
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.softDeleteThreads(db, space, uniqueThreadIds));
+}
+
+export async function permanentlyDeleteAiThreads(space: PixorySpace, threadIds: string[]): Promise<number> {
+  const uniqueThreadIds = Array.from(new Set(threadIds));
+  if (uniqueThreadIds.length === 0) {
+    return 0;
+  }
   const deletedFileUris: string[] = [];
   return runWithDatabaseSpace(space, async (db) => {
     let deletedCount = 0;
@@ -1015,7 +1023,7 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
   } catch (error) {
     if (targetImported) {
       try {
-        await deleteAiThreads(input.targetSpace, movedThreadIds);
+        await permanentlyDeleteAiThreads(input.targetSpace, movedThreadIds);
       } catch (rollbackError) {
         console.warn('Pixory AI thread move rollback failed.', {
           message: rollbackError instanceof Error ? rollbackError.message : 'unknown rollback error',

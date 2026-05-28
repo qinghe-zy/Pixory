@@ -95,9 +95,9 @@ export function AiComprehensiveRecordDrawer({
     try {
       await onDeleteThread(deleteThread);
       setDeleteThread(null);
-      setStatusText('已删除会话。');
+      setStatusText('已移入回收站。');
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : '删除失败');
+      setStatusText(error instanceof Error ? error.message : '移入回收站失败');
     } finally {
       setBusy(false);
     }
@@ -126,7 +126,7 @@ export function AiComprehensiveRecordDrawer({
                 return (
                   <View key={thread.id} style={styles.recentItem}>
                     <Pressable
-                      accessibilityHint="长按可重命名或删除"
+                      accessibilityHint="长按可重命名或移入回收站"
                       accessibilityRole="button"
                       onLongPress={() => openRecentActionPopover(thread)}
                       onPress={() => {
@@ -165,9 +165,9 @@ export function AiComprehensiveRecordDrawer({
                             <Text style={styles.recentActionText}>重命名</Text>
                           </Pressable>
                           <View style={styles.recentActionDivider} />
-                          <Pressable accessibilityLabel="删除最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
+                          <Pressable accessibilityLabel="移入回收站最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
                             <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
-                            <Text style={[styles.recentActionText, styles.recentActionDangerText]}>删除</Text>
+                            <Text style={[styles.recentActionText, styles.recentActionDangerText]}>回收站</Text>
                           </Pressable>
                         </View>
                       ) : null}
@@ -175,13 +175,13 @@ export function AiComprehensiveRecordDrawer({
                     {deleteThread?.id === thread.id ? (
                       <View style={styles.recentDeleteConfirm}>
                         <Text numberOfLines={2} style={styles.recentDeleteText}>
-                          删除「{thread.title}」这条会话记录？
+                          将「{thread.title}」移入回收站？
                         </Text>
                         <View style={styles.recentDeleteActions}>
-                          <Pressable accessibilityLabel="确认删除最近会话" accessibilityRole="button" disabled={busy} onPress={confirmDeleteThread} style={({ pressed }) => [styles.recentDeleteButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
-                            <Text style={styles.recentDeleteButtonText}>{busy ? '删除中' : '删除'}</Text>
+                          <Pressable accessibilityLabel="确认移入回收站最近会话" accessibilityRole="button" disabled={busy} onPress={confirmDeleteThread} style={({ pressed }) => [styles.recentDeleteButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                            <Text style={styles.recentDeleteButtonText}>{busy ? '移入中' : '移入回收站'}</Text>
                           </Pressable>
-                          <Pressable accessibilityLabel="取消删除最近会话" accessibilityRole="button" disabled={busy} onPress={() => setDeleteThread(null)} style={({ pressed }) => [styles.recentCancelButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
+                          <Pressable accessibilityLabel="取消移入回收站最近会话" accessibilityRole="button" disabled={busy} onPress={() => setDeleteThread(null)} style={({ pressed }) => [styles.recentCancelButton, busy && styles.disabled, pressed && !busy && styles.pressed]}>
                             <Text style={styles.recentCancelButtonText}>取消</Text>
                           </Pressable>
                         </View>

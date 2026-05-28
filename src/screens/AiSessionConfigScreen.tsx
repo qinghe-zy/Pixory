@@ -278,7 +278,7 @@ export function AiSessionConfigScreen({
     try {
       const count = await deleteAiThreads(space, [threadId]);
       if (count < 1) {
-        throw new Error('没有找到当前会话，未删除。');
+        throw new Error('没有找到当前会话，未移入回收站。');
       }
       setDeleteDialogVisible(false);
       if (onCurrentThreadDeleted) {
@@ -287,7 +287,7 @@ export function AiSessionConfigScreen({
         onBack();
       }
     } catch (error) {
-      setStatus({ message: error instanceof Error ? error.message : '删除失败', tone: 'error', title: '删除失败' });
+      setStatus({ message: error instanceof Error ? error.message : '移入回收站失败', tone: 'error', title: '移入失败' });
     } finally {
       setSaving(false);
     }
@@ -522,7 +522,7 @@ export function AiSessionConfigScreen({
                 style={({ pressed }) => [styles.deleteButton, (!threadId || saving) && styles.disabled, pressed && threadId && !saving && styles.pressed]}
               >
                 <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={17} />
-                <Text style={styles.deleteButtonText}>删除当前会话</Text>
+                <Text style={styles.deleteButtonText}>移入回收站</Text>
               </Pressable>
             </View>
           </View>
@@ -596,7 +596,7 @@ export function AiSessionConfigScreen({
 
       <AppDialog
         danger
-        message="删除后会移除当前会话、聊天记录，以及只添加到此会话的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。"
+        message="删除后会将当前会话移入回收站，聊天记录和会话资料会保留，之后可在历史会话的回收站中恢复或永久删除。"
         onClose={() => {
           if (!saving) {
             setDeleteDialogVisible(false);
@@ -604,7 +604,7 @@ export function AiSessionConfigScreen({
         }}
         onPrimary={() => void confirmDeleteCurrentThread()}
         primaryDisabled={saving || !threadId}
-        primaryLabel={saving ? '正在删除' : '删除'}
+        primaryLabel={saving ? '正在移入' : '移入回收站'}
         title="删除当前会话"
         visible={deleteDialogVisible}
       />
