@@ -49,13 +49,13 @@ import { layout, radius, rhythm, shadows, spacing, typography } from '../design/
 import type { PixorySpace } from '../database';
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
-const MESSAGE_SCROLL_BUTTON_THRESHOLD = 1200;
-const MESSAGE_STREAMING_BUTTON_THRESHOLD = 96;
+const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800;
 const MESSAGE_SAFE_FLUSH_OFFSET = 1;
 const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
+const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
 const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
 // Scroll affordance copy: 回到最新.
@@ -301,6 +301,7 @@ export function AiChatScreen({
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerFocusVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const latestJumpTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
@@ -474,8 +475,7 @@ export function AiChatScreen({
           messagesRef.current = nextMessages;
           return nextMessages;
         });
-        followLatestMessage();
-        queueFollowLatestMessageAfterLayout(false);
+        scheduleIntentionalLatestJump(false);
         void reloadMessages(targetThreadId);
       },
       onMessagePatch: (patch) => {
@@ -562,7 +562,7 @@ export function AiChatScreen({
 
   function syncScrollToLatestVisibility(offsetY = messageScrollOffsetRef.current) {
     const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = offsetY > (hasUnseenStreamingUpdate ? MESSAGE_STREAMING_BUTTON_THRESHOLD : MESSAGE_SCROLL_BUTTON_THRESHOLD);
+    const nextShowScrollToLatest = !hasUnseenStreamingUpdate && offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }
 
@@ -644,7 +644,7 @@ export function AiChatScreen({
     }
     userScrolledAwayFromBottomRef.current = !nextBottomLocked;
     const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = contentOffset.y > (hasUnseenStreamingUpdate ? MESSAGE_STREAMING_BUTTON_THRESHOLD : MESSAGE_SCROLL_BUTTON_THRESHOLD);
+    const nextShowScrollToLatest = !hasUnseenStreamingUpdate && contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }, []);
 
@@ -664,6 +664,27 @@ export function AiChatScreen({
       followLatestMessage(animated);
     });
   }, [followLatestMessage]);
+
+  function clearLatestJumpTimeouts() {
+    latestJumpTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    latestJumpTimeoutsRef.current = [];
+  }
+
+  function scheduleIntentionalLatestJump(animated = false) {
+    clearLatestJumpTimeouts();
+    followLatestMessage(animated);
+    queueFollowLatestMessageAfterLayout(animated);
+    ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS.forEach((delay) => {
+      latestJumpTimeoutsRef.current.push(
+        setTimeout(() => {
+          if (!screenMountedRef.current) {
+            return;
+          }
+          followLatestMessage(animated);
+        }, delay)
+      );
+    });
+  }
 
   function clearComposerFocusVisibilityTimeouts() {
     composerFocusVisibilityTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
@@ -1008,6 +1029,7 @@ export function AiChatScreen({
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
     clearComposerFocusVisibilityTimeouts();
+    clearLatestJumpTimeouts();
     clearInlineEditVisibilityTimeouts();
     inlineEditSafeVisibleMessageIdsRef.current = new Set();
     editingUserMessageIdRef.current = null;
@@ -1097,6 +1119,7 @@ export function AiChatScreen({
     return () => {
       screenMountedRef.current = false;
       clearComposerFocusVisibilityTimeouts();
+      clearLatestJumpTimeouts();
       clearInlineEditVisibilityTimeouts();
       cancelGenerationAction();
       clearGenerationSubscription();
@@ -1433,8 +1456,7 @@ export function AiChatScreen({
       setPendingAttachments([]);
       setGenerating(true);
       setErrorMessage(null);
-      followLatestMessage();
-      queueFollowLatestMessageAfterLayout(false);
+      scheduleIntentionalLatestJump(false);
       nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
         return;
@@ -1503,8 +1525,7 @@ export function AiChatScreen({
       setEditingUserMessageId(null);
       setGenerating(true);
       setErrorMessage(null);
-      followLatestMessage();
-      queueFollowLatestMessageAfterLayout(false);
+      scheduleIntentionalLatestJump(false);
       const managedGeneration = aiGenerationManager.startRewriteUserMessage({
         content,
         space,
@@ -1592,8 +1613,7 @@ export function AiChatScreen({
       setActiveAssistantId(targetMessageId);
       setErrorMessage(null);
       showLatestMessageVersion(targetMessageId);
-      followLatestMessage();
-      queueFollowLatestMessageAfterLayout(false);
+      scheduleIntentionalLatestJump(false);
       const managedGeneration = aiGenerationManager.startRegenerateAssistantMessage({
         assistantMessageId: targetMessageId,
         space,
