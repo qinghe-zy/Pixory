@@ -275,6 +275,7 @@ export function AiChatScreen({
   const hasBufferedStreamingUpdateRef = useRef(false);
   const frozenStreamingMessageByIdRef = useRef(new Map<string, AiMessageWithCitations>());
   const messagesRef = useRef<AiMessageWithCitations[]>([]);
+  const visibleMessagesRef = useRef<AiMessageWithCitations[]>([]);
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 82 });
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
@@ -304,6 +305,7 @@ export function AiChatScreen({
   const latestJumpTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinkingExpandedByMessageIdRef = useRef(new Map<string, boolean>());
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
   const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
   const composerEntranceRunRef = useRef<ComposerEntranceRun | null>(null);
@@ -461,12 +463,23 @@ export function AiChatScreen({
     generationSubscriptionRef.current = null;
   }
 
+  function getLatestAssistantThinkingExpanded(): boolean {
+    for (let index = visibleMessagesRef.current.length - 1; index >= 0; index -= 1) {
+      const message = visibleMessagesRef.current[index];
+      if (message?.role === 'assistant') {
+        return thinkingExpandedByMessageIdRef.current.get(message.id) ?? false;
+      }
+    }
+    return false;
+  }
+
   function createGenerationSubscriber(targetThreadId: string, generation: number): AiGenerationSubscriber {
     return {
       onCreated: ({ assistantMessageId }) => {
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
+        thinkingExpandedByMessageIdRef.current.set(assistantMessageId, getLatestAssistantThinkingExpanded());
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
           const nextMessages = current.some((message) => message.id === assistantMessageId)
@@ -1028,6 +1041,7 @@ export function AiChatScreen({
     }
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
+    thinkingExpandedByMessageIdRef.current.clear();
     clearComposerFocusVisibilityTimeouts();
     clearLatestJumpTimeouts();
     clearInlineEditVisibilityTimeouts();
@@ -1045,6 +1059,7 @@ export function AiChatScreen({
     setHasEarlierMessages(false);
     if (!nextThreadId) {
       messagesRef.current = [];
+      visibleMessagesRef.current = [];
       setMessages([]);
       setMemoryCaptures([]);
     }
@@ -1061,6 +1076,10 @@ export function AiChatScreen({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    visibleMessagesRef.current = visibleMessages;
+  }, [visibleMessages]);
 
   useEffect(() => {
     const targetThreadId = threadId ?? null;
@@ -1744,6 +1763,7 @@ export function AiChatScreen({
             pendingActionMessageId={pendingMessageActionId}
             showAvatar={item.showAvatar}
             space={space}
+            thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
             onCopy={(targetMessage) => {
               void copyMessageContent(targetMessage);
             }}
@@ -1758,6 +1778,9 @@ export function AiChatScreen({
             }}
             onSubmitEdit={(messageId, content) => {
               void handleSubmitInlineRewrite(messageId, content);
+            }}
+            onThinkingExpandedChange={(messageId, expanded) => {
+              thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
             }}
             streaming={generating && message.id === activeAssistantId}
           />

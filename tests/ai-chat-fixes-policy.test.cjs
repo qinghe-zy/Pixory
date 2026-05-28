@@ -992,13 +992,39 @@ test('AI thinking block expands and collapses with a lightweight animation', () 
 test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fixed-height clipping', () => {
   const thinking = read('src/components/ai/AiThinkingBlock.tsx');
 
-  assert.match(thinking, /new Animated\.Value\(expanded \? 1 : 0\)/);
-  assert.match(thinking, /const bodyVisible = expanded && Boolean\(reasoningText\)/);
-  assert.match(thinking, /disabled=\{!reasoningText && !thinking\}/);
+  assert.match(thinking, /defaultExpanded\?: boolean/);
+  assert.match(thinking, /useState\(defaultExpanded\)/);
+  assert.match(thinking, /const hasReasoningText = Boolean\(reasoningText\?\.trim\(\)\)/);
+  assert.match(thinking, /const waitingForReasoningText = thinking && expanded && !hasReasoningText/);
+  assert.match(thinking, /const bodyVisible = expanded && \(hasReasoningText \|\| thinking\)/);
+  assert.match(thinking, /正在等待思考内容/);
+  assert.match(thinking, /disabled=\{!hasReasoningText && !thinking\}/);
   assert.doesNotMatch(thinking, /expanded \|\| thinking/);
   assert.doesNotMatch(thinking, /bodyVisible = \(expanded \|\| thinking\)/);
   assert.doesNotMatch(thinking, /outputRange:\s*\[0,\s*320\]/);
   assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
+});
+
+test('AI thinking expansion defaults follow the previous assistant thinking block state', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const thinking = read('src/components/ai/AiThinkingBlock.tsx');
+
+  assert.match(chat, /thinkingExpandedByMessageIdRef/);
+  assert.match(chat, /visibleMessagesRef/);
+  assert.match(chat, /visibleMessagesRef\.current = visibleMessages/);
+  assert.match(chat, /function getLatestAssistantThinkingExpanded\(\): boolean/);
+  assert.match(chat, /visibleMessagesRef\.current\.length - 1/);
+  assert.match(chat, /thinkingExpandedByMessageIdRef\.current\.set\(assistantMessageId, getLatestAssistantThinkingExpanded\(\)\)/);
+  assert.match(chat, /thinkingDefaultExpanded=\{thinkingExpandedByMessageIdRef\.current\.get\(message\.id\) \?\? false\}/);
+  assert.match(chat, /onThinkingExpandedChange=\{\(messageId, expanded\) => \{/);
+  assert.match(chat, /thinkingExpandedByMessageIdRef\.current\.set\(messageId, expanded\)/);
+  assert.match(bubble, /thinkingDefaultExpanded\?: boolean/);
+  assert.match(bubble, /onThinkingExpandedChange\?: \(messageId: string, expanded: boolean\) => void/);
+  assert.match(bubble, /defaultExpanded=\{thinkingDefaultExpanded\}/);
+  assert.match(bubble, /onExpandedChange=\{\(expanded\) => onThinkingExpandedChange\?\.\(message\.id, expanded\)\}/);
+  assert.match(thinking, /onExpandedChange\?: \(expanded: boolean\) => void/);
+  assert.match(thinking, /onExpandedChange\?\.\(nextExpanded\)/);
 });
 
 test('AI chat empty start uses a Claude-like greeting and faint starter suggestions', () => {

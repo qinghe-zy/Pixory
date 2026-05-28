@@ -11,6 +11,8 @@ interface AiThinkingBlockProps {
   status: AiMessageStatus;
   createdAt: string;
   completedAt?: string | null;
+  defaultExpanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 function elapsedSeconds(createdAt: string, completedAt: string | null | undefined, now: number): number {
@@ -25,14 +27,16 @@ function elapsedSeconds(createdAt: string, completedAt: string | null | undefine
   return Math.max(0, (endedAt - startedAt) / 1000);
 }
 
-export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt }: AiThinkingBlockProps) {
-  const [expanded, setExpanded] = useState(false);
+export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt, defaultExpanded = false, onExpandedChange }: AiThinkingBlockProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [now, setNow] = useState(Date.now());
   const thinking = status === 'generating' || status === 'queued';
   const expandedProgress = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const duration = useMemo(() => elapsedSeconds(createdAt, thinking ? null : completedAt, now), [completedAt, createdAt, now, thinking]);
   const label = `${thinking ? '正在思考中…' : '思考完成'} ${duration.toFixed(1)}秒`;
-  const bodyVisible = expanded && Boolean(reasoningText);
+  const hasReasoningText = Boolean(reasoningText?.trim());
+  const waitingForReasoningText = thinking && expanded && !hasReasoningText;
+  const bodyVisible = expanded && (hasReasoningText || thinking);
 
   useEffect(() => {
     if (!thinking) {
@@ -50,9 +54,17 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
     }).start();
   }, [bodyVisible, expandedProgress]);
 
+  function toggleExpanded() {
+    setExpanded((current) => {
+      const nextExpanded = !current;
+      onExpandedChange?.(nextExpanded);
+      return nextExpanded;
+    });
+  }
+
   return (
     <View style={styles.wrap}>
-      <Pressable accessibilityRole="button" disabled={!reasoningText && !thinking} onPress={() => setExpanded((current) => !current)} style={styles.header}>
+      <Pressable accessibilityRole="button" disabled={!hasReasoningText && !thinking} onPress={toggleExpanded} style={styles.header}>
         {thinking ? <ActivityIndicator color={aiLightColors.coralActive} size="small" /> : null}
         <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
@@ -65,7 +77,7 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt 
           },
         ]}
       >
-        {bodyVisible ? <Text style={styles.text}>{reasoningText}</Text> : null}
+        {bodyVisible ? <Text style={styles.text}>{waitingForReasoningText ? '正在等待思考内容…' : reasoningText}</Text> : null}
       </Animated.View>
     </View>
   );

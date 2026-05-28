@@ -25,6 +25,7 @@ interface AiMessageBubbleProps {
   space: PixorySpace;
   streaming?: boolean;
   generating?: boolean;
+  thinkingDefaultExpanded?: boolean;
   editingMessageId?: string | null;
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
@@ -34,6 +35,7 @@ interface AiMessageBubbleProps {
   onCancelEdit: () => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
+  onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
 }
 
@@ -57,6 +59,7 @@ function AiMessageBubbleComponent({
   streaming = false,
   editingMessageId = null,
   pendingActionMessageId = null,
+  thinkingDefaultExpanded = false,
   onCopy,
   onCancelEdit,
   onChangeEditDraft,
@@ -64,6 +67,7 @@ function AiMessageBubbleComponent({
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
+  onThinkingExpandedChange,
   onSubmitEdit,
 }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
@@ -127,6 +131,8 @@ function AiMessageBubbleComponent({
             <AiThinkingBlock
               completedAt={message.completedAt}
               createdAt={message.createdAt}
+              defaultExpanded={thinkingDefaultExpanded}
+              onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
               reasoningText={message.reasoningText}
               status={message.status}
             />
@@ -253,6 +259,7 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.space === next.space &&
     previous.streaming === next.streaming &&
     previous.generating === next.generating &&
+    previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
     previous.pendingActionMessageId === next.pendingActionMessageId &&
     previous.showAvatar === next.showAvatar &&
     previous.editingMessageId === next.editingMessageId &&
