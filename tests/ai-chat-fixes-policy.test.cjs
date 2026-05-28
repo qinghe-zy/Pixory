@@ -238,6 +238,8 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /function preserveReadModeFrozenMessages/);
   assert.match(chat, /const flushBufferedStreamingState = useCallback/);
   assert.match(chat, /const applyOrBufferStreamingMessagePatch = useCallback/);
+  assert.match(chat, /const queueFollowLatestMessageAfterLayout = useCallback/);
+  assert.match(chat, /requestAnimationFrame\(\(\) => \{[\s\S]{0,180}followLatestMessage\(animated\)/);
   assert.match(chat, /applyOrBufferStreamingMessagePatch\(patch\)/);
   assert.match(chat, /preserveReadModeFrozenMessages\(nextMessages\)/);
   assert.match(chat, /resetStreamingReadBufferState\(\)/);
@@ -249,6 +251,10 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
+  assert.match(chat, /onCreated: \(\{ assistantMessageId \}\) => \{[\s\S]*followLatestMessage\(\);\s*queueFollowLatestMessageAfterLayout\(false\)/);
+  assert.match(chat, /async function handleSend\(\)[\s\S]*followLatestMessage\(\);\s*queueFollowLatestMessageAfterLayout\(false\)/);
+  assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*followLatestMessage\(\);\s*queueFollowLatestMessageAfterLayout\(false\)/);
+  assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*followLatestMessage\(\);\s*queueFollowLatestMessageAfterLayout\(false\)/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);

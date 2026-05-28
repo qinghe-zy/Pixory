@@ -475,6 +475,7 @@ export function AiChatScreen({
           return nextMessages;
         });
         followLatestMessage();
+        queueFollowLatestMessageAfterLayout(false);
         void reloadMessages(targetThreadId);
       },
       onMessagePatch: (patch) => {
@@ -654,6 +655,15 @@ export function AiChatScreen({
     setScrollToLatestVisible(false);
     scrollToLatestMessage(animated, true);
   }, [scrollToLatestMessage]);
+
+  const queueFollowLatestMessageAfterLayout = useCallback((animated = false) => {
+    requestAnimationFrame(() => {
+      if (!screenMountedRef.current) {
+        return;
+      }
+      followLatestMessage(animated);
+    });
+  }, [followLatestMessage]);
 
   function clearComposerFocusVisibilityTimeouts() {
     composerFocusVisibilityTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
@@ -1424,6 +1434,7 @@ export function AiChatScreen({
       setGenerating(true);
       setErrorMessage(null);
       followLatestMessage();
+      queueFollowLatestMessageAfterLayout(false);
       nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
         return;
@@ -1493,6 +1504,7 @@ export function AiChatScreen({
       setGenerating(true);
       setErrorMessage(null);
       followLatestMessage();
+      queueFollowLatestMessageAfterLayout(false);
       const managedGeneration = aiGenerationManager.startRewriteUserMessage({
         content,
         space,
@@ -1581,6 +1593,7 @@ export function AiChatScreen({
       setErrorMessage(null);
       showLatestMessageVersion(targetMessageId);
       followLatestMessage();
+      queueFollowLatestMessageAfterLayout(false);
       const managedGeneration = aiGenerationManager.startRegenerateAssistantMessage({
         assistantMessageId: targetMessageId,
         space,
