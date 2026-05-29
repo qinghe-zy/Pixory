@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "version": "2.3.9",
   "title": "发现 Pixory 新版本",
   "message": "Pixory 2.3.9 已发布，深度优化 AI 记忆隔离系统，严格区分项目与全局作用域画像。",
