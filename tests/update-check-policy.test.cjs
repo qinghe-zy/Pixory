@@ -58,6 +58,23 @@ test('update check service stays read-only and offline tolerant', () => {
   assert.doesNotMatch(serviceSource, /POST|PUT|PATCH|DELETE|SecureStore|SQLite|FileSystem/);
 });
 
+test('update check fallback version code matches the Android app version code', () => {
+  const appConfig = JSON.parse(readProjectFile('app.json'));
+  const serviceSource = readProjectFile('src/services/updateCheckService.ts');
+  const fallbackMatch = serviceSource.match(/FALLBACK_CURRENT_VERSION_CODE\s*=\s*(\d+)/);
+
+  assert.ok(fallbackMatch, 'update check service must declare a numeric fallback version code');
+  assert.equal(Number(fallbackMatch[1]), appConfig.expo.android.versionCode);
+});
+
+test('update prompt does not use versionCode to promote the same visible version', () => {
+  const serviceSource = readProjectFile('src/services/updateCheckService.ts');
+
+  assert.match(serviceSource, /const versionComparison = compareAppVersions\(remote\.version, current\.version\);/);
+  assert.match(serviceSource, /if \(versionComparison !== 0\) \{\s*return versionComparison > 0;\s*\}/);
+  assert.doesNotMatch(serviceSource, /remote\.versionCode > current\.versionCode/);
+});
+
 test('announcement check service stays read-only and offline tolerant', () => {
   const serviceSource = readProjectFile('src/services/announcementService.ts');
 

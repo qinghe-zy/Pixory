@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const FALLBACK_CURRENT_VERSION = '2.3.9';
-const FALLBACK_CURRENT_VERSION_CODE = 238;
+const FALLBACK_CURRENT_VERSION_CODE = 239;
 
 export interface AppUpdateInfo {
   version: string;
@@ -117,11 +117,12 @@ function normalizeRemoteUpdate(payload: unknown): AppUpdateInfo | null {
 }
 
 function isRemoteVersionNewer(remote: AppUpdateInfo, current: CurrentAppVersion): boolean {
-  if (remote.versionCode != null && current.versionCode != null) {
-    return remote.versionCode > current.versionCode;
+  const versionComparison = compareAppVersions(remote.version, current.version);
+  if (versionComparison !== 0) {
+    return versionComparison > 0;
   }
 
-  return compareAppVersions(remote.version, current.version) > 0;
+  return false;
 }
 
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
