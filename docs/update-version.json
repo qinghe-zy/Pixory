@@ -1,13 +1,13 @@
 {
   "enabled": true,
   "version": "2.3.9",
-  "versionCode": 238,
+  "versionCode": 239,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.3.9 已发布，AI 聊天 Markdown 显示更稳定，并加入热更新底包能力。",
+  "message": "Pixory 2.3.9 已发布，深度优化 AI 记忆隔离系统，严格区分项目与全局作用域画像。",
   "releaseNotes": [
-    "进一步修复 Android 上 AI 回复 Markdown 可能导致聊天页出现大面积空白遮挡的问题。",
-    "加入 EAS Update 热更新底包能力，后续兼容的 JS 与样式修复可通过 production channel 下发。",
-    "代码块和表格横向滚动区域增加宽度约束，减少流式渲染重排风险。"
+    "重构底层记忆调度引擎，彻底修复跨 IP 的全局特征污染问题。",
+    "将用户画像与对话偏好剥离至双层沙盒，项目内记忆拥有绝对最高优先级。",
+    "增加断网与极端幻觉场景下的全链路防护容错机制。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }
