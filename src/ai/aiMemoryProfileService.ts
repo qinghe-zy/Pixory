@@ -188,13 +188,13 @@ export function hasStrongProfileSignal(text: string): boolean {
   return PROFILE_SIGNAL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export async function getUserProfile(space: PixorySpace): Promise<AiUserProfileRecord | null> {
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.getUserProfile(db, space));
+export async function getUserProfile(space: PixorySpace, boundIpId: number | null = null): Promise<AiUserProfileRecord | null> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.getUserProfile(db, space, boundIpId));
 }
 
-export async function updateUserProfile(space: PixorySpace, profileText: string): Promise<AiUserProfileRecord> {
+export async function updateUserProfile(space: PixorySpace, profileText: string, boundIpId: number | null = null): Promise<AiUserProfileRecord> {
   return runWithDatabaseSpace(space, async (db) => {
-    const current = await aiThreadRepository.getUserProfile(db, space);
+    const current = await aiThreadRepository.getUserProfile(db, space, boundIpId);
     const now = new Date().toISOString();
     const profileJson = profileTextToJson(profileText, current);
     return aiThreadRepository.upsertUserProfile(db, {
@@ -207,6 +207,7 @@ export async function updateUserProfile(space: PixorySpace, profileText: string)
       sourceStartMessageId: current?.sourceStartMessageId ?? null,
       sourceThreadId: current?.sourceThreadId ?? null,
       space,
+      boundIpId,
       version: current?.version ?? 1,
     });
   });
@@ -219,7 +220,7 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       return null;
     }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
-    const existing = await aiThreadRepository.getUserProfile(db, space);
+    const existing = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
     if (!settings.deepMemoryEnabled || existing) {
       return null;
     }
@@ -261,6 +262,7 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       sourceStartMessageId: prepared.startMessageId,
       sourceThreadId: threadId,
       space,
+      boundIpId: prepared.thread.boundIpId,
       version: 1,
     });
     await aiThreadRepository.updateThreadMemoryJob(db, {
@@ -302,7 +304,7 @@ export async function maybeUpdateUserProfile(
       return null;
     }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
-    const profile = await aiThreadRepository.getUserProfile(db, space);
+    const profile = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
     if (!settings.deepMemoryEnabled || !profile) {
       return null;
     }
@@ -356,6 +358,7 @@ export async function maybeUpdateUserProfile(
       sourceStartMessageId: prepared.startMessageId,
       sourceThreadId: threadId,
       space,
+      boundIpId: prepared.thread.boundIpId,
       version: prepared.currentProfile.version,
     });
     await aiThreadRepository.updateThreadMemoryJob(db, {

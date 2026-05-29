@@ -45,7 +45,7 @@ function truncateForPrompt(value: string, limit: number): string {
   return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
 }
 
-function extractMemoryCandidates(userMessage: string): MemoryCandidate[] {
+function extractMemoryCandidates(userMessage: string, thread: AiThreadRecord): MemoryCandidate[] {
   const normalized = userMessage.replace(/\s+/g, ' ').trim();
   if (normalized.length < 4) {
     return [];
@@ -58,11 +58,13 @@ function extractMemoryCandidates(userMessage: string): MemoryCandidate[] {
     }
   };
 
+  const defaultScope = thread.boundIpId != null ? 'ip' : 'thread';
+
   for (const match of normalized.matchAll(/(?:请记住|记住|以后默认|之后默认)([^。！？!?]{4,120})/g)) {
-    push('instruction', 'global', match[1] ?? '', 4, 0.86);
+    push('instruction', defaultScope, match[1] ?? '', 4, 0.86);
   }
   for (const match of normalized.matchAll(/我(?:喜欢|偏好|希望|习惯|通常|一般)([^。！？!?]{4,120})/g)) {
-    push('preference', 'global', `我${match[0].replace(/^我/, '')}`, 3, 0.82);
+    push('preference', defaultScope, `我${match[0].replace(/^我/, '')}`, 3, 0.82);
   }
   for (const match of normalized.matchAll(/(?:决定|确认|确定|同意)([^。！？!?]{4,120})/g)) {
     push('decision', 'thread', match[1] ?? '', 3, 0.78);
@@ -96,7 +98,7 @@ function parseModelMemoryUpdate(text: string): ModelMemoryUpdate | null {
       }
       const record = item as Record<string, unknown>;
       const content = typeof record.content === 'string' ? record.content.replace(/\s+/g, ' ').trim() : '';
-      const scope = record.scope === 'global' ? 'global' : record.scope === 'thread' ? 'thread' : null;
+      const scope = record.scope === 'global' || record.scope === 'ip' ? 'ip' : record.scope === 'thread' ? 'thread' : null;
       const type = ['preference', 'fact', 'decision', 'instruction', 'task', 'correction'].includes(String(record.type))
         ? String(record.type) as AiMemoryRecord['type']
         : null;
@@ -267,7 +269,7 @@ export async function captureDeepMemoryForExchange(input: {
       return null;
     }
     const messages = await aiThreadRepository.listMessages(db, input.thread.id, 80, input.branchScopes);
-    const localCandidates = extractMemoryCandidates(input.userMessage.content);
+    const localCandidates = extractMemoryCandidates(input.userMessage.content, input.thread);
     const candidateQuery = [input.userMessage.content, ...localCandidates.map((candidate) => candidate.content)].join('\n');
     const relatedMemories = await aiThreadRepository.searchActiveMemoryFts(db, {
       branchScopes: input.branchScopes,
@@ -394,7 +396,7 @@ export async function captureDeepMemoryForExchange(input: {
       }
     }
 
-    const candidates = modelUpdate?.memories.length ? modelUpdate.memories : prepared.localCandidates;
+    const candidates = modelUpdate ? modelUpdate.memories : prepared.localCandidates;
     for (const candidate of candidates) {
       const normalizedContent = normalizeMemoryContent(candidate.content);
       if (changedNormalizedContents.has(normalizedContent)) {

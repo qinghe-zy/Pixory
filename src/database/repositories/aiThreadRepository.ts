@@ -100,6 +100,7 @@ export interface AiThreadMemoryJobRecord {
 export interface AiUserProfileRecord {
   id: string;
   space: PixorySpace;
+  boundIpId: number | null;
   profileJson: string;
   profileText: string;
   version: number;
@@ -1756,8 +1757,18 @@ export const aiThreadRepository = {
     return mapMemorySettingsRow(row);
   },
 
-  async getUserProfile(db: SQLiteDatabase, space: PixorySpace): Promise<AiUserProfileRecord | null> {
-    return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ?', space);
+  async getUserProfiles(db: SQLiteDatabase, space: PixorySpace, boundIpId?: number | null): Promise<AiUserProfileRecord[]> {
+    if (boundIpId != null) {
+      return db.getAllAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND (boundIpId IS NULL OR boundIpId = ?) ORDER BY boundIpId IS NULL ASC', space, boundIpId);
+    }
+    return db.getAllAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL', space);
+  },
+
+  async getUserProfile(db: SQLiteDatabase, space: PixorySpace, boundIpId: number | null = null): Promise<AiUserProfileRecord | null> {
+    if (boundIpId != null) {
+      return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId = ?', space, boundIpId);
+    }
+    return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL', space);
   },
 
   async upsertUserProfile(
@@ -1765,36 +1776,30 @@ export const aiThreadRepository = {
     input: Omit<AiUserProfileRecord, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }
   ): Promise<AiUserProfileRecord> {
     const now = createTimestamp();
-    await db.runAsync(
-      `INSERT INTO ai_user_profiles (
-        id, space, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
-        sourceEndMessageId, messageCountAtUpdate, lastUpdatedAt, createdAt, updatedAt
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(space) DO UPDATE SET
-        profileJson = excluded.profileJson,
-        profileText = excluded.profileText,
-        version = ai_user_profiles.version + 1,
-        sourceThreadId = excluded.sourceThreadId,
-        sourceStartMessageId = excluded.sourceStartMessageId,
-        sourceEndMessageId = excluded.sourceEndMessageId,
-        messageCountAtUpdate = excluded.messageCountAtUpdate,
-        lastUpdatedAt = excluded.lastUpdatedAt,
-        updatedAt = excluded.updatedAt`,
-      input.id,
-      input.space,
-      input.profileJson,
-      input.profileText,
-      input.version,
-      input.sourceThreadId,
-      input.sourceStartMessageId,
-      input.sourceEndMessageId,
-      input.messageCountAtUpdate,
-      input.lastUpdatedAt,
-      input.createdAt ?? now,
-      input.updatedAt ?? now
-    );
-    const row = await this.getUserProfile(db, input.space);
+    const existing = await this.getUserProfile(db, input.space, input.boundIpId);
+    if (existing) {
+      await db.runAsync(
+        `UPDATE ai_user_profiles SET
+         profileJson = ?, profileText = ?, version = version + 1, sourceThreadId = ?,
+         sourceStartMessageId = ?, sourceEndMessageId = ?, messageCountAtUpdate = ?,
+         lastUpdatedAt = ?, updatedAt = ?
+         WHERE id = ?`,
+        input.profileJson, input.profileText, input.sourceThreadId, input.sourceStartMessageId,
+        input.sourceEndMessageId, input.messageCountAtUpdate, input.lastUpdatedAt, input.updatedAt ?? now,
+        existing.id
+      );
+    } else {
+      await db.runAsync(
+        `INSERT INTO ai_user_profiles (
+          id, space, boundIpId, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
+          sourceEndMessageId, messageCountAtUpdate, lastUpdatedAt, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        input.id, input.space, input.boundIpId ?? null, input.profileJson, input.profileText, input.version,
+        input.sourceThreadId, input.sourceStartMessageId, input.sourceEndMessageId, input.messageCountAtUpdate,
+        input.lastUpdatedAt, input.createdAt ?? now, input.updatedAt ?? now
+      );
+    }
+    const row = await this.getUserProfile(db, input.space, input.boundIpId);
     if (!row) {
       throw new Error('User profile upsert failed.');
     }

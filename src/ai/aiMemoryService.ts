@@ -257,7 +257,13 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     .filter((memory) => memory.status === 'active')
     .sort((left, right) => {
       if (left.scope !== right.scope) {
-        return left.scope.localeCompare(right.scope);
+        const getScopeWeight = (scope: string) => {
+          if (scope === 'thread' || scope === 'ip') return 3;
+          if (scope === 'knowledge_base') return 2;
+          if (scope === 'global') return 1;
+          return 0;
+        };
+        return getScopeWeight(right.scope) - getScopeWeight(left.scope);
       }
       if (right.importance !== left.importance) {
         return right.importance - left.importance;
@@ -278,11 +284,13 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [profile, segments] = await Promise.all([
-    aiThreadRepository.getUserProfile(db, thread.space),
+  const [profiles, segments] = await Promise.all([
+    aiThreadRepository.getUserProfiles(db, thread.space, thread.boundIpId),
     aiThreadRepository.listSummarySegments(db, thread.id, options?.branchScopes),
   ]);
-  if (!profile?.profileText && segments.length === 0) {
+  const globalProfile = profiles.find((p) => p.boundIpId == null);
+  const projectProfile = profiles.find((p) => p.boundIpId != null);
+  if (!globalProfile?.profileText && !projectProfile?.profileText && segments.length === 0) {
     return '';
   }
   return buildMainCompanionMemoryTemplate({
@@ -290,7 +298,8 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
     summarySegmentsText: segments
       .map((segment) => `- ${segment.startAt ?? ''} 至 ${segment.endAt ?? ''}\n${segment.summaryText}`)
       .join('\n\n'),
-    userProfileText: profile?.profileText ?? '',
+    userProfileText: globalProfile?.profileText ?? '',
+    projectProfileText: projectProfile?.profileText ?? '',
   });
 }
 
@@ -322,13 +331,13 @@ export function scoreMemoryForQuery(memory: AiMemoryRecord, query: string, threa
   const keywordScore = terms.reduce((score, term) => score + (normalized.includes(term) ? 3 : 0), 0);
   const scopeScore =
     memory.scope === 'thread' && memory.scopeId === thread.id
-      ? 5
+      ? 10
       : memory.scope === 'ip' && memory.scopeId === String(thread.boundIpId ?? '')
-        ? 5
+        ? 10
         : memory.scope === 'knowledge_base' && memory.scopeId === (thread.boundKnowledgeBaseId ?? '')
-          ? 5
+          ? 10
           : memory.scope === 'global'
-            ? 2
+            ? 0.5
             : 0;
   const importanceScore = memory.importance * 2;
   const recencyScore = memory.lastUsedAt ? 1 : 0;

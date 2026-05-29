@@ -117,7 +117,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     try {
       const nextThread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
       setThread(nextThread);
-      const nextProfile = await getUserProfile(space);
+      const nextProfile = await getUserProfile(space, nextThread?.boundIpId);
       setProfile(nextProfile);
       setProfileDraft(nextProfile?.profileText ?? '');
       const [segments, nextMaintenanceStatus] = await Promise.all([
@@ -239,7 +239,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   async function handleSaveProfile() {
     setLoading(true);
     try {
-      const next = await updateUserProfile(space, profileDraft.trim());
+      const next = await updateUserProfile(space, profileDraft.trim(), thread?.boundIpId);
       setProfile(next);
       setProfileDraft(next.profileText);
       setStatus('用户画像已保存。');

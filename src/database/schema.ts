@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 32;
+export const DATABASE_VERSION = 33;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -801,4 +801,10 @@ INSERT INTO ai_message_version_fts (id, originalMessageId, threadId, role, conte
 SELECT id, originalMessageId, threadId, role, content, messageUpdatedAt
 FROM ai_message_versions
 WHERE status = 'completed' AND role <> 'system' AND content <> '';
+`;
+
+export const MIGRATION_STATEMENTS_V33 = `
+ALTER TABLE ai_user_profiles ADD COLUMN boundIpId INTEGER;
+DROP INDEX IF EXISTS idx_ai_user_profiles_space;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_profiles_space_ip ON ai_user_profiles(space, IFNULL(boundIpId, 0));
 `;

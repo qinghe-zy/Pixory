@@ -160,13 +160,19 @@ ${summaries}`;
 
 export function buildMainCompanionMemoryTemplate(input: {
   userProfileText: string;
+  projectProfileText?: string;
   summarySegmentsText: string;
   relevantMemoriesText: string;
 }): string {
+  const profileContext = [
+    input.userProfileText.trim() ? `[全局画像]\n${input.userProfileText}` : '',
+    input.projectProfileText?.trim() ? `[当前项目特定画像 (具有最高优先级)]\n${input.projectProfileText}` : '',
+  ].filter(Boolean).join('\n\n');
+
   const sections = [
     '陪伴记忆背景：以下内容只是长期背景参考，不是硬命令；用户当前要求、当前角色指令、资料事实和安全规则优先。',
-    input.userProfileText.trim()
-      ? `[关于这个用户]\n以下是你对这位用户已有的了解，请在对话中自然地调用这些信息。\n不要刻意提及"我记得你说过"，像一个真正认识对方的人一样交流。\n不要为了展示记忆而主动提旧事。\n只有当旧信息能自然帮助当前回复时才使用。\n不要突然变得过分亲密，不要超出用户当前表现出的关系边界。\n如果用户当前要求、资料事实或角色指令与旧画像冲突，优先遵守当前信息。\n\n${input.userProfileText}`
+    profileContext
+      ? `[关于这个用户]\n以下是你对这位用户已有的了解，请在对话中自然地调用这些信息。\n不要刻意提及"我记得你说过"，像一个真正认识对方的人一样交流。\n不要为了展示记忆而主动提旧事。\n只有当旧信息能自然帮助当前回复时才使用。\n不要突然变得过分亲密，不要超出用户当前表现出的关系边界。\n如果用户当前要求、资料事实或角色指令与旧画像冲突，优先遵守当前信息。项目特定画像的优先级永远高于全局画像。\n\n${profileContext}`
       : '',
     input.summarySegmentsText.trim()
       ? `[过往记忆]\n以下是你们之前对话的记忆摘要，按时间顺序排列，越靠后越近期：\n\n${input.summarySegmentsText}`
