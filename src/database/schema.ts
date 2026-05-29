@@ -808,3 +808,21 @@ ALTER TABLE ai_user_profiles ADD COLUMN boundIpId INTEGER;
 DROP INDEX IF EXISTS idx_ai_user_profiles_space;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_profiles_space_ip ON ai_user_profiles(space, IFNULL(boundIpId, 0));
 `;
+
+export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
+UPDATE ai_memories
+SET status = 'stale',
+    mergeReason = '旧版自动全局记忆已停用，请在记忆管理中手动确认是否保留为全局要求。',
+    mergedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    lastReconciledAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+    updatedAt = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE scope = 'global'
+  AND sourceKind = 'auto'
+  AND status = 'active';
+
+DELETE FROM ai_memory_fts;
+INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt
+FROM ai_memories
+WHERE status = 'active' AND supersededByMemoryId IS NULL;
+`;

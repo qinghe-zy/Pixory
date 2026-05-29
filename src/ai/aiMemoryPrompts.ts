@@ -53,15 +53,17 @@ ${MEMORY_PROMPT_INJECTION_GUARD}
 ${conversation}`;
 }
 
-export function buildProfileInitializationPrompt(conversation: string): string {
+export function buildProfileInitializationPrompt(conversation: string, scopeLabel = '全局'): string {
   return `你是一个用户信息提取助手。
 
-根据以下对话内容，为这位用户建立初始档案。这是第一次建档，信息可能不完整，只记录对话中有明确依据的内容，没有依据的字段留空数组或空字符串。
+根据以下对话内容，为这位用户建立${scopeLabel}画像档案。这是第一次建档，信息可能不完整，只记录对话中有明确依据且对${scopeLabel}长期有用的内容，没有依据的字段留空数组或空字符串。
 
 【要求】
 - 只记录有依据的，不推测，不补全
 - 信息要具体，不要抽象概括
 - 不要把临时任务要求、一次性情绪、单次回答长度偏好写进长期画像
+- 如果这是当前项目画像，可以记录当前 IP 内稳定偏好、角色理解和项目内长期要求；不要混入其他 IP 或普通会话信息
+- 如果这是全局画像，只记录必要用户信息和用户明确声明的全局要求
 - 所有内容用中文
 
 【安全边界】
@@ -76,10 +78,10 @@ ${JSON.stringify(EMPTY_USER_PROFILE_JSON, null, 2)}
 ${conversation}`;
 }
 
-export function buildProfileUpdatePrompt(currentProfile: string, recentConversation: string, currentProfileText = ''): string {
+export function buildProfileUpdatePrompt(currentProfile: string, recentConversation: string, currentProfileText = '', scopeLabel = '全局'): string {
   return `你是一个用户信息提取和维护助手。
 
-你的任务是根据最新的对话内容，更新用户的长期画像档案。这份档案会被陪伴型AI在每次对话开始时读取，用于理解"这个用户是谁"。
+你的任务是根据最新的对话内容，更新用户的${scopeLabel}画像档案。这份档案会被陪伴型AI在对应作用域内读取，用于理解"这个用户在这个作用域里是谁、偏好什么、长期要求是什么"。
 
 【更新原则】
 - 有新信息才更新对应字段，没有新信息的字段原样保留，不要改动
@@ -89,7 +91,7 @@ export function buildProfileUpdatePrompt(currentProfile: string, recentConversat
 - 如果新信息与已有信息只是阶段变化，保留变化过程并标注时间
 - 不要推断、不要猜测，只记录对话中有明确依据的信息
 - 信息粒度要具体：不写"有家庭压力"，写"妈妈希望她回老家考公务员，双方有分歧"
-- 不要把 IP、图片、知识库或单次任务要求写进用户长期画像
+- 当前项目画像可以记录当前 IP 内稳定偏好、角色理解和项目内长期要求；全局画像不得写入 IP、图片、知识库或单次任务要求
 - 如果用户在记忆管理界面手动编辑了画像文本，手动画像优先；只能在不冲突的前提下补充新信息，不要覆盖用户手动更正的内容
 
 【字段说明】

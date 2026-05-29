@@ -219,6 +219,9 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
     if (!thread) {
       return null;
     }
+    if (thread.boundIpId == null) {
+      return null;
+    }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
     const existing = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
     if (!settings.deepMemoryEnabled || existing) {
@@ -247,7 +250,7 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       space,
       systemPrompt: '你是 Pixory 的用户画像建档器。只输出 JSON。',
       thread: prepared.thread,
-      userPrompt: buildProfileInitializationPrompt(prepared.conversation),
+      userPrompt: buildProfileInitializationPrompt(prepared.conversation, '当前项目'),
     });
   const profileJson = modelResult.text ? parseProfileJson(modelResult.text) : buildLocalProfileJsonFromMessages(prepared.selected);
   const now = new Date().toISOString();
@@ -303,6 +306,9 @@ export async function maybeUpdateUserProfile(
     if (!thread) {
       return null;
     }
+    if (thread.boundIpId == null) {
+      return null;
+    }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
     const profile = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
     if (!settings.deepMemoryEnabled || !profile) {
@@ -341,7 +347,7 @@ export async function maybeUpdateUserProfile(
       space,
       systemPrompt: '你是 Pixory 的用户画像维护器。只输出 JSON。',
       thread: prepared.thread,
-      userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText),
+      userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText, '当前项目'),
     });
   const profileJson = modelResult.text
     ? parseProfileJson(modelResult.text, getProfileFallback(prepared.currentProfile))

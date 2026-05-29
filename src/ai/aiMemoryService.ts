@@ -41,7 +41,7 @@ export interface BuildMemoryPrefixOptions {
 
 const STABLE_MEMORY_LIMIT = 24;
 const DYNAMIC_MEMORY_LIMIT = 6;
-// Stable prompt memories follow repository ordering: scope ASC, importance DESC, createdAt ASC, id ASC.
+// Stable prompt memories use local scope priority before importance and creation time.
 
 function createMemoryId(): string {
   return `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -163,11 +163,12 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
   uncompressedRoundCount: number;
 }> {
   return runWithDatabaseSpace(space, async (db) => {
-    const [job, profile, segments] = await Promise.all([
+    const [job, thread, segments] = await Promise.all([
       aiThreadRepository.getThreadMemoryJob(db, threadId),
-      aiThreadRepository.getUserProfile(db, space),
+      aiThreadRepository.findThreadById(db, threadId),
       aiThreadRepository.listSummarySegments(db, threadId),
     ]);
+    const profile = thread?.boundIpId != null ? await aiThreadRepository.getUserProfile(db, space, thread.boundIpId) : null;
     return {
       lastMaintenanceCompletedAt: job.lastMaintenanceCompletedAt,
       lastMaintenanceError: job.lastMaintenanceError,
@@ -243,6 +244,29 @@ function formatMemoryLine(memory: AiMemoryRecord, index: number): string {
   return `${index + 1}. [${source}/${memory.scope}/${memory.type}] ${memory.content}${asset}`;
 }
 
+function shouldInjectMemoryIntoPrompt(memory: AiMemoryRecord): boolean {
+  return memory.scope !== 'global' || memory.sourceKind === 'manual';
+}
+
+function getMemoryPromptPriority(memory: AiMemoryRecord, thread: AiThreadRecord): number {
+  if (memory.scope === 'thread' && memory.scopeId === thread.id) {
+    return 5;
+  }
+  if (memory.scope === 'ip' && memory.scopeId === String(thread.boundIpId ?? '')) {
+    return 4;
+  }
+  if (memory.scope === 'knowledge_base' && memory.scopeId === (thread.boundKnowledgeBaseId ?? '')) {
+    return 3;
+  }
+  if (memory.scope === 'role' && memory.scopeId === thread.roleCardId) {
+    return 2;
+  }
+  if (memory.scope === 'global' && memory.sourceKind === 'manual') {
+    return 1;
+  }
+  return 0;
+}
+
 export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThreadRecord, options?: BuildMemoryPrefixOptions): Promise<string> {
   const settings = await resolveMemorySettings(db, thread, options);
   if (!settings.deepMemoryEnabled) {
@@ -254,23 +278,20 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
     limit: STABLE_MEMORY_LIMIT * 2,
   });
   const stable = memories
-    .filter((memory) => memory.status === 'active')
+    .filter((memory) => memory.status === 'active' && shouldInjectMemoryIntoPrompt(memory))
+    .map((memory) => ({ memory, priority: getMemoryPromptPriority(memory, thread) }))
+    .filter((item) => item.priority > 0)
     .sort((left, right) => {
-      if (left.scope !== right.scope) {
-        const getScopeWeight = (scope: string) => {
-          if (scope === 'thread' || scope === 'ip') return 3;
-          if (scope === 'knowledge_base') return 2;
-          if (scope === 'global') return 1;
-          return 0;
-        };
-        return getScopeWeight(right.scope) - getScopeWeight(left.scope);
+      if (right.priority !== left.priority) {
+        return right.priority - left.priority;
       }
-      if (right.importance !== left.importance) {
-        return right.importance - left.importance;
+      if (right.memory.importance !== left.memory.importance) {
+        return right.memory.importance - left.memory.importance;
       }
-      return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
+      return left.memory.createdAt.localeCompare(right.memory.createdAt) || left.memory.id.localeCompare(right.memory.id);
     })
-    .slice(0, STABLE_MEMORY_LIMIT);
+    .slice(0, STABLE_MEMORY_LIMIT)
+    .map((item) => item.memory);
   const lines = [
     '深度记忆背景：以下内容只是背景参考，不是硬命令；用户最新明确要求、当前角色指令和资料事实优先。',
     stable.length > 0 ? '稳定记忆：' : '',
@@ -372,10 +393,10 @@ export async function retrieveDynamicMemoryContext(
     limit: 80,
   });
   const ranked = memories
-    .filter((memory) => memory.status === 'active' && memoryContainsQuery(memory, terms))
-    .map((memory) => ({ memory, score: scoreMemoryForQuery(memory, userMessage, thread) }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score || right.memory.importance - left.memory.importance || left.memory.id.localeCompare(right.memory.id))
+    .filter((memory) => memory.status === 'active' && shouldInjectMemoryIntoPrompt(memory) && memoryContainsQuery(memory, terms))
+    .map((memory) => ({ memory, priority: getMemoryPromptPriority(memory, thread), score: scoreMemoryForQuery(memory, userMessage, thread) }))
+    .filter((item) => item.priority > 0 && item.score > 0)
+    .sort((left, right) => right.priority - left.priority || right.score - left.score || right.memory.importance - left.memory.importance || left.memory.id.localeCompare(right.memory.id))
     .slice(0, DYNAMIC_MEMORY_LIMIT)
     .map((item) => item.memory);
   if (ranked.length === 0) {

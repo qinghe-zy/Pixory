@@ -33,11 +33,19 @@ interface AiMemoryBoardScreenProps {
 }
 
 const SCOPE_LABELS: Record<AiMemoryScope, string> = {
-  global: '全局',
-  ip: '当前 IP',
+  global: '全局记忆',
+  ip: '当前项目记忆',
   knowledge_base: '当前知识库',
   role: '当前角色',
   thread: '本会话',
+};
+
+const SCOPE_DESCRIPTIONS: Record<AiMemoryScope, string> = {
+  global: '跨项目都会被低权重参考，只应保留必要用户信息和明确全局要求。',
+  ip: '只在当前 IP 内使用，优先级高于全局记忆。',
+  knowledge_base: '只随当前知识库资料一起参考。',
+  role: '只随当前角色一起参考。',
+  thread: '只在本会话内参考。',
 };
 
 const TYPE_LABELS: Record<AiMemoryType, string> = {
@@ -49,7 +57,8 @@ const TYPE_LABELS: Record<AiMemoryType, string> = {
   task: '任务',
 };
 
-const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['global', 'role', 'thread', 'ip', 'knowledge_base'];
+const MEMORY_SCOPE_ORDER: AiMemoryScope[] = ['thread', 'ip', 'knowledge_base', 'role', 'global'];
+const MANUAL_MEMORY_SCOPE_OPTIONS: AiMemoryScope[] = ['thread', 'ip', 'global'];
 const MEMORY_TYPE_FILTERS: Array<'all' | AiMemoryType> = ['all', 'preference', 'fact', 'correction', 'task', 'instruction', 'decision'];
 const MEMORY_STATUS_FILTERS: Array<'active' | 'stale' | 'all'> = ['active', 'stale', 'all'];
 
@@ -84,16 +93,32 @@ interface MemoryMaintenanceStatus {
   uncompressedRoundCount: number;
 }
 
+function resolveManualMemoryScope(thread: AiThreadRecord, scope: AiMemoryScope): { scope: AiMemoryScope; scopeId: string | null } | null {
+  if (scope === 'thread') {
+    return { scope, scopeId: thread.id };
+  }
+  if (scope === 'ip') {
+    return thread.boundIpId == null ? null : { scope, scopeId: String(thread.boundIpId) };
+  }
+  if (scope === 'global') {
+    return { scope, scopeId: null };
+  }
+  return null;
+}
+
 export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardScreenProps) {
   const [thread, setThread] = useState<AiThreadRecord | null>(null);
   const [memories, setMemories] = useState<AiMemoryRecord[]>([]);
-  const [profile, setProfile] = useState<AiUserProfileRecord | null>(null);
+  const [globalProfile, setGlobalProfile] = useState<AiUserProfileRecord | null>(null);
+  const [projectProfile, setProjectProfile] = useState<AiUserProfileRecord | null>(null);
   const [summarySegments, setSummarySegments] = useState<AiThreadSummarySegmentRecord[]>([]);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [memoryTypeFilter, setMemoryTypeFilter] = useState<'all' | AiMemoryType>('all');
   const [memoryStatusFilter, setMemoryStatusFilter] = useState<'active' | 'stale' | 'all'>('active');
-  const [profileDraft, setProfileDraft] = useState('');
+  const [globalProfileDraft, setGlobalProfileDraft] = useState('');
+  const [projectProfileDraft, setProjectProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
+  const [manualMemoryScope, setManualMemoryScope] = useState<AiMemoryScope>('thread');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [status, setStatus] = useState<string | null>(null);
@@ -117,9 +142,14 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     try {
       const nextThread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
       setThread(nextThread);
-      const nextProfile = await getUserProfile(space, nextThread?.boundIpId);
-      setProfile(nextProfile);
-      setProfileDraft(nextProfile?.profileText ?? '');
+      const [nextGlobalProfile, nextProjectProfile] = await Promise.all([
+        getUserProfile(space, null),
+        nextThread?.boundIpId != null ? getUserProfile(space, nextThread.boundIpId) : Promise.resolve(null),
+      ]);
+      setGlobalProfile(nextGlobalProfile);
+      setGlobalProfileDraft(nextGlobalProfile?.profileText ?? '');
+      setProjectProfile(nextProjectProfile);
+      setProjectProfileDraft(nextProjectProfile?.profileText ?? '');
       const [segments, nextMaintenanceStatus] = await Promise.all([
         listSummarySegments(space, threadId),
         loadMemoryMaintenanceStatus(space, threadId),
@@ -128,6 +158,8 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       setMaintenanceStatus(nextMaintenanceStatus);
       if (nextThread) {
         setMemories(await listMemoryBoardItems(space, nextThread, { status: memoryStatusFilter }));
+      } else {
+        setMemories([]);
       }
       setStatus(null);
     } catch (error) {
@@ -146,12 +178,17 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     if (!content || !thread) {
       return;
     }
+    const manualScope = resolveManualMemoryScope(thread, manualMemoryScope);
+    if (!manualScope) {
+      setStatus('当前会话未绑定 IP，不能添加当前项目记忆。');
+      return;
+    }
     setLoading(true);
     try {
       await createManualMemory(space, {
         content,
-        scope: 'thread',
-        scopeId: thread.id,
+        scope: manualScope.scope,
+        scopeId: manualScope.scopeId,
         space,
         type: 'fact',
       });
@@ -236,15 +273,33 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
-  async function handleSaveProfile() {
+  async function handleSaveGlobalProfile() {
     setLoading(true);
     try {
-      const next = await updateUserProfile(space, profileDraft.trim(), thread?.boundIpId);
-      setProfile(next);
-      setProfileDraft(next.profileText);
-      setStatus('用户画像已保存。');
+      const next = await updateUserProfile(space, globalProfileDraft.trim(), null);
+      setGlobalProfile(next);
+      setGlobalProfileDraft(next.profileText);
+      setStatus('全局画像已保存。');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存用户画像失败');
+      setStatus(error instanceof Error ? error.message : '保存全局画像失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveProjectProfile() {
+    if (thread?.boundIpId == null) {
+      setStatus('当前会话未绑定 IP，没有项目画像。');
+      return;
+    }
+    setLoading(true);
+    try {
+      const next = await updateUserProfile(space, projectProfileDraft.trim(), thread.boundIpId);
+      setProjectProfile(next);
+      setProjectProfileDraft(next.profileText);
+      setStatus('当前项目画像已保存。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存当前项目画像失败');
     } finally {
       setLoading(false);
     }
@@ -257,16 +312,41 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         {status ? <Text style={styles.status}>{status}</Text> : null}
         <AiLightCard>
           <Text style={styles.sectionTitle}>用户画像</Text>
-          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求。</Text>
-          <Text style={styles.caption}>{profile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(profile.lastUpdatedAt)}` : '还没有长期画像。'}</Text>
-          <AiLightTextareaRow
-            label="画像内容"
-            minHeight={112}
-            onChangeText={setProfileDraft}
-            placeholder="例如：喜欢简洁直接的解释，正在维护 Pixory 项目。"
-            value={profileDraft}
-          />
-          <AiLightButton label="保存用户画像" loading={loading} onPress={() => void handleSaveProfile()} />
+          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求；当前项目画像优先于全局画像。</Text>
+          <View style={styles.profileSection}>
+            <Text style={styles.profileScopeTitle}>全局画像</Text>
+            <Text style={styles.caption}>{globalProfile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(globalProfile.lastUpdatedAt)}` : '还没有全局画像。'}</Text>
+            <AiLightTextareaRow
+              label="全局画像内容"
+              minHeight={96}
+              onChangeText={setGlobalProfileDraft}
+              placeholder="例如：喜欢简洁直接的解释。"
+              value={globalProfileDraft}
+            />
+            <AiLightButton label="保存全局画像" loading={loading} onPress={() => void handleSaveGlobalProfile()} />
+          </View>
+          <View style={styles.profileSection}>
+            <Text style={styles.profileScopeTitle}>当前项目画像</Text>
+            <Text style={styles.caption}>
+              {thread?.boundIpId != null
+                ? projectProfile?.lastUpdatedAt
+                  ? `更新于 ${formatAiFullMinute(projectProfile.lastUpdatedAt)}`
+                  : '还没有当前项目画像。'
+                : '当前会话未绑定 IP，不会生成项目画像。'}
+            </Text>
+            {thread?.boundIpId != null ? (
+              <>
+                <AiLightTextareaRow
+                  label="当前项目画像内容"
+                  minHeight={112}
+                  onChangeText={setProjectProfileDraft}
+                  placeholder="例如：在这个 IP 中偏好冷静、克制的角色语气。"
+                  value={projectProfileDraft}
+                />
+                <AiLightButton label="保存当前项目画像" loading={loading} onPress={() => void handleSaveProjectProfile()} />
+              </>
+            ) : null}
+          </View>
         </AiLightCard>
 
         <AiLightCard>
@@ -311,8 +391,24 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
 
         <AiLightCard>
           <Text style={styles.sectionTitle}>手动添加</Text>
+          <View style={styles.filterRow}>
+            {MANUAL_MEMORY_SCOPE_OPTIONS.map((scope) => (
+              <Pressable
+                key={scope}
+                accessibilityRole="button"
+                onPress={() => setManualMemoryScope(scope)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  manualMemoryScope === scope && styles.filterChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.filterText, manualMemoryScope === scope && styles.filterTextActive]}>{SCOPE_LABELS[scope]}</Text>
+              </Pressable>
+            ))}
+          </View>
           <AiLightTextareaRow label="记忆内容" minHeight={72} onChangeText={setDraft} placeholder="例如：这个 IP 的主色调是 #FF0033" value={draft} />
-          <AiLightButton label="添加到本会话记忆" loading={loading} onPress={() => void handleAddMemory()} />
+          <AiLightButton label={`添加到${SCOPE_LABELS[manualMemoryScope]}`} loading={loading} onPress={() => void handleAddMemory()} />
         </AiLightCard>
 
         {grouped.length === 0 ? (
@@ -359,7 +455,13 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
 
         {grouped.map((group) => (
           <AiLightCard key={group.scope}>
-            <Text style={styles.sectionTitle}>{SCOPE_LABELS[group.scope]}</Text>
+            <View style={styles.scopeHeader}>
+              <View style={styles.sectionHeaderText}>
+                <Text style={styles.sectionTitle}>{SCOPE_LABELS[group.scope]}</Text>
+                <Text style={styles.caption}>{SCOPE_DESCRIPTIONS[group.scope]}</Text>
+              </View>
+              <Text style={styles.scopeCount}>{group.items.length}</Text>
+            </View>
             <View style={styles.memoryList}>
               {group.items.map((memory) => (
                 <View key={memory.id} style={styles.memoryItem}>
@@ -378,7 +480,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                     <>
                       <Text style={styles.memoryContent}>{memory.content}</Text>
                       <Text style={styles.caption}>
-                        {TYPE_LABELS[memory.type]} · {memory.sourceKind === 'manual' ? '手动添加' : '自动整理'} · {memory.status === 'stale' ? '已过期' : '当前'} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
+                        作用域：{SCOPE_LABELS[memory.scope]} · {TYPE_LABELS[memory.type]} · {memory.sourceKind === 'manual' ? '手动添加' : '自动整理'} · {memory.status === 'stale' ? '已过期' : '当前'} · {formatMemoryImportanceLabel(memory.importance)} · {formatMemoryConfidenceLabel(memory.confidence)}
                       </Text>
                       {memory.status === 'stale' && memory.mergeReason ? <Text style={styles.status}>过期原因：{memory.mergeReason}</Text> : null}
                       {memory.supersededByMemoryId ? <Text style={styles.caption}>替代记忆：{memory.supersededByMemoryId}</Text> : null}
@@ -460,6 +562,26 @@ const styles = StyleSheet.create({
   },
   sectionHeaderText: {
     gap: rhythm.microGap,
+  },
+  profileSection: {
+    gap: rhythm.microGap,
+    paddingTop: spacing[2],
+  },
+  profileScopeTitle: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '700',
+  },
+  scopeHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: rhythm.compactGridGap,
+    justifyContent: 'space-between',
+  },
+  scopeCount: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+    fontWeight: '700',
   },
   caption: {
     ...typography.textStyles.caption,

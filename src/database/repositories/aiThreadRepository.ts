@@ -438,6 +438,18 @@ function buildFtsQuery(value: string): string | null {
   return terms.length > 0 ? terms.map((term) => `"${term}"`).join(' OR ') : null;
 }
 
+function memoryScopePrioritySql(alias = ''): string {
+  const prefix = alias ? `${alias}.` : '';
+  return `CASE
+        WHEN ${prefix}scope = 'thread' THEN 5
+        WHEN ${prefix}scope = 'ip' THEN 4
+        WHEN ${prefix}scope = 'knowledge_base' THEN 3
+        WHEN ${prefix}scope = 'role' THEN 2
+        WHEN ${prefix}scope = 'global' THEN 1
+        ELSE 0
+      END`;
+}
+
 function normalizeBranchScopes(branchScopes?: AiBranchScope[]): AiBranchScope[] | null {
   if (!branchScopes) {
     return null;
@@ -2064,7 +2076,7 @@ export const aiThreadRepository = {
     return db.getAllAsync<AiMemoryRecord>(
       `SELECT * FROM ai_memories
        WHERE ${clauses.join(' AND ')}
-       ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC
+       ORDER BY ${memoryScopePrioritySql()} DESC, importance DESC, createdAt ASC, id ASC
        LIMIT ? OFFSET ?`,
       ...values,
       limit,
@@ -2093,7 +2105,7 @@ export const aiThreadRepository = {
       `SELECT * FROM ai_memories
        WHERE space = ? AND status = 'active' AND supersededByMemoryId IS NULL AND (${clauses.join(' OR ')})
          ${sourceVisibilityClause.clause ? `AND ${sourceVisibilityClause.clause}` : ''}
-       ORDER BY importance DESC, COALESCE(lastUsedAt, updatedAt) DESC, updatedAt DESC
+       ORDER BY ${memoryScopePrioritySql()} DESC, importance DESC, COALESCE(lastUsedAt, updatedAt) DESC, updatedAt DESC
        LIMIT ?`,
       input.space,
       ...values,
@@ -2167,7 +2179,7 @@ export const aiThreadRepository = {
            AND ai_memories.supersededByMemoryId IS NULL
            AND (${scopeClauses.join(' OR ')})
            ${sourceVisibilityClause.clause ? `AND ${sourceVisibilityClause.clause}` : ''}
-         ORDER BY bm25(ai_memory_fts), ai_memories.importance DESC, COALESCE(ai_memories.lastUsedAt, ai_memories.updatedAt) DESC
+         ORDER BY ${memoryScopePrioritySql('ai_memories')} DESC, bm25(ai_memory_fts), ai_memories.importance DESC, COALESCE(ai_memories.lastUsedAt, ai_memories.updatedAt) DESC
          LIMIT ?`,
         ftsQuery,
         input.space,

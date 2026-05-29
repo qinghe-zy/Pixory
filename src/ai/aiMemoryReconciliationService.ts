@@ -143,7 +143,11 @@ export function sanitizeMemoryReconciliationOperations(input: {
         reject(operation, 'invalid_add_payload');
         continue;
       }
-      if (!allowedScopeKeys.has(`${operation.scope}:${operation.scope === 'global' ? '' : ''}`) && operation.scope !== 'global') {
+      if (operation.scope === 'global') {
+        reject(operation, 'global_scope_requires_manual_action');
+        continue;
+      }
+      if (!allowedScopeKeys.has(`${operation.scope}:`)) {
         const hasScope = input.allowedScopes.some((item) => item.scope === operation.scope);
         if (!hasScope) {
           reject(operation, 'scope_not_allowed');
@@ -168,7 +172,11 @@ export function sanitizeMemoryReconciliationOperations(input: {
       reject(operation, 'target_not_active_in_space');
       continue;
     }
-    if (!allowedScopeKeys.has(`${target.scope}:${target.scopeId ?? ''}`)) {
+    if (target.scope === 'global' && (target.sourceKind === 'manual' || operation.op !== 'stale')) {
+      reject(operation, 'global_target_requires_manual_action');
+      continue;
+    }
+    if (target.scope !== 'global' && !allowedScopeKeys.has(`${target.scope}:${target.scopeId ?? ''}`)) {
       reject(operation, 'target_scope_not_allowed');
       continue;
     }

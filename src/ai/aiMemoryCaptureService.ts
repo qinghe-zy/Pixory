@@ -187,7 +187,6 @@ function scopeIdForMemoryCandidate(thread: AiThreadRecord, candidate: Pick<Memor
 
 function allowedMemoryScopes(thread: AiThreadRecord): Array<{ scope: AiMemoryRecord['scope']; scopeId: string | null }> {
   const scopes: Array<{ scope: AiMemoryRecord['scope']; scopeId: string | null }> = [
-    { scope: 'global', scopeId: null },
     { scope: 'thread', scopeId: thread.id },
   ];
   if (thread.roleCardId) {
@@ -210,7 +209,7 @@ async function createMemoryFromCandidate(db: SQLiteDatabase, input: {
   reason?: string | null;
 }): Promise<AiMemoryRecord | null> {
   const scopeId = scopeIdForMemoryCandidate(input.thread, input.candidate);
-  if (input.candidate.scope !== 'global' && !scopeId) {
+  if (input.candidate.scope === 'global' || !scopeId) {
     return null;
   }
   const normalizedContent = normalizeMemoryContent(input.candidate.content);
@@ -398,12 +397,15 @@ export async function captureDeepMemoryForExchange(input: {
 
     const candidates = modelUpdate ? modelUpdate.memories : prepared.localCandidates;
     for (const candidate of candidates) {
+      if (candidate.scope === 'global') {
+        continue;
+      }
       const normalizedContent = normalizeMemoryContent(candidate.content);
       if (changedNormalizedContents.has(normalizedContent)) {
         continue;
       }
       const scopeId = scopeIdForMemoryCandidate(input.thread, candidate);
-      if (candidate.scope !== 'global' && !scopeId) {
+      if (!scopeId) {
         continue;
       }
       const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {

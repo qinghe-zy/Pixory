@@ -570,7 +570,8 @@ test('AI memory service exposes board lazy capture and prompt helpers', () => {
   assert.match(service, /pendingTurnCount >= 5/);
   assert.match(service, /buildStableMemoryPrefix/);
   assert.match(service, /retrieveDynamicMemoryContext/);
-  assert.match(service, /importance DESC/);
+  assert.match(service, /getMemoryPromptPriority/);
+  assert.match(service, /right\.priority - left\.priority/);
 });
 
 test('AI companion memory profile maintenance has bounded queries and local fallback', () => {

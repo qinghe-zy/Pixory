@@ -1,0 +1,96 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const root = path.resolve(__dirname, '..');
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), 'utf8');
+}
+
+test('AI memory auto maintenance cannot create or mutate global memory from chat', () => {
+  const capture = read('src/ai/aiMemoryCaptureService.ts');
+  const reconciliation = read('src/ai/aiMemoryReconciliationService.ts');
+
+  assert.doesNotMatch(capture, /\{\s*scope:\s*'global',\s*scopeId:\s*null\s*\}/);
+  assert.match(capture, /if \(candidate\.scope === 'global'\) \{[\s\S]{0,80}continue;/);
+  assert.match(capture, /candidate\.scope,\s*\n\s*scopeId/);
+  assert.match(reconciliation, /operation\.scope === 'global'[\s\S]{0,120}global_scope_requires_manual_action/);
+  assert.match(reconciliation, /target\.scope === 'global'[\s\S]{0,120}global_target_requires_manual_action/);
+});
+
+test('AI profile auto maintenance only writes project scoped profiles', () => {
+  const profile = read('src/ai/aiMemoryProfileService.ts');
+  const prompts = read('src/ai/aiMemoryPrompts.ts');
+
+  assert.match(profile, /thread\.boundIpId == null[\s\S]{0,80}return null/);
+  assert.match(profile, /boundIpId:\s*prepared\.thread\.boundIpId/);
+  assert.match(profile, /buildProfileInitializationPrompt\(prepared\.conversation,\s*'当前项目'\)/);
+  assert.match(profile, /buildProfileUpdatePrompt\([\s\S]*'当前项目'\)/);
+  assert.match(prompts, /scopeLabel/);
+  assert.match(prompts, /当前项目画像/);
+  assert.match(prompts, /当前 IP 内/);
+});
+
+test('AI memory board visibly separates global and project profile governance', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /globalProfile/);
+  assert.match(board, /projectProfile/);
+  assert.match(board, /globalProfileDraft/);
+  assert.match(board, /projectProfileDraft/);
+  assert.match(board, /getUserProfile\(space,\s*null\)/);
+  assert.match(board, /getUserProfile\(space,\s*nextThread\.boundIpId\)/);
+  assert.match(board, /全局画像/);
+  assert.match(board, /当前项目画像/);
+  assert.match(board, /当前项目画像优先于全局画像/);
+});
+
+test('AI memory board labels every memory item with its governance scope', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /SCOPE_DESCRIPTIONS/);
+  assert.match(board, /作用域：\{SCOPE_LABELS\[memory\.scope\]\}/);
+  assert.match(board, /全局记忆/);
+  assert.match(board, /当前项目记忆/);
+});
+
+test('AI memory board lets manual additions choose global project or thread scope', () => {
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+
+  assert.match(board, /manualMemoryScope/);
+  assert.match(board, /MANUAL_MEMORY_SCOPE_OPTIONS/);
+  assert.match(board, /resolveManualMemoryScope/);
+  assert.match(board, /scope:\s*manualScope\.scope/);
+  assert.match(board, /scopeId:\s*manualScope\.scopeId/);
+  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[manualMemoryScope\]\}`\}/);
+});
+
+test('AI memory retrieval gives local project scopes a hard priority over global memory', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const service = read('src/ai/aiMemoryService.ts');
+
+  assert.match(repository, /memoryScopePrioritySql/);
+  assert.doesNotMatch(repository, /ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC/);
+  assert.match(repository, /ORDER BY \$\{memoryScopePrioritySql\(\)\} DESC/);
+  assert.match(repository, /ORDER BY \$\{memoryScopePrioritySql\('ai_memories'\)\} DESC/);
+  assert.match(service, /getMemoryPromptPriority/);
+  assert.match(service, /right\.priority - left\.priority/);
+});
+
+test('AI memory startup cleanup stales legacy automatic global memories', () => {
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+
+  assert.match(schema, /MEMORY_SCOPE_GOVERNANCE_STATEMENTS/);
+  assert.match(schema, /scope = 'global'/);
+  assert.match(schema, /sourceKind = 'auto'/);
+  assert.match(schema, /status = 'stale'/);
+  assert.match(db, /MEMORY_SCOPE_GOVERNANCE_STATEMENTS/);
+  assert.match(db, /ai_memory_scope_governance_applied/);
+  assert.match(db, /SELECT value FROM app_settings WHERE key = \?/);
+  assert.match(db, /ON CONFLICT\(key\) DO UPDATE/);
+  assert.match(db, /ensureMemoryScopeGovernance\(database\)/);
+  assert.doesNotMatch(db, /await database\.execAsync\(MEMORY_SCOPE_GOVERNANCE_STATEMENTS\);/);
+});

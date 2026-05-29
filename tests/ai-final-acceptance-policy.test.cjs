@@ -239,7 +239,8 @@ test('AI memory repository supports visible board controls and lazy job state', 
   assert.match(repository, /getThreadMemoryJob/);
   assert.match(repository, /updateThreadMemoryJob/);
   assert.match(repository, /sourceKind: 'manual'/);
-  assert.match(repository, /ORDER BY scope ASC, importance DESC, createdAt ASC, id ASC/);
+  assert.match(repository, /memoryScopePrioritySql/);
+  assert.match(repository, /ORDER BY \$\{memoryScopePrioritySql\(\)\} DESC, importance DESC, createdAt ASC, id ASC/);
 });
 
 test('AI companion memory repository supports profiles and summary segments', () => {
@@ -299,8 +300,11 @@ test('AI memory board supports visible profile management', () => {
 
   assert.match(board, /用户画像/);
   assert.match(board, /画像用于长期理解你，不会覆盖当前要求/);
-  assert.match(board, /profileDraft/);
-  assert.match(board, /handleSaveProfile/);
+  assert.match(board, /globalProfileDraft/);
+  assert.match(board, /projectProfileDraft/);
+  assert.match(board, /handleSaveGlobalProfile/);
+  assert.match(board, /handleSaveProjectProfile/);
+  assert.match(board, /当前项目画像优先于全局画像/);
   assert.match(board, /lastUpdatedAt/);
 });
 

@@ -3,6 +3,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 import {
   DATABASE_NAME,
   DATABASE_VERSION,
+  MEMORY_SCOPE_GOVERNANCE_STATEMENTS,
   MIGRATION_STATEMENTS_V1,
   MIGRATION_STATEMENTS_V2,
   MIGRATION_STATEMENTS_V3,
@@ -43,6 +44,7 @@ export type PixorySpace = 'normal' | 'personal';
 
 const databasePromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
 const initializationPromises: Partial<Record<PixorySpace, Promise<SQLiteDatabase>>> = {};
+const MEMORY_SCOPE_GOVERNANCE_SETTING_KEY = 'ai_memory_scope_governance_applied';
 
 function getDatabaseNameForSpace(space: PixorySpace): string {
   return space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME;
@@ -69,6 +71,26 @@ async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
   if (!table) {
     await db.execAsync(MIGRATION_STATEMENTS_V9);
   }
+}
+
+async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
+  const applied = await db.getFirstAsync<{ value: string | null }>(
+    'SELECT value FROM app_settings WHERE key = ?',
+    MEMORY_SCOPE_GOVERNANCE_SETTING_KEY
+  );
+
+  if (applied?.value === '1') {
+    return;
+  }
+
+  await db.execAsync(MEMORY_SCOPE_GOVERNANCE_STATEMENTS);
+  await db.runAsync(
+    `INSERT INTO app_settings (key, value, updatedAt)
+     VALUES (?, '1', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+    MEMORY_SCOPE_GOVERNANCE_SETTING_KEY,
+    new Date().toISOString()
+  );
 }
 
 async function cleanupInterruptedAiGenerations(db: SQLiteDatabase): Promise<void> {
@@ -222,6 +244,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     }
 
     await ensureImportTemplatesSchema(database);
+    await ensureMemoryScopeGovernance(database);
 
     if (currentVersion !== DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
