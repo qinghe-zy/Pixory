@@ -57,6 +57,7 @@ const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
+const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
 const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
 // Scroll affordance copy: 回到最新.
@@ -314,6 +315,7 @@ export function AiChatScreen({
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerFocusVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const latestJumpTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const branchTreeScrollTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const inlineEditVisibilityTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thinkingExpandedByMessageIdRef = useRef(new Map<string, boolean>());
@@ -748,11 +750,52 @@ export function AiChatScreen({
     inlineEditVisibilityTimeoutsRef.current = [];
   }
 
+  function clearBranchTreeScrollTimeouts() {
+    branchTreeScrollTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+    branchTreeScrollTimeoutsRef.current = [];
+  }
+
   function clearVoiceResetTimeout() {
     if (voiceResetTimeoutRef.current) {
       clearTimeout(voiceResetTimeoutRef.current);
       voiceResetTimeoutRef.current = null;
     }
+  }
+
+  function scrollBranchTreeTargetIntoView(messageId: string) {
+    if (pendingBranchTreeScrollMessageIdRef.current !== messageId) {
+      return;
+    }
+    const index = invertedMessageItems.findIndex((item) => item.message.id === messageId);
+    if (index < 0) {
+      return;
+    }
+    messageListRef.current?.scrollToIndex({
+      animated: true,
+      index,
+      viewPosition: 0.42,
+    });
+  }
+
+  function retryBranchTreeScrollToIndex(info: { averageItemLength: number; index: number }) {
+    const targetMessageId = pendingBranchTreeScrollMessageIdRef.current;
+    if (!targetMessageId) {
+      return;
+    }
+    messageListRef.current?.scrollToOffset({
+      animated: true,
+      offset: Math.max(0, info.averageItemLength * info.index),
+    });
+    branchTreeScrollTimeoutsRef.current.push(
+      setTimeout(() => scrollBranchTreeTargetIntoView(targetMessageId), INLINE_EDIT_SCROLL_RETRY_DELAY_MS)
+    );
+  }
+
+  function scheduleBranchTreeTargetScroll(messageId: string) {
+    clearBranchTreeScrollTimeouts();
+    branchTreeScrollTimeoutsRef.current = BRANCH_TREE_SCROLL_RETRY_DELAYS_MS.map((delay) =>
+      setTimeout(() => scrollBranchTreeTargetIntoView(messageId), delay)
+    );
   }
 
   function scrollInlineEditMessageIntoView(messageId: string) {
@@ -796,6 +839,11 @@ export function AiChatScreen({
     inlineEditVisibilityTimeoutsRef.current = INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS.map((delay) =>
       setTimeout(() => scrollInlineEditMessageIntoView(messageId), delay)
     );
+  }
+
+  function handleMessageScrollToIndexFailed(info: { averageItemLength: number; index: number }) {
+    retryInlineEditScrollToIndex(info);
+    retryBranchTreeScrollToIndex(info);
   }
 
   function showLatestMessageVersion(messageId: string) {
@@ -1236,12 +1284,20 @@ export function AiChatScreen({
       }
       return;
     }
-    pendingBranchTreeScrollMessageIdRef.current = null;
+    clearBranchTreeScrollTimeouts();
     messageListRef.current?.scrollToIndex({
       animated: true,
       index,
       viewPosition: 0.42,
     });
+    scheduleBranchTreeTargetScroll(targetMessageId);
+    branchTreeScrollTimeoutsRef.current.push(
+      setTimeout(() => {
+        if (pendingBranchTreeScrollMessageIdRef.current === targetMessageId) {
+          pendingBranchTreeScrollMessageIdRef.current = null;
+        }
+      }, BRANCH_TREE_SCROLL_RETRY_DELAYS_MS.at(-1) ?? 0)
+    );
   }, [hasEarlierMessages, invertedMessageItems, loadEarlierMessages]);
 
   useEffect(() => {
@@ -1250,6 +1306,7 @@ export function AiChatScreen({
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();
       clearInlineEditVisibilityTimeouts();
+      clearBranchTreeScrollTimeouts();
       cancelGenerationAction();
       clearGenerationSubscription();
       activeStreamGenerationRef.current += 1;
@@ -2023,7 +2080,7 @@ export function AiChatScreen({
           onMomentumScrollEnd={handleMessageScrollEnd}
           onScrollEndDrag={handleMessageScrollEnd}
           onViewableItemsChanged={handleInlineEditViewableItemsChangedRef.current}
-          onScrollToIndexFailed={retryInlineEditScrollToIndex}
+          onScrollToIndexFailed={handleMessageScrollToIndexFailed}
           renderItem={renderMessageItem}
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={false}

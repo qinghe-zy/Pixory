@@ -176,7 +176,9 @@ test('AI inline edit keeps the edited user message visible above the keyboard', 
   assert.match(chat, /messageListRef\.current\?\.scrollToIndex\(\{\s*animated:\s*true,\s*index,[\s\S]{0,80}viewPosition:\s*0\.42/);
   assert.match(chat, /viewabilityConfig=\{inlineEditViewabilityConfigRef\.current\}/);
   assert.match(chat, /onViewableItemsChanged=\{handleInlineEditViewableItemsChangedRef\.current\}/);
-  assert.match(chat, /onScrollToIndexFailed=\{retryInlineEditScrollToIndex\}/);
+  assert.match(chat, /function handleMessageScrollToIndexFailed/);
+  assert.match(chat, /handleMessageScrollToIndexFailed[\s\S]{0,160}retryInlineEditScrollToIndex\(info\)/);
+  assert.match(chat, /onScrollToIndexFailed=\{handleMessageScrollToIndexFailed\}/);
   assert.match(chat, /scheduleInlineEditVisibility\(messageId\)/);
   assert.match(chat, /clearInlineEditVisibilityTimeouts\(\)/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);

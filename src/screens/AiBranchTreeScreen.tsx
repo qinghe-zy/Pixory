@@ -208,21 +208,96 @@ export function AiBranchTreeScreen({
     );
   }
 
-  function renderPreviewMessage(message: AiBranchTreePreview['selectedMessage'], emphasis = false) {
+  function renderPreviewBubble(message: AiBranchTreePreview['selectedMessage'], emphasis = false) {
+    const isUser = message.role === 'user';
+    const roleLabel = isUser ? '用户' : message.role === 'assistant' ? '助手' : '系统';
     return (
-      <View key={`${message.id}:${message.label}`} style={[styles.previewMessage, emphasis && styles.previewMessageEmphasis]}>
-        <Text numberOfLines={1} style={styles.previewLabel}>{message.label}</Text>
-        <Text numberOfLines={2} style={styles.previewText}>{message.content || '空消息'}</Text>
+      <View
+        key={`${message.id}:${message.label}`}
+        style={[
+          styles.previewBubbleWrap,
+          isUser ? styles.previewBubbleWrapUser : styles.previewBubbleWrapAssistant,
+        ]}
+      >
+        <View
+          style={[
+            styles.previewBubble,
+            isUser ? styles.previewBubbleUser : styles.previewBubbleAssistant,
+            emphasis && styles.previewBubbleEmphasis,
+          ]}
+        >
+          <View style={styles.previewBubbleMetaRow}>
+            <Text numberOfLines={1} style={styles.previewLabel}>{message.label}</Text>
+            <Text numberOfLines={1} style={styles.previewRoleLabel}>{roleLabel}</Text>
+          </View>
+          <Text numberOfLines={4} style={styles.previewText}>{message.content || '空消息'}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  function renderEmbeddedPreview() {
+    if (previewLoading) {
+      return (
+        <View style={styles.branchChatPreview}>
+          <ActivityIndicator color={aiLightColors.coral} size="small" />
+          <Text style={styles.emptyText}>正在读取附近消息</Text>
+        </View>
+      );
+    }
+    if (!preview) {
+      return (
+        <View style={styles.branchChatPreview}>
+          <Text style={styles.emptyText}>未读取到附近消息</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.branchChatPreview}>
+        {preview.previousMessages.map((message) => renderPreviewBubble(message))}
+        {renderPreviewBubble(preview.selectedMessage, true)}
+        {preview.followUpMessages.map((message) => renderPreviewBubble(message))}
       </View>
     );
   }
 
   const visibleGraphRows = rows;
   const primaryActionLabel = selectedNode?.isCurrentRoute ? '返回聊天定位此处' : '切换并返回聊天';
+  const actionBar = (
+    <View style={selectedNode ? styles.canvasActionBar : styles.canvasActionBarDisabled}>
+      <View style={styles.statusRow}>
+        {STATUS_OPTIONS.map((status) => (
+          <Pressable
+            accessibilityRole="button"
+            key={status}
+            onPress={() => void markStatus(status)}
+            style={({ pressed }) => [
+              styles.statusChip,
+              selectedNode?.status === status && styles.statusChipActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.statusChipText, selectedNode?.status === status && styles.statusChipTextActive]}>
+              {STATUS_LABELS[status]}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.actionRow}>
+        <View style={styles.secondaryAction}>
+          <AiLightButton label="返回" onPress={onBack} variant="outline" />
+        </View>
+        <View style={styles.primaryAction}>
+          <AiLightButton label={primaryActionLabel} onPress={selectPreviewBranch} disabled={!selectedNode} />
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <AiLightScaffold
       errorMessage={errorMessage}
+      footer={actionBar}
       onBack={onBack}
       scrollable
       title="创作路线树"
@@ -233,7 +308,7 @@ export function AiBranchTreeScreen({
       }
     >
       <View style={styles.screen}>
-        <View style={styles.graphPanel}>
+        <View style={styles.branchCanvas}>
           {loading ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color={aiLightColors.coral} />
@@ -278,62 +353,13 @@ export function AiBranchTreeScreen({
                       : row.node
                         ? renderNode(row.node, row.lane)
                         : null}
+                    {row.node?.id === selectedNode?.id ? renderEmbeddedPreview() : null}
                   </View>
                 ))}
               </View>
             </View>
           )}
         </View>
-
-        <View style={styles.previewPanel}>
-          <View style={styles.previewHeader}>
-            <View>
-              <Text style={styles.previewTitle}>
-                {selectedNode ? selectedNode.title : '附近消息预览'}
-              </Text>
-            </View>
-            {previewLoading ? <ActivityIndicator color={aiLightColors.coral} size="small" /> : null}
-          </View>
-
-          {preview ? (
-            <View style={styles.previewList}>
-              {preview.previousMessages.map((message) => renderPreviewMessage(message))}
-              {renderPreviewMessage(preview.selectedMessage, true)}
-              {preview.followUpMessages.map((message) => renderPreviewMessage(message))}
-            </View>
-          ) : (
-            <Text style={styles.emptyText}>未选择节点</Text>
-          )}
-
-          <View style={styles.statusRow}>
-            {STATUS_OPTIONS.map((status) => (
-              <Pressable
-                accessibilityRole="button"
-                key={status}
-                onPress={() => void markStatus(status)}
-                style={({ pressed }) => [
-                  styles.statusChip,
-                  selectedNode?.status === status && styles.statusChipActive,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={[styles.statusChipText, selectedNode?.status === status && styles.statusChipTextActive]}>
-                  {STATUS_LABELS[status]}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.actionRow}>
-            <View style={styles.secondaryAction}>
-              <AiLightButton label="收起" onPress={onBack} variant="outline" />
-            </View>
-            <View style={styles.primaryAction}>
-              <AiLightButton label={primaryActionLabel} onPress={selectPreviewBranch} disabled={!selectedNode} />
-            </View>
-          </View>
-        </View>
-
         <Modal
           animationType="fade"
           onRequestClose={() => setSelectedGroup(null)}
@@ -374,8 +400,7 @@ export function AiBranchTreeScreen({
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: aiLightColors.canvas,
-    gap: rhythm.entryCardGap,
-    padding: spacing[4],
+    paddingVertical: spacing[3],
   },
   headerIcon: {
     alignItems: 'center',
@@ -387,18 +412,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: spacing[10],
   },
-  graphPanel: {
+  branchCanvas: {
     backgroundColor: aiLightColors.cardWash,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 368,
+    minHeight: 720,
     overflow: 'hidden',
   },
   graphGrid: {
-    minHeight: 368,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[4],
+    minHeight: 720,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[5],
     position: 'relative',
     width: '100%',
   },
@@ -410,7 +435,7 @@ const styles = StyleSheet.create({
     top: 0,
   },
   branchNodeLayer: {
-    gap: rhythm.cardContentGap,
+    gap: rhythm.compactGridGap,
     position: 'relative',
     zIndex: 2,
   },
@@ -444,15 +469,17 @@ const styles = StyleSheet.create({
   branchRail: {
     backgroundColor: aiLightColors.coral,
     borderRadius: radius.pill,
-    bottom: spacing[5],
+    bottom: spacing[8],
     left: '50%',
     marginLeft: -2,
     position: 'absolute',
-    top: spacing[5],
+    top: spacing[8],
     width: 4,
   },
   branchNodeRow: {
+    alignItems: 'flex-start',
     flexDirection: 'row',
+    minHeight: 72,
     position: 'relative',
   },
   branchLeftRow: {
@@ -470,7 +497,7 @@ const styles = StyleSheet.create({
     height: 4,
     opacity: 0.72,
     position: 'absolute',
-    top: 39,
+    top: spacing[7],
     zIndex: -1,
   },
   rowConnectorLeft: {
@@ -486,17 +513,16 @@ const styles = StyleSheet.create({
     borderColor: aiLightColors.hairline,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 54,
-    maxHeight: 78,
+    minHeight: 62,
     overflow: 'hidden',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1.5],
-    width: '34%',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    width: '35%',
   },
   collapsedNodeCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: metrics.minTouchSize,
     width: '24%',
   },
   collapsedNodeLabel: {
@@ -512,6 +538,7 @@ const styles = StyleSheet.create({
   nodeCardSelected: {
     backgroundColor: aiLightColors.coralSoft,
     borderColor: aiLightColors.coral,
+    borderWidth: 1,
   },
   currentNode: {
     borderColor: aiLightColors.coral,
@@ -537,8 +564,8 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.ink,
     flex: 1,
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: typography.size.caption,
+    lineHeight: 18,
   },
   nodeMetaRow: {
     flexDirection: 'row',
@@ -555,44 +582,67 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[1.5],
     paddingVertical: 1,
   },
-  previewPanel: {
-    backgroundColor: aiLightColors.cardWash,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: rhythm.cardContentGap,
-    padding: spacing[3],
-  },
-  previewHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  previewTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: aiLightColors.ink,
-  },
-  previewList: {
+  branchChatPreview: {
+    alignSelf: 'flex-end',
     gap: rhythm.compactGridGap,
+    paddingLeft: spacing[2],
+    width: '63%',
   },
-  previewMessage: {
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
+  previewBubbleWrap: {
+    flexDirection: 'row',
+  },
+  previewBubbleWrapAssistant: {
+    justifyContent: 'flex-start',
+  },
+  previewBubbleWrapUser: {
+    justifyContent: 'flex-end',
+  },
+  previewBubble: {
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: metrics.minTouchSize,
-    padding: spacing[3],
+    maxWidth: '94%',
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
   },
-  previewMessageEmphasis: {
+  previewBubbleAssistant: {
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+  },
+  previewBubbleUser: {
+    backgroundColor: aiLightColors.coralSoft,
+    borderColor: 'rgba(204, 120, 92, 0.42)',
+  },
+  previewBubbleEmphasis: {
     borderColor: aiLightColors.coral,
+  },
+  previewBubbleMetaRow: {
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    justifyContent: 'space-between',
   },
   previewLabel: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+    flexShrink: 1,
+  },
+  previewRoleLabel: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
   },
   previewText: {
     ...typography.textStyles.body,
     color: aiLightColors.ink,
+    fontSize: typography.size.caption,
+    lineHeight: 19,
+  },
+  canvasActionBar: {
+    backgroundColor: aiLightColors.canvas,
+    gap: rhythm.cardContentGap,
+  },
+  canvasActionBarDisabled: {
+    backgroundColor: aiLightColors.canvas,
+    gap: rhythm.cardContentGap,
+    opacity: 0.72,
   },
   statusRow: {
     flexDirection: 'row',
@@ -668,13 +718,13 @@ const styles = StyleSheet.create({
   loadingState: {
     alignItems: 'center',
     gap: rhythm.cardContentGap,
-    minHeight: 368,
+    minHeight: 720,
     justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',
     gap: rhythm.cardContentGap,
-    minHeight: 368,
+    minHeight: 720,
     justifyContent: 'center',
     padding: spacing[6],
   },

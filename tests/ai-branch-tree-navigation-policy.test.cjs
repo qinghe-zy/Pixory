@@ -57,13 +57,12 @@ test('AI branch tree service keeps graph labels compact and builds return select
   assert.doesNotMatch(service, /preview:\s*candidate\.versionContent\.slice\(0,\s*240\)/);
 });
 
-test('AI branch tree hides recent-only message versions that are not real route nodes', () => {
+test('AI branch tree keeps every real message version reachable as a route node', () => {
   const service = read('src/ai/aiBranchTreeService.ts');
-  const visibleFilter = service.match(/const visibleNodes = allNodes\.filter\(\s*\([\s\S]*?\n  \);/)?.[0] ?? '';
 
-  assert.match(service, /function isRouteWorthyBranchNode/);
-  assert.match(visibleFilter, /isRouteWorthyBranchNode\(node\)/);
-  assert.doesNotMatch(visibleFilter, /node\.isRecent/);
+  assert.match(service, /const visibleNodes = allNodes;/);
+  assert.doesNotMatch(service, /function isRouteWorthyBranchNode/);
+  assert.doesNotMatch(service, /isRouteWorthyBranchNode\(node\)/);
   assert.doesNotMatch(service, /const RECENT_BRANCH_LIMIT =/);
   assert.doesNotMatch(service, /\.slice\(0,\s*RECENT_BRANCH_LIMIT\)/);
 });
@@ -189,6 +188,13 @@ test('AI branch tree screen uses light styling compact nodes and nearby preview 
   assert.match(screen, /nodeTitle\}>\{node\.title\}/);
   assert.match(screen, /numberOfLines=\{2\}/);
   assert.match(screen, /nodeCard/);
+  assert.match(screen, /branchCanvas/);
+  assert.match(screen, /branchChatPreview/);
+  assert.match(screen, /renderPreviewBubble/);
+  assert.match(screen, /message\.role === 'user'/);
+  assert.match(screen, /styles\.previewBubbleUser/);
+  assert.match(screen, /styles\.previewBubbleAssistant/);
+  assert.doesNotMatch(screen, /previewPanel/);
   assert.match(screen, /aiLightColors\.canvas/);
   assert.match(screen, /rhythm\./);
   assert.match(screen, /spacing\[/);
@@ -223,6 +229,23 @@ test('AI branch tree lines stay continuous behind compact folded message nodes',
   assert.doesNotMatch(screen, /borderColor: '#E9C28A'/);
   assert.doesNotMatch(screen, /branchForkLine:\s*\{[\s\S]{0,240}borderTopWidth:\s*4/);
   assert.doesNotMatch(screen, /node\.name \?\? node\.title/);
+});
+
+test('AI branch tree embeds selected chat preview next to the selected node', () => {
+  const screen = read('src/screens/AiBranchTreeScreen.tsx');
+
+  assert.match(screen, /function renderPreviewBubble/);
+  assert.match(screen, /function renderEmbeddedPreview/);
+  assert.match(screen, /row\.node\?\.id === selectedNode\?\.id/);
+  assert.match(screen, /renderEmbeddedPreview\(\)/);
+  assert.match(screen, /preview\.previousMessages\.map\(\(message\) => renderPreviewBubble\(message\)\)/);
+  assert.match(screen, /renderPreviewBubble\(preview\.selectedMessage, true\)/);
+  assert.match(screen, /preview\.followUpMessages\.map\(\(message\) => renderPreviewBubble\(message\)\)/);
+  assert.match(screen, /roleLabel/);
+  assert.match(screen, /用户/);
+  assert.match(screen, /助手/);
+  assert.match(screen, /selectedNode \? styles\.canvasActionBar/);
+  assert.match(screen, /STATUS_OPTIONS\.map/);
 });
 
 test('AI branch tree screen keeps graph vertical-first and switches primary action copy on current route', () => {
@@ -280,6 +303,19 @@ test('AI chat branch tree entry never creates an empty thread and handles unload
   assert.match(chat, /accessibilityState=\{\{ disabled: !activeThreadId \}\}/);
 
   assert.match(chat, /const targetMessageId = pendingBranchTreeScrollMessageIdRef\.current;[\s\S]*if \(index < 0\) \{[\s\S]*messagesRef\.current\.length === 0[\s\S]*return;[\s\S]*hasEarlierMessages[\s\S]*loadEarlierMessages\(\)[\s\S]*setErrorMessage/);
+});
+
+test('AI chat branch tree return has its own scroll retry path', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /BRANCH_TREE_SCROLL_RETRY_DELAYS_MS/);
+  assert.match(chat, /branchTreeScrollTimeoutsRef/);
+  assert.match(chat, /function scrollBranchTreeTargetIntoView/);
+  assert.match(chat, /function retryBranchTreeScrollToIndex/);
+  assert.match(chat, /onScrollToIndexFailed=\{handleMessageScrollToIndexFailed\}/);
+  assert.match(chat, /retryInlineEditScrollToIndex\(info\)/);
+  assert.match(chat, /retryBranchTreeScrollToIndex\(info\)/);
+  assert.doesNotMatch(chat, /onScrollToIndexFailed=\{retryInlineEditScrollToIndex\}/);
 });
 
 test('AI branch tree returns lineage scopes so nested branches switch predictably', () => {

@@ -73,7 +73,6 @@ export interface AiResolvedBranchSelection {
   selectionMap: Record<string, number>;
 }
 
-const IMPORTANT_FOLLOW_UP_THRESHOLD = 2;
 const LONG_BRANCH_PROMOTION_THRESHOLD = 5;
 
 function compactText(value: string, max = 42): string {
@@ -144,15 +143,6 @@ function mapCandidateToNode(
     versionLabel: `v${candidate.branchVersionIndex}/${candidate.versionTotal}`,
     versionTotal: candidate.versionTotal,
   };
-}
-
-function isRouteWorthyBranchNode(node: AiBranchTreeNode): boolean {
-  return (
-    node.isCurrentRoute ||
-    node.followUpMessageCount >= IMPORTANT_FOLLOW_UP_THRESHOLD ||
-    Boolean(node.name) ||
-    node.status !== 'exploring'
-  );
 }
 
 function isSameScope(scope: AiBranchScope, node: Pick<AiBranchTreeNode, 'branchRootMessageId' | 'branchVersionIndex'>): boolean {
@@ -400,7 +390,7 @@ async function buildBranchTreeFromDatabase(input: {
       currentScopes
     )
   );
-  const visibleNodes = allNodes.filter((node) => isRouteWorthyBranchNode(node));
+  const visibleNodes = allNodes;
   const mainRouteScopes = chooseMainRouteScopes(currentScopes, visibleNodes, persistedCurrentScopes);
   const promotedNodes = visibleNodes.map((node) => ({
     ...node,
