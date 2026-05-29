@@ -101,6 +101,7 @@ export interface AiUserProfileRecord {
   id: string;
   space: PixorySpace;
   boundIpId: number | null;
+  boundThreadId: string | null;
   profileJson: string;
   profileText: string;
   version: number;
@@ -328,6 +329,13 @@ export interface AiThreadExportSnapshot {
   messages: AiMessageRecord[];
   citations: AiCitationRow[];
   versions: AiMessageVersionRow[];
+  userProfile: AiUserProfileRecord | null;
+}
+
+function validateUserProfileScope(input: { boundIpId?: number | null; boundThreadId?: string | null }): void {
+  if (input.boundIpId != null && input.boundThreadId != null) {
+    throw new Error('AI user profile cannot bind both an IP and a thread.');
+  }
 }
 
 function mapThreadRow(row: AiThreadRow): AiThreadRecord {
@@ -755,7 +763,12 @@ export const aiThreadRepository = {
        ORDER BY ai_message_versions.originalMessageId ASC, ai_message_versions.versionIndex ASC`,
       threadId
     );
-    return { thread, messages, citations, versions };
+    const userProfile = await db.getFirstAsync<AiUserProfileRecord>(
+      'SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL AND boundThreadId = ?',
+      thread.space,
+      threadId
+    );
+    return { thread, messages, citations, versions, userProfile };
   },
 
   async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
@@ -916,11 +929,40 @@ export const aiThreadRepository = {
       );
       await aiThreadRepository.syncMessageVersionFts(db, mapMessageVersionRow(version));
     }
+
+    if (snapshot.userProfile) {
+      await aiThreadRepository.upsertUserProfile(db, {
+        id: snapshot.userProfile.id,
+        lastUpdatedAt: snapshot.userProfile.lastUpdatedAt,
+        messageCountAtUpdate: snapshot.userProfile.messageCountAtUpdate,
+        profileJson: snapshot.userProfile.profileJson,
+        profileText: snapshot.userProfile.profileText,
+        sourceEndMessageId: snapshot.userProfile.sourceEndMessageId,
+        sourceStartMessageId: snapshot.userProfile.sourceStartMessageId,
+        sourceThreadId: snapshot.thread.id,
+        space: targetSpace,
+        boundIpId: null,
+        boundThreadId: snapshot.thread.id,
+        version: snapshot.userProfile.version,
+        createdAt: snapshot.userProfile.createdAt,
+        updatedAt: snapshot.userProfile.updatedAt,
+      });
+    }
+  },
+
+  async deleteUserProfilesBoundToThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
+    let deletedCount = 0;
+    for (const threadId of threadIds) {
+      const result = await db.runAsync('DELETE FROM ai_user_profiles WHERE boundThreadId = ?', threadId);
+      deletedCount += result.changes;
+    }
+    return deletedCount;
   },
 
   async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
     for (const threadId of threadIds) {
+      await this.deleteUserProfilesBoundToThreads(db, [threadId]);
       const result = await db.runAsync('DELETE FROM ai_threads WHERE id = ?', threadId);
       deletedCount += result.changes;
     }
@@ -1769,26 +1811,49 @@ export const aiThreadRepository = {
     return mapMemorySettingsRow(row);
   },
 
-  async getUserProfiles(db: SQLiteDatabase, space: PixorySpace, boundIpId?: number | null): Promise<AiUserProfileRecord[]> {
-    if (boundIpId != null) {
-      return db.getAllAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND (boundIpId IS NULL OR boundIpId = ?) ORDER BY boundIpId IS NULL ASC', space, boundIpId);
+  async getUserProfiles(db: SQLiteDatabase, space: PixorySpace, input: { boundIpId?: number | null; boundThreadId?: string | null } = {}): Promise<AiUserProfileRecord[]> {
+    const clauses = ['space = ?'];
+    const values: Array<string | number | null> = [space];
+    const scopeClauses = ['(boundIpId IS NULL AND boundThreadId IS NULL)'];
+    if (input.boundIpId != null) {
+      scopeClauses.push('(boundIpId = ? AND boundThreadId IS NULL)');
+      values.push(input.boundIpId);
     }
-    return db.getAllAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL', space);
+    if (input.boundThreadId) {
+      scopeClauses.push('(boundIpId IS NULL AND boundThreadId = ?)');
+      values.push(input.boundThreadId);
+    }
+    clauses.push(`(${scopeClauses.join(' OR ')})`);
+    return db.getAllAsync<AiUserProfileRecord>(
+      `SELECT * FROM ai_user_profiles
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY
+         CASE
+           WHEN boundThreadId IS NOT NULL THEN 3
+           WHEN boundIpId IS NOT NULL THEN 2
+           ELSE 1
+         END DESC`,
+      ...values
+    );
   },
 
-  async getUserProfile(db: SQLiteDatabase, space: PixorySpace, boundIpId: number | null = null): Promise<AiUserProfileRecord | null> {
-    if (boundIpId != null) {
-      return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId = ?', space, boundIpId);
+  async getUserProfile(db: SQLiteDatabase, space: PixorySpace, boundIpId: number | null = null, boundThreadId: string | null = null): Promise<AiUserProfileRecord | null> {
+    if (boundThreadId) {
+      return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL AND boundThreadId = ?', space, boundThreadId);
     }
-    return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL', space);
+    if (boundIpId != null) {
+      return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId = ? AND boundThreadId IS NULL', space, boundIpId);
+    }
+    return db.getFirstAsync<AiUserProfileRecord>('SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL AND boundThreadId IS NULL', space);
   },
 
   async upsertUserProfile(
     db: SQLiteDatabase,
     input: Omit<AiUserProfileRecord, 'createdAt' | 'updatedAt'> & { createdAt?: string; updatedAt?: string }
   ): Promise<AiUserProfileRecord> {
+    validateUserProfileScope(input);
     const now = createTimestamp();
-    const existing = await this.getUserProfile(db, input.space, input.boundIpId);
+    const existing = await this.getUserProfile(db, input.space, input.boundIpId, input.boundThreadId);
     if (existing) {
       await db.runAsync(
         `UPDATE ai_user_profiles SET
@@ -1803,15 +1868,15 @@ export const aiThreadRepository = {
     } else {
       await db.runAsync(
         `INSERT INTO ai_user_profiles (
-          id, space, boundIpId, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
+          id, space, boundIpId, boundThreadId, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
           sourceEndMessageId, messageCountAtUpdate, lastUpdatedAt, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        input.id, input.space, input.boundIpId ?? null, input.profileJson, input.profileText, input.version,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        input.id, input.space, input.boundIpId ?? null, input.boundThreadId ?? null, input.profileJson, input.profileText, input.version,
         input.sourceThreadId, input.sourceStartMessageId, input.sourceEndMessageId, input.messageCountAtUpdate,
         input.lastUpdatedAt, input.createdAt ?? now, input.updatedAt ?? now
       );
     }
-    const row = await this.getUserProfile(db, input.space, input.boundIpId);
+    const row = await this.getUserProfile(db, input.space, input.boundIpId, input.boundThreadId);
     if (!row) {
       throw new Error('User profile upsert failed.');
     }

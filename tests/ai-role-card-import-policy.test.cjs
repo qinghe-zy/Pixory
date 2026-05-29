@@ -13,7 +13,7 @@ test('AI role cards store SillyTavern import metadata without breaking manual ca
   const repository = read('src/database/repositories/aiRoleCardRepository.ts');
   const service = read('src/ai/aiRoleCardService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 33/);
+  assert.match(schema, /DATABASE_VERSION = 34/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN firstMessage TEXT/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN alternateGreetingsJson TEXT NOT NULL DEFAULT '\[\]'/);
   assert.match(schema, /ALTER TABLE ai_role_cards ADD COLUMN sourceType TEXT/);

@@ -168,7 +168,7 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
       aiThreadRepository.findThreadById(db, threadId),
       aiThreadRepository.listSummarySegments(db, threadId),
     ]);
-    const profile = thread?.boundIpId != null ? await aiThreadRepository.getUserProfile(db, space, thread.boundIpId) : null;
+    const profile = thread ? await aiThreadRepository.getUserProfile(db, space, null, thread.id) : null;
     return {
       lastMaintenanceCompletedAt: job.lastMaintenanceCompletedAt,
       lastMaintenanceError: job.lastMaintenanceError,
@@ -306,12 +306,13 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
     return '';
   }
   const [profiles, segments] = await Promise.all([
-    aiThreadRepository.getUserProfiles(db, thread.space, thread.boundIpId),
+    aiThreadRepository.getUserProfiles(db, thread.space, { boundIpId: thread.boundIpId, boundThreadId: thread.id }),
     aiThreadRepository.listSummarySegments(db, thread.id, options?.branchScopes),
   ]);
-  const globalProfile = profiles.find((p) => p.boundIpId == null);
-  const projectProfile = profiles.find((p) => p.boundIpId != null);
-  if (!globalProfile?.profileText && !projectProfile?.profileText && segments.length === 0) {
+  const globalProfile = profiles.find((p) => p.boundIpId == null && p.boundThreadId == null);
+  const projectProfile = profiles.find((p) => p.boundIpId != null && p.boundThreadId == null);
+  const threadProfile = profiles.find((p) => p.boundThreadId === thread.id);
+  if (!globalProfile?.profileText && !projectProfile?.profileText && !threadProfile?.profileText && segments.length === 0) {
     return '';
   }
   return buildMainCompanionMemoryTemplate({
@@ -321,6 +322,7 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
       .join('\n\n'),
     userProfileText: globalProfile?.profileText ?? '',
     projectProfileText: projectProfile?.profileText ?? '',
+    threadProfileText: threadProfile?.profileText ?? '',
   });
 }
 

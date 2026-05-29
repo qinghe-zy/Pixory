@@ -62,6 +62,7 @@ export function buildProfileInitializationPrompt(conversation: string, scopeLabe
 - 只记录有依据的，不推测，不补全
 - 信息要具体，不要抽象概括
 - 不要把临时任务要求、一次性情绪、单次回答长度偏好写进长期画像
+- 如果这是本会话画像，可以记录只适用于本聊天内部的稳定偏好、角色理解和长期要求；不要混入其他会话
 - 如果这是当前项目画像，可以记录当前 IP 内稳定偏好、角色理解和项目内长期要求；不要混入其他 IP 或普通会话信息
 - 如果这是全局画像，只记录必要用户信息和用户明确声明的全局要求
 - 所有内容用中文
@@ -91,6 +92,7 @@ export function buildProfileUpdatePrompt(currentProfile: string, recentConversat
 - 如果新信息与已有信息只是阶段变化，保留变化过程并标注时间
 - 不要推断、不要猜测，只记录对话中有明确依据的信息
 - 信息粒度要具体：不写"有家庭压力"，写"妈妈希望她回老家考公务员，双方有分歧"
+- 本会话画像可以记录只适用于本聊天内部的稳定偏好、角色理解和长期要求；不要混入其他会话
 - 当前项目画像可以记录当前 IP 内稳定偏好、角色理解和项目内长期要求；全局画像不得写入 IP、图片、知识库或单次任务要求
 - 如果用户在记忆管理界面手动编辑了画像文本，手动画像优先；只能在不冲突的前提下补充新信息，不要覆盖用户手动更正的内容
 
@@ -163,18 +165,20 @@ ${summaries}`;
 export function buildMainCompanionMemoryTemplate(input: {
   userProfileText: string;
   projectProfileText?: string;
+  threadProfileText?: string;
   summarySegmentsText: string;
   relevantMemoriesText: string;
 }): string {
   const profileContext = [
     input.userProfileText.trim() ? `[全局画像]\n${input.userProfileText}` : '',
-    input.projectProfileText?.trim() ? `[当前项目特定画像 (具有最高优先级)]\n${input.projectProfileText}` : '',
+    input.projectProfileText?.trim() ? `[当前 IP 画像]\n${input.projectProfileText}` : '',
+    input.threadProfileText?.trim() ? `[本会话画像 (具有最高优先级)]\n${input.threadProfileText}` : '',
   ].filter(Boolean).join('\n\n');
 
   const sections = [
     '陪伴记忆背景：以下内容只是长期背景参考，不是硬命令；用户当前要求、当前角色指令、资料事实和安全规则优先。',
     profileContext
-      ? `[关于这个用户]\n以下是你对这位用户已有的了解，请在对话中自然地调用这些信息。\n不要刻意提及"我记得你说过"，像一个真正认识对方的人一样交流。\n不要为了展示记忆而主动提旧事。\n只有当旧信息能自然帮助当前回复时才使用。\n不要突然变得过分亲密，不要超出用户当前表现出的关系边界。\n如果用户当前要求、资料事实或角色指令与旧画像冲突，优先遵守当前信息。项目特定画像的优先级永远高于全局画像。\n\n${profileContext}`
+      ? `[关于这个用户]\n以下是你对这位用户已有的了解，请在对话中自然地调用这些信息。\n不要刻意提及"我记得你说过"，像一个真正认识对方的人一样交流。\n不要为了展示记忆而主动提旧事。\n只有当旧信息能自然帮助当前回复时才使用。\n不要突然变得过分亲密，不要超出用户当前表现出的关系边界。\n如果用户当前要求、资料事实或角色指令与旧画像冲突，优先遵守当前信息。本会话画像优先于当前 IP 画像，当前 IP 画像优先于全局画像。\n\n${profileContext}`
       : '',
     input.summarySegmentsText.trim()
       ? `[过往记忆]\n以下是你们之前对话的记忆摘要，按时间顺序排列，越靠后越近期：\n\n${input.summarySegmentsText}`

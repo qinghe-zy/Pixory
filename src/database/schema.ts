@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 33;
+export const DATABASE_VERSION = 34;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -807,6 +807,27 @@ export const MIGRATION_STATEMENTS_V33 = `
 ALTER TABLE ai_user_profiles ADD COLUMN boundIpId INTEGER;
 DROP INDEX IF EXISTS idx_ai_user_profiles_space;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_profiles_space_ip ON ai_user_profiles(space, IFNULL(boundIpId, 0));
+`;
+
+export const MIGRATION_STATEMENTS_V34 = `
+ALTER TABLE ai_user_profiles ADD COLUMN boundThreadId TEXT REFERENCES ai_threads(id) ON DELETE CASCADE;
+DROP INDEX IF EXISTS idx_ai_user_profiles_space_ip;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_user_profiles_scope
+ON ai_user_profiles(space, IFNULL(boundIpId, -1), IFNULL(boundThreadId, ''));
+
+CREATE TRIGGER IF NOT EXISTS trg_ai_user_profiles_no_mixed_scope_insert
+BEFORE INSERT ON ai_user_profiles
+WHEN NEW.boundIpId IS NOT NULL AND NEW.boundThreadId IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'AI user profile cannot bind both an IP and a thread.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_ai_user_profiles_no_mixed_scope_update
+BEFORE UPDATE ON ai_user_profiles
+WHEN NEW.boundIpId IS NOT NULL AND NEW.boundThreadId IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'AI user profile cannot bind both an IP and a thread.');
+END;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

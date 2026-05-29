@@ -110,12 +110,14 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   const [thread, setThread] = useState<AiThreadRecord | null>(null);
   const [memories, setMemories] = useState<AiMemoryRecord[]>([]);
   const [globalProfile, setGlobalProfile] = useState<AiUserProfileRecord | null>(null);
+  const [sessionProfile, setSessionProfile] = useState<AiUserProfileRecord | null>(null);
   const [projectProfile, setProjectProfile] = useState<AiUserProfileRecord | null>(null);
   const [summarySegments, setSummarySegments] = useState<AiThreadSummarySegmentRecord[]>([]);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [memoryTypeFilter, setMemoryTypeFilter] = useState<'all' | AiMemoryType>('all');
   const [memoryStatusFilter, setMemoryStatusFilter] = useState<'active' | 'stale' | 'all'>('active');
   const [globalProfileDraft, setGlobalProfileDraft] = useState('');
+  const [sessionProfileDraft, setSessionProfileDraft] = useState('');
   const [projectProfileDraft, setProjectProfileDraft] = useState('');
   const [draft, setDraft] = useState('');
   const [manualMemoryScope, setManualMemoryScope] = useState<AiMemoryScope>('thread');
@@ -142,12 +144,15 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     try {
       const nextThread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
       setThread(nextThread);
-      const [nextGlobalProfile, nextProjectProfile] = await Promise.all([
+      const [nextGlobalProfile, nextSessionProfile, nextProjectProfile] = await Promise.all([
         getUserProfile(space, null),
-        nextThread?.boundIpId != null ? getUserProfile(space, nextThread.boundIpId) : Promise.resolve(null),
+        getUserProfile(space, null, threadId),
+        nextThread?.boundIpId != null ? getUserProfile(space, nextThread.boundIpId, null) : Promise.resolve(null),
       ]);
       setGlobalProfile(nextGlobalProfile);
       setGlobalProfileDraft(nextGlobalProfile?.profileText ?? '');
+      setSessionProfile(nextSessionProfile);
+      setSessionProfileDraft(nextSessionProfile?.profileText ?? '');
       setProjectProfile(nextProjectProfile);
       setProjectProfileDraft(nextProjectProfile?.profileText ?? '');
       const [segments, nextMaintenanceStatus] = await Promise.all([
@@ -193,6 +198,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         type: 'fact',
       });
       setDraft('');
+      setStatus(`已添加到${SCOPE_LABELS[manualMemoryScope]}。`);
       await reload();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '添加记忆失败');
@@ -276,7 +282,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
   async function handleSaveGlobalProfile() {
     setLoading(true);
     try {
-      const next = await updateUserProfile(space, globalProfileDraft.trim(), null);
+      const next = await updateUserProfile(space, globalProfileDraft.trim(), null, null);
       setGlobalProfile(next);
       setGlobalProfileDraft(next.profileText);
       setStatus('全局画像已保存。');
@@ -287,19 +293,33 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
   }
 
+  async function handleSaveSessionProfile() {
+    setLoading(true);
+    try {
+      const next = await updateUserProfile(space, sessionProfileDraft.trim(), null, threadId);
+      setSessionProfile(next);
+      setSessionProfileDraft(next.profileText);
+      setStatus('本会话画像已保存。');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '保存本会话画像失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSaveProjectProfile() {
     if (thread?.boundIpId == null) {
-      setStatus('当前会话未绑定 IP，没有项目画像。');
+      setStatus('当前会话未绑定 IP，没有当前 IP 画像。');
       return;
     }
     setLoading(true);
     try {
-      const next = await updateUserProfile(space, projectProfileDraft.trim(), thread.boundIpId);
+      const next = await updateUserProfile(space, projectProfileDraft.trim(), thread.boundIpId, null);
       setProjectProfile(next);
       setProjectProfileDraft(next.profileText);
-      setStatus('当前项目画像已保存。');
+      setStatus('当前 IP 画像已保存。');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : '保存当前项目画像失败');
+      setStatus(error instanceof Error ? error.message : '保存当前 IP 画像失败');
     } finally {
       setLoading(false);
     }
@@ -312,7 +332,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         {status ? <Text style={styles.status}>{status}</Text> : null}
         <AiLightCard>
           <Text style={styles.sectionTitle}>用户画像</Text>
-          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求；当前项目画像优先于全局画像。</Text>
+          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求；本会话画像优先于当前 IP 画像和全局画像。</Text>
           <View style={styles.profileSection}>
             <Text style={styles.profileScopeTitle}>全局画像</Text>
             <Text style={styles.caption}>{globalProfile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(globalProfile.lastUpdatedAt)}` : '还没有全局画像。'}</Text>
@@ -326,24 +346,36 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
             <AiLightButton label="保存全局画像" loading={loading} onPress={() => void handleSaveGlobalProfile()} />
           </View>
           <View style={styles.profileSection}>
-            <Text style={styles.profileScopeTitle}>当前项目画像</Text>
+            <Text style={styles.profileScopeTitle}>本会话画像</Text>
+            <Text style={styles.caption}>{sessionProfile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(sessionProfile.lastUpdatedAt)}` : '还没有本会话画像。'}</Text>
+            <AiLightTextareaRow
+              label="本会话画像内容"
+              minHeight={112}
+              onChangeText={setSessionProfileDraft}
+              placeholder="例如：这个聊天里偏好冷静、克制的角色语气。"
+              value={sessionProfileDraft}
+            />
+            <AiLightButton label="保存本会话画像" loading={loading} onPress={() => void handleSaveSessionProfile()} />
+          </View>
+          <View style={styles.profileSection}>
+            <Text style={styles.profileScopeTitle}>当前 IP 画像</Text>
             <Text style={styles.caption}>
               {thread?.boundIpId != null
                 ? projectProfile?.lastUpdatedAt
                   ? `更新于 ${formatAiFullMinute(projectProfile.lastUpdatedAt)}`
-                  : '还没有当前项目画像。'
-                : '当前会话未绑定 IP，不会生成项目画像。'}
+                  : '还没有当前 IP 画像。'
+                : '当前会话未绑定 IP，不会生成当前 IP 画像。'}
             </Text>
             {thread?.boundIpId != null ? (
               <>
                 <AiLightTextareaRow
-                  label="当前项目画像内容"
+                  label="当前 IP 画像内容"
                   minHeight={112}
                   onChangeText={setProjectProfileDraft}
                   placeholder="例如：在这个 IP 中偏好冷静、克制的角色语气。"
                   value={projectProfileDraft}
                 />
-                <AiLightButton label="保存当前项目画像" loading={loading} onPress={() => void handleSaveProjectProfile()} />
+                <AiLightButton label="保存当前 IP 画像" loading={loading} onPress={() => void handleSaveProjectProfile()} />
               </>
             ) : null}
           </View>

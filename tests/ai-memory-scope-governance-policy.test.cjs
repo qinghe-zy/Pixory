@@ -20,31 +20,64 @@ test('AI memory auto maintenance cannot create or mutate global memory from chat
   assert.match(reconciliation, /target\.scope === 'global'[\s\S]{0,120}global_target_requires_manual_action/);
 });
 
-test('AI profile auto maintenance only writes project scoped profiles', () => {
+test('AI profile auto maintenance writes thread scoped profiles for every chat', () => {
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const prompts = read('src/ai/aiMemoryPrompts.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const schema = read('src/database/schema.ts');
 
-  assert.match(profile, /thread\.boundIpId == null[\s\S]{0,80}return null/);
-  assert.match(profile, /boundIpId:\s*prepared\.thread\.boundIpId/);
-  assert.match(profile, /buildProfileInitializationPrompt\(prepared\.conversation,\s*'当前项目'\)/);
-  assert.match(profile, /buildProfileUpdatePrompt\([\s\S]*'当前项目'\)/);
+  assert.doesNotMatch(profile, /thread\.boundIpId == null[\s\S]{0,80}return null/);
+  assert.match(profile, /boundThreadId:\s*prepared\.thread\.id/);
+  assert.match(profile, /getUserProfile\(db,\s*space,\s*null,\s*thread\.id\)/);
+  assert.match(profile, /buildProfileInitializationPrompt\(prepared\.conversation,\s*'本会话'\)/);
+  assert.match(profile, /buildProfileUpdatePrompt\([\s\S]*'本会话'\)/);
+  assert.match(repository, /boundThreadId/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V34/);
+  assert.match(schema, /ALTER TABLE ai_user_profiles ADD COLUMN boundThreadId TEXT/);
   assert.match(prompts, /scopeLabel/);
-  assert.match(prompts, /当前项目画像/);
+  assert.match(prompts, /本会话画像/);
   assert.match(prompts, /当前 IP 内/);
 });
 
-test('AI memory board visibly separates global and project profile governance', () => {
+test('AI thread scoped profiles are lifecycle-bound and cannot mix profile scopes', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const schema = read('src/database/schema.ts');
+
+  assert.match(schema, /boundThreadId TEXT REFERENCES ai_threads\(id\) ON DELETE CASCADE/);
+  assert.match(schema, /trg_ai_user_profiles_no_mixed_scope_insert/);
+  assert.match(schema, /NEW\.boundIpId IS NOT NULL AND NEW\.boundThreadId IS NOT NULL/);
+  assert.match(schema, /IFNULL\(boundIpId, -1\)/);
+  assert.match(repository, /deleteUserProfilesBoundToThreads/);
+  assert.match(repository, /DELETE FROM ai_user_profiles WHERE boundThreadId = \?/);
+  assert.match(repository, /validateUserProfileScope/);
+  assert.match(repository, /cannot bind both an IP and a thread/);
+});
+
+test('AI thread moves include thread scoped user profiles', () => {
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(repository, /userProfile:\s*AiUserProfileRecord \| null/);
+  assert.match(repository, /SELECT \* FROM ai_user_profiles[\s\S]{0,120}boundThreadId = \?/);
+  assert.match(repository, /snapshot\.userProfile/);
+  assert.match(repository, /boundThreadId:\s*snapshot\.thread\.id/);
+});
+
+test('AI memory board visibly separates global session and IP profile governance', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
 
   assert.match(board, /globalProfile/);
+  assert.match(board, /sessionProfile/);
   assert.match(board, /projectProfile/);
   assert.match(board, /globalProfileDraft/);
+  assert.match(board, /sessionProfileDraft/);
   assert.match(board, /projectProfileDraft/);
   assert.match(board, /getUserProfile\(space,\s*null\)/);
-  assert.match(board, /getUserProfile\(space,\s*nextThread\.boundIpId\)/);
+  assert.match(board, /getUserProfile\(space,\s*null,\s*threadId\)/);
+  assert.match(board, /getUserProfile\(space,\s*nextThread\.boundIpId,\s*null\)/);
   assert.match(board, /全局画像/);
-  assert.match(board, /当前项目画像/);
-  assert.match(board, /当前项目画像优先于全局画像/);
+  assert.match(board, /本会话画像/);
+  assert.match(board, /当前 IP 画像/);
+  assert.match(board, /本会话画像优先于当前 IP 画像和全局画像/);
 });
 
 test('AI memory board labels every memory item with its governance scope', () => {

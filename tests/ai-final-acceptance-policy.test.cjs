@@ -304,7 +304,7 @@ test('AI memory board supports visible profile management', () => {
   assert.match(board, /projectProfileDraft/);
   assert.match(board, /handleSaveGlobalProfile/);
   assert.match(board, /handleSaveProjectProfile/);
-  assert.match(board, /当前项目画像优先于全局画像/);
+  assert.match(board, /本会话画像优先于当前 IP 画像和全局画像/);
   assert.match(board, /lastUpdatedAt/);
 });
 

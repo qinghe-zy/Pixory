@@ -188,13 +188,13 @@ export function hasStrongProfileSignal(text: string): boolean {
   return PROFILE_SIGNAL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export async function getUserProfile(space: PixorySpace, boundIpId: number | null = null): Promise<AiUserProfileRecord | null> {
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.getUserProfile(db, space, boundIpId));
+export async function getUserProfile(space: PixorySpace, boundIpId: number | null = null, boundThreadId: string | null = null): Promise<AiUserProfileRecord | null> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.getUserProfile(db, space, boundIpId, boundThreadId));
 }
 
-export async function updateUserProfile(space: PixorySpace, profileText: string, boundIpId: number | null = null): Promise<AiUserProfileRecord> {
+export async function updateUserProfile(space: PixorySpace, profileText: string, boundIpId: number | null = null, boundThreadId: string | null = null): Promise<AiUserProfileRecord> {
   return runWithDatabaseSpace(space, async (db) => {
-    const current = await aiThreadRepository.getUserProfile(db, space, boundIpId);
+    const current = await aiThreadRepository.getUserProfile(db, space, boundIpId, boundThreadId);
     const now = new Date().toISOString();
     const profileJson = profileTextToJson(profileText, current);
     return aiThreadRepository.upsertUserProfile(db, {
@@ -208,6 +208,7 @@ export async function updateUserProfile(space: PixorySpace, profileText: string,
       sourceThreadId: current?.sourceThreadId ?? null,
       space,
       boundIpId,
+      boundThreadId,
       version: current?.version ?? 1,
     });
   });
@@ -219,11 +220,8 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
     if (!thread) {
       return null;
     }
-    if (thread.boundIpId == null) {
-      return null;
-    }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
-    const existing = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
+    const existing = await aiThreadRepository.getUserProfile(db, space, null, thread.id);
     if (!settings.deepMemoryEnabled || existing) {
       return null;
     }
@@ -250,7 +248,7 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       space,
       systemPrompt: '你是 Pixory 的用户画像建档器。只输出 JSON。',
       thread: prepared.thread,
-      userPrompt: buildProfileInitializationPrompt(prepared.conversation, '当前项目'),
+      userPrompt: buildProfileInitializationPrompt(prepared.conversation, '本会话'),
     });
   const profileJson = modelResult.text ? parseProfileJson(modelResult.text) : buildLocalProfileJsonFromMessages(prepared.selected);
   const now = new Date().toISOString();
@@ -265,7 +263,8 @@ export async function maybeInitializeUserProfile(space: PixorySpace, threadId: s
       sourceStartMessageId: prepared.startMessageId,
       sourceThreadId: threadId,
       space,
-      boundIpId: prepared.thread.boundIpId,
+      boundIpId: null,
+      boundThreadId: prepared.thread.id,
       version: 1,
     });
     await aiThreadRepository.updateThreadMemoryJob(db, {
@@ -306,11 +305,8 @@ export async function maybeUpdateUserProfile(
     if (!thread) {
       return null;
     }
-    if (thread.boundIpId == null) {
-      return null;
-    }
     const settings = await aiThreadRepository.getThreadMemorySettings(db, threadId);
-    const profile = await aiThreadRepository.getUserProfile(db, space, thread.boundIpId);
+    const profile = await aiThreadRepository.getUserProfile(db, space, null, thread.id);
     if (!settings.deepMemoryEnabled || !profile) {
       return null;
     }
@@ -347,7 +343,7 @@ export async function maybeUpdateUserProfile(
       space,
       systemPrompt: '你是 Pixory 的用户画像维护器。只输出 JSON。',
       thread: prepared.thread,
-      userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText, '当前项目'),
+      userPrompt: buildProfileUpdatePrompt(prepared.currentProfile.profileJson, prepared.conversation, prepared.currentProfile.profileText, '本会话'),
     });
   const profileJson = modelResult.text
     ? parseProfileJson(modelResult.text, getProfileFallback(prepared.currentProfile))
@@ -364,7 +360,8 @@ export async function maybeUpdateUserProfile(
       sourceStartMessageId: prepared.startMessageId,
       sourceThreadId: threadId,
       space,
-      boundIpId: prepared.thread.boundIpId,
+      boundIpId: null,
+      boundThreadId: prepared.thread.id,
       version: prepared.currentProfile.version,
     });
     await aiThreadRepository.updateThreadMemoryJob(db, {
