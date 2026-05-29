@@ -1,9 +1,9 @@
 {
   "enabled": true,
-  "version": "2.3.8",
+  "version": "2.3.9",
   "versionCode": 238,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.3.8 已发布，AI 聊天 Markdown 显示更稳定，并加入热更新底包能力。",
+  "message": "Pixory 2.3.9 已发布，AI 聊天 Markdown 显示更稳定，并加入热更新底包能力。",
   "releaseNotes": [
     "进一步修复 Android 上 AI 回复 Markdown 可能导致聊天页出现大面积空白遮挡的问题。",
     "加入 EAS Update 热更新底包能力，后续兼容的 JS 与样式修复可通过 production channel 下发。",

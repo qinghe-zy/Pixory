@@ -29,15 +29,15 @@ test('website pages form a continuous previous and next reading path', () => {
   }
 });
 
-test('website release-facing files reference the current 2.3.8 release', () => {
-  assert.match(read('docs/download.html'), /<div class="version-number">2\.3\.8<\/div>/);
-  assert.match(read('docs/download.html'), /versionCode 238/);
-  assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.3\.8<\/h2>/);
-  assert.match(read('docs/updates.html'), /Markdown 显示/);
-  assert.match(read('docs/updates.html'), /热更新底包/);
+test('website release-facing files reference the current 2.3.9 release', () => {
+  assert.match(read('docs/download.html'), /<div class="version-number">2\.3\.9<\/div>/);
+  assert.match(read('docs/download.html'), /versionCode 239/);
+  assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.3\.9<\/h2>/);
+  assert.match(read('docs/updates.html'), /AI 记忆隔离/);
+  assert.match(read('docs/updates.html'), /假阳性/);
   assert.match(read('docs/features.html'), /会话整理/);
-  assert.match(read('README.md'), /当前版本 `2\.3\.8`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.3\.8/);
+  assert.match(read('README.md'), /当前版本 `2\.3\.9`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.3\.9/);
   assert.doesNotMatch(read('docs/download.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
@@ -63,6 +63,6 @@ test('public docs describe privacy screenshots consistently with current behavio
 
 test('website sitemap lastmod is synchronized with the release update date', () => {
   const sitemap = read('docs/sitemap.xml');
-  const matches = sitemap.match(/<lastmod>2026-05-26<\/lastmod>/g) ?? [];
+  const matches = sitemap.match(/<lastmod>2026-05-29<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
