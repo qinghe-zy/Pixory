@@ -252,10 +252,10 @@ function getMemoryPromptPriority(memory: AiMemoryRecord, thread: AiThreadRecord)
   if (memory.scope === 'thread' && memory.scopeId === thread.id) {
     return 5;
   }
-  if (memory.scope === 'ip' && memory.scopeId === String(thread.boundIpId ?? '')) {
+  if (memory.scope === 'ip' && thread.boundIpId != null && memory.scopeId === String(thread.boundIpId)) {
     return 4;
   }
-  if (memory.scope === 'knowledge_base' && memory.scopeId === (thread.boundKnowledgeBaseId ?? '')) {
+  if (memory.scope === 'knowledge_base' && thread.boundKnowledgeBaseId && memory.scopeId === thread.boundKnowledgeBaseId) {
     return 3;
   }
   if (memory.scope === 'role' && memory.scopeId === thread.roleCardId) {
@@ -355,9 +355,9 @@ export function scoreMemoryForQuery(memory: AiMemoryRecord, query: string, threa
   const scopeScore =
     memory.scope === 'thread' && memory.scopeId === thread.id
       ? 10
-      : memory.scope === 'ip' && memory.scopeId === String(thread.boundIpId ?? '')
+      : memory.scope === 'ip' && thread.boundIpId != null && memory.scopeId === String(thread.boundIpId)
         ? 10
-        : memory.scope === 'knowledge_base' && memory.scopeId === (thread.boundKnowledgeBaseId ?? '')
+        : memory.scope === 'knowledge_base' && thread.boundKnowledgeBaseId && memory.scopeId === thread.boundKnowledgeBaseId
           ? 10
           : memory.scope === 'global'
             ? 0.5

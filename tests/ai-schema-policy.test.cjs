@@ -9,7 +9,7 @@ const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'src/database/index.ts'), 'utf8');
 
 test('AI migration bumps database version and creates core local tables', () => {
-  assert.match(schema, /DATABASE_VERSION = 34/);
+  assert.match(schema, /DATABASE_VERSION = 36/);
   assert.match(schema, /MIGRATION_STATEMENTS_V19/);
   assert.match(schema, /MIGRATION_STATEMENTS_V20/);
   assert.match(schema, /MIGRATION_STATEMENTS_V21/);
@@ -55,7 +55,7 @@ test('AI migration bumps database version and creates core local tables', () => 
 });
 
 test('AI memory performance migration adds normalized content index and active duplicate guard', () => {
-  assert.match(schema, /DATABASE_VERSION = 34/);
+  assert.match(schema, /DATABASE_VERSION = 36/);
   assert.match(schema, /MIGRATION_STATEMENTS_V27/);
   assert.match(schema, /idx_ai_memories_normalized_content/);
   assert.match(schema, /space,\s*scope,\s*scopeId,\s*normalizedContent,\s*status/);
@@ -98,6 +98,8 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /MIGRATION_STATEMENTS_V27/);
   assert.match(db, /MIGRATION_STATEMENTS_V28/);
   assert.match(db, /MIGRATION_STATEMENTS_V29/);
+  assert.match(db, /MIGRATION_STATEMENTS_V35/);
+  assert.match(db, /MIGRATION_STATEMENTS_V36/);
   assert.match(db, /currentVersion < 17/);
   assert.match(db, /currentVersion < 18/);
   assert.match(db, /currentVersion < 19/);
@@ -111,7 +113,45 @@ test('database runner applies AI migration and exports AI repositories', () => {
   assert.match(db, /currentVersion < 27/);
   assert.match(db, /currentVersion < 28/);
   assert.match(db, /currentVersion < 29/);
+  assert.match(db, /currentVersion < 35/);
+  assert.match(db, /currentVersion < 36/);
   assert.match(index, /aiProviderRepository/);
   assert.match(index, /aiThreadRepository/);
   assert.match(index, /aiKnowledgeRepository/);
+});
+
+test('AI branch route metadata migration stores only lightweight route labels', () => {
+  assert.match(schema, /DATABASE_VERSION = 36/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V35/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_branch_route_metadata/);
+  assert.match(schema, /branchRootMessageId TEXT NOT NULL/);
+  assert.match(schema, /branchVersionIndex INTEGER NOT NULL/);
+  assert.match(schema, /status TEXT NOT NULL DEFAULT 'exploring'/);
+  assert.match(schema, /CHECK \(status IN \('exploring', 'adopted', 'paused', 'abandoned'\)\)/);
+  assert.match(schema, /UNIQUE\(threadId, branchRootMessageId, branchVersionIndex\)/);
+  assert.match(schema, /idx_ai_branch_route_metadata_thread/);
+  assert.doesNotMatch(schema, /ai_branch_route_metadata[\s\S]{0,900}messageContent/);
+  assert.doesNotMatch(schema, /ai_branch_route_metadata[\s\S]{0,900}promptSnapshotJson/);
+  assert.match(db, /MIGRATION_STATEMENTS_V35/);
+  assert.match(db, /currentVersion < 35/);
+});
+
+test('AI thread current branch migration persists the adopted route pointer', () => {
+  assert.match(schema, /DATABASE_VERSION = 36/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V36/);
+  assert.match(schema, /currentBranchRootMessageId TEXT/);
+  assert.match(schema, /currentBranchVersionIndex INTEGER/);
+  assert.match(db, /MIGRATION_STATEMENTS_V36/);
+  assert.match(db, /currentVersion < 36/);
+});
+
+test('AI branch schema guard repairs already-versioned local databases', () => {
+  assert.match(db, /async function ensureAiBranchSchema/);
+  assert.match(db, /PRAGMA table_info\(\$\{tableName\}\)/);
+  assert.match(db, /currentBranchRootMessageId/);
+  assert.match(db, /currentBranchVersionIndex/);
+  assert.match(db, /ALTER TABLE ai_threads ADD COLUMN currentBranchRootMessageId TEXT/);
+  assert.match(db, /ALTER TABLE ai_threads ADD COLUMN currentBranchVersionIndex INTEGER/);
+  assert.match(db, /ai_branch_route_metadata/);
+  assert.match(db, /await ensureAiBranchSchema\(database\)/);
 });

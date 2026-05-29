@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 34;
+export const DATABASE_VERSION = 36;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -407,6 +407,8 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
   summary TEXT,
   lastMessagePreview TEXT,
+  currentBranchRootMessageId TEXT,
+  currentBranchVersionIndex INTEGER,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL,
   archivedAt TEXT,
@@ -828,6 +830,32 @@ WHEN NEW.boundIpId IS NOT NULL AND NEW.boundThreadId IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'AI user profile cannot bind both an IP and a thread.');
 END;
+`;
+
+export const MIGRATION_STATEMENTS_V35 = `
+CREATE TABLE IF NOT EXISTS ai_branch_route_metadata (
+  id TEXT PRIMARY KEY NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRootMessageId TEXT NOT NULL,
+  branchVersionIndex INTEGER NOT NULL,
+  name TEXT,
+  status TEXT NOT NULL DEFAULT 'exploring'
+    CHECK (status IN ('exploring', 'adopted', 'paused', 'abandoned')),
+  note TEXT NOT NULL DEFAULT '',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (branchRootMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  UNIQUE(threadId, branchRootMessageId, branchVersionIndex)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_branch_route_metadata_thread
+  ON ai_branch_route_metadata(threadId, updatedAt);
+`;
+
+export const MIGRATION_STATEMENTS_V36 = `
+ALTER TABLE ai_threads ADD COLUMN currentBranchRootMessageId TEXT;
+ALTER TABLE ai_threads ADD COLUMN currentBranchVersionIndex INTEGER;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

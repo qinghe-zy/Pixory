@@ -31,6 +31,7 @@ import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
+import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
 import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
 import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
@@ -46,8 +47,10 @@ import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { applyRoleCardToThread, createNormalThreadFromRoleCard } from './src/ai/aiChatService';
+import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
+import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
 import { ImportDevelopmentScreen } from './src/screens/ImportDevelopmentScreen';
@@ -166,6 +169,19 @@ type AppRoute =
       routeKey?: string;
       modelRefreshKey?: number;
       composerEntranceReason?: ComposerEntranceReason;
+      branchTreeSelection?: {
+        branchRootMessageId: string;
+        branchVersionIndex: number;
+        selectionMap: Record<string, number>;
+      };
+    }
+  | {
+      name: 'ai-branch-tree';
+      space: PixorySpace;
+      threadId: string;
+      contextTitle?: string;
+      contextType?: 'normal' | 'ip' | 'knowledge_base';
+      currentBranchScopes: AiBranchScope[];
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
@@ -217,6 +233,31 @@ function scheduleAiChatMemoryMaintenanceForRoute(route: AppRoute | undefined, re
     space: route.space,
     threadId: route.threadId,
   });
+}
+
+function buildAiChatRouteFromBranchTree(
+  branchTreeRoute: Extract<AppRoute, { name: 'ai-branch-tree' }>,
+  selection: {
+    branchRootMessageId: string;
+    branchVersionIndex: number;
+    selectionMap: Record<string, number>;
+  },
+  previousRoute?: AppRoute
+): Extract<AppRoute, { name: 'ai-chat' }> {
+  const previousChat = previousRoute?.name === 'ai-chat' ? previousRoute : undefined;
+  return {
+    branchTreeSelection: selection,
+    composerEntranceReason: 'replace_current',
+    contextTitle: branchTreeRoute.contextTitle ?? previousChat?.contextTitle,
+    contextType: branchTreeRoute.contextType ?? previousChat?.contextType ?? 'normal',
+    includeIpDocuments: previousChat?.includeIpDocuments,
+    ipId: previousChat?.ipId,
+    knowledgeBaseId: previousChat?.knowledgeBaseId,
+    routeKey: previousChat?.routeKey,
+    space: branchTreeRoute.space,
+    threadId: branchTreeRoute.threadId,
+    name: 'ai-chat',
+  };
 }
 
 let aiChatRouteInstanceCounter = 0;
@@ -1546,6 +1587,7 @@ export default function App() {
         boundIpId={currentRoute.ipId}
         boundKnowledgeBaseId={currentRoute.knowledgeBaseId}
         includeIpDocuments={currentRoute.includeIpDocuments}
+        branchTreeSelection={currentRoute.branchTreeSelection}
         onOpenHistory={() => pushRoute({ name: 'ai-history', space: currentRoute.space })}
         onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
         onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: currentRoute.space })}
@@ -1554,6 +1596,16 @@ export default function App() {
             name: 'ai-session-config',
             contextTitle: currentRoute.contextTitle,
             contextType: currentRoute.contextType,
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        onOpenBranchTree={(threadId, currentBranchScopes) =>
+          pushRoute({
+            name: 'ai-branch-tree',
+            contextTitle: currentRoute.contextTitle,
+            contextType: currentRoute.contextType,
+            currentBranchScopes,
             space: currentRoute.space,
             threadId,
           })
@@ -1579,6 +1631,26 @@ export default function App() {
         onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
         onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}
         modelRefreshKey={currentRoute.modelRefreshKey}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
+  } else if (currentRoute.name === 'ai-branch-tree') {
+    const previousRoute = routeStack[routeStack.length - 2];
+    content = (
+      <AiBranchTreeScreen
+        currentBranchScopes={currentRoute.currentBranchScopes}
+        onBack={popRoute}
+        onSelectBranch={async (selection) => {
+          const adoptedSelection = await adoptBranchSelection({
+            branchRootMessageId: selection.branchRootMessageId,
+            branchVersionIndex: selection.branchVersionIndex,
+            space: currentRoute.space,
+            threadId: currentRoute.threadId,
+          });
+          const nextRoute = buildAiChatRouteFromBranchTree(currentRoute, adoptedSelection, previousRoute);
+          setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
+        }}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />

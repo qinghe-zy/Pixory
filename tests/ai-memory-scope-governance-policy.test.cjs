@@ -77,7 +77,21 @@ test('AI memory board visibly separates global session and IP profile governance
   assert.match(board, /全局画像/);
   assert.match(board, /本会话画像/);
   assert.match(board, /当前 IP 画像/);
-  assert.match(board, /本会话画像优先于当前 IP 画像和全局画像/);
+  assert.match(board, /profileGovernanceCaption/);
+  assert.match(board, /thread\?\.boundIpId != null[\s\S]{0,120}本会话画像优先于当前 IP 画像和全局画像/);
+  assert.match(board, /本会话画像优先于全局画像/);
+  assert.match(board, /thread\?\.boundIpId != null \? \(/);
+  assert.doesNotMatch(board, /当前会话未绑定 IP，不会生成当前 IP 画像。/);
+  assert.match(board, /availableManualMemoryScopes/);
+  assert.match(board, /thread\?\.boundIpId != null\s*\?\s*MANUAL_MEMORY_SCOPE_OPTIONS\s*:\s*MANUAL_MEMORY_SCOPE_OPTIONS\.filter\(\(scope\) => scope !== 'ip'\)/);
+  assert.match(board, /resolvedManualMemoryScope/);
+  assert.match(board, /availableManualMemoryScopes\.includes\(manualMemoryScope\) \? manualMemoryScope : 'thread'/);
+  assert.match(board, /manualMemoryPlaceholder/);
+  assert.match(board, /manualMemoryPlaceholder = resolvedManualMemoryScope === 'ip'/);
+  assert.match(board, /resolveManualMemoryScope\(thread,\s*resolvedManualMemoryScope\)/);
+  assert.match(board, /resolvedManualMemoryScope === scope && styles\.filterChipActive/);
+  assert.match(board, /resolvedManualMemoryScope === scope && styles\.filterTextActive/);
+  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
 });
 
 test('AI memory board labels every memory item with its governance scope', () => {
@@ -86,7 +100,8 @@ test('AI memory board labels every memory item with its governance scope', () =>
   assert.match(board, /SCOPE_DESCRIPTIONS/);
   assert.match(board, /作用域：\{SCOPE_LABELS\[memory\.scope\]\}/);
   assert.match(board, /全局记忆/);
-  assert.match(board, /当前项目记忆/);
+  assert.match(board, /当前 IP 记忆/);
+  assert.match(board, /本会话记忆/);
 });
 
 test('AI memory board lets manual additions choose global project or thread scope', () => {
@@ -97,7 +112,7 @@ test('AI memory board lets manual additions choose global project or thread scop
   assert.match(board, /resolveManualMemoryScope/);
   assert.match(board, /scope:\s*manualScope\.scope/);
   assert.match(board, /scopeId:\s*manualScope\.scopeId/);
-  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[manualMemoryScope\]\}`\}/);
+  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
 });
 
 test('AI memory retrieval gives local project scopes a hard priority over global memory', () => {
@@ -110,6 +125,8 @@ test('AI memory retrieval gives local project scopes a hard priority over global
   assert.match(repository, /ORDER BY \$\{memoryScopePrioritySql\('ai_memories'\)\} DESC/);
   assert.match(service, /getMemoryPromptPriority/);
   assert.match(service, /right\.priority - left\.priority/);
+  assert.match(service, /memory\.scope === 'ip' && thread\.boundIpId != null && memory\.scopeId === String\(thread\.boundIpId\)/);
+  assert.doesNotMatch(service, /memory\.scope === 'ip' && memory\.scopeId === String\(thread\.boundIpId \?\? ''\)/);
 });
 
 test('AI memory startup cleanup stales legacy automatic global memories', () => {

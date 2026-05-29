@@ -6,20 +6,20 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.3.9`
+[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.4.0`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.3.9
+### Pixory 2.4.0
 
-这一版继续修复 AI 聊天 Markdown 显示稳定性，并加入热更新底包能力：
+这一版新增 AI 创作路线树，让长对话里的编辑分支更容易管理和回到现场：
 
-- 进一步修复 Android 上 AI 回复 Markdown 可能导致聊天页出现大面积空白遮挡的问题。
-- 助手 Markdown 不再使用长按选中文本，改由消息复制和代码块复制承接复制能力。
-- 代码块和表格横向滚动区域增加宽度约束，减少流式渲染重排风险。
-- 加入 EAS Update 热更新底包能力，后续兼容的 JS 与样式修复可通过 production channel 下发。
+- 聊天页新增创作路线树入口，空聊天不会创建新线程。
+- 路线树按关键分支展示，支持 `+N` 折叠入口和底部列表查看更多分支。
+- 当前主路线会持久化保存，长分支可进入主线判断，切换后自动回到对应消息。
+- 补齐数据库迁移和线程导入导出保护，分支路线状态随本地数据一起保存。
 
 下载地址：
 

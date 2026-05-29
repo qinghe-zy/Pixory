@@ -39,6 +39,38 @@ export interface AiBranchScope {
   branchVersionIndex: number;
 }
 
+export type AiBranchRouteStatus = 'exploring' | 'adopted' | 'paused' | 'abandoned';
+
+export interface AiBranchRouteMetadataRecord {
+  id: string;
+  threadId: string;
+  branchRootMessageId: string;
+  branchVersionIndex: number;
+  name: string | null;
+  status: AiBranchRouteStatus;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiBranchTreeCandidateRecord {
+  branchRootMessageId: string;
+  branchVersionIndex: number;
+  rootThreadId: string;
+  rootRole: AiMessageRole;
+  rootContent: string;
+  rootCreatedAt: string;
+  rootUpdatedAt: string;
+  versionContent: string;
+  versionCreatedAt: string;
+  versionUpdatedAt: string;
+  versionTotal: number;
+  followUpMessageCount: number;
+  latestFollowUpAt: string | null;
+  parentBranchRootMessageId: string | null;
+  parentBranchVersionIndex: number | null;
+}
+
 export interface AiMessageVersionRecord {
   id: string;
   originalMessageId: string;
@@ -285,6 +317,33 @@ export interface CreateAiMessageVersionInput {
   messageCompletedAt?: string | null;
 }
 
+export interface UpsertAiBranchRouteMetadataInput {
+  threadId: string;
+  branchRootMessageId: string;
+  branchVersionIndex: number;
+  name?: string | null;
+  status?: AiBranchRouteStatus;
+  note?: string;
+}
+
+interface BranchVersionProjectionRow {
+  branchRootMessageId: string;
+  branchVersionIndex: number;
+  rootThreadId: string;
+  rootRole: AiMessageRole;
+  rootContent: string;
+  rootCreatedAt: string;
+  rootUpdatedAt: string;
+  versionContent: string;
+  versionCreatedAt: string;
+  versionUpdatedAt: string;
+  versionTotal: number;
+  followUpMessageCount: number;
+  latestFollowUpAt: string | null;
+  parentBranchRootMessageId: string | null;
+  parentBranchVersionIndex: number | null;
+}
+
 export interface UpsertAiThreadSummaryInput {
   threadId: string;
   summary: string;
@@ -329,6 +388,7 @@ export interface AiThreadExportSnapshot {
   messages: AiMessageRecord[];
   citations: AiCitationRow[];
   versions: AiMessageVersionRow[];
+  branchRouteMetadata: AiBranchRouteMetadataRecord[];
   userProfile: AiUserProfileRecord | null;
 }
 
@@ -360,6 +420,8 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     materialRulesSnapshot: row.materialRulesSnapshot ?? null,
     summary: row.summary ?? null,
     lastMessagePreview: row.lastMessagePreview ?? null,
+    currentBranchRootMessageId: row.currentBranchRootMessageId ?? null,
+    currentBranchVersionIndex: row.currentBranchVersionIndex ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
@@ -621,6 +683,204 @@ const DELETE_MESSAGE_CHUNK_SIZE = 200;
 const MESSAGE_LOOKUP_CHUNK_SIZE = 200;
 
 export const aiThreadRepository = {
+  async listBranchRouteMetadata(db: SQLiteDatabase, threadId: string): Promise<AiBranchRouteMetadataRecord[]> {
+    return db.getAllAsync<AiBranchRouteMetadataRecord>(
+      `SELECT * FROM ai_branch_route_metadata
+       WHERE threadId = ?
+       ORDER BY updatedAt DESC, createdAt DESC`,
+      threadId
+    );
+  },
+
+  async upsertBranchRouteMetadata(
+    db: SQLiteDatabase,
+    input: UpsertAiBranchRouteMetadataInput
+  ): Promise<AiBranchRouteMetadataRecord> {
+    const now = createTimestamp();
+    const existing = await db.getFirstAsync<AiBranchRouteMetadataRecord>(
+      `SELECT * FROM ai_branch_route_metadata
+       WHERE threadId = ? AND branchRootMessageId = ? AND branchVersionIndex = ?`,
+      input.threadId,
+      input.branchRootMessageId,
+      input.branchVersionIndex
+    );
+    const id = existing?.id ?? `route_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const nextName = input.name === undefined ? existing?.name ?? null : normalizeOptionalText(input.name) ?? null;
+    const nextNote = input.note === undefined ? existing?.note ?? '' : input.note;
+    await db.runAsync(
+      `INSERT INTO ai_branch_route_metadata (
+         id, threadId, branchRootMessageId, branchVersionIndex, name, status, note, createdAt, updatedAt
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(threadId, branchRootMessageId, branchVersionIndex) DO UPDATE SET
+         name = excluded.name,
+         status = excluded.status,
+         note = excluded.note,
+         updatedAt = excluded.updatedAt`,
+      id,
+      input.threadId,
+      input.branchRootMessageId,
+      input.branchVersionIndex,
+      nextName,
+      input.status ?? existing?.status ?? 'exploring',
+      nextNote,
+      existing?.createdAt ?? now,
+      now
+    );
+    const row = await db.getFirstAsync<AiBranchRouteMetadataRecord>('SELECT * FROM ai_branch_route_metadata WHERE id = ?', id);
+    if (!row) {
+      throw new Error('Failed to save AI branch route metadata.');
+    }
+    return row;
+  },
+
+  async deleteBranchRouteMetadata(
+    db: SQLiteDatabase,
+    input: { threadId: string; branchRootMessageId: string; branchVersionIndex: number }
+  ): Promise<void> {
+    await db.runAsync(
+      `DELETE FROM ai_branch_route_metadata
+       WHERE threadId = ? AND branchRootMessageId = ? AND branchVersionIndex = ?`,
+      input.threadId,
+      input.branchRootMessageId,
+      input.branchVersionIndex
+    );
+  },
+
+  async setThreadCurrentBranch(
+    db: SQLiteDatabase,
+    input: { threadId: string; branchRootMessageId: string | null; branchVersionIndex: number | null }
+  ): Promise<AiThreadRecord | null> {
+    await db.runAsync(
+      `UPDATE ai_threads
+       SET currentBranchRootMessageId = ?,
+           currentBranchVersionIndex = ?,
+           updatedAt = ?
+       WHERE id = ?`,
+      input.branchRootMessageId,
+      input.branchVersionIndex,
+      createTimestamp(),
+      input.threadId
+    );
+    const row = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', input.threadId);
+    return row ? mapThreadRow(row) : null;
+  },
+
+  async listBranchTreeCandidates(db: SQLiteDatabase, threadId: string): Promise<AiBranchTreeCandidateRecord[]> {
+    const rows = await db.getAllAsync<BranchVersionProjectionRow>(
+       `WITH root_versions AS (
+         SELECT originalMessageId, COUNT(*) + 1 AS versionTotal
+         FROM ai_message_versions
+         WHERE threadId = ?
+         GROUP BY originalMessageId
+         HAVING versionTotal > 1
+       ),
+       historical_versions AS (
+         SELECT
+           root.id AS branchRootMessageId,
+           ai_message_versions.versionIndex AS branchVersionIndex,
+           root.threadId AS rootThreadId,
+           root.role AS rootRole,
+           root.content AS rootContent,
+           root.createdAt AS rootCreatedAt,
+           root.updatedAt AS rootUpdatedAt,
+           ai_message_versions.content AS versionContent,
+           ai_message_versions.messageCreatedAt AS versionCreatedAt,
+           ai_message_versions.messageUpdatedAt AS versionUpdatedAt,
+           root_versions.versionTotal AS versionTotal,
+           root.branchRootMessageId AS parentBranchRootMessageId,
+           root.branchVersionIndex AS parentBranchVersionIndex
+         FROM ai_message_versions
+         JOIN root_versions ON root_versions.originalMessageId = ai_message_versions.originalMessageId
+         JOIN ai_messages root ON root.id = ai_message_versions.originalMessageId
+         WHERE root.threadId = ?
+           AND ai_message_versions.versionIndex < root_versions.versionTotal
+           AND ai_message_versions.status IN ('completed', 'stopped', 'failed')
+       ),
+       current_versions AS (
+         SELECT
+           root.id AS branchRootMessageId,
+           root_versions.versionTotal AS branchVersionIndex,
+           root.threadId AS rootThreadId,
+           root.role AS rootRole,
+           root.content AS rootContent,
+           root.createdAt AS rootCreatedAt,
+           root.updatedAt AS rootUpdatedAt,
+           root.content AS versionContent,
+           root.createdAt AS versionCreatedAt,
+           root.updatedAt AS versionUpdatedAt,
+           root_versions.versionTotal AS versionTotal,
+           root.branchRootMessageId AS parentBranchRootMessageId,
+           root.branchVersionIndex AS parentBranchVersionIndex
+         FROM root_versions
+         JOIN ai_messages root ON root.id = root_versions.originalMessageId
+         WHERE root.threadId = ?
+           AND root.status IN ('completed', 'stopped', 'failed')
+       ),
+       branch_versions AS (
+         SELECT * FROM historical_versions
+         UNION ALL
+         SELECT * FROM current_versions
+       )
+       SELECT
+         branch_versions.branchRootMessageId,
+         branch_versions.branchVersionIndex,
+         branch_versions.rootThreadId,
+         branch_versions.rootRole,
+         branch_versions.rootContent,
+         branch_versions.rootCreatedAt,
+         branch_versions.rootUpdatedAt,
+         branch_versions.versionContent,
+         branch_versions.versionCreatedAt,
+         branch_versions.versionUpdatedAt,
+         branch_versions.versionTotal,
+         COUNT(descendant.id) AS followUpMessageCount,
+         MAX(descendant.updatedAt) AS latestFollowUpAt,
+         branch_versions.parentBranchRootMessageId,
+         branch_versions.parentBranchVersionIndex
+       FROM branch_versions
+       LEFT JOIN ai_messages descendant
+         ON descendant.threadId = branch_versions.rootThreadId
+        AND descendant.branchRootMessageId = branch_versions.branchRootMessageId
+        AND descendant.branchVersionIndex = branch_versions.branchVersionIndex
+        AND descendant.status IN ('completed', 'stopped', 'failed')
+       GROUP BY
+         branch_versions.branchRootMessageId,
+         branch_versions.branchVersionIndex,
+         branch_versions.rootThreadId,
+         branch_versions.rootRole,
+         branch_versions.rootContent,
+         branch_versions.rootCreatedAt,
+         branch_versions.rootUpdatedAt,
+         branch_versions.versionContent,
+         branch_versions.versionCreatedAt,
+         branch_versions.versionUpdatedAt,
+         branch_versions.versionTotal,
+         branch_versions.parentBranchRootMessageId,
+         branch_versions.parentBranchVersionIndex
+       ORDER BY branch_versions.rootCreatedAt ASC, branch_versions.branchRootMessageId ASC, branch_versions.branchVersionIndex ASC`,
+      threadId,
+      threadId,
+      threadId,
+    );
+    return rows.map((row) => ({
+      branchRootMessageId: row.branchRootMessageId,
+      branchVersionIndex: row.branchVersionIndex,
+      followUpMessageCount: row.followUpMessageCount,
+      latestFollowUpAt: row.latestFollowUpAt,
+      parentBranchRootMessageId: row.parentBranchRootMessageId,
+      parentBranchVersionIndex: row.parentBranchVersionIndex,
+      rootContent: row.rootContent,
+      rootCreatedAt: row.rootCreatedAt,
+      rootRole: row.rootRole,
+      rootThreadId: row.rootThreadId,
+      rootUpdatedAt: row.rootUpdatedAt,
+      versionContent: row.versionContent,
+      versionCreatedAt: row.versionCreatedAt,
+      versionTotal: row.versionTotal,
+      versionUpdatedAt: row.versionUpdatedAt,
+    }));
+  },
+
   async createThread(db: SQLiteDatabase, input: CreateAiThreadInput): Promise<AiThreadRecord> {
     const now = createTimestamp();
     await db.runAsync(
@@ -763,12 +1023,13 @@ export const aiThreadRepository = {
        ORDER BY ai_message_versions.originalMessageId ASC, ai_message_versions.versionIndex ASC`,
       threadId
     );
+    const branchRouteMetadata = await aiThreadRepository.listBranchRouteMetadata(db, threadId);
     const userProfile = await db.getFirstAsync<AiUserProfileRecord>(
       'SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL AND boundThreadId = ?',
       thread.space,
       threadId
     );
-    return { thread, messages, citations, versions, userProfile };
+    return { branchRouteMetadata, thread, messages, citations, versions, userProfile };
   },
 
   async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
@@ -797,10 +1058,12 @@ export const aiThreadRepository = {
         boundaryMode,
         summary,
         lastMessagePreview,
+        currentBranchRootMessageId,
+        currentBranchVersionIndex,
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
@@ -821,6 +1084,8 @@ export const aiThreadRepository = {
       snapshot.thread.boundaryMode,
       snapshot.thread.summary ?? null,
       snapshot.thread.lastMessagePreview ?? null,
+      snapshot.thread.currentBranchRootMessageId ?? null,
+      snapshot.thread.currentBranchVersionIndex ?? null,
       snapshot.thread.createdAt,
       snapshot.thread.updatedAt,
       snapshot.thread.archivedAt ?? null
@@ -928,6 +1193,31 @@ export const aiThreadRepository = {
         version.createdAt
       );
       await aiThreadRepository.syncMessageVersionFts(db, mapMessageVersionRow(version));
+    }
+
+    for (const route of snapshot.branchRouteMetadata ?? []) {
+      await db.runAsync(
+        `INSERT INTO ai_branch_route_metadata (
+          id,
+          threadId,
+          branchRootMessageId,
+          branchVersionIndex,
+          name,
+          status,
+          note,
+          createdAt,
+          updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        route.id,
+        snapshot.thread.id,
+        route.branchRootMessageId,
+        route.branchVersionIndex,
+        route.name ?? null,
+        route.status,
+        route.note,
+        route.createdAt,
+        route.updatedAt
+      );
     }
 
     if (snapshot.userProfile) {

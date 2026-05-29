@@ -35,6 +35,7 @@ import {
   getSelectedMessageVersionIndex as resolveSelectedMessageVersionIndex,
   messageMatchesSelectedBranchPath,
 } from '../ai/aiBranching';
+import { buildBranchSelectionMap } from '../ai/aiBranchTreeService';
 import {
   createComposerEntranceRun,
   isCurrentComposerEntranceRun,
@@ -44,9 +45,9 @@ import {
 } from '../ai/aiComposerEntrancePolicy';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
-import type { AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
+import type { AiBranchScope, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import type { PixorySpace } from '../database';
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800;
@@ -223,10 +224,16 @@ interface AiChatScreenProps {
   includeIpDocuments?: boolean;
   modelRefreshKey?: number;
   threadId?: string;
+  branchTreeSelection?: {
+    branchRootMessageId: string;
+    branchVersionIndex: number;
+    selectionMap: Record<string, number>;
+  };
   onOpenHistory: () => void;
   onOpenRoleLibrary: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
+  onOpenBranchTree: (threadId: string, currentBranchScopes: AiBranchScope[]) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
@@ -248,10 +255,12 @@ export function AiChatScreen({
   includeIpDocuments = false,
   modelRefreshKey,
   threadId,
+  branchTreeSelection,
   onOpenHistory,
   onOpenRoleLibrary,
   onOpenGlobalMaterials,
   onOpenSessionConfig,
+  onOpenBranchTree,
   onOpenMemoryBoard,
   onNewChat,
   onOpenThread,
@@ -265,6 +274,8 @@ export function AiChatScreen({
   const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
   const resolvedContextTitle = contextTitle ?? (contextType === 'ip' ? 'IP 对话' : contextType === 'knowledge_base' ? '知识库对话' : '普通聊天');
   const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
+  const pendingBranchTreeScrollMessageIdRef = useRef<string | null>(null);
+  const appliedBranchTreeSelectionKeyRef = useRef<string | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
   const bottomLockedRef = useRef(true);
   const showScrollToLatestRef = useRef(false);
@@ -328,6 +339,7 @@ export function AiChatScreen({
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
   const [pendingMessageActionId, setPendingMessageActionId] = useState<string | null>(null);
   const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
+  const [persistedCurrentBranchScopes, setPersistedCurrentBranchScopes] = useState<AiBranchScope[]>([]);
   const [modelLabel, setModelLabel] = useState('');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
@@ -801,6 +813,25 @@ export function AiChatScreen({
     return getActiveBranchForNextMessageFromVisibleMessages(visibleMessages, selectedVersionByMessageId);
   }
 
+  function getCurrentBranchScopes(): AiBranchScope[] {
+    const explicitScopes = Object.entries(selectedVersionByMessageId).map(([branchRootMessageId, branchVersionIndex]) => ({
+      branchRootMessageId,
+      branchVersionIndex,
+    }));
+    const activeBranch = getActiveBranchForNextMessage();
+    if (!activeBranch) {
+      return explicitScopes;
+    }
+    if (explicitScopes.some((scope) => scope.branchRootMessageId === activeBranch.branchRootMessageId)) {
+      return explicitScopes;
+    }
+    return [...explicitScopes, activeBranch];
+  }
+
+  function getPersistedCurrentBranchScopes(): AiBranchScope[] {
+    return persistedCurrentBranchScopes.length > 0 ? persistedCurrentBranchScopes : getCurrentBranchScopes();
+  }
+
   const applyDisplayTitle = useCallback(
     (title: string) => {
       if (title === displayTitleRef.current) {
@@ -1070,6 +1101,37 @@ export function AiChatScreen({
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
   useEffect(() => {
+    const targetThreadId = threadId ?? null;
+    if (!targetThreadId) {
+      setPersistedCurrentBranchScopes([]);
+      return;
+    }
+    let cancelled = false;
+    void runWithDatabaseSpace(space, async (db) => {
+      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+      if (!thread?.currentBranchRootMessageId || thread.currentBranchVersionIndex == null) {
+        return [];
+      }
+      return aiThreadRepository.resolveBranchLineage(db, thread.currentBranchRootMessageId, thread.currentBranchVersionIndex);
+    }).then((currentBranchScopes) => {
+      if (cancelled) {
+        return;
+      }
+      setPersistedCurrentBranchScopes(currentBranchScopes);
+      if (currentBranchScopes.length > 0) {
+        setSelectedVersionByMessageId(buildBranchSelectionMap(currentBranchScopes));
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setPersistedCurrentBranchScopes([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [space, threadId]);
+
+  useEffect(() => {
     void reloadMessages(threadId ?? null);
   }, [reloadMessages, threadId]);
 
@@ -1133,6 +1195,54 @@ export function AiChatScreen({
     }
     return undefined;
   }, [messages]);
+
+  useEffect(() => {
+    if (!branchTreeSelection) {
+      return;
+    }
+    const selectionKey = [
+      branchTreeSelection.branchRootMessageId,
+      branchTreeSelection.branchVersionIndex,
+      Object.entries(branchTreeSelection.selectionMap)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([messageId, versionIndex]) => `${messageId}:${versionIndex}`)
+        .join('|'),
+    ].join(':');
+    if (appliedBranchTreeSelectionKeyRef.current === selectionKey) {
+      return;
+    }
+    appliedBranchTreeSelectionKeyRef.current = selectionKey;
+    pendingBranchTreeScrollMessageIdRef.current = branchTreeSelection.branchRootMessageId;
+    setSelectedVersionByMessageId(branchTreeSelection.selectionMap);
+  }, [branchTreeSelection]);
+
+  useEffect(() => {
+    const targetMessageId = pendingBranchTreeScrollMessageIdRef.current;
+    if (!targetMessageId) {
+      return;
+    }
+    const index = invertedMessageItems.findIndex((item) => item.message.id === targetMessageId);
+    if (index < 0) {
+      if (messagesRef.current.length === 0) {
+        return;
+      }
+      if (hasEarlierMessages) {
+        loadEarlierMessages();
+        return;
+      }
+      if (!hasEarlierMessages) {
+        pendingBranchTreeScrollMessageIdRef.current = null;
+        setErrorMessage('已切换路线，但目标消息暂未加载。');
+      }
+      return;
+    }
+    pendingBranchTreeScrollMessageIdRef.current = null;
+    messageListRef.current?.scrollToIndex({
+      animated: true,
+      index,
+      viewPosition: 0.42,
+    });
+  }, [hasEarlierMessages, invertedMessageItems, loadEarlierMessages]);
 
   useEffect(() => {
     return () => {
@@ -1287,6 +1397,23 @@ export function AiChatScreen({
         return;
       }
       setErrorMessage(error instanceof Error ? error.message : '无法打开会话设置');
+    }
+  }
+
+  async function handleOpenBranchTree() {
+    try {
+      const nextThreadId = activeThreadIdRef.current ?? activeThreadId;
+      if (!nextThreadId || !screenMountedRef.current) {
+        setErrorMessage('当前还没有可查看的创作路线。');
+        return;
+      }
+      const currentBranchScopes = getPersistedCurrentBranchScopes();
+      onOpenBranchTree(nextThreadId, currentBranchScopes);
+    } catch (error) {
+      if (!screenMountedRef.current) {
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : '无法打开创作路线树');
     }
   }
 
@@ -1845,9 +1972,21 @@ export function AiChatScreen({
             </Text>
           ) : null}
         </View>
-        <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel="打开创作路线树"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !activeThreadId }}
+            disabled={!activeThreadId}
+            onPress={() => void handleOpenBranchTree()}
+            style={({ pressed }) => [styles.roundButton, !activeThreadId && styles.roundButtonDisabled, pressed && styles.pressed]}
+          >
+            <Ionicons color={activeThreadId ? aiLightColors.ink : aiLightColors.muted} name="git-branch-outline" size={18} />
+          </Pressable>
+          <Pressable accessibilityLabel="会话设置" accessibilityRole="button" onPress={() => void handleOpenSessionConfig()} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
+            <Ionicons color={aiLightColors.ink} name="options-outline" size={18} />
+          </Pressable>
+        </View>
       </View>
       {newChatFeedbackVisible ? (
         <View accessibilityLiveRegion="polite" style={styles.newChatFeedback}>
@@ -2023,6 +2162,14 @@ const styles = StyleSheet.create({
     height: spacing[10],
     justifyContent: 'center',
     width: spacing[10],
+  },
+  roundButtonDisabled: {
+    opacity: 0.44,
+  },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
   },
   titleBlock: {
     alignItems: 'center',

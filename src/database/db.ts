@@ -38,6 +38,8 @@ import {
   MIGRATION_STATEMENTS_V32,
   MIGRATION_STATEMENTS_V33,
   MIGRATION_STATEMENTS_V34,
+  MIGRATION_STATEMENTS_V35,
+  MIGRATION_STATEMENTS_V36,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -71,6 +73,34 @@ async function ensureImportTemplatesSchema(db: SQLiteDatabase): Promise<void> {
 
   if (!table) {
     await db.execAsync(MIGRATION_STATEMENTS_V9);
+  }
+}
+
+async function hasTable(db: SQLiteDatabase, tableName: string): Promise<boolean> {
+  const table = await db.getFirstAsync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    tableName
+  );
+  return Boolean(table);
+}
+
+async function hasColumn(db: SQLiteDatabase, tableName: string, columnName: string): Promise<boolean> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${tableName})`);
+  return columns.some((column) => column.name === columnName);
+}
+
+async function ensureAiBranchSchema(db: SQLiteDatabase): Promise<void> {
+  if (await hasTable(db, 'ai_threads')) {
+    if (!(await hasColumn(db, 'ai_threads', 'currentBranchRootMessageId'))) {
+      await db.execAsync('ALTER TABLE ai_threads ADD COLUMN currentBranchRootMessageId TEXT;');
+    }
+    if (!(await hasColumn(db, 'ai_threads', 'currentBranchVersionIndex'))) {
+      await db.execAsync('ALTER TABLE ai_threads ADD COLUMN currentBranchVersionIndex INTEGER;');
+    }
+  }
+
+  if (!(await hasTable(db, 'ai_branch_route_metadata'))) {
+    await db.execAsync(MIGRATION_STATEMENTS_V35);
   }
 }
 
@@ -248,7 +278,16 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V34);
     }
 
+    if (currentVersion < 35) {
+      await database.execAsync(MIGRATION_STATEMENTS_V35);
+    }
+
+    if (currentVersion < 36) {
+      await database.execAsync(MIGRATION_STATEMENTS_V36);
+    }
+
     await ensureImportTemplatesSchema(database);
+    await ensureAiBranchSchema(database);
     await ensureMemoryScopeGovernance(database);
 
     if (currentVersion !== DATABASE_VERSION) {

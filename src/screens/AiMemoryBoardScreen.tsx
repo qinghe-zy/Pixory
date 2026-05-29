@@ -34,10 +34,10 @@ interface AiMemoryBoardScreenProps {
 
 const SCOPE_LABELS: Record<AiMemoryScope, string> = {
   global: '全局记忆',
-  ip: '当前项目记忆',
+  ip: '当前 IP 记忆',
   knowledge_base: '当前知识库',
   role: '当前角色',
-  thread: '本会话',
+  thread: '本会话记忆',
 };
 
 const SCOPE_DESCRIPTIONS: Record<AiMemoryScope, string> = {
@@ -138,6 +138,22 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     }
     return MEMORY_SCOPE_ORDER.map((scope) => ({ items: map.get(scope) ?? [], scope })).filter((group) => group.items.length > 0);
   }, [memories, memoryTypeFilter]);
+  const availableManualMemoryScopes = thread?.boundIpId != null ? MANUAL_MEMORY_SCOPE_OPTIONS : MANUAL_MEMORY_SCOPE_OPTIONS.filter((scope) => scope !== 'ip');
+  const resolvedManualMemoryScope = availableManualMemoryScopes.includes(manualMemoryScope) ? manualMemoryScope : 'thread';
+  const manualMemoryPlaceholder = resolvedManualMemoryScope === 'ip'
+    ? '例如：这个 IP 的主色调是 #FF0033'
+    : resolvedManualMemoryScope === 'global'
+      ? '例如：我希望默认回答简洁直接。'
+      : '例如：本会话里希望保持冷静、克制的语气。';
+  const profileGovernanceCaption = thread?.boundIpId != null
+    ? '画像用于长期理解你，不会覆盖当前要求；本会话画像优先于当前 IP 画像和全局画像。'
+    : '画像用于长期理解你，不会覆盖当前要求；本会话画像优先于全局画像。';
+
+  useEffect(() => {
+    if (manualMemoryScope === 'ip' && thread?.boundIpId == null) {
+      setManualMemoryScope('thread');
+    }
+  }, [manualMemoryScope, thread?.boundIpId]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -183,9 +199,9 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
     if (!content || !thread) {
       return;
     }
-    const manualScope = resolveManualMemoryScope(thread, manualMemoryScope);
+    const manualScope = resolveManualMemoryScope(thread, resolvedManualMemoryScope);
     if (!manualScope) {
-      setStatus('当前会话未绑定 IP，不能添加当前项目记忆。');
+      setStatus('当前会话未绑定 IP，不能添加当前 IP 记忆。');
       return;
     }
     setLoading(true);
@@ -198,7 +214,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         type: 'fact',
       });
       setDraft('');
-      setStatus(`已添加到${SCOPE_LABELS[manualMemoryScope]}。`);
+      setStatus(`已添加到${SCOPE_LABELS[resolvedManualMemoryScope]}。`);
       await reload();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '添加记忆失败');
@@ -332,7 +348,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         {status ? <Text style={styles.status}>{status}</Text> : null}
         <AiLightCard>
           <Text style={styles.sectionTitle}>用户画像</Text>
-          <Text style={styles.caption}>画像用于长期理解你，不会覆盖当前要求；本会话画像优先于当前 IP 画像和全局画像。</Text>
+          <Text style={styles.caption}>{profileGovernanceCaption}</Text>
           <View style={styles.profileSection}>
             <Text style={styles.profileScopeTitle}>全局画像</Text>
             <Text style={styles.caption}>{globalProfile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(globalProfile.lastUpdatedAt)}` : '还没有全局画像。'}</Text>
@@ -357,28 +373,20 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
             />
             <AiLightButton label="保存本会话画像" loading={loading} onPress={() => void handleSaveSessionProfile()} />
           </View>
-          <View style={styles.profileSection}>
-            <Text style={styles.profileScopeTitle}>当前 IP 画像</Text>
-            <Text style={styles.caption}>
-              {thread?.boundIpId != null
-                ? projectProfile?.lastUpdatedAt
-                  ? `更新于 ${formatAiFullMinute(projectProfile.lastUpdatedAt)}`
-                  : '还没有当前 IP 画像。'
-                : '当前会话未绑定 IP，不会生成当前 IP 画像。'}
-            </Text>
-            {thread?.boundIpId != null ? (
-              <>
-                <AiLightTextareaRow
-                  label="当前 IP 画像内容"
-                  minHeight={112}
-                  onChangeText={setProjectProfileDraft}
-                  placeholder="例如：在这个 IP 中偏好冷静、克制的角色语气。"
-                  value={projectProfileDraft}
-                />
-                <AiLightButton label="保存当前 IP 画像" loading={loading} onPress={() => void handleSaveProjectProfile()} />
-              </>
-            ) : null}
-          </View>
+          {thread?.boundIpId != null ? (
+            <View style={styles.profileSection}>
+              <Text style={styles.profileScopeTitle}>当前 IP 画像</Text>
+              <Text style={styles.caption}>{projectProfile?.lastUpdatedAt ? `更新于 ${formatAiFullMinute(projectProfile.lastUpdatedAt)}` : '还没有当前 IP 画像。'}</Text>
+              <AiLightTextareaRow
+                label="当前 IP 画像内容"
+                minHeight={112}
+                onChangeText={setProjectProfileDraft}
+                placeholder="例如：在这个 IP 中偏好冷静、克制的角色语气。"
+                value={projectProfileDraft}
+              />
+              <AiLightButton label="保存当前 IP 画像" loading={loading} onPress={() => void handleSaveProjectProfile()} />
+            </View>
+          ) : null}
         </AiLightCard>
 
         <AiLightCard>
@@ -424,23 +432,23 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         <AiLightCard>
           <Text style={styles.sectionTitle}>手动添加</Text>
           <View style={styles.filterRow}>
-            {MANUAL_MEMORY_SCOPE_OPTIONS.map((scope) => (
+            {availableManualMemoryScopes.map((scope) => (
               <Pressable
                 key={scope}
                 accessibilityRole="button"
                 onPress={() => setManualMemoryScope(scope)}
                 style={({ pressed }) => [
                   styles.filterChip,
-                  manualMemoryScope === scope && styles.filterChipActive,
+                  resolvedManualMemoryScope === scope && styles.filterChipActive,
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={[styles.filterText, manualMemoryScope === scope && styles.filterTextActive]}>{SCOPE_LABELS[scope]}</Text>
+                <Text style={[styles.filterText, resolvedManualMemoryScope === scope && styles.filterTextActive]}>{SCOPE_LABELS[scope]}</Text>
               </Pressable>
             ))}
           </View>
-          <AiLightTextareaRow label="记忆内容" minHeight={72} onChangeText={setDraft} placeholder="例如：这个 IP 的主色调是 #FF0033" value={draft} />
-          <AiLightButton label={`添加到${SCOPE_LABELS[manualMemoryScope]}`} loading={loading} onPress={() => void handleAddMemory()} />
+          <AiLightTextareaRow label="记忆内容" minHeight={72} onChangeText={setDraft} placeholder={manualMemoryPlaceholder} value={draft} />
+          <AiLightButton label={`添加到${SCOPE_LABELS[resolvedManualMemoryScope]}`} loading={loading} onPress={() => void handleAddMemory()} />
         </AiLightCard>
 
         {grouped.length === 0 ? (

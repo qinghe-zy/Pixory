@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const FALLBACK_CURRENT_VERSION = '2.3.9';
-const FALLBACK_CURRENT_VERSION_CODE = 239;
+const FALLBACK_CURRENT_VERSION = '2.4.0';
+const FALLBACK_CURRENT_VERSION_CODE = 240;
 
 export interface AppUpdateInfo {
   version: string;

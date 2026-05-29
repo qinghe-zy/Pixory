@@ -108,6 +108,8 @@ export interface AiThreadRecord {
   materialRulesSnapshot: string | null;
   summary: string | null;
   lastMessagePreview: string | null;
+  currentBranchRootMessageId: string | null;
+  currentBranchVersionIndex: number | null;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
