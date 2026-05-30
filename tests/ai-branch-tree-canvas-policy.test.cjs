@@ -86,3 +86,21 @@ test('branch tree layout emits cubic Bezier SVG paths instead of hard elbows', (
   assert.match(layout, /return `M \$\{startX\} \$\{startY\} C \$\{controlX1\} \$\{controlY1\}, \$\{controlX2\} \$\{controlY2\}, \$\{endX\} \$\{endY\}`/);
   assert.doesNotMatch(layout, / L /);
 });
+
+test('branch tree viewport helpers clamp zoom and detect offscreen head safely', () => {
+  const viewport = read('src/branchTree/engine/branchTreeViewport.ts');
+
+  assert.match(viewport, /export const BRANCH_TREE_MIN_SCALE = 0\.4/);
+  assert.match(viewport, /export const BRANCH_TREE_MAX_SCALE = 1\.8/);
+  assert.match(viewport, /export function clampBranchTreeScale/);
+  assert.match(viewport, /Math\.min\(BRANCH_TREE_MAX_SCALE, Math\.max\(BRANCH_TREE_MIN_SCALE, scale\)\)/);
+  assert.match(viewport, /export function worldToScreen/);
+  assert.match(viewport, /point\.x \* transform\.scale \+ transform\.translateX/);
+  assert.match(viewport, /export function isHeadOutsideSafeViewport/);
+  assert.match(viewport, /screenPoint\.x < 20/);
+  assert.match(viewport, /screenPoint\.x > viewport\.width - 140/);
+  assert.match(viewport, /screenPoint\.y < 80/);
+  assert.match(viewport, /screenPoint\.y > viewport\.height - 280/);
+  assert.match(viewport, /export function buildRecenterTransform/);
+  assert.match(viewport, /viewport\.height \* 0\.35/);
+});
