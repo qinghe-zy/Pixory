@@ -61,3 +61,28 @@ test('branch tree graph builder models one message version per node and derives 
   assert.match(builder, /headNodeId/);
   assert.doesNotMatch(builder, /Date\.parse/);
 });
+
+test('branch tree layout centers active path and pushes nested branches outward', () => {
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+
+  assert.match(layout, /export const BRANCH_TREE_NODE_WIDTH = 120/);
+  assert.match(layout, /export const BRANCH_TREE_LANE_WIDTH = 140/);
+  assert.match(layout, /export const BRANCH_TREE_ROW_HEIGHT = 110/);
+  assert.match(layout, /export const BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2/);
+  assert.match(layout, /export function layoutBranchTreeGraph/);
+  assert.match(layout, /function assignActivePathDepths/);
+  assert.match(layout, /function resolveInactiveLane/);
+  assert.match(layout, /parentLane < 0/);
+  assert.match(layout, /parentLane > 0/);
+  assert.match(layout, /while \(occupiedLanesByDepth\.get\(depth\)\?\.has\(lane\)\)/);
+  assert.match(layout, /lane \+= direction/);
+  assert.doesNotMatch(layout, /Date\.parse/);
+});
+
+test('branch tree layout emits cubic Bezier SVG paths instead of hard elbows', () => {
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+
+  assert.match(layout, /function buildBezierPath/);
+  assert.match(layout, /return `M \$\{startX\} \$\{startY\} C \$\{controlX1\} \$\{controlY1\}, \$\{controlX2\} \$\{controlY2\}, \$\{endX\} \$\{endY\}`/);
+  assert.doesNotMatch(layout, / L /);
+});
