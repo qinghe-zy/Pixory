@@ -104,3 +104,19 @@ test('branch tree viewport helpers clamp zoom and detect offscreen head safely',
   assert.match(viewport, /export function buildRecenterTransform/);
   assert.match(viewport, /viewport\.height \* 0\.35/);
 });
+
+test('Pixory branch tree adapter isolates AI service records from canvas graph records', () => {
+  const adapter = read('src/branchTree/adapters/pixoryAiBranchTreeAdapter.ts');
+
+  assert.match(adapter, /import type \{ AiBranchTreeNode, AiBranchTreePreview \} from '..\/..\/ai\/aiBranchTreeService'/);
+  assert.match(adapter, /import \{ buildBranchTreeGraph/);
+  assert.match(adapter, /export function buildPixoryBranchTreeGraph/);
+  assert.match(adapter, /messageId: node\.branchRootMessageId/);
+  assert.match(adapter, /versionIndex: node\.branchVersionIndex/);
+  assert.match(adapter, /parentMessageId: node\.parentBranchRootMessageId/);
+  assert.match(adapter, /parentVersionIndex: node\.parentBranchVersionIndex/);
+  assert.match(adapter, /isActivePath: node\.isCurrentRoute/);
+  assert.match(adapter, /export function buildPixoryBranchTreeSnapshot/);
+  assert.doesNotMatch(adapter, /AiChatScreen/);
+  assert.doesNotMatch(adapter, /aiMemory/);
+});
