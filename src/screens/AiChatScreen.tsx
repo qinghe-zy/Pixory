@@ -893,7 +893,7 @@ export function AiChatScreen({
   );
 
   const reloadMessages = useCallback(
-    async (targetThreadId: string | null, forceToLatest = false) => {
+    async (targetThreadId: string | null, forceToLatest = false, branchScopes?: AiBranchScope[]) => {
       const requestId = nextRequestId('messages');
       if (!targetThreadId) {
         resetStreamingReadBufferState();
@@ -908,7 +908,10 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
         return;
       }
-      const nextMessages = await listThreadMessages(space, targetThreadId, { limit: loadedMessageLimit });
+      const nextMessages = await listThreadMessages(space, targetThreadId, {
+        branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
+        limit: loadedMessageLimit,
+      });
       if (!isLatestRequest('messages', requestId, targetThreadId)) {
         return;
       }
@@ -931,6 +934,16 @@ export function AiChatScreen({
     },
     [applyDisplayTitle, loadedMessageLimit, space]
   );
+
+  async function loadPersistedCurrentBranchScopes(targetThreadId: string): Promise<AiBranchScope[]> {
+    return runWithDatabaseSpace(space, async (db) => {
+      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+      if (!thread?.currentBranchRootMessageId || thread.currentBranchVersionIndex == null) {
+        return [];
+      }
+      return aiThreadRepository.resolveBranchLineage(db, thread.currentBranchRootMessageId, thread.currentBranchVersionIndex);
+    });
+  }
 
   const applyStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
     setMessages((current) => {
@@ -1151,17 +1164,18 @@ export function AiChatScreen({
   useEffect(() => {
     const targetThreadId = threadId ?? null;
     if (!targetThreadId) {
-      setPersistedCurrentBranchScopes([]);
+      scrollToLatestMessage(false, true);
+      void reloadMessages(null, true);
       return;
     }
     let cancelled = false;
-    void runWithDatabaseSpace(space, async (db) => {
-      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      if (!thread?.currentBranchRootMessageId || thread.currentBranchVersionIndex == null) {
-        return [];
+    void (async () => {
+      let currentBranchScopes: AiBranchScope[] = [];
+      try {
+        currentBranchScopes = await loadPersistedCurrentBranchScopes(targetThreadId);
+      } catch {
+        currentBranchScopes = [];
       }
-      return aiThreadRepository.resolveBranchLineage(db, thread.currentBranchRootMessageId, thread.currentBranchVersionIndex);
-    }).then((currentBranchScopes) => {
       if (cancelled) {
         return;
       }
@@ -1169,19 +1183,15 @@ export function AiChatScreen({
       if (currentBranchScopes.length > 0) {
         setSelectedVersionByMessageId(buildBranchSelectionMap(currentBranchScopes));
       }
-    }).catch(() => {
+      await reloadMessages(targetThreadId, true, currentBranchScopes);
       if (!cancelled) {
-        setPersistedCurrentBranchScopes([]);
+        scrollToLatestMessage(false, true);
+        scheduleIntentionalLatestJump(false);
       }
-    });
+    })();
     return () => {
       cancelled = true;
     };
-  }, [space, threadId]);
-
-  useEffect(() => {
-    scrollToLatestMessage(false, true);
-    void reloadMessages(threadId ?? null, true);
   }, [reloadMessages, scrollToLatestMessage, threadId]);
 
   useEffect(() => {

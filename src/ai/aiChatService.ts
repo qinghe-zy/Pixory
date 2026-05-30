@@ -223,6 +223,7 @@ export interface AiStreamingMessagePatch {
 }
 
 export interface ListThreadMessagesOptions {
+  branchScopes?: AiBranchScope[];
   limit?: number;
 }
 
@@ -755,7 +756,7 @@ async function loadBranchRootMessages(
 
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, async (db) => {
-    const messages = await aiThreadRepository.listMessages(db, threadId, options.limit);
+    const messages = await aiThreadRepository.listMessages(db, threadId, options.limit, options.branchScopes);
     const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
     const messageIds = messagesWithBranchRoots.map((message) => message.id);
     const [versionsByMessageId, citationsByMessageId] = await Promise.all([

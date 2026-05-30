@@ -275,9 +275,17 @@ test('AI chat buffers streaming patches while reading history and only flushes a
 
 test('AI chat route reloads do not fall back to stale active thread state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
+  const routeReloadEffectStart = chat.indexOf('  useEffect(() => {\n    const targetThreadId = threadId ?? null;');
+  const routeReloadEffectEnd = chat.indexOf('  }, [reloadMessages, scrollToLatestMessage, threadId]);', routeReloadEffectStart);
+  const routeReloadEffect = routeReloadEffectStart >= 0 && routeReloadEffectEnd >= 0
+    ? chat.slice(routeReloadEffectStart, routeReloadEffectEnd)
+    : '';
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
-  assert.match(chat, /reloadMessages\(threadId \?\? null/);
+  assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
+  assert.match(routeReloadEffect, /currentBranchScopes = await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, true, currentBranchScopes\)/);
+  assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
   assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
   assert.match(chat, /reloadAvatarConfig\(threadId \?\? null/);
   assert.match(chat, /reloadThreadTitle\(threadId \?\? null/);

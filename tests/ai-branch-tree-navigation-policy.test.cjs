@@ -369,3 +369,15 @@ test('AI branch tree returns lineage scopes so nested branches switch predictabl
   assert.match(chat, /selectionMap: Record<string, number>/);
   assert.match(chat, /setSelectedVersionByMessageId\(branchTreeSelection\.selectionMap\)/);
 });
+
+test('AI chat restores persisted branch scopes before loading and positioning messages', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /export interface ListThreadMessagesOptions \{[\s\S]*branchScopes\?: AiBranchScope\[\]/);
+  assert.match(service, /aiThreadRepository\.listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
+  assert.match(chat, /async function loadPersistedCurrentBranchScopes\(targetThreadId: string\): Promise<AiBranchScope\[\]>/);
+  assert.match(chat, /await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
+  assert.match(chat, /await reloadMessages\(targetThreadId, true, currentBranchScopes\)/);
+  assert.doesNotMatch(chat, /void reloadMessages\(threadId \?\? null, true\)/);
+});
