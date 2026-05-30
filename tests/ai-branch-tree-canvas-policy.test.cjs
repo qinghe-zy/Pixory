@@ -120,3 +120,21 @@ test('Pixory branch tree adapter isolates AI service records from canvas graph r
   assert.doesNotMatch(adapter, /AiChatScreen/);
   assert.doesNotMatch(adapter, /aiMemory/);
 });
+
+test('branch tree visual layers use SVG grid links and compact view nodes', () => {
+  const grid = read('src/branchTree/components/BranchTreeGrid.tsx');
+  const links = read('src/branchTree/components/BranchTreeLinks.tsx');
+  const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
+
+  assert.match(grid, /import Svg, \{ Circle, Line \} from 'react-native-svg'/);
+  assert.match(grid, /opacity=\{0\.08\}/);
+  assert.match(grid, /smallStep = 20/);
+  assert.match(grid, /largeStep = 100/);
+  assert.match(links, /import Svg, \{ Path \} from 'react-native-svg'/);
+  assert.match(links, /strokeWidth=\{edge\.kind === 'active' \? 3\.5 : 1\.8\}/);
+  assert.match(links, /strokeDasharray=\{edge\.kind === 'active' \? undefined : '3,3'\}/);
+  assert.match(node, /width: 120/);
+  assert.match(node, /borderRadius: 16/);
+  assert.match(node, /numberOfLines=\{2\}/);
+  assert.match(node, /fontSize: 10\.5/);
+});
