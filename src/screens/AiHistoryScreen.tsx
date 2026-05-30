@@ -77,10 +77,17 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     <View style={styles.selectionFooter}>
       <Text style={styles.selectionText}>已选 {selectedIds.length}</Text>
       <View style={styles.selectionActions}>
-        <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.coralActive} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
-          <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
-        </Pressable>
+        {filter === 'archived' ? (
+          <Pressable accessibilityRole="button" onPress={() => void confirmRestoreSelected()} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+            <Ionicons color={aiLightColors.coralActive} name="arrow-undo-outline" size={18} />
+            <Text style={styles.selectionButtonText}>移出回收站</Text>
+          </Pressable>
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
+            <Ionicons color={aiLightColors.coralActive} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
+            <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
+          </Pressable>
+        )}
         <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={18} />
           <Text style={styles.dangerText}>{filter === 'archived' ? '永久删除' : '删除到回收站'}</Text>
@@ -112,6 +119,14 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           icon: 'checkmark-circle-outline',
           onPress: () => toggleSelected(actionThread.id),
         },
+        ...(actionThread.archivedAt ? [{
+          key: 'restore',
+          label: '移出回收站',
+          icon: 'arrow-undo-outline' as const,
+          onPress: () => {
+            void confirmRestoreSelected([actionThread.id]);
+          },
+        }] : []),
         {
           key: 'delete',
           label: actionThread.archivedAt ? '永久删除' : '移入回收站',
@@ -148,7 +163,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
     setSwipedThreadId(null);
     if (thread.archivedAt) {
       await unarchiveAiThread(space, thread.id);
-      setStatus('会话已恢复。');
+      setStatus('会话已移出回收站。');
     } else {
       await archiveAiThread(space, thread.id);
       setStatus('会话已移入回收站。');
@@ -232,6 +247,23 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       await reload();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : (filter === 'archived' ? '永久删除失败' : '移入回收站失败'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmRestoreSelected(threadIds = selectedIds) {
+    setBusy(true);
+    try {
+      await Promise.all(threadIds.map((threadId) => unarchiveAiThread(space, threadId)));
+      const count = threadIds.length;
+      setStatus(`已移出回收站 ${count} 条。`);
+      setSelectedIds([]);
+      setActionThread(null);
+      setPendingAction(null);
+      await reload();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '移出回收站失败');
     } finally {
       setBusy(false);
     }
@@ -330,7 +362,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                           style={({ pressed }) => [styles.swipeActionSurface, pressed && styles.pressed]}
                         >
                           <Ionicons color={aiLightColors.onDark} name={thread.archivedAt ? 'arrow-undo-outline' : 'trash-outline'} size={17} />
-                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '恢复' : '回收站'}</Text>
+                          <Text style={styles.archiveActionText}>{thread.archivedAt ? '移出' : '回收站'}</Text>
                         </Pressable>
                       </Animated.View>
                     ) : null}

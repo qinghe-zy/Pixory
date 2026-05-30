@@ -488,6 +488,11 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /styles\.rowMenuButton/);
   assert.match(history, /setActionThread\(thread\)/);
   assert.match(history, /key:\s*'delete'/);
+  assert.match(history, /key:\s*'restore'/);
+  assert.match(history, /label:\s*'移出回收站'/);
+  assert.match(history, /confirmRestoreSelected/);
+  assert.match(history, /unarchiveAiThread\(space, threadId\)/);
+  assert.match(history, /已移出回收站 \$\{count\} 条。/);
   assert.match(history, /setDeleteThread\(actionThread\)/);
   assert.match(history, /deleteThread \? \[deleteThread\.id\] : selectedIds/);
   assert.match(history, /filter === 'archived' \? permanentlyDeleteAiThreads\(space, threadIds\) : deleteAiThreads\(space, threadIds\)/);
