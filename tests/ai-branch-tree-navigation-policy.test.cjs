@@ -135,19 +135,18 @@ test('AI branch tree service returns promoted main route and folded sibling grou
   assert.match(service, /currentThread\?\.currentBranchRootMessageId/);
 });
 
-test('AI branch tree screen renders +N groups in a bottom sheet and uses service rows', () => {
+test('AI branch tree screen delegates folded route density to the canvas layout', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+  const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
-  assert.match(screen, /collapsedGroups/);
-  assert.match(screen, /selectedGroup/);
-  assert.match(screen, /renderCollapsedGroup/);
-  assert.match(screen, /group\.label/);
-  assert.match(screen, /Modal/);
-  assert.match(screen, /transparent/);
-  assert.match(screen, /bottomSheet/);
-  assert.match(screen, /selectedGroup\?\.nodes\.map/);
-  assert.match(screen, /visibleGraphRows = rows/);
-  assert.doesNotMatch(screen, /nodes\.map\(\(node, index\) =>/);
+  assert.match(screen, /BranchTreeCanvas/);
+  assert.match(layout, /BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2/);
+  assert.match(layout, /collapsedChildCount/);
+  assert.match(node, /\+\{node\.collapsedChildCount\}/);
+  assert.doesNotMatch(screen, /selectedGroup/);
+  assert.doesNotMatch(screen, /renderCollapsedGroup/);
+  assert.doesNotMatch(screen, /Modal/);
 });
 
 test('AI chat opens branch tree with persisted route and adopts selected route before returning', () => {
@@ -173,27 +172,25 @@ test('AI branch tree preview uses the selected branch root version content', () 
   assert.doesNotMatch(service, /selectedMessage: toPreviewMessage\(root, node\.versionLabel\)/);
 });
 
-test('AI branch tree screen uses light styling compact nodes and nearby preview actions', () => {
+test('AI branch tree screen uses isolated canvas and keeps nearby preview actions in the drawer', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
+  const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
   assert.match(screen, /AiLightScaffold/);
   assert.match(screen, /title="创作路线树"/);
   assert.doesNotMatch(screen, /当前会话 · 自动整理关键分叉/);
   assert.match(screen, /loadBranchTree/);
   assert.match(screen, /loadBranchTreePreview/);
-  assert.match(screen, /切换并返回聊天/);
-  assert.match(screen, /返回聊天定位此处/);
-  assert.match(screen, /branchRail/);
-  assert.match(screen, /rowConnectorLayer/);
-  assert.match(screen, /nodeTitle\}>\{node\.title\}/);
-  assert.match(screen, /numberOfLines=\{2\}/);
-  assert.match(screen, /nodeCard/);
-  assert.match(screen, /branchCanvas/);
-  assert.match(screen, /branchChatPreview/);
-  assert.match(screen, /renderPreviewBubble/);
-  assert.match(screen, /message\.role === 'user'/);
-  assert.match(screen, /styles\.previewBubbleUser/);
-  assert.match(screen, /styles\.previewBubbleAssistant/);
+  assert.match(screen, /BranchTreeCanvas/);
+  assert.match(screen, /buildPixoryBranchTreeGraph/);
+  assert.match(screen, /buildPixoryBranchTreeSnapshot/);
+  assert.match(drawer, /切为此主线/);
+  assert.match(drawer, /基于此衍生新分支/);
+  assert.match(node, /numberOfLines=\{2\}/);
+  assert.match(drawer, /message\.role === 'user'/);
+  assert.match(drawer, /bubbleUser/);
+  assert.match(drawer, /bubbleMuted/);
   assert.doesNotMatch(screen, /previewPanel/);
   assert.match(screen, /aiLightColors\.canvas/);
   assert.match(screen, /rhythm\./);
@@ -209,64 +206,55 @@ test('AI branch tree screen uses light styling compact nodes and nearby preview 
   assert.doesNotMatch(screen, /LinearGradient/);
 });
 
-test('AI branch tree lines stay continuous behind compact folded message nodes', () => {
-  const screen = read('src/screens/AiBranchTreeScreen.tsx');
+test('AI branch tree lines stay continuous through SVG Bezier paths', () => {
+  const links = read('src/branchTree/components/BranchTreeLinks.tsx');
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
 
-  assert.match(screen, /<View pointerEvents="none" style=\{styles\.branchLineLayer\}>/);
-  assert.match(screen, /<View style=\{styles\.branchNodeLayer\}>/);
-  assert.match(screen, /branchLineLayer:\s*\{[\s\S]{0,120}position: 'absolute'/);
-  assert.match(screen, /styles\.rowConnectorLayer/);
-  assert.match(screen, /lane === 'left' && styles\.rowConnectorLeft/);
-  assert.match(screen, /lane === 'right' && styles\.rowConnectorRight/);
-  assert.match(screen, /branchNodeRow:\s*\{[\s\S]{0,120}flexDirection: 'row'/);
-  assert.match(screen, /branchLeftRow:\s*\{[\s\S]{0,120}justifyContent: 'flex-start'/);
-  assert.match(screen, /branchMainRow:\s*\{[\s\S]{0,120}justifyContent: 'center'/);
-  assert.match(screen, /branchRightRow:\s*\{[\s\S]{0,120}justifyContent: 'flex-end'/);
-  assert.doesNotMatch(screen, /branchForkVerticalLeft/);
-  assert.doesNotMatch(screen, /branchForkVerticalRight/);
-  assert.doesNotMatch(screen, /branchForkHorizontal/);
-  assert.doesNotMatch(screen, /borderColor: '#A9D8CA'/);
-  assert.doesNotMatch(screen, /borderColor: '#E9C28A'/);
-  assert.doesNotMatch(screen, /branchForkLine:\s*\{[\s\S]{0,240}borderTopWidth:\s*4/);
-  assert.doesNotMatch(screen, /node\.name \?\? node\.title/);
+  assert.match(links, /<Path/);
+  assert.match(layout, /function buildBezierPath/);
+  assert.match(layout, / C /);
+  assert.match(links, /strokeDasharray=\{edge\.kind === 'active' \? undefined : '3,3'\}/);
+  assert.match(links, /strokeWidth=\{edge\.kind === 'active' \? 3\.5 : 1\.8\}/);
+  assert.doesNotMatch(layout, / L /);
+  assert.doesNotMatch(layout, /branchForkHorizontal/);
 });
 
-test('AI branch tree embeds selected chat preview next to the selected node', () => {
+test('AI branch tree renders selected chat preview in the bottom drawer', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
 
-  assert.match(screen, /function renderPreviewBubble/);
-  assert.match(screen, /function renderEmbeddedPreview/);
-  assert.match(screen, /row\.node\?\.id === selectedNode\?\.id/);
-  assert.match(screen, /renderEmbeddedPreview\(\)/);
-  assert.match(screen, /preview\.previousMessages\.map\(\(message\) => renderPreviewBubble\(message\)\)/);
-  assert.match(screen, /renderPreviewBubble\(preview\.selectedMessage, true\)/);
-  assert.match(screen, /preview\.followUpMessages\.map\(\(message\) => renderPreviewBubble\(message\)\)/);
-  assert.match(screen, /roleLabel/);
-  assert.match(screen, /用户/);
-  assert.match(screen, /助手/);
-  assert.match(screen, /selectedNode \? styles\.canvasActionBar/);
-  assert.match(screen, /STATUS_OPTIONS\.map/);
+  assert.match(screen, /buildPixoryBranchTreeSnapshot\(preview\)/);
+  assert.match(drawer, /parentMessages\.map/);
+  assert.match(drawer, /selectedMessage/);
+  assert.match(drawer, /childMessages\.map/);
+  assert.match(drawer, /onSelectChildMessage/);
+  assert.match(drawer, /message\.role === 'user'/);
 });
 
-test('AI branch tree screen keeps graph vertical-first and switches primary action copy on current route', () => {
+test('AI branch tree screen keeps graph canvas vertical-depth first and checkout in drawer', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+  const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
 
-  assert.match(screen, /const primaryActionLabel = selectedNode\?\.isCurrentRoute \? '返回聊天定位此处' : '切换并返回聊天'/);
-  assert.match(screen, /<AiLightButton label=\{primaryActionLabel\}/);
+  assert.match(layout, /depth \* BRANCH_TREE_ROW_HEIGHT/);
+  assert.match(layout, /BRANCH_TREE_ROW_HEIGHT = 110/);
+  assert.match(drawer, /切为此主线/);
+  assert.match(screen, /onCheckoutNode=\{\(nodeId\) => void checkoutNode\(nodeId\)\}/);
   assert.doesNotMatch(screen, /GRAPH_CANVAS_WIDTH/);
   assert.doesNotMatch(screen, /<ScrollView[\s\S]{0,220}\bhorizontal\b[\s\S]{0,260}<View style=\{styles\.graphGrid\}/);
   assert.doesNotMatch(screen, /width: GRAPH_CANVAS_WIDTH/);
 });
 
-test('AI branch tree screen folds overflow branch candidates instead of silently dropping them', () => {
-  const screen = read('src/screens/AiBranchTreeScreen.tsx');
+test('AI branch tree layout folds overflow branch candidates instead of silently dropping them', () => {
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+  const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
-  assert.match(screen, /visibleGraphRows/);
-  assert.match(screen, /visibleGraphRows = rows/);
-  assert.match(screen, /selectedGroup\?\.nodes\.map/);
-  assert.doesNotMatch(screen, /leftBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
-  assert.doesNotMatch(screen, /rightBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
-  assert.doesNotMatch(screen, /trunkNodes[\s\S]{0,160}\.slice\(0,\s*4\)/);
+  assert.match(layout, /visibleInactiveChildren = inactiveChildren\.slice\(0, BRANCH_TREE_MAX_VISIBLE_SIBLINGS\)/);
+  assert.match(layout, /collapsedChildCount/);
+  assert.match(node, /\+\{node\.collapsedChildCount\}/);
+  assert.doesNotMatch(layout, /leftBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
+  assert.doesNotMatch(layout, /rightBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
+  assert.doesNotMatch(layout, /trunkNodes[\s\S]{0,160}\.slice\(0,\s*4\)/);
 });
 
 test('AI branch tree status updates preserve the selected node after reload', () => {
@@ -274,7 +262,7 @@ test('AI branch tree status updates preserve the selected node after reload', ()
 
   assert.match(screen, /preferredSelectedNodeId/);
   assert.match(screen, /result\.nodes\.find\(\(node\) => node\.id === preferredSelectedNodeId\)/);
-  assert.match(screen, /await loadTree\(selectedNode\.id\)/);
+  assert.match(screen, /await loadTree\(node\.id\)/);
 });
 
 test('AI chat opens branch tree from header and accepts selected branch return', () => {

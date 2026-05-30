@@ -183,3 +183,19 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /BranchTreeNodeCard/);
   assert.match(canvas, /BranchTreeDrawer/);
 });
+
+test('AI branch tree screen delegates graph rendering to the isolated branchTree module', () => {
+  const screen = read('src/screens/AiBranchTreeScreen.tsx');
+
+  assert.match(screen, /BranchTreeCanvas/);
+  assert.match(screen, /buildPixoryBranchTreeGraph/);
+  assert.match(screen, /buildPixoryBranchTreeSnapshot/);
+  assert.match(screen, /loadBranchTree/);
+  assert.match(screen, /loadBranchTreePreview/);
+  assert.match(screen, /resolveBranchSelection/);
+  assert.match(screen, /updateBranchRouteStatus/);
+  assert.doesNotMatch(screen, /branchRail/);
+  assert.doesNotMatch(screen, /renderEmbeddedPreview/);
+  assert.doesNotMatch(screen, /rowConnectorLayer/);
+  assert.doesNotMatch(screen, /previewPanel/);
+});
