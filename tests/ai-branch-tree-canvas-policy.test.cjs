@@ -87,6 +87,13 @@ test('branch tree layout emits cubic Bezier SVG paths instead of hard elbows', (
   assert.doesNotMatch(layout, / L /);
 });
 
+test('branch tree layout normalizes negative lanes into one positive SVG coordinate space', () => {
+  const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
+
+  assert.match(layout, /const xOffset = BRANCH_TREE_CANVAS_PADDING - minLane \* BRANCH_TREE_LANE_WIDTH/);
+  assert.match(layout, /node\.x \+= xOffset/);
+});
+
 test('branch tree viewport helpers clamp zoom and detect offscreen head safely', () => {
   const viewport = read('src/branchTree/engine/branchTreeViewport.ts');
 
@@ -155,4 +162,24 @@ test('branch tree drawer renders parent selected and child chat bubbles with saf
   assert.match(drawer, /onDerive/);
   assert.match(drawer, /onRequestPrune/);
   assert.match(drawer, /message\.role === 'user'/);
+});
+
+test('branch tree canvas owns pan pinch tap checkout and head recenter gestures', () => {
+  const canvas = read('src/branchTree/components/BranchTreeCanvas.tsx');
+
+  assert.match(canvas, /GestureDetector/);
+  assert.match(canvas, /Gesture\.Pan\(\)/);
+  assert.match(canvas, /Gesture\.Pinch\(\)/);
+  assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(1\)/);
+  assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)/);
+  assert.match(canvas, /useSharedValue/);
+  assert.match(canvas, /useAnimatedStyle/);
+  assert.match(canvas, /withTiming/);
+  assert.match(canvas, /clampBranchTreeScale/);
+  assert.match(canvas, /isHeadOutsideSafeViewport/);
+  assert.match(canvas, /最新节点已偏离 · 一键回正/);
+  assert.match(canvas, /BranchTreeGrid/);
+  assert.match(canvas, /BranchTreeLinks/);
+  assert.match(canvas, /BranchTreeNodeCard/);
+  assert.match(canvas, /BranchTreeDrawer/);
 });

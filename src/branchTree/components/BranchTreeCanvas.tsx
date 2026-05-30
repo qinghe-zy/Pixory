@@ -1,0 +1,230 @@
+import { useMemo, useState } from 'react';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+
+import { aiLightColors } from '../../components/ai/aiLightTheme';
+import { radius, spacing, typography } from '../../design/tokens';
+import {
+  buildRecenterTransform,
+  clampBranchTreeScale,
+  isHeadOutsideSafeViewport,
+  worldToScreen,
+} from '../engine/branchTreeViewport';
+import {
+  BRANCH_TREE_NODE_HEIGHT,
+  BRANCH_TREE_NODE_WIDTH,
+  layoutBranchTreeGraph,
+} from '../engine/layoutBranchTreeGraph';
+import type { BranchTreeGraph, BranchTreeSnapshot, BranchTreeViewportSize, BranchTreeViewportTransform } from '../engine/types';
+import { BranchTreeDrawer } from './BranchTreeDrawer';
+import { BranchTreeGrid } from './BranchTreeGrid';
+import { BranchTreeLinks } from './BranchTreeLinks';
+import { BranchTreeNodeCard } from './BranchTreeNodeCard';
+
+interface BranchTreeCanvasProps {
+  graph: BranchTreeGraph;
+  selectedNodeId: string | null;
+  snapshot: BranchTreeSnapshot | null;
+  snapshotLoading?: boolean;
+  onCheckoutNode: (nodeId: string) => void;
+  onDeriveFromNode: (nodeId: string) => void;
+  onRequestPruneNode: (nodeId: string) => void;
+  onSelectChildMessage: (messageId: string) => void;
+  onSelectNode: (nodeId: string) => void;
+}
+
+export function BranchTreeCanvas({
+  graph,
+  onCheckoutNode,
+  onDeriveFromNode,
+  onRequestPruneNode,
+  onSelectChildMessage,
+  onSelectNode,
+  selectedNodeId,
+  snapshot,
+  snapshotLoading = false,
+}: BranchTreeCanvasProps) {
+  const layout = useMemo(() => layoutBranchTreeGraph(graph), [graph]);
+  const [viewport, setViewport] = useState<BranchTreeViewportSize>({ height: 0, width: 0 });
+  const [transformState, setTransformState] = useState<BranchTreeViewportTransform>({
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+  });
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const panStartX = useSharedValue(0);
+  const panStartY = useSharedValue(0);
+  const pinchStartScale = useSharedValue(1);
+
+  function syncTransform(nextTranslateX: number, nextTranslateY: number, nextScale: number) {
+    setTransformState({
+      scale: nextScale,
+      translateX: nextTranslateX,
+      translateY: nextTranslateY,
+    });
+  }
+
+  const graphStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      panStartX.value = translateX.value;
+      panStartY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      translateX.value = panStartX.value + event.translationX;
+      translateY.value = panStartY.value + event.translationY;
+      runOnJS(syncTransform)(translateX.value, translateY.value, scale.value);
+    });
+
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      pinchStartScale.value = scale.value;
+    })
+    .onUpdate((event) => {
+      scale.value = clampBranchTreeScale(pinchStartScale.value * event.scale);
+      runOnJS(syncTransform)(translateX.value, translateY.value, scale.value);
+    });
+
+  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
+
+  const headCenterPoint = layout.headNode
+    ? {
+        x: layout.headNode.x + BRANCH_TREE_NODE_WIDTH / 2,
+        y: layout.headNode.y + BRANCH_TREE_NODE_HEIGHT / 2,
+      }
+    : null;
+  const headScreenPoint = headCenterPoint ? worldToScreen(headCenterPoint, transformState) : null;
+  const headOutside = Boolean(headScreenPoint && viewport.width > 0 && isHeadOutsideSafeViewport(headScreenPoint, viewport));
+
+  function handleLayout(event: LayoutChangeEvent) {
+    setViewport({
+      height: event.nativeEvent.layout.height,
+      width: event.nativeEvent.layout.width,
+    });
+  }
+
+  function recenterHead() {
+    if (!headCenterPoint || viewport.width <= 0 || viewport.height <= 0) {
+      return;
+    }
+    const next = buildRecenterTransform(headCenterPoint, viewport, scale.value);
+    translateX.value = withTiming(next.translateX);
+    translateY.value = withTiming(next.translateY);
+    scale.value = withTiming(next.scale);
+    setTransformState(next);
+  }
+
+  function selectedOrFallbackNodeId(): string | null {
+    return selectedNodeId ?? graph.headNodeId ?? graph.activeNodeId;
+  }
+
+  return (
+    <View onLayout={handleLayout} style={styles.root}>
+      <GestureDetector gesture={composedGesture}>
+        <Animated.View
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
+          style={[styles.canvas, { height: layout.height, width: layout.width }, graphStyle]}
+        >
+          <BranchTreeGrid height={layout.height} width={layout.width} />
+          <BranchTreeLinks edges={layout.edges} height={layout.height} width={layout.width} />
+          {layout.nodes.map((node) => (
+            <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
+              <GestureDetector
+                gesture={Gesture.Exclusive(
+                  Gesture.Tap().numberOfTaps(2)
+                    .onEnd(() => runOnJS(onCheckoutNode)(node.id)),
+                  Gesture.Tap().numberOfTaps(1)
+                    .onEnd(() => runOnJS(onSelectNode)(node.id))
+                )}
+              >
+                <Animated.View>
+                  <BranchTreeNodeCard
+                    node={node}
+                    onDoublePress={onCheckoutNode}
+                    onPress={onSelectNode}
+                    selected={node.id === selectedNodeId}
+                  />
+                </Animated.View>
+              </GestureDetector>
+            </View>
+          ))}
+        </Animated.View>
+      </GestureDetector>
+      {headOutside ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={recenterHead}
+          style={({ pressed }) => [styles.recenterPill, pressed && styles.pressed]}
+        >
+          <Text style={styles.recenterText}>最新节点已偏离 · 一键回正</Text>
+        </Pressable>
+      ) : null}
+      <BranchTreeDrawer
+        loading={snapshotLoading}
+        onCheckout={() => {
+          const nodeId = selectedOrFallbackNodeId();
+          if (nodeId) {
+            onCheckoutNode(nodeId);
+          }
+        }}
+        onDerive={() => {
+          const nodeId = selectedOrFallbackNodeId();
+          if (nodeId) {
+            onDeriveFromNode(nodeId);
+          }
+        }}
+        onRequestPrune={() => {
+          const nodeId = selectedOrFallbackNodeId();
+          if (nodeId) {
+            onRequestPruneNode(nodeId);
+          }
+        }}
+        onSelectChildMessage={onSelectChildMessage}
+        snapshot={snapshot}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  canvas: {
+    elevation: 0,
+    minHeight: 720,
+    minWidth: 720,
+  },
+  nodePosition: {
+    position: 'absolute',
+  },
+  pressed: {
+    opacity: 0.76,
+  },
+  recenterPill: {
+    alignSelf: 'center',
+    backgroundColor: '#D07C60',
+    borderRadius: radius.pill,
+    bottom: 238,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    position: 'absolute',
+  },
+  recenterText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.onDark,
+  },
+  root: {
+    backgroundColor: aiLightColors.canvas,
+    flex: 1,
+    overflow: 'hidden',
+  },
+});

@@ -152,6 +152,10 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
   const minLane = nodes.reduce((min, node) => Math.min(min, node.lane), 0);
   const maxLane = nodes.reduce((max, node) => Math.max(max, node.lane), 0);
   const maxDepth = nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+  const xOffset = BRANCH_TREE_CANVAS_PADDING - minLane * BRANCH_TREE_LANE_WIDTH;
+  nodes.forEach((node) => {
+    node.x += xOffset;
+  });
   const layoutEdges: BranchTreeLayoutEdge[] = graph.edges.reduce<BranchTreeLayoutEdge[]>((edges, edge: BranchTreeEdge) => {
     const from = layoutNodeById.get(edge.fromNodeId);
     const to = layoutNodeById.get(edge.toNodeId);
