@@ -37,20 +37,39 @@ function toBranchTreeNode(node: AiBranchTreeNode): BranchTreeNode {
 }
 
 export function buildPixoryBranchTreeGraph(nodes: AiBranchTreeNode[]): BranchTreeGraph {
+  const sortedNodes = [...nodes].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const mainSequenceNodes = sortedNodes.filter((n) => n.parentBranchRootMessageId === null);
+
   return buildBranchTreeGraph(
-    nodes.map((node) => ({
-      contentPreview: node.preview,
-      createdAt: node.createdAt,
-      isActivePath: node.isCurrentRoute,
-      messageId: node.branchRootMessageId,
-      parentMessageId: node.parentBranchRootMessageId,
-      parentVersionIndex: node.parentBranchVersionIndex,
-      role: roleFromAiNode(node),
-      status: node.status,
-      summary: node.title,
-      versionIndex: node.branchVersionIndex,
-      versionTotal: node.versionTotal,
-    }))
+    sortedNodes.map((node) => {
+      let parentId = node.parentBranchRootMessageId;
+      let parentVersionIndex = node.parentBranchVersionIndex;
+
+      if (parentId === null) {
+        const myIndex = mainSequenceNodes.findIndex(
+          (n) => n.branchRootMessageId === node.branchRootMessageId && n.branchVersionIndex === node.branchVersionIndex
+        );
+        if (myIndex > 0) {
+          const prev = mainSequenceNodes[myIndex - 1];
+          parentId = prev.branchRootMessageId;
+          parentVersionIndex = prev.branchVersionIndex;
+        }
+      }
+
+      return {
+        contentPreview: node.preview,
+        createdAt: node.createdAt,
+        isActivePath: node.isCurrentRoute,
+        messageId: node.branchRootMessageId,
+        parentMessageId: parentId,
+        parentVersionIndex: parentVersionIndex,
+        role: roleFromAiNode(node),
+        status: node.status,
+        summary: node.title,
+        versionIndex: node.branchVersionIndex,
+        versionTotal: node.versionTotal,
+      };
+    })
   );
 }
 
@@ -58,24 +77,9 @@ function toSnapshotMessage(message: AiBranchTreePreview['selectedMessage']): Bra
   return {
     content: message.content,
     id: message.id,
-    label: message.label,
+    label: message.label || '',
     role: roleFromAiRole(message.role),
   };
-}
-
-function childBranchMessagesForNode(node: AiBranchTreeNode, nodes: AiBranchTreeNode[]): BranchTreeSnapshotMessage[] {
-  return nodes
-    .filter(
-      (candidate) =>
-        candidate.parentBranchRootMessageId === node.branchRootMessageId &&
-        candidate.parentBranchVersionIndex === node.branchVersionIndex
-    )
-    .map((candidate) => ({
-      content: candidate.preview,
-      id: candidate.id,
-      label: '分支选项',
-      role: roleFromAiNode(candidate),
-    }));
 }
 
 export function buildPixoryBranchTreeSnapshot(
@@ -86,12 +90,26 @@ export function buildPixoryBranchTreeSnapshot(
     return null;
   }
 
+  const layoutNode = buildPixoryBranchTreeGraph(nodes).nodes.find((n) => n.id === branchNodeId(preview.node.branchRootMessageId, preview.node.branchVersionIndex));
+
   return {
-    childMessages:
-      nodes.length > 0
-        ? childBranchMessagesForNode(preview.node, nodes)
-        : preview.followUpMessages.map(toSnapshotMessage),
-    node: toBranchTreeNode(preview.node),
+    nextMessages: preview.followUpMessages.map(toSnapshotMessage),
+    node: layoutNode ?? {
+      branchesCount: 0,
+      childNodeIds: [],
+      contentPreview: preview.node.preview,
+      createdAt: preview.node.createdAt,
+      id: branchNodeId(preview.node.branchRootMessageId, preview.node.branchVersionIndex),
+      isActivePath: preview.node.isCurrentRoute,
+      isHead: false,
+      messageId: preview.node.branchRootMessageId,
+      parentNodeId: null,
+      role: roleFromAiRole(preview.node.rootRole),
+      status: preview.node.status,
+      summary: preview.node.title,
+      versionIndex: preview.node.branchVersionIndex,
+      versionTotal: preview.node.versionTotal,
+    },
     parentMessages: preview.previousMessages.map(toSnapshotMessage),
     selectedMessage: toSnapshotMessage(preview.selectedMessage),
   };

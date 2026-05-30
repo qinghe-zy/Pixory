@@ -64,7 +64,7 @@ export interface BranchTreeSnapshot {
   node: BranchTreeNode;
   parentMessages: BranchTreeSnapshotMessage[];
   selectedMessage: BranchTreeSnapshotMessage;
-  childMessages: BranchTreeSnapshotMessage[];
+  nextMessages: BranchTreeSnapshotMessage[];
 }
 
 export interface BranchTreeViewportTransform {

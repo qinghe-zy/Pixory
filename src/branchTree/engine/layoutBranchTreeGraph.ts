@@ -14,50 +14,6 @@ export const BRANCH_TREE_ROW_HEIGHT = 110;
 export const BRANCH_TREE_CANVAS_PADDING = 120;
 export const BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2;
 
-function nodeSort(left: BranchTreeNode, right: BranchTreeNode): number {
-  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
-}
-
-function assignActivePathDepths(nodes: BranchTreeNode[]): Map<string, number> {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const activeNodes = nodes.filter((node) => node.isActivePath);
-  const activeHead = activeNodes.find((node) => node.isHead) ?? activeNodes[activeNodes.length - 1] ?? null;
-  const activeChain: BranchTreeNode[] = [];
-  let cursor: BranchTreeNode | undefined = activeHead ?? undefined;
-
-  while (cursor?.isActivePath) {
-    activeChain.push(cursor);
-    cursor = cursor.parentNodeId ? nodeById.get(cursor.parentNodeId) : undefined;
-  }
-
-  const orderedActiveNodes = activeChain.length > 0 ? activeChain.reverse() : activeNodes.sort(nodeSort);
-  const depths = new Map<string, number>();
-  orderedActiveNodes.forEach((node, index) => {
-    depths.set(node.id, index);
-  });
-  return depths;
-}
-
-function reserveLane(occupiedLanesByDepth: Map<number, Set<number>>, depth: number, lane: number): void {
-  const occupied = occupiedLanesByDepth.get(depth) ?? new Set<number>();
-  occupied.add(lane);
-  occupiedLanesByDepth.set(depth, occupied);
-}
-
-function resolveInactiveLane(
-  parentLane: number,
-  siblingIndex: number,
-  depth: number,
-  occupiedLanesByDepth: Map<number, Set<number>>
-): number {
-  const direction = parentLane < 0 ? -1 : parentLane > 0 ? 1 : siblingIndex % 2 === 0 ? -1 : 1;
-  let lane = parentLane === 0 ? direction : parentLane + direction;
-  while (occupiedLanesByDepth.get(depth)?.has(lane)) {
-    lane += direction;
-  }
-  return lane;
-}
-
 function buildBezierPath(from: BranchTreeLayoutNode, to: BranchTreeLayoutNode): string {
   const startX = from.x + BRANCH_TREE_NODE_WIDTH / 2;
   const startY = from.y + BRANCH_TREE_NODE_HEIGHT;
@@ -71,111 +27,143 @@ function buildBezierPath(from: BranchTreeLayoutNode, to: BranchTreeLayoutNode): 
   return `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
 }
 
-function toPositionedNode(node: BranchTreeNode, lane: number, depth: number, collapsedChildCount = 0): BranchTreeLayoutNode {
-  return {
-    ...node,
-    collapsedChildCount,
-    depth,
-    lane,
-    x: lane * BRANCH_TREE_LANE_WIDTH,
-    y: BRANCH_TREE_CANVAS_PADDING + depth * BRANCH_TREE_ROW_HEIGHT,
-  };
-}
-
 export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout {
-  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const depths = new Map<string, number>();
+  const lanes = new Map<string, number>();
+  const occupiedLanesByDepth = new Map<number, Set<number>>();
+  const collapsedCounts = new Map<string, number>();
+
   const childrenByParentId = new Map<string, BranchTreeNode[]>();
   graph.nodes.forEach((node) => {
-    if (!node.parentNodeId) {
-      return;
+    if (node.parentNodeId) {
+      const children = childrenByParentId.get(node.parentNodeId) ?? [];
+      children.push(node);
+      childrenByParentId.set(node.parentNodeId, children);
     }
-    const children = childrenByParentId.get(node.parentNodeId) ?? [];
-    children.push(node);
-    childrenByParentId.set(node.parentNodeId, children);
   });
-  childrenByParentId.forEach((children) => children.sort(nodeSort));
 
-  const activeDepths = assignActivePathDepths(graph.nodes);
-  const occupiedLanesByDepth = new Map<number, Set<number>>();
-  const layoutNodeById = new Map<string, BranchTreeLayoutNode>();
+  childrenByParentId.forEach((children) => {
+    children.sort((a, b) => {
+      if (a.isActivePath !== b.isActivePath) {
+        return a.isActivePath ? -1 : 1;
+      }
+      return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+    });
+  });
 
-  graph.nodes
-    .filter((node) => activeDepths.has(node.id))
-    .sort((left, right) => (activeDepths.get(left.id) ?? 0) - (activeDepths.get(right.id) ?? 0))
-    .forEach((node) => {
-      const depth = activeDepths.get(node.id) ?? 0;
-      reserveLane(occupiedLanesByDepth, depth, 0);
-      layoutNodeById.set(node.id, toPositionedNode(node, 0, depth));
+  const roots = graph.nodes
+    .filter((n) => !n.parentNodeId)
+    .sort((a, b) => {
+      if (a.isActivePath !== b.isActivePath) {
+        return a.isActivePath ? -1 : 1;
+      }
+      return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
     });
 
-  function placeInactiveChildren(parentNode: BranchTreeNode, parentLane: number, parentDepth: number): void {
-    const children = childrenByParentId.get(parentNode.id) ?? [];
-    const inactiveChildren = children.filter((child) => !activeDepths.has(child.id)).sort(nodeSort);
-    const visibleInactiveChildren = inactiveChildren.slice(0, BRANCH_TREE_MAX_VISIBLE_SIBLINGS);
-    const parentLayoutNode = layoutNodeById.get(parentNode.id);
-    if (parentLayoutNode) {
-      parentLayoutNode.collapsedChildCount = Math.max(0, inactiveChildren.length - visibleInactiveChildren.length);
+  function computeDepth(node: BranchTreeNode, currentDepth: number) {
+    depths.set(node.id, currentDepth);
+    const children = childrenByParentId.get(node.id) ?? [];
+    children.forEach((child) => computeDepth(child, currentDepth + 1));
+  }
+  roots.forEach((root) => computeDepth(root, 0));
+
+  function isOccupied(depth: number, lane: number) {
+    return occupiedLanesByDepth.get(depth)?.has(lane) ?? false;
+  }
+  function reserve(depth: number, lane: number) {
+    const set = occupiedLanesByDepth.get(depth) ?? new Set<number>();
+    set.add(lane);
+    occupiedLanesByDepth.set(depth, set);
+  }
+  function findFreeLane(depth: number, preferredLane: number, direction: 1 | -1) {
+    let l = preferredLane;
+    while (isOccupied(depth, l)) {
+      l += direction;
     }
-
-    visibleInactiveChildren.forEach((child, siblingIndex) => {
-      const depth = parentDepth + 1;
-      const lane = resolveInactiveLane(parentLane, siblingIndex, depth, occupiedLanesByDepth);
-      reserveLane(occupiedLanesByDepth, depth, lane);
-      layoutNodeById.set(child.id, toPositionedNode(child, lane, depth));
-      placeInactiveChildren(child, lane, depth);
-    });
-
-    children
-      .filter((child) => activeDepths.has(child.id))
-      .forEach((child) => {
-        const childDepth = activeDepths.get(child.id);
-        if (childDepth !== undefined) {
-          placeInactiveChildren(child, 0, childDepth);
-        }
-      });
+    return l;
   }
 
-  graph.nodes
-    .filter((node) => !node.parentNodeId)
-    .sort(nodeSort)
-    .forEach((rootNode, rootIndex) => {
-      const depth = activeDepths.get(rootNode.id) ?? 0;
-      const lane = activeDepths.has(rootNode.id) ? 0 : resolveInactiveLane(0, rootIndex, depth, occupiedLanesByDepth);
-      if (!layoutNodeById.has(rootNode.id)) {
-        reserveLane(occupiedLanesByDepth, depth, lane);
-        layoutNodeById.set(rootNode.id, toPositionedNode(rootNode, lane, depth));
-      }
-      placeInactiveChildren(rootNode, lane, depth);
-    });
+  function assignLaneDFS(node: BranchTreeNode, preferredLane: number, direction: 1 | -1) {
+    const depth = depths.get(node.id) ?? 0;
+    let targetLane = node.isActivePath ? 0 : preferredLane;
+    if (isOccupied(depth, targetLane)) {
+      targetLane = findFreeLane(depth, targetLane, direction);
+    }
+    lanes.set(node.id, targetLane);
+    reserve(depth, targetLane);
 
-  const nodes = [...layoutNodeById.values()].sort((left, right) => left.depth - right.depth || left.lane - right.lane);
-  const minLane = nodes.reduce((min, node) => Math.min(min, node.lane), 0);
-  const maxLane = nodes.reduce((max, node) => Math.max(max, node.lane), 0);
-  const maxDepth = nodes.reduce((max, node) => Math.max(max, node.depth), 0);
+    const children = childrenByParentId.get(node.id) ?? [];
+    
+    const inactiveChildren = children.filter((c) => !c.isActivePath);
+    const activeChildren = children.filter((c) => c.isActivePath);
+    const visibleInactiveCount = Math.min(inactiveChildren.length, BRANCH_TREE_MAX_VISIBLE_SIBLINGS);
+    const collapsedCount = Math.max(0, inactiveChildren.length - visibleInactiveCount);
+    collapsedCounts.set(node.id, collapsedCount);
+
+    const visibleChildren = [
+      ...activeChildren,
+      ...inactiveChildren.slice(0, visibleInactiveCount)
+    ];
+
+    visibleChildren.forEach((child, index) => {
+      const childDir = index % 2 === 0 ? direction : (direction * -1 as 1 | -1);
+      const childPref = index === 0 ? targetLane : targetLane + childDir;
+      assignLaneDFS(child, childPref, childDir);
+    });
+  }
+
+  roots.forEach((root, index) => {
+    const dir = index % 2 === 0 ? 1 : -1;
+    const pref = index === 0 ? 0 : dir * Math.ceil(index / 2);
+    assignLaneDFS(root, pref, dir);
+  });
+
+  const placedNodes = graph.nodes.filter(n => lanes.has(n.id));
+  
+  const minLane = placedNodes.reduce((min, node) => Math.min(min, lanes.get(node.id) ?? 0), 0);
+  const maxLane = placedNodes.reduce((max, node) => Math.max(max, lanes.get(node.id) ?? 0), 0);
+  const maxDepth = placedNodes.reduce((max, node) => Math.max(max, depths.get(node.id) ?? 0), 0);
   const maxAbsLane = Math.max(Math.abs(minLane), Math.abs(maxLane));
   const xOffset = BRANCH_TREE_CANVAS_PADDING + maxAbsLane * BRANCH_TREE_LANE_WIDTH;
-  nodes.forEach((node) => {
-    node.x += xOffset;
+
+  const layoutNodeById = new Map<string, BranchTreeLayoutNode>();
+  
+  const layoutNodes: BranchTreeLayoutNode[] = placedNodes.map(node => {
+    const depth = depths.get(node.id) ?? 0;
+    const lane = lanes.get(node.id) ?? 0;
+    const collapsedCount = collapsedCounts.get(node.id) ?? 0;
+    const layoutNode = {
+      ...node,
+      collapsedChildCount: collapsedCount,
+      depth,
+      lane,
+      x: xOffset + lane * BRANCH_TREE_LANE_WIDTH,
+      y: BRANCH_TREE_CANVAS_PADDING + depth * BRANCH_TREE_ROW_HEIGHT,
+    };
+    layoutNodeById.set(node.id, layoutNode);
+    return layoutNode;
   });
-  const layoutEdges: BranchTreeLayoutEdge[] = graph.edges.reduce<BranchTreeLayoutEdge[]>((edges, edge: BranchTreeEdge) => {
+
+  const layoutEdges: BranchTreeLayoutEdge[] = graph.edges.reduce<BranchTreeLayoutEdge[]>((acc, edge) => {
     const from = layoutNodeById.get(edge.fromNodeId);
     const to = layoutNodeById.get(edge.toNodeId);
     if (!from || !to) {
-      return edges;
+      return acc;
     }
-    edges.push({
+    acc.push({
       ...edge,
       path: buildBezierPath(from, to),
     });
-    return edges;
+    return acc;
   }, []);
+
   const headNode = graph.headNodeId ? layoutNodeById.get(graph.headNodeId) ?? null : null;
 
   return {
     edges: layoutEdges,
     headNode,
     height: BRANCH_TREE_CANVAS_PADDING * 2 + maxDepth * BRANCH_TREE_ROW_HEIGHT + BRANCH_TREE_NODE_HEIGHT,
-    nodes,
+    nodes: layoutNodes,
     width: BRANCH_TREE_CANVAS_PADDING * 2 + (maxAbsLane * 2 + 1) * BRANCH_TREE_LANE_WIDTH,
   };
 }

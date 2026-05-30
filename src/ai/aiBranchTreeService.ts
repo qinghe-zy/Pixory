@@ -48,7 +48,7 @@ export interface AiBranchTreeRow {
 export interface AiBranchPreviewMessage {
   id: string;
   role: AiMessageRecord['role'];
-  label: string;
+  label?: string;
   content: string;
   createdAt: string;
 }
@@ -418,12 +418,12 @@ export async function loadBranchTree(input: {
   );
 }
 
-function toPreviewMessage(message: AiMessageRecord, label: string): AiBranchPreviewMessage {
+function toPreviewMessage(message: AiMessageRecord, label?: string): AiBranchPreviewMessage {
   return {
     content: message.content,
     createdAt: message.createdAt,
     id: message.id,
-    label,
+    label: label ?? '',
     role: message.role,
   };
 }
@@ -486,16 +486,16 @@ export async function loadBranchTreePreview(input: {
       return null;
     }
     const previous = rootIndex > 0
-      ? selectedMessages.slice(Math.max(0, rootIndex - 1), rootIndex)
-      : await aiThreadRepository.listRecentCompletedMessagesBefore(db, input.threadId, root.id, 1, scopes);
+      ? selectedMessages.slice(Math.max(0, rootIndex - 4), rootIndex)
+      : await aiThreadRepository.listRecentCompletedMessagesBefore(db, input.threadId, root.id, 4, scopes);
     const followUp = rootIndex >= 0
-      ? selectedMessages.slice(rootIndex + 1, rootIndex + 3)
-      : await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, input.threadId, root.id, 2, scopes);
+      ? selectedMessages.slice(rootIndex + 1, rootIndex + 6)
+      : await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, input.threadId, root.id, 5, scopes);
     return {
-      followUpMessages: followUp.map((message, index) => toPreviewMessage(message, index === 0 ? '后续' : '后续代表消息')),
+      followUpMessages: followUp.map((message) => toPreviewMessage(message)),
       node,
-      previousMessages: previous.map((message) => toPreviewMessage(message, '前文')),
-      selectedMessage: toPreviewMessage(selectedRoot, node.versionLabel),
+      previousMessages: previous.map((message) => toPreviewMessage(message)),
+      selectedMessage: toPreviewMessage(selectedRoot, `当前选中的 v${node.branchVersionIndex} 版本`),
     };
   });
 }

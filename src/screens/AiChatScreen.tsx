@@ -1180,8 +1180,9 @@ export function AiChatScreen({
   }, [space, threadId]);
 
   useEffect(() => {
-    void reloadMessages(threadId ?? null);
-  }, [reloadMessages, threadId]);
+    scrollToLatestMessage(false, true);
+    void reloadMessages(threadId ?? null, true);
+  }, [reloadMessages, scrollToLatestMessage, threadId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -1267,6 +1268,9 @@ export function AiChatScreen({
   useEffect(() => {
     const targetMessageId = pendingBranchTreeScrollMessageIdRef.current;
     if (!targetMessageId) {
+      return;
+    }
+    if (branchTreeSelection && selectedVersionByMessageId !== branchTreeSelection.selectionMap) {
       return;
     }
     const index = invertedMessageItems.findIndex((item) => item.message.id === targetMessageId);

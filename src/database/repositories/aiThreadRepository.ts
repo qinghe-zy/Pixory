@@ -787,10 +787,13 @@ export const aiThreadRepository = {
           ai_message_versions.messageCreatedAt AS versionCreatedAt,
           ai_message_versions.messageUpdatedAt AS versionUpdatedAt,
           root_versions.versionTotal AS versionTotal,
-          root.id AS parentBranchRootMessageId,
+          CASE
+            WHEN ai_message_versions.versionIndex > 1 THEN root.id
+            ELSE root.branchRootMessageId
+          END AS parentBranchRootMessageId,
           CASE
             WHEN ai_message_versions.versionIndex > 1 THEN ai_message_versions.versionIndex - 1
-            ELSE NULL
+            ELSE root.branchVersionIndex
           END AS parentBranchVersionIndex
         FROM ai_message_versions
         JOIN root_versions ON root_versions.originalMessageId = ai_message_versions.originalMessageId
@@ -812,10 +815,13 @@ export const aiThreadRepository = {
           root.createdAt AS versionCreatedAt,
           root.updatedAt AS versionUpdatedAt,
           root_versions.versionTotal AS versionTotal,
-          root.id AS parentBranchRootMessageId,
+          CASE
+            WHEN root_versions.versionTotal > 1 THEN root.id
+            ELSE root.branchRootMessageId
+          END AS parentBranchRootMessageId,
           CASE
             WHEN root_versions.versionTotal > 1 THEN root_versions.versionTotal - 1
-            ELSE NULL
+            ELSE root.branchVersionIndex
           END AS parentBranchVersionIndex
         FROM root_versions
         JOIN ai_messages root ON root.id = root_versions.originalMessageId

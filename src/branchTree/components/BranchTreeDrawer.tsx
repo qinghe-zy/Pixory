@@ -1,4 +1,5 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../../components/ai/AiLightButton';
 import { aiLightColors } from '../../components/ai/aiLightTheme';
@@ -10,30 +11,41 @@ interface BranchTreeDrawerProps {
   loading?: boolean;
   onCheckout: () => void;
   onClose: () => void;
-  onDerive: () => void;
-  onRequestPrune: () => void;
-  onSelectChildMessage: (messageId: string) => void;
 }
 
 function BranchTreeBubble({
-  emphasis,
   message,
-  muted,
+  highlighted,
 }: {
-  emphasis?: boolean;
   message: BranchTreeSnapshotMessage;
-  muted?: boolean;
+  highlighted?: boolean;
 }) {
   const isUser = message.role === 'user';
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <View style={[styles.bubbleRow, isUser && styles.bubbleRowUser]}>
-      <View style={[styles.bubble, muted && styles.bubbleMuted, isUser && styles.bubbleUser, emphasis && styles.bubbleEmphasis]}>
-        <Text numberOfLines={1} style={[styles.bubbleLabel, isUser && styles.bubbleLabelUser]}>
+      <Pressable
+        onPress={() => setExpanded(!expanded)}
+        style={[
+          styles.bubble,
+          isUser && styles.bubbleUser,
+          highlighted && styles.bubbleHighlighted,
+        ]}
+      >
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.bubbleLabel,
+            isUser && styles.bubbleLabelUser,
+          ]}
+        >
           {message.label || (isUser ? '你' : 'AI')}
         </Text>
-        <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>{message.content || '空消息'}</Text>
-      </View>
+        <Text numberOfLines={expanded ? undefined : 2} style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+          {message.content || '空消息'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -42,9 +54,6 @@ export function BranchTreeDrawer({
   loading = false,
   onCheckout,
   onClose,
-  onDerive,
-  onRequestPrune,
-  onSelectChildMessage,
   snapshot,
 }: BranchTreeDrawerProps) {
   return (
@@ -52,7 +61,7 @@ export function BranchTreeDrawer({
       <View style={styles.handle} />
       <View style={styles.headerRow}>
         <Text numberOfLines={1} style={styles.title}>
-          {snapshot ? '当前节点分支快照' : loading ? '正在读取分支快照' : '选择一个分支节点'}
+          {snapshot ? '当前节点快照' : loading ? '正在读取分支快照' : '选择一个分支节点'}
         </Text>
         {snapshot ? (
           <Text style={styles.versionLabel}>
@@ -65,7 +74,7 @@ export function BranchTreeDrawer({
           onPress={onClose}
           style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
         >
-          <Text style={styles.closeText}>收起</Text>
+          <Text style={styles.closeText}>收起 ×</Text>
         </Pressable>
       </View>
       {loading ? (
@@ -74,50 +83,28 @@ export function BranchTreeDrawer({
           <Text style={styles.emptyText}>正在读取附近消息</Text>
         </View>
       ) : snapshot ? (
-        <View style={styles.content}>
+        <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
           {snapshot.parentMessages.map((message) => (
-            <BranchTreeBubble key={`${message.id}:${message.label}`} message={message} muted />
+            <BranchTreeBubble key={`${message.id}:${message.label}`} message={message} />
           ))}
-          <BranchTreeBubble emphasis message={snapshot.selectedMessage} />
-          {snapshot.childMessages.map((message) => (
-            <Pressable
-              accessibilityLabel={`查看分支选项${message.label}`}
-              accessibilityRole="button"
-              key={`${message.id}:${message.label}`}
-              onPress={() => onSelectChildMessage(message.id)}
-              style={({ pressed }) => [pressed && styles.pressed]}
-            >
-              <BranchTreeBubble message={{ ...message, label: message.label || '分支选项' }} />
-            </Pressable>
+          <BranchTreeBubble message={snapshot.selectedMessage} highlighted />
+          {snapshot.nextMessages.map((message) => (
+            <BranchTreeBubble key={`${message.id}:${message.label}`} message={message} />
           ))}
-        </View>
+        </ScrollView>
       ) : (
         <Text style={styles.emptyText}>点击画布上的节点查看上下文</Text>
       )}
       <View style={styles.actionRow}>
-        <View style={styles.primaryAction}>
-          <AiLightButton disabled={!snapshot} label="基于此衍生新分支" onPress={onDerive} />
-        </View>
-        <View style={styles.secondaryAction}>
-          <AiLightButton disabled={!snapshot} label="切为此主线" onPress={onCheckout} variant="outline" />
-        </View>
+        <AiLightButton disabled={!snapshot} label="▶ 跳转到该节点" onPress={onCheckout} />
       </View>
-      <Pressable
-        accessibilityRole="button"
-        disabled={!snapshot}
-        onPress={onRequestPrune}
-        style={({ pressed }) => [styles.pruneAction, pressed && styles.pressed, !snapshot && styles.disabled]}
-      >
-        <Text style={styles.pruneText}>剪除此后代</Text>
-      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   actionRow: {
-    flexDirection: 'row',
-    gap: rhythm.inlineGap,
+    marginTop: spacing[2],
   },
   bubble: {
     backgroundColor: aiLightColors.canvas,
@@ -127,19 +114,17 @@ const styles = StyleSheet.create({
     maxWidth: '82%',
     padding: spacing[3],
   },
-  bubbleEmphasis: {
-    borderColor: '#D07C60',
-    borderWidth: 1,
-  },
   bubbleLabel: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
+    marginBottom: spacing[1],
   },
   bubbleLabelUser: {
     color: 'rgba(255,255,255,0.78)',
   },
-  bubbleMuted: {
-    backgroundColor: '#F0EAE0',
+  bubbleHighlighted: {
+    borderColor: '#D07C60',
+    borderWidth: 2,
   },
   bubbleRow: {
     flexDirection: 'row',
@@ -160,8 +145,11 @@ const styles = StyleSheet.create({
     borderColor: '#D07C60',
   },
   content: {
-    gap: rhythm.cardContentGap,
     maxHeight: 280,
+  },
+  contentContainer: {
+    gap: rhythm.cardContentGap,
+    paddingRight: spacing[1],
   },
   closeButton: {
     borderColor: aiLightColors.hairline,
@@ -173,9 +161,6 @@ const styles = StyleSheet.create({
   closeText: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
-  },
-  disabled: {
-    opacity: 0.36,
   },
   drawer: {
     backgroundColor: aiLightColors.cardWash,
@@ -214,20 +199,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.76,
-  },
-  primaryAction: {
-    flex: 1,
-  },
-  pruneAction: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing[1],
-  },
-  pruneText: {
-    ...typography.textStyles.caption,
-    color: '#B75348',
-  },
-  secondaryAction: {
-    flex: 0.74,
   },
   title: {
     ...typography.textStyles.bodyStrong,

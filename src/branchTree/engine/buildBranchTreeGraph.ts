@@ -73,6 +73,12 @@ export function buildBranchTreeGraph(sourceNodes: BranchTreeSourceNode[]): Branc
   const headNode = activeNodes[activeNodes.length - 1] ?? nodes[nodes.length - 1] ?? null;
   if (headNode) {
     headNode.isHead = true;
+    let curr: BranchTreeNode | null = headNode;
+    while (curr) {
+      curr.isActivePath = true;
+      activeNodeIds.add(curr.id);
+      curr = curr.parentNodeId ? nodeByVersionKey.get(curr.parentNodeId) ?? null : null;
+    }
   }
 
   const edges: BranchTreeEdge[] = [];

@@ -34,10 +34,7 @@ interface BranchTreeCanvasProps {
   snapshotVisible: boolean;
   onCheckoutNode: (nodeId: string) => void;
   onCloseSnapshot: () => void;
-  onDeriveFromNode: (nodeId: string) => void;
-  onRequestPruneNode: (nodeId: string) => void;
   onOpenSnapshotNode: (nodeId: string) => void;
-  onSelectChildMessage: (messageId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }
 
@@ -45,10 +42,7 @@ export function BranchTreeCanvas({
   graph,
   onCheckoutNode,
   onCloseSnapshot,
-  onDeriveFromNode,
-  onRequestPruneNode,
   onOpenSnapshotNode,
-  onSelectChildMessage,
   onSelectNode,
   selectedNodeId,
   snapshot,
@@ -156,16 +150,19 @@ export function BranchTreeCanvas({
 
   useAnimatedReaction(
     () => {
+      if (snapshotVisible) {
+        return false;
+      }
       if (!headCenterPoint || viewport.width <= 0 || viewport.height <= 0) {
         return false;
       }
       const screenX = headCenterPoint.x * scale.value + translateX.value;
       const screenY = headCenterPoint.y * scale.value + translateY.value;
       return (
-        screenX < 20 ||
-        screenX > viewport.width - 140 ||
-        screenY < 80 ||
-        screenY > viewport.height - 280
+        screenX < -100 ||
+        screenX > viewport.width + 100 ||
+        screenY < -100 ||
+        screenY > viewport.height + 100
       );
     },
     (next, previous) => {
@@ -173,7 +170,7 @@ export function BranchTreeCanvas({
         runOnJS(setHeadOutside)(next);
       }
     },
-    [headCenterPoint, viewport.height, viewport.width]
+    [headCenterPoint, viewport.height, viewport.width, snapshotVisible]
   );
 
   function selectedOrFallbackNodeId(): string | null {
@@ -197,10 +194,7 @@ export function BranchTreeCanvas({
           {layout.nodes.map((node) => (
             <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
               <GestureDetector
-                gesture={Gesture.Exclusive(
-                  Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => onOpenSnapshotNode(node.id)),
-                  Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onSelectNode(node.id))
-                )}
+                gesture={Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onOpenSnapshotNode(node.id))}
               >
                 <Animated.View>
                   <BranchTreeNodeCard node={node} selected={node.id === selectedNodeId} />
@@ -214,9 +208,9 @@ export function BranchTreeCanvas({
         <Pressable
           accessibilityRole="button"
           onPress={recenterHead}
-          style={({ pressed }) => [styles.recenterPill, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.recenterPill, { bottom: snapshotVisible ? 238 : 38 }, pressed && styles.pressed]}
         >
-          <Text style={styles.recenterText}>最新节点已偏离 · 一键回正</Text>
+          <Text style={styles.recenterText}>📍 定位到最新</Text>
         </Pressable>
       ) : null}
       {snapshotVisible ? (
@@ -229,19 +223,6 @@ export function BranchTreeCanvas({
             }
           }}
           onClose={onCloseSnapshot}
-          onDerive={() => {
-            const nodeId = selectedOrFallbackNodeId();
-            if (nodeId) {
-              onDeriveFromNode(nodeId);
-            }
-          }}
-          onRequestPrune={() => {
-            const nodeId = selectedOrFallbackNodeId();
-            if (nodeId) {
-              onRequestPruneNode(nodeId);
-            }
-          }}
-          onSelectChildMessage={onSelectChildMessage}
           snapshot={snapshot}
         />
       ) : null}
@@ -273,7 +254,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: '#D07C60',
     borderRadius: radius.pill,
-    bottom: 238,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     position: 'absolute',

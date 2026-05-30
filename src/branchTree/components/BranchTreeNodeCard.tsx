@@ -9,61 +9,136 @@ interface BranchTreeNodeCardProps {
   selected: boolean;
 }
 
+function formatTime(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    const hh = date.getHours().toString().padStart(2, '0');
+    const mm = date.getMinutes().toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  } catch {
+    return '';
+  }
+}
+
 export function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) {
+  const isUser = node.role === 'user';
+  const roleText = isUser ? '👤 你' : '🤖 AI';
+  const timeText = formatTime(node.createdAt);
+
   return (
     <View
       accessibilityLabel={`查看${node.summary}分支快照`}
       accessibilityRole="button"
       style={[
         styles.card,
-        node.isActivePath && styles.activePathCard,
+        !node.isActivePath && styles.inactivePathCard,
+        node.isActivePath && !node.isHead && styles.activePathCard,
+        node.isHead && styles.headCard,
         selected && styles.selectedCard,
       ]}
     >
+      {node.isHead ? (
+        <View style={styles.headBadge}>
+          <Text style={styles.headBadgeText}>HEAD ▲</Text>
+        </View>
+      ) : null}
+      
       <View style={styles.metaRow}>
-        <View style={[styles.statusDot, node.isActivePath && styles.activeDot]} />
-        <Text numberOfLines={1} style={styles.versionLabel}>
-          v{node.versionIndex}/{node.versionTotal}
+        <Text numberOfLines={1} style={styles.roleLabel}>
+          {roleText} · v{node.versionIndex}/{node.versionTotal}
+        </Text>
+        <Text numberOfLines={1} style={styles.timeLabel}>
+          {timeText}
         </Text>
       </View>
+      
+      <View style={styles.divider} />
+      
       <Text numberOfLines={2} style={styles.summary}>
         {node.summary}
       </Text>
+      
       {node.collapsedChildCount > 0 ? (
         <Text numberOfLines={1} style={styles.branchCounter}>
-          +{node.collapsedChildCount}
+          ↓ {node.collapsedChildCount}
         </Text>
+      ) : null}
+      
+      {selected ? (
+        <Text style={styles.hintText}>双击展开</Text>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  activeDot: {
-    backgroundColor: '#D07C60',
-    borderColor: '#D07C60',
-  },
   activePathCard: {
-    borderColor: '#D07C60',
+    backgroundColor: '#FCF8F5',
+    borderLeftColor: '#D07C60',
+    borderLeftWidth: 3,
   },
   branchCounter: {
     ...typography.textStyles.micro,
     alignSelf: 'flex-start',
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
-    color: '#D07C60',
-    marginTop: spacing[1],
+    borderWidth: StyleSheet.hairlineWidth,
+    color: aiLightColors.muted,
+    marginTop: spacing[1.5],
     paddingHorizontal: spacing[1.5],
     paddingVertical: 1,
   },
   card: {
     backgroundColor: aiLightColors.canvas,
     borderColor: aiLightColors.hairline,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    borderWidth: 1,
     minHeight: 70,
     padding: spacing[2],
     width: 120,
+  },
+  divider: {
+    backgroundColor: aiLightColors.hairline,
+    height: 1,
+    marginVertical: spacing[1],
+    width: '100%',
+  },
+  headBadge: {
+    backgroundColor: '#D07C60',
+    borderBottomLeftRadius: 4,
+    borderTopRightRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    position: 'absolute',
+    right: -1,
+    top: -1,
+  },
+  headBadgeText: {
+    color: aiLightColors.onDark,
+    fontFamily: typography.family.mono,
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  headCard: {
+    borderColor: '#D07C60',
+    borderWidth: 1.5,
+  },
+  hintText: {
+    ...typography.textStyles.micro,
+    alignSelf: 'center',
+    bottom: -18,
+    color: '#D07C60',
+    position: 'absolute',
+  },
+  inactivePathCard: {
+    backgroundColor: aiLightColors.canvas,
+    borderColor: '#D1C9BE',
+    borderStyle: 'dashed',
+    borderWidth: 1,
   },
   metaRow: {
     alignItems: 'center',
@@ -71,26 +146,25 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
     justifyContent: 'space-between',
   },
-  selectedCard: {
-    borderColor: '#D07C60',
-    borderWidth: 2,
+  roleLabel: {
+    color: aiLightColors.muted,
+    fontFamily: typography.family.base,
+    fontSize: 10,
   },
-  statusDot: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: '#D1C9BE',
-    borderRadius: radius.pill,
-    borderWidth: 2,
-    height: spacing[3],
-    width: spacing[3],
+  selectedCard: {
+    shadowColor: '#D07C60',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4, // Android shadow
   },
   summary: {
     color: aiLightColors.ink,
     fontFamily: typography.family.base,
     fontSize: 10.5,
     lineHeight: 14,
-    marginTop: spacing[1],
   },
-  versionLabel: {
+  timeLabel: {
     color: aiLightColors.muted,
     fontFamily: typography.family.mono,
     fontSize: 9,

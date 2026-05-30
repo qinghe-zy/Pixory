@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import {
   loadBranchTree,
@@ -143,71 +143,43 @@ export function AiBranchTreeScreen({
       return;
     }
 
-    try {
-      const selection = await resolveBranchSelection({
-        branchRootMessageId: node.branchRootMessageId,
-        branchVersionIndex: node.branchVersionIndex,
-        space,
-      });
-      onCheckoutBranch({
-        branchRootMessageId: selection.branchRootMessageId,
-        branchVersionIndex: selection.branchVersionIndex,
-        selectionMap: selection.selectionMap,
-      });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '无法切换路线');
+    const performCheckout = async () => {
+      try {
+        const selection = await resolveBranchSelection({
+          branchRootMessageId: node.branchRootMessageId,
+          branchVersionIndex: node.branchVersionIndex,
+          space,
+        });
+        onCheckoutBranch({
+          branchRootMessageId: selection.branchRootMessageId,
+          branchVersionIndex: selection.branchVersionIndex,
+          selectionMap: selection.selectionMap,
+        });
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '无法切换路线');
+      }
+    };
+
+    const layoutNode = graph.nodes.find((n) => n.id === node.id);
+    const isActivePath = layoutNode?.isActivePath ?? node.isCurrentRoute;
+
+    if (isActivePath) {
+      void performCheckout();
+    } else {
+      Alert.alert(
+        '确认切换路线',
+        '你即将跳跃到一条旁支路线上。\n（此操作会将该旁支设为当前主路线，你随时可以切换回来）',
+        [
+          { text: '取消', style: 'cancel' },
+          { text: '确认切换', onPress: () => void performCheckout() },
+        ]
+      );
     }
   }
 
-  async function deriveBranch(nodeId: string) {
-    const node = nodes.find((item) => item.id === nodeId);
-    if (!node) {
-      return;
-    }
 
-    try {
-      const selection = await resolveBranchSelection({
-        branchRootMessageId: node.branchRootMessageId,
-        branchVersionIndex: node.branchVersionIndex,
-        space,
-      });
-      onDeriveBranch({
-        branchRootMessageId: selection.branchRootMessageId,
-        branchVersionIndex: selection.branchVersionIndex,
-        selectionMap: selection.selectionMap,
-      });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '无法创建新分支');
-    }
-  }
 
-  async function markNodeStatus(nodeId: string, status: AiBranchRouteStatus) {
-    const node = nodes.find((item) => item.id === nodeId);
-    if (!node) {
-      return;
-    }
 
-    try {
-      await updateBranchRouteStatus({
-        branchRootMessageId: node.branchRootMessageId,
-        branchVersionIndex: node.branchVersionIndex,
-        space,
-        status,
-        threadId,
-      });
-      await loadTree(node.id);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '标记路线失败');
-    }
-  }
-
-  function selectChildMessage(messageId: string) {
-    const nextNode = nodes.find((node) => node.id === messageId) ?? null;
-    if (nextNode) {
-      setSelectedNode(nextNode);
-      setSnapshotVisible(true);
-    }
-  }
 
   return (
     <AiLightScaffold
@@ -238,11 +210,8 @@ export function AiBranchTreeScreen({
         <BranchTreeCanvas
           graph={graph}
           onCheckoutNode={(nodeId) => void checkoutNode(nodeId)}
-          onDeriveFromNode={(nodeId) => void deriveBranch(nodeId)}
-          onOpenSnapshotNode={openSnapshotNode}
           onCloseSnapshot={closeSnapshot}
-          onRequestPruneNode={(nodeId) => void markNodeStatus(nodeId, 'abandoned')}
-          onSelectChildMessage={selectChildMessage}
+          onOpenSnapshotNode={openSnapshotNode}
           onSelectNode={selectNode}
           selectedNodeId={selectedNode?.id ?? null}
           snapshot={snapshot}
