@@ -12,8 +12,9 @@ import Animated, {
 import { aiLightColors } from '../../components/ai/aiLightTheme';
 import { radius, spacing, typography } from '../../design/tokens';
 import {
+  BRANCH_TREE_MAX_SCALE,
+  BRANCH_TREE_MIN_SCALE,
   buildRecenterTransform,
-  clampBranchTreeScale,
 } from '../engine/branchTreeViewport';
 import {
   BRANCH_TREE_NODE_HEIGHT,
@@ -97,7 +98,8 @@ export function BranchTreeCanvas({
       pinchStartScale.value = scale.value;
     })
     .onUpdate((event) => {
-      scale.value = clampBranchTreeScale(pinchStartScale.value * event.scale);
+      const nextScale = pinchStartScale.value * event.scale;
+      scale.value = Math.min(BRANCH_TREE_MAX_SCALE, Math.max(BRANCH_TREE_MIN_SCALE, nextScale));
     })
     .onFinalize(() => {
       runOnJS(syncTransform)(translateX.value, translateY.value, scale.value);

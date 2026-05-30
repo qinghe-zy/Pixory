@@ -184,7 +184,10 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /useSharedValue/);
   assert.match(canvas, /useAnimatedStyle/);
   assert.match(canvas, /withTiming/);
-  assert.match(canvas, /clampBranchTreeScale/);
+  assert.match(canvas, /BRANCH_TREE_MIN_SCALE/);
+  assert.match(canvas, /BRANCH_TREE_MAX_SCALE/);
+  assert.match(canvas, /scale\.value = Math\.min\(BRANCH_TREE_MAX_SCALE, Math\.max\(BRANCH_TREE_MIN_SCALE, nextScale\)\)/);
+  assert.doesNotMatch(canvas, /clampBranchTreeScale/);
   assert.match(canvas, /useAnimatedReaction/);
   assert.match(canvas, /const screenX = headCenterPoint\.x \* scale\.value \+ translateX\.value/);
   assert.match(canvas, /最新节点已偏离 · 一键回正/);
