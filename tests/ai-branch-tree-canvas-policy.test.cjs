@@ -90,7 +90,8 @@ test('branch tree layout emits cubic Bezier SVG paths instead of hard elbows', (
 test('branch tree layout normalizes negative lanes into one positive SVG coordinate space', () => {
   const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
 
-  assert.match(layout, /const xOffset = BRANCH_TREE_CANVAS_PADDING - minLane \* BRANCH_TREE_LANE_WIDTH/);
+  assert.match(layout, /const maxAbsLane = Math\.max\(Math\.abs\(minLane\), Math\.abs\(maxLane\)\)/);
+  assert.match(layout, /const xOffset = BRANCH_TREE_CANVAS_PADDING \+ maxAbsLane \* BRANCH_TREE_LANE_WIDTH/);
   assert.match(layout, /node\.x \+= xOffset/);
 });
 
@@ -124,6 +125,9 @@ test('Pixory branch tree adapter isolates AI service records from canvas graph r
   assert.match(adapter, /parentVersionIndex: node\.parentBranchVersionIndex/);
   assert.match(adapter, /isActivePath: node\.isCurrentRoute/);
   assert.match(adapter, /export function buildPixoryBranchTreeSnapshot/);
+  assert.match(adapter, /childBranchMessagesForNode/);
+  assert.match(adapter, /candidate\.parentBranchRootMessageId === node\.branchRootMessageId/);
+  assert.match(adapter, /candidate\.parentBranchVersionIndex === node\.branchVersionIndex/);
   assert.doesNotMatch(adapter, /AiChatScreen/);
   assert.doesNotMatch(adapter, /aiMemory/);
 });
@@ -180,6 +184,8 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /最新节点已偏离 · 一键回正/);
   assert.match(canvas, /BranchTreeGrid/);
   assert.match(canvas, /BranchTreeLinks/);
+  assert.match(canvas, /styles\.layer/);
+  assert.match(canvas, /transformOrigin: '0px 0px'/);
   assert.match(canvas, /BranchTreeNodeCard/);
   assert.match(canvas, /BranchTreeDrawer/);
 });

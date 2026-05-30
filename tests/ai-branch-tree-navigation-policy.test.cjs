@@ -221,9 +221,12 @@ test('AI branch tree lines stay continuous through SVG Bezier paths', () => {
 
 test('AI branch tree renders selected chat preview in the bottom drawer', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const adapter = read('src/branchTree/adapters/pixoryAiBranchTreeAdapter.ts');
   const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
 
-  assert.match(screen, /buildPixoryBranchTreeSnapshot\(preview\)/);
+  assert.match(screen, /buildPixoryBranchTreeSnapshot\(preview, nodes\)/);
+  assert.match(adapter, /childBranchMessagesForNode/);
+  assert.match(adapter, /candidate\.parentBranchRootMessageId === node\.branchRootMessageId/);
   assert.match(drawer, /parentMessages\.map/);
   assert.match(drawer, /selectedMessage/);
   assert.match(drawer, /childMessages\.map/);

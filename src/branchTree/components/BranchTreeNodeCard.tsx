@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
@@ -13,16 +13,18 @@ interface BranchTreeNodeCardProps {
 
 export function BranchTreeNodeCard({ node, onDoublePress, onPress, selected }: BranchTreeNodeCardProps) {
   void onDoublePress;
-  void onPress;
 
   return (
-    <View
+    <Pressable
       accessibilityLabel={`查看${node.summary}分支快照`}
       accessibilityRole="button"
-      style={[
+      hitSlop={6}
+      onPress={() => onPress(node.id)}
+      style={({ pressed }) => [
         styles.card,
         node.isActivePath && styles.activePathCard,
         selected && styles.selectedCard,
+        pressed && styles.pressed,
       ]}
     >
       <View style={styles.metaRow}>
@@ -39,7 +41,7 @@ export function BranchTreeNodeCard({ node, onDoublePress, onPress, selected }: B
           +{node.collapsedChildCount}
         </Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -68,7 +70,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     minHeight: 70,
     padding: spacing[2],
-    position: 'absolute',
     width: 120,
   },
   metaRow: {

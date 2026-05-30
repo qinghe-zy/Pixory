@@ -45,7 +45,7 @@ export function AiBranchTreeScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const graph = useMemo(() => buildPixoryBranchTreeGraph(nodes), [nodes]);
-  const snapshot = useMemo(() => buildPixoryBranchTreeSnapshot(preview), [preview]);
+  const snapshot = useMemo(() => buildPixoryBranchTreeSnapshot(preview, nodes), [nodes, preview]);
 
   const loadTree = useCallback(
     async (preferredSelectedNodeId?: string) => {
@@ -158,7 +158,7 @@ export function AiBranchTreeScreen({
   }
 
   function selectChildMessage(messageId: string) {
-    const nextNode = nodes.find((node) => node.branchRootMessageId === messageId) ?? null;
+    const nextNode = nodes.find((node) => node.id === messageId) ?? null;
     if (nextNode) {
       setSelectedNode(nextNode);
     }

@@ -63,13 +63,34 @@ function toSnapshotMessage(message: AiBranchTreePreview['selectedMessage']): Bra
   };
 }
 
-export function buildPixoryBranchTreeSnapshot(preview: AiBranchTreePreview | null): BranchTreeSnapshot | null {
+function childBranchMessagesForNode(node: AiBranchTreeNode, nodes: AiBranchTreeNode[]): BranchTreeSnapshotMessage[] {
+  return nodes
+    .filter(
+      (candidate) =>
+        candidate.parentBranchRootMessageId === node.branchRootMessageId &&
+        candidate.parentBranchVersionIndex === node.branchVersionIndex
+    )
+    .map((candidate) => ({
+      content: candidate.preview,
+      id: candidate.id,
+      label: '分支选项',
+      role: roleFromAiNode(candidate),
+    }));
+}
+
+export function buildPixoryBranchTreeSnapshot(
+  preview: AiBranchTreePreview | null,
+  nodes: AiBranchTreeNode[] = []
+): BranchTreeSnapshot | null {
   if (!preview) {
     return null;
   }
 
   return {
-    childMessages: preview.followUpMessages.map(toSnapshotMessage),
+    childMessages:
+      nodes.length > 0
+        ? childBranchMessagesForNode(preview.node, nodes)
+        : preview.followUpMessages.map(toSnapshotMessage),
     node: toBranchTreeNode(preview.node),
     parentMessages: preview.previousMessages.map(toSnapshotMessage),
     selectedMessage: toSnapshotMessage(preview.selectedMessage),

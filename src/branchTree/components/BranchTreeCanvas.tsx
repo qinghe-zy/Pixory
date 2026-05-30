@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
 import { radius, spacing, typography } from '../../design/tokens';
@@ -83,6 +88,8 @@ export function BranchTreeCanvas({
     .onUpdate((event) => {
       translateX.value = panStartX.value + event.translationX;
       translateY.value = panStartY.value + event.translationY;
+    })
+    .onFinalize(() => {
       runOnJS(syncTransform)(translateX.value, translateY.value, scale.value);
     });
 
@@ -92,6 +99,8 @@ export function BranchTreeCanvas({
     })
     .onUpdate((event) => {
       scale.value = clampBranchTreeScale(pinchStartScale.value * event.scale);
+    })
+    .onFinalize(() => {
       runOnJS(syncTransform)(translateX.value, translateY.value, scale.value);
     });
 
@@ -118,9 +127,9 @@ export function BranchTreeCanvas({
       return;
     }
     const next = buildRecenterTransform(headCenterPoint, viewport, scale.value);
+    scale.value = withTiming(next.scale);
     translateX.value = withTiming(next.translateX);
     translateY.value = withTiming(next.translateY);
-    scale.value = withTiming(next.scale);
     setTransformState(next);
   }
 
@@ -136,16 +145,18 @@ export function BranchTreeCanvas({
           shouldRasterizeIOS
           style={[styles.canvas, { height: layout.height, width: layout.width }, graphStyle]}
         >
-          <BranchTreeGrid height={layout.height} width={layout.width} />
-          <BranchTreeLinks edges={layout.edges} height={layout.height} width={layout.width} />
+          <View pointerEvents="none" style={styles.layer}>
+            <BranchTreeGrid height={layout.height} width={layout.width} />
+          </View>
+          <View pointerEvents="none" style={styles.layer}>
+            <BranchTreeLinks edges={layout.edges} height={layout.height} width={layout.width} />
+          </View>
           {layout.nodes.map((node) => (
             <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
               <GestureDetector
                 gesture={Gesture.Exclusive(
-                  Gesture.Tap().numberOfTaps(2)
-                    .onEnd(() => runOnJS(onCheckoutNode)(node.id)),
-                  Gesture.Tap().numberOfTaps(1)
-                    .onEnd(() => runOnJS(onSelectNode)(node.id))
+                  Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => onCheckoutNode(node.id)),
+                  Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onSelectNode(node.id))
                 )}
               >
                 <Animated.View>
@@ -202,9 +213,17 @@ const styles = StyleSheet.create({
     elevation: 0,
     minHeight: 720,
     minWidth: 720,
+    transformOrigin: '0px 0px',
   },
   nodePosition: {
     position: 'absolute',
+  },
+  layer: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
   pressed: {
     opacity: 0.76,

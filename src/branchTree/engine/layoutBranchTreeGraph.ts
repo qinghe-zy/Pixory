@@ -152,7 +152,8 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
   const minLane = nodes.reduce((min, node) => Math.min(min, node.lane), 0);
   const maxLane = nodes.reduce((max, node) => Math.max(max, node.lane), 0);
   const maxDepth = nodes.reduce((max, node) => Math.max(max, node.depth), 0);
-  const xOffset = BRANCH_TREE_CANVAS_PADDING - minLane * BRANCH_TREE_LANE_WIDTH;
+  const maxAbsLane = Math.max(Math.abs(minLane), Math.abs(maxLane));
+  const xOffset = BRANCH_TREE_CANVAS_PADDING + maxAbsLane * BRANCH_TREE_LANE_WIDTH;
   nodes.forEach((node) => {
     node.x += xOffset;
   });
@@ -175,6 +176,6 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
     headNode,
     height: BRANCH_TREE_CANVAS_PADDING * 2 + maxDepth * BRANCH_TREE_ROW_HEIGHT + BRANCH_TREE_NODE_HEIGHT,
     nodes,
-    width: BRANCH_TREE_CANVAS_PADDING * 2 + (maxLane - minLane + 1) * BRANCH_TREE_LANE_WIDTH,
+    width: BRANCH_TREE_CANVAS_PADDING * 2 + (maxAbsLane * 2 + 1) * BRANCH_TREE_LANE_WIDTH,
   };
 }
