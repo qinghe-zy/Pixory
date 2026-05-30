@@ -861,12 +861,17 @@ export function AiChatScreen({
     return getActiveBranchForNextMessageFromVisibleMessages(visibleMessages, selectedVersionByMessageId);
   }
 
-  function getCurrentBranchScopes(): AiBranchScope[] {
-    const explicitScopes = Object.entries(selectedVersionByMessageId).map(([branchRootMessageId, branchVersionIndex]) => ({
+  function getActiveBranchForSelection(selectionMap: Record<string, number>): AiBranchScope | null {
+    const visibleBranchMessages = messages.filter((message) => messageMatchesSelectedBranchPath(message, messagesById, selectionMap));
+    return getActiveBranchForNextMessageFromVisibleMessages(visibleBranchMessages, selectionMap);
+  }
+
+  function getCurrentBranchScopesForSelection(selectionMap: Record<string, number>): AiBranchScope[] {
+    const explicitScopes = Object.entries(selectionMap).map(([branchRootMessageId, branchVersionIndex]) => ({
       branchRootMessageId,
       branchVersionIndex,
     }));
-    const activeBranch = getActiveBranchForNextMessage();
+    const activeBranch = getActiveBranchForSelection(selectionMap);
     if (!activeBranch) {
       return explicitScopes;
     }
@@ -874,6 +879,10 @@ export function AiChatScreen({
       return explicitScopes;
     }
     return [...explicitScopes, activeBranch];
+  }
+
+  function getCurrentBranchScopes(): AiBranchScope[] {
+    return getCurrentBranchScopesForSelection(selectedVersionByMessageId);
   }
 
   function getPersistedCurrentBranchScopes(): AiBranchScope[] {
@@ -942,6 +951,22 @@ export function AiChatScreen({
         return [];
       }
       return aiThreadRepository.resolveBranchLineage(db, thread.currentBranchRootMessageId, thread.currentBranchVersionIndex);
+    });
+  }
+
+  async function persistCurrentBranchRoute(activeBranch: AiBranchScope | null): Promise<void> {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId) {
+      return;
+    }
+    const branchRootMessageId = activeBranch ? activeBranch.branchRootMessageId : null;
+    const branchVersionIndex = activeBranch ? activeBranch.branchVersionIndex : null;
+    await runWithDatabaseSpace(space, async (db) => {
+      await aiThreadRepository.setThreadCurrentBranch(db, {
+        branchRootMessageId,
+        branchVersionIndex,
+        threadId: targetThreadId,
+      });
     });
   }
 
@@ -1944,6 +1969,15 @@ export function AiChatScreen({
     }
   }
 
+  function handleSelectMessageVersion(messageId: string, versionIndex: number) {
+    const nextSelection = { ...selectedVersionByMessageId, [messageId]: versionIndex };
+    const nextBranchScopes = getCurrentBranchScopesForSelection(nextSelection);
+    const activeBranch = getActiveBranchForSelection(nextSelection);
+    setSelectedVersionByMessageId(nextSelection);
+    setPersistedCurrentBranchScopes(nextBranchScopes);
+    void persistCurrentBranchRoute(activeBranch);
+  }
+
   const messageKeyExtractor = useCallback((item: VisibleMessageItem) => item.message.id, []);
 
   const renderMessageItem = useCallback(
@@ -1971,9 +2005,7 @@ export function AiChatScreen({
             onRegenerate={(messageId) => {
               void handleRegenerate(messageId);
             }}
-            onSelectVersion={(messageId, versionIndex) => {
-              setSelectedVersionByMessageId((current) => ({ ...current, [messageId]: versionIndex }));
-            }}
+            onSelectVersion={handleSelectMessageVersion}
             onSubmitEdit={(messageId, content) => {
               void handleSubmitInlineRewrite(messageId, content);
             }}
@@ -2008,6 +2040,7 @@ export function AiChatScreen({
       handleEditUserMessage,
       handleRegenerate,
       handleSubmitInlineRewrite,
+      handleSelectMessageVersion,
       memoryCapturesBySourceMessageId,
       openCitation,
       pendingMessageActionId,

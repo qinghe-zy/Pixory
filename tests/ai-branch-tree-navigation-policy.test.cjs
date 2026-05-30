@@ -168,6 +168,23 @@ test('AI chat opens branch tree with persisted route and adopts selected route b
   assert.match(app, /onDeriveBranch=\{\(selection\) => \{/);
 });
 
+test('AI chat persists message version selection as the current route', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /function getActiveBranchForSelection\(selectionMap: Record<string, number>\): AiBranchScope \| null/);
+  assert.match(chat, /async function persistCurrentBranchRoute\(activeBranch: AiBranchScope \| null\): Promise<void>/);
+  assert.match(chat, /aiThreadRepository\.setThreadCurrentBranch\(db, \{/);
+  assert.match(chat, /const branchRootMessageId = activeBranch \? activeBranch\.branchRootMessageId : null/);
+  assert.match(chat, /const branchVersionIndex = activeBranch \? activeBranch\.branchVersionIndex : null/);
+  assert.match(chat, /branchRootMessageId,\s*branchVersionIndex,\s*threadId: targetThreadId/);
+  assert.match(chat, /function handleSelectMessageVersion\(messageId: string, versionIndex: number\)/);
+  assert.match(chat, /const nextSelection = \{ \.\.\.selectedVersionByMessageId, \[messageId\]: versionIndex \}/);
+  assert.match(chat, /const activeBranch = getActiveBranchForSelection\(nextSelection\)/);
+  assert.match(chat, /void persistCurrentBranchRoute\(activeBranch\)/);
+  assert.match(chat, /onSelectVersion=\{handleSelectMessageVersion\}/);
+  assert.doesNotMatch(chat, /onSelectVersion=\{\(messageId, versionIndex\) => \{\s*setSelectedVersionByMessageId/);
+});
+
 test('AI branch tree preview uses the selected branch root version content', () => {
   const service = read('src/ai/aiBranchTreeService.ts');
 
