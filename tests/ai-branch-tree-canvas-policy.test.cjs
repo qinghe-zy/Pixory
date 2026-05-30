@@ -138,3 +138,21 @@ test('branch tree visual layers use SVG grid links and compact view nodes', () =
   assert.match(node, /numberOfLines=\{2\}/);
   assert.match(node, /fontSize: 10\.5/);
 });
+
+test('branch tree drawer renders parent selected and child chat bubbles with safe actions', () => {
+  const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
+
+  assert.match(drawer, /export function BranchTreeDrawer/);
+  assert.match(drawer, /snapshot: BranchTreeSnapshot \| null/);
+  assert.match(drawer, /parentMessages\.map/);
+  assert.match(drawer, /selectedMessage/);
+  assert.match(drawer, /childMessages\.map/);
+  assert.match(drawer, /基于此衍生新分支/);
+  assert.match(drawer, /切为此主线/);
+  assert.match(drawer, /剪除此后代/);
+  assert.match(drawer, /onSelectChildMessage/);
+  assert.match(drawer, /onCheckout/);
+  assert.match(drawer, /onDerive/);
+  assert.match(drawer, /onRequestPrune/);
+  assert.match(drawer, /message\.role === 'user'/);
+});
