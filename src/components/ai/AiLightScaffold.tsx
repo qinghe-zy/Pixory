@@ -21,6 +21,7 @@ import { layout, radius, rhythm, spacing, typography } from '../../design/tokens
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 
 interface AiLightScaffoldProps {
+  bodyStyle?: StyleProp<ViewStyle>;
   backgroundVariant?: PageBackgroundVariant;
   children: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -39,6 +40,7 @@ interface AiLightScaffoldProps {
 }
 
 export function AiLightScaffold({
+  bodyStyle,
   backgroundVariant,
   children,
   contentContainerStyle,
@@ -88,7 +90,7 @@ export function AiLightScaffold({
         <View style={styles.side}>{rightAction}</View>
       </View>
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      <View pointerEvents={loading ? 'none' : 'auto'} style={loading ? styles.loadingContent : undefined}>
+      <View pointerEvents={loading ? 'none' : 'auto'} style={[bodyStyle, loading && styles.loadingContent]}>
         {children}
       </View>
     </AppScreen>

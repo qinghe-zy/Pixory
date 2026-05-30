@@ -11,7 +11,7 @@ export const BRANCH_TREE_NODE_WIDTH = 120;
 export const BRANCH_TREE_NODE_HEIGHT = 82;
 export const BRANCH_TREE_LANE_WIDTH = 140;
 export const BRANCH_TREE_ROW_HEIGHT = 110;
-export const BRANCH_TREE_CANVAS_PADDING = 180;
+export const BRANCH_TREE_CANVAS_PADDING = 120;
 export const BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2;
 
 function nodeSort(left: BranchTreeNode, right: BranchTreeNode): number {

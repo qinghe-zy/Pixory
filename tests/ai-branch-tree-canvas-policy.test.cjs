@@ -155,12 +155,14 @@ test('branch tree drawer renders parent selected and child chat bubbles with saf
 
   assert.match(drawer, /export function BranchTreeDrawer/);
   assert.match(drawer, /snapshot: BranchTreeSnapshot \| null/);
+  assert.match(drawer, /onClose: \(\) => void/);
   assert.match(drawer, /parentMessages\.map/);
   assert.match(drawer, /selectedMessage/);
   assert.match(drawer, /childMessages\.map/);
   assert.match(drawer, /基于此衍生新分支/);
   assert.match(drawer, /切为此主线/);
   assert.match(drawer, /剪除此后代/);
+  assert.match(drawer, /收起/);
   assert.match(drawer, /onSelectChildMessage/);
   assert.match(drawer, /onCheckout/);
   assert.match(drawer, /onDerive/);
@@ -180,7 +182,8 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /useAnimatedStyle/);
   assert.match(canvas, /withTiming/);
   assert.match(canvas, /clampBranchTreeScale/);
-  assert.match(canvas, /isHeadOutsideSafeViewport/);
+  assert.match(canvas, /useAnimatedReaction/);
+  assert.match(canvas, /const screenX = headCenterPoint\.x \* scale\.value \+ translateX\.value/);
   assert.match(canvas, /最新节点已偏离 · 一键回正/);
   assert.match(canvas, /BranchTreeGrid/);
   assert.match(canvas, /BranchTreeLinks/);
@@ -188,6 +191,12 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /transformOrigin: '0px 0px'/);
   assert.match(canvas, /BranchTreeNodeCard/);
   assert.match(canvas, /BranchTreeDrawer/);
+  assert.match(canvas, /snapshotVisible: boolean/);
+  assert.match(canvas, /onOpenSnapshotNode/);
+  assert.match(canvas, /onCloseSnapshot/);
+  assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)\.runOnJS\(true\)\.onEnd\(\(\) => onOpenSnapshotNode\(node\.id\)\)/);
+  assert.doesNotMatch(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)\.runOnJS\(true\)\.onEnd\(\(\) => onCheckoutNode\(node\.id\)\)/);
+  assert.doesNotMatch(canvas, /<BranchTreeDrawer[\s\S]*snapshotVisible/);
 });
 
 test('AI branch tree screen delegates graph rendering to the isolated branchTree module', () => {

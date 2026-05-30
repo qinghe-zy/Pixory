@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  useAnimatedReaction,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -13,8 +14,6 @@ import { radius, spacing, typography } from '../../design/tokens';
 import {
   buildRecenterTransform,
   clampBranchTreeScale,
-  isHeadOutsideSafeViewport,
-  worldToScreen,
 } from '../engine/branchTreeViewport';
 import {
   BRANCH_TREE_NODE_HEIGHT,
@@ -32,9 +31,12 @@ interface BranchTreeCanvasProps {
   selectedNodeId: string | null;
   snapshot: BranchTreeSnapshot | null;
   snapshotLoading?: boolean;
+  snapshotVisible: boolean;
   onCheckoutNode: (nodeId: string) => void;
+  onCloseSnapshot: () => void;
   onDeriveFromNode: (nodeId: string) => void;
   onRequestPruneNode: (nodeId: string) => void;
+  onOpenSnapshotNode: (nodeId: string) => void;
   onSelectChildMessage: (messageId: string) => void;
   onSelectNode: (nodeId: string) => void;
 }
@@ -42,13 +44,16 @@ interface BranchTreeCanvasProps {
 export function BranchTreeCanvas({
   graph,
   onCheckoutNode,
+  onCloseSnapshot,
   onDeriveFromNode,
   onRequestPruneNode,
+  onOpenSnapshotNode,
   onSelectChildMessage,
   onSelectNode,
   selectedNodeId,
   snapshot,
   snapshotLoading = false,
+  snapshotVisible,
 }: BranchTreeCanvasProps) {
   const layout = useMemo(() => layoutBranchTreeGraph(graph), [graph]);
   const [viewport, setViewport] = useState<BranchTreeViewportSize>({ height: 0, width: 0 });
@@ -112,8 +117,8 @@ export function BranchTreeCanvas({
         y: layout.headNode.y + BRANCH_TREE_NODE_HEIGHT / 2,
       }
     : null;
-  const headScreenPoint = headCenterPoint ? worldToScreen(headCenterPoint, transformState) : null;
-  const headOutside = Boolean(headScreenPoint && viewport.width > 0 && isHeadOutsideSafeViewport(headScreenPoint, viewport));
+  const [headOutside, setHeadOutside] = useState(false);
+  const didInitialFocusRef = useRef(false);
 
   function handleLayout(event: LayoutChangeEvent) {
     setViewport({
@@ -132,6 +137,44 @@ export function BranchTreeCanvas({
     translateY.value = withTiming(next.translateY);
     setTransformState(next);
   }
+
+  useEffect(() => {
+    if (didInitialFocusRef.current) {
+      return;
+    }
+    if (!headCenterPoint || viewport.width <= 0 || viewport.height <= 0) {
+      return;
+    }
+
+    didInitialFocusRef.current = true;
+    const next = buildRecenterTransform(headCenterPoint, viewport, 0.8);
+    scale.value = next.scale;
+    translateX.value = next.translateX;
+    translateY.value = next.translateY;
+    setTransformState(next);
+  }, [headCenterPoint, viewport.height, viewport.width]);
+
+  useAnimatedReaction(
+    () => {
+      if (!headCenterPoint || viewport.width <= 0 || viewport.height <= 0) {
+        return false;
+      }
+      const screenX = headCenterPoint.x * scale.value + translateX.value;
+      const screenY = headCenterPoint.y * scale.value + translateY.value;
+      return (
+        screenX < 20 ||
+        screenX > viewport.width - 140 ||
+        screenY < 80 ||
+        screenY > viewport.height - 280
+      );
+    },
+    (next, previous) => {
+      if (next !== previous) {
+        runOnJS(setHeadOutside)(next);
+      }
+    },
+    [headCenterPoint, viewport.height, viewport.width]
+  );
 
   function selectedOrFallbackNodeId(): string | null {
     return selectedNodeId ?? graph.headNodeId ?? graph.activeNodeId;
@@ -155,17 +198,12 @@ export function BranchTreeCanvas({
             <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
               <GestureDetector
                 gesture={Gesture.Exclusive(
-                  Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => onCheckoutNode(node.id)),
+                  Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => onOpenSnapshotNode(node.id)),
                   Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onSelectNode(node.id))
                 )}
               >
                 <Animated.View>
-                  <BranchTreeNodeCard
-                    node={node}
-                    onDoublePress={onCheckoutNode}
-                    onPress={onSelectNode}
-                    selected={node.id === selectedNodeId}
-                  />
+                  <BranchTreeNodeCard node={node} selected={node.id === selectedNodeId} />
                 </Animated.View>
               </GestureDetector>
             </View>
@@ -181,29 +219,32 @@ export function BranchTreeCanvas({
           <Text style={styles.recenterText}>最新节点已偏离 · 一键回正</Text>
         </Pressable>
       ) : null}
-      <BranchTreeDrawer
-        loading={snapshotLoading}
-        onCheckout={() => {
-          const nodeId = selectedOrFallbackNodeId();
-          if (nodeId) {
-            onCheckoutNode(nodeId);
-          }
-        }}
-        onDerive={() => {
-          const nodeId = selectedOrFallbackNodeId();
-          if (nodeId) {
-            onDeriveFromNode(nodeId);
-          }
-        }}
-        onRequestPrune={() => {
-          const nodeId = selectedOrFallbackNodeId();
-          if (nodeId) {
-            onRequestPruneNode(nodeId);
-          }
-        }}
-        onSelectChildMessage={onSelectChildMessage}
-        snapshot={snapshot}
-      />
+      {snapshotVisible ? (
+        <BranchTreeDrawer
+          loading={snapshotLoading}
+          onCheckout={() => {
+            const nodeId = selectedOrFallbackNodeId();
+            if (nodeId) {
+              onCheckoutNode(nodeId);
+            }
+          }}
+          onClose={onCloseSnapshot}
+          onDerive={() => {
+            const nodeId = selectedOrFallbackNodeId();
+            if (nodeId) {
+              onDeriveFromNode(nodeId);
+            }
+          }}
+          onRequestPrune={() => {
+            const nodeId = selectedOrFallbackNodeId();
+            if (nodeId) {
+              onRequestPruneNode(nodeId);
+            }
+          }}
+          onSelectChildMessage={onSelectChildMessage}
+          snapshot={snapshot}
+        />
+      ) : null}
     </View>
   );
 }

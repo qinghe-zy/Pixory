@@ -21,7 +21,12 @@ import { radius, rhythm, spacing, typography } from '../design/tokens';
 interface AiBranchTreeScreenProps {
   currentBranchScopes?: AiBranchScope[];
   onBack: () => void;
-  onSelectBranch: (input: {
+  onCheckoutBranch: (input: {
+    branchRootMessageId: string;
+    branchVersionIndex: number;
+    selectionMap: Record<string, number>;
+  }) => void;
+  onDeriveBranch: (input: {
     branchRootMessageId: string;
     branchVersionIndex: number;
     selectionMap: Record<string, number>;
@@ -33,13 +38,15 @@ interface AiBranchTreeScreenProps {
 export function AiBranchTreeScreen({
   currentBranchScopes = [],
   onBack,
-  onSelectBranch,
+  onCheckoutBranch,
+  onDeriveBranch,
   space,
   threadId,
 }: AiBranchTreeScreenProps) {
   const [nodes, setNodes] = useState<AiBranchTreeNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<AiBranchTreeNode | null>(null);
   const [preview, setPreview] = useState<AiBranchTreePreview | null>(null);
+  const [snapshotVisible, setSnapshotVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -74,6 +81,11 @@ export function AiBranchTreeScreen({
   }, [loadTree]);
 
   useEffect(() => {
+    if (!snapshotVisible) {
+      setPreview(null);
+      setPreviewLoading(false);
+      return;
+    }
     if (!selectedNode) {
       setPreview(null);
       return;
@@ -108,11 +120,21 @@ export function AiBranchTreeScreen({
     return () => {
       cancelled = true;
     };
-  }, [currentBranchScopes, selectedNode, space, threadId]);
+  }, [currentBranchScopes, selectedNode, snapshotVisible, space, threadId]);
 
   function selectNode(nodeId: string) {
     const node = nodes.find((item) => item.id === nodeId) ?? null;
     setSelectedNode(node);
+  }
+
+  function openSnapshotNode(nodeId: string) {
+    const node = nodes.find((item) => item.id === nodeId) ?? null;
+    setSelectedNode(node);
+    setSnapshotVisible(node !== null);
+  }
+
+  function closeSnapshot() {
+    setSnapshotVisible(false);
   }
 
   async function checkoutNode(nodeId: string) {
@@ -127,13 +149,35 @@ export function AiBranchTreeScreen({
         branchVersionIndex: node.branchVersionIndex,
         space,
       });
-      onSelectBranch({
+      onCheckoutBranch({
         branchRootMessageId: selection.branchRootMessageId,
         branchVersionIndex: selection.branchVersionIndex,
         selectionMap: selection.selectionMap,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '无法切换路线');
+    }
+  }
+
+  async function deriveBranch(nodeId: string) {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (!node) {
+      return;
+    }
+
+    try {
+      const selection = await resolveBranchSelection({
+        branchRootMessageId: node.branchRootMessageId,
+        branchVersionIndex: node.branchVersionIndex,
+        space,
+      });
+      onDeriveBranch({
+        branchRootMessageId: selection.branchRootMessageId,
+        branchVersionIndex: selection.branchVersionIndex,
+        selectionMap: selection.selectionMap,
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '无法创建新分支');
     }
   }
 
@@ -161,11 +205,13 @@ export function AiBranchTreeScreen({
     const nextNode = nodes.find((node) => node.id === messageId) ?? null;
     if (nextNode) {
       setSelectedNode(nextNode);
+      setSnapshotVisible(true);
     }
   }
 
   return (
     <AiLightScaffold
+      bodyStyle={styles.fullScreenBody}
       contentContainerStyle={styles.fullScreenContent}
       errorMessage={errorMessage}
       headerDividerVisible={false}
@@ -192,13 +238,16 @@ export function AiBranchTreeScreen({
         <BranchTreeCanvas
           graph={graph}
           onCheckoutNode={(nodeId) => void checkoutNode(nodeId)}
-          onDeriveFromNode={(nodeId) => void checkoutNode(nodeId)}
+          onDeriveFromNode={(nodeId) => void deriveBranch(nodeId)}
+          onOpenSnapshotNode={openSnapshotNode}
+          onCloseSnapshot={closeSnapshot}
           onRequestPruneNode={(nodeId) => void markNodeStatus(nodeId, 'abandoned')}
           onSelectChildMessage={selectChildMessage}
           onSelectNode={selectNode}
           selectedNodeId={selectedNode?.id ?? null}
           snapshot={snapshot}
           snapshotLoading={previewLoading}
+          snapshotVisible={snapshotVisible}
         />
       )}
     </AiLightScaffold>
@@ -206,6 +255,9 @@ export function AiBranchTreeScreen({
 }
 
 const styles = StyleSheet.create({
+  fullScreenBody: {
+    flex: 1,
+  },
   fullScreenContent: {
     flex: 1,
     gap: 0,

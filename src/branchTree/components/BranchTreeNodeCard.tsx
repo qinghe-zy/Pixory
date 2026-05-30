@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
@@ -7,24 +7,17 @@ import type { BranchTreeLayoutNode } from '../engine/types';
 interface BranchTreeNodeCardProps {
   node: BranchTreeLayoutNode;
   selected: boolean;
-  onPress: (nodeId: string) => void;
-  onDoublePress: (nodeId: string) => void;
 }
 
-export function BranchTreeNodeCard({ node, onDoublePress, onPress, selected }: BranchTreeNodeCardProps) {
-  void onDoublePress;
-
+export function BranchTreeNodeCard({ node, selected }: BranchTreeNodeCardProps) {
   return (
-    <Pressable
+    <View
       accessibilityLabel={`查看${node.summary}分支快照`}
       accessibilityRole="button"
-      hitSlop={6}
-      onPress={() => onPress(node.id)}
-      style={({ pressed }) => [
+      style={[
         styles.card,
         node.isActivePath && styles.activePathCard,
         selected && styles.selectedCard,
-        pressed && styles.pressed,
       ]}
     >
       <View style={styles.metaRow}>
@@ -41,7 +34,7 @@ export function BranchTreeNodeCard({ node, onDoublePress, onPress, selected }: B
           +{node.collapsedChildCount}
         </Text>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -77,9 +70,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: rhythm.microGap,
     justifyContent: 'space-between',
-  },
-  pressed: {
-    opacity: 0.76,
   },
   selectedCard: {
     borderColor: '#D07C60',

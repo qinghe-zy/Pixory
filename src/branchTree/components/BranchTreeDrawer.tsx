@@ -9,6 +9,7 @@ interface BranchTreeDrawerProps {
   snapshot: BranchTreeSnapshot | null;
   loading?: boolean;
   onCheckout: () => void;
+  onClose: () => void;
   onDerive: () => void;
   onRequestPrune: () => void;
   onSelectChildMessage: (messageId: string) => void;
@@ -40,6 +41,7 @@ function BranchTreeBubble({
 export function BranchTreeDrawer({
   loading = false,
   onCheckout,
+  onClose,
   onDerive,
   onRequestPrune,
   onSelectChildMessage,
@@ -57,6 +59,14 @@ export function BranchTreeDrawer({
             v{snapshot.node.versionIndex}/{snapshot.node.versionTotal}
           </Text>
         ) : null}
+        <Pressable
+          accessibilityLabel="收起分支快照"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.closeText}>收起</Text>
+        </Pressable>
       </View>
       {loading ? (
         <View style={styles.loadingRow}>
@@ -152,6 +162,17 @@ const styles = StyleSheet.create({
   content: {
     gap: rhythm.cardContentGap,
     maxHeight: 280,
+  },
+  closeButton: {
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+  },
+  closeText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   disabled: {
     opacity: 0.36,

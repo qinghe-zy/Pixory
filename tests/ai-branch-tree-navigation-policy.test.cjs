@@ -20,6 +20,9 @@ test('AI branch tree repository derives candidates without loading ordinary tran
   assert.match(repository, /COUNT\(descendant\.id\) AS followUpMessageCount/);
   assert.match(repository, /COUNT\(\*\) \+ 1 AS versionTotal/);
   assert.match(repository, /HAVING versionTotal > 1/);
+  assert.match(repository, /root\.id AS parentBranchRootMessageId/);
+  assert.match(repository, /versionIndex > 1 THEN ai_message_versions\.versionIndex - 1/);
+  assert.match(repository, /root\.id AS parentBranchRootMessageId/);
   assert.doesNotMatch(repository, /versionStatus: AiMessageStatus/);
   assert.doesNotMatch(repository, /MAX\(versionIndex\) AS versionTotal/);
   assert.doesNotMatch(repository, /listBranchTreeCandidates[\s\S]{0,1800}SELECT \* FROM ai_messages\s+WHERE threadId = \?/);
@@ -144,6 +147,8 @@ test('AI branch tree screen delegates folded route density to the canvas layout'
   assert.match(layout, /BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2/);
   assert.match(layout, /collapsedChildCount/);
   assert.match(node, /\+\{node\.collapsedChildCount\}/);
+  assert.match(screen, /onDeriveBranch/);
+  assert.match(screen, /onCheckoutBranch/);
   assert.doesNotMatch(screen, /selectedGroup/);
   assert.doesNotMatch(screen, /renderCollapsedGroup/);
   assert.doesNotMatch(screen, /Modal/);
@@ -159,7 +164,8 @@ test('AI chat opens branch tree with persisted route and adopts selected route b
   assert.match(chat, /currentBranchScopes = getPersistedCurrentBranchScopes/);
   assert.match(app, /adoptBranchSelection/);
   assert.match(app, /await adoptBranchSelection/);
-  assert.match(app, /onSelectBranch=\{async \(selection\) => \{/);
+  assert.match(app, /onCheckoutBranch=\{async \(selection\) => \{/);
+  assert.match(app, /onDeriveBranch=\{\(selection\) => \{/);
 });
 
 test('AI branch tree preview uses the selected branch root version content', () => {
@@ -174,11 +180,16 @@ test('AI branch tree preview uses the selected branch root version content', () 
 
 test('AI branch tree screen uses isolated canvas and keeps nearby preview actions in the drawer', () => {
   const screen = read('src/screens/AiBranchTreeScreen.tsx');
+  const scaffold = read('src/components/ai/AiLightScaffold.tsx');
   const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
   const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
   assert.match(screen, /AiLightScaffold/);
   assert.match(screen, /title="创作路线树"/);
+  assert.match(scaffold, /bodyStyle\?: StyleProp<ViewStyle>/);
+  assert.match(scaffold, /style=\{\[bodyStyle, loading && styles\.loadingContent\]\}/);
+  assert.match(screen, /bodyStyle=\{styles\.fullScreenBody\}/);
+  assert.match(screen, /fullScreenBody:\s*\{\s*flex: 1,\s*\}/);
   assert.doesNotMatch(screen, /当前会话 · 自动整理关键分叉/);
   assert.match(screen, /loadBranchTree/);
   assert.match(screen, /loadBranchTreePreview/);
@@ -187,10 +198,16 @@ test('AI branch tree screen uses isolated canvas and keeps nearby preview action
   assert.match(screen, /buildPixoryBranchTreeSnapshot/);
   assert.match(drawer, /切为此主线/);
   assert.match(drawer, /基于此衍生新分支/);
+  assert.match(screen, /snapshotVisible/);
+  assert.match(screen, /openSnapshotNode/);
+  assert.match(screen, /closeSnapshot/);
   assert.match(node, /numberOfLines=\{2\}/);
   assert.match(drawer, /message\.role === 'user'/);
   assert.match(drawer, /bubbleUser/);
   assert.match(drawer, /bubbleMuted/);
+  assert.match(screen, /onDeriveBranch/);
+  assert.match(screen, /onCheckoutBranch/);
+  assert.match(screen, /if \(!snapshotVisible\) \{\s*setPreview\(null\);\s*setPreviewLoading\(false\);\s*return;/);
   assert.doesNotMatch(screen, /previewPanel/);
   assert.match(screen, /aiLightColors\.canvas/);
   assert.match(screen, /rhythm\./);
@@ -232,6 +249,30 @@ test('AI branch tree renders selected chat preview in the bottom drawer', () => 
   assert.match(drawer, /childMessages\.map/);
   assert.match(drawer, /onSelectChildMessage/);
   assert.match(drawer, /message\.role === 'user'/);
+  assert.match(screen, /setSnapshotVisible\(node !== null\)/);
+  assert.match(screen, /setSnapshotVisible\(true\)/);
+});
+
+test('AI branch tree node cards are presentational and gesture ownership stays in the canvas', () => {
+  const canvas = read('src/branchTree/components/BranchTreeCanvas.tsx');
+  const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
+
+  assert.match(canvas, /Gesture\.Exclusive/);
+  assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(1\)/);
+  assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)/);
+  assert.doesNotMatch(canvas, /onDoublePress=\{onCheckoutNode\}/);
+  assert.doesNotMatch(node, /void onDoublePress/);
+  assert.doesNotMatch(node, /Pressable/);
+});
+
+test('AI branch tree head recenter reaction stays worklet-safe on Android', () => {
+  const canvas = read('src/branchTree/components/BranchTreeCanvas.tsx');
+  const reactionBody = canvas.match(/useAnimatedReaction\(\s*\(\) => \{([\s\S]*?)\n    \},\s*\(next, previous\)/)?.[1] ?? '';
+
+  assert.match(reactionBody, /const screenX = headCenterPoint\.x \* scale\.value \+ translateX\.value/);
+  assert.match(reactionBody, /const screenY = headCenterPoint\.y \* scale\.value \+ translateY\.value/);
+  assert.doesNotMatch(reactionBody, /worldToScreen\(/);
+  assert.doesNotMatch(reactionBody, /isHeadOutsideSafeViewport\(/);
 });
 
 test('AI branch tree screen keeps graph canvas vertical-depth first and checkout in drawer', () => {
@@ -240,6 +281,7 @@ test('AI branch tree screen keeps graph canvas vertical-depth first and checkout
   const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
 
   assert.match(layout, /depth \* BRANCH_TREE_ROW_HEIGHT/);
+  assert.match(layout, /BRANCH_TREE_LANE_WIDTH = 140/);
   assert.match(layout, /BRANCH_TREE_ROW_HEIGHT = 110/);
   assert.match(drawer, /切为此主线/);
   assert.match(screen, /onCheckoutNode=\{\(nodeId\) => void checkoutNode\(nodeId\)\}/);

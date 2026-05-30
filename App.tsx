@@ -1642,7 +1642,7 @@ export default function App() {
       <AiBranchTreeScreen
         currentBranchScopes={currentRoute.currentBranchScopes}
         onBack={popRoute}
-        onSelectBranch={async (selection) => {
+        onCheckoutBranch={async (selection) => {
           const adoptedSelection = await adoptBranchSelection({
             branchRootMessageId: selection.branchRootMessageId,
             branchVersionIndex: selection.branchVersionIndex,
@@ -1650,6 +1650,10 @@ export default function App() {
             threadId: currentRoute.threadId,
           });
           const nextRoute = buildAiChatRouteFromBranchTree(currentRoute, adoptedSelection, previousRoute);
+          setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
+        }}
+        onDeriveBranch={(selection) => {
+          const nextRoute = buildAiChatRouteFromBranchTree(currentRoute, selection, previousRoute);
           setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
         }}
         space={currentRoute.space}

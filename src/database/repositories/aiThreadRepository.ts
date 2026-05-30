@@ -775,23 +775,26 @@ export const aiThreadRepository = {
          HAVING versionTotal > 1
        ),
        historical_versions AS (
-         SELECT
-           root.id AS branchRootMessageId,
-           ai_message_versions.versionIndex AS branchVersionIndex,
+        SELECT
+          root.id AS branchRootMessageId,
+          ai_message_versions.versionIndex AS branchVersionIndex,
            root.threadId AS rootThreadId,
            root.role AS rootRole,
            root.content AS rootContent,
            root.createdAt AS rootCreatedAt,
            root.updatedAt AS rootUpdatedAt,
-           ai_message_versions.content AS versionContent,
-           ai_message_versions.messageCreatedAt AS versionCreatedAt,
-           ai_message_versions.messageUpdatedAt AS versionUpdatedAt,
-           root_versions.versionTotal AS versionTotal,
-           root.branchRootMessageId AS parentBranchRootMessageId,
-           root.branchVersionIndex AS parentBranchVersionIndex
-         FROM ai_message_versions
-         JOIN root_versions ON root_versions.originalMessageId = ai_message_versions.originalMessageId
-         JOIN ai_messages root ON root.id = ai_message_versions.originalMessageId
+          ai_message_versions.content AS versionContent,
+          ai_message_versions.messageCreatedAt AS versionCreatedAt,
+          ai_message_versions.messageUpdatedAt AS versionUpdatedAt,
+          root_versions.versionTotal AS versionTotal,
+          root.id AS parentBranchRootMessageId,
+          CASE
+            WHEN ai_message_versions.versionIndex > 1 THEN ai_message_versions.versionIndex - 1
+            ELSE NULL
+          END AS parentBranchVersionIndex
+        FROM ai_message_versions
+        JOIN root_versions ON root_versions.originalMessageId = ai_message_versions.originalMessageId
+        JOIN ai_messages root ON root.id = ai_message_versions.originalMessageId
          WHERE root.threadId = ?
            AND ai_message_versions.versionIndex < root_versions.versionTotal
            AND ai_message_versions.status IN ('completed', 'stopped', 'failed')
@@ -805,15 +808,18 @@ export const aiThreadRepository = {
            root.content AS rootContent,
            root.createdAt AS rootCreatedAt,
            root.updatedAt AS rootUpdatedAt,
-           root.content AS versionContent,
-           root.createdAt AS versionCreatedAt,
-           root.updatedAt AS versionUpdatedAt,
-           root_versions.versionTotal AS versionTotal,
-           root.branchRootMessageId AS parentBranchRootMessageId,
-           root.branchVersionIndex AS parentBranchVersionIndex
-         FROM root_versions
-         JOIN ai_messages root ON root.id = root_versions.originalMessageId
-         WHERE root.threadId = ?
+          root.content AS versionContent,
+          root.createdAt AS versionCreatedAt,
+          root.updatedAt AS versionUpdatedAt,
+          root_versions.versionTotal AS versionTotal,
+          root.id AS parentBranchRootMessageId,
+          CASE
+            WHEN root_versions.versionTotal > 1 THEN root_versions.versionTotal - 1
+            ELSE NULL
+          END AS parentBranchVersionIndex
+        FROM root_versions
+        JOIN ai_messages root ON root.id = root_versions.originalMessageId
+        WHERE root.threadId = ?
            AND root.status IN ('completed', 'stopped', 'failed')
        ),
        branch_versions AS (
