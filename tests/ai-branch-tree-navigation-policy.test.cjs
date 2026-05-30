@@ -20,9 +20,9 @@ test('AI branch tree repository derives candidates without loading ordinary tran
   assert.match(repository, /COUNT\(descendant\.id\) AS followUpMessageCount/);
   assert.match(repository, /COUNT\(\*\) \+ 1 AS versionTotal/);
   assert.match(repository, /HAVING versionTotal > 1/);
-  assert.match(repository, /root\.id AS parentBranchRootMessageId/);
+  assert.match(repository, /CASE[\s\S]{0,120}WHEN ai_message_versions\.versionIndex > 1 THEN root\.id[\s\S]{0,120}END AS parentBranchRootMessageId/);
   assert.match(repository, /versionIndex > 1 THEN ai_message_versions\.versionIndex - 1/);
-  assert.match(repository, /root\.id AS parentBranchRootMessageId/);
+  assert.match(repository, /WHEN root_versions\.versionTotal > 1 THEN root\.id[\s\S]{0,120}END AS parentBranchRootMessageId/);
   assert.doesNotMatch(repository, /versionStatus: AiMessageStatus/);
   assert.doesNotMatch(repository, /MAX\(versionIndex\) AS versionTotal/);
   assert.doesNotMatch(repository, /listBranchTreeCandidates[\s\S]{0,1800}SELECT \* FROM ai_messages\s+WHERE threadId = \?/);
@@ -146,7 +146,7 @@ test('AI branch tree screen delegates folded route density to the canvas layout'
   assert.match(screen, /BranchTreeCanvas/);
   assert.match(layout, /BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2/);
   assert.match(layout, /collapsedChildCount/);
-  assert.match(node, /\+\{node\.collapsedChildCount\}/);
+  assert.match(node, /\{node\.collapsedChildCount\}/);
   assert.match(screen, /onDeriveBranch/);
   assert.match(screen, /onCheckoutBranch/);
   assert.doesNotMatch(screen, /selectedGroup/);
@@ -174,8 +174,8 @@ test('AI branch tree preview uses the selected branch root version content', () 
   assert.match(service, /async function resolveSelectedRootMessage/);
   assert.match(service, /const selectedVersion = versions\.find\(\(version\) => version\.versionIndex === branchVersionIndex\)/);
   assert.match(service, /const selectedRoot = await resolveSelectedRootMessage\(db, root, input\.branchVersionIndex, node\.versionTotal\)/);
-  assert.match(service, /selectedMessage: toPreviewMessage\(selectedRoot, node\.versionLabel\)/);
-  assert.doesNotMatch(service, /selectedMessage: toPreviewMessage\(root, node\.versionLabel\)/);
+  assert.match(service, /selectedMessage: toPreviewMessage\(selectedRoot, `当前选中的 v\$\{node\.branchVersionIndex\} 版本`\)/);
+  assert.doesNotMatch(service, /selectedMessage: toPreviewMessage\(root,/);
 });
 
 test('AI branch tree screen uses isolated canvas and keeps nearby preview actions in the drawer', () => {
@@ -197,14 +197,14 @@ test('AI branch tree screen uses isolated canvas and keeps nearby preview action
   assert.match(screen, /buildPixoryBranchTreeGraph/);
   assert.match(screen, /buildPixoryBranchTreeSnapshot/);
   assert.match(drawer, /切为此主线/);
-  assert.match(drawer, /基于此衍生新分支/);
+  assert.doesNotMatch(drawer, /基于此衍生新分支/);
   assert.match(screen, /snapshotVisible/);
   assert.match(screen, /openSnapshotNode/);
   assert.match(screen, /closeSnapshot/);
   assert.match(node, /numberOfLines=\{2\}/);
   assert.match(drawer, /message\.role === 'user'/);
   assert.match(drawer, /bubbleUser/);
-  assert.match(drawer, /bubbleMuted/);
+  assert.match(drawer, /bubbleHighlighted/);
   assert.match(screen, /onDeriveBranch/);
   assert.match(screen, /onCheckoutBranch/);
   assert.match(screen, /if \(!snapshotVisible\) \{\s*setPreview\(null\);\s*setPreviewLoading\(false\);\s*return;/);
@@ -242,15 +242,15 @@ test('AI branch tree renders selected chat preview in the bottom drawer', () => 
   const drawer = read('src/branchTree/components/BranchTreeDrawer.tsx');
 
   assert.match(screen, /buildPixoryBranchTreeSnapshot\(preview, nodes\)/);
-  assert.match(adapter, /childBranchMessagesForNode/);
-  assert.match(adapter, /candidate\.parentBranchRootMessageId === node\.branchRootMessageId/);
+  assert.match(adapter, /preview\.followUpMessages\.map\(toSnapshotMessage\)/);
+  assert.doesNotMatch(adapter, /childBranchMessagesForNode/);
   assert.match(drawer, /parentMessages\.map/);
   assert.match(drawer, /selectedMessage/);
-  assert.match(drawer, /childMessages\.map/);
-  assert.match(drawer, /onSelectChildMessage/);
+  assert.match(drawer, /nextMessages\.map/);
+  assert.doesNotMatch(drawer, /onSelectChildMessage/);
   assert.match(drawer, /message\.role === 'user'/);
   assert.match(screen, /setSnapshotVisible\(node !== null\)/);
-  assert.match(screen, /setSnapshotVisible\(true\)/);
+  assert.doesNotMatch(screen, /setSnapshotVisible\(true\)/);
 });
 
 test('AI branch tree node cards are presentational and gesture ownership stays in the canvas', () => {
@@ -260,6 +260,8 @@ test('AI branch tree node cards are presentational and gesture ownership stays i
   assert.match(canvas, /Gesture\.Exclusive/);
   assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(1\)/);
   assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)/);
+  assert.match(canvas, /numberOfTaps\(1\)[\s\S]{0,120}onSelectNode\(node\.id\)/);
+  assert.match(canvas, /numberOfTaps\(2\)[\s\S]{0,120}onOpenSnapshotNode\(node\.id\)/);
   assert.doesNotMatch(canvas, /onDoublePress=\{onCheckoutNode\}/);
   assert.doesNotMatch(node, /void onDoublePress/);
   assert.doesNotMatch(node, /Pressable/);
@@ -294,9 +296,10 @@ test('AI branch tree layout folds overflow branch candidates instead of silently
   const layout = read('src/branchTree/engine/layoutBranchTreeGraph.ts');
   const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
-  assert.match(layout, /visibleInactiveChildren = inactiveChildren\.slice\(0, BRANCH_TREE_MAX_VISIBLE_SIBLINGS\)/);
+  assert.match(layout, /visibleInactiveCount = Math\.min\(inactiveChildren\.length, BRANCH_TREE_MAX_VISIBLE_SIBLINGS\)/);
+  assert.match(layout, /inactiveChildren\.slice\(0, visibleInactiveCount\)/);
   assert.match(layout, /collapsedChildCount/);
-  assert.match(node, /\+\{node\.collapsedChildCount\}/);
+  assert.match(node, /\{node\.collapsedChildCount\}/);
   assert.doesNotMatch(layout, /leftBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
   assert.doesNotMatch(layout, /rightBranchNodes[\s\S]{0,140}\.slice\(0,\s*2\)/);
   assert.doesNotMatch(layout, /trunkNodes[\s\S]{0,160}\.slice\(0,\s*4\)/);
@@ -307,7 +310,7 @@ test('AI branch tree status updates preserve the selected node after reload', ()
 
   assert.match(screen, /preferredSelectedNodeId/);
   assert.match(screen, /result\.nodes\.find\(\(node\) => node\.id === preferredSelectedNodeId\)/);
-  assert.match(screen, /await loadTree\(node\.id\)/);
+  assert.doesNotMatch(screen, /updateBranchRouteStatus/);
 });
 
 test('AI chat opens branch tree from header and accepts selected branch return', () => {

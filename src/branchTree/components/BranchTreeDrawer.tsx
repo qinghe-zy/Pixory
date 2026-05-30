@@ -96,7 +96,7 @@ export function BranchTreeDrawer({
         <Text style={styles.emptyText}>点击画布上的节点查看上下文</Text>
       )}
       <View style={styles.actionRow}>
-        <AiLightButton disabled={!snapshot} label="▶ 跳转到该节点" onPress={onCheckout} />
+        <AiLightButton disabled={!snapshot} label="切为此主线" onPress={onCheckout} />
       </View>
     </View>
   );

@@ -82,6 +82,19 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
     }
     return l;
   }
+  function resolveInactiveLane(parentLane: number, siblingIndex: number) {
+    if (parentLane < 0) {
+      return parentLane - siblingIndex - 1;
+    }
+    if (parentLane > 0) {
+      return parentLane + siblingIndex + 1;
+    }
+    const offset = Math.floor(siblingIndex / 2) + 1;
+    return siblingIndex % 2 === 0 ? -offset : offset;
+  }
+  function laneDirection(fromLane: number, toLane: number): 1 | -1 {
+    return toLane < fromLane ? -1 : 1;
+  }
 
   function assignLaneDFS(node: BranchTreeNode, preferredLane: number, direction: 1 | -1) {
     const depth = depths.get(node.id) ?? 0;
@@ -93,22 +106,20 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
     reserve(depth, targetLane);
 
     const children = childrenByParentId.get(node.id) ?? [];
-    
+
     const inactiveChildren = children.filter((c) => !c.isActivePath);
     const activeChildren = children.filter((c) => c.isActivePath);
     const visibleInactiveCount = Math.min(inactiveChildren.length, BRANCH_TREE_MAX_VISIBLE_SIBLINGS);
     const collapsedCount = Math.max(0, inactiveChildren.length - visibleInactiveCount);
     collapsedCounts.set(node.id, collapsedCount);
 
-    const visibleChildren = [
-      ...activeChildren,
-      ...inactiveChildren.slice(0, visibleInactiveCount)
-    ];
+    activeChildren.forEach((child) => {
+      assignLaneDFS(child, 0, direction);
+    });
 
-    visibleChildren.forEach((child, index) => {
-      const childDir = index % 2 === 0 ? direction : (direction * -1 as 1 | -1);
-      const childPref = index === 0 ? targetLane : targetLane + childDir;
-      assignLaneDFS(child, childPref, childDir);
+    inactiveChildren.slice(0, visibleInactiveCount).forEach((child, index) => {
+      const preferredChildLane = resolveInactiveLane(targetLane, index);
+      assignLaneDFS(child, preferredChildLane, laneDirection(targetLane, preferredChildLane));
     });
   }
 
@@ -118,8 +129,8 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
     assignLaneDFS(root, pref, dir);
   });
 
-  const placedNodes = graph.nodes.filter(n => lanes.has(n.id));
-  
+  const placedNodes = graph.nodes.filter((n) => lanes.has(n.id));
+
   const minLane = placedNodes.reduce((min, node) => Math.min(min, lanes.get(node.id) ?? 0), 0);
   const maxLane = placedNodes.reduce((max, node) => Math.max(max, lanes.get(node.id) ?? 0), 0);
   const maxDepth = placedNodes.reduce((max, node) => Math.max(max, depths.get(node.id) ?? 0), 0);
@@ -127,8 +138,8 @@ export function layoutBranchTreeGraph(graph: BranchTreeGraph): BranchTreeLayout 
   const xOffset = BRANCH_TREE_CANVAS_PADDING + maxAbsLane * BRANCH_TREE_LANE_WIDTH;
 
   const layoutNodeById = new Map<string, BranchTreeLayoutNode>();
-  
-  const layoutNodes: BranchTreeLayoutNode[] = placedNodes.map(node => {
+
+  const layoutNodes: BranchTreeLayoutNode[] = placedNodes.map((node) => {
     const depth = depths.get(node.id) ?? 0;
     const lane = lanes.get(node.id) ?? 0;
     const collapsedCount = collapsedCounts.get(node.id) ?? 0;

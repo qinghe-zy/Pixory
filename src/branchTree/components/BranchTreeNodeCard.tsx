@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: aiLightColors.canvas,
     borderColor: aiLightColors.hairline,
-    borderRadius: 8,
+    borderRadius: 16,
     borderWidth: 1,
     minHeight: 70,
     padding: spacing[2],

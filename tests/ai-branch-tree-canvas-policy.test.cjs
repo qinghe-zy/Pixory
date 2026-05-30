@@ -70,12 +70,13 @@ test('branch tree layout centers active path and pushes nested branches outward'
   assert.match(layout, /export const BRANCH_TREE_ROW_HEIGHT = 110/);
   assert.match(layout, /export const BRANCH_TREE_MAX_VISIBLE_SIBLINGS = 2/);
   assert.match(layout, /export function layoutBranchTreeGraph/);
-  assert.match(layout, /function assignActivePathDepths/);
   assert.match(layout, /function resolveInactiveLane/);
   assert.match(layout, /parentLane < 0/);
   assert.match(layout, /parentLane > 0/);
-  assert.match(layout, /while \(occupiedLanesByDepth\.get\(depth\)\?\.has\(lane\)\)/);
-  assert.match(layout, /lane \+= direction/);
+  assert.match(layout, /function laneDirection/);
+  assert.match(layout, /while \(isOccupied\(depth, l\)\)/);
+  assert.match(layout, /l \+= direction/);
+  assert.match(layout, /assignLaneDFS\(child, 0, direction\)/);
   assert.doesNotMatch(layout, /Date\.parse/);
 });
 
@@ -92,7 +93,7 @@ test('branch tree layout normalizes negative lanes into one positive SVG coordin
 
   assert.match(layout, /const maxAbsLane = Math\.max\(Math\.abs\(minLane\), Math\.abs\(maxLane\)\)/);
   assert.match(layout, /const xOffset = BRANCH_TREE_CANVAS_PADDING \+ maxAbsLane \* BRANCH_TREE_LANE_WIDTH/);
-  assert.match(layout, /node\.x \+= xOffset/);
+  assert.match(layout, /x: xOffset \+ lane \* BRANCH_TREE_LANE_WIDTH/);
 });
 
 test('branch tree viewport helpers clamp zoom and detect offscreen head safely', () => {
@@ -121,13 +122,15 @@ test('Pixory branch tree adapter isolates AI service records from canvas graph r
   assert.match(adapter, /export function buildPixoryBranchTreeGraph/);
   assert.match(adapter, /messageId: node\.branchRootMessageId/);
   assert.match(adapter, /versionIndex: node\.branchVersionIndex/);
-  assert.match(adapter, /parentMessageId: node\.parentBranchRootMessageId/);
-  assert.match(adapter, /parentVersionIndex: node\.parentBranchVersionIndex/);
+  assert.match(adapter, /let parentId = node\.parentBranchRootMessageId/);
+  assert.match(adapter, /let parentVersionIndex = node\.parentBranchVersionIndex/);
+  assert.match(adapter, /parentMessageId: parentId/);
+  assert.match(adapter, /parentVersionIndex: parentVersionIndex/);
   assert.match(adapter, /isActivePath: node\.isCurrentRoute/);
   assert.match(adapter, /export function buildPixoryBranchTreeSnapshot/);
-  assert.match(adapter, /childBranchMessagesForNode/);
-  assert.match(adapter, /candidate\.parentBranchRootMessageId === node\.branchRootMessageId/);
-  assert.match(adapter, /candidate\.parentBranchVersionIndex === node\.branchVersionIndex/);
+  assert.match(adapter, /preview\.followUpMessages\.map\(toSnapshotMessage\)/);
+  assert.match(adapter, /nextMessages:/);
+  assert.doesNotMatch(adapter, /childBranchMessagesForNode/);
   assert.doesNotMatch(adapter, /AiChatScreen/);
   assert.doesNotMatch(adapter, /aiMemory/);
 });
@@ -158,15 +161,15 @@ test('branch tree drawer renders parent selected and child chat bubbles with saf
   assert.match(drawer, /onClose: \(\) => void/);
   assert.match(drawer, /parentMessages\.map/);
   assert.match(drawer, /selectedMessage/);
-  assert.match(drawer, /childMessages\.map/);
-  assert.match(drawer, /基于此衍生新分支/);
+  assert.match(drawer, /nextMessages\.map/);
+  assert.doesNotMatch(drawer, /基于此衍生新分支/);
   assert.match(drawer, /切为此主线/);
-  assert.match(drawer, /剪除此后代/);
+  assert.doesNotMatch(drawer, /剪除此后代/);
   assert.match(drawer, /收起/);
-  assert.match(drawer, /onSelectChildMessage/);
+  assert.doesNotMatch(drawer, /onSelectChildMessage/);
   assert.match(drawer, /onCheckout/);
-  assert.match(drawer, /onDerive/);
-  assert.match(drawer, /onRequestPrune/);
+  assert.doesNotMatch(drawer, /onDerive/);
+  assert.doesNotMatch(drawer, /onRequestPrune/);
   assert.match(drawer, /message\.role === 'user'/);
 });
 
@@ -196,7 +199,7 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /onCloseSnapshot/);
   assert.match(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)\.runOnJS\(true\)\.onEnd\(\(\) => onOpenSnapshotNode\(node\.id\)\)/);
   assert.doesNotMatch(canvas, /Gesture\.Tap\(\)\.numberOfTaps\(2\)\.runOnJS\(true\)\.onEnd\(\(\) => onCheckoutNode\(node\.id\)\)/);
-  assert.doesNotMatch(canvas, /<BranchTreeDrawer[\s\S]*snapshotVisible/);
+  assert.match(canvas, /snapshotVisible \? \(/);
 });
 
 test('AI branch tree screen delegates graph rendering to the isolated branchTree module', () => {
@@ -208,7 +211,7 @@ test('AI branch tree screen delegates graph rendering to the isolated branchTree
   assert.match(screen, /loadBranchTree/);
   assert.match(screen, /loadBranchTreePreview/);
   assert.match(screen, /resolveBranchSelection/);
-  assert.match(screen, /updateBranchRouteStatus/);
+  assert.doesNotMatch(screen, /updateBranchRouteStatus/);
   assert.doesNotMatch(screen, /branchRail/);
   assert.doesNotMatch(screen, /renderEmbeddedPreview/);
   assert.doesNotMatch(screen, /rowConnectorLayer/);

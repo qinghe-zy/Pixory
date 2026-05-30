@@ -6,7 +6,6 @@ import {
   loadBranchTree,
   loadBranchTreePreview,
   resolveBranchSelection,
-  updateBranchRouteStatus,
   type AiBranchTreeNode,
   type AiBranchTreePreview,
 } from '../ai/aiBranchTreeService';
@@ -15,7 +14,7 @@ import { BranchTreeCanvas } from '../branchTree/components/BranchTreeCanvas';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import type { PixorySpace } from '../database';
-import type { AiBranchRouteStatus, AiBranchScope } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope } from '../database/repositories/aiThreadRepository';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 
 interface AiBranchTreeScreenProps {

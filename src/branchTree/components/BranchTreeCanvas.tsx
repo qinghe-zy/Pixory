@@ -194,7 +194,10 @@ export function BranchTreeCanvas({
           {layout.nodes.map((node) => (
             <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
               <GestureDetector
-                gesture={Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onOpenSnapshotNode(node.id))}
+                gesture={Gesture.Exclusive(
+                  Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => onOpenSnapshotNode(node.id)),
+                  Gesture.Tap().numberOfTaps(1).runOnJS(true).onEnd(() => onSelectNode(node.id))
+                )}
               >
                 <Animated.View>
                   <BranchTreeNodeCard node={node} selected={node.id === selectedNodeId} />
@@ -210,7 +213,7 @@ export function BranchTreeCanvas({
           onPress={recenterHead}
           style={({ pressed }) => [styles.recenterPill, { bottom: snapshotVisible ? 238 : 38 }, pressed && styles.pressed]}
         >
-          <Text style={styles.recenterText}>📍 定位到最新</Text>
+          <Text style={styles.recenterText}>最新节点已偏离 · 一键回正</Text>
         </Pressable>
       ) : null}
       {snapshotVisible ? (
