@@ -44,3 +44,20 @@ test('branch tree engine exposes graph layout snapshot and viewport contracts', 
   assert.match(types, /export interface BranchTreeSnapshot/);
   assert.match(types, /export interface BranchTreeViewportTransform/);
 });
+
+test('branch tree graph builder models one message version per node and derives active edges', () => {
+  const builder = read('src/branchTree/engine/buildBranchTreeGraph.ts');
+
+  assert.match(builder, /export interface BranchTreeSourceNode/);
+  assert.match(builder, /messageId: string/);
+  assert.match(builder, /versionIndex: number/);
+  assert.match(builder, /parentMessageId: string \| null/);
+  assert.match(builder, /parentVersionIndex: number \| null/);
+  assert.match(builder, /export function buildBranchTreeGraph/);
+  assert.match(builder, /const nodeByVersionKey = new Map<string, BranchTreeNode>/);
+  assert.match(builder, /function versionKey\(messageId: string, versionIndex: number\)/);
+  assert.match(builder, /childNodeIds/);
+  assert.match(builder, /activeNodeId/);
+  assert.match(builder, /headNodeId/);
+  assert.doesNotMatch(builder, /Date\.parse/);
+});
