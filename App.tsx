@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -1880,7 +1881,8 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <SafeAreaProvider>
       <AppToastProvider>
         <AppUpdateAppliedNotice isReady={isReady} />
         <AppOtaUpdateFetchNotice isReady={isReady} />
@@ -1949,7 +1951,8 @@ export default function App() {
         ) : null}
         <StatusBar style="dark" />
       </AppToastProvider>
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -2058,6 +2061,9 @@ function PersonalModeBanner() {
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1
+  },
   stateScreen: {
     alignItems: 'center',
     justifyContent: 'center',
