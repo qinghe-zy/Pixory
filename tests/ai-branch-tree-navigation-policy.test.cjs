@@ -185,6 +185,23 @@ test('AI chat persists message version selection as the current route', () => {
   assert.doesNotMatch(chat, /onSelectVersion=\{\(messageId, versionIndex\) => \{\s*setSelectedVersionByMessageId/);
 });
 
+test('AI chat generation paths persist the route that history previews point to', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const sendBlock = /export async function sendUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function regenerateAssistantMessage/.exec(service)?.[0] ?? '';
+  const regenerateBlock = /export async function regenerateAssistantMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function retryAssistantMessage/.exec(service)?.[0] ?? '';
+  const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
+
+  assert.match(sendBlock, /setThreadCurrentBranch\(db, \{\s*branchRootMessageId: input\.branchRootMessageId \?\? null,\s*branchVersionIndex: input\.branchVersionIndex \?\? null,\s*threadId: thread\.id/);
+  assert.match(regenerateBlock, /const nextBranchVersionIndex = previousAssistantVersion\.versionIndex \+ 1/);
+  assert.match(regenerateBlock, /setThreadCurrentBranch\(db, \{\s*branchRootMessageId: input\.assistantMessageId,\s*branchVersionIndex: nextBranchVersionIndex,\s*threadId: thread\.id/);
+  assert.match(rewriteBlock, /setThreadCurrentBranch\(db, \{\s*branchRootMessageId: input\.userMessageId,\s*branchVersionIndex: nextBranchVersionIndex,\s*threadId: thread\.id/);
+  assert.match(chat, /async function syncPersistedCurrentBranchRoute\(targetThreadId: string, applySelection = false\): Promise<AiBranchScope\[\]>/);
+  assert.match(chat, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
+  assert.match(chat, /const branchTreeScopes = branchScopesFromSelectionMap\(branchTreeSelection\.selectionMap\)/);
+  assert.match(chat, /void reloadMessages\(targetThreadId, true, branchTreeScopes\)/);
+});
+
 test('AI branch tree preview uses the selected branch root version content', () => {
   const service = read('src/ai/aiBranchTreeService.ts');
 

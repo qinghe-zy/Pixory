@@ -1,5 +1,4 @@
-import { type ReactNode, useMemo, useRef } from 'react';
-import { useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,6 +8,7 @@ import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
+import { listFavoriteAssistantMessages, type AiMessageFavoriteListItem } from '../ai/aiChatService';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
 import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
@@ -23,6 +23,7 @@ interface FavoritesScreenProps {
   onBack: () => void;
   onOpenImage: (imageId: number, context: ImageViewerContext) => void;
   onOpenImageDetail: (imageId: number) => void;
+  onOpenAiMessageFavorite: (favorite: AiMessageFavoriteListItem) => void;
   onStartBatchManagement: (ipId: number, imageId: number) => void;
 }
 
@@ -53,12 +54,17 @@ export function FavoritesScreen({
   space = 'normal',
   refreshToken,
   onBack,
+  onOpenAiMessageFavorite,
   onOpenImage,
   onOpenImageDetail,
   onStartBatchManagement,
 }: FavoritesScreenProps) {
   const [activeFilters, setActiveFilters] = useState<FavoriteFilterState>(EMPTY_FAVORITE_FILTERS);
   const [activeFilterDropdown, setActiveFilterDropdown] = useState<FavoriteFilterDropdown | null>(null);
+  const [favoriteMode, setFavoriteMode] = useState<'images' | 'ai'>('images');
+  const [aiMessages, setAiMessages] = useState<AiMessageFavoriteListItem[]>([]);
+  const [aiFavoriteErrorMessage, setAiFavoriteErrorMessage] = useState<string | null>(null);
+  const [aiFavoritesLoading, setAiFavoritesLoading] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -123,6 +129,23 @@ export function FavoritesScreen({
   }, [activeFilters, groups, ips, tags]);
   const filterLabel = activeFilterLabels.length > 0 ? activeFilterLabels.join(' · ') : '全部收藏';
   const hasActiveFilters = activeFilterLabels.length > 0;
+
+  const reloadAiFavorites = useCallback(async () => {
+    setAiFavoritesLoading(true);
+    setAiFavoriteErrorMessage(null);
+    try {
+      setAiMessages(await listFavoriteAssistantMessages({ space }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      setAiFavoriteErrorMessage(`读取 AI 消息收藏失败：${message}`);
+    } finally {
+      setAiFavoritesLoading(false);
+    }
+  }, [space]);
+
+  useEffect(() => {
+    void reloadAiFavorites();
+  }, [refreshToken, reloadAiFavorites]);
 
   function handleOpenImage(imageId: number) {
     const asset = images.find((item) => item.id === imageId);
@@ -194,7 +217,7 @@ export function FavoritesScreen({
     }
   }
 
-  const footer = multiSelect.isSelectionMode ? (
+  const footer = favoriteMode === 'images' && multiSelect.isSelectionMode ? (
     <BatchImageOrganizePanel
       onChanged={reload}
       onClearSelection={multiSelect.clearSelection}
@@ -204,88 +227,8 @@ export function FavoritesScreen({
       totalCount={selectableAssets.length}
     />
   ) : undefined;
-  return (
-    <ScreenScaffold
-      backgroundVariant="gallery"
-      decorativeTitle="Favorites"
-      footer={footer}
-      onBack={onBack}
-      onScroll={swipeSelection.onScroll}
-      scrollViewRef={scrollViewRef}
-      scrollable
-      title="收藏"
-    >
-      <View style={styles.summary}>
-        <Text numberOfLines={1} style={styles.subtitle}>
-          {hasActiveFilters ? '筛选结果' : '全部收藏'}
-        </Text>
-        <Text numberOfLines={1} style={styles.countText}>
-          {images.length} 张
-        </Text>
-      </View>
-      <View style={styles.filterBarWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-          <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
-          <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
-          <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
-          <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
-          {hasActiveFilters ? (
-            <Pressable onPress={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
-              <Text style={styles.clearFilterText}>清空</Text>
-            </Pressable>
-          ) : null}
-        </ScrollView>
-        <Text numberOfLines={1} style={styles.filterStatus}>
-          {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
-        </Text>
-        {activeFilterDropdown ? (
-          <FilterDrawer
-            mode={getFavoriteFilterMode(activeFilterDropdown)}
-            onClear={() => clearFilterGroup(activeFilterDropdown)}
-            title={getFavoriteFilterTitle(activeFilterDropdown)}
-          >
-            {activeFilterDropdown === 'ip' ? (
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {ips.map((ip) => (
-                  <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
-                ))}
-              </ScrollView>
-            ) : null}
-            {activeFilterDropdown === 'size' ? (
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
-                  <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
-                  <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
-                  <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
-                </View>
-                <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
-                  <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
-                </View>
-              </View>
-            ) : null}
-            {activeFilterDropdown === 'group' ? (
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {groups.map((group) => (
-                  <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
-                ))}
-              </ScrollView>
-            ) : null}
-            {activeFilterDropdown === 'tag' ? (
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {tags.map((tag) => (
-                  <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
-                ))}
-              </ScrollView>
-            ) : null}
-          </FilterDrawer>
-        ) : null}
-      </View>
-
-      <PageStateBlock
+  const imageFavoritesContent = (
+    <PageStateBlock
         emptyActionLabel={undefined}
         emptyDescription="给图片加星标后，这里会展示当前所有收藏图片。"
         emptyIconName="star-outline"
@@ -345,6 +288,134 @@ export function FavoritesScreen({
           </View>
         )}
       </PageStateBlock>
+  );
+  const aiFavoritesContent = (
+    <PageStateBlock
+      emptyDescription="在 AI 回复下点亮星标后，这里会展示收藏消息。"
+      emptyIconName="star-outline"
+      emptyTitle="还没有收藏 AI 消息"
+      errorMessage={aiFavoriteErrorMessage}
+      isEmpty={!aiFavoritesLoading && aiMessages.length === 0}
+      loading={aiFavoritesLoading}
+      loadingDescription="正在读取本地 AI 消息收藏。"
+      loadingTitle="正在读取收藏"
+      onRetry={reloadAiFavorites}
+    >
+      <View style={styles.aiFavoriteList}>
+        {aiMessages.map((favorite) => (
+          <Pressable
+            accessibilityLabel={`打开收藏消息，来自${favorite.threadTitle}`}
+            accessibilityRole="button"
+            key={favorite.id}
+            onPress={() => onOpenAiMessageFavorite(favorite)}
+            style={({ pressed }) => [styles.aiFavoriteRow, pressed && styles.pressed]}
+          >
+            <View style={styles.aiFavoriteHeader}>
+              <Text numberOfLines={1} style={styles.aiFavoriteThread}>{favorite.threadTitle}</Text>
+              <Text style={styles.aiFavoriteRole}>AI</Text>
+            </View>
+            <Text numberOfLines={3} style={styles.aiFavoriteSnippet}>{favorite.snippet || favorite.content}</Text>
+            <Text numberOfLines={1} style={styles.aiFavoriteMeta}>
+              {favorite.messageVersionIndex && favorite.versionTotal > 1 ? `版本 ${favorite.messageVersionIndex}/${favorite.versionTotal} · ` : ''}
+              {new Date(favorite.createdAt).toLocaleDateString()}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </PageStateBlock>
+  );
+  return (
+    <ScreenScaffold
+      backgroundVariant="gallery"
+      decorativeTitle="Favorites"
+      footer={footer}
+      onBack={onBack}
+      onScroll={swipeSelection.onScroll}
+      scrollViewRef={scrollViewRef}
+      scrollable
+      title="收藏"
+    >
+      <View style={styles.summary}>
+        <Text numberOfLines={1} style={styles.subtitle}>
+          {favoriteMode === 'ai' ? 'AI 消息收藏' : hasActiveFilters ? '筛选结果' : '全部收藏'}
+        </Text>
+        <Text numberOfLines={1} style={styles.countText}>
+          {favoriteMode === 'ai' ? `${aiMessages.length} 条` : `${images.length} 张`}
+        </Text>
+      </View>
+      <View style={styles.favoriteModeTabs}>
+        <Pressable onPress={() => setFavoriteMode('images')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'images' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+          <Text style={[styles.favoriteModeText, favoriteMode === 'images' ? styles.favoriteModeTextActive : null]}>图片</Text>
+        </Pressable>
+        <Pressable onPress={() => setFavoriteMode('ai')} style={({ pressed }) => [styles.favoriteModeTab, favoriteMode === 'ai' ? styles.favoriteModeTabActive : null, pressed && styles.pressed]}>
+          <Text style={[styles.favoriteModeText, favoriteMode === 'ai' ? styles.favoriteModeTextActive : null]}>AI 消息</Text>
+        </Pressable>
+      </View>
+      {favoriteMode === 'images' ? (
+        <View style={styles.filterBarWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
+            <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
+            <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
+            <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
+            <FilterMenuButton active={activeFilters.tagIds.length > 0} label={`标签${activeFilters.tagIds.length > 0 ? ` ${activeFilters.tagIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'tag' ? null : 'tag'))} />
+            {hasActiveFilters ? (
+              <Pressable onPress={() => setActiveFilters(EMPTY_FAVORITE_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
+                <Text style={styles.clearFilterText}>清空</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
+          <Text numberOfLines={1} style={styles.filterStatus}>
+            {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
+          </Text>
+          {activeFilterDropdown ? (
+            <FilterDrawer
+              mode={getFavoriteFilterMode(activeFilterDropdown)}
+              onClear={() => clearFilterGroup(activeFilterDropdown)}
+              title={getFavoriteFilterTitle(activeFilterDropdown)}
+            >
+              {activeFilterDropdown === 'ip' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {ips.map((ip) => (
+                    <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+              {activeFilterDropdown === 'size' ? (
+                <View style={styles.drawerSections}>
+                  <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
+                  <View style={styles.filterOptionGrid}>
+                    <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+                    <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+                    <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+                    <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+                  </View>
+                  <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+                  <View style={styles.filterOptionGrid}>
+                    <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+                    <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+                  </View>
+                </View>
+              ) : null}
+              {activeFilterDropdown === 'group' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {groups.map((group) => (
+                    <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+              {activeFilterDropdown === 'tag' ? (
+                <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+                  {tags.map((tag) => (
+                    <FilterOptionRow key={tag.id} label={`#${tag.name}`} selected={activeFilters.tagIds.includes(tag.id)} onPress={() => toggleTagFilter(tag.id)} />
+                  ))}
+                </ScrollView>
+              ) : null}
+            </FilterDrawer>
+          ) : null}
+        </View>
+      ) : null}
+
+      {favoriteMode === 'ai' ? aiFavoritesContent : imageFavoritesContent}
     </ScreenScaffold>
   );
 }
@@ -439,6 +510,70 @@ const styles = StyleSheet.create({
   filterBarWrap: {
     gap: spacing[2],
     marginTop: spacing[1],
+  },
+  favoriteModeTabs: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    padding: spacing[1],
+  },
+  favoriteModeTab: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+  },
+  favoriteModeTabActive: {
+    backgroundColor: colors.primary.weak,
+  },
+  favoriteModeText: {
+    ...typography.textStyles.caption,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  favoriteModeTextActive: {
+    color: colors.primary.active,
+  },
+  aiFavoriteList: {
+    gap: rhythm.listCardGap,
+  },
+  aiFavoriteRow: {
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    padding: spacing[3],
+  },
+  aiFavoriteHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  aiFavoriteThread: {
+    ...typography.textStyles.caption,
+    color: colors.text.title,
+    flex: 1,
+    fontWeight: '700',
+  },
+  aiFavoriteRole: {
+    ...typography.textStyles.micro,
+    color: colors.primary.active,
+    fontWeight: '800',
+  },
+  aiFavoriteSnippet: {
+    ...typography.textStyles.body,
+    color: colors.text.primary,
+    lineHeight: 21,
+  },
+  aiFavoriteMeta: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
   },
   filterBar: {
     flexGrow: 1,
