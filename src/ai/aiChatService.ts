@@ -31,6 +31,7 @@ import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
+import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
 
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
@@ -227,6 +228,39 @@ export interface ListThreadMessagesOptions {
   limit?: number;
 }
 
+export type AiChatSearchMatchKind = 'exact' | 'fuzzy';
+
+export interface AiChatSearchResult {
+  messageId: string;
+  role: AiMessageRecord['role'];
+  content: string;
+  snippet: string;
+  matchedTerms: string[];
+  matchKind: AiChatSearchMatchKind;
+  createdAt: string;
+  versionIndex: number;
+  versionTotal: number;
+}
+
+export interface AiMessageFavoriteListItem {
+  id: string;
+  threadId: string;
+  messageId: string;
+  threadTitle: string;
+  contextType: AiContextType;
+  boundIpId: number | null;
+  boundKnowledgeBaseId: string | null;
+  includeIpDocuments: boolean;
+  content: string;
+  snippet: string;
+  branchScopes: AiBranchScope[];
+  messageVersionIndex: number | null;
+  versionTotal: number;
+  createdAt: string;
+  messageCreatedAt: string;
+  messageUpdatedAt: string;
+}
+
 const CHAT_HISTORY_MESSAGE_LIMIT = 30;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const STREAMING_PERSIST_INTERVAL_MS = 120;
@@ -261,6 +295,46 @@ function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 10);
   return `${prefix}_${timestamp}_${random}`;
+}
+
+function parseFavoriteBranchScopes(value: string): AiBranchScope[] {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((scope): scope is AiBranchScope =>
+          Boolean(scope)
+          && typeof scope.branchRootMessageId === 'string'
+          && typeof scope.branchVersionIndex === 'number'
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function createFavoriteSnippet(content: string): string {
+  return content.replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function mapFavoriteListItem(row: AiMessageFavoriteRepositoryListItem): AiMessageFavoriteListItem {
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    messageId: row.messageId,
+    threadTitle: row.threadTitle,
+    contextType: row.contextType,
+    boundIpId: row.boundIpId,
+    boundKnowledgeBaseId: row.boundKnowledgeBaseId,
+    includeIpDocuments: row.includeIpDocuments,
+    content: row.messageContent,
+    snippet: createFavoriteSnippet(row.messageContent),
+    branchScopes: parseFavoriteBranchScopes(row.branchScopesJson),
+    messageVersionIndex: row.messageVersionIndex,
+    versionTotal: row.versionTotal,
+    createdAt: row.createdAt,
+    messageCreatedAt: row.messageCreatedAt,
+    messageUpdatedAt: row.messageUpdatedAt,
+  };
 }
 
 export function fallbackAiThreadTitle(input: { contextTitle: string; firstUserMessage: string; contextType: AiContextType }): string {
@@ -364,6 +438,81 @@ function truncateForPrompt(value: string, maxLength: number): string {
 
 function getQueryTerms(value: string): string[] {
   return [...new Set(value.toLowerCase().split(/[\s,，。！？!?;；:：、]+/).filter((term) => term.length >= 2))].slice(0, 10);
+}
+
+export function normalizeChatSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[，。！？、；：,.!?;:()[\]{}"'`*_#>\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compactChatSearchText(value: string): string {
+  return normalizeChatSearchText(value).replace(/\s+/g, '');
+}
+
+function buildChatSearchTerms(query: string): string[] {
+  const normalized = normalizeChatSearchText(query);
+  if (!normalized) {
+    return [];
+  }
+  const terms = normalized.split(' ').filter(Boolean);
+  return terms.length > 1 ? [...new Set(terms)] : [normalized];
+}
+
+function scoreChatSearchMessage(message: AiMessageWithCitations, rawQuery: string, terms: string[]): { matchKind: AiChatSearchMatchKind; rank: number } | null {
+  const normalizedContent = normalizeChatSearchText(message.content);
+  const normalizedQuery = normalizeChatSearchText(rawQuery);
+  const compactContent = normalizedContent.replace(/\s+/g, '');
+  const compactQuery = compactChatSearchText(rawQuery);
+  if (!normalizedContent || !normalizedQuery) {
+    return null;
+  }
+  if (normalizedContent.includes(normalizedQuery) || (compactQuery.length > 0 && compactContent.includes(compactQuery))) {
+    return { matchKind: 'exact', rank: 0 };
+  }
+  if (terms.length > 0 && terms.every((term) => normalizedContent.includes(term) || compactContent.includes(term.replace(/\s+/g, '')))) {
+    return { matchKind: 'exact', rank: 1 };
+  }
+  if (compactQuery.length >= 2 && compactQuery.split('').every((char) => compactContent.includes(char))) {
+    return { matchKind: 'fuzzy', rank: 2 };
+  }
+  return null;
+}
+
+function buildChatSearchSnippet(content: string, rawQuery: string, terms: string[]): string {
+  const normalizedContent = content.replace(/\s+/g, ' ').trim();
+  if (!normalizedContent) {
+    return '';
+  }
+  const loweredContent = normalizedContent.toLowerCase();
+  const loweredQuery = rawQuery.trim().toLowerCase();
+  const candidates = [loweredQuery, ...terms].filter(Boolean);
+  const firstIndex = candidates.reduce((current, term) => {
+    const index = loweredContent.indexOf(term);
+    return index >= 0 ? Math.min(current, index) : current;
+  }, Number.POSITIVE_INFINITY);
+  const start = Number.isFinite(firstIndex) ? Math.max(0, firstIndex - 24) : 0;
+  const end = Math.min(normalizedContent.length, start + 92);
+  const prefix = start > 0 ? '...' : '';
+  const suffix = end < normalizedContent.length ? '...' : '';
+  return `${prefix}${normalizedContent.slice(start, end)}${suffix}`;
+}
+
+function toChatSearchResult(message: AiMessageWithCitations, rawQuery: string, terms: string[], matchKind: AiChatSearchMatchKind): AiChatSearchResult {
+  return {
+    content: message.content,
+    createdAt: message.createdAt,
+    matchKind,
+    matchedTerms: terms,
+    messageId: message.id,
+    role: message.role,
+    snippet: buildChatSearchSnippet(message.content, rawQuery, terms),
+    versionIndex: message.versionIndex,
+    versionTotal: message.versionTotal,
+  };
 }
 
 function scoreTextForQuery(text: string, query: string): number {
@@ -774,6 +923,43 @@ export async function listThreadMessages(space: PixorySpace, threadId: string, o
       };
     });
   });
+}
+
+export async function searchThreadMessages(input: {
+  space: PixorySpace;
+  threadId: string;
+  query: string;
+  branchScopes?: AiBranchScope[];
+  offset?: number;
+  limit?: number;
+}): Promise<{ results: AiChatSearchResult[]; hasMore: boolean }> {
+  const terms = buildChatSearchTerms(input.query);
+  const limit = Math.max(1, input.limit ?? 40);
+  const offset = Math.max(0, input.offset ?? 0);
+  if (terms.length === 0) {
+    return { hasMore: false, results: [] };
+  }
+  const branchScopes = input.branchScopes ?? [];
+  const messages = await listThreadMessages(input.space, input.threadId, {
+    branchScopes,
+  });
+  const matches = messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => {
+      const score = scoreChatSearchMessage(message, input.query, terms);
+      return score ? { message, ...score } : null;
+    })
+    .filter((item): item is { message: AiMessageWithCitations; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
+    .sort((left, right) =>
+      left.rank - right.rank ||
+      left.message.createdAt.localeCompare(right.message.createdAt) ||
+      left.message.id.localeCompare(right.message.id)
+    )
+    .map((item) => toChatSearchResult(item.message, input.query, terms, item.matchKind));
+  return {
+    hasMore: offset + limit < matches.length,
+    results: matches.slice(offset, offset + limit),
+  };
 }
 
 export async function loadThreadAvatarConfig(space: PixorySpace, threadId: string): Promise<AiThreadAvatarConfig> {
@@ -1473,6 +1659,11 @@ export async function sendUserMessage(
       lastMessagePreview: input.content.slice(0, 80),
       titleStatus: thread.titleStatus === 'fallback' ? 'fallback' : undefined,
     });
+    await aiThreadRepository.setThreadCurrentBranch(db, {
+      branchRootMessageId: input.branchRootMessageId ?? null,
+      branchVersionIndex: input.branchVersionIndex ?? null,
+      threadId: thread.id,
+    });
   });
   input.onCreated?.({ userMessageId, assistantMessageId });
   input.onUpdated?.();
@@ -1513,9 +1704,15 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     }
     await db.withTransactionAsync(async () => {
       const previousAssistantVersion = await snapshotMessageVersion(db, assistantMessage);
+      const nextBranchVersionIndex = previousAssistantVersion.versionIndex + 1;
       await aiThreadRepository.markVisibleMessagesAfterAsBranch(db, thread.id, input.assistantMessageId, input.assistantMessageId, previousAssistantVersion.versionIndex, assistantMessage);
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: previousUserMessage.content.slice(0, 80),
+      });
+      await aiThreadRepository.setThreadCurrentBranch(db, {
+        branchRootMessageId: input.assistantMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        threadId: thread.id,
       });
     });
     return previousUserMessage;
@@ -1576,6 +1773,11 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: content.slice(0, 80),
       });
+      await aiThreadRepository.setThreadCurrentBranch(db, {
+        branchRootMessageId: input.userMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        threadId: thread.id,
+      });
     });
   });
 
@@ -1604,4 +1806,46 @@ export async function stopStreamingMessage(input: StopStreamingMessageInput): Pr
       completedAt: new Date().toISOString(),
     })
   );
+}
+
+export async function toggleAssistantMessageFavorite(input: {
+  space: PixorySpace;
+  threadId: string;
+  messageId: string;
+  branchScopes?: AiBranchScope[];
+  messageVersionIndex?: number | null;
+  favorited: boolean;
+}): Promise<boolean> {
+  await runWithDatabaseSpace(input.space, async (db) => {
+    if (input.favorited) {
+      await aiThreadRepository.favoriteAssistantMessage(db, input);
+    } else {
+      await aiThreadRepository.unfavoriteAssistantMessage(db, input);
+    }
+  });
+  return input.favorited;
+}
+
+export async function findFavoriteAssistantMessageState(input: {
+  space: PixorySpace;
+  threadId: string;
+  messageId: string;
+  branchScopes?: AiBranchScope[];
+  messageVersionIndex?: number | null;
+}): Promise<boolean> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const row = await aiThreadRepository.findFavoriteAssistantMessageState(db, input);
+    return Boolean(row);
+  });
+}
+
+export async function listFavoriteAssistantMessages(input: {
+  space: PixorySpace;
+  limit?: number;
+  offset?: number;
+}): Promise<AiMessageFavoriteListItem[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const rows = await aiThreadRepository.listFavoriteAssistantMessages(db, input);
+    return rows.map(mapFavoriteListItem);
+  });
 }

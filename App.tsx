@@ -34,6 +34,7 @@ import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
+import { AiChatSearchScreen } from './src/screens/AiChatSearchScreen';
 import { AiDocumentReaderScreen } from './src/screens/AiDocumentReaderScreen';
 import { AiHistoryScreen } from './src/screens/AiHistoryScreen';
 import { AiHomeScreen } from './src/screens/AiHomeScreen';
@@ -47,7 +48,7 @@ import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
-import { applyRoleCardToThread, createNormalThreadFromRoleCard } from './src/ai/aiChatService';
+import { applyRoleCardToThread, createNormalThreadFromRoleCard, type AiMessageFavoriteListItem } from './src/ai/aiChatService';
 import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
@@ -169,6 +170,9 @@ type AppRoute =
       threadId?: string;
       routeKey?: string;
       modelRefreshKey?: number;
+      searchTargetMessageId?: string;
+      searchTargetKey?: string;
+      searchTargetBranchScopes?: AiBranchScope[];
       composerEntranceReason?: ComposerEntranceReason;
       branchTreeSelection?: {
         branchRootMessageId: string;
@@ -183,6 +187,14 @@ type AppRoute =
       contextTitle?: string;
       contextType?: 'normal' | 'ip' | 'knowledge_base';
       currentBranchScopes: AiBranchScope[];
+    }
+  | {
+      name: 'ai-chat-search';
+      space: PixorySpace;
+      threadId: string;
+      contextTitle?: string;
+      contextType?: 'normal' | 'ip' | 'knowledge_base';
+      branchScopes: AiBranchScope[];
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
@@ -257,6 +269,49 @@ function buildAiChatRouteFromBranchTree(
     routeKey: previousChat?.routeKey,
     space: branchTreeRoute.space,
     threadId: branchTreeRoute.threadId,
+    name: 'ai-chat',
+  };
+}
+
+function buildAiChatRouteFromSearch(
+  searchRoute: Extract<AppRoute, { name: 'ai-chat-search' }>,
+  result: { messageId: string },
+  previousRoute?: AppRoute
+): Extract<AppRoute, { name: 'ai-chat' }> {
+  const previousChat = previousRoute?.name === 'ai-chat' ? previousRoute : undefined;
+  return {
+    composerEntranceReason: 'replace_current',
+    contextTitle: searchRoute.contextTitle ?? previousChat?.contextTitle,
+    contextType: searchRoute.contextType ?? previousChat?.contextType ?? 'normal',
+    includeIpDocuments: previousChat?.includeIpDocuments,
+    ipId: previousChat?.ipId,
+    knowledgeBaseId: previousChat?.knowledgeBaseId,
+    routeKey: previousChat?.routeKey,
+    searchTargetBranchScopes: searchRoute.branchScopes,
+    searchTargetKey: `${result.messageId}:${Date.now()}`,
+    searchTargetMessageId: result.messageId,
+    space: searchRoute.space,
+    threadId: searchRoute.threadId,
+    name: 'ai-chat',
+  };
+}
+
+function buildAiChatRouteFromFavorite(
+  favorite: AiMessageFavoriteListItem,
+  space: PixorySpace
+): Extract<AppRoute, { name: 'ai-chat' }> {
+  return {
+    composerEntranceReason: 'replace_current',
+    contextTitle: favorite.threadTitle,
+    contextType: favorite.contextType,
+    includeIpDocuments: favorite.includeIpDocuments,
+    ipId: favorite.boundIpId ?? undefined,
+    knowledgeBaseId: favorite.boundKnowledgeBaseId ?? undefined,
+    searchTargetBranchScopes: favorite.branchScopes,
+    searchTargetKey: `${favorite.messageId}:${Date.now()}`,
+    searchTargetMessageId: favorite.messageId,
+    space,
+    threadId: favorite.threadId,
     name: 'ai-chat',
   };
 }
@@ -1449,6 +1504,9 @@ export default function App() {
     content = (
       <FavoritesScreen
         onBack={popRoute}
+        onOpenAiMessageFavorite={(favorite) =>
+          openAiChatRoute(buildAiChatRouteFromFavorite(favorite, currentRoute.space))
+        }
         onOpenImage={openImageViewer}
         onOpenImageDetail={openImageDetail}
         onStartBatchManagement={(ipId, imageId) =>
@@ -1611,6 +1669,16 @@ export default function App() {
             threadId,
           })
         }
+        onOpenChatSearch={(threadId, branchScopes) =>
+          pushRoute({
+            name: 'ai-chat-search',
+            branchScopes,
+            contextTitle: currentRoute.contextTitle,
+            contextType: currentRoute.contextType,
+            space: currentRoute.space,
+            threadId,
+          })
+        }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
@@ -1632,6 +1700,9 @@ export default function App() {
         onThreadReady={(threadId) => updateCurrentAiChatRoute({ threadId }, currentRoute.routeKey)}
         onThreadTitleChange={(title) => updateCurrentAiChatRoute({ contextTitle: title }, currentRoute.routeKey)}
         modelRefreshKey={currentRoute.modelRefreshKey}
+        searchTargetBranchScopes={currentRoute.searchTargetBranchScopes}
+        searchTargetKey={currentRoute.searchTargetKey}
+        searchTargetMessageId={currentRoute.searchTargetMessageId}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
       />
@@ -1654,6 +1725,21 @@ export default function App() {
         }}
         onDeriveBranch={(selection) => {
           const nextRoute = buildAiChatRouteFromBranchTree(currentRoute, selection, previousRoute);
+          setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
+        }}
+        space={currentRoute.space}
+        threadId={currentRoute.threadId}
+      />
+    );
+  } else if (currentRoute.name === 'ai-chat-search') {
+    const previousRoute = routeStack[routeStack.length - 2];
+    content = (
+      <AiChatSearchScreen
+        branchScopes={currentRoute.branchScopes}
+        contextTitle={currentRoute.contextTitle}
+        onBack={popRoute}
+        onSelectResult={(result) => {
+          const nextRoute = buildAiChatRouteFromSearch(currentRoute, result, previousRoute);
           setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
         }}
         space={currentRoute.space}

@@ -27,6 +27,9 @@ interface AiMessageBubbleProps {
   generating?: boolean;
   thinkingDefaultExpanded?: boolean;
   editingMessageId?: string | null;
+  favorited?: boolean;
+  favoriteDisabledByGeneration?: boolean;
+  favoritePending?: boolean;
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
   onEditUser: (messageId: string, content: string) => void;
@@ -35,6 +38,7 @@ interface AiMessageBubbleProps {
   onCancelEdit: () => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
+  onToggleFavorite?: (message: AiMessageWithCitations) => void;
   onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
 }
@@ -58,6 +62,9 @@ function AiMessageBubbleComponent({
   space,
   streaming = false,
   editingMessageId = null,
+  favorited = false,
+  favoriteDisabledByGeneration = false,
+  favoritePending = false,
   pendingActionMessageId = null,
   thinkingDefaultExpanded = false,
   onCopy,
@@ -67,6 +74,7 @@ function AiMessageBubbleComponent({
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
+  onToggleFavorite,
   onThinkingExpandedChange,
   onSubmitEdit,
 }: AiMessageBubbleProps) {
@@ -80,6 +88,7 @@ function AiMessageBubbleComponent({
   const actionPending = pendingActionMessageId === message.id;
   const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
+  const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
   const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
   const [editDraft, setEditDraft] = useState(message.content);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
@@ -198,6 +207,19 @@ function AiMessageBubbleComponent({
           >
             <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
           </Pressable>
+          {!isUser ? (
+            <Pressable
+              accessibilityLabel={favorited ? '取消收藏 AI 消息' : '收藏 AI 消息'}
+              accessibilityRole="button"
+              accessibilityState={{ selected: favorited, disabled: !canFavorite }}
+              disabled={!canFavorite}
+              hitSlop={8}
+              onPress={() => onToggleFavorite?.(message)}
+              style={({ pressed }) => [styles.messageActionButton, favorited ? styles.favoriteActionButtonActive : null, !canFavorite && styles.disabledAction, pressed && canFavorite && styles.pressed]}
+            >
+              <Ionicons color={favorited ? aiLightColors.coralActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
+            </Pressable>
+          ) : null}
           {isUser ? (
             <Pressable
               accessibilityLabel="重写消息"
@@ -260,6 +282,9 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.streaming === next.streaming &&
     previous.generating === next.generating &&
     previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
+    previous.favorited === next.favorited &&
+    previous.favoriteDisabledByGeneration === next.favoriteDisabledByGeneration &&
+    previous.favoritePending === next.favoritePending &&
     previous.pendingActionMessageId === next.pendingActionMessageId &&
     previous.showAvatar === next.showAvatar &&
     previous.editingMessageId === next.editingMessageId &&
@@ -389,6 +414,10 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: 'center',
     width: 28,
+  },
+  favoriteActionButtonActive: {
+    backgroundColor: aiLightColors.coralSoft,
+    borderColor: aiLightColors.coral,
   },
   versionControl: {
     alignItems: 'center',

@@ -92,6 +92,40 @@ export interface AiMessageVersionRecord {
   createdAt: string;
 }
 
+export interface AiMessageFavoriteRecord {
+  id: string;
+  space: PixorySpace;
+  threadId: string;
+  messageId: string;
+  favoriteKey: string;
+  branchRootMessageId: string | null;
+  branchVersionIndex: number | null;
+  branchScopesJson: string;
+  messageVersionIndex: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiMessageFavoriteListItem extends AiMessageFavoriteRecord {
+  threadTitle: string;
+  contextType: AiContextType;
+  boundIpId: number | null;
+  boundKnowledgeBaseId: string | null;
+  includeIpDocuments: boolean;
+  messageContent: string;
+  messageCreatedAt: string;
+  messageUpdatedAt: string;
+  versionTotal: number;
+}
+
+export interface AiFavoriteAssistantMessageInput {
+  space: PixorySpace;
+  threadId: string;
+  messageId: string;
+  branchScopes?: AiBranchScope[];
+  messageVersionIndex?: number | null;
+}
+
 export type AiMemoryScope = 'global' | 'thread' | 'role' | 'ip' | 'knowledge_base';
 export type AiMemoryType = 'preference' | 'fact' | 'decision' | 'instruction' | 'task' | 'correction';
 export type AiMemoryStatus = 'active' | 'stale' | 'deleted';
@@ -533,6 +567,33 @@ function normalizeBranchScopes(branchScopes?: AiBranchScope[]): AiBranchScope[] 
     seen.add(key);
     return true;
   });
+}
+
+function normalizeFavoriteBranchScopes(branchScopes?: AiBranchScope[]): AiBranchScope[] {
+  return normalizeBranchScopes(branchScopes) ?? [];
+}
+
+function stableFavoriteBranchScopesJson(branchScopes?: AiBranchScope[]): string {
+  const normalized = normalizeFavoriteBranchScopes(branchScopes)
+    .slice()
+    .sort((left, right) => {
+      const rootCompare = left.branchRootMessageId.localeCompare(right.branchRootMessageId);
+      return rootCompare !== 0 ? rootCompare : left.branchVersionIndex - right.branchVersionIndex;
+    });
+  return JSON.stringify(normalized);
+}
+
+function getPrimaryFavoriteBranchScope(branchScopes?: AiBranchScope[]): AiBranchScope | null {
+  return normalizeFavoriteBranchScopes(branchScopes).at(-1) ?? null;
+}
+
+function buildAiMessageFavoriteKey(input: AiFavoriteAssistantMessageInput): string {
+  return [
+    input.space,
+    input.messageId,
+    stableFavoriteBranchScopesJson(input.branchScopes),
+    input.messageVersionIndex ?? 'current',
+  ].join('|');
 }
 
 function buildVisibleBranchClause(alias: string, branchScopes?: AiBranchScope[]): { clause: string; values: Array<string | number> } {
@@ -1432,6 +1493,123 @@ export const aiThreadRepository = {
       await aiThreadRepository.syncMessageFts(db, message);
     }
     return message;
+  },
+
+  async favoriteAssistantMessage(db: SQLiteDatabase, input: AiFavoriteAssistantMessageInput): Promise<AiMessageFavoriteRecord> {
+    const message = await aiThreadRepository.findMessageById(db, input.messageId);
+    if (!message || message.threadId !== input.threadId) {
+      throw new Error('AI message was not found.');
+    }
+    if (message.role !== 'assistant') {
+      throw new Error('Only assistant messages can be favorited.');
+    }
+    const now = createTimestamp();
+    const primaryScope = getPrimaryFavoriteBranchScope(input.branchScopes);
+    const favoriteKey = buildAiMessageFavoriteKey(input);
+    const branchScopesJson = stableFavoriteBranchScopesJson(input.branchScopes);
+    await db.runAsync(
+      `INSERT INTO ai_message_favorites (
+        id, space, threadId, messageId, favoriteKey, branchRootMessageId, branchVersionIndex,
+        branchScopesJson, messageVersionIndex, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(favoriteKey) DO UPDATE SET updatedAt = excluded.updatedAt`,
+      `ai-favorite-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      input.space,
+      input.threadId,
+      input.messageId,
+      favoriteKey,
+      primaryScope?.branchRootMessageId ?? null,
+      primaryScope?.branchVersionIndex ?? null,
+      branchScopesJson,
+      input.messageVersionIndex ?? null,
+      now,
+      now
+    );
+    const row = await db.getFirstAsync<AiMessageFavoriteRecord>('SELECT * FROM ai_message_favorites WHERE favoriteKey = ?', favoriteKey);
+    if (!row) {
+      throw new Error('AI message favorite was saved but could not be reloaded.');
+    }
+    return row;
+  },
+
+  async unfavoriteAssistantMessage(db: SQLiteDatabase, input: AiFavoriteAssistantMessageInput): Promise<void> {
+    await db.runAsync('DELETE FROM ai_message_favorites WHERE favoriteKey = ?', buildAiMessageFavoriteKey(input));
+  },
+
+  async findFavoriteAssistantMessageState(db: SQLiteDatabase, input: AiFavoriteAssistantMessageInput): Promise<AiMessageFavoriteRecord | null> {
+    return db.getFirstAsync<AiMessageFavoriteRecord>(
+      'SELECT * FROM ai_message_favorites WHERE favoriteKey = ?',
+      buildAiMessageFavoriteKey(input)
+    );
+  },
+
+  async listFavoriteAssistantMessages(
+    db: SQLiteDatabase,
+    input: { space: PixorySpace; limit?: number; offset?: number }
+  ): Promise<AiMessageFavoriteListItem[]> {
+    const limit = Math.max(1, Math.min(input.limit ?? 80, 200));
+    const offset = Math.max(0, input.offset ?? 0);
+    const rows = await db.getAllAsync<AiMessageFavoriteRecord & {
+      threadTitle: string;
+      contextType: AiContextType;
+      boundIpId: number | null;
+      boundKnowledgeBaseId: string | null;
+      includeIpDocuments: number;
+      messageContent: string;
+      messageCreatedAt: string;
+      messageUpdatedAt: string;
+      versionTotal: number;
+    }>(
+      `SELECT
+         ai_message_favorites.*,
+         ai_threads.title AS threadTitle,
+         ai_threads.contextType,
+         ai_threads.boundIpId,
+         ai_threads.boundKnowledgeBaseId,
+         ai_threads.includeIpDocuments,
+         CASE
+           WHEN ai_message_versions.id IS NOT NULL THEN ai_message_versions.content
+           WHEN ai_message_favorites.messageVersionIndex IS NULL THEN ai_messages.content
+           WHEN ai_message_favorites.messageVersionIndex = COALESCE(version_counts.versionTotal, 1) THEN ai_messages.content
+           ELSE ''
+         END AS messageContent,
+         CASE
+           WHEN ai_message_versions.id IS NOT NULL THEN ai_message_versions.messageCreatedAt
+           ELSE ai_messages.createdAt
+         END AS messageCreatedAt,
+         CASE
+           WHEN ai_message_versions.id IS NOT NULL THEN ai_message_versions.messageUpdatedAt
+           ELSE ai_messages.updatedAt
+         END AS messageUpdatedAt,
+         COALESCE(version_counts.versionTotal, 1) AS versionTotal
+       FROM ai_message_favorites
+       JOIN ai_threads ON ai_threads.id = ai_message_favorites.threadId
+       JOIN ai_messages ON ai_messages.id = ai_message_favorites.messageId
+       LEFT JOIN ai_message_versions
+         ON ai_message_versions.originalMessageId = ai_message_favorites.messageId
+        AND ai_message_versions.versionIndex = ai_message_favorites.messageVersionIndex
+       LEFT JOIN (
+         SELECT originalMessageId, COUNT(*) + 1 AS versionTotal
+         FROM ai_message_versions
+         GROUP BY originalMessageId
+       ) version_counts ON version_counts.originalMessageId = ai_message_favorites.messageId
+       WHERE ai_message_favorites.space = ?
+         AND ai_messages.role = 'assistant'
+         AND (
+           ai_message_favorites.messageVersionIndex IS NULL
+           OR ai_message_versions.id IS NOT NULL
+           OR ai_message_favorites.messageVersionIndex = COALESCE(version_counts.versionTotal, 1)
+         )
+       ORDER BY ai_message_favorites.createdAt DESC, ai_message_favorites.id DESC
+       LIMIT ? OFFSET ?`,
+      input.space,
+      limit,
+      offset
+    );
+    return rows.map((row) => ({
+      ...row,
+      includeIpDocuments: sqliteToBoolean(row.includeIpDocuments),
+    }));
   },
 
   async deleteMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<number> {

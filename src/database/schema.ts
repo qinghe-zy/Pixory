@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 36;
+export const DATABASE_VERSION = 37;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -856,6 +856,33 @@ CREATE INDEX IF NOT EXISTS idx_ai_branch_route_metadata_thread
 export const MIGRATION_STATEMENTS_V36 = `
 ALTER TABLE ai_threads ADD COLUMN currentBranchRootMessageId TEXT;
 ALTER TABLE ai_threads ADD COLUMN currentBranchVersionIndex INTEGER;
+`;
+
+export const MIGRATION_STATEMENTS_V37 = `
+CREATE TABLE IF NOT EXISTS ai_message_favorites (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL,
+  messageId TEXT NOT NULL,
+  favoriteKey TEXT NOT NULL,
+  branchRootMessageId TEXT,
+  branchVersionIndex INTEGER,
+  branchScopesJson TEXT NOT NULL DEFAULT '[]',
+  messageVersionIndex INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_message_favorites_key
+  ON ai_message_favorites(favoriteKey);
+
+CREATE INDEX IF NOT EXISTS idx_ai_message_favorites_space_created_at
+  ON ai_message_favorites(space, createdAt);
+
+CREATE INDEX IF NOT EXISTS idx_ai_message_favorites_thread
+  ON ai_message_favorites(threadId, createdAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
