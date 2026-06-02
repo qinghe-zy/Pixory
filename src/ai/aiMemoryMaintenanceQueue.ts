@@ -23,6 +23,8 @@ interface ScheduleMemoryMaintenanceInput {
 }
 
 interface ActiveMaintenanceTask {
+  currentInput: ScheduleMemoryMaintenanceInput;
+  done: (error?: unknown) => void;
   pendingReason: MemoryMaintenanceReason | null;
   pendingInput: ScheduleMemoryMaintenanceInput | null;
   promise: Promise<void>;
@@ -39,6 +41,8 @@ interface MaintenancePassAccumulator {
 }
 
 const activeMaintenanceTasks = new Map<string, ActiveMaintenanceTask>();
+const queuedMaintenanceTasks: ActiveMaintenanceTask[] = [];
+let globalMaintenanceRunnerActive = false;
 
 function maintenanceTaskKey(space: PixorySpace, threadId: string): string {
   return `${space}:${threadId}`;
@@ -151,56 +155,100 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   await recordMaintenanceResult(input.space, input.threadId, accumulator);
 }
 
+function enqueueMaintenanceTask(entry: ActiveMaintenanceTask): void {
+  queuedMaintenanceTasks.push(entry);
+  queuedMaintenanceTasks.sort((left, right) => reasonPriority(right.reason) - reasonPriority(left.reason));
+  void drainMaintenanceQueue();
+}
+
+async function drainMaintenanceQueue(): Promise<void> {
+  if (globalMaintenanceRunnerActive) {
+    return;
+  }
+  globalMaintenanceRunnerActive = true;
+  try {
+    while (queuedMaintenanceTasks.length > 0) {
+      const entry = queuedMaintenanceTasks.shift();
+      if (!entry) {
+        continue;
+      }
+      let currentInput = entry.currentInput;
+      while (true) {
+        try {
+          await runUnifiedMemoryMaintenancePass(currentInput);
+        } catch (error) {
+          await recordMaintenanceFailure(currentInput.space, currentInput.threadId, error);
+        }
+        const pendingReason = entry.pendingReason;
+        const pendingInput = entry.pendingInput;
+        entry.pendingReason = null;
+        entry.pendingInput = null;
+        if (!pendingReason) {
+          break;
+        }
+        const hasPendingExchange = Boolean(pendingInput?.thread && pendingInput.userMessage && pendingInput.assistantMessageId);
+        const hasStrongerReason = reasonPriority(pendingReason) > reasonPriority(currentInput.reason);
+        const hasDifferentReason = pendingReason !== currentInput.reason;
+        if (!hasPendingExchange && !hasStrongerReason && !hasDifferentReason) {
+          break;
+        }
+        currentInput = {
+          ...(pendingInput ?? currentInput),
+          reason: pendingReason,
+        };
+        entry.reason = pendingReason;
+      }
+      entry.done(undefined);
+    }
+  } finally {
+    globalMaintenanceRunnerActive = false;
+  }
+}
+
 export async function scheduleMemoryMaintenance(input: ScheduleMemoryMaintenanceInput): Promise<void> {
   const key = maintenanceTaskKey(input.space, input.threadId);
   const activeEntry = activeMaintenanceTasks.get(key);
   if (activeEntry) {
+    const nextReason = chooseStrongerReason(activeEntry.reason, input.reason);
+    activeEntry.reason = nextReason;
+    if (queuedMaintenanceTasks.includes(activeEntry)) {
+      activeEntry.currentInput = {
+        ...input,
+        reason: nextReason,
+      };
+      queuedMaintenanceTasks.sort((left, right) => reasonPriority(right.reason) - reasonPriority(left.reason));
+      return activeEntry.promise;
+    }
     activeEntry.pendingReason = chooseStrongerReason(activeEntry.pendingReason, input.reason);
     activeEntry.pendingInput = input;
     return activeEntry.promise;
   }
+  let finishTask: (error?: unknown) => void = () => undefined;
+  const promise = new Promise<void>((resolve, reject) => {
+    finishTask = (error?: unknown) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    };
+  });
   const entry: ActiveMaintenanceTask = {
+    currentInput: input,
+    done: finishTask,
     pendingInput: null,
     pendingReason: null,
-    promise: Promise.resolve(),
+    promise,
     reason: input.reason,
   };
-  const task = (async () => {
-    let currentInput: ScheduleMemoryMaintenanceInput = input;
-    while (true) {
-      try {
-        await runUnifiedMemoryMaintenancePass(currentInput);
-      } catch (error) {
-        await recordMaintenanceFailure(currentInput.space, currentInput.threadId, error);
-      }
-      const pendingReason = entry.pendingReason;
-      const pendingInput = entry.pendingInput;
-      entry.pendingReason = null;
-      entry.pendingInput = null;
-      if (!pendingReason) {
-        break;
-      }
-      const hasPendingExchange = Boolean(pendingInput?.thread && pendingInput.userMessage && pendingInput.assistantMessageId);
-      const hasStrongerReason = reasonPriority(pendingReason) > reasonPriority(currentInput.reason);
-      const hasDifferentReason = pendingReason !== currentInput.reason;
-      if (!hasPendingExchange && !hasStrongerReason && !hasDifferentReason) {
-        break;
-      }
-      currentInput = {
-        ...(pendingInput ?? currentInput),
-        reason: pendingReason,
-      };
-      entry.reason = pendingReason;
+  entry.promise = entry.promise.finally(() => {
+    if (activeMaintenanceTasks.get(key) === entry) {
+      activeMaintenanceTasks.delete(key);
     }
-  })()
-    .finally(() => {
-      if (activeMaintenanceTasks.get(key) === entry) {
-        activeMaintenanceTasks.delete(key);
-      }
-    });
-  entry.promise = task;
+  });
   activeMaintenanceTasks.set(key, entry);
-  return task;
+  enqueueMaintenanceTask(entry);
+  return entry.promise;
 }
 
 export function isThreadMemoryMaintenanceActive(space: PixorySpace, threadId: string): boolean {

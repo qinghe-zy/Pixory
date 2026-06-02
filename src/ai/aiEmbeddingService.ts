@@ -31,6 +31,8 @@ interface ChunkForEmbeddingRow {
   text: string;
 }
 
+const EMBEDDING_VECTOR_CANDIDATE_LIMIT = 320;
+
 function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 10);
@@ -188,6 +190,7 @@ export async function tryEmbeddingRetrieval(
   const providerId = input.providerId;
   const modelId = input.modelId;
   const queryVector = input.queryVector;
+  const candidateLimit = Math.max(input.limit ?? 6, EMBEDDING_VECTOR_CANDIDATE_LIMIT);
 
   return runWithDatabaseSpace(input.space, async (db) => {
     const rows = await db.getAllAsync<EmbeddingRow>(
@@ -198,12 +201,15 @@ export async function tryEmbeddingRetrieval(
          AND ai_chunks.ownerType = ?
          AND ai_chunks.ownerId = ?
          AND ai_embeddings.providerId = ?
-         AND ai_embeddings.modelId = ?`,
+         AND ai_embeddings.modelId = ?
+       ORDER BY ai_chunks.documentId ASC, ai_chunks.chunkIndex ASC, ai_embeddings.chunkId ASC
+       LIMIT ?`,
       input.space,
       input.ownerType,
       input.ownerId,
       providerId,
-      modelId
+      modelId,
+      candidateLimit
     );
 
     return rows

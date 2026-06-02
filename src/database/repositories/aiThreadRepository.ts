@@ -742,6 +742,7 @@ function buildSummarySegmentVisibilityClause(
 
 const DELETE_MESSAGE_CHUNK_SIZE = 200;
 const MESSAGE_LOOKUP_CHUNK_SIZE = 200;
+const BRANCH_LINEAGE_MAX_DEPTH = 1000;
 
 export const aiThreadRepository = {
   async listBranchRouteMetadata(db: SQLiteDatabase, threadId: string): Promise<AiBranchRouteMetadataRecord[]> {
@@ -1888,28 +1889,106 @@ export const aiThreadRepository = {
     if (!branchRootMessageId || !branchVersionIndex) {
       return [];
     }
-    const scopes: AiBranchScope[] = [];
-    const seen = new Set<string>();
-    let currentRootMessageId: string | null = branchRootMessageId;
-    let currentVersionIndex: number | null = branchVersionIndex;
-    while (currentRootMessageId && currentVersionIndex) {
-      const key = `${currentRootMessageId}:${currentVersionIndex}`;
-      if (seen.has(key)) {
-        return [];
-      }
-      seen.add(key);
-      const root: AiMessageRecord | null = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', currentRootMessageId);
-      if (!root) {
-        return [];
-      }
-      scopes.push({
-        branchRootMessageId: currentRootMessageId,
-        branchVersionIndex: currentVersionIndex,
-      });
-      currentRootMessageId = root.branchRootMessageId;
-      currentVersionIndex = root.branchVersionIndex;
+    const rows = await db.getAllAsync<{
+      branchRootMessageId: string;
+      branchVersionIndex: number;
+      cycleDetected: number;
+      depth: number;
+      depthLimitReached: number;
+      missingParentDetected: number;
+    }>(
+      `WITH RECURSIVE lineage(
+         id,
+         branchRootMessageId,
+         branchVersionIndex,
+         parentBranchRootMessageId,
+         parentBranchVersionIndex,
+         depth,
+         path,
+         cycleDetected,
+         missingParentDetected
+       ) AS (
+         SELECT
+           root.id,
+           root.id,
+           CAST(? AS INTEGER),
+           root.branchRootMessageId,
+           root.branchVersionIndex,
+           0,
+           '|' || root.id || ':' || CAST(? AS TEXT) || '|',
+           0,
+           0
+         FROM ai_messages root
+         WHERE root.id = ?
+
+         UNION ALL
+
+         SELECT
+           parent.id,
+           parent.id,
+           lineage.parentBranchVersionIndex,
+           parent.branchRootMessageId,
+           parent.branchVersionIndex,
+           lineage.depth + 1,
+           lineage.path || parent.id || ':' || CAST(lineage.parentBranchVersionIndex AS TEXT) || '|',
+           CASE
+             WHEN instr(lineage.path, '|' || parent.id || ':' || CAST(lineage.parentBranchVersionIndex AS TEXT) || '|') > 0 THEN 1
+             ELSE 0
+           END,
+           0
+         FROM lineage
+         JOIN ai_messages parent ON parent.id = lineage.parentBranchRootMessageId
+         WHERE lineage.parentBranchRootMessageId IS NOT NULL
+           AND lineage.parentBranchVersionIndex IS NOT NULL
+           AND lineage.cycleDetected = 0
+           AND lineage.depth < ?
+
+         UNION ALL
+
+         SELECT
+           '__missing_parent__',
+           lineage.parentBranchRootMessageId,
+           lineage.parentBranchVersionIndex,
+           NULL,
+           NULL,
+           lineage.depth + 1,
+           lineage.path,
+           0,
+           1
+         FROM lineage
+         LEFT JOIN ai_messages parent ON parent.id = lineage.parentBranchRootMessageId
+         WHERE lineage.parentBranchRootMessageId IS NOT NULL
+           AND lineage.parentBranchVersionIndex IS NOT NULL
+           AND parent.id IS NULL
+           AND lineage.cycleDetected = 0
+           AND lineage.depth < ?
+       )
+       SELECT
+         branchRootMessageId,
+         branchVersionIndex,
+         cycleDetected,
+         depth,
+         CASE WHEN depth >= ? THEN 1 ELSE 0 END AS depthLimitReached,
+         missingParentDetected
+       FROM lineage
+       ORDER BY depth ASC`,
+      branchVersionIndex,
+      branchVersionIndex,
+      branchRootMessageId,
+      BRANCH_LINEAGE_MAX_DEPTH,
+      BRANCH_LINEAGE_MAX_DEPTH,
+      BRANCH_LINEAGE_MAX_DEPTH
+    );
+    if (
+      rows.length === 0
+      || rows.some((row) => row.cycleDetected || row.missingParentDetected || row.depthLimitReached)
+    ) {
+      return [];
     }
-    return scopes;
+    return rows.map((row) => ({
+      branchRootMessageId: row.branchRootMessageId,
+      branchVersionIndex: row.branchVersionIndex,
+    }));
   },
 
   async listRecentCompletedMessagesBefore(

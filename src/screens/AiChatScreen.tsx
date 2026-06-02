@@ -303,6 +303,7 @@ export function AiChatScreen({
   const hasBufferedStreamingUpdateRef = useRef(false);
   const frozenStreamingMessageByIdRef = useRef(new Map<string, AiMessageWithCitations>());
   const messagesRef = useRef<AiMessageWithCitations[]>([]);
+  const messageIndexByIdRef = useRef(new Map<string, number>());
   const visibleMessagesRef = useRef<AiMessageWithCitations[]>([]);
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 82 });
@@ -521,6 +522,7 @@ export function AiChatScreen({
             ? current
             : [...current, createStreamingAssistantMessage(targetThreadId, assistantMessageId)];
           messagesRef.current = nextMessages;
+          rebuildMessageIndex(nextMessages);
           return nextMessages;
         });
         scheduleIntentionalLatestJump(false);
@@ -1008,13 +1010,22 @@ export function AiChatScreen({
     [onThreadTitleChange]
   );
 
+  function rebuildMessageIndex(nextMessages: AiMessageWithCitations[]): void {
+    messageIndexByIdRef.current = new Map(nextMessages.map((message, index) => [message.id, index]));
+  }
+
+  function replaceMessages(nextMessages: AiMessageWithCitations[]): void {
+    messagesRef.current = nextMessages;
+    rebuildMessageIndex(nextMessages);
+    setMessages(nextMessages);
+  }
+
   const reloadMessages = useCallback(
     async (targetThreadId: string | null, forceToLatest = false, branchScopes?: AiBranchScope[], limitOverride?: number) => {
       const requestId = nextRequestId('messages');
       if (!targetThreadId) {
         resetStreamingReadBufferState();
-        messagesRef.current = [];
-        setMessages([]);
+        replaceMessages([]);
         setHasEarlierMessages(false);
         loadedMessageLimitRef.current = CHAT_MESSAGE_PAGE_SIZE;
         setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
@@ -1042,8 +1053,7 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
       }
       const renderedMessages = forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages);
-      messagesRef.current = renderedMessages;
-      setMessages(renderedMessages);
+      replaceMessages(renderedMessages);
       const titleRequestId = nextRequestId('title');
       void loadThreadTitle(space, targetThreadId).then((title) => {
         if (title && isLatestRequest('title', titleRequestId, targetThreadId)) {
@@ -1094,27 +1104,31 @@ export function AiChatScreen({
 
   const applyStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
     setMessages((current) => {
-      const nextMessages = current.map((message) => {
-        if (message.id !== patch.id) {
-          return message;
-        }
-        return {
-          ...message,
-          status: patch.status ?? message.status,
-          content: patch.content ?? message.content,
-          reasoningText: patch.reasoningText === undefined ? message.reasoningText : patch.reasoningText,
-          errorMessage: patch.errorMessage === undefined ? message.errorMessage : patch.errorMessage,
-          providerId: patch.providerId === undefined ? message.providerId : patch.providerId,
-          modelId: patch.modelId === undefined ? message.modelId : patch.modelId,
-          modelSnapshotJson: patch.modelSnapshotJson ?? message.modelSnapshotJson,
-          promptSnapshotJson: patch.promptSnapshotJson ?? message.promptSnapshotJson,
-          createdAt: patch.createdAt ?? message.createdAt,
-          completedAt: patch.completedAt === undefined ? message.completedAt : patch.completedAt,
-          citations: patch.citations ?? message.citations,
-          updatedAt: patch.completedAt ?? new Date().toISOString(),
-        };
+      const buildPatchedMessage = (message: AiMessageWithCitations): AiMessageWithCitations => ({
+        ...message,
+        status: patch.status ?? message.status,
+        content: patch.content ?? message.content,
+        reasoningText: patch.reasoningText === undefined ? message.reasoningText : patch.reasoningText,
+        errorMessage: patch.errorMessage === undefined ? message.errorMessage : patch.errorMessage,
+        providerId: patch.providerId === undefined ? message.providerId : patch.providerId,
+        modelId: patch.modelId === undefined ? message.modelId : patch.modelId,
+        modelSnapshotJson: patch.modelSnapshotJson ?? message.modelSnapshotJson,
+        promptSnapshotJson: patch.promptSnapshotJson ?? message.promptSnapshotJson,
+        createdAt: patch.createdAt ?? message.createdAt,
+        completedAt: patch.completedAt === undefined ? message.completedAt : patch.completedAt,
+        citations: patch.citations ?? message.citations,
+        updatedAt: patch.completedAt ?? new Date().toISOString(),
       });
+      const messageIndex = messageIndexByIdRef.current.get(patch.id);
+      if (messageIndex != null && current[messageIndex]?.id === patch.id) {
+        const nextMessages = current.slice();
+        nextMessages[messageIndex] = buildPatchedMessage(current[messageIndex]);
+        messagesRef.current = nextMessages;
+        return nextMessages;
+      }
+      const nextMessages = current.map((message) => (message.id === patch.id ? buildPatchedMessage(message) : message));
       messagesRef.current = nextMessages;
+      rebuildMessageIndex(nextMessages);
       return nextMessages;
     });
   }, []);
@@ -1307,9 +1321,8 @@ export function AiChatScreen({
     setHasEarlierMessages(false);
     setSearchHighlightMessageId(null);
     if (!nextThreadId) {
-      messagesRef.current = [];
+      replaceMessages([]);
       visibleMessagesRef.current = [];
-      setMessages([]);
       setMemoryCaptures([]);
     }
     userScrolledAwayFromBottomRef.current = false;
@@ -1353,6 +1366,7 @@ export function AiChatScreen({
 
   useEffect(() => {
     messagesRef.current = messages;
+    rebuildMessageIndex(messages);
   }, [messages]);
 
   useEffect(() => {
