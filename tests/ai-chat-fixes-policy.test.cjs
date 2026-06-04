@@ -275,11 +275,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
 
 test('AI chat route reloads do not fall back to stale active thread state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const routeReloadEffectStart = chat.indexOf('  useEffect(() => {\n    const targetThreadId = threadId ?? null;');
-  const routeReloadEffectEnd = chat.indexOf('  }, [reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, threadId]);', routeReloadEffectStart);
-  const routeReloadEffect = routeReloadEffectStart >= 0 && routeReloadEffectEnd >= 0
-    ? chat.slice(routeReloadEffectStart, routeReloadEffectEnd)
-    : '';
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, threadId\]\);/.exec(chat)?.[0] ?? '';
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
@@ -444,6 +440,23 @@ test('AI session settings rely on Android adjustResize without JS keyboard paddi
   assert.match(sessionConfig, /onFocus=\{handleSystemPromptFocus\}/);
   assert.match(scaffold, /contentContainerStyle/);
   assert.match(scaffold, /scrollViewRef/);
+});
+
+test('AI session role instruction textarea stays anchored for long prompts above Android keyboard', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const promptTextarea = /<AiLightTextareaRow[\s\S]*?value=\{systemPrompt\}/.exec(sessionConfig)?.[0] ?? '';
+
+  assert.match(sessionConfig, /systemPromptFieldRef/);
+  assert.match(sessionConfig, /SYSTEM_PROMPT_FOCUS_SCROLL_DELAY_MS/);
+  assert.match(sessionConfig, /SYSTEM_PROMPT_FOCUS_TOP_OFFSET/);
+  assert.match(sessionConfig, /measureLayout\(/);
+  assert.match(sessionConfig, /scrollTo\(\{ y: Math\.max\(0, y - SYSTEM_PROMPT_FOCUS_TOP_OFFSET\), animated: true \}\)/);
+  assert.match(sessionConfig, /<View collapsable=\{false\} ref=\{systemPromptFieldRef\}>/);
+  assert.doesNotMatch(sessionConfig, /handleSystemPromptFocus[\s\S]{0,600}scrollToEnd/);
+  assert.match(promptTextarea, /scrollEnabled/);
+  assert.match(promptTextarea, /style=\{styles\.systemPromptTextarea\}/);
+  assert.match(sessionConfig, /SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT/);
+  assert.match(sessionConfig, /maxHeight: SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT/);
 });
 
 test('video long-press fast-forward does not reveal playback controls', () => {

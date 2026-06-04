@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -56,6 +56,11 @@ const REPLY_PREFERENCES: Array<{ value: AiReplyPreference; label: string }> = [
   { value: 'detailed', label: '更详细' },
 ];
 
+const SYSTEM_PROMPT_FOCUS_SCROLL_DELAY_MS = 260;
+const SYSTEM_PROMPT_FOCUS_TOP_OFFSET = 96;
+// Long role instructions should scroll inside the field instead of stretching behind the Android keyboard.
+const SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT = 220;
+
 interface MemoryMaintenanceStatus {
   lastMaintenanceCompletedAt: string | null;
   lastMaintenanceError: string | null;
@@ -106,6 +111,7 @@ export function AiSessionConfigScreen({
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const systemPromptFieldRef = useRef<View | null>(null);
   const settingsLoadedRef = useRef(false);
   const spaceLabel = space === 'personal' ? '私密空间' : '普通空间';
   const promptConfigured = systemPrompt.trim().length > 0;
@@ -176,8 +182,21 @@ export function AiSessionConfigScreen({
       return;
     }
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 120);
+      if (!scrollViewRef.current || !systemPromptFieldRef.current) {
+        return;
+      }
+      const scrollNodeHandle = findNodeHandle(scrollViewRef.current);
+      if (!scrollNodeHandle) {
+        return;
+      }
+      systemPromptFieldRef.current.measureLayout(
+        scrollNodeHandle,
+        (_x, y) => {
+          scrollViewRef.current?.scrollTo({ y: Math.max(0, y - SYSTEM_PROMPT_FOCUS_TOP_OFFSET), animated: true });
+        },
+        () => undefined
+      );
+    }, SYSTEM_PROMPT_FOCUS_SCROLL_DELAY_MS);
   }
 
   async function saveSessionSettings(): Promise<boolean> {
@@ -499,14 +518,18 @@ export function AiSessionConfigScreen({
                   ))}
                 </View>
               </View>
-              <AiLightTextareaRow
-                label="角色指令"
-                minHeight={104}
-                onChangeText={setSystemPrompt}
-                onFocus={handleSystemPromptFocus}
-                placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
-                value={systemPrompt}
-              />
+              <View collapsable={false} ref={systemPromptFieldRef}>
+                <AiLightTextareaRow
+                  label="角色指令"
+                  minHeight={104}
+                  onChangeText={setSystemPrompt}
+                  onFocus={handleSystemPromptFocus}
+                  placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
+                  scrollEnabled
+                  style={styles.systemPromptTextarea}
+                  value={systemPrompt}
+                />
+              </View>
             </View>
           ) : null}
         </AiLightCard>
@@ -787,6 +810,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  systemPromptTextarea: {
+    maxHeight: SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT,
   },
   actions: {
     gap: rhythm.listCardGap,
