@@ -49,8 +49,8 @@
 
     <main>
       <section class="section">
-        <div class="container" style="max-width: 800px;">
-          <div class="reveal">
+        <div class="container" style="max-width: 800px;" data-anime-group>
+          <div class="anime-reveal">
             <h1 class="text-display-lg" style="margin-bottom: var(--space-md);">Release Notes</h1>
             <p class="text-body-md" style="color: var(--muted); margin-bottom: var(--space-section);">
               稳定。清晰。耐用。更新不是喧哗，是秩序继续变清楚。
@@ -59,16 +59,16 @@
 
           <div class="timeline">
             <!-- 2.4.2 Release -->
-            <div class="timeline-item reveal stagger-1">
-              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026 - Current Release</div>
+            <div class="timeline-item anime-reveal">
+              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-01</div>
               <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.2</h2>
-
+              
               <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
                 <div class="feature-card">
                   <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">聊天搜索 & 收藏</h3>
                   <p class="text-body-sm">AI 聊天页新增整页搜索，精确结果优先，本地模糊结果随后展示。回复可以加入收藏中心，显示来源聊天，并支持回到原消息位置。</p>
                 </div>
-
+                
                 <div class="feature-card">
                   <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">分支记忆与定位优化</h3>
                   <p class="text-body-sm">优化聊天进入、搜索返回和收藏跳转时的路线恢复，减少回到错误分支。长对话加载更早消息时保留当前路线，提高目标消息定位稳定性。</p>
@@ -76,9 +76,36 @@
               </div>
             </div>
 
-            <div class="timeline-item reveal stagger-2">
+            <!-- 2.4.1 Release -->
+            <div class="timeline-item anime-reveal mt-6">
+              <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">2026-05-30</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-md);">Version 2.4.1</h2>
+              <div class="feature-card">
+                <p class="text-body-sm">聊天历史回收站新增移出回收站入口，支持单条和批量恢复，永久删除继续独立保留。</p>
+              </div>
+            </div>
+
+            <!-- 2.4.0 Release -->
+            <div class="timeline-item anime-reveal mt-6">
+              <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">2026-05-29</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-md);">Version 2.4.0</h2>
+              <div class="feature-card">
+                <p class="text-body-sm">新增 AI 创作路线树，支持关键分支查看、多分支折叠、主路线持久化和路线数据导入导出保护。</p>
+              </div>
+            </div>
+
+            <!-- 2.3.9 Release -->
+            <div class="timeline-item anime-reveal mt-6">
+              <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">2026-05-26</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-md);">Version 2.3.9</h2>
+              <div class="feature-card">
+                <p class="text-body-sm">进一步修复 AI 聊天 Markdown Android 遮挡问题，并加入 EAS Update 热更新底包能力。优化 AI 角色详情海报式展示。</p>
+              </div>
+            </div>
+            
+            <div class="timeline-item anime-reveal mt-6">
               <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">Previous</div>
-              <h2 class="text-display-md" style="color: var(--muted); margin-bottom: var(--space-md);">查看历史版本</h2>
+              <h2 class="text-display-md" style="color: var(--muted); margin-bottom: var(--space-md);">探索早期迭代</h2>
               <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="text-link">访问 GitHub Releases 查看完整更新记录</a>
             </div>
           </div>
