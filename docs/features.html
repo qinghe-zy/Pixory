@@ -13,67 +13,195 @@
     <meta property="og:title" content="秩序 | Pixory">
     <meta property="og:description" content="图片被安放，灵感有坐标。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <link rel="stylesheet" href="site.css?v=motion-8">
+    <link rel="stylesheet" href="site.css?v=9">
   </head>
   <body>
-    <div class="site-shell">
-      <header class="site-header"><nav class="nav" aria-label="主导航"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span><span class="brand-word">Pixory</span></a><button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-label="打开导航"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="nav-links" data-nav-links><a href="index.html">首页</a><a href="culture.html">气质</a><a href="features.html">秩序</a><a href="download.html">获取</a><a href="updates.html">近况</a><a href="data.html">档案</a></div><div class="nav-actions"><a class="button ghost" href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub</a><a class="button primary" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer">获取</a></div></nav></header>
-      <main class="page-main">
-        <section class="page-hero narrow flow-hero">
-          <div class="container reveal">
-            <p class="eyebrow">Archive Flow</p>
-            <h1>图片被安放，灵感有坐标。</h1>
-            <p class="page-lead">入档、坐标、线索、回声。</p>
+    <!-- Mobile Navigation Overlay -->
+    <div class="mobile-nav-overlay">
+      <a href="index.html">首页</a>
+      <a href="culture.html">气质</a>
+      <a href="features.html" class="active">秩序</a>
+      <a href="download.html">获取</a>
+      <a href="updates.html">近况</a>
+      <a href="data.html">档案</a>
+      <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary" style="margin-top: 16px; text-align: center;">获取 Android 版本</a>
+    </div>
+
+    <header class="site-header">
+      <div class="container">
+        <nav class="nav" aria-label="主导航">
+          <a class="nav-brand" href="index.html">
+            <span class="nav-brand-mark" aria-hidden="true"></span>
+            Pixory
+          </a>
+          <div class="nav-links">
+            <a href="index.html">首页</a>
+            <a href="culture.html">气质</a>
+            <a href="features.html" class="active">秩序</a>
+            <a href="download.html">获取</a>
+            <a href="updates.html">近况</a>
+            <a href="data.html">档案</a>
           </div>
-        </section>
-        <section class="section compact flow-section">
-          <div class="container flow-board">
-            <div>
-              <p class="eyebrow reveal">Eight Moves</p>
-              <h2 class="section-title reveal">入档之后，线索马上成形。</h2>
-              <div class="feature-grid">
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></div><h3>成组入档</h3><p>批量进入 / 原件留存 / 缩略分身</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16v12H4z"/><path d="M8 10h8"/></svg></div><h3>主题成册</h3><p>IP 坐标 / 分组语境 / 项目脉络</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h10M7 12h10M7 17h6"/></svg></div><h3>线索成网</h3><p>标签 / 备注 / 文件名</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8z"/></svg></div><h3>判断留痕</h3><p>收藏 / 最近 / 一行短注</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></div><h3>回看有路</h3><p>搜索 / 筛选 / 快速抵达</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 7h12M9 7V5h6v2M8 10v8h8v-8"/></svg></div><h3>留有余地</h3><p>回收 / 恢复 / 再决定</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v10H7l-3 3z"/><path d="M8 9h8M8 12h5"/></svg></div><h3>会话整理</h3><p>自动标题 / 左滑归档 / 长按重命名</p></article>
-                <article class="feature reveal"><div class="feature-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/><path d="M17 7l2 2-7 7H9v-3z"/></svg></div><h3>资料问答</h3><p>文档附件 / 引用 / 重新生成</p></article>
+          <div class="nav-actions">
+            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-ghost">GitHub</a>
+            <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary">获取应用</a>
+          </div>
+          <button class="menu-toggle" aria-expanded="false" aria-label="打开导航">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="section section-padding-large">
+        <div class="container">
+          <div class="reveal">
+            <span class="hero-eyebrow">Archive Flow</span>
+            <h1 class="text-display-2" style="max-width: 800px;">图片被安放，<br>灵感有坐标。</h1>
+            <p class="text-body-large" style="margin-top: 24px; max-width: 560px;">
+              入档之后，线索马上成形。无论是导入、分组、标记还是回看，Pixory 为每一张图提供准确的存放路径。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-border-top" style="background-color: var(--bg-secondary);">
+        <div class="container">
+          <div class="grid editorial-grid">
+            <div class="editorial-header reveal">
+              <h2 class="text-heading-1">八个动作，<br>完成梳理。</h2>
+              <p class="text-body-large" style="margin-top: 16px;">
+                不增加认知负担的归档流程。
+              </p>
+            </div>
+            <div class="editorial-content">
+              <div class="feature-matrix" style="grid-template-columns: repeat(2, 1fr); margin-top: 0;">
+                <div class="feature-card reveal stagger-1">
+                  <h3 class="text-heading-3">成组入档</h3>
+                  <p class="text-small" style="margin-top: 8px;">批量进入 / 原件留存 / 缩略分身</p>
+                </div>
+                <div class="feature-card reveal stagger-2">
+                  <h3 class="text-heading-3">主题成册</h3>
+                  <p class="text-small" style="margin-top: 8px;">IP 坐标 / 分组语境 / 项目脉络</p>
+                </div>
+                <div class="feature-card reveal stagger-3">
+                  <h3 class="text-heading-3">线索成网</h3>
+                  <p class="text-small" style="margin-top: 8px;">标签 / 备注 / 文件名</p>
+                </div>
+                <div class="feature-card reveal stagger-1">
+                  <h3 class="text-heading-3">判断留痕</h3>
+                  <p class="text-small" style="margin-top: 8px;">收藏 / 最近 / 一行短注</p>
+                </div>
+                <div class="feature-card reveal stagger-2">
+                  <h3 class="text-heading-3">回看有路</h3>
+                  <p class="text-small" style="margin-top: 8px;">搜索 / 筛选 / 快速抵达</p>
+                </div>
+                <div class="feature-card reveal stagger-3">
+                  <h3 class="text-heading-3">留有余地</h3>
+                  <p class="text-small" style="margin-top: 8px;">回收 / 恢复 / 再决定</p>
+                </div>
+                <div class="feature-card reveal stagger-1">
+                  <h3 class="text-heading-3">会话整理</h3>
+                  <p class="text-small" style="margin-top: 8px;">自动标题 / 左滑归档 / 长按重命名</p>
+                </div>
+                <div class="feature-card reveal stagger-2">
+                  <h3 class="text-heading-3">资料问答</h3>
+                  <p class="text-small" style="margin-top: 8px;">文档附件 / 引用 / 重新生成</p>
+                </div>
               </div>
             </div>
-            <aside class="flow-rail reveal" aria-labelledby="flow-rail-title">
-              <p class="eyebrow">Four Moves</p>
-              <h2 id="flow-rail-title">进入、归位、点亮、重逢。</h2>
-              <div class="workflow">
-                <div class="workflow-step"><div class="step-number">01</div><div><h3>导入</h3><p>批量进来，原件不动。</p></div></div>
-                <div class="workflow-step"><div class="step-number">02</div><div><h3>归档</h3><p>IP 与组，给图像一个坐标。</p></div></div>
-                <div class="workflow-step"><div class="step-number">03</div><div><h3>标记</h3><p>标签和备注，把判断留下。</p></div></div>
-                <div class="workflow-step"><div class="step-number">04</div><div><h3>回看</h3><p>搜索、收藏、最近，都能抵达。</p></div></div>
-                <div class="workflow-step"><div class="step-number">05</div><div><h3>问答</h3><p>材料、引用和会话留在同一条线里。</p></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-border-top">
+        <div class="container">
+          <div class="grid editorial-grid">
+            <div class="editorial-header reveal">
+              <span class="hero-eyebrow">Workflow</span>
+              <h2 class="text-heading-2">四个阶段。</h2>
+            </div>
+            <div class="editorial-content">
+              <div class="timeline" style="margin-top: 16px;">
+                <div class="timeline-item reveal stagger-1">
+                  <div class="timeline-date">01. 导入</div>
+                  <h3 class="text-heading-3">批量进来，原件不动</h3>
+                  <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">安全、完整地将外部素材收编为内部档案。</p>
+                </div>
+                <div class="timeline-item reveal stagger-2">
+                  <div class="timeline-date">02. 归档</div>
+                  <h3 class="text-heading-3">给图像一个坐标</h3>
+                  <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">通过 IP 和分组，建立第一层级的空间秩序。</p>
+                </div>
+                <div class="timeline-item reveal stagger-3">
+                  <div class="timeline-date">03. 标记</div>
+                  <h3 class="text-heading-3">把判断留下</h3>
+                  <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">标签和备注提供了更细腻的交叉检索能力。</p>
+                </div>
+                <div class="timeline-item reveal stagger-1">
+                  <div class="timeline-date">04. 回看</div>
+                  <h3 class="text-heading-3">都能抵达</h3>
+                  <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">搜索、收藏、最近历史，确保没有任何素材会真正走失。</p>
+                </div>
               </div>
-            </aside>
+            </div>
           </div>
-        </section>
-        <section class="page-bridge" aria-label="页面衔接">
-          <div class="container page-bridge-grid">
-            <a class="bridge-card bridge-prev reveal" href="culture.html">
-              <span>上一页</span>
-              <strong>气质</strong>
-              <em>回看 Pixory 为什么选择轻、准、静的视觉语言。</em>
-            </a>
-            <a class="bridge-card bridge-next reveal" href="data.html">
-              <span>下一页</span>
-              <strong>档案</strong>
-              <em>秩序之后，看原图、本地、回收和导出的完整性。</em>
-            </a>
+        </div>
+      </section>
+
+      <!-- CTA Bridge -->
+      <section class="section section-border-top section-padding-large">
+        <div class="container text-center" style="text-align: center;">
+          <h2 class="text-display-2">准备好建立<br>你的秩序了吗？</h2>
+          <div style="margin-top: 32px; display: flex; justify-content: center; gap: 16px;">
+            <a href="culture.html" class="btn btn-secondary">回顾气质</a>
+            <a href="data.html" class="btn btn-primary">了解数据档案</a>
           </div>
-        </section>
-      </main>
-      <footer class="site-footer"><div class="container footer-grid"><div><strong>Pixory</strong><br>秩序退后，素材发光。<br><a class="site-domain" href="https://mist01.com">mist01.com</a></div><div class="footer-links"><a href="download.html">获取</a><a href="updates.html">近况</a><a href="data.html">档案</a></div></div></footer>
-    </div>
-    <script src="site.js?v=motion-8"></script>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <div class="nav-brand" style="color: white;">
+            <span class="nav-brand-mark" style="background-color: white;"></span>
+            Pixory
+          </div>
+          <p class="footer-brand-desc">
+            秩序退后，素材发光。<br>
+            专注于 Android 的本地图片资产管理。
+          </p>
+        </div>
+        <div class="footer-nav">
+          <div class="footer-nav-col">
+            <h4>探索</h4>
+            <a href="index.html">首页</a>
+            <a href="culture.html">气质</a>
+            <a href="features.html">秩序</a>
+          </div>
+          <div class="footer-nav-col">
+            <h4>资源</h4>
+            <a href="download.html">获取 Android 版</a>
+            <a href="updates.html">版本近况</a>
+            <a href="data.html">数据档案</a>
+          </div>
+          <div class="footer-nav-col">
+            <h4>支持</h4>
+            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub 仓库</a>
+            <a href="https://github.com/qinghe-zy/Pixory/issues" target="_blank" rel="noreferrer">报告问题</a>
+          </div>
+        </div>
+      </div>
+      <div class="container">
+        <div class="footer-bottom">
+          <span>&copy; 2026 Pixory. All rights reserved.</span>
+          <span>mist01.com</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="site.js?v=9"></script>
   </body>
 </html>

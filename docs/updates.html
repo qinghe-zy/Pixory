@@ -13,66 +13,144 @@
     <meta property="og:title" content="近况 | Pixory">
     <meta property="og:description" content="每一次迭代，都更接近安静的秩序。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <link rel="stylesheet" href="site.css?v=motion-8">
+    <link rel="stylesheet" href="site.css?v=9">
   </head>
   <body>
-    <div class="site-shell">
-      <header class="site-header"><nav class="nav" aria-label="主导航"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span><span class="brand-word">Pixory</span></a><button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-label="打开导航"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><div class="nav-links" data-nav-links><a href="index.html">首页</a><a href="culture.html">气质</a><a href="features.html">秩序</a><a href="download.html">获取</a><a href="updates.html">近况</a><a href="data.html">档案</a></div><div class="nav-actions"><a class="button ghost" href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub</a><a class="button primary" href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer">获取</a></div></nav></header>
-      <main class="page-main">
-        <section class="page-hero narrow">
-          <div class="container reveal">
-            <p class="eyebrow">Release Notes</p>
-            <h1>每一次迭代，都更接近安静的秩序。</h1>
-            <p class="page-lead">稳定。清晰。耐用。</p>
-          </div>
-        </section>
-        <section class="section compact">
-          <div class="container two-column">
-            <div>
-              <p class="eyebrow reveal">Current</p>
-              <h2 class="section-title reveal">2.4.2</h2>
-            </div>
-            <div class="timeline">
-              <article class="timeline-item reveal"><div class="timeline-date">2026 · Now</div><div><h3>聊天搜索</h3><p>AI 聊天页新增整页搜索，精确结果优先，本地模糊结果随后展示。</p></div></article>
-              <article class="timeline-item reveal"><div class="timeline-date">Favorite</div><div><h3>AI 消息收藏</h3><p>AI 回复可以加入收藏中心，显示来源聊天，并支持回到原消息位置。</p></div></article>
-              <article class="timeline-item reveal"><div class="timeline-date">Branch</div><div><h3>分支记忆</h3><p>优化聊天进入、搜索返回和收藏跳转时的路线恢复，减少回到错误分支。</p></div></article>
-              <article class="timeline-item reveal"><div class="timeline-date">Stability</div><div><h3>长聊天定位</h3><p>长对话加载更早消息时保留当前路线，提高目标消息定位稳定性。</p></div></article>
-            </div>
-          </div>
-        </section>
-        <section class="section section-tint">
-          <div class="container release-board">
-            <div>
-              <p class="eyebrow reveal">Signals</p>
-              <h2 class="section-title reveal">更新不是喧哗，是秩序继续变清楚。</h2>
-            </div>
-            <div class="release-grid">
-              <article class="reveal"><span>Build</span><strong>2.4.2</strong><p>当前 Android 包。</p></article>
-              <article class="reveal"><span>Focus</span><strong>AI 聊天</strong><p>搜索、收藏和路线记忆。</p></article>
-              <article class="reveal"><span>Trace</span><strong>Releases</strong><p>版本脉络可回看。</p></article>
-              <article class="reveal"><span>Voice</span><strong>Issues</strong><p>反馈进入下一轮判断。</p></article>
-            </div>
-          </div>
-        </section>
-        <section class="page-bridge" aria-label="页面衔接">
-          <div class="container page-bridge-grid">
-            <a class="bridge-card bridge-prev reveal" href="download.html">
-              <span>上一页</span>
-              <strong>获取</strong>
-              <em>回到下载入口，直接抵达 Android 最新版本。</em>
-            </a>
-            <a class="bridge-card bridge-next reveal" href="index.html">
-              <span>下一页</span>
-              <strong>首页</strong>
-              <em>从更新回到起点，再完整走一遍 Pixory。</em>
-            </a>
-          </div>
-        </section>
-      </main>
-      <footer class="site-footer"><div class="container footer-grid"><div><strong>Pixory</strong><br>每次迭代，少一点噪声。<br><a class="site-domain" href="https://mist01.com">mist01.com</a></div><div class="footer-links"><a href="download.html">获取</a><a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub</a><a href="data.html">档案</a></div></div></footer>
+    <!-- Mobile Navigation Overlay -->
+    <div class="mobile-nav-overlay">
+      <a href="index.html">首页</a>
+      <a href="culture.html">气质</a>
+      <a href="features.html">秩序</a>
+      <a href="download.html">获取</a>
+      <a href="updates.html" class="active">近况</a>
+      <a href="data.html">档案</a>
+      <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary" style="margin-top: 16px; text-align: center;">获取 Android 版本</a>
     </div>
-    <script src="site.js?v=motion-8"></script>
+
+    <header class="site-header">
+      <div class="container">
+        <nav class="nav" aria-label="主导航">
+          <a class="nav-brand" href="index.html">
+            <span class="nav-brand-mark" aria-hidden="true"></span>
+            Pixory
+          </a>
+          <div class="nav-links">
+            <a href="index.html">首页</a>
+            <a href="culture.html">气质</a>
+            <a href="features.html">秩序</a>
+            <a href="download.html">获取</a>
+            <a href="updates.html" class="active">近况</a>
+            <a href="data.html">档案</a>
+          </div>
+          <div class="nav-actions">
+            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-ghost">GitHub</a>
+            <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary">获取应用</a>
+          </div>
+          <button class="menu-toggle" aria-expanded="false" aria-label="打开导航">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="section section-padding-large">
+        <div class="container">
+          <div class="grid editorial-grid">
+            <div class="editorial-header reveal">
+              <span class="hero-eyebrow">Release Notes</span>
+              <h1 class="text-display-2" style="max-width: 800px;">每一次迭代，<br>都更接近安静的秩序。</h1>
+              <p class="text-body-large" style="margin-top: 24px; max-width: 560px;">
+                稳定。清晰。耐用。更新不是喧哗，是秩序继续变清楚。
+              </p>
+              <div style="margin-top: 32px;">
+                <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-secondary">查看全部发行记录</a>
+              </div>
+            </div>
+
+            <div class="editorial-content">
+              <div class="timeline" style="margin-top: 16px;">
+                <!-- 2.4.2 Release -->
+                <div class="timeline-item reveal stagger-1">
+                  <div class="text-small" style="color: var(--text-muted); margin-bottom: 4px;">当前版本 - 2026</div>
+                  <div class="timeline-date">2.4.2</div>
+                  <div style="margin-top: 16px; display: grid; gap: 24px;">
+                    <div>
+                      <h3 class="text-heading-3">聊天搜索</h3>
+                      <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">AI 聊天页新增整页搜索，精确结果优先，本地模糊结果随后展示。</p>
+                    </div>
+                    <div>
+                      <h3 class="text-heading-3">AI 消息收藏</h3>
+                      <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">AI 回复可以加入收藏中心，显示来源聊天，并支持回到原消息位置。</p>
+                    </div>
+                    <div>
+                      <h3 class="text-heading-3">分支记忆</h3>
+                      <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">优化聊天进入、搜索返回和收藏跳转时的路线恢复，减少回到错误分支。</p>
+                    </div>
+                    <div>
+                      <h3 class="text-heading-3">长聊天定位</h3>
+                      <p class="text-body" style="color: var(--text-muted); margin-top: 8px;">长对话加载更早消息时保留当前路线，提高目标消息定位稳定性。</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Bridge -->
+      <section class="section section-border-top section-padding-large" style="background-color: var(--bg-secondary);">
+        <div class="container text-center" style="text-align: center;">
+          <h2 class="text-display-2">回看起点。</h2>
+          <div style="margin-top: 32px; display: flex; justify-content: center; gap: 16px;">
+            <a href="download.html" class="btn btn-secondary">获取最新版</a>
+            <a href="index.html" class="btn btn-primary">返回首页</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <div class="nav-brand" style="color: white;">
+            <span class="nav-brand-mark" style="background-color: white;"></span>
+            Pixory
+          </div>
+          <p class="footer-brand-desc">
+            每次迭代，少一点噪声。<br>
+            专注于 Android 的本地图片资产管理。
+          </p>
+        </div>
+        <div class="footer-nav">
+          <div class="footer-nav-col">
+            <h4>探索</h4>
+            <a href="index.html">首页</a>
+            <a href="culture.html">气质</a>
+            <a href="features.html">秩序</a>
+          </div>
+          <div class="footer-nav-col">
+            <h4>资源</h4>
+            <a href="download.html">获取 Android 版</a>
+            <a href="updates.html">版本近况</a>
+            <a href="data.html">数据档案</a>
+          </div>
+          <div class="footer-nav-col">
+            <h4>支持</h4>
+            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub 仓库</a>
+            <a href="https://github.com/qinghe-zy/Pixory/issues" target="_blank" rel="noreferrer">报告问题</a>
+          </div>
+        </div>
+      </div>
+      <div class="container">
+        <div class="footer-bottom">
+          <span>&copy; 2026 Pixory. All rights reserved.</span>
+          <span>mist01.com</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="site.js?v=9"></script>
   </body>
 </html>
