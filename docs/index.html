@@ -4,76 +4,97 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <title>Pixory | 本地优先的 IP 图片资产档案</title>
-    <meta name="description" content="Pixory，把灵感图片、IP 资料、主题素材与备注沉淀成私人视觉档案。原图无损，本地可靠。">
+    <title>Pixory</title>
+    <meta name="description" content="Pixory：Android 平台的本地 IP 图片资产管理工具。">
     <link rel="canonical" href="https://mist01.com/">
     <meta property="og:site_name" content="Pixory">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://mist01.com/">
-    <meta property="og:title" content="Pixory | 本地优先的 IP 图片资产档案">
-    <meta property="og:description" content="灵感有归处，审美有回声。原图无损，本地可靠。">
+    <meta property="og:title" content="Pixory">
+    <meta property="og:description" content="为珍视本地数字资产的人设计的图像管家。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <link rel="stylesheet" href="site.css?v=9">
+    <link rel="stylesheet" href="site.css?v=10">
   </head>
   <body>
     <!-- Mobile Navigation Overlay -->
     <div class="mobile-nav-overlay">
-      <a href="index.html">首页</a>
-      <a href="culture.html">气质</a>
-      <a href="features.html">秩序</a>
-      <a href="download.html">获取</a>
+      <a href="#about">理念</a>
+      <a href="#features">工作流</a>
+      <a href="#download">下载</a>
       <a href="updates.html">近况</a>
-      <a href="data.html">档案</a>
-      <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary" style="margin-top: 16px; text-align: center;">获取 Android 版本</a>
     </div>
 
-    <header class="site-header">
-      <div class="container">
-        <nav class="nav" aria-label="主导航">
-          <a class="nav-brand" href="index.html">
-            <span class="nav-brand-mark" aria-hidden="true"></span>
-            Pixory
-          </a>
-          <div class="nav-links">
-            <a href="index.html">首页</a>
-            <a href="culture.html">气质</a>
-            <a href="features.html">秩序</a>
-            <a href="download.html">获取</a>
-            <a href="updates.html">近况</a>
-            <a href="data.html">档案</a>
-          </div>
-          <div class="nav-actions">
-            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-ghost">GitHub</a>
-            <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary">获取应用</a>
-          </div>
+    <!-- Top Navigation -->
+    <header class="top-nav">
+      <div class="container nav-inner">
+        <a class="nav-brand" href="index.html">
+          <span class="nav-brand-mark" aria-hidden="true"></span>
+          Pixory
+        </a>
+        <div class="nav-links">
+          <a href="#about">理念</a>
+          <a href="#features">工作流</a>
+          <a href="#download">获取</a>
+          <a href="updates.html">近况</a>
+        </div>
+        <div class="nav-actions">
+          <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-ghost">GitHub</a>
+          <a href="#download" class="btn btn-primary">Try Pixory</a>
           <button class="menu-toggle" aria-expanded="false" aria-label="打开导航">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
-        </nav>
+        </div>
       </div>
     </header>
 
     <main>
       <!-- Hero Section -->
-      <section class="hero section-border-bottom">
+      <section class="section">
         <div class="container">
-          <div class="grid hero-grid">
-            <div class="hero-content reveal">
-              <span class="hero-eyebrow">Local-first Archive</span>
-              <h1 class="text-display-1">灵感有归处，<br>审美有回声。</h1>
-              <p class="text-body-large" style="margin-top: 24px; max-width: 480px;">
-                Pixory 是一款 Android-first、本地优先的 IP 图片资产管理工具。它不压缩、不裁剪，将原图、语境与判断，留在同一个私人秩序里。
+          <div class="grid" style="align-items: center;">
+            <!-- Left: Copy -->
+            <div class="reveal" style="grid-column: 1 / 7;">
+              <h1 class="text-display-xl" style="margin-bottom: var(--space-xl);">Meet your visual<br>archive partner.</h1>
+              <p class="text-body-md" style="margin-bottom: var(--space-xl); max-width: 480px; font-size: 1.125rem;">
+                Pixory 是一款专注于 Android 的本地图片资产管理工具。不压缩、不依赖云端、不乱建目录。你整理的不是图片，而是不可再生的视觉资产。
               </p>
-              <div class="hero-actions">
-                <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-primary">获取 Android 版本</a>
-                <a href="culture.html" class="btn btn-secondary">阅读设计气质</a>
+              <div style="display: flex; gap: var(--space-md);">
+                <a href="#download" class="btn btn-primary">获取 Android 版本</a>
+                <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-secondary">查看源码</a>
               </div>
             </div>
-            <div class="hero-visual reveal stagger-1">
-              <div class="visual-card">
-                <div class="visual-img">
-                  <!-- Retaining the original hero image reference -->
-                  <img src="assets/pixory-cultural-archive.png" alt="Pixory 视觉档案界面展示" width="760" height="540" loading="lazy" decoding="async">
+
+            <!-- Right: Product Mockup Card -->
+            <div class="reveal stagger-1" style="grid-column: 7 / 13;">
+              <div class="mockup-card-dark">
+                <div class="mockup-header">
+                  <div class="mockup-dot red"></div>
+                  <div class="mockup-dot yellow"></div>
+                  <div class="mockup-dot green"></div>
+                </div>
+                <!-- CSS App Interface Mockup -->
+                <div style="display: flex; gap: var(--space-md);">
+                  <div style="width: 30%; border-right: 1px solid var(--surface-dark-soft); padding-right: var(--space-sm);">
+                    <div class="text-caption-caps" style="margin-bottom: var(--space-md);">Local Archives</div>
+                    <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                      <div style="background: var(--surface-dark-elevated); padding: 8px; border-radius: var(--radius-sm); font-size: 0.875rem;">IP_Character</div>
+                      <div style="padding: 8px; font-size: 0.875rem; color: var(--on-dark-soft);">IP_Brand_Assets</div>
+                      <div style="padding: 8px; font-size: 0.875rem; color: var(--on-dark-soft);">Moodboards</div>
+                    </div>
+                  </div>
+                  <div style="width: 70%;">
+                    <div style="display: flex; gap: var(--space-xs); margin-bottom: var(--space-lg);">
+                      <span class="badge-coral">Tags</span>
+                      <span style="background: var(--surface-dark-soft); padding: 4px 12px; border-radius: var(--radius-pill); font-size: 0.75rem;">Concept</span>
+                      <span style="background: var(--surface-dark-soft); padding: 4px 12px; border-radius: var(--radius-pill); font-size: 0.75rem;">2026</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm);">
+                      <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
+                      <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
+                      <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
+                      <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -81,71 +102,110 @@
         </div>
       </section>
 
-      <!-- Editorial Value Proposition -->
-      <section class="section section-padding-large">
+      <!-- Archive Ethics (Cream Cards) -->
+      <section id="about" class="section">
         <div class="container">
-          <div class="grid editorial-grid">
-            <div class="editorial-header reveal">
-              <h2 class="text-heading-1">克制生长，<br>余韵留存。</h2>
-              <p class="text-body-large" style="margin-top: 16px;">
-                放弃复杂的云端同步与社交功能，回归工具的本质。
-              </p>
+          <div class="reveal" style="text-align: center; margin-bottom: var(--space-section); max-width: 800px; margin-inline: auto;">
+            <h2 class="text-display-lg" style="margin-bottom: var(--space-lg);">Archive Ethics</h2>
+            <p class="text-title-md" style="color: var(--muted);">原质完整进入，缩略只做预览。设备内成库，离线可用。数据主权永远属于你。</p>
+          </div>
+
+          <div class="grid">
+            <div class="feature-card reveal stagger-1" style="grid-column: span 4;">
+              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">01 / 质量不减</h3>
+              <p class="text-body-sm">不为了节省空间而裁剪、二次压缩原始图像。你存入的，就是未来的母版。</p>
             </div>
-            <div class="editorial-content">
-              <div class="editorial-item reveal stagger-1">
-                <div class="editorial-meta">01 / 收束</div>
-                <h3 class="text-heading-2">以 IP 为维度的归档体系</h3>
-                <p class="text-body" style="margin-top: 12px; color: var(--text-muted);">
-                  每一个 IP 都是一个独立的视觉宇宙。支持角色、视觉识别、主题、品牌图像或创意系列的深度整理，让图片资料真正沉淀为结构化的项目册。
-                </p>
-              </div>
-              <div class="editorial-item reveal stagger-2">
-                <div class="editorial-meta">02 / 原图</div>
-                <h3 class="text-heading-2">无损保存，本地绝对可靠</h3>
-                <p class="text-body" style="margin-top: 12px; color: var(--text-muted);">
-                  严格遵循本地优先原则。导入的图片直接复制到应用的私有存储，不压缩、不裁剪、不改变原始编码。这不只是一个相册，而是一个可以信赖的素材金库。
-                </p>
-              </div>
-              <div class="editorial-item reveal stagger-3">
-                <div class="editorial-meta">03 / 回声</div>
-                <h3 class="text-heading-2">分组、标签与软删除</h3>
-                <p class="text-body" style="margin-top: 12px; color: var(--text-muted);">
-                  建立轻量级的归类组（如季节、场景、节庆）。通过自定义标签与详尽的备注系统找回记忆线索。支持软删除（回收站机制），避免因误触造成不可挽回的资产损失。
-                </p>
+            <div class="feature-card reveal stagger-2" style="grid-column: span 4;">
+              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">02 / 离线本地</h3>
+              <p class="text-body-sm">所有结构化数据保存在本地 SQLite 数据库中。无需网络，没有云端绑架。</p>
+            </div>
+            <div class="feature-card reveal stagger-3" style="grid-column: span 4;">
+              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">03 / 开放带走</h3>
+              <p class="text-body-sm">支持全量带走。原文件、缩略图、数据库清单一键迁移，毫不设限。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Workflow (Dark Section) -->
+      <section id="features" class="section section-dark">
+        <div class="container">
+          <div class="grid" style="align-items: center;">
+            <div class="reveal" style="grid-column: 1 / 6;">
+              <span class="text-caption-caps" style="color: var(--on-dark-soft);">Workflow & Order</span>
+              <h2 class="text-display-lg mt-3" style="color: var(--on-dark);">重建视觉秩序。</h2>
+              <p class="text-body-md mt-4" style="color: var(--on-dark-soft);">
+                依靠 IP、分组、标签和备注的交叉索引，无论你的库有多大，总能在 3 秒内找到那张图。
+              </p>
+
+              <ul class="mt-6" style="display: flex; flex-direction: column; gap: var(--space-lg);">
+                <li>
+                  <strong style="color: var(--on-dark); font-weight: 500;">Batch Import</strong>
+                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">系统自动抽帧与生成缩略图，大批量进入缓存区。</p>
+                </li>
+                <li>
+                  <strong style="color: var(--on-dark); font-weight: 500;">Cross Indexing</strong>
+                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">支持多个标签叠加检索，快速过滤非相关内容。</p>
+                </li>
+                <li>
+                  <strong style="color: var(--on-dark); font-weight: 500;">Soft Delete</strong>
+                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">缓冲池机制，只有在清空回收站时才会发生真正的物理擦除。</p>
+                </li>
+              </ul>
+            </div>
+
+            <div class="reveal stagger-2" style="grid-column: 7 / 13;">
+              <div class="code-window">
+                <div class="mockup-header">
+                  <div class="mockup-dot red"></div>
+                  <div class="mockup-dot yellow"></div>
+                  <div class="mockup-dot green"></div>
+                </div>
+                <pre><code><span class="code-comment">// Pixory Core Architecture</span>
+<span class="code-keyword">import</span> { LocalStorage, SQLite } <span class="code-keyword">from</span> <span class="code-string">'@pixory/engine'</span>;
+
+<span class="code-keyword">const</span> archive = <span class="code-keyword">new</span> LocalStorage({
+  <span class="code-comment">/* Never compress originals */</span>
+  preserveOriginals: <span class="code-keyword">true</span>,
+
+  <span class="code-comment">/* SQLite for fast indexing */</span>
+  database: SQLite.connect(<span class="code-string">'pixory.db'</span>),
+});
+
+<span class="code-keyword">async function</span> importAsset(file) {
+  <span class="code-comment">// 1. Copy original file untouched</span>
+  <span class="code-keyword">await</span> archive.copy(file);
+
+  <span class="code-comment">// 2. Generate lightweight thumbnail for UI</span>
+  <span class="code-keyword">const</span> thumb = <span class="code-keyword">await</span> generateThumbnail(file);
+
+  <span class="code-comment">// 3. Store structured metadata</span>
+  <span class="code-keyword">return</span> archive.database.insert({
+    original: file.path,
+    thumbnail: thumb.path,
+    checksum: file.hash()
+  });
+}</code></pre>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Feature Matrix -->
-      <section class="section section-border-top" style="background-color: var(--bg-secondary);">
+      <!-- Download CTA (Coral Callout) -->
+      <section id="download" class="section">
         <div class="container">
-          <div class="reveal">
-            <span class="hero-eyebrow">Capabilities</span>
-            <h2 class="text-heading-2">清晰、干脆的能力矩阵。</h2>
-          </div>
-          <div class="feature-matrix">
-            <div class="feature-card reveal stagger-1">
-              <div class="feature-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              </div>
-              <h3 class="text-heading-3">批量稳定导入</h3>
-              <p class="text-small" style="margin-top: 8px;">一次性选中多张图片，自动复制原图、生成缩略图、写入 SQLite 并赋予分类，过程平滑无感。</p>
+          <div class="callout-card-coral reveal text-center">
+            <h2 class="text-display-lg" style="margin-bottom: var(--space-md);">把 Pixory 装进手机。</h2>
+            <p class="text-title-md" style="margin-bottom: var(--space-xl); opacity: 0.9;">
+              当前版本：2.4.2 · 最新 Android 稳定包
+            </p>
+            <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+              <a href="https://github.com/qinghe-zy/Pixory/releases/latest" target="_blank" rel="noreferrer" class="btn btn-primary" style="height: 48px; padding: 0 32px; font-size: 1rem;">直接下载 APK</a>
+              <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" class="btn btn-secondary-dark" style="background: rgba(0,0,0,0.2); border: none; color: white; height: 48px; padding: 0 32px; font-size: 1rem;">查看历史版本</a>
             </div>
-            <div class="feature-card reveal stagger-2">
-              <div class="feature-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              </div>
-              <h3 class="text-heading-3">SQLite 结构化数据</h3>
-              <p class="text-small" style="margin-top: 8px;">一切元数据（宽、高、尺寸、MIME 类型、收藏状态、笔记）都井井有条地存储于本地 SQLite 数据库中。</p>
-            </div>
-            <div class="feature-card reveal stagger-3">
-              <div class="feature-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-              </div>
-              <h3 class="text-heading-3">原图级备份</h3>
-              <p class="text-small" style="margin-top: 8px;">备份导出不仅仅是缩略图。一次导出，包含完整的数据库、原图文件夹和 Manifest 文件，真正拥有你的数据。</p>
+            <div class="mt-4 text-caption" style="opacity: 0.8;">
+              SHA-256: b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e
             </div>
           </div>
         </div>
@@ -155,43 +215,38 @@
     <footer class="site-footer">
       <div class="container footer-grid">
         <div class="footer-brand">
-          <div class="nav-brand" style="color: white;">
-            <span class="nav-brand-mark" style="background-color: white;"></span>
+          <div class="nav-brand" style="color: var(--on-dark);">
+            <span class="nav-brand-mark" style="background-color: var(--on-dark);"></span>
             Pixory
           </div>
-          <p class="footer-brand-desc">
-            灵感归档，审美留痕。<br>
-            专注于 Android 的本地图片资产管理。
+          <p class="mt-3 text-body-sm" style="max-width: 280px;">
+            专注于 Android 的本地图片资产管理。<br>灵感归档，审美留痕。
           </p>
         </div>
         <div class="footer-nav">
-          <div class="footer-nav-col">
+          <div>
             <h4>探索</h4>
-            <a href="index.html">首页</a>
-            <a href="culture.html">气质</a>
-            <a href="features.html">秩序</a>
+            <a href="#about">理念</a>
+            <a href="#features">工作流</a>
           </div>
-          <div class="footer-nav-col">
+          <div>
             <h4>资源</h4>
-            <a href="download.html">获取 Android 版</a>
             <a href="updates.html">版本近况</a>
-            <a href="data.html">数据档案</a>
+            <a href="#download">获取 Android 版</a>
           </div>
-          <div class="footer-nav-col">
+          <div>
             <h4>支持</h4>
             <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub 仓库</a>
             <a href="https://github.com/qinghe-zy/Pixory/issues" target="_blank" rel="noreferrer">报告问题</a>
           </div>
         </div>
       </div>
-      <div class="container">
-        <div class="footer-bottom">
-          <span>&copy; 2026 Pixory. All rights reserved.</span>
-          <span>mist01.com</span>
-        </div>
+      <div class="container footer-bottom">
+        <span>&copy; 2026 Pixory. All rights reserved.</span>
+        <span>mist01.com</span>
       </div>
     </footer>
 
-    <script src="site.js?v=9"></script>
+    <script src="site.js?v=10"></script>
   </body>
 </html>
