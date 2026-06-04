@@ -216,11 +216,14 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   font-size: 0.875rem;
   font-weight: 500;
   border-radius: var(--radius-md);
-  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   white-space: nowrap;
+  transform-origin: center;
+  will-change: transform;
+  outline: none;
 }
 .btn-primary { background-color: var(--primary); color: var(--on-primary); }
-.btn-primary:hover, .btn-primary:active { background-color: var(--primary-active); }
+.btn-primary:hover { background-color: var(--primary-active); }
 .btn-secondary { background-color: var(--canvas); color: var(--ink); border: 1px solid var(--hairline); }
 .btn-secondary:hover { background-color: var(--surface-soft); border-color: var(--muted-soft); }
 .btn-secondary-dark { background-color: var(--surface-dark-elevated); color: var(--on-dark); }
@@ -236,7 +239,11 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   border-radius: var(--radius-lg);
   padding: var(--space-xl);
   height: 100%;
+  position: relative;
+  overflow: hidden;
+  will-change: transform;
 }
+
 .callout-card-coral {
   background-color: var(--primary);
   color: var(--on-primary);
@@ -256,6 +263,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   box-shadow: 0 20px 40px -10px rgba(0,0,0,0.3);
   overflow: hidden;
   position: relative;
+  will-change: transform;
 }
 .mockup-header {
   display: flex;
@@ -280,6 +288,13 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 .code-keyword { color: var(--primary); }
 .code-string { color: var(--accent-teal); }
 .code-comment { color: var(--muted-soft); }
+
+/* FAQ Accordion */
+.faq-item {
+  border-bottom: 1px solid var(--hairline);
+  padding: var(--space-lg) 0;
+}
+.faq-item:first-child { border-top: 1px solid var(--hairline); }
 
 /* Badge */
 .badge-coral {
@@ -355,13 +370,8 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 .mt-4 { margin-top: var(--space-xl); }
 .mt-6 { margin-top: var(--space-xxl); }
 
-/* Animations */
-.reveal {
+/* Anime.js prep hidden states */
+.anime-reveal {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
 }
-.reveal.is-visible { opacity: 1; transform: translateY(0); }
-.stagger-1 { transition-delay: 0.1s; }
-.stagger-2 { transition-delay: 0.2s; }
-.stagger-3 { transition-delay: 0.3s; }

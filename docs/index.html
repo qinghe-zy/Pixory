@@ -13,13 +13,15 @@
     <meta property="og:title" content="Pixory">
     <meta property="og:description" content="为珍视本地数字资产的人设计的图像管家。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <link rel="stylesheet" href="site.css?v=10">
+    <link rel="stylesheet" href="site.css?v=11">
   </head>
   <body>
     <!-- Mobile Navigation Overlay -->
     <div class="mobile-nav-overlay">
       <a href="#about">理念</a>
-      <a href="#features">工作流</a>
+      <a href="#matrix">深度</a>
+      <a href="#workflow">工作流</a>
+      <a href="#faq">FAQ</a>
       <a href="#download">下载</a>
       <a href="updates.html">近况</a>
     </div>
@@ -33,7 +35,9 @@
         </a>
         <div class="nav-links">
           <a href="#about">理念</a>
-          <a href="#features">工作流</a>
+          <a href="#matrix">深度</a>
+          <a href="#workflow">工作流</a>
+          <a href="#faq">FAQ</a>
           <a href="#download">获取</a>
           <a href="updates.html">近况</a>
         </div>
@@ -53,19 +57,19 @@
         <div class="container">
           <div class="grid" style="align-items: center;">
             <!-- Left: Copy -->
-            <div class="reveal" style="grid-column: 1 / 7;">
-              <h1 class="text-display-xl" style="margin-bottom: var(--space-xl);">Meet your visual<br>archive partner.</h1>
-              <p class="text-body-md" style="margin-bottom: var(--space-xl); max-width: 480px; font-size: 1.125rem;">
+            <div style="grid-column: 1 / 7;">
+              <h1 class="text-display-xl hero-reveal" style="margin-bottom: var(--space-xl); opacity: 0; visibility: hidden;">Meet your visual<br>archive partner.</h1>
+              <p class="text-body-md hero-reveal" style="margin-bottom: var(--space-xl); max-width: 480px; font-size: 1.125rem; opacity: 0; visibility: hidden;">
                 Pixory 是一款专注于 Android 的本地图片资产管理工具。不压缩、不依赖云端、不乱建目录。你整理的不是图片，而是不可再生的视觉资产。
               </p>
-              <div style="display: flex; gap: var(--space-md);">
+              <div class="hero-reveal" style="display: flex; gap: var(--space-md); opacity: 0; visibility: hidden;">
                 <a href="#download" class="btn btn-primary">获取 Android 版本</a>
                 <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-secondary">查看源码</a>
               </div>
             </div>
 
             <!-- Right: Product Mockup Card -->
-            <div class="reveal stagger-1" style="grid-column: 7 / 13;">
+            <div class="hero-reveal" style="grid-column: 7 / 13; opacity: 0; visibility: hidden;">
               <div class="mockup-card-dark">
                 <div class="mockup-header">
                   <div class="mockup-dot red"></div>
@@ -104,22 +108,22 @@
 
       <!-- Archive Ethics (Cream Cards) -->
       <section id="about" class="section">
-        <div class="container">
-          <div class="reveal" style="text-align: center; margin-bottom: var(--space-section); max-width: 800px; margin-inline: auto;">
+        <div class="container" data-anime-group>
+          <div class="anime-reveal" style="text-align: center; margin-bottom: var(--space-section); max-width: 800px; margin-inline: auto;">
             <h2 class="text-display-lg" style="margin-bottom: var(--space-lg);">Archive Ethics</h2>
             <p class="text-title-md" style="color: var(--muted);">原质完整进入，缩略只做预览。设备内成库，离线可用。数据主权永远属于你。</p>
           </div>
 
           <div class="grid">
-            <div class="feature-card reveal stagger-1" style="grid-column: span 4;">
+            <div class="feature-card anime-reveal" style="grid-column: span 4;">
               <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">01 / 质量不减</h3>
               <p class="text-body-sm">不为了节省空间而裁剪、二次压缩原始图像。你存入的，就是未来的母版。</p>
             </div>
-            <div class="feature-card reveal stagger-2" style="grid-column: span 4;">
+            <div class="feature-card anime-reveal" style="grid-column: span 4;">
               <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">02 / 离线本地</h3>
               <p class="text-body-sm">所有结构化数据保存在本地 SQLite 数据库中。无需网络，没有云端绑架。</p>
             </div>
-            <div class="feature-card reveal stagger-3" style="grid-column: span 4;">
+            <div class="feature-card anime-reveal" style="grid-column: span 4;">
               <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">03 / 开放带走</h3>
               <p class="text-body-sm">支持全量带走。原文件、缩略图、数据库清单一键迁移，毫不设限。</p>
             </div>
@@ -127,65 +131,112 @@
         </div>
       </section>
 
-      <!-- Workflow (Dark Section) -->
-      <section id="features" class="section section-dark">
-        <div class="container">
+      <!-- Feature Matrix (Deep Dive) -->
+      <section id="matrix" class="section section-dark">
+        <div class="container" data-anime-group>
+          <div class="anime-reveal" style="margin-bottom: var(--space-xl);">
+            <span class="text-caption-caps" style="color: var(--on-dark-soft);">Under The Hood</span>
+            <h2 class="text-display-lg mt-3" style="color: var(--on-dark); max-width: 600px;">拒绝黑盒的图片管理体验。</h2>
+          </div>
+
+          <div class="grid">
+            <!-- 6-Grid Matrix -->
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">本地 SQLite 驱动</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">告别基于纯文件系统遍历的卡顿。Pixory 内部运行一个标准的关系型数据库，为每次查询提供亚毫秒级的元数据检索响应。</p>
+            </div>
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">无损大批量导入</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">直接读取文件物理路径进行硬拷贝 (Copy-on-write)。不会触发任何第三方应用的再压缩与 EXIF 抹除行为。</p>
+            </div>
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">分离式缩略图系统</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">原图与缩略图在存储层完全隔离。瀑布流加载极其丝滑的同时，点开详情页永远能看到未经妥协的原始像素。</p>
+            </div>
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">多维度标签索引</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">IP 决定归属，Group 决定分类，Tag 决定细节。通过任意属性的交集，即便图库堆积如山，也能如同进行 SQL 查询般精确过滤。</p>
+            </div>
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">软删除防呆设计</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">每一次“删除”仅仅是修改数据库状态标位，进入隔离回收站。直到你执行物理清空前，图片及其元数据都不会彻底消失。</p>
+            </div>
+            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
+              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">全量打包离场机制</h3>
+              <p class="text-body-sm" style="color: var(--on-dark-soft);">你可以随时一键生成完整的数据快照，将文件夹、清单与数据库本身直接转移到 PC 或其他设备上读取，这是真正的开源契约。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Workflow (Terminal Mockup) -->
+      <section id="workflow" class="section">
+        <div class="container" data-anime-group>
           <div class="grid" style="align-items: center;">
-            <div class="reveal" style="grid-column: 1 / 6;">
-              <span class="text-caption-caps" style="color: var(--on-dark-soft);">Workflow & Order</span>
-              <h2 class="text-display-lg mt-3" style="color: var(--on-dark);">重建视觉秩序。</h2>
-              <p class="text-body-md mt-4" style="color: var(--on-dark-soft);">
-                依靠 IP、分组、标签和备注的交叉索引，无论你的库有多大，总能在 3 秒内找到那张图。
+            <div class="anime-reveal" style="grid-column: 1 / 6;">
+              <span class="text-caption-caps">Workflow & Order</span>
+              <h2 class="text-display-lg mt-3">重建视觉秩序。</h2>
+              <p class="text-body-md mt-4" style="color: var(--muted);">
+                依靠 IP、分组、标签和备注的交叉索引，无论你的库有多大，总能在极短时间内找到那张图。
               </p>
 
               <ul class="mt-6" style="display: flex; flex-direction: column; gap: var(--space-lg);">
                 <li>
-                  <strong style="color: var(--on-dark); font-weight: 500;">Batch Import</strong>
-                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">系统自动抽帧与生成缩略图，大批量进入缓存区。</p>
+                  <strong style="font-weight: 500;">Batch Import</strong>
+                  <p class="text-body-sm mt-1">系统自动抽帧与生成缩略图，大批量进入缓存区。</p>
                 </li>
                 <li>
-                  <strong style="color: var(--on-dark); font-weight: 500;">Cross Indexing</strong>
-                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">支持多个标签叠加检索，快速过滤非相关内容。</p>
-                </li>
-                <li>
-                  <strong style="color: var(--on-dark); font-weight: 500;">Soft Delete</strong>
-                  <p class="text-body-sm mt-1" style="color: var(--on-dark-soft);">缓冲池机制，只有在清空回收站时才会发生真正的物理擦除。</p>
+                  <strong style="font-weight: 500;">Cross Indexing</strong>
+                  <p class="text-body-sm mt-1">支持多个标签叠加检索，快速过滤非相关内容。</p>
                 </li>
               </ul>
             </div>
 
-            <div class="reveal stagger-2" style="grid-column: 7 / 13;">
+            <div class="anime-reveal" style="grid-column: 7 / 13;">
               <div class="code-window">
                 <div class="mockup-header">
                   <div class="mockup-dot red"></div>
                   <div class="mockup-dot yellow"></div>
                   <div class="mockup-dot green"></div>
                 </div>
-                <pre><code><span class="code-comment">// Pixory Core Architecture</span>
-<span class="code-keyword">import</span> { LocalStorage, SQLite } <span class="code-keyword">from</span> <span class="code-string">'@pixory/engine'</span>;
+                <pre><code><span class="code-comment">// Query Simulation</span>
+> pixory search --ip "CyberPunk" --tag "Reference"
 
-<span class="code-keyword">const</span> archive = <span class="code-keyword">new</span> LocalStorage({
-  <span class="code-comment">/* Never compress originals */</span>
-  preserveOriginals: <span class="code-keyword">true</span>,
+<span class="code-keyword">Found</span> 142 matching assets.
+Loading thumbnails... <span class="code-string">[||||||||||] 100%</span>
 
-  <span class="code-comment">/* SQLite for fast indexing */</span>
-  database: SQLite.connect(<span class="code-string">'pixory.db'</span>),
-});
+<span class="code-comment">/* Output formatted */</span>
+[ Asset ID: 0xa1b2 ] → /data/originals/img_001.png
+[ Asset ID: 0xc3d4 ] → /data/originals/img_002.png
 
-<span class="code-keyword">async function</span> importAsset(file) {
-  <span class="code-comment">// 1. Copy original file untouched</span>
-  <span class="code-keyword">await</span> archive.copy(file);
+<span class="code-keyword">Status:</span> Indexing complete. Render time: 12ms.</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-  <span class="code-comment">// 2. Generate lightweight thumbnail for UI</span>
-  <span class="code-keyword">const</span> thumb = <span class="code-keyword">await</span> generateThumbnail(file);
+      <!-- FAQ Section -->
+      <section id="faq" class="section" style="background-color: var(--surface-soft);">
+        <div class="container" data-anime-group>
+          <div class="anime-reveal" style="max-width: 600px; margin-bottom: var(--space-xl);">
+            <h2 class="text-display-lg">Technical FAQ</h2>
+            <p class="text-body-md" style="color: var(--muted); margin-top: var(--space-md);">那些有关数据边界的尖锐问题。</p>
+          </div>
 
-  <span class="code-comment">// 3. Store structured metadata</span>
-  <span class="code-keyword">return</span> archive.database.insert({
-    original: file.path,
-    thumbnail: thumb.path,
-    checksum: file.hash()
-  });
-}</code></pre>
+          <div class="grid">
+            <div class="anime-reveal" style="grid-column: 1 / 11;">
+              <div class="faq-item">
+                <h3 class="text-title-md">Pixory 会把我的图片上传到云端分析吗？</h3>
+                <p class="text-body-md mt-2" style="color: var(--muted);">绝不。Pixory 是一个纯粹的“Local-first”本地优先应用。没有任何后端服务器，无需注册账号，所有代码的图片流转和检索均在你自己的 Android 设备处理器上完成。你的灵感，永远锁在你的手里。</p>
+              </div>
+              <div class="faq-item">
+                <h3 class="text-title-md">如果应用被意外卸载，我的图片还在吗？</h3>
+                <p class="text-body-md mt-2" style="color: var(--muted);">如果你在 Android 系统中清除了应用数据，Android 会删除应用专属目录下的文件。因此，定期使用“全量导出”功能将 <code>Pixory/</code> 完整目录备份到外部存储空间，是保障资产绝对安全的基础。</p>
+              </div>
+              <div class="faq-item">
+                <h3 class="text-title-md">原图很大，大量导入会撑爆手机内存吗？</h3>
+                <p class="text-body-md mt-2" style="color: var(--muted);">是的，因为我们拒绝二次压缩，10GB 的原图导入后就会实打实占用 10GB 以上的空间（含额外的缩略图缓存）。Pixory 是为严肃的资产管理者设计的，建议您为它预留充足的物理存储空间，而不是依赖有损压缩。</p>
               </div>
             </div>
           </div>
@@ -194,8 +245,8 @@
 
       <!-- Download CTA (Coral Callout) -->
       <section id="download" class="section">
-        <div class="container">
-          <div class="callout-card-coral reveal text-center">
+        <div class="container" data-anime-group>
+          <div class="callout-card-coral anime-reveal text-center">
             <h2 class="text-display-lg" style="margin-bottom: var(--space-md);">把 Pixory 装进手机。</h2>
             <p class="text-title-md" style="margin-bottom: var(--space-xl); opacity: 0.9;">
               当前版本：2.4.2 · 最新 Android 稳定包
@@ -227,7 +278,9 @@
           <div>
             <h4>探索</h4>
             <a href="#about">理念</a>
-            <a href="#features">工作流</a>
+            <a href="#matrix">深度技术</a>
+            <a href="#workflow">工作流</a>
+            <a href="#faq">常见问题</a>
           </div>
           <div>
             <h4>资源</h4>
@@ -247,6 +300,8 @@
       </div>
     </footer>
 
-    <script src="site.js?v=10"></script>
+    <!-- Include Anime.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+    <script src="site.js?v=11"></script>
   </body>
 </html>
