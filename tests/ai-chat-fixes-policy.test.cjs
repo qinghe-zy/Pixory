@@ -275,12 +275,13 @@ test('AI chat buffers streaming patches while reading history and only flushes a
 
 test('AI chat route reloads do not fall back to stale active thread state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, threadId\]\);/.exec(chat)?.[0] ?? '';
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, threadId\]\);/.exec(chat)?.[0] ?? '';
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
   assert.match(routeReloadEffect, /currentBranchScopes = searchTargetBranchScopes \?\? await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
-  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, true, currentBranchScopes\)/);
+  assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, !hasSearchTarget, currentBranchScopes\)/);
   assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
   assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
   assert.match(chat, /reloadAvatarConfig\(threadId \?\? null/);

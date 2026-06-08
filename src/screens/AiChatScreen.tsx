@@ -765,6 +765,9 @@ export function AiChatScreen({
     if (editingUserMessageIdRef.current) {
       return;
     }
+    if (pendingSearchScrollMessageIdRef.current) {
+      return;
+    }
     scrollToLatestMessage(false);
   }, [scrollToLatestMessage]);
 
@@ -1339,6 +1342,7 @@ export function AiChatScreen({
       return;
     }
     let cancelled = false;
+    const hasSearchTarget = Boolean(searchTargetMessageId);
     void (async () => {
       let currentBranchScopes: AiBranchScope[] = [];
       try {
@@ -1353,8 +1357,11 @@ export function AiChatScreen({
       if (currentBranchScopes.length > 0) {
         setSelectedVersionByMessageId(buildBranchSelectionMap(currentBranchScopes));
       }
-      await reloadMessages(targetThreadId, true, currentBranchScopes);
+      await reloadMessages(targetThreadId, !hasSearchTarget, currentBranchScopes);
       if (!cancelled) {
+        if (hasSearchTarget) {
+          return;
+        }
         scrollToLatestMessage(false, true);
         scheduleIntentionalLatestJump(false);
       }
@@ -1362,7 +1369,7 @@ export function AiChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, threadId]);
+  }, [reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, threadId]);
 
   useEffect(() => {
     messagesRef.current = messages;

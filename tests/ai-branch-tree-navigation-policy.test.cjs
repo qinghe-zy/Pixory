@@ -412,6 +412,7 @@ test('AI chat restores persisted branch scopes before loading and positioning me
   assert.match(service, /aiThreadRepository\.listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
   assert.match(chat, /async function loadPersistedCurrentBranchScopes\(targetThreadId: string\): Promise<AiBranchScope\[\]>/);
   assert.match(chat, /await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
-  assert.match(chat, /await reloadMessages\(targetThreadId, true, currentBranchScopes\)/);
+  assert.match(chat, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
+  assert.match(chat, /await reloadMessages\(targetThreadId, !hasSearchTarget, currentBranchScopes\)/);
   assert.doesNotMatch(chat, /void reloadMessages\(threadId \?\? null, true\)/);
 });

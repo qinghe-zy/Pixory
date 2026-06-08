@@ -9,36 +9,40 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-const pages = {
-  'docs/index.html': ['updates.html', 'culture.html'],
-  'docs/culture.html': ['index.html', 'features.html'],
-  'docs/features.html': ['culture.html', 'data.html'],
-  'docs/data.html': ['features.html', 'download.html'],
-  'docs/download.html': ['data.html', 'updates.html'],
-  'docs/updates.html': ['download.html', 'index.html'],
+const redirects = {
+  'docs/culture.html': 'index.html',
+  'docs/features.html': 'index.html#features',
+  'docs/data.html': 'index.html#about',
+  'docs/download.html': 'index.html#download',
 };
 
-test('website pages form a continuous previous and next reading path', () => {
-  for (const [page, [previous, next]] of Object.entries(pages)) {
+test('website uses a single-page homepage while legacy pages redirect to stable sections', () => {
+  const index = read('docs/index.html');
+  assert.match(index, /href="#about"/);
+  assert.match(index, /href="#matrix"/);
+  assert.match(index, /href="#workflow"/);
+  assert.match(index, /href="#download"/);
+  assert.match(index, /href="updates\.html"/);
+  assert.match(index, /site\.css\?v=11/);
+  assert.match(index, /site\.js\?v=11/);
+
+  for (const [page, target] of Object.entries(redirects)) {
     const source = read(page);
-    assert.match(source, /class="page-bridge"/, `${page} should include the page bridge`);
-    assert.match(source, new RegExp(`class="bridge-card bridge-prev[\\s\\S]*href="${previous}"`), `${page} should link to previous page`);
-    assert.match(source, new RegExp(`class="bridge-card bridge-next[\\s\\S]*href="${next}"`), `${page} should link to next page`);
-    assert.match(source, /site\.css\?v=motion-8/);
-    assert.match(source, /site\.js\?v=motion-8/);
+    assert.match(source, new RegExp(`http-equiv="refresh" content="0; url=${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+    assert.match(source, new RegExp(`href="${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
   }
 });
 
 test('website release-facing files reference the current 2.4.2 release', () => {
-  assert.match(read('docs/download.html'), /<div class="version-number">2\.4\.2<\/div>/);
-  assert.match(read('docs/download.html'), /versionCode 242/);
-  assert.match(read('docs/updates.html'), /<h2 class="section-title reveal">2\.4\.2<\/h2>/);
+  assert.match(read('docs/index.html'), /当前版本：2\.4\.2/);
+  assert.match(read('docs/update-version.json'), /"versionCode": 242/);
+  assert.match(read('docs/updates.html'), /Version 2\.4\.2/);
   assert.match(read('docs/updates.html'), /聊天搜索/);
-  assert.match(read('docs/updates.html'), /AI 消息收藏/);
-  assert.match(read('docs/features.html'), /会话整理/);
+  assert.match(read('docs/updates.html'), /收藏/);
+  assert.match(read('docs/index.html'), /SQLite/);
   assert.match(read('README.md'), /当前版本 `2\.4\.2`/);
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.2/);
-  assert.doesNotMatch(read('docs/download.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
+  assert.doesNotMatch(read('docs/index.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
 test('release workflow requires README and update website pages', () => {

@@ -68,3 +68,20 @@ test('AI chat search result selection returns to chat and scrolls to target', ()
   assert.match(chat, /retrySearchScrollToIndex/);
   assert.match(search, /onSelectResult\(result\)/);
 });
+
+test('AI chat search target scroll is not overwritten by latest-message jumps', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
+  const composerHeightHandler = /  const handleComposerHeightChange = useCallback\(\(\) => \{\r?\n[\s\S]*?\r?\n  \}, \[scrollToLatestMessage\]\);/.exec(chat)?.[0] ?? '';
+  const searchTargetGuard = /if \(hasSearchTarget\) \{\s*return;\s*\}/.exec(routeReloadEffect)?.[0] ?? '';
+  const pendingSearchGuard = /if \(pendingSearchScrollMessageIdRef\.current\) \{\s*return;\s*\}/.exec(composerHeightHandler)?.[0] ?? '';
+
+  assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, !hasSearchTarget, currentBranchScopes\)/);
+  assert.match(searchTargetGuard, /return/);
+  assert.doesNotMatch(searchTargetGuard, /scheduleIntentionalLatestJump/);
+  assert.match(routeReloadEffect, /searchTargetMessageId/);
+  assert.match(composerHeightHandler, /pendingSearchScrollMessageIdRef\.current/);
+  assert.match(pendingSearchGuard, /return/);
+  assert.doesNotMatch(pendingSearchGuard, /scrollToLatestMessage\(false\)/);
+});
