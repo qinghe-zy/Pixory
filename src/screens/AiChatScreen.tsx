@@ -60,7 +60,7 @@ const COMPOSER_ENTRANCE_DURATION_MS = 500;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
-const SEARCH_SCROLL_RETRY_DELAYS_MS = [80, 260, 520, 900];
+const SEARCH_SCROLL_RETRY_DELAYS_MS = [80, 260, 520, 900, 1400, 2200, 3400];
 const SEARCH_HIGHLIGHT_DURATION_MS = 1800;
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
 const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
@@ -308,11 +308,17 @@ export function AiChatScreen({
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 82 });
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
-    inlineEditSafeVisibleMessageIdsRef.current = new Set(
+    const nextVisibleMessageIds = new Set(
       viewableItems
         .filter((item) => item.isViewable && item.item?.message?.id)
         .map((item) => item.item.message.id)
     );
+    inlineEditSafeVisibleMessageIdsRef.current = nextVisibleMessageIds;
+    const pendingSearchMessageId = pendingSearchScrollMessageIdRef.current;
+    if (pendingSearchMessageId && nextVisibleMessageIds.has(pendingSearchMessageId)) {
+      pendingSearchScrollMessageIdRef.current = null;
+      clearSearchScrollTimeouts();
+    }
   });
   const isLoadingEarlierRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
@@ -820,6 +826,10 @@ export function AiChatScreen({
     if (!targetMessageId) {
       return;
     }
+    const failedMessageId = invertedMessageItems[info.index]?.message.id;
+    if (failedMessageId !== targetMessageId) {
+      return;
+    }
     messageListRef.current?.scrollToOffset({
       animated: true,
       offset: Math.max(0, info.averageItemLength * info.index),
@@ -854,6 +864,10 @@ export function AiChatScreen({
   function retrySearchScrollToIndex(info: { averageItemLength: number; index: number }) {
     const targetMessageId = pendingSearchScrollMessageIdRef.current;
     if (!targetMessageId) {
+      return;
+    }
+    const failedMessageId = invertedMessageItems[info.index]?.message.id;
+    if (failedMessageId !== targetMessageId) {
       return;
     }
     messageListRef.current?.scrollToOffset({
@@ -1566,6 +1580,12 @@ export function AiChatScreen({
       setErrorMessage('没有在当前路线里找到这条搜索结果。');
       return;
     }
+    if (inlineEditSafeVisibleMessageIdsRef.current.has(targetMessageId)) {
+      pendingSearchScrollMessageIdRef.current = null;
+      clearSearchScrollTimeouts();
+      flashSearchHighlight(targetMessageId);
+      return;
+    }
     clearSearchScrollTimeouts();
     messageListRef.current?.scrollToIndex({
       animated: true,
@@ -1574,13 +1594,6 @@ export function AiChatScreen({
     });
     flashSearchHighlight(targetMessageId);
     scheduleSearchTargetScroll(targetMessageId);
-    searchScrollTimeoutsRef.current.push(
-      setTimeout(() => {
-        if (pendingSearchScrollMessageIdRef.current === targetMessageId) {
-          pendingSearchScrollMessageIdRef.current = null;
-        }
-      }, SEARCH_SCROLL_RETRY_DELAYS_MS.at(-1) ?? 0)
-    );
   }, [hasEarlierMessages, invertedMessageItems, loadEarlierMessages]);
 
   useEffect(() => {
