@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.4.2",
-  "versionCode": 242,
+  "version": "2.4.4",
+  "versionCode": 244,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.4.2 已发布，AI 聊天搜索、消息收藏和分支记忆更稳定。",
+  "message": "Pixory 2.4.4 已发布，AI 聊天长会话更轻，发布前问题也已修复。",
   "releaseNotes": [
-    "AI 聊天页新增整页搜索，优先显示精确结果，再补充本地模糊结果。",
-    "AI 回复可以收藏到收藏中心，并可从收藏条目回到原聊天消息。",
-    "优化分支路线记忆与长聊天定位，减少回到错误分支或丢失最近消息的情况。"
+    "继续优化 AI 聊天长会话渲染，把可见消息派生和定位索引集中计算，减少重复全量扫描。",
+    "发布前完成一轮代码 review，修复分支回看、搜索定位和内联编辑相关的回归风险。",
+    "保留首字等待收敛、版本按需加载和后台记忆维护延后策略，让聊天主路径更稳。"
   ],
   "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
 }

@@ -372,7 +372,7 @@ test('AI chat branch tree entry never creates an empty thread and handles unload
   assert.match(chat, /disabled=\{!activeThreadId\}/);
   assert.match(chat, /accessibilityState=\{\{ disabled: !activeThreadId \}\}/);
 
-  assert.match(chat, /const targetMessageId = pendingBranchTreeScrollMessageIdRef\.current;[\s\S]*if \(index < 0\) \{[\s\S]*messagesRef\.current\.length === 0[\s\S]*return;[\s\S]*hasEarlierMessages[\s\S]*loadEarlierMessages\(\)[\s\S]*setErrorMessage/);
+  assert.match(chat, /const targetMessageId = pendingBranchTreeScrollMessageIdRef\.current;[\s\S]*const index = invertedMessageIndexById\.get\(targetMessageId\);[\s\S]*if \(index == null\) \{[\s\S]*messagesRef\.current\.length === 0[\s\S]*return;[\s\S]*hasEarlierMessages[\s\S]*loadEarlierMessages\(\)[\s\S]*setErrorMessage/);
 });
 
 test('AI chat branch tree return has its own scroll retry path', () => {
@@ -409,7 +409,7 @@ test('AI chat restores persisted branch scopes before loading and positioning me
   const service = read('src/ai/aiChatService.ts');
 
   assert.match(service, /export interface ListThreadMessagesOptions \{[\s\S]*branchScopes\?: AiBranchScope\[\]/);
-  assert.match(service, /aiThreadRepository\.listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
+  assert.match(service, /aiThreadRepository\.listMessagesBase\(db, threadId, options\.limit, options\.branchScopes\)/);
   assert.match(chat, /async function loadPersistedCurrentBranchScopes\(targetThreadId: string\): Promise<AiBranchScope\[\]>/);
   assert.match(chat, /await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
   assert.match(chat, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);

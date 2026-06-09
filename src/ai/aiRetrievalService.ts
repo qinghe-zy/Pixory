@@ -3,6 +3,9 @@ import type { AiCitationSourceType, AiDocumentOwnerType } from './types';
 import { generateQueryEmbedding, tryEmbeddingRetrieval } from './aiEmbeddingService';
 
 export const DEFAULT_RETRIEVAL_LIMIT = 6;
+const OWNER_EMBEDDING_AVAILABILITY_CACHE_MAX = 160;
+const OWNER_EMBEDDING_AVAILABILITY_TTL_MS = 5 * 60 * 1000;
+const QUERY_EMBEDDING_TIMEOUT_MS = 250;
 export type RetrievalMode = 'keyword' | 'hybrid';
 
 export interface RetrievedSnippet {
@@ -63,8 +66,54 @@ interface ChunkSearchRow {
   locatorJson: string;
 }
 
+interface OwnerEmbeddingAvailabilityRow {
+  chunkId: string;
+}
+
+const ownerEmbeddingAvailabilityCache = new Map<string, { expiresAt: number; hasAny: boolean }>();
+
 function normalizeQuery(value: string): string {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function ownerEmbeddingAvailabilityCacheKey(input: RetrieveForThreadInput): string {
+  return [
+    input.space,
+    input.ownerType,
+    input.ownerId,
+    input.embeddingProviderId ?? '',
+    input.embeddingModelId ?? '',
+  ].join('|');
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(fallbackValue), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function rememberOwnerEmbeddingAvailability(key: string, hasAny: boolean): void {
+  ownerEmbeddingAvailabilityCache.set(key, {
+    expiresAt: Date.now() + OWNER_EMBEDDING_AVAILABILITY_TTL_MS,
+    hasAny,
+  });
+  if (ownerEmbeddingAvailabilityCache.size <= OWNER_EMBEDDING_AVAILABILITY_CACHE_MAX) {
+    return;
+  }
+  const oldestKey = ownerEmbeddingAvailabilityCache.keys().next().value;
+  if (typeof oldestKey === 'string') {
+    ownerEmbeddingAvailabilityCache.delete(oldestKey);
+  }
 }
 
 function getSearchTerms(query: string): string[] {
@@ -203,6 +252,55 @@ async function ownerPreviewSearch(input: RetrieveForThreadInput): Promise<Retrie
       score: 0.5 - index * 0.01,
     }));
   });
+}
+
+async function hasAnyEmbeddingsForOwner(input: RetrieveForThreadInput): Promise<boolean> {
+  const configured = input.embeddingProviderId && input.embeddingModelId
+    ? { providerId: input.embeddingProviderId, modelId: input.embeddingModelId }
+    : null;
+  if (input.queryVector?.length) {
+    return true;
+  }
+  const cacheKey = ownerEmbeddingAvailabilityCacheKey(input);
+  const cached = ownerEmbeddingAvailabilityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.hasAny;
+  }
+
+  const hasAny = await runWithDatabaseSpace(input.space, async (db) => {
+    const rows = configured
+      ? await db.getAllAsync<OwnerEmbeddingAvailabilityRow>(
+          `SELECT ai_embeddings.chunkId
+           FROM ai_embeddings
+           INNER JOIN ai_chunks ON ai_chunks.id = ai_embeddings.chunkId
+           WHERE ai_chunks.space = ?
+             AND ai_chunks.ownerType = ?
+             AND ai_chunks.ownerId = ?
+             AND ai_embeddings.providerId = ?
+             AND ai_embeddings.modelId = ?
+           LIMIT 1`,
+          input.space,
+          input.ownerType,
+          input.ownerId,
+          configured.providerId,
+          configured.modelId
+        )
+      : await db.getAllAsync<OwnerEmbeddingAvailabilityRow>(
+          `SELECT ai_embeddings.chunkId
+           FROM ai_embeddings
+           INNER JOIN ai_chunks ON ai_chunks.id = ai_embeddings.chunkId
+           WHERE ai_chunks.space = ?
+             AND ai_chunks.ownerType = ?
+             AND ai_chunks.ownerId = ?
+           LIMIT 1`,
+          input.space,
+          input.ownerType,
+          input.ownerId
+        );
+    return rows.length > 0;
+  });
+  rememberOwnerEmbeddingAvailability(cacheKey, hasAny);
+  return hasAny;
 }
 
 async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<RetrievedSnippet[]> {
@@ -353,16 +451,30 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   snippets: RetrievedSnippet[];
 }> {
   const limit = input.limit ?? DEFAULT_RETRIEVAL_LIMIT;
-  const keyword = await keywordSearch({ ...input, limit });
-  const ipContext = await collectIpContextSnippets({ ...input, limit });
+  const [keyword, ipContext] = await Promise.all([
+    keywordSearch({ ...input, limit }),
+    collectIpContextSnippets({ ...input, limit }),
+  ]);
+  const directSnippets = [...ipContext, ...keyword].slice(0, limit);
+  if (directSnippets.length >= limit) {
+    return { mode: 'keyword', snippets: directSnippets };
+  }
+
+  const canTryEmbedding = await hasAnyEmbeddingsForOwner(input);
   const queryEmbedding = input.queryVector?.length
     ? { providerId: input.embeddingProviderId ?? null, modelId: input.embeddingModelId ?? null, vector: input.queryVector }
-    : await generateQueryEmbedding({
-        modelId: input.embeddingModelId,
-        providerId: input.embeddingProviderId,
-        space: input.space,
-        text: input.query,
-      });
+    : canTryEmbedding
+      ? await withTimeout(
+          generateQueryEmbedding({
+            modelId: input.embeddingModelId,
+            providerId: input.embeddingProviderId,
+            space: input.space,
+            text: input.query,
+          }),
+          QUERY_EMBEDDING_TIMEOUT_MS,
+          null
+        )
+      : null;
   const vectorScores = await tryEmbeddingRetrieval({
     space: input.space,
     ownerType: input.ownerType,
@@ -374,7 +486,6 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
   });
 
   if (vectorScores.length === 0) {
-    const directSnippets = [...ipContext, ...keyword];
     const fallbackSnippets = directSnippets.length === 0 ? await ownerPreviewSearch({ ...input, limit }) : [];
     return { mode: 'keyword', snippets: [...directSnippets, ...fallbackSnippets].slice(0, limit) };
   }

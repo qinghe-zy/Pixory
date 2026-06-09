@@ -292,6 +292,7 @@ export function AiChatScreen({
   const appliedBranchTreeSelectionKeyRef = useRef<string | null>(null);
   const appliedSearchTargetKeyRef = useRef<string | null>(null);
   const activeMessageBranchScopesRef = useRef<AiBranchScope[] | undefined>(undefined);
+  const selectedVersionByMessageIdRef = useRef<Record<string, number>>({});
   const loadedMessageLimitRef = useRef(CHAT_MESSAGE_PAGE_SIZE);
   const userScrolledAwayFromBottomRef = useRef(false);
   const bottomLockedRef = useRef(true);
@@ -393,7 +394,6 @@ export function AiChatScreen({
     transform: [{ translateY: composerEntranceTranslateY }],
   };
   const latestAssistantMessage = useMemo(() => findLatestAssistantMessage(messages), [messages]);
-  const messagesById = useMemo(() => new Map(messages.map((message) => [message.id, message])), [messages]);
 
   function getSelectedMessageVersionIndex(messageId: string, versionTotal: number): number {
     return resolveSelectedMessageVersionIndex(selectedVersionByMessageId, messageId, versionTotal);
@@ -417,60 +417,83 @@ export function AiChatScreen({
     return messageMatchesSelectedBranchPath(message, messagesById, selectedVersionByMessageId);
   }
 
-  const visibleMessages = useMemo(
-    () =>
-      messages.filter(messageMatchesSelectedBranch).map((message, index, filteredMessages) => {
-        const selectedVersionIndex = getBoundMessageVersionIndex(message, filteredMessages[index - 1]);
-        if (selectedVersionIndex >= message.versionTotal) {
-          return message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal };
-        }
-        const selectedVersion = message.messageVersions.find((version) => version.versionIndex === selectedVersionIndex);
-        if (!selectedVersion) {
-          return message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal };
-        }
-        return {
-          ...message,
-          content: selectedVersion.content,
-          reasoningText: selectedVersion.reasoningText,
-          errorMessage: selectedVersion.errorMessage,
-          providerId: selectedVersion.providerId,
-          modelId: selectedVersion.modelId,
-          modelSnapshotJson: selectedVersion.modelSnapshotJson,
-          promptSnapshotJson: selectedVersion.promptSnapshotJson,
-          citations: selectedVersion.citations,
-          createdAt: selectedVersion.messageCreatedAt,
-          updatedAt: selectedVersion.messageUpdatedAt,
-          completedAt: selectedVersion.messageCompletedAt,
-          status: selectedVersion.status,
-          versionIndex: selectedVersion.versionIndex,
-        };
-      }),
-    [messages, selectedVersionByMessageId]
-  );
-  const visibleMessageItems = useMemo<VisibleMessageItem[]>(
-    () =>
-      visibleMessages.map((message, index) => {
-        const previousMessage = visibleMessages[index - 1];
-        const showDateSeparator = shouldShowDateSeparator(visibleMessages, index);
-        return {
-          message,
-          showAvatar: message.role === 'assistant' && (showDateSeparator || previousMessage?.role !== 'assistant'),
-          showDateSeparator,
-        };
-      }),
-    [visibleMessages]
-  );
-  const invertedMessageItems = useMemo(
-    () => [...visibleMessageItems].reverse(),
-    [visibleMessageItems]
-  );
-  const contextTrimNotice = useMemo(
-    () => {
-      const latestAssistant = findLatestAssistantMessage(visibleMessages);
-      return latestAssistant ? messageHasContextTrim(latestAssistant) : false;
-    },
-    [visibleMessages]
-  );
+  const visibleMessageState = useMemo(() => {
+    const nextMessagesById = new Map<string, AiMessageWithCitations>();
+    for (const message of messages) {
+      nextMessagesById.set(message.id, message);
+    }
+
+    const nextVisibleMessages: AiMessageWithCitations[] = [];
+    for (const message of messages) {
+      if (!messageMatchesSelectedBranchPath(message, nextMessagesById, selectedVersionByMessageId)) {
+        continue;
+      }
+      const previousMessage = nextVisibleMessages[nextVisibleMessages.length - 1];
+      const selectedVersionIndex = getBoundMessageVersionIndex(message, previousMessage);
+      if (selectedVersionIndex >= message.versionTotal) {
+        nextVisibleMessages.push(
+          message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal }
+        );
+        continue;
+      }
+      const selectedVersion = message.messageVersions.find((version) => version.versionIndex === selectedVersionIndex);
+      if (!selectedVersion) {
+        nextVisibleMessages.push(
+          message.versionIndex === message.versionTotal ? message : { ...message, versionIndex: message.versionTotal }
+        );
+        continue;
+      }
+      nextVisibleMessages.push({
+        ...message,
+        content: selectedVersion.content,
+        reasoningText: selectedVersion.reasoningText,
+        errorMessage: selectedVersion.errorMessage,
+        providerId: selectedVersion.providerId,
+        modelId: selectedVersion.modelId,
+        modelSnapshotJson: selectedVersion.modelSnapshotJson,
+        promptSnapshotJson: selectedVersion.promptSnapshotJson,
+        citations: selectedVersion.citations,
+        createdAt: selectedVersion.messageCreatedAt,
+        updatedAt: selectedVersion.messageUpdatedAt,
+        completedAt: selectedVersion.messageCompletedAt,
+        status: selectedVersion.status,
+        versionIndex: selectedVersion.versionIndex,
+      });
+    }
+
+    const nextVisibleMessageItems = nextVisibleMessages.map((message, index) => {
+      const previousMessage = nextVisibleMessages[index - 1];
+      const showDateSeparator = shouldShowDateSeparator(nextVisibleMessages, index);
+      return {
+        message,
+        showAvatar: message.role === 'assistant' && (showDateSeparator || previousMessage?.role !== 'assistant'),
+        showDateSeparator,
+      };
+    });
+    const nextInvertedMessageItems = nextVisibleMessageItems.slice().reverse();
+    const nextInvertedMessageIndexById = new Map<string, number>();
+    nextInvertedMessageItems.forEach((item, index) => {
+      nextInvertedMessageIndexById.set(item.message.id, index);
+    });
+    const latestVisibleAssistant = findLatestAssistantMessage(nextVisibleMessages);
+
+    return {
+      contextTrimNotice: latestVisibleAssistant ? messageHasContextTrim(latestVisibleAssistant) : false,
+      invertedMessageIndexById: nextInvertedMessageIndexById,
+      invertedMessageItems: nextInvertedMessageItems,
+      messagesById: nextMessagesById,
+      visibleMessageItems: nextVisibleMessageItems,
+      visibleMessages: nextVisibleMessages,
+    };
+  }, [messages, selectedVersionByMessageId]);
+  const {
+    contextTrimNotice,
+    invertedMessageIndexById,
+    invertedMessageItems,
+    messagesById,
+    visibleMessageItems,
+    visibleMessages,
+  } = visibleMessageState;
   const fallbackMemoryCaptures = useMemo(
     () => memoryCaptures.filter((item) => !item.sourceMessageId),
     [memoryCaptures]
@@ -662,6 +685,31 @@ export function AiChatScreen({
     return nextMessages.map((message) => frozenStreamingMessageByIdRef.current.get(message.id) ?? message);
   }
 
+  function preserveLiveStreamingMessages(nextMessages: AiMessageWithCitations[]): AiMessageWithCitations[] {
+    return nextMessages.map((message) => {
+      if (message.status !== 'generating') {
+        return message;
+      }
+      const currentIndex = messageIndexByIdRef.current.get(message.id);
+      const currentMessage = currentIndex == null ? undefined : messagesRef.current[currentIndex];
+      if (!currentMessage || currentMessage.status !== 'generating') {
+        return message;
+      }
+      const currentContentLength = currentMessage.content.length + (currentMessage.reasoningText?.length ?? 0);
+      const nextContentLength = message.content.length + (message.reasoningText?.length ?? 0);
+      if (currentContentLength === 0 || nextContentLength >= currentContentLength) {
+        return message;
+      }
+      return {
+        ...message,
+        citations: currentMessage.citations,
+        content: currentMessage.content,
+        reasoningText: currentMessage.reasoningText,
+        updatedAt: currentMessage.updatedAt,
+      };
+    });
+  }
+
   function resetStreamingReadBufferState() {
     streamingReadBufferActiveRef.current = false;
     bufferedStreamingPatchRef.current = null;
@@ -810,8 +858,8 @@ export function AiChatScreen({
     if (pendingBranchTreeScrollMessageIdRef.current !== messageId) {
       return;
     }
-    const index = invertedMessageItems.findIndex((item) => item.message.id === messageId);
-    if (index < 0) {
+    const index = invertedMessageIndexById.get(messageId);
+    if (index == null) {
       return;
     }
     messageListRef.current?.scrollToIndex({
@@ -850,8 +898,8 @@ export function AiChatScreen({
     if (pendingSearchScrollMessageIdRef.current !== messageId) {
       return;
     }
-    const index = invertedMessageItems.findIndex((item) => item.message.id === messageId);
-    if (index < 0) {
+    const index = invertedMessageIndexById.get(messageId);
+    if (index == null) {
       return;
     }
     messageListRef.current?.scrollToIndex({
@@ -902,8 +950,8 @@ export function AiChatScreen({
     if (inlineEditSafeVisibleMessageIdsRef.current.has(messageId)) {
       return;
     }
-    const index = invertedMessageItems.findIndex((item) => item.message.id === messageId);
-    if (index < 0) {
+    const index = invertedMessageIndexById.get(messageId);
+    if (index == null) {
       return;
     }
     messageListRef.current?.scrollToIndex({
@@ -1067,6 +1115,7 @@ export function AiChatScreen({
       const nextMessages = await listThreadMessages(space, targetThreadId, {
         branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
         limit: messageLimit,
+        selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
       });
       if (!isLatestRequest('messages', requestId, targetThreadId)) {
         return;
@@ -1079,7 +1128,7 @@ export function AiChatScreen({
         messageScrollOffsetRef.current = 0;
         setScrollToLatestVisible(false);
       }
-      const renderedMessages = forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages);
+      const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages));
       replaceMessages(renderedMessages);
       const titleRequestId = nextRequestId('title');
       void loadThreadTitle(space, targetThreadId).then((title) => {
@@ -1401,6 +1450,10 @@ export function AiChatScreen({
   }, [messages]);
 
   useEffect(() => {
+    selectedVersionByMessageIdRef.current = selectedVersionByMessageId;
+  }, [selectedVersionByMessageId]);
+
+  useEffect(() => {
     visibleMessagesRef.current = visibleMessages;
   }, [visibleMessages]);
 
@@ -1502,6 +1555,7 @@ export function AiChatScreen({
     appliedBranchTreeSelectionKeyRef.current = selectionKey;
     pendingBranchTreeScrollMessageIdRef.current = branchTreeSelection.branchRootMessageId;
     const branchTreeScopes = branchScopesFromSelectionMap(branchTreeSelection.selectionMap);
+    selectedVersionByMessageIdRef.current = branchTreeSelection.selectionMap;
     setPersistedCurrentBranchScopes(branchTreeScopes);
     setSelectedVersionByMessageId(branchTreeSelection.selectionMap);
     void reloadMessages(targetThreadId, true, branchTreeScopes);
@@ -1515,8 +1569,8 @@ export function AiChatScreen({
     if (branchTreeSelection && selectedVersionByMessageId !== branchTreeSelection.selectionMap) {
       return;
     }
-    const index = invertedMessageItems.findIndex((item) => item.message.id === targetMessageId);
-    if (index < 0) {
+    const index = invertedMessageIndexById.get(targetMessageId);
+    if (index == null) {
       if (messagesRef.current.length === 0) {
         return;
       }
@@ -1544,7 +1598,7 @@ export function AiChatScreen({
         }
       }, BRANCH_TREE_SCROLL_RETRY_DELAYS_MS.at(-1) ?? 0)
     );
-  }, [hasEarlierMessages, invertedMessageItems, loadEarlierMessages]);
+  }, [branchTreeSelection, hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages, selectedVersionByMessageId]);
 
   useEffect(() => {
     if (!searchTargetMessageId) {
@@ -1565,8 +1619,8 @@ export function AiChatScreen({
     if (!targetMessageId) {
       return;
     }
-    const index = invertedMessageItems.findIndex((item) => item.message.id === targetMessageId);
-    if (index < 0) {
+    const index = invertedMessageIndexById.get(targetMessageId);
+    if (index == null) {
       if (messagesRef.current.length === 0) {
         return;
       }
@@ -1592,7 +1646,7 @@ export function AiChatScreen({
     });
     flashSearchHighlight(targetMessageId);
     scheduleSearchTargetScroll(targetMessageId);
-  }, [hasEarlierMessages, invertedMessageItems, loadEarlierMessages]);
+  }, [hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages]);
 
   useEffect(() => {
     return () => {
@@ -2249,9 +2303,14 @@ export function AiChatScreen({
     const nextSelection = { ...selectedVersionByMessageId, [messageId]: versionIndex };
     const nextBranchScopes = getCurrentBranchScopesForSelection(nextSelection);
     const activeBranch = getActiveBranchForSelection(nextSelection);
+    const targetThreadId = activeThreadIdRef.current;
+    selectedVersionByMessageIdRef.current = nextSelection;
     setSelectedVersionByMessageId(nextSelection);
     setPersistedCurrentBranchScopes(nextBranchScopes);
     void persistCurrentBranchRoute(activeBranch);
+    if (targetThreadId) {
+      void reloadMessages(targetThreadId, false, nextBranchScopes);
+    }
   }
 
   async function handleToggleMessageFavorite(message: AiMessageWithCitations) {

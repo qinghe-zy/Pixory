@@ -58,9 +58,45 @@
           </div>
 
           <div class="timeline">
-            <!-- 2.4.2 Release -->
+            <!-- 2.4.4 Release -->
             <div class="timeline-item anime-reveal">
-              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-01</div>
+              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-09</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.4</h2>
+
+              <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
+                <div class="feature-card">
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">长会话渲染更轻</h3>
+                  <p class="text-body-sm">AI 聊天把可见消息派生、头像分组和反转列表索引集中在一次计算里完成，减少长对话中重复的全量扫描和定位开销。</p>
+                </div>
+
+                <div class="feature-card">
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">发布前回归修复</h3>
+                  <p class="text-body-sm">补做一轮代码 review，修复分支回看、搜索定位和内联编辑相关的风险点，同时保留首字等待收敛和版本按需加载优化。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2.4.3 Release -->
+            <div class="timeline-item anime-reveal mt-6">
+              <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">2026-06-09</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.3</h2>
+
+              <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
+                <div class="feature-card">
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">首字等待收敛</h3>
+                  <p class="text-body-sm">AI 聊天资料检索改成关键词优先，只有在直接结果不足且资料确实存在 embeddings 时，才继续触发 query embedding，减少首字前空跑等待。</p>
+                </div>
+
+                <div class="feature-card">
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">旧版本回看更稳</h3>
+                  <p class="text-body-sm">聊天消息默认不再加载所有历史版本，旧版本改成按需加载；同时修复分支树切换、旧版本回看和消息刷新时偶发显示错误版本的问题。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2.4.2 Release -->
+            <div class="timeline-item anime-reveal mt-6">
+              <div class="text-caption-caps" style="margin-bottom: var(--space-xs);">2026-06-01</div>
               <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.2</h2>
               
               <div style="display: flex; flex-direction: column; gap: var(--space-lg);">

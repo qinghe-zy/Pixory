@@ -26,7 +26,7 @@ import {
   buildCompanionMemoryPrefix,
   buildStableMemoryPrefix,
 } from './aiMemoryService';
-import { scheduleMemoryMaintenance } from './aiMemoryMaintenanceService';
+import { scheduleDeferredCompanionMemoryMaintenance } from './aiMemoryMaintenanceService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
@@ -226,6 +226,7 @@ export interface AiStreamingMessagePatch {
 export interface ListThreadMessagesOptions {
   branchScopes?: AiBranchScope[];
   limit?: number;
+  selectedVersionByMessageId?: Record<string, number>;
 }
 
 export type AiChatSearchMatchKind = 'exact' | 'fuzzy';
@@ -711,20 +712,28 @@ async function resolveStreamingBranchScopes(
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]) {
-  const { companionMemoryPrefix, stableMemoryPrefix, dynamicMemoryContext } = await runWithDatabaseSpace(thread.space, async (db) => {
+  const memoryPrefixPromise = runWithDatabaseSpace(thread.space, async (db) => {
     const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
     return {
       companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
-      dynamicMemoryContext: await retrieveDynamicMemoryContext(db, thread, userMessage, branchScopes),
       stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
     };
   });
-  const threadMaterialRetrieval = await retrieveForThread({
+  const dynamicMemoryContextPromise = runWithDatabaseSpace(
+    thread.space,
+    async (db) => retrieveDynamicMemoryContext(db, thread, userMessage, branchScopes)
+  );
+  const threadMaterialRetrievalPromise = retrieveForThread({
     space: thread.space,
     ownerType: 'thread',
     ownerId: thread.id,
     query: userMessage,
   });
+  const [{ companionMemoryPrefix, stableMemoryPrefix }, dynamicMemoryContext, threadMaterialRetrieval] = await Promise.all([
+    memoryPrefixPromise,
+    dynamicMemoryContextPromise,
+    threadMaterialRetrievalPromise,
+  ]);
   const threadMaterialSnippets = threadMaterialRetrieval.snippets;
 
   if (thread.contextType === 'normal') {
@@ -745,14 +754,18 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
 
   const ownerType = thread.contextType === 'ip' ? 'ip' : 'knowledge_base';
   const ownerId = thread.contextType === 'ip' ? String(thread.boundIpId ?? '') : thread.boundKnowledgeBaseId ?? '';
-  const boundOwnerRetrieval = ownerId
-    ? await retrieveForThread({
+  const boundOwnerRetrievalPromise = ownerId
+    ? retrieveForThread({
         space: thread.space,
         ownerType,
         ownerId,
         query: userMessage,
       })
     : { mode: 'keyword' as const, snippets: [] };
+  const [, boundOwnerRetrieval] = await Promise.all([
+    threadMaterialRetrievalPromise,
+    boundOwnerRetrievalPromise,
+  ]);
   const boundOwnerSnippets = boundOwnerRetrieval.snippets;
   const snippets = [...threadMaterialSnippets, ...boundOwnerSnippets];
 
@@ -905,21 +918,38 @@ async function loadBranchRootMessages(
 
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, async (db) => {
-    const messages = await aiThreadRepository.listMessages(db, threadId, options.limit, options.branchScopes);
+    const messages = await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
     const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
     const messageIds = messagesWithBranchRoots.map((message) => message.id);
-    const [versionsByMessageId, citationsByMessageId] = await Promise.all([
-      aiThreadRepository.listMessageVersionsForMessages(db, messageIds),
+    const [versionTotalsByMessageId, citationsByMessageId] = await Promise.all([
+      aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds),
       aiThreadRepository.listCitationsForMessages(db, messageIds),
     ]);
+    const selectedVersionEntries = messagesWithBranchRoots
+      .map((message) => {
+        const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
+        const selectedVersionIndex = options.selectedVersionByMessageId?.[message.id];
+        if (!selectedVersionIndex || selectedVersionIndex >= versionTotal) {
+          return null;
+        }
+        return {
+          messageId: message.id,
+          versionIndex: selectedVersionIndex,
+        };
+      })
+      .filter((selection): selection is { messageId: string; versionIndex: number } => Boolean(selection));
+    const selectedVersionsByMessageId = selectedVersionEntries.length > 0
+      ? await aiThreadRepository.listMessageVersionsByIndexForMessages(db, selectedVersionEntries)
+      : {};
     return messagesWithBranchRoots.map((message) => {
-      const messageVersions = versionsByMessageId[message.id] ?? [];
+      const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
+      const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
       return {
         ...message,
         citations: citationsByMessageId[message.id] ?? [],
-        messageVersions,
-        versionIndex: messageVersions.length + 1,
-        versionTotal: messageVersions.length + 1,
+        messageVersions: selectedVersion ? [selectedVersion] : [],
+        versionIndex: selectedVersion?.versionIndex ?? versionTotal,
+        versionTotal,
       };
     });
   });
@@ -1601,7 +1631,7 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    void scheduleMemoryMaintenance({
+    void scheduleDeferredCompanionMemoryMaintenance({
       assistantMessageId: input.assistantMessageId,
       branchScopes,
       reason: 'reply_completed',

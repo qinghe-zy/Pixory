@@ -172,7 +172,7 @@ test('AI inline edit keeps the edited user message visible above the keyboard', 
   assert.match(chat, /editingUserMessageIdRef\.current !== failedMessageId/);
   assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current\.has\(failedMessageId\)/);
   assert.match(chat, /inlineEditVisibilityTimeoutsRef\.current\.push\(\s*setTimeout/);
-  assert.match(chat, /invertedMessageItems\.findIndex\(\(item\) => item\.message\.id === messageId\)/);
+  assert.match(chat, /const index = invertedMessageIndexById\.get\(messageId\)/);
   assert.match(chat, /messageListRef\.current\?\.scrollToIndex\(\{\s*animated:\s*true,\s*index,[\s\S]{0,80}viewPosition:\s*0\.42/);
   assert.match(chat, /viewabilityConfig=\{inlineEditViewabilityConfigRef\.current\}/);
   assert.match(chat, /onViewableItemsChanged=\{handleInlineEditViewableItemsChangedRef\.current\}/);
@@ -189,7 +189,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   const chat = read('src/screens/AiChatScreen.tsx');
   const composer = read('src/components/ai/AiChatComposer.tsx');
 
-  assert.match(chat, /invertedMessageItems = useMemo/);
+  assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /data=\{invertedMessageItems\}/);
   assert.match(chat, /\binverted\b/);
   assert.match(chat, /ListFooterComponent=/);
@@ -578,7 +578,8 @@ test('AI companion memory compression is asynchronous and segment based', () => 
   assert.match(queue, /chooseStrongerReason/);
   assert.match(queue, /recordMaintenanceFailure/);
   assert.match(summary, /remoteFallbackError/);
-  assert.match(chat, /scheduleMemoryMaintenance/);
+  assert.match(maintenance, /scheduleDeferredCompanionMemoryMaintenance/);
+  assert.match(chat, /scheduleDeferredCompanionMemoryMaintenance/);
   assert.match(queue, /allowRemoteModel/);
 });
 
@@ -695,7 +696,10 @@ test('AI message version selection filters descendant branch messages and future
   assert.match(chat, /branchVersionIndex/);
   assert.match(chat, /previousMessage\?\.role === 'user'/);
   assert.match(chat, /selectedVersionByMessageId\[previousMessage\.id\]/);
-  assert.match(chat, /visibleMessages = useMemo\([\s\S]*\.filter\(messageMatchesSelectedBranch\)/);
+  assert.match(chat, /const visibleMessageState = useMemo\(/);
+  assert.match(chat, /const nextMessagesById = new Map<string, AiMessageWithCitations>\(\)/);
+  assert.match(chat, /if \(!messageMatchesSelectedBranchPath\(message, nextMessagesById, selectedVersionByMessageId\)\) \{/);
+  assert.match(chat, /const nextVisibleMessages: AiMessageWithCitations\[\] = \[\]/);
   assert.match(chat, /function getActiveBranchForNextMessage/);
   assert.match(chat, /getActiveBranchForNextMessageFromVisibleMessages/);
   assert.match(chat, /branchRootMessageId:\s*activeBranch\?\.branchRootMessageId/);
@@ -743,7 +747,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, CHAT_HISTORY_MESSAGE_LIMIT, branchScopes\)/);
-  assert.match(service, /scheduleMemoryMaintenance\(\{[\s\S]*branchScopes/);
+  assert.match(service, /scheduleDeferredCompanionMemoryMaintenance\(\{[\s\S]*branchScopes/);
   assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(memoryService, /listMemoryBoardItems\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
   assert.match(memoryService, /listSummarySegments\(db, thread\.id, options\?\.branchScopes\)/);
@@ -928,16 +932,19 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(bubble, /areAiMessageBubblePropsEqual/);
   assert.match(bubble, /previous\.message === next\.message/);
   assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent, areAiMessageBubblePropsEqual\)/);
-  assert.match(chat, /return message\.versionIndex === message\.versionTotal \? message/);
+  assert.match(chat, /message\.versionIndex === message\.versionTotal \? message : \{ \.\.\.message, versionIndex: message\.versionTotal \}/);
   assert.match(chat, /type VisibleMessageItem/);
-  assert.match(chat, /visibleMessageItems = useMemo/);
-  assert.match(chat, /invertedMessageItems = useMemo/);
+  assert.match(chat, /const nextVisibleMessageItems = nextVisibleMessages\.map/);
+  assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
+  assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
+  assert.match(chat, /const \{\s*contextTrimNotice,\s*invertedMessageIndexById,\s*invertedMessageItems,/);
   assert.match(chat, /showAvatar: message\.role === 'assistant'/);
   assert.match(chat, /previousMessage\?\.role !== 'assistant'/);
   assert.match(chat, /messageKeyExtractor = useCallback/);
   assert.match(chat, /renderMessageItem = useCallback/);
   assert.match(chat, /data=\{invertedMessageItems\}/);
   assert.match(chat, /renderItem=\{renderMessageItem\}/);
+  assert.match(chat, /invertedMessageIndexById\.get\(messageId\)/);
 });
 
 test('AI assistant waiting and streaming states use lightweight animated feedback', () => {
@@ -960,7 +967,7 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
   assert.match(service, /contextTrimmedByCount/);
   assert.match(chat, /contextTrimNotice/);
   assert.match(chat, /function findLatestAssistantMessage/);
-  assert.match(chat, /const latestAssistant = findLatestAssistantMessage\(visibleMessages\)/);
+  assert.match(chat, /const latestVisibleAssistant = findLatestAssistantMessage\(nextVisibleMessages\)/);
   assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
   assert.match(chat, /promptSnapshotJson/);
 });
@@ -1030,6 +1037,14 @@ test('AI thinking block keeps collapsed streaming reasoning hidden and avoids fi
   assert.doesNotMatch(thinking, /maxHeight:\s*expandedProgress\.interpolate/);
 });
 
+test('AI thinking block stays slightly narrower than the message stack', () => {
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const thinkingWrap = /thinkingWrap:\s*\{[\s\S]*?\n  \}/.exec(bubble)?.[0] ?? '';
+
+  assert.match(thinkingWrap, /maxWidth:\s*'98%'/);
+  assert.doesNotMatch(thinkingWrap, /maxWidth:\s*'100%'/);
+});
+
 test('AI thinking expansion defaults follow the previous assistant thinking block state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
@@ -1092,8 +1107,10 @@ test('AI message content memoizes markdown and renders image markdown inline', (
   assert.doesNotMatch(content, /blocks\.push\(\{ type: 'paragraph', text: paragraphLines\.join\('\\n'\) \}\)/);
   assert.match(content, /isImageMarkdownLine/);
   assert.match(content, /AiMarkdownImage/);
-  assert.match(content, /const parsedMarkdown = useMemo\(\(\) => parseMarkdownContent\(content\), \[content\]\)/);
-  assert.match(content, /const \{ blocks, footnotes, referenceLinks \} = parsedMarkdown/);
+  assert.match(content, /const shouldParseMarkdown = variant === 'assistant' && !streaming/);
+  assert.match(content, /const parsedMarkdown = useMemo\(/);
+  assert.match(content, /shouldParseMarkdown \? parseMarkdownContent\(content\) : null/);
+  assert.match(content, /const \{ blocks, footnotes, referenceLinks \} = parsedMarkdown \?\? parseMarkdownContent\(content\)/);
   assert.match(content, /onError=\{\(\) => setLoadFailed\(true\)\}/);
   assert.match(content, /图片无法预览/);
   assert.doesNotMatch(content, /!\[alt\]\(url\)/);
@@ -1190,9 +1207,10 @@ test('AI memory maintenance uses a unified per-thread queue', () => {
   assert.match(queue, /hasPendingExchange/);
   assert.match(queue, /remoteFailedUsedFallback/);
   assert.match(maintenance, /scheduleMemoryMaintenance/);
+  assert.match(maintenance, /scheduleDeferredCompanionMemoryMaintenance/);
   assert.match(maintenance, /isThreadMemoryMaintenanceActive/);
   assert.doesNotMatch(chat, /scheduleDeepMemoryAfterReply/);
-  assert.match(chat, /scheduleMemoryMaintenance/);
+  assert.match(chat, /scheduleDeferredCompanionMemoryMaintenance/);
 });
 
 test('AI memory retrieval uses FTS candidates without full history scans', () => {

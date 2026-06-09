@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { aiLightColors } from './ai/aiLightTheme';
 import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 
 export type RootTabKey = 'home' | 'organize' | 'ai' | 'me';
@@ -21,11 +22,16 @@ const TAB_ITEMS: Array<{
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 
+function getActiveTintColor(tab: RootTabKey) {
+  return tab === 'ai' ? aiLightColors.coralActive : colors.primary.default;
+}
+
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
   return (
     <View style={styles.wrap}>
       {TAB_ITEMS.map((item) => {
         const isActive = item.key === activeTab;
+        const activeTintColor = getActiveTintColor(item.key);
 
         return (
           <Pressable
@@ -37,11 +43,11 @@ export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {
             style={({ pressed }) => [styles.item, pressed && styles.pressed]}
           >
             <Ionicons
-              color={isActive ? colors.primary.default : colors.text.secondary}
+              color={isActive ? activeTintColor : colors.text.secondary}
               name={isActive ? item.icon.replace('-outline', '') as keyof typeof Ionicons.glyphMap : item.icon}
               size={componentTokens.bottomTab.iconSize}
             />
-            <Text style={[styles.label, isActive ? styles.activeLabel : null]}>{item.label}</Text>
+            <Text style={[styles.label, isActive ? styles.activeLabel : null, isActive ? { color: activeTintColor } : null]}>{item.label}</Text>
           </Pressable>
         );
       })}
@@ -75,7 +81,6 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   activeLabel: {
-    color: colors.primary.default,
     fontWeight: '600',
   },
   pressed: {

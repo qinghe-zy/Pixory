@@ -32,6 +32,7 @@ interface ParsedMarkdownContent {
 interface AiMessageContentProps {
   content: string;
   trailingInline?: ReactNode;
+  streaming?: boolean;
   variant?: 'assistant' | 'user';
 }
 
@@ -461,12 +462,15 @@ function AiMarkdownImage({ alt, uri }: { alt: string; uri: string }) {
   );
 }
 
-export function AiMessageContent({ content, trailingInline, variant = 'assistant' }: AiMessageContentProps) {
+export function AiMessageContent({ content, trailingInline, streaming = false, variant = 'assistant' }: AiMessageContentProps) {
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const parsedMarkdown = useMemo(() => parseMarkdownContent(content), [content]);
-  const { blocks, footnotes, referenceLinks } = parsedMarkdown;
+  const shouldParseMarkdown = variant === 'assistant' && !streaming;
+  const parsedMarkdown = useMemo(
+    () => (shouldParseMarkdown ? parseMarkdownContent(content) : null),
+    [content, shouldParseMarkdown]
+  );
 
   function clearFeedbackTimer() {
     if (feedbackTimeoutRef.current) {
@@ -482,6 +486,11 @@ export function AiMessageContent({ content, trailingInline, variant = 'assistant
   if (variant === 'user') {
     return <Text selectable style={[styles.body, styles.userText]}>{content}</Text>;
   }
+
+  if (streaming) {
+    return <Text selectable style={[styles.body, styles.assistantText]}>{content}{trailingInline ?? null}</Text>;
+  }
+  const { blocks, footnotes, referenceLinks } = parsedMarkdown ?? parseMarkdownContent(content);
 
   const trailingTargetIndex = trailingInline
     ? blocks.reduce((targetIndex, block, index) => (block.type === 'hr' || block.type === 'image' ? targetIndex : index), -1)

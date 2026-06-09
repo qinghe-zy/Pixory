@@ -1886,6 +1886,33 @@ export const aiThreadRepository = {
     return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
+  async listMessagesBase(db: SQLiteDatabase, threadId: string, limit?: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    if (limit && limit > 0) {
+      return db.getAllAsync<AiMessageRecord>(
+        `SELECT * FROM (
+           SELECT * FROM ai_messages
+           WHERE threadId = ?
+             ${visibleBranchClause.clause}
+           ORDER BY createdAt DESC
+           LIMIT ?
+          )
+          ORDER BY createdAt ASC`,
+        threadId,
+        ...visibleBranchClause.values,
+        limit
+      );
+    }
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM ai_messages
+       WHERE threadId = ?
+         ${visibleBranchClause.clause}
+       ORDER BY createdAt ASC`,
+      threadId,
+      ...visibleBranchClause.values
+    );
+  },
+
   async findMessageById(db: SQLiteDatabase, messageId: string): Promise<AiMessageRecord | null> {
     return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
   },
@@ -2286,6 +2313,29 @@ export const aiThreadRepository = {
     return rows.map(mapMessageVersionRow);
   },
 
+  async listMessageVersionTotalsForMessages(db: SQLiteDatabase, messageIds: string[]): Promise<Record<string, number>> {
+    if (messageIds.length === 0) {
+      return {};
+    }
+    const rows: Array<{ originalMessageId: string; versionTotal: number }> = [];
+    for (let index = 0; index < messageIds.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = messageIds.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      rows.push(
+        ...(await db.getAllAsync<{ originalMessageId: string; versionTotal: number }>(
+          `SELECT originalMessageId, COUNT(*) + 1 AS versionTotal
+           FROM ai_message_versions
+           WHERE originalMessageId IN (${makeInClause(chunk)})
+           GROUP BY originalMessageId`,
+          ...chunk
+        ))
+      );
+    }
+    return rows.reduce<Record<string, number>>((grouped, row) => {
+      grouped[row.originalMessageId] = row.versionTotal;
+      return grouped;
+    }, {});
+  },
+
   async listMessageVersionsForMessages(db: SQLiteDatabase, messageIds: string[]): Promise<Record<string, AiMessageVersionRecord[]>> {
     if (messageIds.length === 0) {
       return {};
@@ -2306,6 +2356,45 @@ export const aiThreadRepository = {
       const mapped = mapMessageVersionRow(row);
       grouped[mapped.originalMessageId] = grouped[mapped.originalMessageId] ?? [];
       grouped[mapped.originalMessageId].push(mapped);
+      return grouped;
+    }, {});
+  },
+
+  async listMessageVersionsByIndexForMessages(
+    db: SQLiteDatabase,
+    selections: Array<{ messageId: string; versionIndex: number }>
+  ): Promise<Record<string, AiMessageVersionRecord>> {
+    if (selections.length === 0) {
+      return {};
+    }
+    const normalized = selections.filter(
+      (selection): selection is { messageId: string; versionIndex: number } =>
+        typeof selection.messageId === 'string'
+        && selection.messageId.length > 0
+        && Number.isFinite(selection.versionIndex)
+        && selection.versionIndex > 0
+    );
+    if (normalized.length === 0) {
+      return {};
+    }
+
+    const rows: AiMessageVersionRow[] = [];
+    for (let index = 0; index < normalized.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = normalized.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      const clause = chunk.map(() => '(originalMessageId = ? AND versionIndex = ?)').join(' OR ');
+      rows.push(
+        ...(await db.getAllAsync<AiMessageVersionRow>(
+          `SELECT * FROM ai_message_versions
+           WHERE ${clause}
+           ORDER BY originalMessageId ASC, versionIndex ASC`,
+          ...chunk.flatMap((selection) => [selection.messageId, selection.versionIndex])
+        ))
+      );
+    }
+
+    return rows.reduce<Record<string, AiMessageVersionRecord>>((grouped, row) => {
+      const mapped = mapMessageVersionRow(row);
+      grouped[mapped.originalMessageId] = mapped;
       return grouped;
     }, {});
   },

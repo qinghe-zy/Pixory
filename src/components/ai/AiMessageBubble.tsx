@@ -51,7 +51,7 @@ function renderAssistantContentWithCursor(content: string, streaming: boolean) {
   if (!streaming || !content.trim()) {
     return <AiMessageContent content={content} />;
   }
-  return <AiMessageContent content={content} trailingInline={<InlineStreamingCursor />} />;
+  return <AiMessageContent content={content} streaming={streaming} trailingInline={<InlineStreamingCursor />} />;
 }
 
 function AiMessageBubbleComponent({
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   thinkingWrap: {
-    maxWidth: '100%',
+    maxWidth: '98%',
     paddingHorizontal: spacing[1],
   },
   actionRow: {
