@@ -1839,6 +1839,15 @@ export async function findFavoriteAssistantMessageState(input: {
   });
 }
 
+export async function listFavoriteAssistantMessageKeys(input: {
+  space: PixorySpace;
+  favoriteKeys: string[];
+}): Promise<Set<string>> {
+  return runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.listFavoriteAssistantMessageKeys(db, input)
+  );
+}
+
 export async function listFavoriteAssistantMessages(input: {
   space: PixorySpace;
   limit?: number;

@@ -1544,6 +1544,27 @@ export const aiThreadRepository = {
     );
   },
 
+  async listFavoriteAssistantMessageKeys(db: SQLiteDatabase, input: { space: PixorySpace; favoriteKeys: string[] }): Promise<Set<string>> {
+    const uniqueKeys = [...new Set(input.favoriteKeys.filter((key) => key.length > 0))];
+    if (uniqueKeys.length === 0) {
+      return new Set();
+    }
+    const rows: Array<{ favoriteKey: string }> = [];
+    for (let index = 0; index < uniqueKeys.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = uniqueKeys.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      rows.push(
+        ...(await db.getAllAsync<{ favoriteKey: string }>(
+          `SELECT favoriteKey FROM ai_message_favorites
+           WHERE space = ?
+             AND favoriteKey IN (${makeInClause(chunk)})`,
+          input.space,
+          ...chunk
+        ))
+      );
+    }
+    return new Set(rows.map((row) => row.favoriteKey));
+  },
+
   async listFavoriteAssistantMessages(
     db: SQLiteDatabase,
     input: { space: PixorySpace; limit?: number; offset?: number }

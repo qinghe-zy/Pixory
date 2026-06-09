@@ -26,7 +26,7 @@ import {
   loadThreadAvatarConfig,
   listAiHistoryThreads,
   renameAiThread,
-  findFavoriteAssistantMessageState,
+  listFavoriteAssistantMessageKeys,
   toggleAssistantMessageFavorite,
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
@@ -1015,6 +1015,16 @@ export function AiChatScreen({
     };
   }
 
+  const assistantFavoriteKeyState = useMemo(() => {
+    const keys = visibleMessages
+      .filter((message) => message.role === 'assistant')
+      .map((message) => buildMessageFavoriteIdentity(message).key);
+    return {
+      keys,
+      signature: keys.join('\u001f'),
+    };
+  }, [persistedCurrentBranchScopes, space, visibleMessages]);
+
   const applyDisplayTitle = useCallback(
     (title: string) => {
       if (title === displayTitleRef.current) {
@@ -1395,27 +1405,15 @@ export function AiChatScreen({
   }, [visibleMessages]);
 
   useEffect(() => {
-    const targetThreadId = activeThreadIdRef.current;
-    const assistantMessages = visibleMessages.filter((message) => message.role === 'assistant');
-    if (!targetThreadId || assistantMessages.length === 0) {
+    const favoriteKeys = assistantFavoriteKeyState.keys;
+    if (favoriteKeys.length === 0) {
       setFavoriteStateByKey({});
       return;
     }
     let cancelled = false;
     void (async () => {
-      const entries = await Promise.all(
-        assistantMessages.map(async (message) => {
-          const identity = buildMessageFavoriteIdentity(message);
-          const favorited = await findFavoriteAssistantMessageState({
-            branchScopes: identity.branchScopes,
-            messageId: message.id,
-            messageVersionIndex: identity.messageVersionIndex,
-            space,
-            threadId: targetThreadId,
-          });
-          return [identity.key, favorited] as const;
-        })
-      );
+      const favoritedKeys = await listFavoriteAssistantMessageKeys({ favoriteKeys, space });
+      const entries = favoriteKeys.map((key) => [key, favoritedKeys.has(key)] as const);
       if (!cancelled) {
         setFavoriteStateByKey(Object.fromEntries(entries));
       }
@@ -1427,7 +1425,7 @@ export function AiChatScreen({
     return () => {
       cancelled = true;
     };
-  }, [space, visibleMessages, selectedVersionByMessageId, persistedCurrentBranchScopes]);
+  }, [assistantFavoriteKeyState.signature, space]);
 
   useEffect(() => {
     const targetThreadId = threadId ?? null;

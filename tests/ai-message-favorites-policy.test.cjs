@@ -36,6 +36,8 @@ test('AI message favorite repository only accepts assistant messages and normali
   assert.match(repository, /unfavoriteAssistantMessage/);
   assert.match(repository, /listFavoriteAssistantMessages/);
   assert.match(repository, /findFavoriteAssistantMessageState/);
+  assert.match(repository, /listFavoriteAssistantMessageKeys/);
+  assert.match(repository, /favoriteKey IN \(\$\{makeInClause\(chunk\)\}\)/);
   assert.match(repository, /message\.role !== 'assistant'/);
   assert.match(repository, /Only assistant messages can be favorited/);
 });
@@ -47,6 +49,7 @@ test('AI chat service exposes local favorite wrappers without remote calls', () 
   assert.match(service, /export async function toggleAssistantMessageFavorite/);
   assert.match(service, /export async function listFavoriteAssistantMessages/);
   assert.match(service, /export async function findFavoriteAssistantMessageState/);
+  assert.match(service, /export async function listFavoriteAssistantMessageKeys/);
   assert.match(service, /branchScopesJson/);
   const toggleStart = service.indexOf('export async function toggleAssistantMessageFavorite');
   const toggleEnd = service.indexOf('export async function findFavoriteAssistantMessageState');
@@ -83,7 +86,14 @@ test('AI chat screen toggles favorites with current branch and visible version i
   assert.match(chat, /getPersistedCurrentBranchScopes\(\)/);
   assert.match(chat, /message\.versionIndex/);
   assert.match(chat, /toggleAssistantMessageFavorite/);
-  assert.match(chat, /findFavoriteAssistantMessageState/);
+  assert.match(chat, /listFavoriteAssistantMessageKeys/);
+  assert.match(chat, /const assistantFavoriteKeyState = useMemo/);
+  assert.match(chat, /signature: keys\.join\('\\u001f'\)/);
+  assert.match(chat, /const favoriteKeys = assistantFavoriteKeyState\.keys/);
+  assert.match(chat, /const favoritedKeys = await listFavoriteAssistantMessageKeys\(\{ favoriteKeys, space \}\)/);
+  assert.doesNotMatch(chat, /assistantMessages\.map\(async \(message\)/);
+  assert.match(chat, /\}, \[assistantFavoriteKeyState\.signature, space\]\);/);
+  assert.doesNotMatch(chat, /\}, \[space, visibleMessages, selectedVersionByMessageId, persistedCurrentBranchScopes\]\);/);
   assert.match(chat, /activeMessageBranchScopesRef/);
   assert.match(chat, /loadedMessageLimitRef/);
   assert.match(chat, /reloadMessages\(targetThreadId, false, activeMessageBranchScopesRef\.current, nextLimit\)/);
