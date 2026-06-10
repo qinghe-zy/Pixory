@@ -53,32 +53,32 @@
 
     <main>
       <!-- Hero Section -->
-      <section class="section">
+      <section class="section hero-section">
         <div class="container">
-          <div class="grid" style="align-items: center;">
+          <div class="grid hero-grid" style="align-items: center;">
             <!-- Left: Copy -->
-            <div style="grid-column: 1 / 7;">
+            <div class="hero-copy" style="grid-column: 1 / 7;">
               <h1 class="text-display-xl hero-reveal" style="margin-bottom: var(--space-xl); opacity: 0; visibility: hidden;">Meet your visual<br>archive partner.</h1>
               <p class="text-body-md hero-reveal" style="margin-bottom: var(--space-xl); max-width: 480px; font-size: 1.125rem; opacity: 0; visibility: hidden;">
                 Pixory 是一款专注于 Android 的本地图片资产管理工具。不压缩、不依赖云端、不乱建目录。你整理的不是图片，而是不可再生的视觉资产。
               </p>
-              <div class="hero-reveal" style="display: flex; gap: var(--space-md); opacity: 0; visibility: hidden;">
+              <div class="hero-actions hero-reveal" style="display: flex; gap: var(--space-md); opacity: 0; visibility: hidden;">
                 <a href="#download" class="btn btn-primary">获取 Android 版本</a>
                 <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-secondary">查看源码</a>
               </div>
             </div>
 
             <!-- Right: Product Mockup Card -->
-            <div class="hero-reveal" style="grid-column: 7 / 13; opacity: 0; visibility: hidden;">
-              <div class="mockup-card-dark">
+            <div class="hero-visual hero-reveal" style="grid-column: 7 / 13; opacity: 0; visibility: hidden;">
+              <div class="mockup-card-dark hero-mockup">
                 <div class="mockup-header">
                   <div class="mockup-dot red"></div>
                   <div class="mockup-dot yellow"></div>
                   <div class="mockup-dot green"></div>
                 </div>
                 <!-- CSS App Interface Mockup -->
-                <div style="display: flex; gap: var(--space-md);">
-                  <div style="width: 30%; border-right: 1px solid var(--surface-dark-soft); padding-right: var(--space-sm);">
+                <div class="mockup-interface" style="display: flex; gap: var(--space-md);">
+                  <div class="mockup-sidebar" style="width: 30%; border-right: 1px solid var(--surface-dark-soft); padding-right: var(--space-sm);">
                     <div class="text-caption-caps" style="margin-bottom: var(--space-md);">Local Archives</div>
                     <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
                       <div style="background: var(--surface-dark-elevated); padding: 8px; border-radius: var(--radius-sm); font-size: 0.875rem;">IP_Character</div>
@@ -86,13 +86,13 @@
                       <div style="padding: 8px; font-size: 0.875rem; color: var(--on-dark-soft);">Moodboards</div>
                     </div>
                   </div>
-                  <div style="width: 70%;">
-                    <div style="display: flex; gap: var(--space-xs); margin-bottom: var(--space-lg);">
+                  <div class="mockup-main" style="width: 70%;">
+                    <div class="mockup-tags" style="display: flex; gap: var(--space-xs); margin-bottom: var(--space-lg);">
                       <span class="badge-coral">Tags</span>
                       <span style="background: var(--surface-dark-soft); padding: 4px 12px; border-radius: var(--radius-pill); font-size: 0.75rem;">Concept</span>
                       <span style="background: var(--surface-dark-soft); padding: 4px 12px; border-radius: var(--radius-pill); font-size: 0.75rem;">2026</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm);">
+                    <div class="mockup-asset-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm);">
                       <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
                       <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
                       <div style="aspect-ratio: 4/3; background: var(--surface-dark-soft); border-radius: var(--radius-md);"></div>
@@ -173,7 +173,7 @@
       <section id="workflow" class="section">
         <div class="container" data-anime-group>
           <div class="grid" style="align-items: center;">
-            <div class="anime-reveal" style="grid-column: 1 / 6;">
+            <div class="workflow-copy anime-reveal" style="grid-column: 1 / 6;">
               <span class="text-caption-caps">Workflow & Order</span>
               <h2 class="text-display-lg mt-3">重建视觉秩序。</h2>
               <p class="text-body-md mt-4" style="color: var(--muted);">
@@ -192,7 +192,7 @@
               </ul>
             </div>
 
-            <div class="anime-reveal" style="grid-column: 7 / 13;">
+            <div class="workflow-visual anime-reveal" style="grid-column: 7 / 13;">
               <div class="code-window">
                 <div class="mockup-header">
                   <div class="mockup-dot red"></div>

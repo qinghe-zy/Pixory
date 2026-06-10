@@ -70,3 +70,13 @@ test('website sitemap lastmod is synchronized with the release update date', () 
   const matches = sitemap.match(/<lastmod>2026-06-09<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
+
+test('homepage has mobile overflow safeguards for the editorial grid', () => {
+  const css = read('docs/site.css');
+
+  assert.match(css, /html,\s*body\s*\{[\s\S]*?overflow-x:\s*hidden;/);
+  assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.grid\s*>\s*\*\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1\s*!important;/);
+  assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.mockup-card-dark\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*100%;/);
+  assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.section:first-child\s*\.grid\s*\{[\s\S]*?gap:\s*var\(--space-xl\);/);
+  assert.match(css, /@media\s*\(max-width:\s*480px\)\s*\{[\s\S]*?\.nav-actions\s*\.btn-primary\s*\{[\s\S]*?display:\s*none;/);
+});
