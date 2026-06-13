@@ -105,6 +105,17 @@ async function ensureAiBranchSchema(db: SQLiteDatabase): Promise<void> {
   }
 }
 
+async function ensureAiPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
+  if (!(await hasTable(db, 'ai_threads'))) {
+    return;
+  }
+
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
+      ON ai_threads(space, archivedAt, roleCardId, updatedAt);
+  `);
+}
+
 async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
   const applied = await db.getFirstAsync<{ value: string | null }>(
     'SELECT value FROM app_settings WHERE key = ?',
@@ -293,6 +304,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
 
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
+    await ensureAiPerformanceIndexes(database);
     await ensureMemoryScopeGovernance(database);
 
     if (currentVersion !== DATABASE_VERSION) {

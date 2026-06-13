@@ -148,6 +148,15 @@ test('role library displays saved roles as visual cards with covers and source b
   assert.match(item, /numberOfLines=\{2\} style=\{styles\.description\}/);
 });
 
+test('role library sorts role cards by most recent chat activity', () => {
+  const repository = read('src/database/repositories/aiRoleCardRepository.ts');
+
+  assert.match(repository, /LEFT JOIN \([\s\S]*MAX\(COALESCE\(ai_messages\.completedAt, ai_messages\.updatedAt, ai_messages\.createdAt, ai_threads\.updatedAt\)\) AS lastChatAt/);
+  assert.match(repository, /ai_threads\.roleCardId/);
+  assert.match(repository, /ai_threads\.archivedAt IS NULL/);
+  assert.match(repository, /ORDER BY \(lastChatAt IS NULL\) ASC, lastChatAt DESC, ai_role_cards\.updatedAt DESC, ai_role_cards\.name ASC/);
+});
+
 test('AI workbench replaces recent materials with role library while keeping materials route', () => {
   const home = read('src/screens/AiHomeScreen.tsx');
   const app = read('App.tsx');

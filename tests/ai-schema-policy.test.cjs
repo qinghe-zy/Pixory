@@ -164,3 +164,10 @@ test('AI branch schema guard repairs already-versioned local databases', () => {
   assert.match(db, /ai_branch_route_metadata/);
   assert.match(db, /await ensureAiBranchSchema\(database\)/);
 });
+
+test('AI role-card chat activity sort has durable local indexes', () => {
+  assert.match(schema, /CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity\s+ON ai_threads\(space, archivedAt, roleCardId, updatedAt\)/);
+  assert.match(db, /async function ensureAiPerformanceIndexes/);
+  assert.match(db, /CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity/);
+  assert.match(db, /await ensureAiPerformanceIndexes\(database\)/);
+});

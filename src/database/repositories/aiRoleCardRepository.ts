@@ -167,9 +167,20 @@ export const aiRoleCardRepository = {
 
   async listActive(db: SQLiteDatabase, space: PixorySpace): Promise<AiRoleCardRecord[]> {
     const rows = await db.getAllAsync<AiRoleCardRow>(
-      `SELECT * FROM ai_role_cards
-       WHERE space = ? AND archivedAt IS NULL
-       ORDER BY updatedAt DESC, name ASC`,
+      `SELECT ai_role_cards.*
+       FROM ai_role_cards
+       LEFT JOIN (
+         SELECT
+          ai_threads.roleCardId AS roleCardId,
+          MAX(COALESCE(ai_messages.completedAt, ai_messages.updatedAt, ai_messages.createdAt, ai_threads.updatedAt)) AS lastChatAt
+         FROM ai_threads
+         LEFT JOIN ai_messages ON ai_messages.threadId = ai_threads.id AND ai_messages.role <> 'system'
+         WHERE ai_threads.space = ? AND ai_threads.archivedAt IS NULL AND ai_threads.roleCardId IS NOT NULL
+         GROUP BY ai_threads.roleCardId
+       ) role_chat_activity ON role_chat_activity.roleCardId = ai_role_cards.id
+       WHERE ai_role_cards.space = ? AND ai_role_cards.archivedAt IS NULL
+       ORDER BY (lastChatAt IS NULL) ASC, lastChatAt DESC, ai_role_cards.updatedAt DESC, ai_role_cards.name ASC`,
+      space,
       space
     );
     return rows.map(mapRoleCardRow);

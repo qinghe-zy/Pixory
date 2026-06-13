@@ -518,6 +518,8 @@ CREATE TABLE IF NOT EXISTS ai_message_versions (
 
 CREATE INDEX IF NOT EXISTS idx_ai_threads_space_updated_at ON ai_threads(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_threads_context ON ai_threads(space, contextType, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
+  ON ai_threads(space, archivedAt, roleCardId, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
