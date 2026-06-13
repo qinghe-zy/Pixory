@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { listRoleCards } from '../ai/aiRoleCardService';
+import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
@@ -13,7 +15,6 @@ import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
-const MAX_RECENT_ROLE_SHORTCUTS = 15;
 const HOME_THREAD_LIMIT = 30;
 const RECENT_CHAT_VISIBLE_ROWS = 4;
 const RECENT_CHAT_ROW_HEIGHT = 72;
@@ -52,8 +53,10 @@ export function AiHomeScreen({
   onStartChatWithRole,
 }: AiHomeScreenProps) {
   const [loadedThreads, setLoadedThreads] = useState<{ space: PixorySpace; threads: AiHomeThreadItem[] }>({ space, threads: [] });
+  const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; roleCards: AiRoleCardRecord[] }>({ space, roleCards: [] });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const threads = loadedThreads.space === space ? loadedThreads.threads : [];
+  const roleCards = loadedRoleCards.space === space ? loadedRoleCards.roleCards : [];
   const spaceLabel = space === 'personal' ? '私密空间 · 本地保存对话、资料与角色' : '普通空间 · 本地保存对话、资料与角色';
 
   useEffect(() => {
@@ -75,11 +78,30 @@ export function AiHomeScreen({
     };
   }, [space]);
 
-  const roleShortcuts = useMemo(() => buildRecentRoleShortcuts(threads), [threads]);
+  useEffect(() => {
+    let isMounted = true;
+    void listRoleCards(space)
+      .then((nextRoleCards) => {
+        if (isMounted) {
+          setLoadedRoleCards({ space, roleCards: nextRoleCards });
+        }
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setErrorMessage(error instanceof Error ? error.message : '读取角色库失败');
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [space]);
+
+  const roleShortcuts = useMemo(() => buildRoleLibraryShortcuts(roleCards), [roleCards]);
 
   return (
     <AiLightScaffold
       backgroundVariant="aiChat"
+      bodyStyle={styles.homeBody}
       contentContainerStyle={styles.screenContent}
       errorMessage={errorMessage}
       footer={footer}
@@ -126,7 +148,7 @@ export function AiHomeScreen({
             ) : (
               <View style={styles.emptyRoleHint}>
                 <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconSizeMd} />
-                <Text style={styles.emptyRoleText}>角色头像会按最近聊天显示</Text>
+                <Text style={styles.emptyRoleText}>有头像的角色会显示在这里</Text>
               </View>
             )}
           </ScrollView>
@@ -192,24 +214,14 @@ export function AiHomeScreen({
   );
 }
 
-function buildRecentRoleShortcuts(threads: AiHomeThreadItem[]): RoleShortcut[] {
-  const shortcuts: RoleShortcut[] = [];
-  const seen = new Set<string>();
-  for (const thread of threads) {
-    if (!thread.roleCardId || !thread.avatarAvailable || seen.has(thread.roleCardId) || !thread.avatar.avatarEnabled || !thread.avatar.avatarUri) {
-      continue;
-    }
-    seen.add(thread.roleCardId);
-    shortcuts.push({
-      avatarUri: thread.avatar.avatarUri,
-      name: thread.roleCardName ?? thread.title,
-      roleCardId: thread.roleCardId,
-    });
-    if (shortcuts.length >= MAX_RECENT_ROLE_SHORTCUTS) {
-      break;
-    }
-  }
-  return shortcuts;
+function buildRoleLibraryShortcuts(roleCards: AiRoleCardRecord[]): RoleShortcut[] {
+  return roleCards
+    .filter((roleCard): roleCard is AiRoleCardRecord & { avatarUri: string } => Boolean(roleCard.avatarUri))
+    .map((roleCard) => ({
+      avatarUri: roleCard.avatarUri,
+      name: roleCard.name,
+      roleCardId: roleCard.id,
+    }));
 }
 
 function formatAiHomeFullMinute(value: string | null | undefined): string {
@@ -316,6 +328,9 @@ const styles = StyleSheet.create({
   screenContent: {
     gap: rhythm.screenSectionGap,
     paddingHorizontal: layout.pagePaddingHorizontal,
+  },
+  homeBody: {
+    gap: rhythm.screenSectionGap,
   },
   topAction: {
     alignItems: 'center',
@@ -566,7 +581,8 @@ const styles = StyleSheet.create({
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.inlineGap,
+    columnGap: rhythm.inlineGap,
+    rowGap: rhythm.entryCardGap,
   },
   quickEntry: {
     alignItems: 'center',

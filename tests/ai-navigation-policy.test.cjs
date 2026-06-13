@@ -324,7 +324,8 @@ test('AI workbench exposes role library while material list route remains regist
   const content = home();
   assert.match(content, /onOpenRoleLibrary/);
   assert.match(content, /角色库/);
-  assert.match(content, /MAX_RECENT_ROLE_SHORTCUTS = 15/);
+  assert.match(content, /listRoleCards/);
+  assert.match(content, /buildRoleLibraryShortcuts/);
   assert.match(content, /roleRailWrap/);
   assert.match(content, /onStartChatWithRole\(role\.roleCardId\)/);
   assert.doesNotMatch(content, /onOpenMaterials/);

@@ -6,12 +6,17 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('AI home workbench exposes recent role avatars, full-time chat history, and compact entries', () => {
+test('AI home workbench exposes role library avatars, full-time chat history, and compact entries', () => {
   const screen = read('src/screens/AiHomeScreen.tsx');
   const app = read('App.tsx');
   const aiService = read('src/ai/aiChatService.ts');
 
-  assert.match(screen, /MAX_RECENT_ROLE_SHORTCUTS = 15/);
+  assert.match(screen, /listRoleCards/);
+  assert.match(screen, /buildRoleLibraryShortcuts/);
+  assert.match(screen, /loadedRoleCards/);
+  assert.match(screen, /roleCards = loadedRoleCards\.space === space \? loadedRoleCards\.roleCards : \[\]/);
+  assert.match(screen, /filter\(\(roleCard\): roleCard is AiRoleCardRecord & \{ avatarUri: string \} => Boolean\(roleCard\.avatarUri\)\)/);
+  assert.doesNotMatch(screen, /buildRoleLibraryShortcuts[\s\S]*roleCard\.avatarEnabled/);
   assert.match(screen, /RECENT_CHAT_VISIBLE_ROWS = 4/);
   assert.match(screen, /formatAiHomeFullMinute/);
   assert.match(screen, /horizontal/);
@@ -35,6 +40,8 @@ test('AI home workbench exposes recent role avatars, full-time chat history, and
   assert.doesNotMatch(screen, /#[0-9A-Fa-f]{6}/);
   assert.match(screen, /colors\./);
   assert.match(screen, /screenContent:\s*\{[\s\S]*gap:\s*rhythm\.screenSectionGap/);
+  assert.match(screen, /bodyStyle=\{styles\.homeBody\}/);
+  assert.match(screen, /homeBody:\s*\{[\s\S]*gap:\s*rhythm\.screenSectionGap/);
   assert.match(screen, /threadMetaRow/);
   assert.match(screen, /threads\.length \? styles\.recentChatPanelFilled : styles\.recentChatPanelEmpty/);
   assert.match(screen, /height: RECENT_CHAT_ROW_HEIGHT \* RECENT_CHAT_VISIBLE_ROWS/);
