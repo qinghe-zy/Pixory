@@ -46,12 +46,13 @@ test('announcement check is configured as a passive remote notice lookup', () =>
   assert.ok(announcementJson.id.length > 0);
 });
 
-test('update prompt defaults to the Gitee release channel', () => {
+test('update prompt defaults to the official website download section', () => {
   const updateJson = JSON.parse(readProjectFile('docs/update-version.json'));
   const appConfig = JSON.parse(readProjectFile('app.json'));
 
   assert.equal(appConfig.expo.extra.updateCheck.url, 'https://gitee.com/Qinghe_zy/pixory/raw/main/docs/update-version.json');
-  assert.equal(updateJson.downloadUrl, 'https://gitee.com/Qinghe_zy/pixory/releases');
+  assert.equal(updateJson.downloadUrl, 'https://mist01.com/#download');
+  assert.match(updateJson.message, /官网下载区/);
 });
 
 test('update check service stays read-only and offline tolerant', () => {

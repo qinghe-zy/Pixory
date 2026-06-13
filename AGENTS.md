@@ -280,9 +280,10 @@ Default release workflow:
 17. Create a GitHub Release and upload the APK.
 18. Create a Gitee Release for the same tag and upload the same APK.
 19. Verify the GitHub Release, Gitee Release, latest release lists, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync for both remotes.
-20. Ensure the app update popup defaults to Gitee:
+20. Ensure the app update popup defaults to the official website download section:
     - `app.json` `expo.extra.updateCheck.url` points to the Gitee raw `docs/update-version.json`.
-    - `docs/update-version.json` `downloadUrl` points to Gitee Releases.
+    - `docs/update-version.json` `downloadUrl` points to `https://mist01.com/#download`.
+    - The website download section exposes both GitHub and Gitee download choices with network-friendly labels.
 21. Report:
     - version
     - commit

@@ -6,7 +6,7 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/) · [下载最新版 APK](https://gitee.com/Qinghe_zy/pixory/releases) · 当前版本 `2.4.5`
+[访问官网](https://mist01.com/#download) · [GitHub 下载](https://github.com/qinghe-zy/Pixory/releases/latest) · [Gitee 下载](https://gitee.com/Qinghe_zy/pixory/releases) · 当前版本 `2.4.5`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
@@ -18,11 +18,12 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 - AI 工作台新增最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间。
 - 空白新聊天不再进入历史和最近列表，普通/私密空间切换时不会短暂显示上一空间会话。
-- 应用内更新默认跳转 Gitee Releases，发布流程同步要求推送 GitHub 与 Gitee。
+- 应用内更新默认跳转官网获取区，下载区提供 GitHub 与 Gitee 双入口。
 
 下载地址：
 
-[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
+- GitHub（国际网络友好）：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
+- Gitee（国内网络友好）：[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 ## 产品定位
 
@@ -161,11 +162,12 @@ AppData/
 
 最新版 Android APK：
 
-[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
+- GitHub（国际网络友好）：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
+- Gitee（国内网络友好）：[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 安装流程：
 
-1. 打开最新 Release。
+1. 从官网获取区选择 GitHub 或 Gitee 下载入口。
 2. 下载 APK 到 Android 设备。
 3. 按系统提示安装。
 4. 首次使用时授予所需的图片、视频或文件访问权限。
@@ -256,9 +258,10 @@ pnpm run doctor
 
 ## 发布与维护
 
-Android APK 默认通过 Gitee Releases 发布，同时保留 GitHub Releases 镜像：
+Android APK 在 GitHub Releases 与 Gitee Releases 同步发布，官网获取区同时展示两个下载入口：
 
-[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
+- GitHub（国际网络友好）：[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
+- Gitee（国内网络友好）：[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 应用内更新读取：
 

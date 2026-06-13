@@ -38,14 +38,18 @@ test('website release-facing files reference the current 2.4.5 release', () => {
   assert.match(read('docs/update-version.json'), /"versionCode": 245/);
   assert.match(read('docs/updates.html'), /Version 2\.4\.5/);
   assert.match(read('docs/updates.html'), /AI 工作台更顺手/);
-  assert.match(read('docs/updates.html'), /Gitee 更新通道/);
+  assert.match(read('docs/updates.html'), /双下载入口/);
   assert.match(read('docs/index.html'), /SQLite/);
   assert.match(read('README.md'), /当前版本 `2\.4\.5`/);
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.5/);
   assert.match(read('README.md'), /https:\/\/gitee\.com\/Qinghe_zy\/pixory\/releases/);
   assert.match(read('docs/index.html'), /https:\/\/gitee\.com\/Qinghe_zy\/pixory\/releases/);
+  assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
+  assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
+  assert.match(read('docs/index.html'), /GitHub 下载[\s\S]{0,140}国际网络友好/);
+  assert.match(read('docs/index.html'), /Gitee 下载[\s\S]{0,140}国内网络友好/);
+  assert.match(read('docs/update-version.json'), /https:\/\/mist01\.com\/#download/);
   assert.match(read('docs/updates.html'), /访问 Gitee Releases/);
-  assert.doesNotMatch(read('README.md') + read('docs/index.html') + read('docs/updates.html'), /github\.com\/qinghe-zy\/Pixory\/releases/);
   assert.doesNotMatch(read('docs/index.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
@@ -63,8 +67,9 @@ test('release workflow requires README and update website pages', () => {
   assert.match(agents, /`gitee` \/ `git@gitee\.com:Qinghe_zy\/pixory\.git`/);
   assert.match(agents, /Create a Gitee Release/);
   assert.match(agents, /Gitee release URL/);
-  assert.match(agents, /app update popup defaults to Gitee/);
-  assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to Gitee Releases/);
+  assert.match(agents, /app update popup defaults to the official website download section/);
+  assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
+  assert.match(agents, /website download section exposes both GitHub and Gitee download choices/);
 });
 
 test('public docs describe privacy screenshots consistently with current behavior', () => {
