@@ -38,9 +38,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "2.4.4",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
