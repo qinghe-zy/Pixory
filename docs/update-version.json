@@ -1,13 +1,13 @@
 {
   "enabled": true,
-  "version": "2.4.4",
-  "versionCode": 244,
+  "version": "2.4.5",
+  "versionCode": 245,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.4.4 已发布，AI 聊天长会话更轻，发布前问题也已修复。",
+  "message": "Pixory 2.4.5 已发布，AI 工作台更紧凑清楚，更新入口也已切到 Gitee。",
   "releaseNotes": [
-    "继续优化 AI 聊天长会话渲染，把可见消息派生和定位索引集中计算，减少重复全量扫描。",
-    "发布前完成一轮代码 review，修复分支回看、搜索定位和内联编辑相关的回归风险。",
-    "保留首字等待收敛、版本按需加载和后台记忆维护延后策略，让聊天主路径更稳。"
+    "AI 工作台新增最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间。",
+    "空白新聊天不再进入历史和最近列表，切换普通/私密空间时不会短暂显示上一空间会话。",
+    "应用内更新默认跳转 Gitee Releases，发布流程同步要求推送 GitHub 与 Gitee。"
   ],
-  "downloadUrl": "https://github.com/qinghe-zy/Pixory/releases/latest"
+  "downloadUrl": "https://gitee.com/Qinghe_zy/pixory/releases"
 }

@@ -153,7 +153,9 @@ test('AI workbench replaces recent materials with role library while keeping mat
   const app = read('App.tsx');
   assert.match(home, /onOpenRoleLibrary/);
   assert.match(home, /角色库/);
-  assert.match(home, /管理和导入 AI 角色/);
+  assert.match(home, /MAX_RECENT_ROLE_SHORTCUTS = 15/);
+  assert.match(home, /roleRailWrap/);
+  assert.match(home, /onStartChatWithRole\(role\.roleCardId\)/);
   assert.doesNotMatch(home, /listRecentMaterials/);
   assert.doesNotMatch(home, /最近材料/);
   assert.match(app, /onOpenRoleLibrary/);

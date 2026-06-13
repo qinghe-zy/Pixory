@@ -6,23 +6,23 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/) · [下载最新版 APK](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.4.4`
+[访问官网](https://mist01.com/) · [下载最新版 APK](https://gitee.com/Qinghe_zy/pixory/releases) · 当前版本 `2.4.5`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.4.4
+### Pixory 2.4.5
 
-这一版把 AI 聊天性能优化继续收口，并补完发布前 review 修复：
+这一版把 AI 工作台入口和发布通道整理到位：
 
-- 继续优化 AI 聊天长会话渲染，把可见消息派生和定位索引集中计算，减少重复全量扫描。
-- 发布前完成一轮代码 review，修复分支回看、搜索定位和内联编辑相关的回归风险。
-- 保留首字等待收敛、版本按需加载和后台记忆维护延后策略，让聊天主路径更稳。
+- AI 工作台新增最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间。
+- 空白新聊天不再进入历史和最近列表，普通/私密空间切换时不会短暂显示上一空间会话。
+- 应用内更新默认跳转 Gitee Releases，发布流程同步要求推送 GitHub 与 Gitee。
 
 下载地址：
 
-[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
+[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 ## 产品定位
 
@@ -161,7 +161,7 @@ AppData/
 
 最新版 Android APK：
 
-[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
+[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 安装流程：
 
@@ -256,9 +256,9 @@ pnpm run doctor
 
 ## 发布与维护
 
-Android APK 通过 GitHub Releases 发布：
+Android APK 默认通过 Gitee Releases 发布，同时保留 GitHub Releases 镜像：
 
-[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
+[https://gitee.com/Qinghe_zy/pixory/releases](https://gitee.com/Qinghe_zy/pixory/releases)
 
 应用内更新读取：
 

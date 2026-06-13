@@ -2,9 +2,9 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.4.4",
+    "version": "2.4.5",
     "orientation": "portrait",
-    "icon": "./assets/pixory-icon.png",
+    "icon": "./docs/assets/og-cover.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -17,10 +17,10 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 244,
+      "versionCode": 245,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/pixory-icon.png",
+        "foregroundImage": "./docs/assets/og-cover.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -77,12 +77,12 @@
     "extra": {
       "updateCheck": {
         "enabled": true,
-        "url": "https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/update-version.json",
+        "url": "https://gitee.com/Qinghe_zy/pixory/raw/main/docs/update-version.json",
         "timeoutMs": 5000
       },
       "announcement": {
         "enabled": true,
-        "url": "https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/announcement.json",
+        "url": "https://gitee.com/Qinghe_zy/pixory/raw/main/docs/announcement.json",
         "timeoutMs": 5000
       },
       "eas": {

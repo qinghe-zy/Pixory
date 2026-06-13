@@ -145,6 +145,15 @@ test('AI thread current branch migration persists the adopted route pointer', ()
   assert.match(db, /currentVersion < 36/);
 });
 
+test('fresh AI database migration skips branch columns already created by the base AI schema', () => {
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_messages[\s\S]*branchRootMessageId TEXT/);
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_threads[\s\S]*currentBranchRootMessageId TEXT/);
+  assert.match(db, /currentVersion >= 17 && currentVersion < 31[\s\S]*MIGRATION_STATEMENTS_V31/);
+  assert.match(db, /currentVersion >= 17 && currentVersion < 36[\s\S]*MIGRATION_STATEMENTS_V36/);
+  assert.doesNotMatch(db, /if \(currentVersion < 31\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V31\);/);
+  assert.doesNotMatch(db, /if \(currentVersion < 36\) \{\s*await database\.execAsync\(MIGRATION_STATEMENTS_V36\);/);
+});
+
 test('AI branch schema guard repairs already-versioned local databases', () => {
   assert.match(db, /async function ensureAiBranchSchema/);
   assert.match(db, /PRAGMA table_info\(\$\{tableName\}\)/);

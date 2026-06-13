@@ -1,0 +1,56 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const root = path.resolve(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+test('AI home workbench exposes recent role avatars, full-time chat history, and compact entries', () => {
+  const screen = read('src/screens/AiHomeScreen.tsx');
+  const app = read('App.tsx');
+  const aiService = read('src/ai/aiChatService.ts');
+
+  assert.match(screen, /MAX_RECENT_ROLE_SHORTCUTS = 15/);
+  assert.match(screen, /RECENT_CHAT_VISIBLE_ROWS = 4/);
+  assert.match(screen, /formatAiHomeFullMinute/);
+  assert.match(screen, /horizontal/);
+  assert.match(screen, /nestedScrollEnabled/);
+  assert.match(screen, /最近聊天/);
+  assert.match(screen, /角色库/);
+  assert.match(screen, /选择 IP 开聊/);
+  assert.match(screen, /资料库/);
+  assert.match(screen, /总资料库/);
+  assert.match(screen, /会话历史/);
+  assert.match(screen, /rhythm\./);
+  assert.match(screen, /spacing\[/);
+  assert.match(screen, /metrics\./);
+  assert.match(screen, /aiLightColors\./);
+  assert.match(screen, /let isMounted = true/);
+  assert.match(screen, /if \(isMounted\)/);
+  assert.match(screen, /isMounted = false/);
+  assert.match(screen, /loadedThreads/);
+  assert.match(screen, /loadedThreads\.space === space \? loadedThreads\.threads : \[\]/);
+  assert.doesNotMatch(screen, /const \[threads, setThreads\] = useState<AiHomeThreadItem\[\]>\(\[\]\)/);
+  assert.doesNotMatch(screen, /#[0-9A-Fa-f]{6}/);
+  assert.match(screen, /colors\./);
+  assert.match(screen, /screenContent:\s*\{[\s\S]*gap:\s*rhythm\.screenSectionGap/);
+  assert.match(screen, /threadMetaRow/);
+  assert.match(screen, /threads\.length \? styles\.recentChatPanelFilled : styles\.recentChatPanelEmpty/);
+  assert.match(screen, /height: RECENT_CHAT_ROW_HEIGHT \* RECENT_CHAT_VISIBLE_ROWS/);
+  assert.match(screen, /minHeight:\s*92/);
+  assert.match(screen, /formatAiHomeFullMinute\(thread\.lastMessageAt \?\? thread\.updatedAt\)/);
+  assert.doesNotMatch(screen, /<Text numberOfLines=\{1\} style=\{styles\.threadTime\}>\{formatAiHomeFullMinute/);
+  assert.match(screen, /minHeight:\s*54/);
+  assert.doesNotMatch(screen, /minHeight:\s*60/);
+  assert.match(aiService, /activeRoleCardIds/);
+  assert.match(aiService, /aiRoleCardRepository\.listActive/);
+  assert.match(aiService, /avatarAvailable/);
+
+  assert.match(app, /onOpenIpChatPicker=\{\(\) => pushRoute\(\{ name: 'ai-ip-picker'/);
+  assert.match(app, /onOpenKnowledgeBase=\{\(\) => pushRoute\(\{ name: 'ai-knowledge-base'/);
+  assert.match(app, /onOpenGlobalMaterials=\{\(\) => pushRoute\(\{ name: 'ai-material-list'/);
+  assert.match(app, /onOpenHistory=\{\(\) => pushRoute\(\{ name: 'ai-history'/);
+  assert.match(app, /onOpenThread=\{\(thread\) =>/);
+  assert.match(app, /onStartChatWithRole=\{\(roleCardId\) => startChatWithRoleCard\(activeSpace, roleCardId\)\}/);
+});

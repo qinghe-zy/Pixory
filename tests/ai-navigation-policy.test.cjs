@@ -324,7 +324,9 @@ test('AI workbench exposes role library while material list route remains regist
   const content = home();
   assert.match(content, /onOpenRoleLibrary/);
   assert.match(content, /角色库/);
-  assert.match(content, /管理和导入 AI 角色/);
+  assert.match(content, /MAX_RECENT_ROLE_SHORTCUTS = 15/);
+  assert.match(content, /roleRailWrap/);
+  assert.match(content, /onStartChatWithRole\(role\.roleCardId\)/);
   assert.doesNotMatch(content, /onOpenMaterials/);
   assert.doesNotMatch(content, /最近材料/);
   assert.doesNotMatch(content, /listRecentMaterials/);
@@ -335,7 +337,7 @@ test('AI workbench exposes role library while material list route remains regist
   assert.match(app, /createNormalThreadFromRoleCard/);
   assert.match(app, /ai-material-list/);
   assert.match(content, /私密空间/);
-  assert.doesNotMatch(content, /普通空间/);
+  assert.match(content, /普通空间/);
 });
 
 test('AI route screens use the AI light scaffold and avoid global green controls', () => {
@@ -503,6 +505,7 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /上次聊天/);
   assert.match(repository, /lastMessageAt/);
   assert.match(repository, /MAX\(COALESCE\(completedAt, updatedAt, createdAt\)\) AS lastMessageAt/);
+  assert.match(repository, /EXISTS \([\s\S]*FROM ai_messages history_messages[\s\S]*history_messages\.threadId = ai_threads\.id[\s\S]*history_messages\.role <> 'system'/);
   assert.doesNotMatch(history, /rowActions/);
   assert.doesNotMatch(history, /PrimaryButton/);
   assert.match(history, /footer={selectionFooter}/);
@@ -737,12 +740,14 @@ test('AI chat route updates merge into the latest route so first message keeps t
   assert.doesNotMatch(app, /onThreadTitleChange=\{\(title\) => replaceCurrentRoute\(\{ \.\.\.currentRoute, contextTitle: title \}\)\}/);
 });
 
-test('AI workbench no longer shows recent continue because recents moved into drawer', () => {
+test('AI workbench shows compact recent chats directly on the workbench', () => {
   const home = read('src/screens/AiHomeScreen.tsx');
 
   assert.doesNotMatch(home, /最近继续/);
-  assert.doesNotMatch(home, /recentThreads/);
-  assert.doesNotMatch(home, /listAiHistoryThreads/);
+  assert.match(home, /最近聊天/);
+  assert.match(home, /listAiHomeThreads/);
+  assert.match(home, /RECENT_CHAT_VISIBLE_ROWS = 4/);
+  assert.match(home, /formatAiHomeFullMinute/);
   assert.doesNotMatch(home, /formatAiHistoryMinute/);
   assert.match(home, /角色库/);
 });

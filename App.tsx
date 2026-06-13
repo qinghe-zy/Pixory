@@ -1920,8 +1920,25 @@ export default function App() {
     content = (
       <AiHomeScreen
         footer={rootFooter}
+        onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
+        onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
+        onOpenIpChatPicker={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
+        onOpenKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
         onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
+        onOpenThread={(thread) =>
+          openAiChatRoute({
+            name: 'ai-chat',
+            composerEntranceReason: 'open_thread',
+            contextTitle: thread.title,
+            contextType: thread.contextType,
+            includeIpDocuments: thread.includeIpDocuments,
+            ipId: thread.boundIpId ?? undefined,
+            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
+            space: activeSpace,
+            threadId: thread.id,
+          })
+        }
         onStartNormalChat={() =>
           pushRoute({
             name: 'ai-chat',
@@ -1930,6 +1947,7 @@ export default function App() {
             space: activeSpace,
           })
         }
+        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(activeSpace, roleCardId)}
         space={activeSpace}
       />
     );

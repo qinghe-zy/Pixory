@@ -273,15 +273,22 @@ Default release workflow:
     - If a compatible emulator/device is available, install and launch.
     - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
 14. Commit the release changes with a concise release commit.
-15. Push `main`.
-16. Create and push the version tag.
+15. Push `main` to both release remotes:
+    - `origin` / GitHub
+    - `gitee` / `git@gitee.com:Qinghe_zy/pixory.git`
+16. Create and push the version tag to both `origin` and `gitee`.
 17. Create a GitHub Release and upload the APK.
-18. Verify the GitHub Release, latest release list, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync.
-19. Report:
+18. Create a Gitee Release for the same tag and upload the same APK.
+19. Verify the GitHub Release, Gitee Release, latest release lists, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync for both remotes.
+20. Ensure the app update popup defaults to Gitee:
+    - `app.json` `expo.extra.updateCheck.url` points to the Gitee raw `docs/update-version.json`.
+    - `docs/update-version.json` `downloadUrl` points to Gitee Releases.
+21. Report:
     - version
     - commit
     - tag
-    - release URL
+    - GitHub release URL
+    - Gitee release URL
     - APK path and size
     - release-required files updated
     - temporary or completed requirement documents cleaned, archived, or intentionally kept

@@ -14,7 +14,7 @@ test('update check is configured as a passive version file lookup', () => {
   const updateConfig = appConfig.expo.extra.updateCheck;
 
   assert.equal(updateConfig.enabled, true);
-  assert.equal(updateConfig.url, 'https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/update-version.json');
+  assert.equal(updateConfig.url, 'https://gitee.com/Qinghe_zy/pixory/raw/main/docs/update-version.json');
   assert.equal(updateConfig.timeoutMs, 5000);
 });
 
@@ -39,11 +39,19 @@ test('announcement check is configured as a passive remote notice lookup', () =>
   const announcementJson = JSON.parse(readProjectFile('docs/announcement.json'));
 
   assert.equal(announcementConfig.enabled, true);
-  assert.equal(announcementConfig.url, 'https://raw.githubusercontent.com/qinghe-zy/Pixory/main/docs/announcement.json');
+  assert.equal(announcementConfig.url, 'https://gitee.com/Qinghe_zy/pixory/raw/main/docs/announcement.json');
   assert.equal(announcementConfig.timeoutMs, 5000);
   assert.equal(announcementJson.enabled, true);
   assert.equal(typeof announcementJson.id, 'string');
   assert.ok(announcementJson.id.length > 0);
+});
+
+test('update prompt defaults to the Gitee release channel', () => {
+  const updateJson = JSON.parse(readProjectFile('docs/update-version.json'));
+  const appConfig = JSON.parse(readProjectFile('app.json'));
+
+  assert.equal(appConfig.expo.extra.updateCheck.url, 'https://gitee.com/Qinghe_zy/pixory/raw/main/docs/update-version.json');
+  assert.equal(updateJson.downloadUrl, 'https://gitee.com/Qinghe_zy/pixory/releases');
 });
 
 test('update check service stays read-only and offline tolerant', () => {

@@ -122,6 +122,12 @@ export interface AiThreadSessionModelConfig {
   modelId: string | null;
 }
 
+export interface AiHomeThreadItem extends AiThreadHistoryItem {
+  avatar: AiThreadAvatarConfig;
+  avatarAvailable: boolean;
+  roleCardName: string | null;
+}
+
 export interface UpdateAiThreadSessionConfigInput {
   space: PixorySpace;
   threadId: string;
@@ -1009,6 +1015,27 @@ export async function listAiHistoryThreads(input: {
   searchText?: string;
 }): Promise<AiThreadHistoryItem[]> {
   return runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listHistoryItems(db, input.space, input.filter ?? 'all', input.limit ?? 100, input.searchText ?? ''));
+}
+
+export async function listAiHomeThreads(input: {
+  space: PixorySpace;
+  limit?: number;
+}): Promise<AiHomeThreadItem[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
+    const activeRoleCardIds = new Set((await aiRoleCardRepository.listActive(db, input.space)).map((roleCard) => roleCard.id));
+    return Promise.all(
+      threads.map(async (thread) => {
+        const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
+        return {
+          ...thread,
+          avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+          avatarAvailable: thread.roleCardId ? activeRoleCardIds.has(thread.roleCardId) : false,
+          roleCardName: roleCard?.name ?? null,
+        };
+      })
+    );
+  });
 }
 
 export async function archiveAiThread(space: PixorySpace, threadId: string): Promise<void> {

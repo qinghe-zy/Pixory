@@ -1401,6 +1401,12 @@ export const aiThreadRepository = {
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
     }
+    clauses.push(`EXISTS (
+      SELECT 1
+      FROM ai_messages history_messages
+      WHERE history_messages.threadId = ai_threads.id
+        AND history_messages.role <> 'system'
+    )`);
     if (normalizedSearch) {
       clauses.push('(ai_threads.title LIKE ? OR ai_threads.lastMessagePreview LIKE ?)');
       values.push(`%${normalizedSearch}%`, `%${normalizedSearch}%`);
