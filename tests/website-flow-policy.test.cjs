@@ -23,7 +23,7 @@ test('website uses a single-page homepage while legacy pages redirect to stable 
   assert.match(index, /href="#workflow"/);
   assert.match(index, /href="#download"/);
   assert.match(index, /href="updates\.html"/);
-  assert.match(index, /site\.css\?v=12/);
+  assert.match(index, /site\.css\?v=13/);
   assert.match(index, /site\.js\?v=12/);
 
   for (const [page, target] of Object.entries(redirects)) {
@@ -67,6 +67,9 @@ test('release workflow requires README and update website pages', () => {
   assert.match(agents, /`gitee` \/ `git@gitee\.com:Qinghe_zy\/pixory\.git`/);
   assert.match(agents, /Create a Gitee Release/);
   assert.match(agents, /Gitee release URL/);
+  assert.match(agents, /preflight Gitee Release publishing credentials/);
+  assert.match(agents, /GITEE_TOKEN/);
+  assert.match(agents, /continue only when the user explicitly accepts that Gitee Release creation will be deferred/);
   assert.match(agents, /app update popup defaults to the official website download section/);
   assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
   assert.match(agents, /website download section exposes both GitHub and Gitee download choices/);
