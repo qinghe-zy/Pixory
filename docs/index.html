@@ -191,15 +191,47 @@
                     </div> <!-- End of Library View -->
 
                     <!-- Chat View -->
-                    <div id="mockup-view-chat" class="chat-container" style="display: none; height: 100%; position: absolute; inset: 0; background: var(--surface-card); margin-top: 0; padding-bottom: 60px;">
-                      <div class="chat-bubble chat-bubble-ai">
-                        你好！我是你的本地助手。有什么我可以帮忙的？您可以点击下方的建议：
-                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
-                          <button class="button-secondary" type="button" data-mockup-chat-prompt="帮我找一下上个月导入的赛博朋克风格参考图。">帮我找一下上个月的赛博朋克参考图。</button>
-                          <button class="button-secondary" type="button" data-mockup-chat-prompt="整理一批UI设计规范，我要打包带走。">整理一批UI设计规范并打包备份。</button>
-                        </div>
+                    <div id="mockup-view-chat" class="chat-container" style="display: none; flex-direction: column; height: 100%; position: absolute; inset: 0; background: var(--surface-card); z-index: 10;">
+                      <!-- Chat Header -->
+                      <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--hairline); background: var(--canvas);">
+                        <button type="button" id="mockup-chat-back" style="display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.85rem; font-weight: 500; transition: color 0.2s;">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                          Library
+                        </button>
+                        <div style="font-size: 0.9rem; font-weight: 500; color: var(--ink);">Claude 3.5 Sonnet</div>
+                        <div style="width: 60px;"></div> <!-- Spacer for centering -->
                       </div>
-                      <div id="mockup-chat-thread" style="display: flex; flex-direction: column; gap: var(--space-md);"></div>
+
+                      <!-- Chat Thread -->
+                      <div style="flex: 1; overflow-y: auto; padding: var(--space-lg) var(--space-md); display: flex; flex-direction: column; gap: var(--space-lg); scrollbar-width: none;">
+                        <div class="chat-bubble-ai" style="display: flex; gap: 12px; max-width: 100%;">
+                          <div style="flex-shrink: 0; width: 28px; height: 28px; background: var(--primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>
+                          </div>
+                          <div style="flex: 1; min-width: 0;">
+                            <p style="margin-bottom: var(--space-md); color: var(--ink); line-height: 1.6;">你好！我是你的本地助手。有什么我可以帮忙的？您可以点击下方的建议：</p>
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                              <button class="button-secondary" type="button" data-mockup-chat-prompt="帮我找一下上个月导入的赛博朋克风格参考图。">帮我找一下上个月的赛博朋克参考图。</button>
+                              <button class="button-secondary" type="button" data-mockup-chat-prompt="整理一批UI设计规范，我要打包带走。">整理一批UI设计规范并打包备份。</button>
+                            </div>
+                          </div>
+                        </div>
+                        <div id="mockup-chat-thread" style="display: flex; flex-direction: column; gap: var(--space-lg);"></div>
+                      </div>
+
+                      <!-- Chat Input (Fixed at bottom) -->
+                      <div style="padding: var(--space-sm) var(--space-md) var(--space-md); background: linear-gradient(to top, var(--surface-card) 70%, transparent);">
+                        <div style="display: flex; align-items: flex-end; gap: 8px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 8px 12px; box-shadow: 0 2px 6px rgba(20,20,19,0.04);">
+                          <button type="button" style="color: var(--muted); padding: 4px;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                          </button>
+                          <div style="flex: 1; min-height: 24px; max-height: 120px; overflow-y: auto; color: var(--muted-soft); font-size: 0.95rem; line-height: 1.5; padding: 2px 0;">Reply to Claude...</div>
+                          <button type="button" style="background: var(--surface-dark); color: var(--on-dark); width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: default;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                          </button>
+                        </div>
+                        <div style="text-align: center; margin-top: 8px; color: var(--muted-soft); font-size: 0.7rem;">Claude can make mistakes. Please verify information.</div>
+                      </div>
                     </div>
                   </div>
                 </div>

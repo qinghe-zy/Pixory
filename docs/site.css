@@ -647,6 +647,57 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   background: var(--canvas);
   border-color: var(--hairline);
 }
+.mockup-card-light .product-panel-head h3 {
+  color: var(--ink);
+}
+.mockup-card-light .mockup-metrics > div {
+  border-color: var(--hairline);
+  background: var(--canvas);
+}
+.mockup-card-light .mockup-metrics span {
+  color: var(--ink);
+}
+.mockup-card-light .mockup-metrics small {
+  color: var(--muted);
+}
+.mockup-card-light .mockup-asset-card {
+  border-color: var(--hairline);
+  background: var(--canvas);
+  color: var(--ink);
+}
+.mockup-card-light .mockup-asset-card strong {
+  color: var(--ink);
+}
+.mockup-card-light .mockup-asset-card small {
+  color: var(--muted);
+}
+.mockup-card-light .mockup-asset-card:hover,
+.mockup-card-light .mockup-asset-card:focus-visible,
+.mockup-card-light .mockup-asset-card.is-selected {
+  border-color: rgba(204,120,92,0.44);
+  background: var(--surface-soft);
+}
+.mockup-card-light .mockup-inspector {
+  border-color: var(--hairline);
+  background: var(--canvas);
+}
+.mockup-card-light .mockup-inspector span {
+  color: var(--ink);
+}
+.mockup-card-light .mockup-inspector small {
+  color: var(--muted);
+}
+.mockup-card-light .mockup-command-row button,
+.mockup-card-light .mockup-action {
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+.mockup-card-light .mockup-command-row button:hover,
+.mockup-card-light .mockup-action:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+  border-color: var(--muted-soft);
+}
 .product-main {
   display: flex;
   min-width: 0;

@@ -141,6 +141,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Chat Interactions
     const chatThread = document.getElementById("mockup-chat-thread");
+    const chatBackBtn = document.getElementById("mockup-chat-back");
+    if (chatBackBtn) {
+      chatBackBtn.addEventListener("click", () => {
+        const libraryTab = mockup.querySelector('[data-mockup-tab="library"]');
+        if (libraryTab) libraryTab.click();
+      });
+    }
     mockup.querySelectorAll("[data-mockup-chat-prompt]").forEach(btn => {
       btn.addEventListener("click", () => {
         const promptText = btn.dataset.mockupChatPrompt;
@@ -159,9 +166,38 @@ document.addEventListener("DOMContentLoaded", () => {
         
         // Simulate AI Thinking
         setTimeout(() => {
-          const aiBubble = document.createElement("div");
-          aiBubble.className = "chat-bubble chat-bubble-ai";
-          if (chatThread) chatThread.appendChild(aiBubble);
+          const aiWrapper = document.createElement("div");
+          aiWrapper.className = "chat-bubble-ai";
+          aiWrapper.style.display = "flex";
+          aiWrapper.style.gap = "12px";
+          aiWrapper.style.maxWidth = "100%";
+          
+          const iconDiv = document.createElement("div");
+          iconDiv.style.flexShrink = "0";
+          iconDiv.style.width = "28px";
+          iconDiv.style.height = "28px";
+          iconDiv.style.background = "var(--primary)";
+          iconDiv.style.borderRadius = "6px";
+          iconDiv.style.display = "flex";
+          iconDiv.style.alignItems = "center";
+          iconDiv.style.justifyContent = "center";
+          iconDiv.style.color = "white";
+          iconDiv.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
+          
+          const contentDiv = document.createElement("div");
+          contentDiv.style.flex = "1";
+          contentDiv.style.minWidth = "0";
+          
+          const textP = document.createElement("p");
+          textP.style.margin = "0";
+          textP.style.color = "var(--ink)";
+          textP.style.lineHeight = "1.6";
+          
+          contentDiv.appendChild(textP);
+          aiWrapper.appendChild(iconDiv);
+          aiWrapper.appendChild(contentDiv);
+          
+          if (chatThread) chatThread.appendChild(aiWrapper);
           
           let responseText = "";
           let imagesHtml = "";
@@ -178,11 +214,18 @@ document.addEventListener("DOMContentLoaded", () => {
           
           let i = 0;
           const typeInterval = setInterval(() => {
-            aiBubble.textContent = responseText.substring(0, i);
+            textP.textContent = responseText.substring(0, i);
             i++;
             if (i > responseText.length) {
               clearInterval(typeInterval);
-              if (imagesHtml) aiBubble.innerHTML += imagesHtml;
+              if (imagesHtml) contentDiv.innerHTML += imagesHtml;
+              
+              // Scroll to bottom
+              const chatView = document.getElementById("mockup-view-chat");
+              if (chatView) {
+                 const scrollArea = chatView.querySelector('div[style*="overflow-y: auto"]');
+                 if (scrollArea) scrollArea.scrollTop = scrollArea.scrollHeight;
+              }
             }
           }, 30);
           
