@@ -166,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
           let responseText = "";
           let imagesHtml = "";
           if (promptText.includes("赛博朋克")) {
-            responseText = "好的，已在本地图库中搜索 标签: \\"CyberPunk\\" 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。";
+            responseText = "好的，已在本地图库中搜索 标签: 'CyberPunk' 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。";
             imagesHtml = `<br><br><div style="display: flex; gap: 8px; margin-top: 8px;">
               <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px;"></span>
               <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px;"></span>
