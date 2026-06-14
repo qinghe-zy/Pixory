@@ -64,26 +64,109 @@ document.addEventListener("DOMContentLoaded", () => {
   const mockup = document.querySelector("[data-product-mockup]");
   if (mockup) {
     const presets = {
-      character: { title: "角色资产库", count: "248", tags: "18" },
-      brand: { title: "品牌视觉库", count: "96", tags: "12" },
-      moodboard: { title: "灵感情绪板", count: "37", tags: "9" },
+      character: {
+        title: "角色资产库", count: 248, tags: 18,
+        assets: [
+          { name: "Spring_look_041", meta: "Scene group · 12.4 MB · 原图已保留", thumb: "warm", subtitle: "Scene · favorite" },
+          { name: "Expression_set", meta: "Character group · 8 tags · 最近查看", thumb: "teal", subtitle: "Character · tags" },
+          { name: "Festival_keyart", meta: "Usage group · 已收藏 · 有备注", thumb: "amber", subtitle: "Usage · note" },
+          { name: "Backup_ready", meta: "Manifest ready · SQLite + originals", thumb: "ink", subtitle: "Manifest · SQLite" }
+        ]
+      },
+      brand: {
+        title: "品牌视觉库", count: 96, tags: 12,
+        assets: [
+          { name: "Logo_Variants_Final", meta: "Brand assets · 4.2 MB", thumb: "ink", subtitle: "Logo · final" },
+          { name: "Color_Palette_2026", meta: "Guidelines · 1.1 MB", thumb: "teal", subtitle: "Colors · core" },
+          { name: "Typography_Scale", meta: "Guidelines · 2.8 MB", thumb: "amber", subtitle: "Type · spec" },
+          { name: "Social_Banners", meta: "Exported · 18 MB", thumb: "warm", subtitle: "Social · active" }
+        ]
+      },
+      moodboard: {
+        title: "灵感情绪板", count: 37, tags: 9,
+        assets: [
+          { name: "Cyberpunk_Ref_01", meta: "Inspiration · 3.4 MB", thumb: "teal", subtitle: "Ref · cyberpunk" },
+          { name: "Minimalist_UI", meta: "Inspiration · 1.2 MB", thumb: "ink", subtitle: "Ref · minimal" },
+          { name: "Lighting_Study", meta: "Photography · 8.9 MB", thumb: "warm", subtitle: "Light · warm" },
+          { name: "Texture_Pack", meta: "Assets · 24 MB", thumb: "amber", subtitle: "Texture · raw" }
+        ]
+      },
     };
     const title = mockup.querySelector("[data-mockup-title]");
     const count = mockup.querySelector("[data-mockup-count]");
     const tagCount = mockup.querySelector("[data-mockup-tags]");
     const selectedName = mockup.querySelector("[data-mockup-selection]");
     const selectedMeta = mockup.querySelector("[data-mockup-selection-meta]");
+    const assetGrid = mockup.querySelector(".mockup-asset-grid");
+
+    const attachCardListeners = () => {
+      mockup.querySelectorAll(".mockup-asset-card").forEach(card => {
+        card.addEventListener("click", () => {
+          mockup.querySelectorAll(".mockup-asset-card").forEach(item => item.classList.remove("is-selected"));
+          card.classList.add("is-selected");
+          if (selectedName) selectedName.textContent = card.dataset.assetName || card.querySelector("strong")?.textContent || "Selected asset";
+          if (selectedMeta) selectedMeta.textContent = card.dataset.assetMeta || card.querySelector("small")?.textContent || "Original preserved";
+        });
+      });
+    };
+    attachCardListeners();
 
     mockup.querySelectorAll("[data-mockup-preset]").forEach(item => {
       item.addEventListener("click", () => {
-        const preset = presets[item.dataset.mockupPreset];
+        const presetKey = item.dataset.mockupPreset;
+        const preset = presets[presetKey];
         if (!preset) return;
 
         mockup.querySelectorAll("[data-mockup-preset]").forEach(nav => nav.classList.remove("is-active"));
         item.classList.add("is-active");
+
         if (title) title.textContent = preset.title;
-        if (count) count.textContent = preset.count;
-        if (tagCount) tagCount.textContent = preset.tags;
+
+        if (typeof anime !== 'undefined' && count && tagCount) {
+          anime({
+            targets: count,
+            innerHTML: [parseInt(count.textContent) || 0, preset.count],
+            round: 1,
+            easing: 'easeOutExpo',
+            duration: 800
+          });
+          anime({
+            targets: tagCount,
+            innerHTML: [parseInt(tagCount.textContent) || 0, preset.tags],
+            round: 1,
+            easing: 'easeOutExpo',
+            duration: 800
+          });
+        } else {
+          if (count) count.textContent = preset.count;
+          if (tagCount) tagCount.textContent = preset.tags;
+        }
+
+        if (assetGrid) {
+          assetGrid.innerHTML = preset.assets.map((asset, i) => `
+            <button class="asset-sheen mockup-asset-card ${i === 0 ? 'is-selected' : ''}" type="button" data-asset-name="${asset.name}" data-asset-meta="${asset.meta}">
+              <span class="asset-thumb asset-thumb-${asset.thumb}"></span>
+              <strong>${asset.name}</strong>
+              <small>${asset.subtitle}</small>
+            </button>
+          `).join('');
+
+          attachCardListeners();
+
+          if (selectedName) selectedName.textContent = preset.assets[0].name;
+          if (selectedMeta) selectedMeta.textContent = preset.assets[0].meta;
+
+          if (typeof anime !== 'undefined') {
+            anime({
+              targets: assetGrid.querySelectorAll('.mockup-asset-card'),
+              translateY: [10, 0],
+              opacity: [0, 1],
+              delay: anime.stagger(50),
+              duration: 400,
+              easing: 'easeOutCubic'
+            });
+          }
+        }
       });
     });
 
@@ -91,15 +174,17 @@ document.addEventListener("DOMContentLoaded", () => {
       chip.addEventListener("click", () => {
         mockup.querySelectorAll("[data-mockup-chip]").forEach(item => item.classList.remove("is-active"));
         chip.classList.add("is-active");
-      });
-    });
-
-    mockup.querySelectorAll(".mockup-asset-card").forEach(card => {
-      card.addEventListener("click", () => {
-        mockup.querySelectorAll(".mockup-asset-card").forEach(item => item.classList.remove("is-selected"));
-        card.classList.add("is-selected");
-        if (selectedName) selectedName.textContent = card.dataset.assetName || card.querySelector("strong")?.textContent || "Selected asset";
-        if (selectedMeta) selectedMeta.textContent = card.dataset.assetMeta || card.querySelector("small")?.textContent || "Original preserved";
+        
+        if (assetGrid && typeof anime !== 'undefined') {
+          anime({
+            targets: assetGrid.querySelectorAll('.mockup-asset-card'),
+            scale: [0.95, 1],
+            opacity: [0.5, 1],
+            delay: anime.stagger(30),
+            duration: 300,
+            easing: 'easeOutQuad'
+          });
+        }
       });
     });
 

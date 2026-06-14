@@ -291,6 +291,82 @@ Loading thumbnails... <span class="code-string">[||||||||||] 100%</span>
         </div>
       </section>
 
+      <!-- AI Chat Section -->
+      <section id="ai-chat" class="section">
+        <div class="container" data-anime-group>
+          <div class="grid" style="align-items: center;">
+            <div class="workflow-visual anime-reveal" style="grid-column: 1 / 8; order: 2;">
+              <div class="mockup-card-dark code-window" style="min-height: 480px; display: flex; flex-direction: column; padding: var(--space-md) var(--space-lg);">
+                <div class="mockup-topbar" style="margin-bottom: var(--space-md);">
+                  <div class="mockup-header">
+                    <div class="mockup-dot red"></div>
+                    <div class="mockup-dot yellow"></div>
+                    <div class="mockup-dot green"></div>
+                  </div>
+                  <div class="mockup-status">
+                    <span class="mockup-status-dot"></span>
+                    AI Assistant
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: var(--space-md); flex: 1; min-height: 0;">
+                  <!-- Route Tree -->
+                  <div class="product-sidebar" style="width: 140px; flex-shrink: 0; display: flex; flex-direction: column;">
+                    <div class="text-caption-caps">Route Tree</div>
+                    <div class="ai-route-tree">
+                      <div class="ai-route-node">Branch: index_01</div>
+                      <div class="ai-route-node is-active">Branch: current</div>
+                      <div class="ai-route-node">Branch: alt_v2</div>
+                    </div>
+                  </div>
+
+                  <!-- Chat View -->
+                  <div class="chat-container product-main" style="flex: 1; margin-top: 0; padding: 0;">
+                    <div class="chat-bubble chat-bubble-user">
+                      帮我找一下上个月导入的赛博朋克风格的参考图。
+                    </div>
+                    <div class="chat-bubble chat-bubble-ai">
+                      好的，已在本地图库中搜索 <strong>标签: "CyberPunk"</strong> 且 <strong>导入时间: 上个月</strong> 的素材。为您找到 142 张匹配图片。
+                      <br><br>
+                      <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px;"></span>
+                        <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px;"></span>
+                        <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px;"></span>
+                      </div>
+                    </div>
+                    <div class="chat-bubble chat-bubble-user">
+                      把这些图打包导出，我需要带走。
+                    </div>
+                    <div class="chat-bubble chat-bubble-ai">
+                      已生成快照备份。相关清单及原图已保存至 <code>/exports/cyberpunk_backup_202606</code>。您可以随时在其他设备上读取。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="workflow-copy anime-reveal" style="grid-column: 9 / 13; order: 1;">
+              <span class="text-caption-caps">AI Assistant & Route Tree</span>
+              <h2 class="text-display-lg mt-3">懂你的私有助手。</h2>
+              <p class="text-body-md mt-4" style="color: var(--muted);">
+                不仅仅是管理，Pixory 内置的 AI 助手支持整页搜索与深入的材料检索。对话全程在设备端调度，无隐私泄露风险。
+              </p>
+
+              <ul class="mt-6" style="display: flex; flex-direction: column; gap: var(--space-lg);">
+                <li>
+                  <strong style="font-weight: 500;">创作路线树</strong>
+                  <p class="text-body-sm mt-1">关键分支查看、多分支折叠。每一个探索方向都会被安全地持久化。</p>
+                </li>
+                <li>
+                  <strong style="font-weight: 500;">无缝交互</strong>
+                  <p class="text-body-sm mt-1">从聊天直接定位到图片，亦可将重要对话收藏。不迷失在海量历史中。</p>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- FAQ Section -->
       <section id="faq" class="section" style="background-color: var(--surface-soft);">
         <div class="container" data-anime-group>

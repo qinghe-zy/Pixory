@@ -581,11 +581,13 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   font-size: 0.95rem;
   font-weight: 650;
   line-height: 1.2;
+  white-space: nowrap;
 }
 .mockup-nav-item small {
   color: rgba(250,249,245,0.42);
   font-size: 0.72rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 .mockup-nav-item:hover,
 .mockup-nav-item:focus-visible,
@@ -794,6 +796,47 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 .mockup-action-primary:focus-visible {
   background: var(--primary-active);
   color: var(--on-primary);
+}
+
+@media (max-width: 768px) {
+  .mockup-card-dark {
+    padding: var(--space-lg) var(--space-sm);
+  }
+  .product-interface {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .product-sidebar {
+    border-right: none;
+    border-bottom: 1px solid rgba(250,249,245,0.08);
+    padding-right: 0;
+    padding-bottom: var(--space-sm);
+  }
+  .mockup-nav-list {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+    padding-bottom: var(--space-xs);
+    scrollbar-width: none;
+  }
+  .mockup-nav-list::-webkit-scrollbar {
+    display: none;
+  }
+  .mockup-nav-item {
+    min-height: auto;
+    width: auto;
+    flex: 0 0 auto;
+    padding: 8px 12px;
+  }
+  .mockup-nav-item:hover,
+  .mockup-nav-item:focus-visible,
+  .mockup-nav-item.is-active {
+    transform: translateY(-2px);
+  }
+  .mockup-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .code-window {
@@ -1163,4 +1206,73 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   .scroll-progress {
     transition: none;
   }
+}
+
+/* AI Chat Mockup */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+  padding: 0 var(--space-sm) var(--space-md);
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.chat-container::-webkit-scrollbar {
+  display: none;
+}
+.chat-bubble {
+  max-width: 85%;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-lg);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  will-change: transform;
+}
+.chat-bubble-user {
+  align-self: flex-end;
+  background-color: var(--surface-dark-elevated);
+  color: var(--on-dark);
+  border-bottom-right-radius: 4px;
+}
+.chat-bubble-ai {
+  align-self: flex-start;
+  background-color: rgba(250,249,245,0.03);
+  border: 1px solid rgba(250,249,245,0.08);
+  color: rgba(250,249,245,0.85);
+  border-bottom-left-radius: 4px;
+}
+.ai-route-tree {
+  margin-top: var(--space-sm);
+  padding-left: var(--space-md);
+  border-left: 1px dashed rgba(250,249,245,0.15);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-teal);
+}
+.ai-route-node {
+  position: relative;
+  margin-bottom: var(--space-xs);
+  cursor: pointer;
+  transition: opacity 0.2s;
+  color: var(--muted-soft);
+}
+.ai-route-node.is-active {
+  color: var(--accent-amber);
+}
+.ai-route-node:hover {
+  opacity: 0.8;
+}
+.ai-route-node::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-md));
+  top: 8px;
+  width: var(--space-sm);
+  height: 1px;
+  background-color: rgba(250,249,245,0.15);
+}
+.ai-route-node.is-active::before {
+  background-color: var(--accent-amber);
 }
