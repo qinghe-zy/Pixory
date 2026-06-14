@@ -251,11 +251,11 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
 
-        await addAiBubble("你好！需要帮你找图吗？", 500);
-        await addUserBubble("找一下上个月的赛博朋克参考图。", 1500);
-        await addAiBubble("已找到 142 张。", 1000);
-        await addUserBubble("导出这些图。", 2500);
-        await addAiBubble("已导出至 /exports。", 1000);
+        await addAiBubble("今天有什么想聊的，或是想整理哪些回忆？", 500);
+        await addUserBubble("你觉得上周存的那几组赛博朋克风的图怎么样？", 1500);
+        await addAiBubble("非常有氛围感！尤其是那几张霓虹灯下的街景，色彩对比很绝。需要我帮你把它们单独建个分组吗？", 2000);
+        await addUserBubble("好啊，顺便给它们打上“夜景”的标签。", 2500);
+        await addAiBubble("没问题，已经整理好啦！", 1500);
         
         // Wait before restarting loop
         await new Promise(r => setTimeout(r, 4000));
