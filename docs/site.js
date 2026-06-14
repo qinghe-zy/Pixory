@@ -164,32 +164,28 @@ document.addEventListener("DOMContentLoaded", () => {
           return new Promise(resolve => {
             setTimeout(() => {
               const aiWrapper = document.createElement("div");
-              aiWrapper.className = "chat-bubble-ai";
-              aiWrapper.style.display = "flex";
-              aiWrapper.style.gap = "12px";
-              aiWrapper.style.maxWidth = "100%";
+              aiWrapper.className = "chat-bubble-wrapper chat-bubble-ai-wrapper";
               aiWrapper.style.opacity = "0";
               
               const iconDiv = document.createElement("div");
               iconDiv.style.flexShrink = "0";
-              iconDiv.style.width = "32px";
-              iconDiv.style.height = "32px";
+              iconDiv.style.width = "36px";
+              iconDiv.style.height = "36px";
               iconDiv.style.background = "var(--primary)";
               iconDiv.style.borderRadius = "8px";
               iconDiv.style.display = "flex";
               iconDiv.style.alignItems = "center";
               iconDiv.style.justifyContent = "center";
               iconDiv.style.color = "white";
-              iconDiv.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
+              iconDiv.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
               
               const contentDiv = document.createElement("div");
+              contentDiv.className = "chat-bubble-content chat-bubble-ai-content";
               contentDiv.style.flex = "1";
               contentDiv.style.minWidth = "0";
               
-              const textP = document.createElement("p");
+              const textP = document.createElement("div");
               textP.style.margin = "0";
-              textP.style.color = "var(--ink)";
-              textP.style.lineHeight = "1.6";
               
               contentDiv.appendChild(textP);
               aiWrapper.appendChild(iconDiv);
@@ -220,16 +216,34 @@ document.addEventListener("DOMContentLoaded", () => {
         function addUserBubble(text, delay) {
           return new Promise(resolve => {
             setTimeout(() => {
-              const userBubble = document.createElement("div");
-              userBubble.className = "chat-bubble-user chat-bubble";
-              userBubble.textContent = text;
-              userBubble.style.opacity = "0";
-              chatThread.appendChild(userBubble);
+              const userWrapper = document.createElement("div");
+              userWrapper.className = "chat-bubble-wrapper chat-bubble-user-wrapper";
+              userWrapper.style.opacity = "0";
+
+              const iconDiv = document.createElement("div");
+              iconDiv.style.flexShrink = "0";
+              iconDiv.style.width = "36px";
+              iconDiv.style.height = "36px";
+              iconDiv.style.background = "var(--surface-dark)";
+              iconDiv.style.borderRadius = "8px";
+              iconDiv.style.display = "flex";
+              iconDiv.style.alignItems = "center";
+              iconDiv.style.justifyContent = "center";
+              iconDiv.style.color = "white";
+              iconDiv.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+
+              const contentDiv = document.createElement("div");
+              contentDiv.className = "chat-bubble-content chat-bubble-user-content";
+              contentDiv.textContent = text;
+              
+              userWrapper.appendChild(iconDiv);
+              userWrapper.appendChild(contentDiv);
+              chatThread.appendChild(userWrapper);
               
               if (typeof anime !== 'undefined') {
-                anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad', complete: resolve });
+                anime({ targets: userWrapper, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad', complete: resolve });
               } else {
-                userBubble.style.opacity = "1";
+                userWrapper.style.opacity = "1";
                 resolve();
               }
               chatThread.scrollTop = chatThread.scrollHeight;
