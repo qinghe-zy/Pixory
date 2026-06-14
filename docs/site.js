@@ -128,6 +128,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (typeof anime !== 'undefined' && viewChat) {
             anime({ targets: viewChat, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutCubic' });
           }
+          if (window.playChatAnimation) {
+            window.playChatAnimation();
+          }
         } else {
           // Hide chat overlay
           if (viewChat) viewChat.style.display = "none";
@@ -148,90 +151,106 @@ document.addEventListener("DOMContentLoaded", () => {
         if (libraryTab) libraryTab.click();
       });
     }
-    mockup.querySelectorAll("[data-mockup-chat-prompt]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const promptText = btn.dataset.mockupChatPrompt;
-        const btnParent = btn.parentElement;
-        if (btnParent) btnParent.style.display = 'none'; // hide suggestions
-        
-        // Add User Bubble
-        const userBubble = document.createElement("div");
-        userBubble.className = "chat-bubble chat-bubble-user";
-        userBubble.textContent = promptText;
-        if (chatThread) chatThread.appendChild(userBubble);
-        
-        if (typeof anime !== 'undefined') {
-          anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad' });
-        }
-        
-        // Simulate AI Thinking
-        setTimeout(() => {
-          const aiWrapper = document.createElement("div");
-          aiWrapper.className = "chat-bubble-ai";
-          aiWrapper.style.display = "flex";
-          aiWrapper.style.gap = "12px";
-          aiWrapper.style.maxWidth = "100%";
-          
-          const iconDiv = document.createElement("div");
-          iconDiv.style.flexShrink = "0";
-          iconDiv.style.width = "28px";
-          iconDiv.style.height = "28px";
-          iconDiv.style.background = "var(--primary)";
-          iconDiv.style.borderRadius = "6px";
-          iconDiv.style.display = "flex";
-          iconDiv.style.alignItems = "center";
-          iconDiv.style.justifyContent = "center";
-          iconDiv.style.color = "white";
-          iconDiv.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
-          
-          const contentDiv = document.createElement("div");
-          contentDiv.style.flex = "1";
-          contentDiv.style.minWidth = "0";
-          
-          const textP = document.createElement("p");
-          textP.style.margin = "0";
-          textP.style.color = "var(--ink)";
-          textP.style.lineHeight = "1.6";
-          
-          contentDiv.appendChild(textP);
-          aiWrapper.appendChild(iconDiv);
-          aiWrapper.appendChild(contentDiv);
-          
-          if (chatThread) chatThread.appendChild(aiWrapper);
-          
-          let responseText = "";
-          let imagesHtml = "";
-          if (promptText.includes("赛博朋克")) {
-            responseText = "好的，已在本地图库中搜索 标签: 'CyberPunk' 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。";
-            imagesHtml = `<br><br><div style="display: flex; gap: 8px; margin-top: 8px;">
-              <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px;"></span>
-              <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px;"></span>
-              <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px;"></span>
-            </div>`;
-          } else {
-            responseText = "已生成快照备份。相关清单及原图已保存至 /exports/backup_202606。您可以随时在其他设备上读取。";
-          }
-          
-          let i = 0;
-          const typeInterval = setInterval(() => {
-            textP.textContent = responseText.substring(0, i);
-            i++;
-            if (i > responseText.length) {
-              clearInterval(typeInterval);
-              if (imagesHtml) contentDiv.innerHTML += imagesHtml;
-              
-              // Scroll to bottom
-              const chatView = document.getElementById("mockup-view-chat");
-              if (chatView) {
-                 const scrollArea = chatView.querySelector('div[style*="overflow-y: auto"]');
-                 if (scrollArea) scrollArea.scrollTop = scrollArea.scrollHeight;
-              }
+    window.playChatAnimation = function() {
+      if (!chatThread || chatThread.dataset.playing === "true") return;
+      chatThread.dataset.playing = "true";
+      chatThread.innerHTML = "";
+
+      function addAiBubble(text, delay, showImages = false) {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            const aiWrapper = document.createElement("div");
+            aiWrapper.className = "chat-bubble-ai";
+            aiWrapper.style.display = "flex";
+            aiWrapper.style.gap = "12px";
+            aiWrapper.style.maxWidth = "100%";
+            aiWrapper.style.opacity = "0";
+            
+            const iconDiv = document.createElement("div");
+            iconDiv.style.flexShrink = "0";
+            iconDiv.style.width = "28px";
+            iconDiv.style.height = "28px";
+            iconDiv.style.background = "var(--primary)";
+            iconDiv.style.borderRadius = "6px";
+            iconDiv.style.display = "flex";
+            iconDiv.style.alignItems = "center";
+            iconDiv.style.justifyContent = "center";
+            iconDiv.style.color = "white";
+            iconDiv.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
+            
+            const contentDiv = document.createElement("div");
+            contentDiv.style.flex = "1";
+            contentDiv.style.minWidth = "0";
+            
+            const textP = document.createElement("p");
+            textP.style.margin = "0";
+            textP.style.color = "var(--ink)";
+            textP.style.lineHeight = "1.6";
+            
+            contentDiv.appendChild(textP);
+            aiWrapper.appendChild(iconDiv);
+            aiWrapper.appendChild(contentDiv);
+            chatThread.appendChild(aiWrapper);
+
+            if (typeof anime !== 'undefined') {
+              anime({ targets: aiWrapper, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad' });
+            } else {
+              aiWrapper.style.opacity = "1";
             }
-          }, 30);
-          
-        }, 600);
-      });
-    });
+
+            let i = 0;
+            const typeInterval = setInterval(() => {
+              textP.textContent = text.substring(0, i);
+              i++;
+              if (i > text.length) {
+                clearInterval(typeInterval);
+                if (showImages) {
+                  const imagesHtml = `<br><div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px; border-radius: 4px;"></span>
+                    <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px; border-radius: 4px;"></span>
+                    <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px; border-radius: 4px;"></span>
+                  </div>`;
+                  contentDiv.innerHTML += imagesHtml;
+                }
+                chatThread.scrollTop = chatThread.scrollHeight;
+                setTimeout(resolve, 600);
+              }
+              chatThread.scrollTop = chatThread.scrollHeight;
+            }, 30);
+          }, delay);
+        });
+      }
+
+      function addUserBubble(text, delay) {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            const userBubble = document.createElement("div");
+            userBubble.className = "chat-bubble-user";
+            userBubble.textContent = text;
+            userBubble.style.opacity = "0";
+            chatThread.appendChild(userBubble);
+            
+            if (typeof anime !== 'undefined') {
+              anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad', complete: resolve });
+            } else {
+              userBubble.style.opacity = "1";
+              resolve();
+            }
+            chatThread.scrollTop = chatThread.scrollHeight;
+          }, delay);
+        });
+      }
+
+      async function runSequence() {
+        await addAiBubble("你好！我是你的本地助手。需要我帮你寻找图片还是整理资产？", 300);
+        await addUserBubble("帮我找一下上个月的赛博朋克参考图。", 1200);
+        await addAiBubble("好的，已在本地图库中搜索 标签: 'CyberPunk' 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。", 800, true);
+        await addUserBubble("整理一批UI设计规范并打包备份。", 2000);
+        await addAiBubble("已生成快照备份。相关清单及原图已保存至 /exports/backup_202606。您可以随时在其他设备上读取。", 800);
+      }
+
+      runSequence();
+    };
 
     mockup.querySelectorAll("[data-mockup-preset]").forEach(item => {
       item.addEventListener("click", () => {
@@ -451,5 +470,10 @@ document.addEventListener("DOMContentLoaded", () => {
       el.style.visibility = "visible";
       el.style.transform = "none";
     });
+    // Auto-play the chat animation for promotional concept without user interaction
+    setTimeout(() => {
+      const chatTab = document.querySelector('[data-mockup-tab="chat"]');
+      if (chatTab) chatTab.click();
+    }, 1000);
   }
 });
