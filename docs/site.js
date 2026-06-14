@@ -122,18 +122,18 @@ document.addEventListener("DOMContentLoaded", () => {
         tab.classList.add("is-active");
         
         if (tab.dataset.mockupTab === "chat") {
-          if (viewLibrary) viewLibrary.style.display = "none";
+          // Instead of hiding library and collapsing height, we just show the full-width chat overlay.
           if (viewChat) viewChat.style.display = "flex";
           if (archivesNav) archivesNav.style.opacity = "0.3";
           if (typeof anime !== 'undefined' && viewChat) {
             anime({ targets: viewChat, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutCubic' });
           }
         } else {
+          // Hide chat overlay
           if (viewChat) viewChat.style.display = "none";
-          if (viewLibrary) viewLibrary.style.display = "flex";
           if (archivesNav) archivesNav.style.opacity = "1";
           if (typeof anime !== 'undefined' && viewLibrary) {
-            anime({ targets: viewLibrary, opacity: [0, 1], duration: 400, easing: 'easeOutCubic' });
+            anime({ targets: viewLibrary, opacity: [0.8, 1], duration: 400, easing: 'easeOutCubic' });
           }
         }
       });
