@@ -116,6 +116,40 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewChat = document.getElementById("mockup-view-chat");
     const archivesNav = document.getElementById("mockup-archives-nav");
     
+    mockup.querySelectorAll("[data-mockup-tab]").forEach(tab => {
+      tab.addEventListener("click", () => {
+        mockup.querySelectorAll("[data-mockup-tab]").forEach(item => item.classList.remove("is-active"));
+        tab.classList.add("is-active");
+        
+        if (tab.dataset.mockupTab === "chat") {
+          if (viewLibrary) viewLibrary.style.display = "none";
+          if (viewChat) {
+            viewChat.style.display = "flex";
+            if (typeof anime !== 'undefined') {
+              anime({ targets: viewChat, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutCubic' });
+            }
+          }
+        } else {
+          if (viewChat) viewChat.style.display = "none";
+          if (viewLibrary) {
+            viewLibrary.style.display = "flex";
+            if (typeof anime !== 'undefined') {
+              anime({ targets: viewLibrary, opacity: [0.8, 1], duration: 400, easing: 'easeOutCubic' });
+            }
+          }
+        }
+      });
+    });
+
+    // Chat Interactions
+    const chatBackBtn = document.getElementById("mockup-chat-back");
+    if (chatBackBtn) {
+      chatBackBtn.addEventListener("click", () => {
+        const libraryTab = mockup.querySelector('[data-mockup-tab="library"]');
+        if (libraryTab) libraryTab.click();
+      });
+    }
+
     // Automated Loop Animation
     const chatThread = document.getElementById("mockup-chat-thread");
     
@@ -174,14 +208,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 i++;
                 if (i > text.length) {
                   clearInterval(typeInterval);
-                  if (showImages) {
-                    const imagesHtml = `<br><div style="display: flex; gap: 8px; margin-top: 8px;">
-                      <span class="asset-thumb asset-thumb-teal" style="width: 50px; height: 50px; border-radius: 6px;"></span>
-                      <span class="asset-thumb asset-thumb-warm" style="width: 50px; height: 50px; border-radius: 6px;"></span>
-                      <span class="asset-thumb asset-thumb-amber" style="width: 50px; height: 50px; border-radius: 6px;"></span>
-                    </div>`;
-                    contentDiv.innerHTML += imagesHtml;
-                  }
                   chatThread.scrollTop = chatThread.scrollHeight;
                   setTimeout(resolve, 800);
                 }
@@ -213,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         await addAiBubble("你好！需要帮你找图吗？", 500);
         await addUserBubble("找一下上个月的赛博朋克参考图。", 1500);
-        await addAiBubble("已找到 142 张。", 1000, true);
+        await addAiBubble("已找到 142 张。", 1000);
         await addUserBubble("导出这些图。", 2500);
         await addAiBubble("已导出至 /exports。", 1000);
         

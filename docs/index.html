@@ -85,26 +85,91 @@
                   </div>
                 </div>
 
-                <!-- Chat View (Main Content) -->
-                <div id="mockup-view-chat" class="chat-container" style="display: flex; flex-direction: column; height: 520px; background: var(--surface-card); border-radius: inherit; padding: 0 var(--space-xl) var(--space-xl); overflow: hidden;">
-                  <div class="chat-header" style="display: flex; align-items: center; justify-content: center; gap: var(--space-md); border-bottom: 1px solid var(--hairline); padding-bottom: var(--space-md); margin-bottom: var(--space-lg); margin-top: var(--space-md);">
-                    <div style="font-weight: 600; color: var(--ink);">Local AI Agent</div>
-                  </div>
-
-                  <div class="chat-thread" id="mockup-chat-thread" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-xl); padding-bottom: var(--space-xl); scrollbar-width: none;">
-                  </div>
-
-                  <div class="chat-input-area" style="margin-top: auto; padding-top: var(--space-md);">
-                    <div class="chat-input-box" style="display: flex; align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 8px 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
-                      <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--muted-soft)" stroke-width="2" fill="none" style="margin-right: 8px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-                      <input type="text" placeholder="Message Local AI..." style="flex: 1; border: none; background: transparent; outline: none; font-size: 15px; color: var(--ink);" readonly>
-                      <button class="chat-send-btn" style="background: var(--ink); color: var(--surface); width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; border: none;">
-                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                <div class="mockup-interface product-interface">
+                  <aside class="mockup-sidebar product-sidebar" aria-label="演示侧边栏" style="display: flex; flex-direction: column;">
+                    <div class="text-caption-caps">Views</div>
+                    <div class="mockup-nav-list" style="margin-bottom: var(--space-lg);">
+                      <button class="mockup-nav-item is-active" type="button" data-mockup-tab="library">
+                        <span>Library</span>
+                        <small>Local Archives</small>
+                      </button>
+                      <button class="mockup-nav-item" type="button" data-mockup-tab="chat">
+                        <span>AI Assistant</span>
+                        <small>Private Agent</small>
                       </button>
                     </div>
-                    <div style="text-align: center; margin-top: 12px; font-size: 12px; color: var(--muted-soft);">AI can make mistakes. Please verify locally.</div>
-                  </div>
-                </div> <!-- End of Chat View -->
+
+                    <div class="text-caption-caps">Archives</div>
+                    <div class="mockup-nav-list" id="mockup-archives-nav">
+                      <button class="mockup-nav-item is-active" type="button" data-mockup-preset="character">
+                        <span>IP_Character</span>
+                        <small>248 assets</small>
+                      </button>
+                      <button class="mockup-nav-item" type="button" data-mockup-preset="brand">
+                        <span>Brand System</span>
+                        <small>96 assets</small>
+                      </button>
+                      <button class="mockup-nav-item" type="button" data-mockup-preset="moodboard">
+                        <span>Moodboards</span>
+                        <small>37 boards</small>
+                      </button>
+                    </div>
+                  </aside>
+
+                  <div class="mockup-main product-main" style="position: relative;">
+                    <!-- Library View -->
+                    <div id="mockup-view-library" style="display: flex; flex-direction: column; height: 100%;">
+                    <div class="product-panel-head">
+                      <div>
+                        <div class="text-caption-caps">Private Library</div>
+                        <h3 data-mockup-title>角色资产库</h3>
+                      </div>
+                    </div>
+
+                    <div class="mockup-asset-grid" aria-label="演示图片资产">
+                      <button class="asset-sheen mockup-asset-card is-selected" type="button" data-asset-name="Spring_look_041" data-asset-meta="Scene group · 12.4 MB · 原图已保留">
+                        <span class="asset-thumb asset-thumb-warm"></span>
+                        <strong>Spring_look_041</strong>
+                        <small>Scene · favorite</small>
+                      </button>
+                      <button class="asset-sheen mockup-asset-card" type="button" data-asset-name="Expression_set" data-asset-meta="Character group · 8 tags · 最近查看">
+                        <span class="asset-thumb asset-thumb-teal"></span>
+                        <strong>Expression_set</strong>
+                        <small>Character · tags</small>
+                      </button>
+                    </div>
+
+
+
+                    <div class="mockup-toolbar">
+                      <a href="https://mist01.com/downloads/Pixory-v2.4.5.apk" class="mockup-action mockup-action-primary" download>直接下载</a>
+                      <a href="#matrix" class="mockup-action">查看能力</a>
+                      <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="mockup-action">源码</a>
+                    </div>
+                    </div> <!-- End of Library View -->
+
+                    <!-- Chat View -->
+                    <div id="mockup-view-chat" class="chat-container" style="display: none; flex-direction: column; height: 100%; overflow: hidden;">
+                      <div class="chat-header" style="display: flex; align-items: center; justify-content: center; gap: var(--space-md); border-bottom: 1px solid var(--hairline); padding-bottom: var(--space-md); margin-bottom: var(--space-lg);">
+                        <div style="font-weight: 600; color: var(--ink);">Local AI Agent</div>
+                      </div>
+
+                      <div class="chat-thread" id="mockup-chat-thread" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-xl); padding-bottom: var(--space-xl); scrollbar-width: none;">
+                      </div>
+
+                      <div class="chat-input-area" style="margin-top: auto; padding-top: var(--space-md);">
+                        <div class="chat-input-box" style="display: flex; align-items: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 8px 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.02);">
+                          <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--muted-soft)" stroke-width="2" fill="none" style="margin-right: 8px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                          <input type="text" placeholder="Message Local AI..." style="flex: 1; border: none; background: transparent; outline: none; font-size: 15px; color: var(--ink);" readonly>
+                          <button class="chat-send-btn" style="background: var(--ink); color: var(--surface); width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; border: none;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                          </button>
+                        </div>
+                        <div style="text-align: center; margin-top: 12px; font-size: 12px; color: var(--muted-soft);">AI can make mistakes. Please verify locally.</div>
+                      </div>
+                    </div> <!-- End of Chat View -->
+                  </div> <!-- End of mockup-main -->
+                </div> <!-- End of mockup-interface -->
               </div>
             </div>
           </div>
