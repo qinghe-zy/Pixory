@@ -61,6 +61,61 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", createRipple);
   });
 
+  const mockup = document.querySelector("[data-product-mockup]");
+  if (mockup) {
+    const presets = {
+      character: { title: "角色资产库", count: "248", tags: "18" },
+      brand: { title: "品牌视觉库", count: "96", tags: "12" },
+      moodboard: { title: "灵感情绪板", count: "37", tags: "9" },
+    };
+    const title = mockup.querySelector("[data-mockup-title]");
+    const count = mockup.querySelector("[data-mockup-count]");
+    const tagCount = mockup.querySelector("[data-mockup-tags]");
+    const selectedName = mockup.querySelector("[data-mockup-selection]");
+    const selectedMeta = mockup.querySelector("[data-mockup-selection-meta]");
+
+    mockup.querySelectorAll("[data-mockup-preset]").forEach(item => {
+      item.addEventListener("click", () => {
+        const preset = presets[item.dataset.mockupPreset];
+        if (!preset) return;
+
+        mockup.querySelectorAll("[data-mockup-preset]").forEach(nav => nav.classList.remove("is-active"));
+        item.classList.add("is-active");
+        if (title) title.textContent = preset.title;
+        if (count) count.textContent = preset.count;
+        if (tagCount) tagCount.textContent = preset.tags;
+      });
+    });
+
+    mockup.querySelectorAll("[data-mockup-chip]").forEach(chip => {
+      chip.addEventListener("click", () => {
+        mockup.querySelectorAll("[data-mockup-chip]").forEach(item => item.classList.remove("is-active"));
+        chip.classList.add("is-active");
+      });
+    });
+
+    mockup.querySelectorAll(".mockup-asset-card").forEach(card => {
+      card.addEventListener("click", () => {
+        mockup.querySelectorAll(".mockup-asset-card").forEach(item => item.classList.remove("is-selected"));
+        card.classList.add("is-selected");
+        if (selectedName) selectedName.textContent = card.dataset.assetName || card.querySelector("strong")?.textContent || "Selected asset";
+        if (selectedMeta) selectedMeta.textContent = card.dataset.assetMeta || card.querySelector("small")?.textContent || "Original preserved";
+      });
+    });
+
+    mockup.querySelectorAll("[data-mockup-command]").forEach(command => {
+      command.addEventListener("click", () => {
+        const originalText = command.textContent;
+        command.classList.add("is-done");
+        command.textContent = command.dataset.mockupCommand === "backup" ? "已入清单" : "已记录";
+        window.setTimeout(() => {
+          command.classList.remove("is-done");
+          command.textContent = originalText;
+        }, 1200);
+      });
+    });
+  }
+
   // Check if Anime.js is loaded
   if (typeof anime !== 'undefined' && !prefersReducedMotion) {
 
@@ -85,7 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
         duration: 420,
         delay: anime.stagger(80),
       }, "-=420").add({
-        targets: ".mockup-sidebar > *, .mockup-tags > span, .asset-sheen",
+        targets: ".mockup-sidebar > *, .mockup-tags > span, .mockup-tags > button, .mockup-metrics > div, .asset-sheen, .mockup-inspector, .mockup-toolbar > *",
         translateY: [18, 0],
         opacity: [0, 1],
         duration: 720,

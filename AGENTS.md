@@ -269,29 +269,35 @@ Default release workflow:
 11. Build the Android release APK from `android` with the existing Gradle config:
    - `.\gradlew.bat assembleRelease`
 12. Copy the generated release APK to `output/release/` with the matching versioned filename.
-13. Verify the APK signature with `apksigner verify --print-certs`. Expected current local release certificate:
+13. Publish the generated release APK to the official website server as the default direct download:
+    - Use the existing server deployment path/script when available, currently `scripts/deploy-docs-mist01.ps1 -ApkPath <apk> -Version <version>`.
+    - The public APK URL should be versioned, for example `https://mist01.com/downloads/Pixory-v2.4.6.apk`.
+    - The server `downloads/` directory should keep only the current latest `Pixory-v*.apk`; old APK files should be removed from the server after the new APK is in place.
+    - Do not commit APK files into the repository.
+14. Verify the APK signature with `apksigner verify --print-certs`. Expected current local release certificate:
     - `CN=Pixory, OU=Local Release, O=Pixory, L=Local, ST=Local, C=CN`
     - SHA-256 `b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e`
-14. Do Android validation:
+15. Do Android validation:
     - Use `D:\Develop\Android\Sdk\platform-tools\adb.exe devices`.
     - If a compatible emulator/device is available, install and launch.
     - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
-15. Commit the release changes with a concise release commit.
-16. Push `main` to both release remotes:
+16. Commit the release changes with a concise release commit.
+17. Push `main` to both release remotes:
     - `origin` / GitHub
     - `gitee` / `git@gitee.com:Qinghe_zy/pixory.git`
-17. Create and push the version tag to both `origin` and `gitee`.
-18. Create a GitHub Release and upload the APK.
-19. Create a Gitee Release for the same tag and upload the same APK.
-20. Verify the GitHub Release, Gitee Release, latest release lists, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync for both remotes.
-21. Ensure the app update popup defaults to the official website download section:
+18. Create and push the version tag to both `origin` and `gitee`.
+19. Create a GitHub Release and upload the APK for backup download and historical archive.
+20. Create a Gitee Release for the same tag and upload the APK only when credentials are available and this release still requires Gitee mirroring; otherwise report Gitee Release as deferred.
+21. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync for both remotes.
+22. Ensure the app update popup defaults to the official website download section:
     - `app.json` `expo.extra.updateCheck.url` points to the Gitee raw `docs/update-version.json`.
     - `docs/update-version.json` `downloadUrl` points to `https://mist01.com/#download`.
-    - The website download section exposes both GitHub and Gitee download choices with network-friendly labels.
-22. Report:
+    - The website download section exposes the official server direct APK as the primary action and GitHub Release as the backup/history action.
+23. Report:
     - version
     - commit
     - tag
+    - official server APK URL
     - GitHub release URL
     - Gitee release URL
     - APK path and size
