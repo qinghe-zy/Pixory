@@ -116,141 +116,113 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewChat = document.getElementById("mockup-view-chat");
     const archivesNav = document.getElementById("mockup-archives-nav");
     
-    mockup.querySelectorAll("[data-mockup-tab]").forEach(tab => {
-      tab.addEventListener("click", () => {
-        mockup.querySelectorAll("[data-mockup-tab]").forEach(item => item.classList.remove("is-active"));
-        tab.classList.add("is-active");
-        
-        if (tab.dataset.mockupTab === "chat") {
-          // Instead of hiding library and collapsing height, we just show the full-width chat overlay.
-          if (viewChat) viewChat.style.display = "flex";
-          if (archivesNav) archivesNav.style.opacity = "0.3";
-          if (typeof anime !== 'undefined' && viewChat) {
-            anime({ targets: viewChat, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutCubic' });
-          }
-          if (window.playChatAnimation) {
-            window.playChatAnimation();
-          }
-        } else {
-          // Hide chat overlay
-          if (viewChat) viewChat.style.display = "none";
-          if (archivesNav) archivesNav.style.opacity = "1";
-          if (typeof anime !== 'undefined' && viewLibrary) {
-            anime({ targets: viewLibrary, opacity: [0.8, 1], duration: 400, easing: 'easeOutCubic' });
-          }
-        }
-      });
-    });
-
-    // Chat Interactions
+    // Automated Loop Animation
     const chatThread = document.getElementById("mockup-chat-thread");
-    const chatBackBtn = document.getElementById("mockup-chat-back");
-    if (chatBackBtn) {
-      chatBackBtn.addEventListener("click", () => {
-        const libraryTab = mockup.querySelector('[data-mockup-tab="library"]');
-        if (libraryTab) libraryTab.click();
-      });
-    }
-    window.playChatAnimation = function() {
-      if (!chatThread || chatThread.dataset.playing === "true") return;
-      chatThread.dataset.playing = "true";
-      chatThread.innerHTML = "";
+    
+    window.playChatAnimation = async function() {
+      if (!chatThread) return;
+      
+      // We will run this sequence in a loop.
+      while (true) {
+        chatThread.innerHTML = ""; // Clear existing
 
-      function addAiBubble(text, delay, showImages = false) {
-        return new Promise(resolve => {
-          setTimeout(() => {
-            const aiWrapper = document.createElement("div");
-            aiWrapper.className = "chat-bubble-ai";
-            aiWrapper.style.display = "flex";
-            aiWrapper.style.gap = "12px";
-            aiWrapper.style.maxWidth = "100%";
-            aiWrapper.style.opacity = "0";
-            
-            const iconDiv = document.createElement("div");
-            iconDiv.style.flexShrink = "0";
-            iconDiv.style.width = "28px";
-            iconDiv.style.height = "28px";
-            iconDiv.style.background = "var(--primary)";
-            iconDiv.style.borderRadius = "6px";
-            iconDiv.style.display = "flex";
-            iconDiv.style.alignItems = "center";
-            iconDiv.style.justifyContent = "center";
-            iconDiv.style.color = "white";
-            iconDiv.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
-            
-            const contentDiv = document.createElement("div");
-            contentDiv.style.flex = "1";
-            contentDiv.style.minWidth = "0";
-            
-            const textP = document.createElement("p");
-            textP.style.margin = "0";
-            textP.style.color = "var(--ink)";
-            textP.style.lineHeight = "1.6";
-            
-            contentDiv.appendChild(textP);
-            aiWrapper.appendChild(iconDiv);
-            aiWrapper.appendChild(contentDiv);
-            chatThread.appendChild(aiWrapper);
+        function addAiBubble(text, delay, showImages = false) {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              const aiWrapper = document.createElement("div");
+              aiWrapper.className = "chat-bubble-ai";
+              aiWrapper.style.display = "flex";
+              aiWrapper.style.gap = "12px";
+              aiWrapper.style.maxWidth = "100%";
+              aiWrapper.style.opacity = "0";
+              
+              const iconDiv = document.createElement("div");
+              iconDiv.style.flexShrink = "0";
+              iconDiv.style.width = "32px";
+              iconDiv.style.height = "32px";
+              iconDiv.style.background = "var(--primary)";
+              iconDiv.style.borderRadius = "8px";
+              iconDiv.style.display = "flex";
+              iconDiv.style.alignItems = "center";
+              iconDiv.style.justifyContent = "center";
+              iconDiv.style.color = "white";
+              iconDiv.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
+              
+              const contentDiv = document.createElement("div");
+              contentDiv.style.flex = "1";
+              contentDiv.style.minWidth = "0";
+              
+              const textP = document.createElement("p");
+              textP.style.margin = "0";
+              textP.style.color = "var(--ink)";
+              textP.style.lineHeight = "1.6";
+              
+              contentDiv.appendChild(textP);
+              aiWrapper.appendChild(iconDiv);
+              aiWrapper.appendChild(contentDiv);
+              chatThread.appendChild(aiWrapper);
 
-            if (typeof anime !== 'undefined') {
-              anime({ targets: aiWrapper, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad' });
-            } else {
-              aiWrapper.style.opacity = "1";
-            }
+              if (typeof anime !== 'undefined') {
+                anime({ targets: aiWrapper, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad' });
+              } else {
+                aiWrapper.style.opacity = "1";
+              }
 
-            let i = 0;
-            const typeInterval = setInterval(() => {
-              textP.textContent = text.substring(0, i);
-              i++;
-              if (i > text.length) {
-                clearInterval(typeInterval);
-                if (showImages) {
-                  const imagesHtml = `<br><div style="display: flex; gap: 8px; margin-top: 8px;">
-                    <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px; border-radius: 4px;"></span>
-                    <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px; border-radius: 4px;"></span>
-                    <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px; border-radius: 4px;"></span>
-                  </div>`;
-                  contentDiv.innerHTML += imagesHtml;
+              let i = 0;
+              const typeInterval = setInterval(() => {
+                textP.textContent = text.substring(0, i);
+                i++;
+                if (i > text.length) {
+                  clearInterval(typeInterval);
+                  if (showImages) {
+                    const imagesHtml = `<br><div style="display: flex; gap: 8px; margin-top: 8px;">
+                      <span class="asset-thumb asset-thumb-teal" style="width: 50px; height: 50px; border-radius: 6px;"></span>
+                      <span class="asset-thumb asset-thumb-warm" style="width: 50px; height: 50px; border-radius: 6px;"></span>
+                      <span class="asset-thumb asset-thumb-amber" style="width: 50px; height: 50px; border-radius: 6px;"></span>
+                    </div>`;
+                    contentDiv.innerHTML += imagesHtml;
+                  }
+                  chatThread.scrollTop = chatThread.scrollHeight;
+                  setTimeout(resolve, 800);
                 }
                 chatThread.scrollTop = chatThread.scrollHeight;
-                setTimeout(resolve, 600);
+              }, 40);
+            }, delay);
+          });
+        }
+
+        function addUserBubble(text, delay) {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              const userBubble = document.createElement("div");
+              userBubble.className = "chat-bubble-user chat-bubble";
+              userBubble.textContent = text;
+              userBubble.style.opacity = "0";
+              chatThread.appendChild(userBubble);
+              
+              if (typeof anime !== 'undefined') {
+                anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad', complete: resolve });
+              } else {
+                userBubble.style.opacity = "1";
+                resolve();
               }
               chatThread.scrollTop = chatThread.scrollHeight;
-            }, 30);
-          }, delay);
-        });
-      }
+            }, delay);
+          });
+        }
 
-      function addUserBubble(text, delay) {
-        return new Promise(resolve => {
-          setTimeout(() => {
-            const userBubble = document.createElement("div");
-            userBubble.className = "chat-bubble-user";
-            userBubble.textContent = text;
-            userBubble.style.opacity = "0";
-            chatThread.appendChild(userBubble);
-            
-            if (typeof anime !== 'undefined') {
-              anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad', complete: resolve });
-            } else {
-              userBubble.style.opacity = "1";
-              resolve();
-            }
-            chatThread.scrollTop = chatThread.scrollHeight;
-          }, delay);
-        });
+        await addAiBubble("你好！需要帮你找图吗？", 500);
+        await addUserBubble("找一下上个月的赛博朋克参考图。", 1500);
+        await addAiBubble("已找到 142 张。", 1000, true);
+        await addUserBubble("导出这些图。", 2500);
+        await addAiBubble("已导出至 /exports。", 1000);
+        
+        // Wait before restarting loop
+        await new Promise(r => setTimeout(r, 4000));
       }
-
-      async function runSequence() {
-        await addAiBubble("你好！我是你的本地助手。需要我帮你寻找图片还是整理资产？", 300);
-        await addUserBubble("帮我找一下上个月的赛博朋克参考图。", 1200);
-        await addAiBubble("好的，已在本地图库中搜索 标签: 'CyberPunk' 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。", 800, true);
-        await addUserBubble("整理一批UI设计规范并打包备份。", 2000);
-        await addAiBubble("已生成快照备份。相关清单及原图已保存至 /exports/backup_202606。您可以随时在其他设备上读取。", 800);
-      }
-
-      runSequence();
     };
+
+    window.playChatAnimation();
 
     mockup.querySelectorAll("[data-mockup-preset]").forEach(item => {
       item.addEventListener("click", () => {
