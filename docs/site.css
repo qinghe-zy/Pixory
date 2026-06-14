@@ -1282,16 +1282,32 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 }
 .chat-bubble-user {
   align-self: flex-end;
-  background-color: var(--surface-dark-elevated);
+  background-color: var(--surface-dark);
   color: var(--on-dark);
+  border-radius: var(--radius-lg);
   border-bottom-right-radius: 4px;
 }
 .chat-bubble-ai {
   align-self: flex-start;
-  background-color: rgba(250,249,245,0.03);
-  border: 1px solid rgba(250,249,245,0.08);
-  color: rgba(250,249,245,0.85);
-  border-bottom-left-radius: 4px;
+  background-color: transparent;
+  border: none;
+  color: var(--ink);
+  padding: var(--space-sm) 0;
+}
+.button-secondary {
+  background-color: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  text-align: left;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.button-secondary:hover {
+  background-color: var(--surface-card);
+  border-color: var(--muted-soft);
 }
 .ai-route-tree {
   margin-top: var(--space-sm);
