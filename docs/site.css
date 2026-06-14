@@ -433,6 +433,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   opacity: 0.78;
 }
 
+
 /* Components: Product Mockups */
 .mockup-card-dark {
   background-color: var(--surface-dark);
@@ -444,9 +445,22 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   position: relative;
   will-change: transform;
 }
+.mockup-card-light {
+  background-color: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(20,20,19,0.08);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+  position: relative;
+  will-change: transform;
+}
 .product-mockup {
   isolation: isolate;
   min-height: 500px;
+}
+.mockup-card-dark.product-mockup {
   border: 1px solid rgba(250,249,245,0.1);
   background:
     radial-gradient(circle at 84% 14%, rgba(232,165,90,0.14), transparent 18%),
@@ -454,7 +468,10 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
     linear-gradient(135deg, #181715 0%, #141411 48%, #1d1b17 100%);
   box-shadow: 0 28px 70px -34px rgba(20,20,19,0.58), 0 0 0 1px rgba(20,20,19,0.32);
 }
-.hero-mockup::before {
+.mockup-card-light.product-mockup {
+  background: var(--surface-card);
+}
+.mockup-card-dark.hero-mockup::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -466,7 +483,19 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   animation: mockupScan 5.8s var(--ease-in-out) 1.2s infinite;
   pointer-events: none;
 }
-.hero-mockup::after {
+.mockup-card-light.hero-mockup::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, transparent 0%, transparent 36%, rgba(250,249,245,0.4) 48%, transparent 60%, transparent 100%),
+    radial-gradient(circle at 82% 18%, rgba(204,120,92,0.06), transparent 30%);
+  opacity: 0.7;
+  transform: translateX(-58%);
+  animation: mockupScan 5.8s var(--ease-in-out) 1.2s infinite;
+  pointer-events: none;
+}
+.mockup-card-dark.hero-mockup::after {
   content: "";
   position: absolute;
   inset: 1px;
@@ -535,6 +564,11 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   letter-spacing: 0.02em;
   background: rgba(250,249,245,0.04);
 }
+.mockup-card-light .mockup-status {
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  background: var(--canvas);
+}
 .mockup-status-dot {
   width: 7px;
   height: 7px;
@@ -554,6 +588,9 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 .product-sidebar {
   border-right: 1px solid rgba(250,249,245,0.08);
   padding-right: var(--space-sm);
+}
+.mockup-card-light .product-sidebar {
+  border-right-color: var(--hairline);
 }
 .mockup-nav-list {
   display: flex;
@@ -576,6 +613,9 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   text-align: left;
   transition: color 180ms var(--ease-out), background-color 180ms var(--ease-out), border-color 180ms var(--ease-out), transform 180ms var(--ease-out);
 }
+.mockup-card-light .mockup-nav-item {
+  color: var(--muted);
+}
 .mockup-nav-item span {
   color: inherit;
   font-size: 0.95rem;
@@ -589,6 +629,9 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   font-weight: 600;
   white-space: nowrap;
 }
+.mockup-card-light .mockup-nav-item small {
+  color: var(--muted-soft);
+}
 .mockup-nav-item:hover,
 .mockup-nav-item:focus-visible,
 .mockup-nav-item.is-active {
@@ -596,6 +639,13 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   background: rgba(250,249,245,0.075);
   border-color: rgba(250,249,245,0.09);
   transform: translateX(2px);
+}
+.mockup-card-light .mockup-nav-item:hover,
+.mockup-card-light .mockup-nav-item:focus-visible,
+.mockup-card-light .mockup-nav-item.is-active {
+  color: var(--ink);
+  background: var(--canvas);
+  border-color: var(--hairline);
 }
 .product-main {
   display: flex;

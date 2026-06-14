@@ -71,8 +71,8 @@
             </div>
 
             <!-- Right: Product Mockup Card -->
-            <div class="hero-visual hero-reveal" style="grid-column: 6 / 13; opacity: 0; visibility: hidden;">
-              <div class="mockup-card-dark hero-mockup product-mockup" data-product-mockup>
+            <div class="hero-visual" style="grid-column: 8 / 13;">
+              <div class="mockup-card-light hero-mockup product-mockup" data-product-mockup>
                 <div class="hero-signal" aria-hidden="true"></div>
                 <div class="mockup-topbar">
                   <div class="mockup-header" aria-hidden="true">
@@ -87,9 +87,21 @@
                 </div>
 
                 <div class="mockup-interface product-interface">
-                  <aside class="mockup-sidebar product-sidebar" aria-label="演示素材库">
-                    <div class="text-caption-caps">Local Archives</div>
-                    <div class="mockup-nav-list">
+                  <aside class="mockup-sidebar product-sidebar" aria-label="演示侧边栏" style="display: flex; flex-direction: column;">
+                    <div class="text-caption-caps">Views</div>
+                    <div class="mockup-nav-list" style="margin-bottom: var(--space-lg);">
+                      <button class="mockup-nav-item is-active" type="button" data-mockup-tab="library">
+                        <span>Library</span>
+                        <small>Local Archives</small>
+                      </button>
+                      <button class="mockup-nav-item" type="button" data-mockup-tab="chat">
+                        <span>AI Assistant</span>
+                        <small>Private Agent</small>
+                      </button>
+                    </div>
+
+                    <div class="text-caption-caps">Archives</div>
+                    <div class="mockup-nav-list" id="mockup-archives-nav">
                       <button class="mockup-nav-item is-active" type="button" data-mockup-preset="character">
                         <span>IP_Character</span>
                         <small>248 assets</small>
@@ -105,7 +117,9 @@
                     </div>
                   </aside>
 
-                  <div class="mockup-main product-main">
+                  <div class="mockup-main product-main" style="position: relative;">
+                    <!-- Library View -->
+                    <div id="mockup-view-library" style="display: flex; flex-direction: column; height: 100%;">
                     <div class="product-panel-head">
                       <div>
                         <div class="text-caption-caps">Private Library</div>
@@ -172,6 +186,20 @@
                       <a href="https://mist01.com/downloads/Pixory-v2.4.5.apk" class="mockup-action mockup-action-primary" download>直接下载</a>
                       <a href="#matrix" class="mockup-action">查看能力</a>
                       <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="mockup-action">源码</a>
+                    </div>
+                    </div>
+                    </div> <!-- End of Library View -->
+
+                    <!-- Chat View -->
+                    <div id="mockup-view-chat" class="chat-container" style="display: none; height: 100%; position: absolute; inset: 0; background: var(--surface-card); margin-top: 0; padding-bottom: 60px;">
+                      <div class="chat-bubble chat-bubble-ai">
+                        你好！我是你的本地助手。有什么我可以帮忙的？您可以点击下方的建议：
+                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+                          <button class="button-secondary" type="button" data-mockup-chat-prompt="帮我找一下上个月导入的赛博朋克风格参考图。">帮我找一下上个月的赛博朋克参考图。</button>
+                          <button class="button-secondary" type="button" data-mockup-chat-prompt="整理一批UI设计规范，我要打包带走。">整理一批UI设计规范并打包备份。</button>
+                        </div>
+                      </div>
+                      <div id="mockup-chat-thread" style="display: flex; flex-direction: column; gap: var(--space-md);"></div>
                     </div>
                   </div>
                 </div>
@@ -291,81 +319,6 @@ Loading thumbnails... <span class="code-string">[||||||||||] 100%</span>
         </div>
       </section>
 
-      <!-- AI Chat Section -->
-      <section id="ai-chat" class="section">
-        <div class="container" data-anime-group>
-          <div class="grid" style="align-items: center;">
-            <div class="workflow-visual anime-reveal" style="grid-column: 1 / 8; order: 2;">
-              <div class="mockup-card-dark code-window" style="min-height: 480px; display: flex; flex-direction: column; padding: var(--space-md) var(--space-lg);">
-                <div class="mockup-topbar" style="margin-bottom: var(--space-md);">
-                  <div class="mockup-header">
-                    <div class="mockup-dot red"></div>
-                    <div class="mockup-dot yellow"></div>
-                    <div class="mockup-dot green"></div>
-                  </div>
-                  <div class="mockup-status">
-                    <span class="mockup-status-dot"></span>
-                    AI Assistant
-                  </div>
-                </div>
-
-                <div style="display: flex; gap: var(--space-md); flex: 1; min-height: 0;">
-                  <!-- Route Tree -->
-                  <div class="product-sidebar" style="width: 140px; flex-shrink: 0; display: flex; flex-direction: column;">
-                    <div class="text-caption-caps">Route Tree</div>
-                    <div class="ai-route-tree">
-                      <div class="ai-route-node">Branch: index_01</div>
-                      <div class="ai-route-node is-active">Branch: current</div>
-                      <div class="ai-route-node">Branch: alt_v2</div>
-                    </div>
-                  </div>
-
-                  <!-- Chat View -->
-                  <div class="chat-container product-main" style="flex: 1; margin-top: 0; padding: 0;">
-                    <div class="chat-bubble chat-bubble-user">
-                      帮我找一下上个月导入的赛博朋克风格的参考图。
-                    </div>
-                    <div class="chat-bubble chat-bubble-ai">
-                      好的，已在本地图库中搜索 <strong>标签: "CyberPunk"</strong> 且 <strong>导入时间: 上个月</strong> 的素材。为您找到 142 张匹配图片。
-                      <br><br>
-                      <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px;"></span>
-                        <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px;"></span>
-                        <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px;"></span>
-                      </div>
-                    </div>
-                    <div class="chat-bubble chat-bubble-user">
-                      把这些图打包导出，我需要带走。
-                    </div>
-                    <div class="chat-bubble chat-bubble-ai">
-                      已生成快照备份。相关清单及原图已保存至 <code>/exports/cyberpunk_backup_202606</code>。您可以随时在其他设备上读取。
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="workflow-copy anime-reveal" style="grid-column: 9 / 13; order: 1;">
-              <span class="text-caption-caps">AI Assistant & Route Tree</span>
-              <h2 class="text-display-lg mt-3">懂你的私有助手。</h2>
-              <p class="text-body-md mt-4" style="color: var(--muted);">
-                不仅仅是管理，Pixory 内置的 AI 助手支持整页搜索与深入的材料检索。对话全程在设备端调度，无隐私泄露风险。
-              </p>
-
-              <ul class="mt-6" style="display: flex; flex-direction: column; gap: var(--space-lg);">
-                <li>
-                  <strong style="font-weight: 500;">创作路线树</strong>
-                  <p class="text-body-sm mt-1">关键分支查看、多分支折叠。每一个探索方向都会被安全地持久化。</p>
-                </li>
-                <li>
-                  <strong style="font-weight: 500;">无缝交互</strong>
-                  <p class="text-body-sm mt-1">从聊天直接定位到图片，亦可将重要对话收藏。不迷失在海量历史中。</p>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <!-- FAQ Section -->
       <section id="faq" class="section" style="background-color: var(--surface-soft);">

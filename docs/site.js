@@ -111,6 +111,85 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     attachCardListeners();
 
+    // Tabs
+    const viewLibrary = document.getElementById("mockup-view-library");
+    const viewChat = document.getElementById("mockup-view-chat");
+    const archivesNav = document.getElementById("mockup-archives-nav");
+    
+    mockup.querySelectorAll("[data-mockup-tab]").forEach(tab => {
+      tab.addEventListener("click", () => {
+        mockup.querySelectorAll("[data-mockup-tab]").forEach(item => item.classList.remove("is-active"));
+        tab.classList.add("is-active");
+        
+        if (tab.dataset.mockupTab === "chat") {
+          if (viewLibrary) viewLibrary.style.display = "none";
+          if (viewChat) viewChat.style.display = "flex";
+          if (archivesNav) archivesNav.style.opacity = "0.3";
+          if (typeof anime !== 'undefined' && viewChat) {
+            anime({ targets: viewChat, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutCubic' });
+          }
+        } else {
+          if (viewChat) viewChat.style.display = "none";
+          if (viewLibrary) viewLibrary.style.display = "flex";
+          if (archivesNav) archivesNav.style.opacity = "1";
+          if (typeof anime !== 'undefined' && viewLibrary) {
+            anime({ targets: viewLibrary, opacity: [0, 1], duration: 400, easing: 'easeOutCubic' });
+          }
+        }
+      });
+    });
+
+    // Chat Interactions
+    const chatThread = document.getElementById("mockup-chat-thread");
+    mockup.querySelectorAll("[data-mockup-chat-prompt]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const promptText = btn.dataset.mockupChatPrompt;
+        const btnParent = btn.parentElement;
+        if (btnParent) btnParent.style.display = 'none'; // hide suggestions
+        
+        // Add User Bubble
+        const userBubble = document.createElement("div");
+        userBubble.className = "chat-bubble chat-bubble-user";
+        userBubble.textContent = promptText;
+        if (chatThread) chatThread.appendChild(userBubble);
+        
+        if (typeof anime !== 'undefined') {
+          anime({ targets: userBubble, opacity: [0, 1], translateY: [10, 0], duration: 300, easing: 'easeOutQuad' });
+        }
+        
+        // Simulate AI Thinking
+        setTimeout(() => {
+          const aiBubble = document.createElement("div");
+          aiBubble.className = "chat-bubble chat-bubble-ai";
+          if (chatThread) chatThread.appendChild(aiBubble);
+          
+          let responseText = "";
+          let imagesHtml = "";
+          if (promptText.includes("赛博朋克")) {
+            responseText = "好的，已在本地图库中搜索 标签: \\"CyberPunk\\" 且 导入时间: 上个月 的素材。为您找到 142 张匹配图片。";
+            imagesHtml = `<br><br><div style="display: flex; gap: 8px; margin-top: 8px;">
+              <span class="asset-thumb asset-thumb-teal" style="width: 40px; height: 40px;"></span>
+              <span class="asset-thumb asset-thumb-warm" style="width: 40px; height: 40px;"></span>
+              <span class="asset-thumb asset-thumb-amber" style="width: 40px; height: 40px;"></span>
+            </div>`;
+          } else {
+            responseText = "已生成快照备份。相关清单及原图已保存至 /exports/backup_202606。您可以随时在其他设备上读取。";
+          }
+          
+          let i = 0;
+          const typeInterval = setInterval(() => {
+            aiBubble.textContent = responseText.substring(0, i);
+            i++;
+            if (i > responseText.length) {
+              clearInterval(typeInterval);
+              if (imagesHtml) aiBubble.innerHTML += imagesHtml;
+            }
+          }, 30);
+          
+        }, 600);
+      });
+    });
+
     mockup.querySelectorAll("[data-mockup-preset]").forEach(item => {
       item.addEventListener("click", () => {
         const presetKey = item.dataset.mockupPreset;
