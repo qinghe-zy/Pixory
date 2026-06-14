@@ -444,6 +444,8 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   overflow: hidden;
   position: relative;
   will-change: transform;
+  display: flex;
+  flex-direction: column;
 }
 .mockup-card-light {
   background-color: var(--surface-card);
@@ -455,10 +457,12 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   overflow: hidden;
   position: relative;
   will-change: transform;
+  display: flex;
+  flex-direction: column;
 }
 .product-mockup {
   isolation: isolate;
-  min-height: 500px;
+  height: 580px;
 }
 .mockup-card-dark.product-mockup {
   border: 1px solid rgba(250,249,245,0.1);
@@ -583,7 +587,8 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   gap: var(--space-md);
   position: relative;
   z-index: 1;
-  min-height: 398px;
+  flex: 1;
+  min-height: 0;
 }
 .product-sidebar {
   border-right: 1px solid rgba(250,249,245,0.08);
@@ -701,6 +706,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 .product-main {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
   gap: var(--space-sm);
 }
