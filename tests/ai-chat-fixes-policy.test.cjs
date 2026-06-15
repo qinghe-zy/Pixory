@@ -41,7 +41,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 37/);
+  assert.match(schema, /DATABASE_VERSION = 38/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -661,7 +661,7 @@ test('AI editing a user message keeps full branch history instead of deleting la
   const chat = read('src/screens/AiChatScreen.tsx');
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(schema, /DATABASE_VERSION = 37/);
+  assert.match(schema, /DATABASE_VERSION = 38/);
   assert.match(schema, /branchRootMessageId TEXT/);
   assert.match(schema, /branchVersionIndex INTEGER/);
   assert.match(schema, /MIGRATION_STATEMENTS_V31/);
@@ -721,7 +721,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 37/);
+  assert.match(schema, /DATABASE_VERSION = 38/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V32/);
   assert.match(db, /currentVersion < 32/);
@@ -1220,7 +1220,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 37/);
+  assert.match(schema, /DATABASE_VERSION = 38/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);

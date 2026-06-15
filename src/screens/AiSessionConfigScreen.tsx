@@ -13,11 +13,13 @@ import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   applyRoleCardToThread,
+  clearThreadSessionModelOverride,
   deleteAiThreads,
   loadThreadAiUsageOverview,
   loadThreadSessionConfig,
   loadThreadSessionModelConfig,
   renameAiThread,
+  saveThreadSessionModelOverride,
   updateAiThreadSessionConfig,
   type AiThreadSessionModelConfig,
 } from '../ai/aiChatService';
@@ -121,6 +123,8 @@ export function AiSessionConfigScreen({
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
+  const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
+  const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
@@ -146,6 +150,8 @@ export function AiSessionConfigScreen({
       setLastMaintenanceError(null);
       setMaintenanceStatus(null);
       setSessionModelConfig(null);
+      setSessionBaseUrlDraft('');
+      setSessionApiKeyDraft('');
       setThreadUsage(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
@@ -169,6 +175,8 @@ export function AiSessionConfigScreen({
     ]);
     setMaintenanceStatus(nextMaintenanceStatus);
     setSessionModelConfig(nextSessionModelConfig);
+    setSessionBaseUrlDraft(nextSessionModelConfig?.sessionBaseUrl ?? '');
+    setSessionApiKeyDraft('');
     setThreadUsage(nextThreadUsage);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
@@ -260,26 +268,56 @@ export function AiSessionConfigScreen({
     }
     setSavingModel(true);
     try {
-      const updated = await updateAiThreadSessionConfig({
-        avatarEnabled,
-        boundaryMode,
-        deepMemoryEnabled,
-        modelId,
-        providerId,
-        replyPreference,
-        roleInstructionWeight,
-        space,
-        systemPrompt,
-        threadId,
-      });
+      const updated = providerId || modelId
+        ? await saveThreadSessionModelOverride({
+            apiKey: sessionApiKeyDraft || undefined,
+            baseUrl: sessionBaseUrlDraft,
+            modelId,
+            providerId,
+            space,
+            threadId,
+          })
+        : await clearThreadSessionModelOverride(space, threadId);
       if (!updated) {
         throw new Error('没有找到当前会话，模型未保存。');
       }
       setModelPickerVisible(false);
-      setSessionModelConfig(await loadThreadSessionModelConfig(space, threadId));
-      setStatus({ message: '已切换当前会话模型，可返回聊天重新生成上一条回复。', tone: 'success', title: '模型已更新' });
+      const modelConfig = await loadThreadSessionModelConfig(space, threadId);
+      setSessionModelConfig(modelConfig);
+      setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+      setSessionApiKeyDraft('');
+      setStatus({ message: '仅本会话已更新。', tone: 'success', title: '模型已更新' });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '模型保存失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function clearSessionApiKey() {
+    if (!threadId || savingModel || !sessionModelConfig?.providerId) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const updated = await saveThreadSessionModelOverride({
+        apiKey: '',
+        baseUrl: sessionBaseUrlDraft,
+        modelId: sessionModelConfig.modelId,
+        providerId: sessionModelConfig.providerId,
+        space,
+        threadId,
+      });
+      if (!updated) {
+        throw new Error('没有找到当前会话，API 未清除。');
+      }
+      const modelConfig = await loadThreadSessionModelConfig(space, threadId);
+      setSessionModelConfig(modelConfig);
+      setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+      setSessionApiKeyDraft('');
+      setStatus({ message: '仅本会话 API 已清除。', tone: 'success', title: '模型已更新' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : 'API 清除失败', tone: 'error', title: '保存失败' });
     } finally {
       setSavingModel(false);
     }
@@ -597,6 +635,42 @@ export function AiSessionConfigScreen({
       >
         <ScrollView style={styles.modelPickerScroll}>
           <View style={styles.modelPickerList}>
+            <View style={styles.modelOverrideFields}>
+              <Text style={styles.caption}>仅本会话</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!savingModel}
+                onChangeText={setSessionBaseUrlDraft}
+                placeholder="地址"
+                placeholderTextColor={aiLightColors.mutedSoft}
+                selectionColor={aiLightColors.coral}
+                style={styles.dialogInput}
+                value={sessionBaseUrlDraft}
+              />
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!savingModel}
+                onChangeText={setSessionApiKeyDraft}
+                placeholder={sessionModelConfig?.sessionHasApiKeyOverride ? '已保存本会话 API' : 'API'}
+                placeholderTextColor={aiLightColors.mutedSoft}
+                secureTextEntry
+                selectionColor={aiLightColors.coral}
+                style={styles.dialogInput}
+                value={sessionApiKeyDraft}
+              />
+              {sessionModelConfig?.sessionHasApiKeyOverride ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={savingModel}
+                  onPress={() => void clearSessionApiKey()}
+                  style={({ pressed }) => [styles.modelInlineAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+                >
+                  <Text style={styles.textActionLabel}>清除 API</Text>
+                </Pressable>
+              ) : null}
+            </View>
             <Pressable
               accessibilityRole="button"
               disabled={savingModel}
@@ -883,6 +957,20 @@ const styles = StyleSheet.create({
   },
   modelPickerScroll: {
     maxHeight: 320,
+  },
+  modelOverrideFields: {
+    gap: rhythm.compactGridGap,
+  },
+  modelInlineAction: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: spacing[3],
   },
   modelOption: {
     backgroundColor: aiLightColors.canvas,

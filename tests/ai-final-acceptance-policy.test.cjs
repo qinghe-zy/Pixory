@@ -391,6 +391,20 @@ test('AI session model override resolution uses thread endpoint and key before p
   assert.match(chat, /clearThreadSessionModelOverride/);
 });
 
+test('AI session settings edits only current session model endpoint and key', () => {
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  assert.match(sessionConfig, /saveThreadSessionModelOverride/);
+  assert.match(sessionConfig, /clearThreadSessionModelOverride/);
+  assert.match(sessionConfig, /sessionBaseUrlDraft/);
+  assert.match(sessionConfig, /sessionApiKeyDraft/);
+  assert.match(sessionConfig, /仅本会话/);
+  assert.match(sessionConfig, /清除 API/);
+  assert.match(sessionConfig, /apiKey: ''/);
+  assert.match(sessionConfig, /跟随全局默认/);
+  assert.doesNotMatch(sessionConfig, /saveProviderBaseUrl\(space/);
+  assert.doesNotMatch(sessionConfig, /saveProviderApiKey/);
+});
+
 test('AI citations open document readers and IP sources without treating all sources as documents', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
