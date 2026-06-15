@@ -1361,11 +1361,15 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 }
 
 .chat-bubble-ai-content {
-  background-color: #ffffff;
-  border: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   color: var(--ink);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.03);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 16px rgba(0,0,0,0.04);
   z-index: 1;
+  position: relative;
+  overflow: hidden;
 }
 .chat-bubble-ai-content::before {
   content: '';
@@ -1374,7 +1378,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   left: -6px;
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
-  border-right: 6px solid #ffffff;
+  border-right: 6px solid rgba(255,255,255,0.65);
   z-index: 2;
 }
 .chat-bubble-ai-content::after {
@@ -1384,8 +1388,22 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   left: -7px;
   border-top: 7px solid transparent;
   border-bottom: 7px solid transparent;
-  border-right: 7px solid var(--hairline);
+  border-right: 7px solid rgba(255,255,255,0.4);
   z-index: 1;
+}
+
+/* Stardust Shimmer inside AI bubble */
+.chat-bubble-ai-content .shimmer {
+  position: absolute;
+  top: 0; left: -100%; width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+  transform: skewX(-20deg);
+  animation: stardustReveal 2s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes stardustReveal {
+  0% { left: -100%; }
+  100% { left: 200%; }
 }
 
 .chat-bubble-user-content {
@@ -1468,20 +1486,23 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   animation: slideUpFade 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-@keyframes typingBounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
-  40% { transform: translateY(-4px); opacity: 1; }
+@keyframes ripplePulse {
+  0% { transform: scale(0.8); opacity: 0.4; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0.4; }
 }
 
 .typing-indicator {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 14px 16px;
-  background-color: #ffffff;
-  border: 1px solid var(--hairline);
+  justify-content: center;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: var(--radius-lg);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 2px 8px rgba(0,0,0,0.03);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 16px rgba(0,0,0,0.04);
   position: relative;
   height: 48px;
 }
@@ -1492,7 +1513,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   left: -6px;
   border-top: 6px solid transparent;
   border-bottom: 6px solid transparent;
-  border-right: 6px solid #ffffff;
+  border-right: 6px solid rgba(255,255,255,0.65);
   z-index: 2;
 }
 .typing-indicator::after {
@@ -1502,25 +1523,72 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   left: -7px;
   border-top: 7px solid transparent;
   border-bottom: 7px solid transparent;
-  border-right: 7px solid var(--hairline);
+  border-right: 7px solid rgba(255,255,255,0.4);
   z-index: 1;
 }
 
-.typing-dot {
+.ripple-dot {
   width: 6px;
   height: 6px;
-  background-color: var(--muted-soft);
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
   border-radius: 50%;
-  animation: typingBounce 1.4s infinite ease-in-out both;
+  margin: 0 3px;
+  animation: ripplePulse 1.2s infinite ease-in-out;
 }
-.typing-dot:nth-child(1) { animation-delay: -0.32s; }
-.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+.ripple-dot:nth-child(1) { animation-delay: 0s; }
+.ripple-dot:nth-child(2) { animation-delay: 0.2s; }
+.ripple-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* Ambient Background Layer */
-.chat-ambient-bg {
+/* Aurora Background Layer */
+.chat-aurora-bg {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 100%, rgba(224, 112, 79, 0.04), transparent 50%);
   z-index: 0;
+  overflow: hidden;
+  background-color: #FAF9F5;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.5;
+  animation: auroraBreathe 15s infinite alternate ease-in-out;
+}
+
+.aurora-orb-1 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(205,113,84,0.15) 0%, transparent 70%);
+  top: -100px;
+  left: -100px;
+  animation-duration: 18s;
+}
+
+.aurora-orb-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(92,164,204,0.12) 0%, transparent 70%);
+  bottom: -150px;
+  right: -100px;
+  animation-duration: 22s;
+  animation-delay: -5s;
+}
+
+.aurora-orb-3 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(230,170,104,0.15) 0%, transparent 70%);
+  top: 30%;
+  left: 40%;
+  animation-duration: 25s;
+  animation-delay: -10s;
+}
+
+@keyframes auroraBreathe {
+  0% { transform: scale(1) translate(0, 0); opacity: 0.4; }
+  33% { transform: scale(1.1) translate(30px, -20px); opacity: 0.6; }
+  66% { transform: scale(0.9) translate(-20px, 30px); opacity: 0.5; }
+  100% { transform: scale(1.05) translate(10px, 10px); opacity: 0.7; }
 }

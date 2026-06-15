@@ -177,7 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           const typingDiv = document.createElement("div");
           typingDiv.className = "typing-indicator";
-          typingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+          typingDiv.innerHTML = '<div class="ripple-dot"></div><div class="ripple-dot"></div><div class="ripple-dot"></div>';
 
           wrapper.appendChild(iconDiv);
           wrapper.appendChild(typingDiv);
@@ -212,7 +212,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
           const contentDiv = document.createElement("div");
           contentDiv.className = "chat-bubble-content chat-bubble-ai-content";
-          contentDiv.textContent = text;
+          
+          const shimmerDiv = document.createElement("div");
+          shimmerDiv.className = "shimmer";
+          
+          const textSpan = document.createElement("span");
+          textSpan.style.position = "relative";
+          textSpan.style.zIndex = "4";
+          textSpan.textContent = text;
+          
+          contentDiv.appendChild(shimmerDiv);
+          contentDiv.appendChild(textSpan);
 
           aiWrapper.appendChild(iconDiv);
           aiWrapper.appendChild(contentDiv);
