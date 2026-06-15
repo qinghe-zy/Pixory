@@ -1,10 +1,10 @@
 {
   "enabled": true,
-  "id": "test-announcement-20260512-01",
-  "title": "测试公告",
-  "message": "这是一条 Pixory 远程公告测试。",
+  "id": "pixory-2.4.6-20260615",
+  "title": "Pixory 2.4.6 已发布",
+  "message": "AI 聊天缓存概览、会话模型配置和自动标题体验已更新。",
   "detailLines": [
-    "如果你看到这条消息，说明公告通道已经生效。"
+    "可到官网获取区下载最新版 Android APK。"
   ],
   "actionLabel": "知道了"
 }

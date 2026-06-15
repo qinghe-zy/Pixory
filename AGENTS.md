@@ -357,10 +357,11 @@ Default release workflow:
    - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
    - Do not delete durable project documentation such as `README.md`, `AGENTS.md`, `.impeccable.md`, `docs/update-version.json`, `docs/announcement.json`, or intentionally maintained product/spec documents.
    - Never remove user-made unrelated work just to make the tree clean; if uncertain whether a document is disposable, keep it and mention the uncertainty in the release report.
-7. Before packaging, preflight Gitee Release publishing credentials:
-   - Check for a usable `GITEE_TOKEN`, Gitee OpenAPI token, Gitee release-capable CLI, or authenticated browser/API path that can create a release and upload an APK.
-   - If Gitee Git SSH push works but Release API/Web credentials are unavailable, continue only when the user explicitly accepts that Gitee Release creation will be deferred; otherwise stop before building so the release is not half-published.
-   - Never print token values in logs or reports.
+7. Do not maintain the old Gitee release path:
+   - Do not preflight Gitee credentials.
+   - Do not push release commits or tags to the `gitee` remote.
+   - Do not create or update Gitee Releases.
+   - Runtime update and announcement JSON should be served from the official website, not Gitee raw URLs.
 8. Keep remote update JSON and release notes short, concrete, and user-facing.
 9. Do not switch signing certificates, keystores, aliases, or Gradle signing config. The release certificate is local and must stay the existing Pixory local release certificate unless the user explicitly requests a certificate migration.
 10. Run verification before packaging:
@@ -383,24 +384,22 @@ Default release workflow:
     - If a compatible emulator/device is available, install and launch.
     - If release install fails because an existing app has a different signature, do not uninstall user data without explicit confirmation. Use debug install/launch only as a non-destructive smoke test and report that release install was blocked by signature mismatch.
 16. Commit the release changes with a concise release commit.
-17. Push `main` to both release remotes:
+17. Push `main` to the GitHub release remote:
     - `origin` / GitHub
-    - `gitee` / `git@gitee.com:Qinghe_zy/pixory.git`
-18. Create and push the version tag to both `origin` and `gitee`.
+18. Create and push the version tag to `origin`.
 19. Create a GitHub Release and upload the APK for backup download and historical archive.
-20. Create a Gitee Release for the same tag and upload the APK only when credentials are available and this release still requires Gitee mirroring; otherwise report Gitee Release as deferred.
-21. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote release-facing website pages, remote README, and local/remote branch sync for both remotes.
-22. Ensure the app update popup defaults to the official website download section:
-    - `app.json` `expo.extra.updateCheck.url` points to the Gitee raw `docs/update-version.json`.
+20. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote `docs/announcement.json`, remote release-facing website pages, remote README, and local/remote branch sync with `origin`.
+21. Ensure the app update popup defaults to the official website download section:
+    - `app.json` `expo.extra.updateCheck.url` points to `https://mist01.com/update-version.json`.
+    - `app.json` `expo.extra.announcement.url` points to `https://mist01.com/announcement.json`.
     - `docs/update-version.json` `downloadUrl` points to `https://mist01.com/#download`.
     - The website download section exposes the official server direct APK as the primary action and GitHub Release as the backup/history action.
-23. Report:
+22. Report:
     - version
     - commit
     - tag
     - official server APK URL
     - GitHub release URL
-    - Gitee release URL
     - APK path and size
     - release-required files updated
     - temporary or completed requirement documents cleaned, archived, or intentionally kept

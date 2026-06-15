@@ -33,23 +33,24 @@ test('website uses a single-page homepage while legacy pages redirect to stable 
   }
 });
 
-test('website release-facing files reference the current 2.4.5 release', () => {
-  assert.match(read('docs/index.html'), /当前版本：2\.4\.5/);
-  assert.match(read('docs/update-version.json'), /"versionCode": 245/);
-  assert.match(read('docs/updates.html'), /Version 2\.4\.5/);
-  assert.match(read('docs/updates.html'), /AI 工作台更顺手/);
-  assert.match(read('docs/updates.html'), /服务器主下载/);
+test('website release-facing files reference the current 2.4.6 release', () => {
+  assert.match(read('docs/index.html'), /当前版本：2\.4\.6/);
+  assert.match(read('docs/update-version.json'), /"versionCode": 246/);
+  assert.match(read('docs/updates.html'), /Version 2\.4\.6/);
+  assert.match(read('docs/updates.html'), /缓存消耗可视化/);
+  assert.match(read('docs/updates.html'), /会话模型独立配置/);
   assert.match(read('docs/index.html'), /SQLite/);
-  assert.match(read('README.md'), /当前版本 `2\.4\.5`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.5/);
-  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.5\.apk/);
-  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.5\.apk/);
+  assert.match(read('README.md'), /当前版本 `2\.4\.6`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.6/);
+  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.6\.apk/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.6\.apk/);
   assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
   assert.match(read('docs/index.html'), /GitHub 备用[\s\S]{0,140}历史版本与镜像/);
   assert.match(read('docs/update-version.json'), /https:\/\/mist01\.com\/#download/);
-  assert.match(read('docs/updates.html'), /GitHub Release 保留备用和历史版本/);
+  assert.match(read('app.json'), /https:\/\/mist01\.com\/update-version\.json/);
+  assert.match(read('app.json'), /https:\/\/mist01\.com\/announcement\.json/);
   assert.doesNotMatch(read('docs/index.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
@@ -64,13 +65,14 @@ test('release workflow requires README and update website pages', () => {
   assert.match(agents, /website download\/update pages/);
   assert.match(agents, /remote release-facing website pages/);
   assert.match(agents, /remote README/);
-  assert.match(agents, /`gitee` \/ `git@gitee\.com:Qinghe_zy\/pixory\.git`/);
-  assert.match(agents, /Create a Gitee Release/);
-  assert.match(agents, /Gitee release URL/);
-  assert.match(agents, /preflight Gitee Release publishing credentials/);
-  assert.match(agents, /GITEE_TOKEN/);
-  assert.match(agents, /continue only when the user explicitly accepts that Gitee Release creation will be deferred/);
+  assert.match(agents, /Do not maintain the old Gitee release path/);
+  assert.match(agents, /Do not push release commits or tags to the `gitee` remote/);
+  assert.match(agents, /Do not create or update Gitee Releases/);
+  assert.doesNotMatch(agents, /GITEE_TOKEN/);
+  assert.doesNotMatch(agents, /preflight Gitee Release publishing credentials/);
   assert.match(agents, /app update popup defaults to the official website download section/);
+  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.url` points to `https:\/\/mist01\.com\/update-version\.json`/);
+  assert.match(agents, /app\.json` `expo\.extra\.announcement\.url` points to `https:\/\/mist01\.com\/announcement\.json`/);
   assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
   assert.match(agents, /website download section exposes the official server direct APK as the primary action and GitHub Release as the backup\/history action/);
 });
@@ -84,7 +86,7 @@ test('public docs describe privacy screenshots consistently with current behavio
 
 test('website sitemap lastmod is synchronized with the release update date', () => {
   const sitemap = read('docs/sitemap.xml');
-  const matches = sitemap.match(/<lastmod>2026-06-13<\/lastmod>/g) ?? [];
+  const matches = sitemap.match(/<lastmod>2026-06-15<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
 

@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.4.5",
+    "version": "2.4.6",
     "orientation": "portrait",
     "icon": "./docs/assets/og-cover.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 245,
+      "versionCode": 246,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./docs/assets/og-cover.png",
@@ -75,12 +75,12 @@
     "extra": {
       "updateCheck": {
         "enabled": true,
-        "url": "https://gitee.com/Qinghe_zy/pixory/raw/main/docs/update-version.json",
+        "url": "https://mist01.com/update-version.json",
         "timeoutMs": 5000
       },
       "announcement": {
         "enabled": true,
-        "url": "https://gitee.com/Qinghe_zy/pixory/raw/main/docs/announcement.json",
+        "url": "https://mist01.com/announcement.json",
         "timeoutMs": 5000
       },
       "eas": {

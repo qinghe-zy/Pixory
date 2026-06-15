@@ -6,23 +6,23 @@ Pixory 面向创作者、内容运营、品牌视觉管理者和长期素材收�
 
 很多素材并不缺保存位置，缺的是长期秩序。Pixory 的重点是让视觉资产在手机里有清楚归属、可追踪的整理过程和可迁移的完整备份。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.4.5.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.4.5`
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.4.6.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.4.6`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.4.5
+### Pixory 2.4.6
 
-这一版把 AI 工作台入口和发布通道整理到位：
+这一版继续围绕陪伴型 AI 聊天，把缓存观测、会话模型配置和自动标题补齐：
 
-- AI 工作台新增最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间。
-- 空白新聊天不再进入历史和最近列表，普通/私密空间切换时不会短暂显示上一空间会话。
-- 应用内更新默认跳转官网获取区，下载区默认使用服务器直下，GitHub 保留备用和历史版本。
+- AI 工作台和单会话设置新增缓存命中与 token 消耗概览，能看到总览和当前会话消耗。
+- 会话设置可单独调整当前会话模型、地址和 API Key，不影响全局默认模型。
+- 三轮会话后可调用低成本模型生成短标题，第一轮仍保留本地标题策略。
 
 下载地址：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.5.apk](https://mist01.com/downloads/Pixory-v2.4.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.6.apk](https://mist01.com/downloads/Pixory-v2.4.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 ## 产品定位
@@ -162,7 +162,7 @@ AppData/
 
 最新版 Android APK：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.5.apk](https://mist01.com/downloads/Pixory-v2.4.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.6.apk](https://mist01.com/downloads/Pixory-v2.4.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 安装流程：
@@ -260,7 +260,7 @@ pnpm run doctor
 
 Android APK 的默认下载从 `mist01.com` 服务器直下最新版，服务器只保留当前最新 APK；GitHub Releases 保留备用下载和历史版本：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.5.apk](https://mist01.com/downloads/Pixory-v2.4.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.4.6.apk](https://mist01.com/downloads/Pixory-v2.4.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
 
 应用内更新读取：
@@ -275,7 +275,7 @@ docs/update-version.json
 docs/announcement.json
 ```
 
-维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.4.5-local-release.apk -Version 2.4.5` 上传最新版 APK，并清理服务器旧 APK。
+维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.4.6-local-release.apk -Version 2.4.6` 上传最新版 APK，并清理服务器旧 APK。
 
 ## 产品原则
 
