@@ -351,7 +351,8 @@ Default release workflow:
    - `docs/updates.html`
    - `docs/sitemap.xml`
    - local Android Gradle release fields/output name when present
-5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
+   - Expo `runtimeVersion` and Android `expo_runtime_version`
+5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
 6. Before verification and APK build, clean release-interfering temporary artifacts:
    - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
    - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
@@ -391,7 +392,10 @@ Default release workflow:
 20. Verify the official server APK direct URL, GitHub Release, latest release lists, remote `docs/update-version.json`, remote `docs/announcement.json`, remote release-facing website pages, remote README, and local/remote branch sync with `origin`.
 21. Ensure the app update popup defaults to the official website download section:
     - `app.json` `expo.extra.updateCheck.url` points to `https://mist01.com/update-version.json`.
+    - `app.json` `expo.extra.updateCheck.githubLatestUrl` points to `https://api.github.com/repos/qinghe-zy/Pixory/releases/latest` as a fallback version source.
+    - `app.json` `expo.extra.updateCheck.fallbackDownloadUrl` points to `https://mist01.com/#download`.
     - `app.json` `expo.extra.announcement.url` points to `https://mist01.com/announcement.json`.
+    - `app.json` `expo.runtimeVersion` matches `package.json` version and Android `expo_runtime_version`.
     - `docs/update-version.json` `downloadUrl` points to `https://mist01.com/#download`.
     - The website download section exposes the official server direct APK as the primary action and GitHub Release as the backup/history action.
 22. Report:

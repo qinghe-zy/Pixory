@@ -15,6 +15,8 @@ test('update check is configured as a passive version file lookup', () => {
 
   assert.equal(updateConfig.enabled, true);
   assert.equal(updateConfig.url, 'https://mist01.com/update-version.json');
+  assert.equal(updateConfig.githubLatestUrl, 'https://api.github.com/repos/qinghe-zy/Pixory/releases/latest');
+  assert.equal(updateConfig.fallbackDownloadUrl, 'https://mist01.com/#download');
   assert.equal(updateConfig.timeoutMs, 5000);
 });
 
@@ -26,6 +28,7 @@ test('EAS Update is configured for production OTA bundles', () => {
   const nativeRuntimeVersion = androidStrings.match(/<string name="expo_runtime_version" translatable="false">([^<]+)<\/string>/)?.[1];
 
   assert.equal(packageJson.dependencies['expo-updates'], '~29.0.17');
+  assert.equal(appConfig.expo.runtimeVersion, packageJson.version);
   assert.equal(appConfig.expo.runtimeVersion, nativeRuntimeVersion);
   assert.equal(appConfig.expo.updates.enabled, true);
   assert.equal(appConfig.expo.updates.url, 'https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae');
@@ -53,6 +56,8 @@ test('update prompt defaults to the official website download section', () => {
   const appConfig = JSON.parse(readProjectFile('app.json'));
 
   assert.equal(appConfig.expo.extra.updateCheck.url, 'https://mist01.com/update-version.json');
+  assert.equal(appConfig.expo.extra.updateCheck.githubLatestUrl, 'https://api.github.com/repos/qinghe-zy/Pixory/releases/latest');
+  assert.equal(appConfig.expo.extra.updateCheck.fallbackDownloadUrl, 'https://mist01.com/#download');
   assert.equal(appConfig.expo.extra.announcement.url, 'https://mist01.com/announcement.json');
   assert.equal(updateJson.downloadUrl, 'https://mist01.com/#download');
   assert.match(updateJson.message, /官网下载区/);
@@ -66,6 +71,10 @@ test('update check service stays read-only and offline tolerant', () => {
   assert.match(serviceSource, /cache:\s*'no-store'/);
   assert.match(serviceSource, /catch\s*\{\s*return null;\s*\}/);
   assert.match(serviceSource, /compareAppVersions/);
+  assert.match(serviceSource, /githubLatestUrl/);
+  assert.match(serviceSource, /normalizeGitHubRelease/);
+  assert.match(serviceSource, /tag_name/);
+  assert.match(serviceSource, /fallbackDownloadUrl/);
   assert.doesNotMatch(serviceSource, /releaseNotes[\s\S]{0,260}\.slice\(/);
   assert.doesNotMatch(serviceSource, /POST|PUT|PATCH|DELETE|SecureStore|SQLite|FileSystem/);
 });

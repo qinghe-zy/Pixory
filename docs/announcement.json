@@ -1,10 +1,10 @@
 {
   "enabled": true,
-  "id": "pixory-2.4.6-20260615",
-  "title": "Pixory 2.4.6 已发布",
-  "message": "AI 聊天缓存概览、会话模型配置和自动标题体验已更新。",
+  "id": "pixory-2.4.7-20260615",
+  "title": "Pixory 2.4.7 已发布",
+  "message": "已修复 2.4.6 可能加载旧界面的问题，建议重新安装最新版。",
   "detailLines": [
-    "可到官网获取区下载最新版 Android APK。"
+    "新版会正确显示 AI 用量概览和当前会话模型配置入口。"
   ],
   "actionLabel": "知道了"
 }

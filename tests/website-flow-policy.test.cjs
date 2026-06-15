@@ -33,17 +33,17 @@ test('website uses a single-page homepage while legacy pages redirect to stable 
   }
 });
 
-test('website release-facing files reference the current 2.4.6 release', () => {
-  assert.match(read('docs/index.html'), /当前版本：2\.4\.6/);
-  assert.match(read('docs/update-version.json'), /"versionCode": 246/);
-  assert.match(read('docs/updates.html'), /Version 2\.4\.6/);
+test('website release-facing files reference the current 2.4.7 release', () => {
+  assert.match(read('docs/index.html'), /当前版本：2\.4\.7/);
+  assert.match(read('docs/update-version.json'), /"versionCode": 247/);
+  assert.match(read('docs/updates.html'), /Version 2\.4\.7/);
   assert.match(read('docs/updates.html'), /缓存消耗可视化/);
   assert.match(read('docs/updates.html'), /会话模型独立配置/);
   assert.match(read('docs/index.html'), /SQLite/);
-  assert.match(read('README.md'), /当前版本 `2\.4\.6`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.6/);
-  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.6\.apk/);
-  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.6\.apk/);
+  assert.match(read('README.md'), /当前版本 `2\.4\.7`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.7/);
+  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.7\.apk/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.7\.apk/);
   assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
@@ -72,6 +72,8 @@ test('release workflow requires README and update website pages', () => {
   assert.doesNotMatch(agents, /preflight Gitee Release publishing credentials/);
   assert.match(agents, /app update popup defaults to the official website download section/);
   assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.url` points to `https:\/\/mist01\.com\/update-version\.json`/);
+  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.githubLatestUrl` points to `https:\/\/api\.github\.com\/repos\/qinghe-zy\/Pixory\/releases\/latest`/);
+  assert.match(agents, /app\.json` `expo\.extra\.updateCheck\.fallbackDownloadUrl` points to `https:\/\/mist01\.com\/#download`/);
   assert.match(agents, /app\.json` `expo\.extra\.announcement\.url` points to `https:\/\/mist01\.com\/announcement\.json`/);
   assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
   assert.match(agents, /website download section exposes the official server direct APK as the primary action and GitHub Release as the backup\/history action/);
