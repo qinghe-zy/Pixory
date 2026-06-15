@@ -34,6 +34,16 @@ export interface AiMessageRecord {
   completedAt: string | null;
 }
 
+export interface AiUsageObservationMessageRecord {
+  id: string;
+  threadId: string;
+  providerId: string | null;
+  modelId: string | null;
+  promptSnapshotJson: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface AiBranchScope {
   branchRootMessageId: string;
   branchVersionIndex: number;
@@ -1048,6 +1058,62 @@ export const aiThreadRepository = {
   async findThreadById(db: SQLiteDatabase, threadId: string): Promise<AiThreadRecord | null> {
     const row = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', threadId);
     return row ? mapThreadRow(row) : null;
+  },
+
+  async listAssistantUsageObservationMessages(
+    db: SQLiteDatabase,
+    input: { space: PixorySpace; since?: string | null; limit?: number }
+  ): Promise<AiUsageObservationMessageRecord[]> {
+    const limit = input.limit ?? 500;
+    const sinceClause = input.since ? 'AND ai_messages.createdAt >= ?' : '';
+    const values: Array<string | number> = input.since ? [input.space, input.since, limit] : [input.space, limit];
+    return db.getAllAsync<AiUsageObservationMessageRecord>(
+      `SELECT
+         ai_messages.id,
+         ai_messages.threadId,
+         ai_messages.providerId,
+         ai_messages.modelId,
+         ai_messages.promptSnapshotJson,
+         ai_messages.createdAt,
+         ai_messages.completedAt
+       FROM ai_messages
+       JOIN ai_threads ON ai_threads.id = ai_messages.threadId
+       WHERE ai_threads.space = ?
+         AND ai_messages.role = 'assistant'
+         AND ai_messages.promptSnapshotJson <> '{}'
+         ${sinceClause}
+       ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
+       LIMIT ?`,
+      ...values
+    );
+  },
+
+  async listThreadAssistantUsageObservationMessages(
+    db: SQLiteDatabase,
+    input: { space: PixorySpace; threadId: string; limit?: number }
+  ): Promise<AiUsageObservationMessageRecord[]> {
+    const limit = input.limit ?? 80;
+    return db.getAllAsync<AiUsageObservationMessageRecord>(
+      `SELECT
+         ai_messages.id,
+         ai_messages.threadId,
+         ai_messages.providerId,
+         ai_messages.modelId,
+         ai_messages.promptSnapshotJson,
+         ai_messages.createdAt,
+         ai_messages.completedAt
+       FROM ai_messages
+       JOIN ai_threads ON ai_threads.id = ai_messages.threadId
+       WHERE ai_threads.space = ?
+         AND ai_messages.threadId = ?
+         AND ai_messages.role = 'assistant'
+         AND ai_messages.promptSnapshotJson <> '{}'
+       ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
+       LIMIT ?`,
+      input.space,
+      input.threadId,
+      limit
+    );
   },
 
   async findThreadsByIds(db: SQLiteDatabase, space: PixorySpace, threadIds: string[]): Promise<AiThreadRecord[]> {

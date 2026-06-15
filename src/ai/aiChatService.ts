@@ -36,6 +36,10 @@ import {
   type AiPromptCacheSettings,
 } from './aiPromptCache';
 import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
+import {
+  aggregateAiUsageObservations,
+  type AiUsageAggregate,
+} from './aiUsageAnalytics';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -1190,6 +1194,49 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       deepMemoryEnabled: memorySettings.deepMemoryEnabled,
       lastMaintenanceError: memoryJob.lastMaintenanceError,
     };
+  });
+}
+
+function emptyAiUsageAggregate(): AiUsageAggregate {
+  return aggregateAiUsageObservations({ observations: [] });
+}
+
+function usageSinceForWindow(window: '7d' | '30d' | 'all'): string | null {
+  if (window === 'all') {
+    return null;
+  }
+  const days = window === '7d' ? 7 : 30;
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString();
+}
+
+export async function loadAiUsageOverview(
+  space: PixorySpace,
+  window: '7d' | '30d' | 'all' = '30d'
+): Promise<AiUsageAggregate> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const rows = await aiThreadRepository.listAssistantUsageObservationMessages(db, {
+      limit: 600,
+      since: usageSinceForWindow(window),
+      space,
+    });
+    return aggregateAiUsageObservations({ observations: rows, recentLimit: 10 });
+  });
+}
+
+export async function loadThreadAiUsageOverview(space: PixorySpace, threadId: string): Promise<AiUsageAggregate> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    if (!thread || thread.space !== space) {
+      return emptyAiUsageAggregate();
+    }
+    const rows = await aiThreadRepository.listThreadAssistantUsageObservationMessages(db, {
+      limit: 80,
+      space,
+      threadId,
+    });
+    return aggregateAiUsageObservations({ observations: rows, recentLimit: 12 });
   });
 }
 
