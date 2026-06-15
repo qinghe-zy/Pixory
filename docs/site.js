@@ -253,11 +253,12 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
 
-        await addAiBubble("下午好！今天重温了哪些喜欢的角色或故事吗？", 500);
-        await addUserBubble("刚在看上周存的那几组赛博朋克风的场景设定图。", 1500);
-        await addAiBubble("那组图确实很有张力！特别是那几张霓虹灯雨夜的街景，光影对比非常抓人眼球。", 2000);
-        await addUserBubble("是啊，感觉那种冷暖色调的冲突特别有赛博时代的孤独感。", 2500);
-        await addAiBubble("完全同意。在巨大的机械都市下，个体的渺小感被无限放大，是很棒的美学参考呢。", 2000);
+        await addUserBubble("Pixory 主要是做什么的呀？", 500);
+        await addAiBubble("它是一款纯本地的 IP 图片资产管理器。帮你用角色、群组和标签来整理海量参考图，而且绝对不压缩、不修改原图！", 2000);
+        await addUserBubble("数据存在哪里？平时使用需要联网吗？", 2000);
+        await addAiBubble("完全不需要联网！所有的图片和数据都 100% 存储在你的设备本地，只有你自己能看到，安全又私密。", 2000);
+        await addUserBubble("那你这个 AI 助手也会把信息发到云端吗？", 2000);
+        await addAiBubble("当然不会啦。我是直接运行在你设备上的 Local Agent，咱们的聊天内容出不了这块屏幕的。", 2000);
         
         // Wait before restarting loop
         await new Promise(r => setTimeout(r, 4000));
