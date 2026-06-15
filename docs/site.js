@@ -156,69 +156,76 @@ document.addEventListener("DOMContentLoaded", () => {
     window.playChatAnimation = async function() {
       if (!chatThread) return;
       
-      // We will run this sequence in a loop.
       while (true) {
-        chatThread.innerHTML = ""; // Clear existing
+        chatThread.innerHTML = "";
 
-        function addAiBubble(text, delay, showImages = false) {
-          return new Promise(resolve => {
-            setTimeout(() => {
-              const aiWrapper = document.createElement("div");
-              aiWrapper.className = "chat-bubble-wrapper chat-bubble-ai-wrapper";
-              aiWrapper.style.opacity = "0";
-              
-              const iconDiv = document.createElement("div");
-              iconDiv.style.flexShrink = "0";
-              iconDiv.style.width = "36px";
-              iconDiv.style.height = "36px";
-              iconDiv.style.background = "var(--primary)";
-              iconDiv.style.borderRadius = "8px";
-              iconDiv.style.display = "flex";
-              iconDiv.style.alignItems = "center";
-              iconDiv.style.justifyContent = "center";
-              iconDiv.style.color = "white";
-              iconDiv.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>';
-              
-              const contentDiv = document.createElement("div");
-              contentDiv.className = "chat-bubble-content chat-bubble-ai-content";
-              contentDiv.style.flex = "1";
-              contentDiv.style.minWidth = "0";
-              
-              const textP = document.createElement("div");
-              textP.style.margin = "0";
-              
-              contentDiv.appendChild(textP);
-              aiWrapper.appendChild(iconDiv);
-              aiWrapper.appendChild(contentDiv);
-              chatThread.appendChild(aiWrapper);
+        async function showTypingIndicator() {
+          const wrapper = document.createElement("div");
+          wrapper.className = "chat-bubble-wrapper chat-bubble-ai-wrapper chat-bubble-enter";
+          
+          const iconDiv = document.createElement("div");
+          iconDiv.style.flexShrink = "0";
+          iconDiv.style.width = "36px";
+          iconDiv.style.height = "36px";
+          iconDiv.style.background = "#CD7154";
+          iconDiv.style.borderRadius = "8px";
+          iconDiv.style.display = "flex";
+          iconDiv.style.alignItems = "center";
+          iconDiv.style.justifyContent = "center";
+          iconDiv.style.color = "white";
+          iconDiv.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 22c.2 0 .4-.1.5-.2l3.4-4.8c.3-.4.8-.6 1.3-.6h3.8c1.1 0 2-.9 2-2v-3.8c0-.5.2-1 .6-1.3l4.8-3.4c.3-.2.5-.5.5-.8s-.2-.6-.5-.8l-4.8-3.4c-.4-.3-.6-.8-.6-1.3V3.8c0-1.1-.9-2-2-2h-3.8c-.5 0-1-.2-1.3-.6L12.5.4c-.2-.3-.5-.4-.8-.4s-.6.1-.8.4L7.5 5.2c-.3.4-.8.6-1.3.6H2.4c-1.1 0-2 .9-2 2v3.8c0 .5-.2 1-.6 1.3L-5 16.3c-.3.2-.5.5-.5.8s.2.6.5.8l4.8 3.4c.4.3.6.8.6 1.3v3.8c0 1.1.9 2 2 2h3.8c.5 0 1 .2 1.3.6l3.4 4.8c.2.1.4.2.6.2z" fill="currentColor" transform="scale(0.8) translate(3,3)"/></svg>';
 
-              if (typeof anime !== 'undefined') {
-                anime({ targets: aiWrapper, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad' });
-              } else {
-                aiWrapper.style.opacity = "1";
-              }
+          const typingDiv = document.createElement("div");
+          typingDiv.className = "typing-indicator";
+          typingDiv.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
 
-              let i = 0;
-              const typeInterval = setInterval(() => {
-                textP.textContent = text.substring(0, i);
-                i++;
-                if (i > text.length) {
-                  clearInterval(typeInterval);
-                  chatThread.scrollTop = chatThread.scrollHeight;
-                  setTimeout(resolve, 800);
-                }
-                chatThread.scrollTop = chatThread.scrollHeight;
-              }, 40);
-            }, delay);
-          });
+          wrapper.appendChild(iconDiv);
+          wrapper.appendChild(typingDiv);
+          chatThread.appendChild(wrapper);
+          
+          chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
+          return wrapper;
+        }
+
+        async function addAiBubble(text, delay) {
+          await new Promise(r => setTimeout(r, delay / 2));
+          
+          const typingEl = await showTypingIndicator();
+          await new Promise(r => setTimeout(r, delay));
+          
+          typingEl.remove();
+
+          const aiWrapper = document.createElement("div");
+          aiWrapper.className = "chat-bubble-wrapper chat-bubble-ai-wrapper chat-bubble-enter";
+
+          const iconDiv = document.createElement("div");
+          iconDiv.style.flexShrink = "0";
+          iconDiv.style.width = "36px";
+          iconDiv.style.height = "36px";
+          iconDiv.style.background = "#CD7154";
+          iconDiv.style.borderRadius = "8px";
+          iconDiv.style.display = "flex";
+          iconDiv.style.alignItems = "center";
+          iconDiv.style.justifyContent = "center";
+          iconDiv.style.color = "white";
+          iconDiv.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 22c.2 0 .4-.1.5-.2l3.4-4.8c.3-.4.8-.6 1.3-.6h3.8c1.1 0 2-.9 2-2v-3.8c0-.5.2-1 .6-1.3l4.8-3.4c.3-.2.5-.5.5-.8s-.2-.6-.5-.8l-4.8-3.4c-.4-.3-.6-.8-.6-1.3V3.8c0-1.1-.9-2-2-2h-3.8c-.5 0-1-.2-1.3-.6L12.5.4c-.2-.3-.5-.4-.8-.4s-.6.1-.8.4L7.5 5.2c-.3.4-.8.6-1.3.6H2.4c-1.1 0-2 .9-2 2v3.8c0 .5-.2 1-.6 1.3L-5 16.3c-.3.2-.5.5-.5.8s.2.6.5.8l4.8 3.4c.4.3.6.8.6 1.3v3.8c0 1.1.9 2 2 2h3.8c.5 0 1 .2 1.3.6l3.4 4.8c.2.1.4.2.6.2z" fill="currentColor" transform="scale(0.8) translate(3,3)"/></svg>';
+
+          const contentDiv = document.createElement("div");
+          contentDiv.className = "chat-bubble-content chat-bubble-ai-content";
+          contentDiv.textContent = text;
+
+          aiWrapper.appendChild(iconDiv);
+          aiWrapper.appendChild(contentDiv);
+          chatThread.appendChild(aiWrapper);
+
+          chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
         }
 
         function addUserBubble(text, delay) {
           return new Promise(resolve => {
             setTimeout(() => {
               const userWrapper = document.createElement("div");
-              userWrapper.className = "chat-bubble-wrapper chat-bubble-user-wrapper";
-              userWrapper.style.opacity = "0";
+              userWrapper.className = "chat-bubble-wrapper chat-bubble-user-wrapper chat-bubble-enter";
 
               const iconDiv = document.createElement("div");
               iconDiv.style.flexShrink = "0";
@@ -240,13 +247,8 @@ document.addEventListener("DOMContentLoaded", () => {
               userWrapper.appendChild(contentDiv);
               chatThread.appendChild(userWrapper);
               
-              if (typeof anime !== 'undefined') {
-                anime({ targets: userWrapper, opacity: [0, 1], translateY: [10, 0], duration: 400, easing: 'easeOutQuad', complete: resolve });
-              } else {
-                userWrapper.style.opacity = "1";
-                resolve();
-              }
-              chatThread.scrollTop = chatThread.scrollHeight;
+              chatThread.scrollTo({ top: chatThread.scrollHeight, behavior: 'smooth' });
+              resolve();
             }, delay);
           });
         }
