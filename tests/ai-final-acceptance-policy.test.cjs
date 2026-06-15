@@ -367,6 +367,19 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   assert.match(repository, /sessionApiKeyRef: patch\.sessionApiKeyRef/);
 });
 
+test('AI session API key overrides use SecureStore scoped by space thread and provider', () => {
+  const secureSettings = read('src/ai/secureAiSettingsService.ts');
+  assert.match(secureSettings, /setThreadProviderApiKey/);
+  assert.match(secureSettings, /getThreadProviderApiKey/);
+  assert.match(secureSettings, /deleteThreadProviderApiKey/);
+  assert.match(secureSettings, /hasThreadProviderApiKey/);
+  assert.match(secureSettings, /space/);
+  assert.match(secureSettings, /threadId/);
+  assert.match(secureSettings, /providerId/);
+  assert.match(secureSettings, /SecureStore\.setItemAsync/);
+  assert.match(secureSettings, /SecureStore\.deleteItemAsync/);
+});
+
 test('AI citations open document readers and IP sources without treating all sources as documents', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
