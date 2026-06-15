@@ -253,11 +253,11 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
 
-        await addAiBubble("今天有什么想聊的，或是想整理哪些回忆？", 500);
-        await addUserBubble("你觉得上周存的那几组赛博朋克风的图怎么样？", 1500);
-        await addAiBubble("非常有氛围感！尤其是那几张霓虹灯下的街景，色彩对比很绝。需要我帮你把它们单独建个分组吗？", 2000);
-        await addUserBubble("好啊，顺便给它们打上“夜景”的标签。", 2500);
-        await addAiBubble("没问题，已经整理好啦！", 1500);
+        await addAiBubble("下午好！今天重温了哪些喜欢的角色或故事吗？", 500);
+        await addUserBubble("刚在看上周存的那几组赛博朋克风的场景设定图。", 1500);
+        await addAiBubble("那组图确实很有张力！特别是那几张霓虹灯雨夜的街景，光影对比非常抓人眼球。", 2000);
+        await addUserBubble("是啊，感觉那种冷暖色调的冲突特别有赛博时代的孤独感。", 2500);
+        await addAiBubble("完全同意。在巨大的机械都市下，个体的渺小感被无限放大，是很棒的美学参考呢。", 2000);
         
         // Wait before restarting loop
         await new Promise(r => setTimeout(r, 4000));
