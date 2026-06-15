@@ -23,8 +23,8 @@ test('website uses a single-page homepage while legacy pages redirect to stable 
   assert.match(index, /href="#workflow"/);
   assert.match(index, /href="#download"/);
   assert.match(index, /href="updates\.html"/);
-  assert.match(index, /site\.css\?v=13/);
-  assert.match(index, /site\.js\?v=12/);
+  assert.match(index, /site\.css\?v=15/);
+  assert.match(index, /site\.js\?v=13/);
 
   for (const [page, target] of Object.entries(redirects)) {
     const source = read(page);
@@ -38,18 +38,18 @@ test('website release-facing files reference the current 2.4.5 release', () => {
   assert.match(read('docs/update-version.json'), /"versionCode": 245/);
   assert.match(read('docs/updates.html'), /Version 2\.4\.5/);
   assert.match(read('docs/updates.html'), /AI 工作台更顺手/);
-  assert.match(read('docs/updates.html'), /双下载入口/);
+  assert.match(read('docs/updates.html'), /服务器主下载/);
   assert.match(read('docs/index.html'), /SQLite/);
   assert.match(read('README.md'), /当前版本 `2\.4\.5`/);
   assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.5/);
-  assert.match(read('README.md'), /https:\/\/gitee\.com\/Qinghe_zy\/pixory\/releases/);
-  assert.match(read('docs/index.html'), /https:\/\/gitee\.com\/Qinghe_zy\/pixory\/releases/);
+  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.5\.apk/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.5\.apk/);
   assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
-  assert.match(read('docs/index.html'), /GitHub 下载[\s\S]{0,140}国际网络友好/);
-  assert.match(read('docs/index.html'), /Gitee 下载[\s\S]{0,140}国内网络友好/);
+  assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
+  assert.match(read('docs/index.html'), /GitHub 备用[\s\S]{0,140}历史版本与镜像/);
   assert.match(read('docs/update-version.json'), /https:\/\/mist01\.com\/#download/);
-  assert.match(read('docs/updates.html'), /访问 Gitee Releases/);
+  assert.match(read('docs/updates.html'), /GitHub Release 保留备用和历史版本/);
   assert.doesNotMatch(read('docs/index.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
@@ -72,7 +72,7 @@ test('release workflow requires README and update website pages', () => {
   assert.match(agents, /continue only when the user explicitly accepts that Gitee Release creation will be deferred/);
   assert.match(agents, /app update popup defaults to the official website download section/);
   assert.match(agents, /docs\/update-version\.json` `downloadUrl` points to `https:\/\/mist01\.com\/#download`/);
-  assert.match(agents, /website download section exposes both GitHub and Gitee download choices/);
+  assert.match(agents, /website download section exposes the official server direct APK as the primary action and GitHub Release as the backup\/history action/);
 });
 
 test('public docs describe privacy screenshots consistently with current behavior', () => {
@@ -105,7 +105,7 @@ test('homepage adds eye-catching motion without ignoring reduced-motion users', 
 
   assert.match(index, /class="scroll-progress"/);
   assert.match(index, /class="hero-signal"/);
-  assert.match(index, /class="asset-sheen"/);
+  assert.match(index, /class="asset-sheen\b/);
   assert.match(css, /@keyframes\s+mockupScan/);
   assert.match(css, /@keyframes\s+assetPulse/);
   assert.match(css, /@keyframes\s+signalDrift/);
@@ -122,6 +122,6 @@ test('mobile homepage hero uses layered composition instead of plain stacking', 
   assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.hero-copy\s*\{[\s\S]*?grid-area:\s*copy;[\s\S]*?z-index:\s*2;/);
   assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.hero-visual\s*\{[\s\S]*?grid-area:\s*visual;[\s\S]*?margin-top:\s*calc\(var\(--space-lg\) \* -1\);/);
   assert.match(css, /@media\s*\(max-width:\s*480px\)\s*\{[\s\S]*?\.hero-visual\s*\{[\s\S]*?overflow:\s*hidden;/);
-  assert.match(css, /@media\s*\(max-width:\s*480px\)\s*\{[\s\S]*?\.hero-mockup\s*\{[\s\S]*?width:\s*calc\(100% \+ 40px\);[\s\S]*?transform:\s*translateX\(-20px\);/);
-  assert.match(css, /@media\s*\(max-width:\s*480px\)\s*\{[\s\S]*?\.mockup-interface\s*\{[\s\S]*?flex-direction:\s*row;/);
+  assert.match(css, /@media\s*\(max-width:\s*480px\)\s*\{[\s\S]*?\.hero-mockup\s*\{[\s\S]*?width:\s*100%;[\s\S]*?transform:\s*none;/);
+  assert.match(css, /@media\s*\(max-width:\s*768px\)\s*\{[\s\S]*?\.mockup-interface\s*\{[\s\S]*?gap:\s*var\(--space-sm\)\s*!important;/);
 });
