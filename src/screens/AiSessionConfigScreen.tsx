@@ -9,10 +9,12 @@ import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   applyRoleCardToThread,
   deleteAiThreads,
+  loadThreadAiUsageOverview,
   loadThreadSessionConfig,
   loadThreadSessionModelConfig,
   renameAiThread,
@@ -21,6 +23,7 @@ import {
 } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
+import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
@@ -60,6 +63,19 @@ const SYSTEM_PROMPT_FOCUS_SCROLL_DELAY_MS = 260;
 const SYSTEM_PROMPT_FOCUS_TOP_OFFSET = 96;
 // Long role instructions should scroll inside the field instead of stretching behind the Android keyboard.
 const SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT = 220;
+
+const EMPTY_THREAD_USAGE: AiUsageAggregate = {
+  cachedInputTokens: 0,
+  cachedTokenRatio: 0,
+  completionTokens: 0,
+  modelBreakdown: [],
+  nonCachedInputTokens: 0,
+  observedRequestCount: 0,
+  recentRounds: [],
+  requestCount: 0,
+  totalPromptTokens: 0,
+  totalTokens: 0,
+};
 
 interface MemoryMaintenanceStatus {
   lastMaintenanceCompletedAt: string | null;
@@ -105,6 +121,7 @@ export function AiSessionConfigScreen({
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
+  const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
@@ -129,6 +146,7 @@ export function AiSessionConfigScreen({
       setLastMaintenanceError(null);
       setMaintenanceStatus(null);
       setSessionModelConfig(null);
+      setThreadUsage(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
@@ -144,8 +162,14 @@ export function AiSessionConfigScreen({
     setReplyPreference(config.thread.replyPreference);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
     setLastMaintenanceError(config.lastMaintenanceError);
-    setMaintenanceStatus(await loadMemoryMaintenanceStatus(space, threadId));
-    setSessionModelConfig(await loadThreadSessionModelConfig(space, threadId));
+    const [nextMaintenanceStatus, nextSessionModelConfig, nextThreadUsage] = await Promise.all([
+      loadMemoryMaintenanceStatus(space, threadId),
+      loadThreadSessionModelConfig(space, threadId),
+      loadThreadAiUsageOverview(space, threadId),
+    ]);
+    setMaintenanceStatus(nextMaintenanceStatus);
+    setSessionModelConfig(nextSessionModelConfig);
+    setThreadUsage(nextThreadUsage);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
@@ -404,6 +428,11 @@ export function AiSessionConfigScreen({
               <Text style={styles.textActionLabel}>{savingModel ? '保存中' : '更换'}</Text>
             </Pressable>
           </View>
+        </AiLightCard>
+
+        <AiLightCard>
+          <Text style={styles.sectionTitle}>本会话用量</Text>
+          <AiUsageSummary recentTitle="最近" usage={threadUsage ?? EMPTY_THREAD_USAGE} />
         </AiLightCard>
 
         <AiLightCard>

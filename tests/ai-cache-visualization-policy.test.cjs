@@ -43,3 +43,11 @@ test('AI workbench provider settings shows total usage overview', () => {
   assert.match(screen, /AI 用量|用量/);
   assert.doesNotMatch(screen, /TTL|stablePrefix|miss reason|诊断/);
 });
+
+test('AI session settings shows current thread usage overview', () => {
+  const screen = read('src/screens/AiSessionConfigScreen.tsx');
+  assert.match(screen, /loadThreadAiUsageOverview/);
+  assert.match(screen, /AiUsageSummary/);
+  assert.match(screen, /本会话用量/);
+  assert.doesNotMatch(screen, /TTL|stablePrefix|miss reason|诊断/);
+});
