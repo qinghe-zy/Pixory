@@ -40,7 +40,13 @@ import {
   aggregateAiUsageObservations,
   type AiUsageAggregate,
 } from './aiUsageAnalytics';
-import { getProviderApiKey } from './secureAiSettingsService';
+import {
+  deleteThreadProviderApiKey,
+  getProviderApiKey,
+  getThreadProviderApiKey,
+  hasThreadProviderApiKey,
+  setThreadProviderApiKey,
+} from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
@@ -132,6 +138,8 @@ export interface AiThreadSessionModelConfig {
   options: AiSessionModelOption[];
   providerId: string | null;
   modelId: string | null;
+  sessionBaseUrl: string | null;
+  sessionHasApiKeyOverride: boolean;
 }
 
 export interface AiHomeThreadItem extends AiThreadHistoryItem {
@@ -161,7 +169,7 @@ export interface ApplyRoleCardToThreadInput {
 
 type ThreadModelSource = 'global_default' | 'provider_default' | 'thread_model';
 
-type ThreadModelConfig = Pick<AiThreadRecord, 'providerId' | 'modelId'>;
+type ThreadModelConfig = Pick<AiThreadRecord, 'id' | 'space' | 'providerId' | 'modelId' | 'sessionBaseUrl' | 'sessionApiKeyRef'>;
 
 type ResolvedThreadChatModel =
   | {
@@ -175,6 +183,17 @@ type ResolvedThreadChatModel =
   | { status: 'invalid_thread_model'; message: string; providerId?: string | null; modelId?: string | null };
 
 const stoppedMessageIds = new Set<string>();
+
+function emptyThreadModelConfig(space: PixorySpace): ThreadModelConfig {
+  return {
+    id: '',
+    modelId: null,
+    providerId: null,
+    sessionApiKeyRef: null,
+    sessionBaseUrl: null,
+    space,
+  };
+}
 
 const COMMON_TITLE_PREFIXES = [
   /^请(你)?帮我/,
@@ -775,9 +794,12 @@ async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelCon
           : invalidThreadModel(message, provider.id, modelId);
       }
       return {
-        apiKey: await getProviderApiKey(provider.id),
+        apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKey(provider.id),
         modelId: resolvedModel.modelId,
-        provider,
+        provider: {
+          ...provider,
+          baseUrl: thread.sessionBaseUrl ?? provider.baseUrl,
+        },
         source,
         status: 'ready',
       };
@@ -1019,7 +1041,7 @@ export async function loadThreadTitle(space: PixorySpace, threadId: string): Pro
 export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: string | null): Promise<string> {
   await ensureBuiltInProviders(space);
   const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
-  const resolved = await resolveThreadChatModel(space, thread ?? { providerId: null, modelId: null });
+  const resolved = await resolveThreadChatModel(space, thread ?? emptyThreadModelConfig(space));
   if (resolved.status !== 'ready') {
     return resolved.status === 'invalid_global_default' ? '全局默认模型已失效' : '当前会话模型已失效';
   }
@@ -1285,7 +1307,57 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
     modelId: thread.modelId,
     options,
     providerId: thread.providerId,
+    sessionBaseUrl: thread.sessionBaseUrl,
+    sessionHasApiKeyOverride: thread.providerId ? await hasThreadProviderApiKey(space, thread.id, thread.providerId) : false,
   };
+}
+
+export async function saveThreadSessionModelOverride(input: {
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  modelId: string | null;
+  providerId: string | null;
+  space: PixorySpace;
+  threadId: string;
+}): Promise<AiThreadRecord | null> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, input.threadId);
+    if (!thread || thread.space !== input.space) {
+      return null;
+    }
+    let sessionApiKeyRef = thread.sessionApiKeyRef;
+    if (thread.providerId && thread.providerId !== input.providerId) {
+      await deleteThreadProviderApiKey(input.space, input.threadId, thread.providerId);
+      sessionApiKeyRef = null;
+    }
+    if (input.providerId && input.apiKey !== undefined) {
+      sessionApiKeyRef = await setThreadProviderApiKey(input.space, input.threadId, input.providerId, input.apiKey ?? '');
+    }
+    return aiThreadRepository.updateThread(db, input.threadId, {
+      modelId: input.modelId,
+      providerId: input.providerId,
+      sessionApiKeyRef,
+      sessionBaseUrl: input.baseUrl?.trim() || null,
+    });
+  });
+}
+
+export async function clearThreadSessionModelOverride(space: PixorySpace, threadId: string): Promise<AiThreadRecord | null> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    if (!thread || thread.space !== space) {
+      return null;
+    }
+    if (thread.providerId) {
+      await deleteThreadProviderApiKey(space, threadId, thread.providerId);
+    }
+    return aiThreadRepository.updateThread(db, threadId, {
+      modelId: null,
+      providerId: null,
+      sessionApiKeyRef: null,
+      sessionBaseUrl: null,
+    });
+  });
 }
 
 export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionConfigInput): Promise<AiThreadRecord | null> {

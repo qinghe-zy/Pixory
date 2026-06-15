@@ -380,6 +380,17 @@ test('AI session API key overrides use SecureStore scoped by space thread and pr
   assert.match(secureSettings, /SecureStore\.deleteItemAsync/);
 });
 
+test('AI session model override resolution uses thread endpoint and key before provider defaults', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  assert.match(chat, /sessionBaseUrl/);
+  assert.match(chat, /sessionApiKeyRef/);
+  assert.match(chat, /getThreadProviderApiKey/);
+  assert.match(chat, /provider: \{\s*\.\.\.provider,\s*baseUrl: thread\.sessionBaseUrl \?\? provider\.baseUrl/s);
+  assert.match(chat, /apiKey: thread\.sessionApiKeyRef \? await getThreadProviderApiKey/);
+  assert.match(chat, /saveThreadSessionModelOverride/);
+  assert.match(chat, /clearThreadSessionModelOverride/);
+});
+
 test('AI citations open document readers and IP sources without treating all sources as documents', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
