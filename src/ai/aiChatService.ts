@@ -27,6 +27,7 @@ import {
   buildStableMemoryPrefix,
 } from './aiMemoryService';
 import { scheduleDeferredCompanionMemoryMaintenance } from './aiMemoryMaintenanceService';
+import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import {
   buildProviderCachePolicy,
@@ -305,6 +306,8 @@ const STREAMING_PERSIST_INTERVAL_MS = 120;
 const STREAMING_UI_PATCH_INTERVAL_MS = 80;
 const DEEP_MEMORY_LIMIT = 5;
 const RELATED_HISTORY_LIMIT = 4;
+const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
+const MODEL_TITLE_MAX_CHARS = 8;
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
   try {
@@ -440,6 +443,72 @@ export function generateAiThreadTitle(input: { contextTitle: string; firstUserMe
     return compact || '普通聊天';
   }
   return compact ? `${input.contextTitle} / ${compact}` : input.contextTitle;
+}
+
+function sanitizeModelThreadTitle(text: string): string {
+  const compact = normalizeTitleSource(text)
+    .replace(/^["'“”‘’《》【】]+|["'“”‘’《》【】]+$/g, '')
+    .replace(/^(标题|主题|会话标题)\s*[:：]?\s*/i, '')
+    .replace(/\s+/g, '');
+  return compact.slice(0, MODEL_TITLE_MAX_CHARS);
+}
+
+function buildModelThreadTitlePrompt(messages: AiMessageRecord[]): string {
+  const transcript = messages
+    .map((message) => `${message.role === 'assistant' ? 'AI' : '用户'}：${message.content.replace(/\s+/g, ' ').trim()}`)
+    .join('\n');
+  return [
+    '请根据下面这段聊天内容生成一个短标题。',
+    `要求：不超过 ${MODEL_TITLE_MAX_CHARS} 个汉字；不要标点；不要引号；请只输出标题，不要解释。`,
+    '',
+    transcript,
+  ].join('\n');
+}
+
+async function generateModelThreadTitle(input: {
+  completedMessages: AiMessageRecord[];
+  space: PixorySpace;
+  thread: AiThreadRecord;
+}): Promise<string | null> {
+  const resolvedMaintenance = await resolveMemoryMaintenanceModel(input.space, input.thread);
+  let provider = resolvedMaintenance.provider;
+  let modelId = resolvedMaintenance.modelId;
+  let apiKey = resolvedMaintenance.apiKey;
+  if (!provider || !modelId || !apiKey || resolvedMaintenance.status === 'local_fallback') {
+    const resolvedThreadModel = await resolveThreadChatModel(input.space, input.thread);
+    if (resolvedThreadModel.status !== 'ready' || !resolvedThreadModel.apiKey) {
+      return null;
+    }
+    provider = resolvedThreadModel.provider;
+    modelId = resolvedThreadModel.modelId;
+    apiKey = resolvedThreadModel.apiKey;
+  }
+
+  let text = '';
+  let streamError: string | null = null;
+  await getAdapterForProvider(provider).streamChat(
+    {
+      apiKey,
+      baseUrl: provider.baseUrl ?? '',
+      history: [],
+      modelId,
+      systemPrompt: '你是 Pixory 的聊天标题生成器，只输出简短中文标题。',
+      userPrompt: buildModelThreadTitlePrompt(input.completedMessages),
+    },
+    (event) => {
+      if (event.type === 'answer_delta') {
+        text += event.text;
+      }
+      if (event.type === 'error') {
+        streamError = event.message;
+      }
+    }
+  );
+  if (streamError) {
+    return null;
+  }
+  const title = sanitizeModelThreadTitle(text);
+  return title && !isLowSignalTitle(title) ? title : null;
 }
 
 function getDefaultThreadSystemPrompt(contextType: AiContextType): string {
@@ -1644,6 +1713,59 @@ async function finalizeThreadTitleAfterReply(input: {
   });
 }
 
+async function maybeGenerateModelThreadTitleAfterReply(input: {
+  branchScopes?: AiBranchScope[];
+  onUpdated?: () => void;
+  space: PixorySpace;
+  thread: AiThreadRecord;
+}): Promise<void> {
+  try {
+    const snapshot = await runWithDatabaseSpace(input.space, async (db) => {
+      const current = await aiThreadRepository.findThreadById(db, input.thread.id);
+      if (!current || current.space !== input.space || current.titleStatus !== 'generated') {
+        return null;
+      }
+      const completedCount = await aiThreadRepository.countCompletedNonSystemMessages(db, input.thread.id, input.branchScopes);
+      if (completedCount !== MODEL_TITLE_MIN_COMPLETED_MESSAGES) {
+        return { completedMessages: [], current };
+      }
+      const completedMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
+        db,
+        input.thread.id,
+        MODEL_TITLE_MIN_COMPLETED_MESSAGES,
+        input.branchScopes
+      );
+      return { completedMessages, current };
+    });
+    if (!snapshot || snapshot.completedMessages.length !== MODEL_TITLE_MIN_COMPLETED_MESSAGES) {
+      return;
+    }
+    const title = await generateModelThreadTitle({
+      completedMessages: snapshot.completedMessages,
+      space: input.space,
+      thread: snapshot.current,
+    });
+    if (!title) {
+      return;
+    }
+    const updated = await runWithDatabaseSpace(input.space, async (db) => {
+      const current = await aiThreadRepository.findThreadById(db, input.thread.id);
+      if (!current || current.space !== input.space || current.titleStatus !== 'generated') {
+        return null;
+      }
+      return aiThreadRepository.updateThread(db, input.thread.id, {
+        title,
+        titleStatus: 'generated',
+      });
+    });
+    if (updated) {
+      input.onUpdated?.();
+    }
+  } catch {
+    // Title generation is a non-critical polish pass; keep the completed reply intact.
+  }
+}
+
 async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -1961,6 +2083,12 @@ async function streamAssistantReply(input: {
       space: input.space,
       thread: input.thread,
       userMessage: input.userMessage,
+    });
+    void maybeGenerateModelThreadTitleAfterReply({
+      branchScopes,
+      onUpdated: input.onUpdated,
+      space: input.space,
+      thread: input.thread,
     });
     void scheduleDeferredCompanionMemoryMaintenance({
       assistantMessageId: input.assistantMessageId,

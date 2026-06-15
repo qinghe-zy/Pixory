@@ -2197,6 +2197,21 @@ export const aiThreadRepository = {
     return row?.count ?? 0;
   },
 
+  async countCompletedNonSystemMessages(db: SQLiteDatabase, threadId: string, branchScopes?: AiBranchScope[]): Promise<number> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM ai_messages
+       WHERE threadId = ?
+          AND status = 'completed'
+          AND role <> 'system'
+          ${visibleBranchClause.clause}`,
+      threadId,
+      ...visibleBranchClause.values
+    );
+    return row?.count ?? 0;
+  },
+
   async listCompletedNonSystemMessagesAfter(db: SQLiteDatabase, threadId: string, afterMessageId: string | null, limit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     if (limit <= 0) {
       return [];

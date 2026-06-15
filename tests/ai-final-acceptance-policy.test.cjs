@@ -334,6 +334,29 @@ test('AI chat title is finalized from the first exchange and refreshed in the ch
   assert.match(app, /onThreadTitleChange=\{\(title\) => updateCurrentAiChatRoute\(\{ contextTitle: title \}, currentRoute\.routeKey\)\}/);
 });
 
+test('AI chat title uses a cheap model after three rounds while keeping the first-round local fallback', () => {
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(chatService, /MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6/);
+  assert.match(chatService, /generateAiThreadTitle/);
+  assert.match(chatService, /maybeGenerateModelThreadTitleAfterReply/);
+  assert.match(chatService, /resolveMemoryMaintenanceModel/);
+  assert.match(chatService, /resolvedMaintenance\.provider[\s\S]*resolvedMaintenance\.modelId[\s\S]*resolvedMaintenance\.apiKey/);
+  assert.match(chatService, /resolveThreadChatModel\(input\.space, input\.thread\)/);
+  assert.match(chatService, /buildModelThreadTitlePrompt/);
+  assert.match(chatService, /请只输出标题，不要解释/);
+  assert.match(chatService, /`要求：不超过 \$\{MODEL_TITLE_MAX_CHARS\} 个汉字/);
+  assert.match(chatService, /sanitizeModelThreadTitle/);
+  assert.match(chatService, /MODEL_TITLE_MAX_CHARS = 8/);
+  assert.match(chatService, /\.slice\(0,\s*MODEL_TITLE_MAX_CHARS\)/);
+  assert.match(chatService, /countCompletedNonSystemMessages\(db, input\.thread\.id, input\.branchScopes\)/);
+  assert.match(chatService, /listRecentCompletedNonSystemMessages[\s\S]*input\.branchScopes/);
+  assert.match(chatService, /completedCount !== MODEL_TITLE_MIN_COMPLETED_MESSAGES/);
+  assert.match(chatService, /completedMessages\.length !== MODEL_TITLE_MIN_COMPLETED_MESSAGES/);
+  assert.match(chatService, /current\.titleStatus !== 'generated'/);
+  assert.doesNotMatch(chatService, /titleStatus:\s*'custom'[\s\S]{0,120}maybeGenerateModelThreadTitleAfterReply/);
+});
+
 test('AI chat can show role avatars while keeping no-avatar mode', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const roleRepository = read('src/database/repositories/aiRoleCardRepository.ts');
