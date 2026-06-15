@@ -349,6 +349,24 @@ test('AI chat can show role avatars while keeping no-avatar mode', () => {
   assert.match(storage, /getAiRoleAvatarsDir/);
 });
 
+test('AI thread session endpoint overrides are thread scoped and do not store key plaintext', () => {
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+  const types = read('src/ai/types.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(schema, /DATABASE_VERSION = 38/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V38/);
+  assert.match(schema, /sessionBaseUrl TEXT/);
+  assert.match(schema, /sessionApiKeyRef TEXT/);
+  assert.doesNotMatch(schema, /sessionApiKey TEXT/);
+  assert.match(db, /MIGRATION_STATEMENTS_V38/);
+  assert.match(types, /sessionBaseUrl: string \| null/);
+  assert.match(types, /sessionApiKeyRef: string \| null/);
+  assert.match(repository, /sessionBaseUrl: patch\.sessionBaseUrl/);
+  assert.match(repository, /sessionApiKeyRef: patch\.sessionApiKeyRef/);
+});
+
 test('AI citations open document readers and IP sources without treating all sources as documents', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');

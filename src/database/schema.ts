@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 37;
+export const DATABASE_VERSION = 38;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -399,6 +399,8 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   titleStatus TEXT NOT NULL DEFAULT 'fallback' CHECK (titleStatus IN ('fallback', 'generated', 'custom')),
   providerId TEXT,
   modelId TEXT,
+  sessionBaseUrl TEXT,
+  sessionApiKeyRef TEXT,
   modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
   roleCardId TEXT,
   roleSnapshotJson TEXT NOT NULL DEFAULT '{}',
@@ -885,6 +887,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_message_favorites_space_created_at
 
 CREATE INDEX IF NOT EXISTS idx_ai_message_favorites_thread
   ON ai_message_favorites(threadId, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V38 = `
+ALTER TABLE ai_threads ADD COLUMN sessionBaseUrl TEXT;
+ALTER TABLE ai_threads ADD COLUMN sessionApiKeyRef TEXT;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

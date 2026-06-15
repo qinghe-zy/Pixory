@@ -269,6 +269,8 @@ export interface CreateAiThreadInput {
   titleStatus?: 'fallback' | 'generated' | 'custom';
   providerId?: string | null;
   modelId?: string | null;
+  sessionBaseUrl?: string | null;
+  sessionApiKeyRef?: string | null;
   modelSnapshotJson?: string;
   roleCardId?: string | null;
   roleSnapshotJson?: string;
@@ -306,6 +308,8 @@ export type UpdateAiThreadPatch = Partial<
     | 'titleStatus'
     | 'providerId'
     | 'modelId'
+    | 'sessionBaseUrl'
+    | 'sessionApiKeyRef'
     | 'modelSnapshotJson'
     | 'roleCardId'
     | 'roleSnapshotJson'
@@ -454,6 +458,8 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     titleStatus: row.titleStatus,
     providerId: row.providerId ?? null,
     modelId: row.modelId ?? null,
+    sessionBaseUrl: row.sessionBaseUrl ?? null,
+    sessionApiKeyRef: row.sessionApiKeyRef ?? null,
     modelSnapshotJson: row.modelSnapshotJson,
     roleCardId: row.roleCardId ?? null,
     roleSnapshotJson: row.roleSnapshotJson,
@@ -979,6 +985,8 @@ export const aiThreadRepository = {
         titleStatus,
         providerId,
         modelId,
+        sessionBaseUrl,
+        sessionApiKeyRef,
         modelSnapshotJson,
         roleCardId,
         roleSnapshotJson,
@@ -992,7 +1000,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -1003,6 +1011,8 @@ export const aiThreadRepository = {
       input.titleStatus ?? 'fallback',
       input.providerId ?? null,
       input.modelId ?? null,
+      input.sessionBaseUrl ?? null,
+      input.sessionApiKeyRef ?? null,
       input.modelSnapshotJson ?? '{}',
       input.roleCardId ?? null,
       input.roleSnapshotJson ?? '{}',
@@ -1033,6 +1043,8 @@ export const aiThreadRepository = {
       titleStatus: patch.titleStatus,
       providerId: patch.providerId,
       modelId: patch.modelId,
+      sessionBaseUrl: patch.sessionBaseUrl,
+      sessionApiKeyRef: patch.sessionApiKeyRef,
       modelSnapshotJson: patch.modelSnapshotJson,
       roleCardId: patch.roleCardId,
       roleSnapshotJson: patch.roleSnapshotJson,

@@ -98,6 +98,8 @@ export interface AiThreadRecord {
   titleStatus: 'fallback' | 'generated' | 'custom';
   providerId: string | null;
   modelId: string | null;
+  sessionBaseUrl: string | null;
+  sessionApiKeyRef: string | null;
   modelSnapshotJson: string;
   roleCardId: string | null;
   roleSnapshotJson: string;
