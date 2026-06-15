@@ -110,6 +110,9 @@ test('AI branch route metadata and current route survive thread export import', 
   assert.match(importThreadBlock, /currentBranchVersionIndex/);
   assert.match(importThreadBlock, /snapshot\.thread\.currentBranchRootMessageId \?\? null/);
   assert.match(importThreadBlock, /snapshot\.thread\.currentBranchVersionIndex \?\? null/);
+  assert.match(importThreadBlock, /sessionBaseUrl/);
+  assert.match(importThreadBlock, /snapshot\.thread\.sessionBaseUrl \?\? null/);
+  assert.doesNotMatch(importThreadBlock, /sessionApiKeyRef/);
   assert.match(importThreadBlock, /for \(const route of snapshot\.branchRouteMetadata \?\? \[\]\)/);
   assert.match(importThreadBlock, /INSERT INTO ai_branch_route_metadata/);
   assert.match(importThreadBlock, /route\.branchRootMessageId/);

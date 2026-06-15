@@ -143,7 +143,7 @@ export function aggregateAiUsageObservations(input: {
     modelBreakdown: Array.from(breakdown.values()).sort((left, right) => right.totalTokens - left.totalTokens),
     nonCachedInputTokens: Math.max(totalPromptTokens - cachedInputTokens, 0),
     observedRequestCount: rounds.length,
-    recentRounds: rounds.slice(-recentLimit).reverse(),
+    recentRounds: rounds.slice(0, recentLimit),
     requestCount: input.observations.length,
     totalPromptTokens,
     totalTokens,
