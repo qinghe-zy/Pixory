@@ -2,22 +2,29 @@
 
 ## Project
 
-Pixory is an Android-first, local-only IP image asset manager.
+Pixory is now centered on an Android-first companion-style AI chat experience.
 
-It helps users organize image assets by IP, groups, tags, favorites, notes, and metadata while preserving the original image quality.
+The AI chat module is the product center of gravity: long-running companionship, role cards, memory, branchable conversations, local materials, IP/knowledge-base context, and a polished mobile chat workflow should guide product and engineering decisions.
 
-Pixory is not a cloud album, social app, AI image generator, image editor, or online sync product.
+The original IP asset manager remains important as a local material, metadata, and privacy foundation for the chat experience, but do not over-optimize new work around traditional gallery or archive management unless the user explicitly asks for it.
+
+Pixory is not a cloud album, social app, generic image editor, or AI image generator by default.
+
+Server-side AI infrastructure, AI gateways, prompt caching, semantic caching, provider routing, and observability may be introduced when explicitly requested for the AI chat roadmap. Do not treat the older "no server" asset-manager rule as blocking this new chat-first direction.
 
 ## Core Rules
 
 - Build for Android first.
-- The app must work fully offline.
-- Do not add server, cloud storage, account system, sync, social features, or AI generation unless explicitly requested.
-- Imported images must be copied into the app’s private local storage.
-- Never compress, crop, overwrite, re-encode, or replace original images.
-- Thumbnails are allowed only as separate preview files.
-- Store structured metadata in SQLite.
-- Store image files in the local file system.
+- Prioritize the companion AI chat module over classic local asset-management polish.
+- Keep the chat experience emotionally coherent, fast, recoverable, and trustworthy.
+- Treat conversation history, role cards, memory, branches, materials, and provider settings as first-class product data.
+- Store local chat data, memory, role cards, material metadata, and asset metadata in SQLite unless a requested server architecture explicitly changes that boundary.
+- API keys and sensitive settings must remain protected; on-device keys belong in SecureStore, and server-side keys must never be exposed to the mobile client.
+- Personal space data must stay strongly isolated from normal space data.
+- If adding server-side AI infrastructure, define privacy boundaries, cache scopes, retention, deletion behavior, and user-visible risk before implementation.
+- Imported images and videos that are kept as Pixory materials must still be copied into app/private or managed local storage.
+- Never compress, crop, overwrite, re-encode, or replace original imported assets unless the user explicitly requests a derived preview/export operation.
+- Thumbnails and previews are allowed only as separate preview files.
 - The UI must feel like a real polished mobile product, not an AI mockup.
 
 ## Recommended Stack
@@ -30,21 +37,94 @@ Use:
 - Expo Router
 - SQLite
 - Local file system storage
+- SecureStore for local provider secrets
 - Zustand or another lightweight state solution
 
-Do not introduce backend frameworks or cloud services.
+For the mobile app, keep using the existing Expo / React Native stack unless a stronger reason exists.
+
+For explicitly requested AI server work, prefer a small AI gateway architecture over broad backend rewrites. Add only the minimum server components needed for provider routing, prompt compilation, caching, observability, or secure key handling.
+
+## AI Chat Mode
+
+The default product mode is companion-style AI chat.
+
+Important AI chat capabilities include:
+
+- Multi-provider chat through user-configured or server-routed model providers.
+- Role cards, role prompts, first messages, avatars, and per-session role configuration.
+- Long-lived threads with local history, search, favorites, branch versions, and regeneration/edit routes.
+- Deep memory that is user-controllable, scoped, undoable, and resistant to prompt injection.
+- Thread, IP, and knowledge-base materials for RAG-style context.
+- Prompt assembly that separates stable instructions, memory snapshots, retrieved context, conversation history, and the current user request.
+- Streaming replies that remain recoverable if the app backgrounds, route changes, or generation is stopped.
+
+Do not assume chat is a secondary feature. When tradeoffs appear, protect chat continuity, memory correctness, provider reliability, and user trust first.
+
+## AI Cache Direction
+
+When optimizing AI chat cost or latency, think in layers:
+
+```txt
+Exact cache
+> Provider prompt caching / prefix caching
+> Embedding and RAG retrieval cache
+> Carefully scoped semantic cache
+> Self-hosted KV cache only when explicitly requested
+```
+
+Cache rules:
+
+- Normalize cache keys and include model, provider, prompt version, memory epoch, retrieval version, scope, and generation parameters when relevant.
+- Keep stable prompt content at the front and dynamic content near the end.
+- Do not put timestamps, request IDs, random values, or volatile retrieval results into reusable prompt prefixes.
+- Cache low-risk deterministic sub-tasks first: title generation, summary compression, memory extraction, profile maintenance, embeddings, retrieval results, and FAQ-like answers.
+- Do not default to semantic caching for private companion replies, role-play replies, or Personal space conversations.
+- Semantic cache entries must be scoped by space, thread, role card, IP, knowledge base, branch route, memory version, and document version as applicable.
+- Record cache observability when possible: exact hit, semantic hit, provider cached tokens, prompt tokens, completion tokens, latency, cost estimate, and miss reason.
+- If a server AI gateway is introduced, keep cache retention, user deletion, Personal space isolation, and provider-key handling explicit.
 
 ## Main Concepts
 
+### AI Thread
+
+The main interaction unit for companion chat.
+
+Each thread may have:
+
+- Space: normal or personal
+- Context type: normal, IP-bound, or knowledge-base-bound
+- Role card and role snapshot
+- Provider/model configuration
+- Branch route and message versions
+- Deep memory settings
+- Local materials and citations
+- Summary/profile/memory maintenance state
+
+### Role Card
+
+A reusable companion identity and behavior profile.
+
+Role cards may include prompt, first message, alternate greetings, avatar, tags, boundary mode, default language, and model preference.
+
+Role instructions are product-critical. Preserve them carefully during prompt assembly, session updates, imports, and cache optimization.
+
+### Memory
+
+Memory is scoped product data, not a loose text dump.
+
+Memory may be global, thread, role, IP, or knowledge-base scoped. Automatic global memory should remain conservative. User-controlled memory editing, undo, stale marking, and scope visibility are important.
+
+### Material / Knowledge
+
 ### IP
 
-The top-level archive unit.
+The top-level local material unit.
 
-An IP may represent a character, visual identity, theme, brand image, or creative series.
+An IP may represent a character, visual identity, theme, brand image, creative series, or chat context source.
 
 ### Group
 
-A lightweight way to organize images inside an IP.
+A lightweight way to organize assets inside an IP.
 
 Default group types:
 
@@ -64,7 +144,9 @@ Do not build complex tag categories, aliases, merge rules, or taxonomy systems b
 
 ### Image Asset
 
-Each imported image should keep:
+Each imported image or video material should keep enough metadata to support browsing, retrieval, backup, and chat citation.
+
+For images, keep:
 
 - Original file path
 - Thumbnail file path
@@ -105,7 +187,7 @@ Do not rely on temporary gallery URIs as permanent references.
 
 ## Image Import Rule
 
-Batch import is a core feature.
+Batch import remains important when it supports chat materials, IP context, role assets, and local knowledge organization.
 
 Correct import flow:
 
@@ -143,6 +225,15 @@ The UI should be:
 - Light and refined
 - Suitable for Android while keeping an iOS-like sense of polish
 
+For AI chat screens specifically, prioritize:
+
+- Calm, emotionally present conversation surfaces.
+- Fast readable streaming without jitter.
+- Clear model/provider/session state without visual noise.
+- Trustworthy memory controls and transparent citations.
+- Branch, regenerate, edit, favorite, and search flows that feel natural on mobile.
+- Empty states that invite starting or continuing a meaningful chat, not generic feature promotion.
+
 Avoid:
 
 - Obvious AI-generated style
@@ -176,6 +267,11 @@ Empty states must be treated as real product screens.
 
 Important empty states include:
 
+- No AI threads
+- No role cards
+- No chat search results
+- No memories
+- No materials
 - No IPs
 - No images
 - No groups
@@ -205,31 +301,36 @@ The app should:
 
 ## Backup Principle
 
-Because the app is local-only, backup/export must preserve complete data.
+Because Pixory stores important local chat and material data, backup/export must preserve complete data.
 
 A valid backup should include:
 
 - SQLite database
 - Original image folder
 - Thumbnail folder
+- AI documents/material files
+- Role avatars and local role assets
 - Manifest file
 
-Backups must include original images, not only thumbnails.
+Backups must include chat data, memory-related records, original assets, and material files, not only thumbnails or rendered previews.
 
 ## Development Priority
 
 When tradeoffs appear, follow this order:
 
 ```txt
-Local reliability
-> Original image safety
-> Data consistency
-> Simple UX
+Companion chat continuity and trust
+> Privacy and Personal space isolation
+> Memory, branch, and context correctness
+> Provider reliability and recoverable generation
+> Local data consistency
+> Original asset safety
+> Simple mobile UX
 > Clean UI
 > Future extensibility
 ```
 
-Do not sacrifice original image safety or local data consistency for faster UI completion.
+Do not sacrifice chat continuity, memory correctness, privacy isolation, or local data consistency for faster UI completion. Do not damage original asset safety while adding chat features.
 
 ## Release And Packaging Workflow
 
@@ -318,13 +419,13 @@ For remote announcements:
 
 Pixory should stay focused on:
 
-- IP-based organization
-- Local image management
-- Lossless original preservation
-- Batch import
-- Groups and tags
-- Image metadata
-- Favorites
-- Soft delete
-- Clean mobile UI
-- Offline-first reliability
+- Companion-style AI chat
+- Role cards and session identity
+- Long-running memory with user control
+- Branchable conversation history
+- Local materials, IP context, and knowledge-base context
+- Provider reliability and prompt/cache optimization
+- Personal space privacy isolation
+- Recoverable streaming generation
+- Clean polished Android-first mobile UI
+- Local asset safety as the material foundation
