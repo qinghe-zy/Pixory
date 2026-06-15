@@ -10,7 +10,7 @@ The design focuses on helping model providers reuse stable prompt prefixes and k
 
 This is a layered prompt-cache strategy: provider prompt caching, prompt layering, memory snapshot freezing, and cache observation. It is not an answer-cache project.
 
-The expected benefit depends on stable prefixes being long enough to meet provider thresholds. If `stable_app_policy`, `stable_role`, `stable_material_rules`, and `memory_snapshot` together do not reach the provider's minimum cacheable token count, provider prompt caching may not trigger even when the prefix is perfectly stable.
+The expected benefit depends on stable prefixes being long enough to meet provider thresholds. If `stable_app_policy`, `stable_role`, `stable_material_rules`, `stable_tool_definitions`, and `memory_snapshot` together do not reach the provider's minimum cacheable token count, provider prompt caching may not trigger even when the prefix is perfectly stable.
 
 ## Current Mode
 
@@ -90,6 +90,7 @@ Recommended logical layers:
 stable_app_policy
 stable_role
 stable_material_rules
+stable_tool_definitions
 memory_snapshot
 history_window
 dynamic_memory
@@ -104,6 +105,7 @@ system:
   stable_app_policy
   stable_role
   stable_material_rules
+  stable_tool_definitions
   memory_snapshot
 
 history:
@@ -118,9 +120,10 @@ user:
 Rules:
 
 - `stable_app_policy` must be deterministic and versioned.
-- `stable_app_policy`, `stable_role`, and `stable_material_rules` must not include per-request variables.
+- `stable_app_policy`, `stable_role`, `stable_material_rules`, and `stable_tool_definitions` must not include per-request variables.
 - `stable_role` should include role-card prompt and session role settings.
 - `stable_material_rules` should include fixed material/citation rules, not retrieved snippets.
+- `stable_tool_definitions` should include stable function/tool schemas when Pixory exposes tools to a provider. Tool definitions are normally more stable than memory snapshots and should not be placed in dynamic request sections.
 - `memory_snapshot` should be frozen by epoch.
 - `history_window` should stay outside the provider-cache target for this phase.
 - `dynamic_memory` and `retrieval_context` must stay near the end and must not pollute stable prefix hashes.
@@ -128,6 +131,15 @@ Rules:
 Provider prefix caching depends on byte-for-byte prefix stability. Any timestamp, current date, random ID, request ID, A/B bucket, locale-formatted value, or unstable serialization inside a `stable_*` layer can invalidate the whole reusable prefix.
 
 `memory_snapshot` intentionally sits at the end of the stable system prefix. When it changes, the prefix through the snapshot changes too. Snapshot refresh frequency therefore directly controls cache lifetime.
+
+`chatMode` is a stable cache dimension with initial values:
+
+- `companion`: normal companion chat.
+- `roleplay`: role-card-led companion or role-play chat.
+- `knowledge`: IP-bound or knowledge-base-bound material chat.
+- `personal`: Personal space chat.
+
+If a thread switches chat mode, the stable prefix is expected to miss. This should be treated as a normal cache-boundary change, not a bug.
 
 ## Memory Snapshot Epoch
 
@@ -224,7 +236,7 @@ Use `cache_control: { type: 'ephemeral' }` only on cacheable stable system block
 
 Recommended breakpoints:
 
-- One breakpoint after `stable_material_rules`.
+- One breakpoint after `stable_tool_definitions`, or after `stable_material_rules` when no stable tools are present.
 - One breakpoint after `memory_snapshot`.
 
 This lets the first stable layers remain useful even when the memory snapshot changes.
@@ -234,6 +246,7 @@ Constraints:
 - Anthropic supports a limited number of cache breakpoints, so Pixory should target at most the two stable breakpoints above in this phase.
 - Cache-control should not be attached when the stable text is below the provider/model threshold.
 - Default ephemeral TTL is short. Longer TTL variants should be treated as explicit provider-policy work, not assumed.
+- The second breakpoint after `memory_snapshot` should only be enabled when recent thread behavior suggests reuse within TTL. If average turn interval is likely beyond TTL, keep only the core stable breakpoint to avoid paying repeated cache-write costs for snapshots that will not be read.
 
 Record cache write and cache read tokens separately.
 
@@ -245,6 +258,18 @@ Use implicit-cache-friendly ordering in this phase:
 - Dynamic memory, retrieval, and current user request later in the request.
 
 Do not create explicit remote context caches in this phase. Explicit Gemini cache can be revisited if future usage patterns show long, repeated, high-token stable contexts and the lifecycle cost is justified.
+
+## Cache Kill Switches
+
+Provider cache behavior must be controllable without changing prompt correctness.
+
+Initial switches:
+
+- A local global switch to disable provider cache metadata for all providers.
+- A per-provider switch to disable `promptCacheKey`, `cache_control`, or future explicit cache behavior.
+- A safe fallback path that sends a normal provider request when cache metadata is disabled or unsupported.
+
+The switches should not disable prompt layering, memory snapshot freezing, or observation hashes. They only disable provider-specific cache hints or cache-control fields.
 
 ## Cache Observation
 
@@ -258,6 +283,8 @@ Suggested structure:
   "modelId": "gpt-example",
   "requestedAt": "2026-06-15T00:01:30.000Z",
   "promptVersion": 1,
+  "chatMode": "companion",
+  "stableCoreHash": "sha256...",
   "stablePrefixHash": "sha256...",
   "stablePrefixEstimatedTokens": 1800,
   "memoryEpoch": "thread:aithread_x:7",
@@ -272,6 +299,7 @@ Suggested structure:
     "requested": true,
     "observed": true,
     "strategy": "openai_prompt_cache_key",
+    "totalPromptTokens": 5000,
     "promptTokens": 5000,
     "completionTokens": 800,
     "cachedInputTokens": 1200,
@@ -289,15 +317,23 @@ Provider usage mapping:
 
 | Provider family | Native fields | Normalized fields |
 | --- | --- | --- |
-| OpenAI-compatible | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.prompt_tokens_details.cached_tokens` | `promptTokens`, `completionTokens`, `cachedInputTokens`, `cacheReadInputTokens` |
-| Anthropic | `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` | `promptTokens`, `completionTokens`, `cacheCreationInputTokens`, `cacheReadInputTokens`, `cachedInputTokens` |
-| Gemini | `promptTokenCount`, `candidatesTokenCount`, `cachedContentTokenCount` or equivalent usage metadata | `promptTokens`, `completionTokens`, `cachedInputTokens` |
+| OpenAI-compatible | `usage.prompt_tokens`, `usage.completion_tokens`, `usage.prompt_tokens_details.cached_tokens` | `totalPromptTokens = prompt_tokens`, `promptTokens = prompt_tokens`, `completionTokens`, `cachedInputTokens`, `cacheReadInputTokens` |
+| Anthropic | `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` | `totalPromptTokens = input_tokens + cache_creation_input_tokens + cache_read_input_tokens`, `promptTokens = input_tokens`, `completionTokens`, `cacheCreationInputTokens`, `cacheReadInputTokens`, `cachedInputTokens` |
+| Gemini | `promptTokenCount`, `candidatesTokenCount`, `cachedContentTokenCount` or equivalent usage metadata | `totalPromptTokens = promptTokenCount`, `promptTokens = promptTokenCount`, `completionTokens`, `cachedInputTokens` |
 
 If the provider returns no usage data, record `observed: false` and keep hashes and timing fields.
 
 Only hashes and numeric metrics should be recorded for cache observation. Do not store full stable prefix text in analytics-like observation fields.
 
-`cachedTokenRatio` should be calculated as `cachedInputTokens / promptTokens` when both values are available. `estimatedCostSaved` and `estimatedCostDelta` should be best-effort estimates and must be nullable because provider pricing changes.
+`cachedTokenRatio` should be calculated as `cachedInputTokens / totalPromptTokens` when both values are available. This avoids invalid ratios for Anthropic, where `input_tokens` excludes cache creation and cache read tokens.
+
+`estimatedCostSaved` means the gross estimated savings compared with sending the whole prompt without provider caching. `estimatedCostDelta` means the net estimated change after cache-write premiums or other cache-specific charges. Negative `estimatedCostDelta` means the cached request is estimated to be cheaper; positive means it is estimated to be more expensive. Both fields are best-effort estimates and must be nullable because provider pricing changes.
+
+`stableCoreHash` covers the stable prefix before `memory_snapshot`: `stable_app_policy`, `stable_role`, `stable_material_rules`, and `stable_tool_definitions`. `stablePrefixHash` covers the whole cacheable stable prefix including `memory_snapshot`. This lets observations distinguish core-prefix reuse from snapshot-level misses.
+
+`stablePrefixEstimatedTokens` is a local heuristic estimate. It may come from a local tokenizer or conservative character-based estimator. It is for miss explanation and cache-policy gating only, not for billing.
+
+Multimodal image/video inputs are out of scope for this prompt-cache phase. If a provider request includes image parts, the text prefix should still remain stable, but multimodal cache behavior must be handled separately.
 
 ## Long Chat Stability
 
@@ -310,6 +346,7 @@ Long chat behavior:
 - Dynamic memory retrieval supplies current-turn relevance without mutating the reusable prefix.
 - Context trimming should record whether it trimmed by count, token budget, or both.
 - Branch scopes must be part of snapshot and retrieval inputs when they affect visible context.
+- Switching branch routes can change visible history, retrieval, and memory scope. Cache misses after branch switching are expected unless the stable prefix hashes remain identical.
 
 The design should not force every old message into the prompt. Stable summaries and memory snapshots are preferred for long-running companion continuity.
 
@@ -354,6 +391,7 @@ Server-side semantic cache must receive a separate privacy and isolation review 
 - Provider usage fields may be unavailable or inconsistent across OpenAI-compatible APIs.
 - Over-structuring the prompt compiler too early could slow implementation.
 - Server-side semantic caching can reintroduce privacy and false-hit risks that this local phase intentionally avoids.
+- Cache metric ratios can be wrong if provider token fields are normalized without provider-specific total-token rules.
 
 ## Testing Strategy
 
@@ -361,14 +399,18 @@ Policy and unit tests should cover:
 
 - Prompt layers are ordered stable-to-dynamic.
 - Dynamic memory, RAG snippets, and current user messages do not appear in stable prefix blocks.
+- Tool/function definitions appear in `stable_tool_definitions` when present and do not include per-request variables.
+- Two runs with the same logical stable inputs produce the same `stableCoreHash` and `stablePrefixHash`.
 - Memory snapshot hash is stable under whitespace, Unicode, and key-order normalization.
 - Memory epoch does not bump when a refresh trigger produces the same normalized snapshot hash.
 - Repeated memory refresh triggers are coalesced.
 - Memory epoch is frozen for an in-flight request.
 - OpenAI-compatible cache key excludes per-turn variables.
+- Anthropic cache breakpoint count stays within the provider limit and this phase's two-breakpoint target.
 - Anthropic cache-control is gated by threshold and policy heuristics.
 - Provider usage is normalized into cache observation fields.
 - Cache observations include provider, model, timestamp, cached-token ratio, and cost estimate fields when available.
+- Provider cache kill switches disable cache hints while preserving normal chat requests.
 - Stable prefix purity lint catches timestamps, request IDs, and retrieval snippets.
 
 Manual verification should include:
@@ -384,7 +426,7 @@ Manual verification should include:
 1. Add prompt layer metadata and stable prefix hashing around the existing prompt builder.
 2. Add frozen memory snapshot epoch behavior.
 3. Add provider cache policy fields to provider adapters.
-4. Add provider-specific cache behavior for OpenAI-compatible, Anthropic, and Gemini.
-5. Add cache observation recording.
+4. Add cache observation recording and provider usage normalization before enabling cost-affecting cache-control.
+5. Add provider-specific cache behavior for OpenAI-compatible, Anthropic, and Gemini behind kill switches.
 6. Add focused policy tests and a small manual verification checklist.
 7. Review real observations before considering local exact cache, semantic cache, or server gateway work.
