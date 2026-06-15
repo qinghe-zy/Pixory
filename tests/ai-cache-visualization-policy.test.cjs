@@ -24,3 +24,14 @@ test('thread AI usage overview checks thread belongs to current space', () => {
   assert.match(service, /thread\.space !== space/);
   assert.match(service, /return emptyAiUsageAggregate/);
 });
+
+test('AI usage visualization uses compact token bars without diagnostic fields', () => {
+  const component = read('src/components/ai/AiUsageSummary.tsx');
+
+  assert.match(component, /AiUsageSummary/);
+  assert.match(component, /AiTokenStackBar/);
+  assert.match(component, /总量|Total/);
+  assert.match(component, /命中率|Hit Rate/);
+  assert.doesNotMatch(component, /TTL|miss|stablePrefix|stableCore|hash|diagnostic|诊断|解释/);
+  assert.doesNotMatch(component, /promptSnapshotJson|cacheObservation|rawUsage/);
+});
