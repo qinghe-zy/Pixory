@@ -68,6 +68,8 @@ Expected behavior:
 
 Pixory should record `previousRequestAt`, `turnIntervalMs`, and a best-effort `ttlLikelyExpired` flag where possible.
 
+The TTL used to derive `ttlLikelyExpired` must be provider-configurable. Do not hard-code a single global TTL because provider TTLs differ and can change.
+
 ### Cost Asymmetry
 
 Some providers charge differently for cache writes and cache reads. Anthropic-style caching can make short conversations more expensive if cache write cost is paid but the cache is not reused.
@@ -245,6 +247,7 @@ Constraints:
 
 - Anthropic supports a limited number of cache breakpoints, so Pixory should target at most the two stable breakpoints above in this phase.
 - Cache-control should not be attached when the stable text is below the provider/model threshold.
+- Apply threshold checks per breakpoint by cumulative token count. If the core stable segment is below threshold but core plus memory snapshot reaches threshold, only the snapshot breakpoint should be enabled.
 - Default ephemeral TTL is short. Longer TTL variants should be treated as explicit provider-policy work, not assumed.
 - The second breakpoint after `memory_snapshot` should only be enabled when recent thread behavior suggests reuse within TTL. If average turn interval is likely beyond TTL, keep only the core stable breakpoint to avoid paying repeated cache-write costs for snapshots that will not be read.
 
@@ -256,6 +259,8 @@ Use implicit-cache-friendly ordering in this phase:
 
 - Stable content first in `systemInstruction`.
 - Dynamic memory, retrieval, and current user request later in the request.
+
+Gemini implicit caching behavior must be validated through usage observations for the actual model version in use. Do not assume `systemInstruction` participates in implicit caching unless observed usage fields show it.
 
 Do not create explicit remote context caches in this phase. Explicit Gemini cache can be revisited if future usage patterns show long, repeated, high-token stable contexts and the lifecycle cost is justified.
 
@@ -283,6 +288,13 @@ Suggested structure:
   "modelId": "gpt-example",
   "requestedAt": "2026-06-15T00:01:30.000Z",
   "promptVersion": 1,
+  "promptLayerVersions": {
+    "appPolicy": 1,
+    "role": 1,
+    "materialRules": 1,
+    "toolDefinitions": 1,
+    "memorySnapshot": 7
+  },
   "chatMode": "companion",
   "stableCoreHash": "sha256...",
   "stablePrefixHash": "sha256...",
