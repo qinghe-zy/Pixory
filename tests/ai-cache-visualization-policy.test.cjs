@@ -35,3 +35,11 @@ test('AI usage visualization uses compact token bars without diagnostic fields',
   assert.doesNotMatch(component, /TTL|miss|stablePrefix|stableCore|hash|diagnostic|诊断|解释/);
   assert.doesNotMatch(component, /promptSnapshotJson|cacheObservation|rawUsage/);
 });
+
+test('AI workbench provider settings shows total usage overview', () => {
+  const screen = read('src/screens/AiProviderSettingsScreen.tsx');
+  assert.match(screen, /loadAiUsageOverview/);
+  assert.match(screen, /AiUsageSummary/);
+  assert.match(screen, /AI 用量|用量/);
+  assert.doesNotMatch(screen, /TTL|stablePrefix|miss reason|诊断/);
+});

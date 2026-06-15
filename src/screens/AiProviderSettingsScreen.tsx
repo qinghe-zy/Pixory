@@ -6,7 +6,9 @@ import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
+import { loadAiUsageOverview } from '../ai/aiChatService';
 import {
   getDefaultChatProviderId,
   getSavedProviderApiKey,
@@ -27,6 +29,7 @@ import {
   type ResolvedMemoryMaintenanceModel,
 } from '../ai/aiMemoryMaintenanceModelService';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
+import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiProviderModelRecord } from '../ai/types';
 import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import type { MemoryMaintenanceMode } from '../database/repositories/settingsRepository';
@@ -43,6 +46,19 @@ const MEMORY_MAINTENANCE_MODES: Array<{ value: MemoryMaintenanceMode; label: str
   { value: 'deepseek_flash', label: 'DeepSeek V4 Flash' },
   { value: 'custom', label: '自定义' },
 ];
+
+const EMPTY_USAGE_OVERVIEW: AiUsageAggregate = {
+  cachedInputTokens: 0,
+  cachedTokenRatio: 0,
+  completionTokens: 0,
+  modelBreakdown: [],
+  nonCachedInputTokens: 0,
+  observedRequestCount: 0,
+  recentRounds: [],
+  requestCount: 0,
+  totalPromptTokens: 0,
+  totalTokens: 0,
+};
 
 function isOtherProvider(card: ProviderCard): boolean {
   return card.provider.providerType === 'openai_compatible' || card.provider.providerType === 'custom';
@@ -108,6 +124,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [visibleKey, setVisibleKey] = useState(false);
   const [advancedVisible, setAdvancedVisible] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
+  const [usageOverview, setUsageOverview] = useState<AiUsageAggregate | null>(null);
 
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
@@ -135,8 +152,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const loadProviders = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextCards, defaultProviderId] = await Promise.all([listProviderCards(space), getDefaultChatProviderId(space)]);
+      const [nextCards, defaultProviderId, usage] = await Promise.all([
+        listProviderCards(space),
+        getDefaultChatProviderId(space),
+        loadAiUsageOverview(space, '30d'),
+      ]);
       setCards(nextCards);
+      setUsageOverview(usage);
       setSelectedProviderId((current) => {
         if (current && nextCards.some((card) => card.provider.id === current)) {
           return current;
@@ -394,6 +416,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       subtitle={spaceLabel}
       title="全局默认模型"
     >
+      <AiLightCard>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.sectionTitle}>AI 用量</Text>
+          <AiUsageSummary showRecent={false} usage={usageOverview ?? EMPTY_USAGE_OVERVIEW} />
+        </View>
+      </AiLightCard>
+
       <AiLightCard>
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>全局默认模型</Text>
