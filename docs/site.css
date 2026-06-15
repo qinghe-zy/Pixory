@@ -909,6 +909,15 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   .mockup-card-dark {
     padding: var(--space-lg) var(--space-sm);
   }
+  .mockup-card-light {
+    padding: var(--space-md);
+  }
+  .product-mockup {
+    height: 720px;
+  }
+  .mobile-hidden {
+    display: none !important;
+  }
   .product-interface {
     grid-template-columns: 1fr;
     min-height: auto;
