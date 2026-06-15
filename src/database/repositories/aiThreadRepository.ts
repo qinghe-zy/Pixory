@@ -271,6 +271,7 @@ export interface CreateAiThreadInput {
   modelId?: string | null;
   sessionBaseUrl?: string | null;
   sessionApiKeyRef?: string | null;
+  modelTitleGeneratedAt?: string | null;
   modelSnapshotJson?: string;
   roleCardId?: string | null;
   roleSnapshotJson?: string;
@@ -310,6 +311,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'modelId'
     | 'sessionBaseUrl'
     | 'sessionApiKeyRef'
+    | 'modelTitleGeneratedAt'
     | 'modelSnapshotJson'
     | 'roleCardId'
     | 'roleSnapshotJson'
@@ -456,6 +458,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     includeIpDocuments: sqliteToBoolean(row.includeIpDocuments),
     title: row.title,
     titleStatus: row.titleStatus,
+    modelTitleGeneratedAt: row.modelTitleGeneratedAt ?? null,
     providerId: row.providerId ?? null,
     modelId: row.modelId ?? null,
     sessionBaseUrl: row.sessionBaseUrl ?? null,
@@ -987,6 +990,7 @@ export const aiThreadRepository = {
         modelId,
         sessionBaseUrl,
         sessionApiKeyRef,
+        modelTitleGeneratedAt,
         modelSnapshotJson,
         roleCardId,
         roleSnapshotJson,
@@ -1000,7 +1004,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -1013,6 +1017,7 @@ export const aiThreadRepository = {
       input.modelId ?? null,
       input.sessionBaseUrl ?? null,
       input.sessionApiKeyRef ?? null,
+      input.modelTitleGeneratedAt ?? null,
       input.modelSnapshotJson ?? '{}',
       input.roleCardId ?? null,
       input.roleSnapshotJson ?? '{}',
@@ -1045,6 +1050,7 @@ export const aiThreadRepository = {
       modelId: patch.modelId,
       sessionBaseUrl: patch.sessionBaseUrl,
       sessionApiKeyRef: patch.sessionApiKeyRef,
+      modelTitleGeneratedAt: patch.modelTitleGeneratedAt,
       modelSnapshotJson: patch.modelSnapshotJson,
       roleCardId: patch.roleCardId,
       roleSnapshotJson: patch.roleSnapshotJson,

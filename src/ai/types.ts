@@ -96,6 +96,7 @@ export interface AiThreadRecord {
   includeIpDocuments: boolean;
   title: string;
   titleStatus: 'fallback' | 'generated' | 'custom';
+  modelTitleGeneratedAt: string | null;
   providerId: string | null;
   modelId: string | null;
   sessionBaseUrl: string | null;

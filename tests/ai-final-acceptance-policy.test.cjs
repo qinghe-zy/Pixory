@@ -338,11 +338,17 @@ test('AI chat title uses a cheap model after three rounds while keeping the firs
   const chatService = read('src/ai/aiChatService.ts');
 
   assert.match(chatService, /MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6/);
+  assert.match(chatService, /modelTitleGeneratedAt/);
   assert.match(chatService, /generateAiThreadTitle/);
   assert.match(chatService, /maybeGenerateModelThreadTitleAfterReply/);
   assert.match(chatService, /resolveMemoryMaintenanceModel/);
   assert.match(chatService, /resolvedMaintenance\.provider[\s\S]*resolvedMaintenance\.modelId[\s\S]*resolvedMaintenance\.apiKey/);
+  assert.match(chatService, /shouldUseResolvedMaintenanceTitleModel/);
+  assert.match(chatService, /resolvedMaintenance\.mode === 'custom' \|\| resolvedMaintenance\.mode === 'deepseek_flash'/);
+  assert.match(chatService, /resolvedMaintenance\.mode === 'auto'[\s\S]*providerId === 'deepseek'[\s\S]*modelId === 'deepseek-v4-flash'/);
+  assert.match(chatService, /const useMaintenanceTitleModel = shouldUseResolvedMaintenanceTitleModel\(resolvedMaintenance\)/);
   assert.match(chatService, /resolveThreadChatModel\(input\.space, input\.thread\)/);
+  assert.match(chatService, /ThreadModelConfig = Pick<AiThreadRecord,[\s\S]*sessionBaseUrl[\s\S]*sessionApiKeyRef/);
   assert.match(chatService, /buildModelThreadTitlePrompt/);
   assert.match(chatService, /请只输出标题，不要解释/);
   assert.match(chatService, /`要求：不超过 \$\{MODEL_TITLE_MAX_CHARS\} 个汉字/);
@@ -351,10 +357,13 @@ test('AI chat title uses a cheap model after three rounds while keeping the firs
   assert.match(chatService, /\.slice\(0,\s*MODEL_TITLE_MAX_CHARS\)/);
   assert.match(chatService, /countCompletedNonSystemMessages\(db, input\.thread\.id, input\.branchScopes\)/);
   assert.match(chatService, /listRecentCompletedNonSystemMessages[\s\S]*input\.branchScopes/);
-  assert.match(chatService, /completedCount !== MODEL_TITLE_MIN_COMPLETED_MESSAGES/);
+  assert.match(chatService, /completedCount < MODEL_TITLE_MIN_COMPLETED_MESSAGES/);
   assert.match(chatService, /completedMessages\.length !== MODEL_TITLE_MIN_COMPLETED_MESSAGES/);
   assert.match(chatService, /current\.titleStatus !== 'generated'/);
+  assert.match(chatService, /modelTitleGeneratedAt: new Date\(\)\.toISOString\(\)/);
   assert.doesNotMatch(chatService, /titleStatus:\s*'custom'[\s\S]{0,120}maybeGenerateModelThreadTitleAfterReply/);
+  assert.doesNotMatch(chatService, /void maybeGenerateModelThreadTitleAfterReply/);
+  assert.match(chatService, /await maybeGenerateModelThreadTitleAfterReply/);
 });
 
 test('AI chat can show role avatars while keeping no-avatar mode', () => {
@@ -378,7 +387,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 38/);
+  assert.match(schema, /DATABASE_VERSION = 39/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);

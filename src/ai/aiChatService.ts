@@ -465,15 +465,25 @@ function buildModelThreadTitlePrompt(messages: AiMessageRecord[]): string {
   ].join('\n');
 }
 
+function shouldUseResolvedMaintenanceTitleModel(resolvedMaintenance: Awaited<ReturnType<typeof resolveMemoryMaintenanceModel>>): boolean {
+  if (resolvedMaintenance.mode === 'custom' || resolvedMaintenance.mode === 'deepseek_flash') {
+    return true;
+  }
+  return resolvedMaintenance.mode === 'auto'
+    && resolvedMaintenance.providerId === 'deepseek'
+    && resolvedMaintenance.modelId === 'deepseek-v4-flash';
+}
+
 async function generateModelThreadTitle(input: {
   completedMessages: AiMessageRecord[];
   space: PixorySpace;
   thread: AiThreadRecord;
 }): Promise<string | null> {
   const resolvedMaintenance = await resolveMemoryMaintenanceModel(input.space, input.thread);
-  let provider = resolvedMaintenance.provider;
-  let modelId = resolvedMaintenance.modelId;
-  let apiKey = resolvedMaintenance.apiKey;
+  const useMaintenanceTitleModel = shouldUseResolvedMaintenanceTitleModel(resolvedMaintenance);
+  let provider = useMaintenanceTitleModel ? resolvedMaintenance.provider : null;
+  let modelId = useMaintenanceTitleModel ? resolvedMaintenance.modelId : null;
+  let apiKey = useMaintenanceTitleModel ? resolvedMaintenance.apiKey : null;
   if (!provider || !modelId || !apiKey || resolvedMaintenance.status === 'local_fallback') {
     const resolvedThreadModel = await resolveThreadChatModel(input.space, input.thread);
     if (resolvedThreadModel.status !== 'ready' || !resolvedThreadModel.apiKey) {
@@ -1725,8 +1735,11 @@ async function maybeGenerateModelThreadTitleAfterReply(input: {
       if (!current || current.space !== input.space || current.titleStatus !== 'generated') {
         return null;
       }
+      if (current.modelTitleGeneratedAt) {
+        return null;
+      }
       const completedCount = await aiThreadRepository.countCompletedNonSystemMessages(db, input.thread.id, input.branchScopes);
-      if (completedCount !== MODEL_TITLE_MIN_COMPLETED_MESSAGES) {
+      if (completedCount < MODEL_TITLE_MIN_COMPLETED_MESSAGES) {
         return { completedMessages: [], current };
       }
       const completedMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
@@ -1753,7 +1766,11 @@ async function maybeGenerateModelThreadTitleAfterReply(input: {
       if (!current || current.space !== input.space || current.titleStatus !== 'generated') {
         return null;
       }
+      if (current.modelTitleGeneratedAt) {
+        return null;
+      }
       return aiThreadRepository.updateThread(db, input.thread.id, {
+        modelTitleGeneratedAt: new Date().toISOString(),
         title,
         titleStatus: 'generated',
       });
@@ -2084,7 +2101,7 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    void maybeGenerateModelThreadTitleAfterReply({
+    await maybeGenerateModelThreadTitleAfterReply({
       branchScopes,
       onUpdated: input.onUpdated,
       space: input.space,
