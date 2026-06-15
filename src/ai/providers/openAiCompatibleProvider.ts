@@ -124,8 +124,10 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
           { role: 'user', content: input.userPrompt },
         ],
       };
-      if (input.providerCachePolicy?.openAiPromptCacheKey) {
+      if (input.providerCachePolicy?.openAiIncludeUsage) {
         body.stream_options = { include_usage: true };
+      }
+      if (input.providerCachePolicy?.openAiPromptCacheKey) {
         body.prompt_cache_key = input.providerCachePolicy.openAiPromptCacheKey;
       }
       const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {

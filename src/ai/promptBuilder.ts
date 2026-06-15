@@ -161,8 +161,8 @@ export function buildMaterialBoundPrompt(input: {
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
-    block('dynamic_memory', input.dynamicMemoryContext, false),
     block('retrieval_context', retrievalContext, false),
+    block('dynamic_memory', input.dynamicMemoryContext, false),
     block('current_user_message', ['用户问题：', input.userMessage].join('\n'), false),
   ];
   const promptLayers = [...stableBlocks, ...dynamicBlocks];

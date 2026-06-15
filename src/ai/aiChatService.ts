@@ -509,6 +509,48 @@ function buildProviderCacheObservation(input: {
   };
 }
 
+function openAiUsageObservationEnabled(provider: AiProviderRecord): boolean {
+  if (provider.providerType !== 'openai' || provider.protocol !== 'openai_compatible') {
+    return false;
+  }
+  try {
+    return new URL(provider.baseUrl ?? '').hostname.toLowerCase() === 'api.openai.com';
+  } catch {
+    return false;
+  }
+}
+
+function buildPromptSnapshotJson(input: {
+  cacheObservationBase: ReturnType<typeof buildCacheObservationBase>;
+  contextTrimmed: boolean;
+  contextTrimmedByBudget: boolean;
+  contextTrimmedByCount: boolean;
+  failureReason?: string | null;
+  materialRules: string | null;
+  normalizedUsage: NormalizedProviderUsage | null;
+  providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
+  stopReason?: string | null;
+  system: string;
+}): string {
+  const cacheObservation = {
+    ...input.cacheObservationBase,
+    providerCache: buildProviderCacheObservation({
+      normalizedUsage: input.normalizedUsage,
+      providerCachePolicy: input.providerCachePolicy,
+    }),
+    failureReason: input.failureReason ?? null,
+    stopReason: input.stopReason ?? null,
+  };
+  return JSON.stringify({
+    cacheObservation,
+    contextTrimmed: input.contextTrimmed,
+    contextTrimmedByBudget: input.contextTrimmedByBudget,
+    contextTrimmedByCount: input.contextTrimmedByCount,
+    materialRules: input.materialRules,
+    system: input.system,
+  });
+}
+
 function mergeProviderUsage(previous: unknown, next: unknown): unknown {
   if (!previous || typeof previous !== 'object' || !next || typeof next !== 'object') {
     return next ?? previous;
@@ -1375,7 +1417,8 @@ async function markAssistantFailed(
   assistantMessageId: string,
   message: string,
   partialContent = '',
-  partialReasoningText: string | null = null
+  partialReasoningText: string | null = null,
+  promptSnapshotJson?: string
 ): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.updateMessage(db, assistantMessageId, {
@@ -1383,6 +1426,7 @@ async function markAssistantFailed(
       content: partialContent,
       reasoningText: partialReasoningText,
       errorMessage: message,
+      ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
       completedAt: new Date().toISOString(),
     })
   );
@@ -1392,7 +1436,8 @@ async function markAssistantStopped(
   space: PixorySpace,
   assistantMessageId: string,
   partialContent?: string,
-  partialReasoningText?: string | null
+  partialReasoningText?: string | null,
+  promptSnapshotJson?: string
 ): Promise<string> {
   const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(space, (db) =>
@@ -1400,6 +1445,7 @@ async function markAssistantStopped(
       status: 'stopped',
       content: partialContent,
       reasoningText: partialReasoningText,
+      ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
       completedAt,
     })
   );
@@ -1491,7 +1537,7 @@ async function streamAssistantReply(input: {
   let answerText = '';
   let reasoningText = '';
   let assistantReset = false;
-  const stopForAbort = async (): Promise<boolean> => {
+  const stopForAbort = async (options?: { promptSnapshotJson?: string }): Promise<boolean> => {
     if (!input.signal?.aborted) {
       return false;
     }
@@ -1499,7 +1545,8 @@ async function streamAssistantReply(input: {
       input.space,
       input.assistantMessageId,
       assistantReset ? answerText : undefined,
-      assistantReset ? reasoningText || null : undefined
+      assistantReset ? reasoningText || null : undefined,
+      options?.promptSnapshotJson
     );
     input.onMessagePatch?.({
       id: input.assistantMessageId,
@@ -1605,7 +1652,10 @@ async function streamAssistantReply(input: {
     metadata: prompt.cacheMetadata,
     modelId,
     previousRequestAt,
-    provider,
+    provider: {
+      ...provider,
+      openAiUsageObservationEnabled: openAiUsageObservationEnabled(provider),
+    },
     requestedAt,
     settings: promptCacheSettings,
     stableSystemBlocks: prompt.stableSystemBlocks,
@@ -1620,10 +1670,22 @@ async function streamAssistantReply(input: {
     prompt,
     providerId: provider.id,
     requestedAt,
-    ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt }),
+    ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt, settings: promptCacheSettings }),
     turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
   });
   let providerUsageRaw: unknown = null;
+  const createPromptSnapshotJson = (input?: { failureReason?: string | null; stopReason?: string | null }) => buildPromptSnapshotJson({
+    cacheObservationBase,
+    contextTrimmed,
+    contextTrimmedByBudget,
+    contextTrimmedByCount,
+    failureReason: input?.failureReason ?? null,
+    materialRules: prompt.materialRules ?? null,
+    normalizedUsage: providerUsageRaw ? normalizeProviderUsage(provider.protocol, providerUsageRaw) : null,
+    providerCachePolicy,
+    stopReason: input?.stopReason ?? null,
+    system: prompt.system,
+  });
 
   let streamFailed = false;
   let lastPersistAt = 0;
@@ -1695,19 +1757,19 @@ async function streamAssistantReply(input: {
         if (event.type === 'error') {
           streamFailed = true;
           const readableError = normalizeAiErrorMessage(event.message);
-          await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+          await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: readableError }));
           input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
     );
   } catch (error) {
-    if (await stopForAbort()) {
+    if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
       return;
     }
     streamFailed = true;
     const readableError = normalizeAiErrorMessage(error);
-    await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null);
+    await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: readableError }));
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
     input.onUpdated?.();
   }
@@ -1716,19 +1778,19 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  if (await stopForAbort()) {
+  if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
     return;
   }
 
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 
-  if (await stopForAbort()) {
+  if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
     return;
   }
 
   if (stoppedMessageIds.has(input.assistantMessageId)) {
-    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, answerText, reasoningText || null);
+    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'user_stopped' }));
     input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
     return;
@@ -1736,24 +1798,7 @@ async function streamAssistantReply(input: {
 
   let finalCitations: AiCitationRecord[] = [];
   const completedAt = new Date().toISOString();
-  const normalizedUsage = providerUsageRaw
-    ? normalizeProviderUsage(provider.protocol, providerUsageRaw)
-    : null;
-  const cacheObservation = {
-    ...cacheObservationBase,
-    providerCache: buildProviderCacheObservation({
-      normalizedUsage,
-      providerCachePolicy,
-    }),
-  };
-  const promptSnapshotJson = JSON.stringify({
-    cacheObservation,
-    contextTrimmed,
-    contextTrimmedByBudget,
-    contextTrimmedByCount,
-    materialRules: prompt.materialRules ?? null,
-    system: prompt.system,
-  });
+  const promptSnapshotJson = createPromptSnapshotJson();
   await runWithDatabaseSpace(input.space, async (db) => {
     const current = await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
       status: answerText ? 'completed' : 'failed',

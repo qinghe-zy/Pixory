@@ -16,7 +16,7 @@ test('AI final failure paths keep local records recoverable', () => {
   assert.match(chat, /fallbackAiThreadTitle/);
   assert.match(chat, /partialContent = ''/);
   assert.match(chat, /content: partialContent/);
-  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, readableError, answerText, reasoningText \|\| null\)/);
+  assert.match(chat, /markAssistantFailed\(input\.space, input\.assistantMessageId, readableError, answerText, reasoningText \|\| null, createPromptSnapshotJson\(\{ failureReason: readableError \}\)\)/);
 });
 
 test('AI failed assistant bubbles provide readable errors and inline retry', () => {

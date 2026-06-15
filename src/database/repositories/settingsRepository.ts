@@ -12,6 +12,7 @@ const LAST_APPLIED_UPDATE_NOTICE_ID_KEY = 'lastAppliedUpdateNoticeId';
 export const AI_DEFAULT_CHAT_PROVIDER_ID_KEY = 'aiDefaultChatProviderId';
 export const AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY = 'aiProviderPromptCacheEnabled';
 export const AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY = 'aiProviderPromptCacheDisabledProviderIds';
+export const AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY = 'aiProviderPromptCacheTtlMs';
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
 export const MEMORY_MAINTENANCE_MODEL_ID_KEY = 'memoryMaintenanceModelId';
@@ -46,7 +47,10 @@ export interface MemoryMaintenanceSettingsRecord {
 export interface AiPromptCacheSettingsRecord {
   enabled: boolean;
   disabledProviderIds: string[];
+  providerTtlMs?: Record<string, number>;
 }
+
+const SUPPORTED_PROMPT_CACHE_PROVIDER_PROTOCOLS = ['openai_compatible', 'anthropic', 'gemini'] as const;
 
 const VALID_SORT_ORDERS: ImageSortOrder[] = [
   'createdAtDesc',
@@ -75,9 +79,39 @@ function parseStringArray(value: string | null): string[] {
   }
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .map((item) => item.trim())
+      : [];
   } catch {
     return [];
+  }
+}
+
+function sanitizeProviderTtlMs(value: Record<string, number>): Record<string, number> | undefined {
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, number] =>
+      SUPPORTED_PROMPT_CACHE_PROVIDER_PROTOCOLS.includes(entry[0] as typeof SUPPORTED_PROMPT_CACHE_PROVIDER_PROTOCOLS[number])
+      && typeof entry[1] === 'number'
+      && Number.isFinite(entry[1])
+      && entry[1] > 0
+    );
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseNumberRecord(value: string | null): Record<string, number> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return undefined;
+    }
+    return sanitizeProviderTtlMs(parsed as Record<string, number>);
+  } catch {
+    return undefined;
   }
 }
 
@@ -237,9 +271,11 @@ export const settingsRepository = {
   async getAiPromptCacheSettings(db: SQLiteDatabase): Promise<AiPromptCacheSettingsRecord> {
     const enabled = await this.getValue(db, AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY);
     const disabledProviderIds = await this.getValue(db, AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY);
+    const providerTtlMs = await this.getValue(db, AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY);
     return {
       enabled: enabled !== 'false',
       disabledProviderIds: parseStringArray(disabledProviderIds),
+      providerTtlMs: parseNumberRecord(providerTtlMs),
     };
   },
 
@@ -248,7 +284,11 @@ export const settingsRepository = {
       await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY, patch.enabled ? 'true' : 'false');
     }
     if (patch.disabledProviderIds !== undefined) {
-      await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY, JSON.stringify([...new Set(patch.disabledProviderIds)]));
+      const disabledProviderIds = [...new Set(patch.disabledProviderIds.map((item) => item.trim()).filter(Boolean))];
+      await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY, JSON.stringify(disabledProviderIds));
+    }
+    if (patch.providerTtlMs !== undefined) {
+      await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_TTL_MS_KEY, JSON.stringify(sanitizeProviderTtlMs(patch.providerTtlMs) ?? {}));
     }
     return this.getAiPromptCacheSettings(db);
   },

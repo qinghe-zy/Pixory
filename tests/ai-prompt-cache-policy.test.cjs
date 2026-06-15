@@ -90,12 +90,33 @@ test('chat service passes cache metadata, freezes observation per request, and p
   assert.match(chat, /totalPromptTokens/);
   assert.match(chat, /cachedTokenRatio/);
   assert.match(chat, /providerCachePolicy/);
-  assert.match(chat, /const promptSnapshotJson = JSON\.stringify\(\{[\s\S]*cacheObservation/);
+  assert.match(chat, /function buildPromptSnapshotJson[\s\S]*JSON\.stringify\(\{[\s\S]*cacheObservation/);
+  assert.match(chat, /const promptSnapshotJson = createPromptSnapshotJson\(\)/);
 
   assert.match(settings, /AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY/);
   assert.match(settings, /AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY/);
   assert.match(settings, /getAiPromptCacheSettings/);
   assert.match(settings, /updateAiPromptCacheSettings/);
+});
+
+test('cache observation is persisted for completed, failed, and stopped assistant messages', () => {
+  const chat = read('src/ai/aiChatService.ts');
+
+  assert.match(chat, /buildPromptSnapshotJson/);
+  assert.match(chat, /failureReason/);
+  assert.match(chat, /stopReason/);
+  assert.match(chat, /markAssistantFailed\([^)]*promptSnapshotJson/s);
+  assert.match(chat, /markAssistantStopped\([^)]*promptSnapshotJson/s);
+  assert.match(chat, /stopForAbort\(\s*\{ promptSnapshotJson: createPromptSnapshotJson\(\{ stopReason: 'aborted' \}\)/);
+  assert.match(chat, /promptSnapshotJson,\s*$/m);
+});
+
+test('material-bound prompt keeps retrieved material context before dynamic memory', () => {
+  const promptBuilder = read('src/ai/promptBuilder.ts');
+  const materialBody = /export function buildMaterialBoundPrompt[\s\S]*?\r?\n}\r?\n/.exec(promptBuilder)?.[0] ?? '';
+  const dynamicRegion = /const dynamicBlocks = \[[\s\S]*?\];/.exec(materialBody)?.[0] ?? '';
+
+  assert.match(dynamicRegion, /block\('retrieval_context'[\s\S]*block\('dynamic_memory'/);
 });
 
 test('provider adapters keep cache metadata optional and provider-specific', () => {
@@ -111,12 +132,15 @@ test('provider adapters keep cache metadata optional and provider-specific', () 
   assert.match(openai, /prompt_cache_key/);
   assert.match(openai, /stream_options/);
   assert.match(openai, /include_usage: true/);
+  assert.match(openai, /openAiIncludeUsage/);
+  assert.match(openai, /input\.providerCachePolicy\?\.openAiIncludeUsage/);
   assert.match(openai, /input\.providerCachePolicy\?\.openAiPromptCacheKey/);
   assert.doesNotMatch(openai, /stream_options: \{ include_usage: true \},[\s\S]*messages/);
 
   assert.match(claude, /cache_control/);
   assert.match(claude, /ephemeral/);
   assert.match(claude, /input\.providerCachePolicy\?\.anthropicSystemBlocks/);
+  assert.match(claude, /flushClaudeBuffer/);
   const breakpointMatches = claude.match(/cache_control/g) ?? [];
   assert.ok(breakpointMatches.length <= 4, 'Anthropic adapter should stay below the provider breakpoint limit');
 
@@ -133,4 +157,16 @@ test('provider usage field mappings stay observable across adapters and normaliz
   assert.match(usage, /cache_creation_input_tokens/);
   assert.match(usage, /cache_read_input_tokens/);
   assert.match(usage, /cachedContentTokenCount/);
+});
+
+test('prompt cache settings filter configurable TTLs to supported provider protocols', () => {
+  const settings = read('src/database/repositories/settingsRepository.ts');
+  const promptCache = read('src/ai/aiPromptCache.ts');
+
+  assert.match(settings, /SUPPORTED_PROMPT_CACHE_PROVIDER_PROTOCOLS/);
+  assert.match(settings, /SUPPORTED_PROMPT_CACHE_PROVIDER_PROTOCOLS\.includes/);
+  assert.match(settings, /sanitizeProviderTtlMs/);
+  assert.match(promptCache, /openAiUsageObservationEnabled/);
+  assert.match(promptCache, /provider\.openAiUsageObservationEnabled/);
+  assert.match(promptCache, /if \(!input\.provider\.openAiUsageObservationEnabled\) \{\s*return \{ requested: false, strategy: 'none', ttlMs \};\s*\}/);
 });

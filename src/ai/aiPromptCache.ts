@@ -47,11 +47,13 @@ export interface AiPromptCacheMetadata {
 export interface AiPromptCacheSettings {
   enabled: boolean;
   disabledProviderIds: string[];
+  providerTtlMs?: Partial<Record<AiProviderProtocol, number>>;
 }
 
 export interface AiProviderCachePolicy {
   requested: boolean;
   strategy: 'none' | 'openai_prompt_cache_key' | 'anthropic_ephemeral' | 'gemini_implicit';
+  openAiIncludeUsage?: boolean;
   openAiPromptCacheKey?: string;
   anthropicSystemBlocks?: Array<{ text: string; cacheControl?: boolean }>;
   ttlMs: number;
@@ -59,7 +61,7 @@ export interface AiProviderCachePolicy {
 
 export interface AiProviderCacheDecisionInput {
   modelId: string;
-  provider: AiProviderRecord;
+  provider: AiProviderRecord & { openAiUsageObservationEnabled?: boolean };
   settings: AiPromptCacheSettings;
   metadata: AiPromptCacheMetadata;
   stableSystemBlocks: Array<{ name: AiPromptLayerName; text: string }>;
@@ -152,14 +154,21 @@ export function deriveAiChatMode(thread: Pick<AiThreadRecord, 'contextType' | 'r
   return 'companion';
 }
 
-export function providerTtlMs(provider: Pick<AiProviderRecord, 'protocol'>): number {
-  return PROVIDER_TTL_MS[provider.protocol];
+export function providerTtlMs(
+  provider: Pick<AiProviderRecord, 'protocol'>,
+  settings?: Pick<AiPromptCacheSettings, 'providerTtlMs'>
+): number {
+  const override = settings?.providerTtlMs?.[provider.protocol];
+  return typeof override === 'number' && Number.isFinite(override) && override > 0
+    ? override
+    : PROVIDER_TTL_MS[provider.protocol];
 }
 
 export function ttlLikelyExpired(input: {
   provider: Pick<AiProviderRecord, 'protocol'>;
   previousRequestAt?: string | null;
   requestedAt: string;
+  settings?: Pick<AiPromptCacheSettings, 'providerTtlMs'>;
 }): boolean {
   if (!input.previousRequestAt) {
     return false;
@@ -169,7 +178,7 @@ export function ttlLikelyExpired(input: {
   if (!Number.isFinite(previous) || !Number.isFinite(requested)) {
     return false;
   }
-  return requested - previous > providerTtlMs(input.provider);
+  return requested - previous > providerTtlMs(input.provider, input.settings);
 }
 
 export function anthropicBreakpointThresholds(modelId: string): { core: number; prefix: number } {
@@ -216,14 +225,17 @@ export function buildPromptCacheMetadata(input: {
 }
 
 export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): AiProviderCachePolicy {
-  const ttlMs = providerTtlMs(input.provider);
+  const ttlMs = providerTtlMs(input.provider, input.settings);
   if (!input.settings.enabled || input.settings.disabledProviderIds.includes(input.provider.id)) {
     return { requested: false, strategy: 'none', ttlMs };
   }
 
   if (input.provider.protocol === 'openai_compatible') {
-    if (input.provider.providerType !== 'openai' || input.metadata.stablePrefixEstimatedTokens < OPENAI_CACHE_THRESHOLD_TOKENS) {
+    if (!input.provider.openAiUsageObservationEnabled) {
       return { requested: false, strategy: 'none', ttlMs };
+    }
+    if (input.provider.providerType !== 'openai' || input.metadata.stablePrefixEstimatedTokens < OPENAI_CACHE_THRESHOLD_TOKENS) {
+      return { openAiIncludeUsage: true, requested: false, strategy: 'none', ttlMs };
     }
     const openAiPromptCacheKey = [
       'pixory',
@@ -233,7 +245,13 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
       input.metadata.stablePrefixHash,
       input.metadata.memoryEpoch,
     ].join(':');
-    return { openAiPromptCacheKey, requested: true, strategy: 'openai_prompt_cache_key', ttlMs };
+    return {
+      openAiIncludeUsage: input.provider.openAiUsageObservationEnabled,
+      openAiPromptCacheKey,
+      requested: true,
+      strategy: 'openai_prompt_cache_key',
+      ttlMs,
+    };
   }
 
   if (input.provider.protocol === 'anthropic') {

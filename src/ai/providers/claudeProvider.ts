@@ -66,6 +66,15 @@ function buildClaudeSystem(input: AiChatRequest): string | Array<{ type: 'text';
     }));
 }
 
+async function flushClaudeBuffer(buffer: string, onEvent: AiStreamEventHandler): Promise<void> {
+  if (!buffer.trim()) {
+    return;
+  }
+  for (const event of parseClaudeStreamLine(buffer)) {
+    await onEvent(event);
+  }
+}
+
 async function readClaudeStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
@@ -104,6 +113,7 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
       }
     }
   }
+  await flushClaudeBuffer(buffer, onEvent);
 }
 
 export const claudeProvider: AiProviderAdapter = {
