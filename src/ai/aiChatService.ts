@@ -28,6 +28,14 @@ import {
 } from './aiMemoryService';
 import { scheduleDeferredCompanionMemoryMaintenance } from './aiMemoryMaintenanceService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
+import {
+  buildProviderCachePolicy,
+  deriveAiChatMode,
+  hashPromptCacheText,
+  ttlLikelyExpired,
+  type AiPromptCacheSettings,
+} from './aiPromptCache';
+import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
 import { getProviderApiKey } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import type { AiStreamEvent } from './providers/base';
@@ -438,6 +446,76 @@ function materialRulesForMode(boundaryMode: AiBoundaryMode): string {
   return boundaryMode === 'strict_material' ? STRICT_MATERIAL_RULES : MATERIAL_SESSION_RULES;
 }
 
+async function resolvePromptCacheSettings(space: PixorySpace): Promise<AiPromptCacheSettings> {
+  return runWithDatabaseSpace(space, (db) => settingsRepository.getAiPromptCacheSettings(db));
+}
+
+function buildCacheObservationBase(input: {
+  contextTrimmed: boolean;
+  contextTrimmedByBudget: boolean;
+  contextTrimmedByCount: boolean;
+  historyMessageCount: number;
+  modelId: string;
+  previousRequestAt: string | null;
+  prompt: Awaited<ReturnType<typeof buildPromptForThread>>['prompt'];
+  providerId: string;
+  requestedAt: string;
+  ttlLikelyExpired: boolean;
+  turnIntervalMs: number | null;
+}) {
+  return {
+    provider: input.providerId,
+    modelId: input.modelId,
+    requestedAt: input.requestedAt,
+    promptVersion: input.prompt.cacheMetadata.promptVersion,
+    promptLayerVersions: input.prompt.cacheMetadata.promptLayerVersions,
+    chatMode: input.prompt.cacheMetadata.chatMode,
+    stableCoreHash: input.prompt.cacheMetadata.stableCoreHash,
+    stablePrefixHash: input.prompt.cacheMetadata.stablePrefixHash,
+    stablePrefixEstimatedTokens: input.prompt.cacheMetadata.stablePrefixEstimatedTokens,
+    memoryEpoch: input.prompt.cacheMetadata.memoryEpoch,
+    memorySnapshotHash: input.prompt.cacheMetadata.memorySnapshotHash,
+    retrievalHash: input.prompt.cacheMetadata.retrievalHash,
+    historyMessageCount: input.historyMessageCount,
+    contextTrimmed: input.contextTrimmed,
+    contextTrimmedByBudget: input.contextTrimmedByBudget,
+    contextTrimmedByCount: input.contextTrimmedByCount,
+    previousRequestAt: input.previousRequestAt,
+    turnIntervalMs: input.turnIntervalMs,
+    ttlLikelyExpired: input.ttlLikelyExpired,
+    purityWarnings: input.prompt.cacheMetadata.purityWarnings,
+  };
+}
+
+function buildProviderCacheObservation(input: {
+  normalizedUsage: NormalizedProviderUsage | null;
+  providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
+}) {
+  const usage = input.normalizedUsage;
+  return {
+    requested: input.providerCachePolicy.requested,
+    observed: Boolean(usage),
+    strategy: input.providerCachePolicy.strategy,
+    totalPromptTokens: usage?.totalPromptTokens ?? null,
+    promptTokens: usage?.promptTokens ?? null,
+    completionTokens: usage?.completionTokens ?? null,
+    cachedInputTokens: usage?.cachedInputTokens ?? null,
+    cachedTokenRatio: usage?.cachedTokenRatio ?? null,
+    cacheCreationInputTokens: usage?.cacheCreationInputTokens ?? null,
+    cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
+    estimatedCostSaved: null,
+    estimatedCostDelta: null,
+    missReason: usage?.cachedInputTokens === 0 ? 'provider_reported_no_cached_tokens' : null,
+  };
+}
+
+function mergeProviderUsage(previous: unknown, next: unknown): unknown {
+  if (!previous || typeof previous !== 'object' || !next || typeof next !== 'object') {
+    return next ?? previous;
+  }
+  return { ...(previous as Record<string, unknown>), ...(next as Record<string, unknown>) };
+}
+
 function truncateForPrompt(value: string, maxLength: number): string {
   const trimmed = value.replace(/\s+/g, ' ').trim();
   return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`;
@@ -718,6 +796,7 @@ async function resolveStreamingBranchScopes(
 }
 
 async function buildPromptForThread(thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]) {
+  const chatMode = deriveAiChatMode(thread, thread.space);
   const memoryPrefixPromise = runWithDatabaseSpace(thread.space, async (db) => {
     const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
     return {
@@ -741,11 +820,20 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
     threadMaterialRetrievalPromise,
   ]);
   const threadMaterialSnippets = threadMaterialRetrieval.snippets;
+  const memoryEpoch = [
+    'thread',
+    thread.id,
+    thread.roleCardId ?? 'none',
+    thread.boundaryMode,
+    hashPromptCacheText([companionMemoryPrefix, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
+  ].join(':');
 
   if (thread.contextType === 'normal') {
     return {
       prompt: buildNormalChatPrompt({
+        chatMode,
         dynamicMemoryContext,
+        memoryEpoch,
         roleInstructionWeight: thread.roleInstructionWeight,
         replyPreference: thread.replyPreference,
         companionMemoryPrefix,
@@ -777,8 +865,10 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
 
   return {
     prompt: buildMaterialBoundPrompt({
+      chatMode,
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
       dynamicMemoryContext,
+      memoryEpoch,
       roleInstructionWeight: thread.roleInstructionWeight,
       replyPreference: thread.replyPreference,
       companionMemoryPrefix,
@@ -1507,6 +1597,33 @@ async function streamAssistantReply(input: {
   const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
   const { contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id);
   const contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget;
+  const requestedAt = startedAt;
+  const previousRequestAt = historyMessages.at(-1)?.completedAt ?? null;
+  const turnIntervalMs = previousRequestAt ? Date.parse(requestedAt) - Date.parse(previousRequestAt) : null;
+  const promptCacheSettings = await resolvePromptCacheSettings(input.space);
+  const providerCachePolicy = buildProviderCachePolicy({
+    metadata: prompt.cacheMetadata,
+    modelId,
+    previousRequestAt,
+    provider,
+    requestedAt,
+    settings: promptCacheSettings,
+    stableSystemBlocks: prompt.stableSystemBlocks,
+  });
+  const cacheObservationBase = buildCacheObservationBase({
+    contextTrimmed,
+    contextTrimmedByBudget,
+    contextTrimmedByCount,
+    historyMessageCount: history.length,
+    modelId,
+    previousRequestAt,
+    prompt,
+    providerId: provider.id,
+    requestedAt,
+    ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt }),
+    turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
+  });
+  let providerUsageRaw: unknown = null;
 
   let streamFailed = false;
   let lastPersistAt = 0;
@@ -1554,10 +1671,15 @@ async function streamAssistantReply(input: {
         systemPrompt: prompt.system,
         userPrompt: prompt.user,
         history,
+        providerCachePolicy,
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
         if (input.signal?.aborted || stoppedMessageIds.has(input.assistantMessageId)) {
+          return;
+        }
+        if (event.type === 'provider_usage') {
+          providerUsageRaw = mergeProviderUsage(providerUsageRaw, event.rawUsage);
           return;
         }
         if (event.type === 'answer_delta') {
@@ -1614,6 +1736,24 @@ async function streamAssistantReply(input: {
 
   let finalCitations: AiCitationRecord[] = [];
   const completedAt = new Date().toISOString();
+  const normalizedUsage = providerUsageRaw
+    ? normalizeProviderUsage(provider.protocol, providerUsageRaw)
+    : null;
+  const cacheObservation = {
+    ...cacheObservationBase,
+    providerCache: buildProviderCacheObservation({
+      normalizedUsage,
+      providerCachePolicy,
+    }),
+  };
+  const promptSnapshotJson = JSON.stringify({
+    cacheObservation,
+    contextTrimmed,
+    contextTrimmedByBudget,
+    contextTrimmedByCount,
+    materialRules: prompt.materialRules ?? null,
+    system: prompt.system,
+  });
   await runWithDatabaseSpace(input.space, async (db) => {
     const current = await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
       status: answerText ? 'completed' : 'failed',
@@ -1623,7 +1763,7 @@ async function streamAssistantReply(input: {
       providerId: provider.id,
       modelId,
       modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-      promptSnapshotJson: JSON.stringify({ contextTrimmed, contextTrimmedByBudget, contextTrimmedByCount, system: prompt.system, materialRules: prompt.materialRules ?? null }),
+      promptSnapshotJson,
       completedAt,
     });
     if (current?.status === 'completed' && snippets.length > 0) {
@@ -1647,7 +1787,7 @@ async function streamAssistantReply(input: {
     providerId: provider.id,
     modelId,
     modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-    promptSnapshotJson: JSON.stringify({ contextTrimmed, contextTrimmedByBudget, contextTrimmedByCount, system: prompt.system, materialRules: prompt.materialRules ?? null }),
+    promptSnapshotJson,
     completedAt,
     citations: finalCitations,
   });

@@ -63,6 +63,7 @@ test('prompt builder returns stable-to-dynamic prompt layers and keeps dynamic c
   assert.match(promptBuilder, /stable_material_rules/);
   assert.match(promptBuilder, /stable_tool_definitions/);
   assert.match(promptBuilder, /memory_snapshot/);
+  assert.match(promptBuilder, /history_window/);
   assert.match(promptBuilder, /dynamic_memory/);
   assert.match(promptBuilder, /retrieval_context/);
   assert.match(promptBuilder, /current_user_message/);
@@ -84,11 +85,12 @@ test('chat service passes cache metadata, freezes observation per request, and p
   assert.match(chat, /buildProviderCachePolicy/);
   assert.match(chat, /cacheObservationBase/);
   assert.match(chat, /providerUsageRaw/);
+  assert.match(chat, /mergeProviderUsage/);
   assert.match(chat, /normalizeProviderUsage/);
   assert.match(chat, /totalPromptTokens/);
   assert.match(chat, /cachedTokenRatio/);
   assert.match(chat, /providerCachePolicy/);
-  assert.match(chat, /promptSnapshotJson: JSON\.stringify\(\{[\s\S]*cacheObservation/);
+  assert.match(chat, /const promptSnapshotJson = JSON\.stringify\(\{[\s\S]*cacheObservation/);
 
   assert.match(settings, /AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY/);
   assert.match(settings, /AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY/);
@@ -109,9 +111,8 @@ test('provider adapters keep cache metadata optional and provider-specific', () 
   assert.match(openai, /prompt_cache_key/);
   assert.match(openai, /stream_options/);
   assert.match(openai, /include_usage: true/);
-  assert.match(openai, /prompt_tokens_details/);
-  assert.match(openai, /cached_tokens/);
   assert.match(openai, /input\.providerCachePolicy\?\.openAiPromptCacheKey/);
+  assert.doesNotMatch(openai, /stream_options: \{ include_usage: true \},[\s\S]*messages/);
 
   assert.match(claude, /cache_control/);
   assert.match(claude, /ephemeral/);
@@ -120,7 +121,16 @@ test('provider adapters keep cache metadata optional and provider-specific', () 
   assert.ok(breakpointMatches.length <= 4, 'Anthropic adapter should stay below the provider breakpoint limit');
 
   assert.match(gemini, /usageMetadata/);
-  assert.match(gemini, /cachedContentTokenCount/);
   assert.match(gemini, /systemInstruction/);
   assert.doesNotMatch(gemini, /cachedContents\/create/);
+});
+
+test('provider usage field mappings stay observable across adapters and normalizer', () => {
+  const usage = read('src/ai/aiProviderUsage.ts');
+
+  assert.match(usage, /prompt_tokens_details/);
+  assert.match(usage, /cached_tokens/);
+  assert.match(usage, /cache_creation_input_tokens/);
+  assert.match(usage, /cache_read_input_tokens/);
+  assert.match(usage, /cachedContentTokenCount/);
 });

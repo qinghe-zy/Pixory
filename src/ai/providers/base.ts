@@ -1,6 +1,9 @@
+import type { AiProviderCachePolicy } from '../aiPromptCache';
+
 export type AiStreamEvent =
   | { type: 'answer_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
+  | { type: 'provider_usage'; rawUsage: unknown }
   | { type: 'completed'; finishReason?: string }
   | { type: 'error'; message: string };
 
@@ -13,6 +16,7 @@ export interface AiChatRequest {
   systemPrompt: string;
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  providerCachePolicy?: AiProviderCachePolicy;
   signal?: AbortSignal;
 }
 

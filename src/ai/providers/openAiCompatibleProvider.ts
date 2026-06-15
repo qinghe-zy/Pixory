@@ -29,6 +29,9 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   }
   try {
     const parsed = JSON.parse(payload);
+    if (parsed.usage) {
+      return [{ type: 'provider_usage', rawUsage: parsed.usage }];
+    }
     const delta = parsed.choices?.[0]?.delta ?? {};
     const events: AiStreamEvent[] = [];
     const reasoningText = delta.reasoning_content ?? delta.reasoning ?? delta.reasoningText;
@@ -112,6 +115,19 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
 
   async streamChat(input: AiChatRequest, onEvent) {
     try {
+      const body: Record<string, unknown> = {
+        model: input.modelId,
+        stream: true,
+        messages: [
+          { role: 'system', content: input.systemPrompt },
+          ...input.history,
+          { role: 'user', content: input.userPrompt },
+        ],
+      };
+      if (input.providerCachePolicy?.openAiPromptCacheKey) {
+        body.stream_options = { include_usage: true };
+        body.prompt_cache_key = input.providerCachePolicy.openAiPromptCacheKey;
+      }
       const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -120,15 +136,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
           'Content-Type': 'application/json',
         },
         signal: input.signal,
-        body: JSON.stringify({
-          model: input.modelId,
-          stream: true,
-          messages: [
-            { role: 'system', content: input.systemPrompt },
-            ...input.history,
-            { role: 'user', content: input.userPrompt },
-          ],
-        }),
+        body: JSON.stringify(body),
       });
       await assertOkResponse(response, 'AI chat request failed');
       await readStreamingResponse(response, onEvent, input.signal);

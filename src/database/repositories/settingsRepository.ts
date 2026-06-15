@@ -10,6 +10,8 @@ const SKIPPED_UPDATE_VERSION_KEY = 'skippedUpdateVersionKey';
 const DISMISSED_ANNOUNCEMENT_ID_KEY = 'dismissedAnnouncementId';
 const LAST_APPLIED_UPDATE_NOTICE_ID_KEY = 'lastAppliedUpdateNoticeId';
 export const AI_DEFAULT_CHAT_PROVIDER_ID_KEY = 'aiDefaultChatProviderId';
+export const AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY = 'aiProviderPromptCacheEnabled';
+export const AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY = 'aiProviderPromptCacheDisabledProviderIds';
 export const MEMORY_MAINTENANCE_MODE_KEY = 'memoryMaintenanceMode';
 export const MEMORY_MAINTENANCE_PROVIDER_ID_KEY = 'memoryMaintenanceProviderId';
 export const MEMORY_MAINTENANCE_MODEL_ID_KEY = 'memoryMaintenanceModelId';
@@ -41,6 +43,11 @@ export interface MemoryMaintenanceSettingsRecord {
   memoryMaintenanceTestedProviderId: string | null;
 }
 
+export interface AiPromptCacheSettingsRecord {
+  enabled: boolean;
+  disabledProviderIds: string[];
+}
+
 const VALID_SORT_ORDERS: ImageSortOrder[] = [
   'createdAtDesc',
   'createdAtAsc',
@@ -60,6 +67,18 @@ function isImageSortOrder(value: string | null): value is ImageSortOrder {
 
 function isMemoryMaintenanceMode(value: string | null): value is MemoryMaintenanceMode {
   return value === 'auto' || value === 'follow_chat' || value === 'deepseek_flash' || value === 'custom';
+}
+
+function parseStringArray(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : [];
+  } catch {
+    return [];
+  }
 }
 
 export const settingsRepository = {
@@ -213,6 +232,25 @@ export const settingsRepository = {
       await this.setValue(db, MEMORY_MAINTENANCE_TESTED_BASE_URL_HASH_KEY, patch.memoryMaintenanceTestedBaseUrlHash);
     }
     return this.getMemoryMaintenanceSettings(db);
+  },
+
+  async getAiPromptCacheSettings(db: SQLiteDatabase): Promise<AiPromptCacheSettingsRecord> {
+    const enabled = await this.getValue(db, AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY);
+    const disabledProviderIds = await this.getValue(db, AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY);
+    return {
+      enabled: enabled !== 'false',
+      disabledProviderIds: parseStringArray(disabledProviderIds),
+    };
+  },
+
+  async updateAiPromptCacheSettings(db: SQLiteDatabase, patch: Partial<AiPromptCacheSettingsRecord>): Promise<AiPromptCacheSettingsRecord> {
+    if (patch.enabled !== undefined) {
+      await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_ENABLED_KEY, patch.enabled ? 'true' : 'false');
+    }
+    if (patch.disabledProviderIds !== undefined) {
+      await this.setValue(db, AI_PROVIDER_PROMPT_CACHE_DISABLED_PROVIDER_IDS_KEY, JSON.stringify([...new Set(patch.disabledProviderIds)]));
+    }
+    return this.getAiPromptCacheSettings(db);
   },
 
   async getAssetListViewMode(db: SQLiteDatabase): Promise<AssetListViewMode> {

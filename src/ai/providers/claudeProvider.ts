@@ -33,9 +33,15 @@ function parseClaudeStreamLine(line: string): AiStreamEvent[] {
   }
   try {
     const parsed = JSON.parse(payload);
+    if (parsed.type === 'message_start' && parsed.message?.usage) {
+      return [{ type: 'provider_usage', rawUsage: parsed.message.usage }];
+    }
     if (parsed.type === 'content_block_delta') {
       const text = parsed.delta?.text;
       return typeof text === 'string' && text ? [{ type: 'answer_delta', text }] : [];
+    }
+    if (parsed.type === 'message_delta' && parsed.usage) {
+      return [{ type: 'provider_usage', rawUsage: parsed.usage }];
     }
     if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
       return [{ type: 'completed', finishReason: parsed.delta.stop_reason }];
@@ -44,6 +50,20 @@ function parseClaudeStreamLine(line: string): AiStreamEvent[] {
     return [];
   }
   return [];
+}
+
+function buildClaudeSystem(input: AiChatRequest): string | Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> {
+  const blocks = input.providerCachePolicy?.anthropicSystemBlocks;
+  if (!blocks?.length) {
+    return input.systemPrompt;
+  }
+  return blocks
+    .filter((block) => block.text.trim())
+    .map((block) => ({
+      type: 'text' as const,
+      text: block.text,
+      ...(block.cacheControl ? { cache_control: { type: 'ephemeral' as const } } : {}),
+    }));
 }
 
 async function readClaudeStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
@@ -116,7 +136,7 @@ export const claudeProvider: AiProviderAdapter = {
           model: input.modelId,
           max_tokens: 2048,
           stream: true,
-          system: input.systemPrompt,
+          system: buildClaudeSystem(input),
           messages: [
             ...input.history,
             { role: 'user', content: input.userPrompt },
