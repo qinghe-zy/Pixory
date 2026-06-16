@@ -470,7 +470,7 @@ export function AiSessionConfigScreen({
 
         <AiLightCard>
           <Text style={styles.sectionTitle}>本会话用量</Text>
-          <AiUsageSummary recentTitle="最近" usage={threadUsage ?? EMPTY_THREAD_USAGE} />
+          <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
         </AiLightCard>
 
         <AiLightCard>

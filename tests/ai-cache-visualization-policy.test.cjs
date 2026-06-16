@@ -49,5 +49,6 @@ test('AI session settings shows current thread usage overview', () => {
   assert.match(screen, /loadThreadAiUsageOverview/);
   assert.match(screen, /AiUsageSummary/);
   assert.match(screen, /本会话用量/);
+  assert.match(screen, /<AiUsageSummary\s+showRecent=\{false\}\s+usage=/);
   assert.doesNotMatch(screen, /TTL|stablePrefix|miss reason|诊断/);
 });
