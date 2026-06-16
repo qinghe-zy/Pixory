@@ -80,10 +80,10 @@ const FOOTNOTE_DEFINITION_PATTERN = /^\s{0,3}\[\^([^\]]+)\]:\s+(.+)$/;
 const FOOTNOTE_TOKEN_PATTERN = /^\[\^([^\]]+)\]$/;
 const AUTO_LINK_TOKEN_PATTERN = /^<(https?:\/\/[^>\s]+)>$/i;
 const EMAIL_AUTO_LINK_TOKEN_PATTERN = /^<([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})>$/i;
-const HTML_INLINE_TOKEN_PATTERN = /^<(span|font|kbd|sup|sub)[^>]*>(.*?)<\/\1>$/i;
+const HTML_INLINE_TOKEN_PATTERN = /^<(span|font|kbd|sup|sub)[^>]*>([\s\S]*?)<\/\1>$/i;
 const HTML_BREAK_TOKEN_PATTERN = /^<br\s*\/?>$/i;
 const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])/;
-const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>.*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
+const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>[\s\S]*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
 const SAFE_INLINE_COLOR_PATTERN = /^(#[0-9A-F]{3}(?:[0-9A-F]{3})?|rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)|[a-z]+)$/i;
 const UNSAFE_COLOR_VALUE_PATTERN = /url|var|expression|calc|attr|;/i;
 
@@ -397,6 +397,11 @@ function sanitizeInlineColor(part: string): string | undefined {
   return SAFE_INLINE_COLOR_PATTERN.test(rawColor) ? rawColor : undefined;
 }
 
+function sanitizeInlineFontWeight(part: string): TextStyle['fontWeight'] | undefined {
+  const weightMatch = part.match(/font-weight:\s*(bold|700|600)/i);
+  return weightMatch ? (weightMatch[1].toLowerCase() === 'bold' ? '700' : weightMatch[1] as TextStyle['fontWeight']) : undefined;
+}
+
 function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void, referenceLinks: ReferenceLinks, footnotes: Footnotes): ReactNode {
   INLINE_TOKEN_PATTERN.lastIndex = 0;
   const nodes: ReactNode[] = [];
@@ -423,7 +428,8 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
 
     if (tagName === 'span' || tagName === 'font') {
       const safeColor = sanitizeInlineColor(part);
-      return <Text key={key} style={[style, safeColor ? { color: safeColor } : undefined]}>{innerText}</Text>;
+      const safeFontWeight = sanitizeInlineFontWeight(part);
+      return <Text key={key} style={[style, safeColor ? { color: safeColor } : undefined, safeFontWeight ? { fontWeight: safeFontWeight } : undefined]}>{innerText}</Text>;
     }
 
     const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
