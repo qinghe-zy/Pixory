@@ -429,6 +429,41 @@ test('AI markdown renderer covers common GFM and lightweight inline HTML without
   assert.doesNotMatch(content, /<ScrollView/);
 });
 
+test('AI rich text rendering keeps untrusted HTML and network preview behavior bounded', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const math = read('src/components/ai/AiMathBlock.tsx');
+  const linkPreview = read('src/components/ai/AiLinkPreviewCard.tsx');
+
+  assert.match(content, /sanitizeInlineColor/);
+  assert.match(content, /stripInlineHtmlText/);
+  assert.match(content, /isRenderableHttpUrl/);
+  assert.doesNotMatch(content, /\{ color \}/);
+
+  assert.match(math, /escapeHtml/);
+  assert.match(math, /KATEX_CORE_CSS/);
+  assert.match(math, /\.mfrac/);
+  assert.match(math, /\.mtable/);
+  assert.match(math, /originWhitelist=\{\['about:blank'\]\}/);
+  assert.match(math, /javaScriptCanOpenWindowsAutomatically=\{false\}/);
+  assert.match(math, /setSupportMultipleWindows=\{false\}/);
+  assert.match(math, /allowFileAccess=\{false\}/);
+  assert.doesNotMatch(math, /cdn\.jsdelivr/);
+  assert.doesNotMatch(math, /e\.message\}<\/div>/);
+
+  assert.match(linkPreview, /const \[loadState, setLoadState\] = useState<'idle' \| 'loading' \| 'ready' \| 'failed'>\('idle'\)/);
+  assert.match(linkPreview, /AbortController/);
+  assert.match(linkPreview, /mountedRef/);
+  assert.match(linkPreview, /requestIdRef/);
+  assert.match(linkPreview, /resetPreviewState/);
+  assert.match(linkPreview, /requestIdRef\.current \+= 1/);
+  assert.match(linkPreview, /LINK_PREVIEW_MAX_BYTES/);
+  assert.match(linkPreview, /response\.body\?\.getReader\(\)/);
+  assert.match(linkPreview, /reader\.cancel\(\)/);
+  assert.match(linkPreview, /LINK_PREVIEW_ALLOWED_CONTENT_TYPE = \/\^\(\?:text\\\/html\\b\|application\\\/xhtml\\\+xml\\b\)\/i/);
+  assert.match(linkPreview, /function resolveOgImageUrl/);
+  assert.match(linkPreview, /onPress=\{loadState === 'ready' \? openUrl : loadPreview\}/);
+});
+
 test('AI session settings rely on Android adjustResize without JS keyboard padding', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const scaffold = read('src/components/ai/AiLightScaffold.tsx');

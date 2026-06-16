@@ -84,6 +84,8 @@ const HTML_INLINE_TOKEN_PATTERN = /^<(span|font|kbd|sup|sub)[^>]*>(.*?)<\/\1>$/i
 const HTML_BREAK_TOKEN_PATTERN = /^<br\s*\/?>$/i;
 const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])/;
 const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>.*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
+const SAFE_INLINE_COLOR_PATTERN = /^(#[0-9A-F]{3}(?:[0-9A-F]{3})?|rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)|[a-z]+)$/i;
+const UNSAFE_COLOR_VALUE_PATTERN = /url|var|expression|calc|attr|;/i;
 
 function isImageMarkdownLine(line: string): boolean {
   return IMAGE_MARKDOWN_LINE_PATTERN.test(line.trim());
@@ -342,7 +344,7 @@ function parseMarkdownContent(content: string): ParsedMarkdownContent {
       continue;
     }
 
-    if (isSafeLinkUrl(trimmed) && trimmed === line.trim() && !trimmed.includes(' ')) {
+    if (isRenderableHttpUrl(trimmed) && trimmed === line.trim() && !trimmed.includes(' ')) {
       blocks.push({ type: 'linkCard', url: trimmed });
       index += 1;
       continue;
@@ -372,6 +374,29 @@ function isSafeLinkUrl(url: string): boolean {
   return /^https?:\/\//i.test(url) || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(url);
 }
 
+function isRenderableHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+function stripInlineHtmlText(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+}
+
+function sanitizeInlineColor(part: string): string | undefined {
+  const colorMatch = part.match(/color:\s*([^"';]+)|color=(?:"|')([^"']+)/i);
+  const rawColor = colorMatch ? (colorMatch[1] || colorMatch[2])?.trim() : undefined;
+  if (!rawColor || rawColor.length > 40 || UNSAFE_COLOR_VALUE_PATTERN.test(rawColor)) {
+    return undefined;
+  }
+  return SAFE_INLINE_COLOR_PATTERN.test(rawColor) ? rawColor : undefined;
+}
+
 function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void, referenceLinks: ReferenceLinks, footnotes: Footnotes): ReactNode {
   INLINE_TOKEN_PATTERN.lastIndex = 0;
   const nodes: ReactNode[] = [];
@@ -394,12 +419,11 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
     const htmlInline = part.match(HTML_INLINE_TOKEN_PATTERN);
     if (htmlInline) {
       const tagName = htmlInline[1].toLowerCase();
-      const innerText = htmlInline[2];
-      
+      const innerText = stripInlineHtmlText(htmlInline[2]);
+
       if (tagName === 'span' || tagName === 'font') {
-        const colorMatch = part.match(/color:\s*([^"';]+)|color=(?:"|')([^"']+)/i);
-        const color = colorMatch ? (colorMatch[1] || colorMatch[2]) : undefined;
-        return <Text key={key} style={[style, color ? { color } : undefined]}>{innerText}</Text>;
+        const safeColor = sanitizeInlineColor(part);
+        return <Text key={key} style={[style, safeColor ? { color: safeColor } : undefined]}>{innerText}</Text>;
       }
 
       const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
