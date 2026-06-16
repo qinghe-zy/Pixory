@@ -6,6 +6,9 @@ import { Image, Linking, Pressable, StyleSheet, Text, View, type StyleProp, type
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
 import { AiInlineFeedback } from './AiInlineFeedback';
+import { AiMathBlock } from './AiMathBlock';
+import { AiSpoilerText } from './AiSpoilerText';
+import { AiLinkPreviewCard } from './AiLinkPreviewCard';
 
 type MarkdownTableAlignment = 'left' | 'center' | 'right' | null;
 type ReferenceLinks = Map<string, { title?: string; url: string }>;
@@ -21,7 +24,9 @@ type MarkdownBlock =
   | { type: 'code'; text: string; language?: string }
   | { type: 'table'; rows: string[][]; alignments: MarkdownTableAlignment[] }
   | { type: 'image'; alt: string; uri: string }
-  | { type: 'hr' };
+  | { type: 'hr' }
+  | { type: 'math'; math: string }
+  | { type: 'linkCard'; url: string };
 
 interface ParsedMarkdownContent {
   blocks: MarkdownBlock[];
@@ -75,10 +80,10 @@ const FOOTNOTE_DEFINITION_PATTERN = /^\s{0,3}\[\^([^\]]+)\]:\s+(.+)$/;
 const FOOTNOTE_TOKEN_PATTERN = /^\[\^([^\]]+)\]$/;
 const AUTO_LINK_TOKEN_PATTERN = /^<(https?:\/\/[^>\s]+)>$/i;
 const EMAIL_AUTO_LINK_TOKEN_PATTERN = /^<([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})>$/i;
-const HTML_INLINE_TOKEN_PATTERN = /^<(kbd|sup|sub)>(.*?)<\/\1>$/i;
+const HTML_INLINE_TOKEN_PATTERN = /^<(span|font|kbd|sup|sub)[^>]*>(.*?)<\/\1>$/i;
 const HTML_BREAK_TOKEN_PATTERN = /^<br\s*\/?>$/i;
-const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])$/;
-const INLINE_TOKEN_PATTERN = /(<(?:kbd|sup|sub)>.*?<\/(?:kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
+const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])/;
+const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>.*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
 
 function isImageMarkdownLine(line: string): boolean {
   return IMAGE_MARKDOWN_LINE_PATTERN.test(line.trim());
@@ -236,6 +241,27 @@ function parseMarkdownContent(content: string): ParsedMarkdownContent {
       continue;
     }
 
+    if (trimmed === '$$' || /^\$\$(.+?)\$\$$/.test(trimmed)) {
+      const mathMatch = /^\$\$(.+?)\$\$$/.exec(trimmed);
+      if (mathMatch && mathMatch[1]) {
+        blocks.push({ type: 'math', math: mathMatch[1] });
+        index += 1;
+        continue;
+      } else if (trimmed === '$$') {
+        const mathLines: string[] = [];
+        index += 1;
+        while (index < lines.length && lines[index]?.trim() !== '$$') {
+          mathLines.push(lines[index] ?? '');
+          index += 1;
+        }
+        if (index < lines.length) {
+          index += 1;
+        }
+        blocks.push({ type: 'math', math: mathLines.join('\n') });
+        continue;
+      }
+    }
+
     if (isHeading(line)) {
       const match = /^(#{1,6})\s+(.*)$/.exec(trimmed);
       blocks.push({ type: 'heading', level: match?.[1].length ?? 1, text: match?.[2] ?? trimmed });
@@ -316,6 +342,12 @@ function parseMarkdownContent(content: string): ParsedMarkdownContent {
       continue;
     }
 
+    if (isSafeLinkUrl(trimmed) && trimmed === line.trim() && !trimmed.includes(' ')) {
+      blocks.push({ type: 'linkCard', url: trimmed });
+      index += 1;
+      continue;
+    }
+
     const paragraphLines = [line];
     index += 1;
     while (index < lines.length) {
@@ -363,6 +395,13 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
     if (htmlInline) {
       const tagName = htmlInline[1].toLowerCase();
       const innerText = htmlInline[2];
+      
+      if (tagName === 'span' || tagName === 'font') {
+        const colorMatch = part.match(/color:\s*([^"';]+)|color=(?:"|')([^"']+)/i);
+        const color = colorMatch ? (colorMatch[1] || colorMatch[2]) : undefined;
+        return <Text key={key} style={[style, color ? { color } : undefined]}>{innerText}</Text>;
+      }
+
       const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
       return <Text key={key} style={[style, htmlStyle]}>{innerText}</Text>;
     }
@@ -414,6 +453,15 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
       return <Text key={key} style={styles.inlineCode}>{part.slice(1, -1)}</Text>;
+    }
+    if (part.startsWith('$') && part.endsWith('$') && part.length > 1) {
+      return <Text key={key} style={[styles.inlineCode, { color: aiLightColors.coral, fontFamily: 'serif' }]}>{part.slice(1, -1)}</Text>;
+    }
+    if (part.startsWith('||') && part.endsWith('||') && part.length > 3) {
+      return <AiSpoilerText key={key} text={part.slice(2, -2)} textStyle={style} />;
+    }
+    if (part.startsWith('==') && part.endsWith('==') && part.length > 3) {
+      return <Text key={key} style={[style, styles.highlightText]}>{part.slice(2, -2)}</Text>;
     }
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
       return <Text key={key} style={[style, styles.boldText]}>{part.slice(2, -2)}</Text>;
@@ -595,6 +643,12 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
         if (block.type === 'hr') {
           return <View key={key} style={styles.horizontalRule} />;
         }
+        if (block.type === 'math') {
+          return <AiMathBlock key={key} math={block.math} />;
+        }
+        if (block.type === 'linkCard') {
+          return <AiLinkPreviewCard key={key} url={block.url} />;
+        }
         if (block.type === 'image') {
           return <AiMarkdownImage alt={block.alt} key={key} uri={block.uri} />;
         }
@@ -700,6 +754,9 @@ const styles = StyleSheet.create({
   },
   italicText: {
     fontStyle: 'italic',
+  },
+  highlightText: {
+    backgroundColor: aiLightColors.coralSoft,
   },
   strikeText: {
     textDecorationLine: 'line-through',
