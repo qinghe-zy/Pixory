@@ -103,6 +103,8 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /跟随全局默认/);
   assert.match(sessionConfig, /资料范围/);
   assert.match(sessionConfig, /回复倾向/);
+  assert.match(sessionConfig, /关闭思考过程/);
+  assert.match(sessionConfig, /thinkingDisabled/);
   assert.match(sessionConfig, /REPLY_PREFERENCES/);
   assert.match(sessionConfig, /模型自适应/);
   assert.match(sessionConfig, /更简洁/);
@@ -129,10 +131,12 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? getDefaultThreadSystemPrompt\(thread\.contextType\)/);
   assert.match(chatService, /roleInstructionWeight: input\.roleInstructionWeight/);
   assert.match(chatService, /replyPreference: input\.replyPreference/);
+  assert.match(chatService, /thinkingDisabled: input\.thinkingDisabled/);
   assert.match(chatService, /roleSnapshotJson/);
   assert.match(repository, /roleCardId/);
   assert.match(repository, /roleInstructionWeight/);
   assert.match(repository, /replyPreference/);
+  assert.match(repository, /thinkingDisabled/);
 });
 
 test('normal chat keeps role instruction empty unless the user configures one', () => {
@@ -176,10 +180,49 @@ test('AI session settings autosave lightweight options and separates dangerous d
 
   assert.match(sessionConfig, /setTimeout\(\(\) => \{/);
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);
-  assert.match(sessionConfig, /boundaryMode[\s\S]*deepMemoryEnabled[\s\S]*replyPreference/);
+  assert.match(sessionConfig, /boundaryMode[\s\S]*deepMemoryEnabled[\s\S]*replyPreference[\s\S]*thinkingDisabled/);
   assert.doesNotMatch(sessionConfig, /subtitle=\{`\$\{spaceLabel\}\$\{threadId/);
   assert.match(sessionConfig, /dangerSection/);
   assert.match(sessionConfig, /删除当前会话/);
+});
+
+test('AI session settings can disable model thinking for the current thread', () => {
+  const types = read('src/ai/types.ts');
+  const schema = read('src/database/schema.ts');
+  const db = read('src/database/db.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+  const chatService = read('src/ai/aiChatService.ts');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const providerBase = read('src/ai/providers/base.ts');
+  const openai = read('src/ai/providers/openAiCompatibleProvider.ts');
+  const gemini = read('src/ai/providers/geminiProvider.ts');
+
+  assert.match(types, /thinkingDisabled: boolean/);
+  assert.match(schema, /DATABASE_VERSION = 40/);
+  assert.match(schema, /thinkingDisabled INTEGER NOT NULL DEFAULT 0/);
+  assert.match(schema, /MIGRATION_STATEMENTS_V40/);
+  assert.match(db, /MIGRATION_STATEMENTS_V40/);
+  assert.match(db, /currentVersion < 40/);
+  assert.match(repository, /thinkingDisabled: sqliteToBoolean\(row\.thinkingDisabled\)/);
+  assert.match(repository, /booleanToSqlite\(input\.thinkingDisabled \?\? false\)/);
+  assert.match(repository, /thinkingDisabled: patch\.thinkingDisabled === undefined \? undefined : booleanToSqlite\(patch\.thinkingDisabled\)/);
+  assert.match(sessionConfig, /setThinkingDisabled\(config\.thread\.thinkingDisabled\)/);
+  assert.match(chatService, /thinkingDisabled: input\.thinkingDisabled \?\? false/);
+  assert.match(chatService, /thinkingDisabled: input\.thread\.thinkingDisabled/);
+  assert.match(providerBase, /thinkingDisabled\?: boolean/);
+  assert.match(openai, /function shouldDisableOpenAiReasoning\(input: AiChatRequest\): boolean/);
+  assert.match(openai, /host === 'api\.openai\.com' && supportsOpenAiReasoningNone\(input\.modelId\)/);
+  assert.match(openai, /body\.reasoning_effort = 'none'/);
+  assert.match(openai, /function shouldDisableDeepSeekThinking\(input: AiChatRequest\): boolean/);
+  assert.match(openai, /host === 'api\.deepseek\.com' && \/\^deepseek-v4-\//);
+  assert.match(openai, /if \(shouldDisableDeepSeekThinking\(input\)\) \{[\s\S]*body\.thinking = \{ type: 'disabled' \}/);
+  assert.doesNotMatch(openai, /if \(input\.thinkingDisabled\) \{[\s\S]*body\.thinking = \{ type: 'disabled' \}/);
+  assert.match(gemini, /function shouldDisableGeminiThinking\(input: AiChatRequest\): boolean/);
+  assert.match(gemini, /input\.thinkingDisabled && \/\^gemini-2\\\.5-flash\/i\.test\(input\.modelId\)/);
+  assert.match(gemini, /if \(shouldDisableGeminiThinking\(input\)\) \{[\s\S]*thinkingConfig: \{ thinkingBudget: 0 \}/);
+  assert.match(sessionConfig, /accessibilityRole="switch"/);
+  assert.match(sessionConfig, /accessibilityState=\{\{ checked: thinkingDisabled \}\}/);
+  assert.match(sessionConfig, /setThinkingDisabled\(\(current\) => !current\)/);
 });
 
 test('AI session settings clearly distinguish autosaved options from role instruction saves', () => {
@@ -387,7 +430,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 39/);
+  assert.match(schema, /DATABASE_VERSION = 40/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);

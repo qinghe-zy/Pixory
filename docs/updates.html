@@ -58,25 +58,25 @@
           </div>
 
           <div class="timeline">
-            <!-- 2.4.7 Release -->
+            <!-- 2.4.8 Release -->
             <div class="timeline-item anime-reveal">
-              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-15</div>
-              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.7</h2>
+              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-16</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.8</h2>
 
               <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">缓存消耗可视化</h3>
-                  <p class="text-body-sm">AI 工作台和单会话设置新增缓存命中与 token 消耗概览，能看总览，也能看当前聊天线程的实际消耗。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">HTML 渲染更稳</h3>
+                  <p class="text-body-sm">AI 消息渲染增强安全内联 HTML、代码内 HTML 和多行 HTML 兼容，减少模型输出无法正常显示的情况。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">会话模型独立配置</h3>
-                  <p class="text-body-sm">会话设置现在可以单独调整当前聊天使用的模型、地址和 API Key，不会改动全局默认模型。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">关闭思考过程</h3>
+                  <p class="text-body-sm">会话设置新增关闭思考过程开关，支持的模型会按 OpenAI、DeepSeek 和 Gemini 官方参数请求关闭推理输出。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">自动标题更稳</h3>
-                  <p class="text-body-sm">第一轮聊天仍使用本地标题策略，三轮后可调用低成本模型生成短标题，并保留会话级模型地址和密钥设置。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">迁移路径修复</h3>
+                  <p class="text-body-sm">新增会话设置字段的 SQLite 迁移避开全新安装重复建列问题，旧库升级和新库初始化都保持稳定。</p>
                 </div>
               </div>
             </div>

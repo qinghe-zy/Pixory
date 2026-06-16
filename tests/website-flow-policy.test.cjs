@@ -33,17 +33,18 @@ test('website uses a single-page homepage while legacy pages redirect to stable 
   }
 });
 
-test('website release-facing files reference the current 2.4.7 release', () => {
-  assert.match(read('docs/index.html'), /当前版本：2\.4\.7/);
-  assert.match(read('docs/update-version.json'), /"versionCode": 247/);
-  assert.match(read('docs/updates.html'), /Version 2\.4\.7/);
-  assert.match(read('docs/updates.html'), /缓存消耗可视化/);
-  assert.match(read('docs/updates.html'), /会话模型独立配置/);
+test('website release-facing files reference the current 2.4.8 release', () => {
+  assert.match(read('docs/index.html'), /当前版本：2\.4\.8/);
+  assert.match(read('docs/update-version.json'), /"versionCode": 248/);
+  assert.match(read('docs/updates.html'), /Version 2\.4\.8/);
+  assert.match(read('docs/updates.html'), /HTML 渲染更稳/);
+  assert.match(read('docs/updates.html'), /关闭思考过程/);
+  assert.match(read('docs/updates.html'), /迁移路径修复/);
   assert.match(read('docs/index.html'), /SQLite/);
-  assert.match(read('README.md'), /当前版本 `2\.4\.7`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.7/);
-  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.7\.apk/);
-  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.7\.apk/);
+  assert.match(read('README.md'), /当前版本 `2\.4\.8`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.4\.8/);
+  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.8\.apk/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.4\.8\.apk/);
   assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
@@ -88,7 +89,7 @@ test('public docs describe privacy screenshots consistently with current behavio
 
 test('website sitemap lastmod is synchronized with the release update date', () => {
   const sitemap = read('docs/sitemap.xml');
-  const matches = sitemap.match(/<lastmod>2026-06-15<\/lastmod>/g) ?? [];
+  const matches = sitemap.match(/<lastmod>2026-06-16<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
 

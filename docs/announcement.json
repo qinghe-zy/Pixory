@@ -1,10 +1,11 @@
 {
   "enabled": true,
-  "id": "pixory-2.4.7-20260615",
-  "title": "Pixory 2.4.7 已发布",
-  "message": "已修复 2.4.6 可能加载旧界面的问题，建议重新安装最新版。",
+  "id": "pixory-2.4.8-20260616",
+  "title": "Pixory 2.4.8 已发布",
+  "message": "AI 聊天渲染和会话回复设置已更新，建议安装最新版。",
   "detailLines": [
-    "新版会正确显示 AI 用量概览和当前会话模型配置入口。"
+    "增强安全 HTML 渲染兼容性，减少模型输出无法正常显示的情况。",
+    "会话设置新增关闭思考过程开关，支持 OpenAI、DeepSeek 和 Gemini 的官方关闭方式。"
   ],
   "actionLabel": "知道了"
 }

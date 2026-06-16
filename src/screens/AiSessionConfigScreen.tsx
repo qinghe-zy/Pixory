@@ -119,6 +119,7 @@ export function AiSessionConfigScreen({
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
+  const [thinkingDisabled, setThinkingDisabled] = useState(false);
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
@@ -146,6 +147,7 @@ export function AiSessionConfigScreen({
       setSystemPrompt(getDefaultSystemPrompt(contextType));
       setRoleInstructionWeight('default');
       setReplyPreference('auto');
+      setThinkingDisabled(false);
       setDeepMemoryEnabled(false);
       setLastMaintenanceError(null);
       setMaintenanceStatus(null);
@@ -166,6 +168,7 @@ export function AiSessionConfigScreen({
     setSystemPrompt(config.thread.systemPrompt);
     setRoleInstructionWeight(config.thread.roleInstructionWeight);
     setReplyPreference(config.thread.replyPreference);
+    setThinkingDisabled(config.thread.thinkingDisabled);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
     setLastMaintenanceError(config.lastMaintenanceError);
     const [nextMaintenanceStatus, nextSessionModelConfig, nextThreadUsage] = await Promise.all([
@@ -199,11 +202,12 @@ export function AiSessionConfigScreen({
         roleInstructionWeight,
         space,
         systemPrompt,
+        thinkingDisabled,
         threadId,
       }).catch(() => undefined);
     }, 450);
     return () => clearTimeout(timer);
-  }, [boundaryMode, deepMemoryEnabled, replyPreference, space, threadId]);
+  }, [boundaryMode, deepMemoryEnabled, replyPreference, space, thinkingDisabled, threadId]);
 
   useEffect(() => {
     void reloadConfig();
@@ -247,6 +251,7 @@ export function AiSessionConfigScreen({
         roleInstructionWeight,
         space,
         systemPrompt,
+        thinkingDisabled,
         threadId,
       });
       if (!updated) {
@@ -522,6 +527,20 @@ export function AiSessionConfigScreen({
                 />
               ))}
             </View>
+          </View>
+          <View style={styles.memoryRow}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.caption}>关闭思考过程</Text>
+              <Text style={styles.caption}>支持的模型会请求关闭推理输出；若模型仍返回思考内容，本会话也不会展示或保存。</Text>
+            </View>
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: thinkingDisabled }}
+              onPress={() => setThinkingDisabled((current) => !current)}
+              style={({ pressed }) => [styles.memorySwitch, thinkingDisabled && styles.memorySwitchActive, pressed && styles.pressed]}
+            >
+              <Text style={[styles.memorySwitchText, thinkingDisabled && styles.memorySwitchTextActive]}>{thinkingDisabled ? '关闭' : '开启'}</Text>
+            </Pressable>
           </View>
         </AiLightCard>
 

@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 39;
+export const DATABASE_VERSION = 40;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -405,6 +405,7 @@ CREATE TABLE IF NOT EXISTS ai_threads (
   modelSnapshotJson TEXT NOT NULL DEFAULT '{}',
   roleCardId TEXT,
   roleSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  thinkingDisabled INTEGER NOT NULL DEFAULT 0,
   systemPrompt TEXT NOT NULL DEFAULT '',
   materialRulesSnapshot TEXT,
   boundaryMode TEXT NOT NULL DEFAULT 'free' CHECK (boundaryMode IN ('free', 'prefer_material', 'strict_material')),
@@ -897,6 +898,10 @@ ALTER TABLE ai_threads ADD COLUMN sessionApiKeyRef TEXT;
 
 export const MIGRATION_STATEMENTS_V39 = `
 ALTER TABLE ai_threads ADD COLUMN modelTitleGeneratedAt TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V40 = `
+ALTER TABLE ai_threads ADD COLUMN thinkingDisabled INTEGER NOT NULL DEFAULT 0;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

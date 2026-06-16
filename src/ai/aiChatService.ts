@@ -69,6 +69,7 @@ export interface CreateThreadFromContextInput {
   systemPrompt?: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
   replyPreference?: AiReplyPreference;
+  thinkingDisabled?: boolean;
   boundaryMode?: AiBoundaryMode;
 }
 
@@ -155,6 +156,7 @@ export interface UpdateAiThreadSessionConfigInput {
   systemPrompt: string;
   roleInstructionWeight: AiRoleInstructionWeight;
   replyPreference: AiReplyPreference;
+  thinkingDisabled: boolean;
   boundaryMode: AiBoundaryMode;
   providerId?: string | null;
   modelId?: string | null;
@@ -1051,6 +1053,7 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       modelSnapshotJson: shouldUseFixedModel ? JSON.stringify(model ?? {}) : '{}',
       roleInstructionWeight: input.roleInstructionWeight ?? 'default',
       replyPreference: input.replyPreference ?? 'auto',
+      thinkingDisabled: input.thinkingDisabled ?? false,
       systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
@@ -1086,6 +1089,7 @@ export async function createNormalThreadFromRoleCard(input: {
         roleSnapshotJson: JSON.stringify(roleCard),
         roleInstructionWeight: 'default',
         replyPreference: 'auto',
+        thinkingDisabled: false,
         systemPrompt: roleCard.prompt,
         materialRulesSnapshot: null,
         boundaryMode: roleCard.boundaryMode,
@@ -1456,6 +1460,7 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
           : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
       roleInstructionWeight: input.roleInstructionWeight,
       replyPreference: input.replyPreference,
+      thinkingDisabled: input.thinkingDisabled,
       systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
     if (input.deepMemoryEnabled != null) {
@@ -1992,6 +1997,7 @@ async function streamAssistantReply(input: {
         userPrompt: prompt.user,
         history,
         providerCachePolicy,
+        thinkingDisabled: input.thread.thinkingDisabled,
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
@@ -2005,10 +2011,10 @@ async function streamAssistantReply(input: {
         if (event.type === 'answer_delta') {
           answerText += event.text;
         }
-        if (event.type === 'reasoning_delta') {
+        if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled) {
           reasoningText += event.text;
         }
-        if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
+        if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled)) {
           emitStreamingPatch();
           await persistStreamingSnapshot();
         }

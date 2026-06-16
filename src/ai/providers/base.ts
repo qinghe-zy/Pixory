@@ -17,6 +17,7 @@ export interface AiChatRequest {
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   providerCachePolicy?: AiProviderCachePolicy;
+  thinkingDisabled?: boolean;
   signal?: AbortSignal;
 }
 

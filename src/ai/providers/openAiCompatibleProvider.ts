@@ -96,6 +96,42 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   }
 }
 
+function shouldDisableDeepSeekThinking(input: AiChatRequest): boolean {
+  if (!input.thinkingDisabled) {
+    return false;
+  }
+  try {
+    const host = new URL(normalizeBaseUrl(input.baseUrl)).hostname.toLowerCase();
+    return host === 'api.deepseek.com' && /^deepseek-v4-/i.test(input.modelId);
+  } catch {
+    return false;
+  }
+}
+
+function supportsOpenAiReasoningNone(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  if (normalized.includes('-pro')) {
+    return false;
+  }
+  const gpt5Match = /^gpt-5\.(\d+)/.exec(normalized);
+  if (gpt5Match) {
+    return Number(gpt5Match[1]) >= 1;
+  }
+  return /^gpt-(?:[6-9]|\d{2,})\b/.test(normalized);
+}
+
+function shouldDisableOpenAiReasoning(input: AiChatRequest): boolean {
+  if (!input.thinkingDisabled) {
+    return false;
+  }
+  try {
+    const host = new URL(normalizeBaseUrl(input.baseUrl)).hostname.toLowerCase();
+    return host === 'api.openai.com' && supportsOpenAiReasoningNone(input.modelId);
+  } catch {
+    return false;
+  }
+}
+
 export const openAiCompatibleProvider: AiProviderAdapter = {
   async testConnection(input) {
     const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
@@ -129,6 +165,12 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       }
       if (input.providerCachePolicy?.openAiPromptCacheKey) {
         body.prompt_cache_key = input.providerCachePolicy.openAiPromptCacheKey;
+      }
+      if (shouldDisableOpenAiReasoning(input)) {
+        body.reasoning_effort = 'none';
+      }
+      if (shouldDisableDeepSeekThinking(input)) {
+        body.thinking = { type: 'disabled' };
       }
       const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {
         method: 'POST',

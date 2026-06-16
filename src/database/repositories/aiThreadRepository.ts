@@ -247,11 +247,12 @@ export type AiMessageVersionRow = Omit<AiMessageVersionRecord, 'citations'> & {
   citationsJson: string;
 };
 
-export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments'> & {
+export type AiThreadRow = Omit<AiThreadRecord, 'includeIpDocuments' | 'thinkingDisabled'> & {
   includeIpDocuments: number;
   modelSnapshotJson: string;
   roleCardId: string | null;
   roleSnapshotJson: string;
+  thinkingDisabled: number;
 };
 
 export type AiCitationRow = Omit<AiCitationRecord, 'locator'> & {
@@ -277,6 +278,7 @@ export interface CreateAiThreadInput {
   roleSnapshotJson?: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
   replyPreference?: AiReplyPreference;
+  thinkingDisabled?: boolean;
   systemPrompt?: string;
   materialRulesSnapshot?: string | null;
   boundaryMode?: AiBoundaryMode;
@@ -317,6 +319,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'roleSnapshotJson'
     | 'roleInstructionWeight'
     | 'replyPreference'
+    | 'thinkingDisabled'
     | 'systemPrompt'
     | 'materialRulesSnapshot'
     | 'boundaryMode'
@@ -468,6 +471,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     roleSnapshotJson: row.roleSnapshotJson,
     roleInstructionWeight: row.roleInstructionWeight === 'high' ? 'high' : 'default',
     replyPreference: row.replyPreference === 'concise' || row.replyPreference === 'detailed' ? row.replyPreference : 'auto',
+    thinkingDisabled: sqliteToBoolean(row.thinkingDisabled),
     boundaryMode: row.boundaryMode,
     systemPrompt: row.systemPrompt,
     materialRulesSnapshot: row.materialRulesSnapshot ?? null,
@@ -996,6 +1000,7 @@ export const aiThreadRepository = {
         roleSnapshotJson,
         roleInstructionWeight,
         replyPreference,
+        thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -1004,7 +1009,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -1023,6 +1028,7 @@ export const aiThreadRepository = {
       input.roleSnapshotJson ?? '{}',
       input.roleInstructionWeight ?? 'default',
       input.replyPreference ?? 'auto',
+      booleanToSqlite(input.thinkingDisabled ?? false),
       input.systemPrompt ?? '',
       input.materialRulesSnapshot ?? null,
       input.boundaryMode ?? 'free',
@@ -1056,6 +1062,7 @@ export const aiThreadRepository = {
       roleSnapshotJson: patch.roleSnapshotJson,
       roleInstructionWeight: patch.roleInstructionWeight,
       replyPreference: patch.replyPreference,
+      thinkingDisabled: patch.thinkingDisabled === undefined ? undefined : booleanToSqlite(patch.thinkingDisabled),
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
       boundaryMode: patch.boundaryMode,
@@ -1212,6 +1219,7 @@ export const aiThreadRepository = {
         roleSnapshotJson,
         roleInstructionWeight,
         replyPreference,
+        thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
         boundaryMode,
@@ -1222,7 +1230,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
@@ -1239,6 +1247,7 @@ export const aiThreadRepository = {
       snapshot.thread.roleSnapshotJson,
       snapshot.thread.roleInstructionWeight ?? 'default',
       snapshot.thread.replyPreference ?? 'auto',
+      snapshot.thread.thinkingDisabled ?? 0,
       snapshot.thread.systemPrompt,
       snapshot.thread.materialRulesSnapshot ?? null,
       snapshot.thread.boundaryMode,

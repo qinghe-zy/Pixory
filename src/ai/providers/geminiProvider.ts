@@ -18,6 +18,17 @@ interface GeminiEmbeddingResponse {
   embedding?: { values?: number[] };
 }
 
+interface GeminiChatContent {
+  role: 'model' | 'user';
+  parts: Array<{ text: string }>;
+}
+
+interface GeminiChatRequestBody {
+  systemInstruction: { parts: Array<{ text: string }> };
+  contents: GeminiChatContent[];
+  generationConfig?: { thinkingConfig: { thinkingBudget: number } };
+}
+
 async function emitGeminiTextFromChunk(chunk: unknown, onEvent: AiStreamEventHandler): Promise<void> {
   const candidate = (chunk as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }).candidates?.[0];
   const usageMetadata = (chunk as { usageMetadata?: unknown }).usageMetadata;
@@ -133,6 +144,10 @@ async function readGeminiStream(response: Response, onEvent: AiStreamEventHandle
   }
 }
 
+function shouldDisableGeminiThinking(input: AiChatRequest): boolean {
+  return Boolean(input.thinkingDisabled && /^gemini-2\.5-flash/i.test(input.modelId));
+}
+
 export const geminiProvider: AiProviderAdapter = {
   async testConnection(input) {
     const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
@@ -149,6 +164,20 @@ export const geminiProvider: AiProviderAdapter = {
   },
 
   async streamChat(input: AiChatRequest, onEvent) {
+    const requestBody: GeminiChatRequestBody = {
+      systemInstruction: { parts: [{ text: input.systemPrompt }] },
+      contents: [
+        ...input.history.map<GeminiChatContent>((message) => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: message.content }],
+        })),
+        { role: 'user', parts: [{ text: input.userPrompt }] },
+      ],
+    };
+    if (shouldDisableGeminiThinking(input)) {
+      requestBody.generationConfig = { thinkingConfig: { thinkingBudget: 0 } };
+    }
+
     try {
       const response = await expoFetch(
         `${normalizeBaseUrl(input.baseUrl)}/v1beta/models/${encodeURIComponent(input.modelId)}:streamGenerateContent?key=${encodeURIComponent(input.apiKey)}`,
@@ -156,16 +185,7 @@ export const geminiProvider: AiProviderAdapter = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: input.signal,
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: input.systemPrompt }] },
-            contents: [
-              ...input.history.map((message) => ({
-                role: message.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: message.content }],
-              })),
-              { role: 'user', parts: [{ text: input.userPrompt }] },
-            ],
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
       await assertOkResponse(response, 'Gemini chat request failed');

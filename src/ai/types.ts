@@ -106,6 +106,7 @@ export interface AiThreadRecord {
   roleSnapshotJson: string;
   roleInstructionWeight: AiRoleInstructionWeight;
   replyPreference: AiReplyPreference;
+  thinkingDisabled: boolean;
   boundaryMode: AiBoundaryMode;
   systemPrompt: string;
   materialRulesSnapshot: string | null;
