@@ -407,27 +407,37 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
     return <Text key={key} style={style}>{part}</Text>;
   }
 
+  function renderSafeInlineHtmlToken(part: string, key: string): ReactNode | null {
+    const htmlBreak = part.match(HTML_BREAK_TOKEN_PATTERN);
+    if (htmlBreak) {
+      return <Text key={key} style={style}>{'\n'}</Text>;
+    }
+
+    const htmlInline = part.match(HTML_INLINE_TOKEN_PATTERN);
+    if (!htmlInline) {
+      return null;
+    }
+
+    const tagName = htmlInline[1].toLowerCase();
+    const innerText = stripInlineHtmlText(htmlInline[2]);
+
+    if (tagName === 'span' || tagName === 'font') {
+      const safeColor = sanitizeInlineColor(part);
+      return <Text key={key} style={[style, safeColor ? { color: safeColor } : undefined]}>{innerText}</Text>;
+    }
+
+    const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
+    return <Text key={key} style={[style, htmlStyle]}>{innerText}</Text>;
+  }
+
   function renderToken(part: string, key: string): ReactNode {
     const escaped = part.match(ESCAPED_MARKDOWN_TOKEN_PATTERN);
     if (escaped) {
       return <Text key={key} style={style}>{escaped[1]}</Text>;
     }
-    const htmlBreak = part.match(HTML_BREAK_TOKEN_PATTERN);
-    if (htmlBreak) {
-      return <Text key={key} style={style}>{'\n'}</Text>;
-    }
-    const htmlInline = part.match(HTML_INLINE_TOKEN_PATTERN);
-    if (htmlInline) {
-      const tagName = htmlInline[1].toLowerCase();
-      const innerText = stripInlineHtmlText(htmlInline[2]);
-
-      if (tagName === 'span' || tagName === 'font') {
-        const safeColor = sanitizeInlineColor(part);
-        return <Text key={key} style={[style, safeColor ? { color: safeColor } : undefined]}>{innerText}</Text>;
-      }
-
-      const htmlStyle = tagName === 'kbd' ? styles.kbdText : tagName === 'sup' ? styles.supText : styles.subText;
-      return <Text key={key} style={[style, htmlStyle]}>{innerText}</Text>;
+    const htmlToken = renderSafeInlineHtmlToken(part, key);
+    if (htmlToken) {
+      return htmlToken;
     }
     const footnoteToken = part.match(FOOTNOTE_TOKEN_PATTERN);
     if (footnoteToken) {
@@ -476,7 +486,12 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
       );
     }
     if (part.startsWith('`') && part.endsWith('`') && part.length > 1) {
-      return <Text key={key} style={styles.inlineCode}>{part.slice(1, -1)}</Text>;
+      const rawCode = part.slice(1, -1);
+      const inlineHtml = rawCode.match(HTML_INLINE_TOKEN_PATTERN);
+      if (inlineHtml) {
+        return renderSafeInlineHtmlToken(rawCode, key);
+      }
+      return <Text key={key} style={styles.inlineCode}>{rawCode}</Text>;
     }
     if (part.startsWith('$') && part.endsWith('$') && part.length > 1) {
       return <Text key={key} style={[styles.inlineCode, { color: aiLightColors.coral, fontFamily: 'serif' }]}>{part.slice(1, -1)}</Text>;

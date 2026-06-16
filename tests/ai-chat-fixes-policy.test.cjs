@@ -434,9 +434,14 @@ test('AI rich text rendering keeps untrusted HTML and network preview behavior b
   const math = read('src/components/ai/AiMathBlock.tsx');
   const linkPreview = read('src/components/ai/AiLinkPreviewCard.tsx');
 
+  assert.match(content, /renderSafeInlineHtmlToken/);
+  assert.match(content, /const inlineHtml = rawCode\.match\(HTML_INLINE_TOKEN_PATTERN\)/);
+  assert.match(content, /return renderSafeInlineHtmlToken\(rawCode, key\)/);
+  assert.match(content, /return <Text key=\{key\} style=\{styles\.inlineCode\}>\{rawCode\}<\/Text>/);
   assert.match(content, /sanitizeInlineColor/);
   assert.match(content, /stripInlineHtmlText/);
   assert.match(content, /isRenderableHttpUrl/);
+  assert.doesNotMatch(content, /dangerouslySetInnerHTML/);
   assert.doesNotMatch(content, /\{ color \}/);
 
   assert.match(math, /escapeHtml/);
