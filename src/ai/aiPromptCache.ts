@@ -41,6 +41,7 @@ export interface AiPromptCacheMetadata {
   memorySnapshotHash: string;
   memorySnapshotEstimatedTokens: number;
   retrievalHash: string;
+  retrievalVersion: number;
   purityWarnings: string[];
 }
 
@@ -64,19 +65,23 @@ export interface AiProviderCacheDecisionInput {
   provider: AiProviderRecord & { openAiUsageObservationEnabled?: boolean };
   settings: AiPromptCacheSettings;
   metadata: AiPromptCacheMetadata;
+  branchRouteHash?: string | null;
+  generationParamsHash?: string | null;
   stableSystemBlocks: Array<{ name: AiPromptLayerName; text: string }>;
   previousRequestAt?: string | null;
   requestedAt: string;
+  scopeKey?: string | null;
 }
 
 export const AI_PROMPT_VERSION = 1;
 export const AI_PROMPT_LAYER_VERSIONS = {
   appPolicy: 1,
-  role: 1,
+  role: 3,
   materialRules: 1,
   toolDefinitions: 1,
   memorySnapshot: 1,
 } as const;
+export const AI_RETRIEVAL_CONTEXT_VERSION = 1;
 
 const OPENAI_CACHE_THRESHOLD_TOKENS = 1024;
 const ANTHROPIC_DEFAULT_THRESHOLD_TOKENS = 1024;
@@ -220,6 +225,7 @@ export function buildPromptCacheMetadata(input: {
     memorySnapshotHash: hashPromptCacheText(memoryBlock?.text ?? ''),
     memorySnapshotEstimatedTokens: memoryBlock ? estimatePromptTokens(memoryBlock.text) : 0,
     retrievalHash: hashPromptCacheText(input.retrievalText),
+    retrievalVersion: AI_RETRIEVAL_CONTEXT_VERSION,
     purityWarnings: lintStablePromptBlocks(stableBlocks),
   };
 }
@@ -239,11 +245,16 @@ export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): A
     }
     const openAiPromptCacheKey = [
       'pixory',
+      `pv${input.metadata.promptVersion}`,
       input.provider.id,
       input.modelId,
       input.metadata.chatMode,
       input.metadata.stablePrefixHash,
       input.metadata.memoryEpoch,
+      `rv${input.metadata.retrievalVersion}`,
+      input.scopeKey ?? 'scope:unknown',
+      input.branchRouteHash ?? 'branch:latest',
+      input.generationParamsHash ?? 'params:default',
     ].join(':');
     return {
       openAiIncludeUsage: input.provider.openAiUsageObservationEnabled,

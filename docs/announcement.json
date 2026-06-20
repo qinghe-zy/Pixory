@@ -1,11 +1,13 @@
 {
   "enabled": true,
-  "id": "pixory-2.4.8-20260616",
-  "title": "Pixory 2.4.8 已发布",
-  "message": "AI 聊天渲染和会话回复设置已更新，建议安装最新版。",
+  "id": "pixory-2.4.10-20260620",
+  "title": "Pixory 2.4.10 已发布",
+  "message": "AI 长聊天性能、提示词缓存、富文本渲染和角色包导出已更新，建议安装最新版。",
   "detailLines": [
-    "增强安全 HTML 渲染兼容性，减少模型输出无法正常显示的情况。",
-    "会话设置新增关闭思考过程开关，支持 OpenAI、DeepSeek 和 Gemini 的官方关闭方式。"
+    "长回复流式输出改为更轻的缓冲、节流和持久化策略，减少长聊天卡顿。",
+    "提示词管线强化 fast-path、上下文裁剪和缓存稳定前缀，保护 AI 聊天缓存命中率。",
+    "角色卡可导出 SillyTavern PNG，并可另存续聊 Markdown。",
+    "聊天气泡支持更完整的 HTML/CSS 样式，并降低长历史 Markdown/HTML 重复渲染压力。"
   ],
   "actionLabel": "知道了"
 }

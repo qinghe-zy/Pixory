@@ -27,6 +27,11 @@ test('AI usage analytics skips malformed prompt snapshots safely', () => {
   assert.match(source, /return null/);
 });
 
+test('AI usage analytics ignores provider cache observations without token usage', () => {
+  assert.match(source, /function hasObservedUsageTokens/);
+  assert.match(source, /if \(!hasObservedUsageTokens\(usage\)\) \{\s*continue;\s*\}/);
+});
+
 test('AI usage analytics keeps newest recent rounds from newest-first repository rows', () => {
   assert.match(source, /recentRounds: rounds\.slice\(0,\s*recentLimit\)/);
   assert.doesNotMatch(source, /recentRounds: rounds\.slice\(-recentLimit\)\.reverse\(\)/);

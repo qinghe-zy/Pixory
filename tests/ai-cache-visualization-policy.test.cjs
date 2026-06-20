@@ -13,7 +13,10 @@ test('AI usage overview loads only scoped assistant observations', () => {
   assert.match(repository, /listAssistantUsageObservationMessages/);
   assert.match(repository, /ai_threads\.space = \?/);
   assert.match(repository, /ai_messages\.role = 'assistant'/);
-  assert.match(repository, /ai_messages\.promptSnapshotJson <> '\{\}'/);
+  assert.match(repository, /providerCache/);
+  assert.match(repository, /usage/);
+  assert.doesNotMatch(repository, /ai_messages\.promptSnapshotJson <> '\{\}'/);
+  assert.doesNotMatch(repository, /generationMetrics[\s\S]{0,160}listAssistantUsageObservationMessages/);
   assert.match(service, /loadAiUsageOverview/);
   assert.match(service, /aggregateAiUsageObservations/);
 });

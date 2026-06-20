@@ -11,9 +11,11 @@ import { AiCitationList } from './AiCitationList';
 import { aiLightColors } from './aiLightTheme';
 import { AiInlineFeedback } from './AiInlineFeedback';
 import { AiMessageContent } from './AiMessageContent';
+import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
 import { formatAiMessageMinute } from '../../utils/aiTimeFormatters';
+import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 
 interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
@@ -24,6 +26,7 @@ interface AiMessageBubbleProps {
   showAvatar?: boolean;
   space: PixorySpace;
   streaming?: boolean;
+  streamingIdentity?: AiStreamingMessageIdentity | null;
   generating?: boolean;
   thinkingDefaultExpanded?: boolean;
   editingMessageId?: string | null;
@@ -61,6 +64,7 @@ function AiMessageBubbleComponent({
   showAvatar = true,
   space,
   streaming = false,
+  streamingIdentity = null,
   editingMessageId = null,
   favorited = false,
   favoriteDisabledByGeneration = false,
@@ -81,7 +85,7 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const waitingForFirstToken = streaming && !message.content.trim();
+  const waitingForFirstToken = streaming && !message.content.trim() && !streamingIdentity;
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
@@ -137,14 +141,26 @@ function AiMessageBubbleComponent({
       <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack]}>
         {!isUser ? (
           <View style={styles.thinkingWrap}>
-            <AiThinkingBlock
-              completedAt={message.completedAt}
-              createdAt={message.createdAt}
-              defaultExpanded={thinkingDefaultExpanded}
-              onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
-              reasoningText={message.reasoningText}
-              status={message.status}
-            />
+            {streaming && streamingIdentity ? (
+              <AiStreamingReasoningText
+                completedAt={message.completedAt}
+                createdAt={message.createdAt}
+                defaultExpanded={thinkingDefaultExpanded}
+                identity={streamingIdentity}
+                initialReasoningText={message.reasoningText}
+                onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                status={message.status}
+              />
+            ) : (
+              <AiThinkingBlock
+                completedAt={message.completedAt}
+                createdAt={message.createdAt}
+                defaultExpanded={thinkingDefaultExpanded}
+                onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
+                reasoningText={message.reasoningText}
+                status={message.status}
+              />
+            )}
           </View>
         ) : null}
         {copyFeedbackVisible ? <AiInlineFeedback message="已复制" tone="success" /> : null}
@@ -176,7 +192,13 @@ function AiMessageBubbleComponent({
             <Text selectable style={[styles.content, styles.userText]}>{content}</Text>
           ) : (
             <>
-              {waitingForFirstToken ? <AiTypingIndicator /> : renderAssistantContentWithCursor(content, streaming)}
+              {waitingForFirstToken ? (
+                <AiTypingIndicator />
+              ) : streaming && streamingIdentity ? (
+                <AiStreamingMessageText identity={streamingIdentity} initialContent={message.content} />
+              ) : (
+                renderAssistantContentWithCursor(content, streaming)
+              )}
               {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
               {isFailed && canRegenerate ? (
                 <Pressable accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.inlineRetryButton, pressed && styles.pressed]}>
@@ -280,6 +302,8 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.message === next.message &&
     previous.space === next.space &&
     previous.streaming === next.streaming &&
+    previous.streamingIdentity?.generationId === next.streamingIdentity?.generationId &&
+    previous.streamingIdentity?.messageId === next.streamingIdentity?.messageId &&
     previous.generating === next.generating &&
     previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
     previous.favorited === next.favorited &&

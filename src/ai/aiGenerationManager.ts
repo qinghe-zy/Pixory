@@ -9,9 +9,11 @@ import {
   type RewriteUserMessageInput,
   type SendUserMessageInput,
 } from './aiChatService';
+import type { StreamingVisibilityState } from './aiStreamingRuntime';
 
 export type AiGenerationSubscriber = {
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
   onSettled?: () => void;
@@ -21,10 +23,12 @@ type ActiveGenerationTask = {
   assistantMessageId: string | null;
   controller: AbortController;
   finished: boolean;
+  generationId: string | null;
   promise: Promise<unknown>;
   space: PixorySpace;
   subscribers: Set<AiGenerationSubscriber>;
   threadId: string;
+  userMessageId: string | null;
 };
 
 type ManagedTaskStart<T> = {
@@ -32,22 +36,28 @@ type ManagedTaskStart<T> = {
   unsubscribe: () => void;
 };
 
-type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
-  subscriber?: AiGenerationSubscriber;
+type GenerationStartTimingInput = {
+  sendPressedAt?: string;
 };
 
-type StartRegenerateAssistantMessageInput = Omit<RetryAssistantMessageInput, 'signal' | 'onMessagePatch' | 'onUpdated'> & {
+type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
-};
+} & GenerationStartTimingInput;
+
+type StartRegenerateAssistantMessageInput = Omit<RetryAssistantMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
+  subscriber?: AiGenerationSubscriber;
+} & GenerationStartTimingInput;
 
 type StartRewriteUserMessageInput = Omit<RewriteUserMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
-};
+} & GenerationStartTimingInput;
 
 export type ActiveAiGenerationTaskInfo = {
   assistantMessageId: string | null;
+  generationId: string | null;
   space: PixorySpace;
   threadId: string;
+  userMessageId: string | null;
 };
 
 const tasksByThreadId = new Map<string, ActiveGenerationTask>();
@@ -78,11 +88,13 @@ function addSubscriber(task: ActiveGenerationTask | undefined, subscriber?: AiGe
   };
 }
 
-function emitCreated(task: ActiveGenerationTask, ids: { userMessageId: string; assistantMessageId: string }) {
+function emitCreated(task: ActiveGenerationTask, ids: { userMessageId: string; assistantMessageId: string; generationId: string }) {
   if (task.finished) {
     return;
   }
   rememberAssistantMessage(task, ids.assistantMessageId);
+  task.generationId = ids.generationId;
+  task.userMessageId = ids.userMessageId;
   task.subscribers.forEach((subscriber) => subscriber.onCreated?.(ids));
 }
 
@@ -127,10 +139,12 @@ function createTask(space: PixorySpace, threadId: string): ActiveGenerationTask 
     assistantMessageId: null,
     controller: new AbortController(),
     finished: false,
+    generationId: null,
     promise: Promise.resolve(),
     space,
     subscribers: new Set(),
     threadId,
+    userMessageId: null,
   };
   tasksByThreadId.set(key, task);
   return task;
@@ -139,9 +153,21 @@ function createTask(space: PixorySpace, threadId: string): ActiveGenerationTask 
 function taskInfo(task: ActiveGenerationTask): ActiveAiGenerationTaskInfo {
   return {
     assistantMessageId: task.assistantMessageId,
+    generationId: task.generationId,
     space: task.space,
     threadId: task.threadId,
+    userMessageId: task.userMessageId,
   };
+}
+
+function getTaskStreamingVisibility(task: ActiveGenerationTask): StreamingVisibilityState {
+  for (const subscriber of task.subscribers) {
+    const visibility = subscriber.getStreamingVisibility?.();
+    if (visibility) {
+      return visibility;
+    }
+  }
+  return { bottomLocked: true };
 }
 
 function startSendUserMessage(input: StartSendUserMessageInput): ManagedTaskStart<{ userMessageId: string; assistantMessageId: string }> {
@@ -150,6 +176,7 @@ function startSendUserMessage(input: StartSendUserMessageInput): ManagedTaskStar
   const { subscriber: _subscriber, ...request } = input;
   task.promise = sendUserMessage({
     ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
     onUpdated: () => emitUpdated(task),
@@ -165,6 +192,8 @@ function startRegenerateAssistantMessage(input: StartRegenerateAssistantMessageI
   const { subscriber: _subscriber, ...request } = input;
   task.promise = regenerateAssistantMessage({
     ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
     onUpdated: () => emitUpdated(task),
     signal: task.controller.signal,
@@ -178,6 +207,7 @@ function startRewriteUserMessage(input: StartRewriteUserMessageInput): ManagedTa
   const { subscriber: _subscriber, ...request } = input;
   task.promise = rewriteUserMessage({
     ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
     onUpdated: () => emitUpdated(task),
@@ -191,6 +221,17 @@ function subscribeToThread(space: PixorySpace, threadId: string, subscriber: AiG
   if (!task) {
     const timeout = setTimeout(() => subscriber.onSettled?.(), 0);
     return () => clearTimeout(timeout);
+  }
+  if (task.assistantMessageId && task.generationId) {
+    setTimeout(() => {
+      if (!task.finished && task.assistantMessageId && task.generationId) {
+        subscriber.onCreated?.({
+          assistantMessageId: task.assistantMessageId,
+          generationId: task.generationId,
+          userMessageId: task.userMessageId ?? '',
+        });
+      }
+    }, 0);
   }
   return addSubscriber(task, subscriber);
 }
@@ -210,15 +251,16 @@ async function stopGeneration({ assistantMessageId, space, threadId }: { assista
     : threadId
       ? tasksByThreadId.get(taskKey(space, threadId))
       : undefined;
-  task?.controller.abort();
   const stoppedAssistantId = assistantMessageId ?? task?.assistantMessageId;
   if (!stoppedAssistantId && task) {
+    task.controller.abort();
     await task.promise.catch(() => undefined);
     return;
   }
   if (stoppedAssistantId) {
     await stopStreamingMessage({ assistantMessageId: stoppedAssistantId, space });
   }
+  task?.controller.abort();
 }
 
 export const aiGenerationManager = {

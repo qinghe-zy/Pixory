@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { listRoleCards } from '../ai/aiRoleCardService';
+import { exportRoleContinuityPackage } from '../ai/aiRoleCardContinuityExportService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
@@ -57,6 +58,7 @@ export function AiRoleCardDetailScreen({
   const [card, setCard] = useState<AiRoleCardRecord | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const loadCard = useCallback(async () => {
     const cards = await listRoleCards(space);
@@ -85,6 +87,36 @@ export function AiRoleCardDetailScreen({
     } finally {
       setStarting(false);
     }
+  }
+
+  async function exportRoleCard() {
+    if (!card || exporting) {
+      return;
+    }
+    const runExport = async () => {
+      setExporting(true);
+      setStatus(null);
+      try {
+        const result = await exportRoleContinuityPackage({
+          includeMarkdown: true,
+          roleCardId: card.id,
+          space,
+        });
+        setStatus(`已导出 ${result.pngFileName}${result.markdownFileName ? ` 和 ${result.markdownFileName}` : ''}`);
+      } catch (error) {
+        setStatus(error instanceof Error ? `导出失败：${error.message}` : '导出失败');
+      } finally {
+        setExporting(false);
+      }
+    };
+    if (space === 'personal') {
+      Alert.alert('导出私密角色', '导出的 PNG/Markdown 会保存到你选择的系统目录，请确认该目录安全。', [
+        { text: '取消', style: 'cancel' },
+        { text: '继续导出', onPress: () => void runExport() },
+      ]);
+      return;
+    }
+    await runExport();
   }
 
   function renderCardDetail(card: AiRoleCardRecord) {
@@ -124,6 +156,10 @@ export function AiRoleCardDetailScreen({
 
           <View style={styles.heroActionWrap}>
             <AiLightButton disabled={starting} label={starting ? (mode === 'apply_to_thread' ? '正在应用' : '正在开聊') : (mode === 'apply_to_thread' ? '应用到当前会话' : '开始新对话')} loading={starting} onPress={() => void startChat()} />
+            <Pressable accessibilityLabel="导出角色卡和连续性文本" accessibilityRole="button" disabled={exporting} onPress={() => void exportRoleCard()} style={({ pressed }) => [styles.exportButton, exporting && styles.roundButtonDisabled, pressed && styles.pressed]}>
+              <Ionicons color={aiLightColors.ink} name="download-outline" size={16} />
+              <Text style={styles.exportButtonText}>{exporting ? '正在导出' : '导出角色包'}</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -277,10 +313,28 @@ const styles = StyleSheet.create({
   },
   heroActionWrap: {
     bottom: spacing[5],
+    gap: rhythm.microGap,
     left: spacing[5],
     position: 'absolute',
     right: spacing[5],
     zIndex: 3,
+  },
+  exportButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: rhythm.microGap,
+    minHeight: spacing[10],
+    paddingHorizontal: spacing[4],
+  },
+  exportButtonText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '600',
   },
   sourceBadge: {
     ...typography.textStyles.micro,
@@ -362,5 +416,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78,
+  },
+  roundButtonDisabled: {
+    opacity: 0.44,
   },
 });

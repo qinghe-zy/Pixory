@@ -30,10 +30,25 @@ test('AI chat search is a full-page current-route local fuzzy search flow', () =
   assert.match(service, /export interface AiChatSearchResult/);
   assert.match(service, /export async function searchThreadMessages/);
   assert.match(service, /const branchScopes = input\.branchScopes \?\? \[\]/);
-  assert.match(service, /branchScopes,\s*\}\)/);
+  assert.match(service, /aiThreadRepository\.searchCompletedMessageFts\(db, \{/);
+  assert.match(service, /branchScopes,/);
   assert.match(service, /normalizeChatSearchText/);
   assert.match(service, /branchScopes/);
   assert.doesNotMatch(search, /streamChat|embed|embedding|retrieveForThread/);
+});
+
+test('AI chat search uses bounded SQLite candidates instead of materializing full long threads', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const searchBody = /export async function searchThreadMessages[\s\S]*?\r?\n}\r?\n\r?\nexport async function loadThreadAvatarConfig/.exec(service)?.[0] ?? '';
+
+  assert.match(searchBody, /const candidateLimit = offset \+ limit \+ 1/);
+  assert.match(searchBody, /runWithDatabaseSpace\(input\.space, async \(db\) => \{/);
+  assert.match(searchBody, /aiThreadRepository\.searchCompletedMessageFts\(db, \{/);
+  assert.match(searchBody, /limit: candidateLimit/);
+  assert.match(searchBody, /aiThreadRepository\.listMessageVersionTotalsForMessages\(db, messageIds\)/);
+  assert.match(searchBody, /const pagedMatches = matches\.slice\(offset, offset \+ limit\)/);
+  assert.match(searchBody, /hasMore: matches\.length > offset \+ limit/);
+  assert.doesNotMatch(searchBody, /listThreadMessages\(input\.space, input\.threadId/);
 });
 
 test('AI chat search ranks exact hits before fuzzy hits', () => {
@@ -82,7 +97,7 @@ test('AI chat search target scroll is not overwritten by latest-message jumps', 
 
   assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
   assert.match(chat, /const SEARCH_SCROLL_RETRY_DELAYS_MS = \[80, 260, 520, 900, 1400, 2200, 3400\]/);
-  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, !hasSearchTarget, currentBranchScopes\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.match(searchTargetGuard, /return/);
   assert.doesNotMatch(searchTargetGuard, /scheduleIntentionalLatestJump/);
   assert.match(routeReloadEffect, /searchTargetMessageId/);

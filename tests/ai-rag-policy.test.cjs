@@ -18,9 +18,10 @@ test('normal chat prompt avoids Pixory material rules', () => {
   assert.match(content, /当前会话角色指令如下/);
   assert.match(content, /不要仅根据对话记录判断为未设置/);
   assert.match(content, /if \(!trimmed\) \{\s*return '';\s*\}/);
-  assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
+  assert.match(content, /baseRolePrompt = stripStructuredSillyTavernSections\(input\.systemPrompt, input\.roleCardContext\)/);
+  assert.match(content, /block\('stable_role', frameRoleInstruction\(\[/);
+  assert.match(content, /\]\.filter\(Boolean\)\.join\('\\n\\n'\), input\.roleInstructionWeight\)/);
   assert.match(content, /frameReplyPreference\(input\.replyPreference\)/);
-  assert.match(content, /frameRoleInstruction\(input\.systemPrompt, input\.roleInstructionWeight\)/);
   assert.match(content, /input\.companionMemoryPrefix/);
   assert.match(content, /input\.stableMemoryPrefix/);
   assert.match(content, /input\.rolePrompt/);
@@ -152,9 +153,20 @@ test('AI prompt context is budget-aware and records trim state', () => {
   assert.match(budget, /estimatePromptTokens/);
   assert.match(budget, /getConservativeContextBudget/);
   assert.match(budget, /protectedPrompt/);
+  assert.match(budget, /fitPromptBlocksToContextBudget/);
   assert.match(budget, /trimmed/);
   assert.match(chatService, /trimMessagesToContextBudget/);
+  assert.match(chatService, /fitBuiltPromptToContextBudget/);
   assert.match(chatService, /contextTrimmed/);
+});
+
+test('AI citations are reconciled with snippets that survived prompt budget trimming', () => {
+  const chatService = read('src/ai/aiChatService.ts');
+
+  assert.match(chatService, /function filterSnippetsPresentInPrompt/);
+  assert.match(chatService, /snippets = filterSnippetsPresentInPrompt\(snippets, prompt\)/);
+  assert.match(chatService, /generationMetrics\.context\.retrievalSnippetCount = snippets\.length/);
+  assert.match(chatService, /prompt\.user\.includes/);
 });
 
 test('AI context budget estimates Chinese text conservatively', () => {

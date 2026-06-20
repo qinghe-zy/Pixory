@@ -6,7 +6,8 @@ export const DEFAULT_RETRIEVAL_LIMIT = 6;
 const OWNER_EMBEDDING_AVAILABILITY_CACHE_MAX = 160;
 const OWNER_EMBEDDING_AVAILABILITY_TTL_MS = 5 * 60 * 1000;
 const QUERY_EMBEDDING_TIMEOUT_MS = 250;
-export type RetrievalMode = 'keyword' | 'hybrid';
+export type RetrievalMode = 'skipped' | 'keyword' | 'hybrid';
+export type RetrievalTier = 'keyword' | 'full';
 
 export interface RetrievedSnippet {
   chunkId: string;
@@ -51,10 +52,12 @@ export interface RetrieveForThreadInput {
   ownerType: AiDocumentOwnerType;
   ownerId: string;
   query: string;
+  includeDocumentChunks?: boolean;
   limit?: number;
   embeddingProviderId?: string | null;
   embeddingModelId?: string | null;
   queryVector?: number[] | null;
+  tier?: RetrievalTier;
 }
 
 interface ChunkSearchRow {
@@ -86,14 +89,14 @@ function ownerEmbeddingAvailabilityCacheKey(input: RetrieveForThreadInput): stri
   ].join('|');
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<{ timedOut: boolean; value: T }> {
   let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
-      promise,
+      promise.then((value) => ({ timedOut: false, value })),
       new Promise<T>((resolve) => {
         timeout = setTimeout(() => resolve(fallbackValue), timeoutMs);
-      }),
+      }).then((value) => ({ timedOut: true, value })),
     ]);
   } finally {
     if (timeout) {
@@ -448,20 +451,29 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
 
 export async function retrieveForThread(input: RetrieveForThreadInput): Promise<{
   mode: RetrievalMode;
+  partial: boolean;
   snippets: RetrievedSnippet[];
+  timedOut: boolean;
 }> {
   const limit = input.limit ?? DEFAULT_RETRIEVAL_LIMIT;
+  const includeDocumentChunks = input.includeDocumentChunks !== false;
   const [keyword, ipContext] = await Promise.all([
-    keywordSearch({ ...input, limit }),
+    includeDocumentChunks ? keywordSearch({ ...input, limit }) : Promise.resolve([]),
     collectIpContextSnippets({ ...input, limit }),
   ]);
   const directSnippets = [...ipContext, ...keyword].slice(0, limit);
+  if (!includeDocumentChunks) {
+    return { mode: 'keyword', partial: false, snippets: directSnippets, timedOut: false };
+  }
+  if (input.tier === 'keyword') {
+    return { mode: 'keyword', partial: directSnippets.length === 0, snippets: directSnippets, timedOut: false };
+  }
   if (directSnippets.length >= limit) {
-    return { mode: 'keyword', snippets: directSnippets };
+    return { mode: 'keyword', partial: false, snippets: directSnippets, timedOut: false };
   }
 
   const canTryEmbedding = await hasAnyEmbeddingsForOwner(input);
-  const queryEmbedding = input.queryVector?.length
+  const queryEmbeddingResult = input.queryVector?.length
     ? { providerId: input.embeddingProviderId ?? null, modelId: input.embeddingModelId ?? null, vector: input.queryVector }
     : canTryEmbedding
       ? await withTimeout(
@@ -475,6 +487,8 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
           null
         )
       : null;
+  const queryEmbedding = queryEmbeddingResult && 'value' in queryEmbeddingResult ? queryEmbeddingResult.value : queryEmbeddingResult;
+  const timedOut = Boolean(queryEmbeddingResult && 'timedOut' in queryEmbeddingResult && queryEmbeddingResult.timedOut);
   const vectorScores = await tryEmbeddingRetrieval({
     space: input.space,
     ownerType: input.ownerType,
@@ -487,7 +501,7 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
 
   if (vectorScores.length === 0) {
     const fallbackSnippets = directSnippets.length === 0 ? await ownerPreviewSearch({ ...input, limit }) : [];
-    return { mode: 'keyword', snippets: [...directSnippets, ...fallbackSnippets].slice(0, limit) };
+    return { mode: 'keyword', partial: timedOut, snippets: [...directSnippets, ...fallbackSnippets].slice(0, limit), timedOut };
   }
 
   const scoreByChunkId = new Map(vectorScores.map((item) => [item.chunkId, item.score]));
@@ -507,5 +521,5 @@ export async function retrieveForThread(input: RetrieveForThreadInput): Promise<
     .sort((left, right) => right.score - left.score)
     .slice(0, limit);
 
-  return { mode: 'hybrid', snippets: merged };
+  return { mode: 'hybrid', partial: timedOut, snippets: merged, timedOut };
 }

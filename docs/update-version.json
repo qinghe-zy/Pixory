@@ -1,13 +1,14 @@
 {
   "enabled": true,
-  "version": "2.4.8",
-  "versionCode": 248,
+  "version": "2.4.10",
+  "versionCode": 250,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.4.8 已发布，增强 AI 聊天 HTML 渲染，并新增会话级关闭思考过程设置，请到官网下载区安装最新版。",
+  "message": "Pixory 2.4.10 已发布，优化长聊天流式性能、提示词缓存稳定性、富文本渲染和 SillyTavern 角色包导出，请到官网下载区安装最新版。",
   "releaseNotes": [
-    "AI 消息渲染补强安全内联 HTML、代码内 HTML 和多行 HTML 的兼容表现。",
-    "会话设置新增关闭思考过程开关，支持的模型会按官方参数请求关闭推理输出。",
-    "修复新增会话设置字段的数据库迁移路径，避免全新安装和旧库升级出现结构冲突。"
+    "AI 聊天新增 generation 指标、外部流式缓冲和自适应 UI/persist 节流，降低长回复渲染压力。",
+    "提示词管线加入 fast-path、分层 retrieval、真实上下文窗口裁剪和缓存稳定前缀保护。",
+    "角色卡导出支持 SillyTavern PNG 与续聊 Markdown，分离系统人设、记忆快照和当前分支上下文。",
+    "聊天气泡增强富 HTML/CSS 支持，并加入 Markdown/HTML 渲染缓存，减少长历史反复解析和测量。"
   ],
   "downloadUrl": "https://mist01.com/#download"
 }

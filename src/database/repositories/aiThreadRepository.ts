@@ -1105,7 +1105,10 @@ export const aiThreadRepository = {
        JOIN ai_threads ON ai_threads.id = ai_messages.threadId
        WHERE ai_threads.space = ?
          AND ai_messages.role = 'assistant'
-         AND ai_messages.promptSnapshotJson <> '{}'
+         AND (
+           ai_messages.promptSnapshotJson LIKE '%"providerCache"%'
+           OR ai_messages.promptSnapshotJson LIKE '%"usage"%'
+         )
          ${sinceClause}
        ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
        LIMIT ?`,
@@ -1132,7 +1135,10 @@ export const aiThreadRepository = {
        WHERE ai_threads.space = ?
          AND ai_messages.threadId = ?
          AND ai_messages.role = 'assistant'
-         AND ai_messages.promptSnapshotJson <> '{}'
+         AND (
+           ai_messages.promptSnapshotJson LIKE '%"providerCache"%'
+           OR ai_messages.promptSnapshotJson LIKE '%"usage"%'
+         )
        ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
        LIMIT ?`,
       input.space,
@@ -1597,6 +1603,45 @@ export const aiThreadRepository = {
     return message;
   },
 
+  async updateMessageWherePromptSnapshotJsonContains(
+    db: SQLiteDatabase,
+    messageId: string,
+    promptSnapshotNeedle: string,
+    patch: UpdateAiMessagePatch,
+    options?: { syncFts?: boolean }
+  ): Promise<AiMessageRecord | null> {
+    const updates = buildUpdateStatement({
+      status: patch.status,
+      branchRootMessageId: patch.branchRootMessageId,
+      branchVersionIndex: patch.branchVersionIndex,
+      content: patch.content,
+      reasoningText: patch.reasoningText,
+      errorMessage: normalizeOptionalText(patch.errorMessage),
+      providerId: patch.providerId,
+      modelId: patch.modelId,
+      modelSnapshotJson: patch.modelSnapshotJson,
+      promptSnapshotJson: patch.promptSnapshotJson,
+      createdAt: patch.createdAt,
+      completedAt: patch.completedAt,
+      updatedAt: createTimestamp(),
+    });
+    if (!updates.setClause) {
+      const current = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ? AND instr(promptSnapshotJson, ?) > 0', messageId, promptSnapshotNeedle);
+      return current ?? null;
+    }
+    await db.runAsync(
+      `UPDATE ai_messages SET ${updates.setClause} WHERE id = ? AND instr(promptSnapshotJson, ?) > 0`,
+      ...updates.values,
+      messageId,
+      promptSnapshotNeedle
+    );
+    const message = await db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ? AND instr(promptSnapshotJson, ?) > 0', messageId, promptSnapshotNeedle);
+    if (message && options?.syncFts !== false) {
+      await aiThreadRepository.syncMessageFts(db, message);
+    }
+    return message ?? null;
+  },
+
   async favoriteAssistantMessage(db: SQLiteDatabase, input: AiFavoriteAssistantMessageInput): Promise<AiMessageFavoriteRecord> {
     const message = await aiThreadRepository.findMessageById(db, input.messageId);
     if (!message || message.threadId !== input.threadId) {
@@ -2011,6 +2056,71 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC`,
       threadId,
       ...visibleBranchClause.values
+    );
+  },
+
+  async listMessagesBaseAroundAnchor(db: SQLiteDatabase, threadId: string, anchorMessageId: string, limit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    const latestLimit = Math.max(1, limit);
+    const sideLimit = Math.max(1, Math.ceil(limit / 2));
+    const anchor = await db.getFirstAsync<AiMessageRecord>(
+      `SELECT * FROM ai_messages
+       WHERE id = ?
+         AND threadId = ?
+         ${visibleBranchClause.clause}`,
+      anchorMessageId,
+      threadId,
+      ...visibleBranchClause.values
+    );
+    if (!anchor) {
+      return aiThreadRepository.listMessagesBase(db, threadId, latestLimit, branchScopes);
+    }
+    const [latestRows, beforeRows, afterRows] = await Promise.all([
+      aiThreadRepository.listMessagesBase(db, threadId, latestLimit, branchScopes),
+      db.getAllAsync<AiMessageRecord>(
+        `SELECT * FROM (
+           SELECT * FROM ai_messages
+           WHERE threadId = ?
+             ${visibleBranchClause.clause}
+             AND (
+               createdAt < ?
+               OR (createdAt = ? AND id < ?)
+             )
+           ORDER BY createdAt DESC, id DESC
+           LIMIT ?
+         )
+         ORDER BY createdAt ASC, id ASC`,
+        threadId,
+        ...visibleBranchClause.values,
+        anchor.createdAt,
+        anchor.createdAt,
+        anchor.id,
+        sideLimit
+      ),
+      db.getAllAsync<AiMessageRecord>(
+        `SELECT * FROM ai_messages
+         WHERE threadId = ?
+           ${visibleBranchClause.clause}
+           AND (
+             createdAt > ?
+             OR (createdAt = ? AND id > ?)
+           )
+         ORDER BY createdAt ASC, id ASC
+         LIMIT ?`,
+        threadId,
+        ...visibleBranchClause.values,
+        anchor.createdAt,
+        anchor.createdAt,
+        anchor.id,
+        sideLimit
+      ),
+    ]);
+    const byId = new Map<string, AiMessageRecord>();
+    for (const row of [...latestRows, ...beforeRows, anchor, ...afterRows]) {
+      byId.set(row.id, row);
+    }
+    return [...byId.values()].sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
     );
   },
 

@@ -40,6 +40,7 @@ test('prompt cache helper defines stable layers, hashes, purity lint, chat modes
   assert.match(source, /shouldEnableAnthropicBreakpoint/);
   assert.match(source, /coreEstimatedTokens >= threshold/);
   assert.match(source, /prefixEstimatedTokens >= threshold/);
+  assert.match(source, /`pv\$\{input\.metadata\.promptVersion\}`/);
 });
 
 test('provider usage normalizer uses totalPromptTokens denominator for cached ratio', () => {
@@ -107,16 +108,17 @@ test('cache observation is persisted for completed, failed, and stopped assistan
   assert.match(chat, /stopReason/);
   assert.match(chat, /markAssistantFailed\([^)]*promptSnapshotJson/s);
   assert.match(chat, /markAssistantStopped\([^)]*promptSnapshotJson/s);
-  assert.match(chat, /stopForAbort\(\s*\{ promptSnapshotJson: createPromptSnapshotJson\(\{ stopReason: 'aborted' \}\)/);
+  assert.match(chat, /stopForAbort\(\s*\{ buildPromptSnapshotJson: \(\) => createPromptSnapshotJson\(\{ stopReason: currentStopReason\(\) \}\)/);
+  assert.doesNotMatch(chat, /stopForAbort\(\s*\{ promptSnapshotJson:/);
   assert.match(chat, /promptSnapshotJson,\s*$/m);
 });
 
-test('material-bound prompt keeps retrieved material context before dynamic memory', () => {
+test('material-bound prompt keeps fixed dynamic layer order before current request', () => {
   const promptBuilder = read('src/ai/promptBuilder.ts');
   const materialBody = /export function buildMaterialBoundPrompt[\s\S]*?\r?\n}\r?\n/.exec(promptBuilder)?.[0] ?? '';
   const dynamicRegion = /const dynamicBlocks = \[[\s\S]*?\];/.exec(materialBody)?.[0] ?? '';
 
-  assert.match(dynamicRegion, /block\('retrieval_context'[\s\S]*block\('dynamic_memory'/);
+  assert.match(dynamicRegion, /block\('history_window'[\s\S]*block\('dynamic_memory'[\s\S]*block\('retrieval_context'[\s\S]*block\('current_user_message'/);
 });
 
 test('provider adapters keep cache metadata optional and provider-specific', () => {

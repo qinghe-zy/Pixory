@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, AppState, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -20,6 +20,7 @@ import { deleteMemory, dismissMemoryCapture, listRecentMemoryCaptures, markMemor
 import {
   createThreadFromContext,
   deleteAiThreads,
+  flushStreamingMessageSnapshot,
   getCurrentChatModelLabel,
   listThreadMessages,
   loadThreadTitle,
@@ -45,6 +46,12 @@ import {
   type ComposerEntranceReason,
   type ComposerEntranceRun,
 } from '../ai/aiComposerEntrancePolicy';
+import {
+  clearStreamingMessage,
+  getStreamingMessageSnapshot,
+  publishStreamingMessage,
+  type AiStreamingMessageIdentity,
+} from '../ai/aiStreamingMessageStore';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
@@ -189,6 +196,35 @@ type VisibleMessageItem = {
   showDateSeparator: boolean;
 };
 
+type ActiveStreamingIdentity = AiStreamingMessageIdentity;
+
+type MessageFavoriteIdentity = {
+  branchScopes: AiBranchScope[];
+  key: string;
+  messageVersionIndex?: number;
+};
+
+type ReloadMessagesOptions = {
+  anchorMessageId?: string;
+  branchScopes?: AiBranchScope[];
+  forceToLatest?: boolean;
+  limitOverride?: number;
+};
+
+const shouldUseLiveStreamingPatch = (patch: AiStreamingMessagePatch) => {
+  return (
+    patch.status === 'generating' &&
+    patch.errorMessage === undefined &&
+    patch.providerId === undefined &&
+    patch.modelId === undefined &&
+    patch.modelSnapshotJson === undefined &&
+    patch.promptSnapshotJson === undefined &&
+    patch.createdAt === undefined &&
+    patch.completedAt === undefined &&
+    patch.citations === undefined
+  );
+};
+
 function findLatestAssistantMessage(messages: AiMessageWithCitations[]): AiMessageWithCitations | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index]?.role === 'assistant') {
@@ -301,6 +337,7 @@ export function AiChatScreen({
   const streamingReadBufferActiveRef = useRef(false);
   const bufferedStreamingPatchRef = useRef<AiStreamingMessagePatch | null>(null);
   const pendingFinalReloadRef = useRef(false);
+  const pendingFinalStreamingIdentityRef = useRef<ActiveStreamingIdentity | null>(null);
   const hasBufferedStreamingUpdateRef = useRef(false);
   const frozenStreamingMessageByIdRef = useRef(new Map<string, AiMessageWithCitations>());
   const messagesRef = useRef<AiMessageWithCitations[]>([]);
@@ -332,8 +369,10 @@ export function AiChatScreen({
     title: 0,
   });
   const screenMountedRef = useRef(true);
+  const appActiveRef = useRef(AppState.currentState === 'active');
   const generationSubscriptionRef = useRef<(() => void) | null>(null);
   const activeStreamGenerationRef = useRef(0);
+  const activeStreamingIdentityRef = useRef<ActiveStreamingIdentity | null>(null);
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -523,6 +562,67 @@ export function AiChatScreen({
     return activeStreamGenerationRef.current === generation && activeThreadIdRef.current === targetThreadId;
   }
 
+  function isCurrentStreamingPatch(targetThreadId: string, generation: number, patch: AiStreamingMessagePatch): boolean {
+    if (!isCurrentStream(targetThreadId, generation)) {
+      return false;
+    }
+    if (!activeStreamingIdentityRef.current) {
+      return false;
+    }
+    if (patch.generationId !== activeStreamingIdentityRef.current.generationId) {
+      return false;
+    }
+    return patch.id === activeStreamingIdentityRef.current.messageId;
+  }
+
+  function clearActiveStreamingIdentity() {
+    const identity = activeStreamingIdentityRef.current;
+    if (identity) {
+      clearStreamingMessage(identity);
+    }
+    activeStreamingIdentityRef.current = null;
+  }
+
+  function clearStreamingIdentity(identity: ActiveStreamingIdentity | null) {
+    if (!identity) {
+      return;
+    }
+    clearStreamingMessage(identity);
+    if (
+      activeStreamingIdentityRef.current?.generationId === identity.generationId &&
+      activeStreamingIdentityRef.current?.messageId === identity.messageId
+    ) {
+      activeStreamingIdentityRef.current = null;
+    }
+  }
+
+  async function flushActiveStreamingSnapshot() {
+    const identity = activeStreamingIdentityRef.current;
+    if (!identity) {
+      return;
+    }
+    const snapshot = getStreamingMessageSnapshot(identity);
+    if (!snapshot.hasSnapshot) {
+      return;
+    }
+    await flushStreamingMessageSnapshot({
+      assistantMessageId: identity.messageId,
+      content: snapshot.content,
+      generationId: identity.generationId,
+      reasoningText: snapshot.reasoningText,
+      space: identity.space,
+    });
+  }
+
+  function getActiveStreamingVisibility(targetThreadId: string, generation: number) {
+    const routeFocused = screenMountedRef.current && appActiveRef.current && isCurrentStream(targetThreadId, generation);
+    return {
+      appActive: screenMountedRef.current && appActiveRef.current,
+      bottomLocked: routeFocused && bottomLockedRef.current && !hasPendingStreamingReadBuffer(),
+      routeFocused,
+    };
+  }
+
   function clearGenerationSubscription() {
     generationSubscriptionRef.current?.();
     generationSubscriptionRef.current = null;
@@ -540,10 +640,19 @@ export function AiChatScreen({
 
   function createGenerationSubscriber(targetThreadId: string, generation: number): AiGenerationSubscriber {
     return {
-      onCreated: ({ assistantMessageId }) => {
+      getStreamingVisibility: () => getActiveStreamingVisibility(targetThreadId, generation),
+      onCreated: ({ assistantMessageId, generationId }) => {
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
+        const streamingIdentity = {
+          generationId,
+          messageId: assistantMessageId,
+          space,
+          threadId: targetThreadId,
+        };
+        activeStreamingIdentityRef.current = streamingIdentity;
+        publishStreamingMessage(streamingIdentity, { content: '', reasoningText: null, status: 'generating' });
         thinkingExpandedByMessageIdRef.current.set(assistantMessageId, getLatestAssistantThinkingExpanded());
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
@@ -555,10 +664,9 @@ export function AiChatScreen({
           return nextMessages;
         });
         scheduleIntentionalLatestJump(false);
-        void reloadMessages(targetThreadId);
       },
       onMessagePatch: (patch) => {
-        if (!isCurrentStream(targetThreadId, generation)) {
+        if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
           return;
         }
         applyOrBufferStreamingMessagePatch(patch);
@@ -575,11 +683,17 @@ export function AiChatScreen({
           streamingReadBufferActiveRef.current = true;
           pendingFinalReloadRef.current = true;
           hasBufferedStreamingUpdateRef.current = true;
+          pendingFinalStreamingIdentityRef.current = activeStreamingIdentityRef.current;
           syncScrollToLatestVisibility();
           return;
         }
-        void reloadMessages(targetThreadId);
-        void reloadMemoryCaptures(targetThreadId);
+        void (async () => {
+          await reloadMessages(targetThreadId);
+          await reloadMemoryCaptures(targetThreadId);
+          if (isCurrentStream(targetThreadId, generation)) {
+            clearActiveStreamingIdentity();
+          }
+        })();
       },
       onUpdated: () => {
         if (!isCurrentStream(targetThreadId, generation)) {
@@ -592,6 +706,8 @@ export function AiChatScreen({
 
   function beginStreamingRequest(targetThreadId: string): { generation: number; subscriber: AiGenerationSubscriber } {
     clearGenerationSubscription();
+    resetStreamingReadBufferState();
+    clearActiveStreamingIdentity();
     activeStreamGenerationRef.current += 1;
     activeThreadIdRef.current = targetThreadId;
     const generation = activeStreamGenerationRef.current;
@@ -623,7 +739,9 @@ export function AiChatScreen({
   }
 
   function abortActiveStreamingRequest() {
+    void flushActiveStreamingSnapshot();
     clearGenerationSubscription();
+    clearActiveStreamingIdentity();
     activeStreamGenerationRef.current += 1;
   }
 
@@ -714,6 +832,7 @@ export function AiChatScreen({
     streamingReadBufferActiveRef.current = false;
     bufferedStreamingPatchRef.current = null;
     pendingFinalReloadRef.current = false;
+    pendingFinalStreamingIdentityRef.current = null;
     hasBufferedStreamingUpdateRef.current = false;
     frozenStreamingMessageByIdRef.current.clear();
     bottomLockedRef.current = true;
@@ -1042,7 +1161,7 @@ export function AiChatScreen({
     return persistedCurrentBranchScopes.length > 0 ? persistedCurrentBranchScopes : getCurrentBranchScopes();
   }
 
-  function buildMessageFavoriteIdentity(message: AiMessageWithCitations) {
+  const favoriteBranchIdentityState = useMemo(() => {
     const branchScopes = getPersistedCurrentBranchScopes();
     const normalizedScopes = branchScopes
       .slice()
@@ -1050,28 +1169,43 @@ export function AiChatScreen({
         const rootCompare = left.branchRootMessageId.localeCompare(right.branchRootMessageId);
         return rootCompare !== 0 ? rootCompare : left.branchVersionIndex - right.branchVersionIndex;
       });
+    return {
+      branchScopeSignature: JSON.stringify(normalizedScopes),
+      branchScopes,
+    };
+  }, [persistedCurrentBranchScopes, selectedVersionByMessageId]);
+
+  function buildMessageFavoriteIdentity(message: AiMessageWithCitations): MessageFavoriteIdentity {
     const key = [
       space,
       message.id,
-      JSON.stringify(normalizedScopes),
+      favoriteBranchIdentityState.branchScopeSignature,
       message.versionIndex ?? 'current',
     ].join('|');
     return {
-      branchScopes,
+      branchScopes: favoriteBranchIdentityState.branchScopes,
       key,
       messageVersionIndex: message.versionIndex,
     };
   }
 
+  const favoriteIdentityByMessageId = useMemo(() => {
+    const next = new Map<string, MessageFavoriteIdentity>();
+    for (const message of visibleMessages) {
+      if (message.role === 'assistant') {
+        next.set(message.id, buildMessageFavoriteIdentity(message));
+      }
+    }
+    return next;
+  }, [favoriteBranchIdentityState, space, visibleMessages]);
+
   const assistantFavoriteKeyState = useMemo(() => {
-    const keys = visibleMessages
-      .filter((message) => message.role === 'assistant')
-      .map((message) => buildMessageFavoriteIdentity(message).key);
+    const keys = Array.from(favoriteIdentityByMessageId.values()).map((identity) => identity.key);
     return {
       keys,
       signature: keys.join('\u001f'),
     };
-  }, [persistedCurrentBranchScopes, space, visibleMessages]);
+  }, [favoriteIdentityByMessageId]);
 
   const applyDisplayTitle = useCallback(
     (title: string) => {
@@ -1096,8 +1230,20 @@ export function AiChatScreen({
   }
 
   const reloadMessages = useCallback(
-    async (targetThreadId: string | null, forceToLatest = false, branchScopes?: AiBranchScope[], limitOverride?: number) => {
+    async (
+      targetThreadId: string | null,
+      forceToLatestOrOptions: boolean | ReloadMessagesOptions = false,
+      branchScopesOverride?: AiBranchScope[],
+      limitOverride?: number
+    ) => {
       const requestId = nextRequestId('messages');
+      const options: ReloadMessagesOptions = typeof forceToLatestOrOptions === 'object'
+        ? forceToLatestOrOptions
+        : {
+          branchScopes: branchScopesOverride,
+          forceToLatest: forceToLatestOrOptions,
+          limitOverride,
+        };
       if (!targetThreadId) {
         resetStreamingReadBufferState();
         replaceMessages([]);
@@ -1111,8 +1257,11 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
         return;
       }
-      const messageLimit = limitOverride ?? loadedMessageLimitRef.current;
+      const forceToLatest = options.forceToLatest ?? false;
+      const branchScopes = options.branchScopes;
+      const messageLimit = options.limitOverride ?? loadedMessageLimitRef.current;
       const nextMessages = await listThreadMessages(space, targetThreadId, {
+        anchorMessageId: options.anchorMessageId,
         branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
         limit: messageLimit,
         selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
@@ -1121,7 +1270,7 @@ export function AiChatScreen({
         return;
       }
       activeMessageBranchScopesRef.current = branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
-      setHasEarlierMessages(nextMessages.length >= messageLimit);
+      setHasEarlierMessages(options.anchorMessageId ? true : nextMessages.length >= messageLimit);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
         bottomLockedRef.current = true;
@@ -1211,15 +1360,24 @@ export function AiChatScreen({
 
   const applyOrBufferStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
     if (bottomLockedRef.current && !hasPendingStreamingReadBuffer()) {
+      const streamingIdentity = activeStreamingIdentityRef.current;
+      if (streamingIdentity && shouldUseLiveStreamingPatch(patch)) {
+        publishStreamingMessage(streamingIdentity, {
+          content: patch.content,
+          reasoningText: patch.reasoningText,
+          status: patch.status === 'generating' ? patch.status : undefined,
+        });
+        return;
+      }
       applyStreamingMessagePatch(patch);
-      return;
+    } else {
+      bottomLockedRef.current = false;
+      streamingReadBufferActiveRef.current = true;
+      hasBufferedStreamingUpdateRef.current = true;
+      freezeVisibleStreamingMessage(patch.id);
+      mergeBufferedStreamingPatch(patch);
+      syncScrollToLatestVisibility();
     }
-    bottomLockedRef.current = false;
-    streamingReadBufferActiveRef.current = true;
-    hasBufferedStreamingUpdateRef.current = true;
-    freezeVisibleStreamingMessage(patch.id);
-    mergeBufferedStreamingPatch(patch);
-    syncScrollToLatestVisibility();
   }, [applyStreamingMessagePatch]);
 
   const loadEarlierMessages = useCallback(() => {
@@ -1300,11 +1458,13 @@ export function AiChatScreen({
     async ({ followLatest }: { followLatest: boolean }) => {
       const bufferedPatch = bufferedStreamingPatchRef.current;
       const shouldReloadFinal = pendingFinalReloadRef.current;
+      const pendingFinalStreamingIdentity = pendingFinalStreamingIdentityRef.current;
       const targetThreadId = activeThreadIdRef.current;
 
       streamingReadBufferActiveRef.current = false;
       bufferedStreamingPatchRef.current = null;
       pendingFinalReloadRef.current = false;
+      pendingFinalStreamingIdentityRef.current = null;
       hasBufferedStreamingUpdateRef.current = false;
       frozenStreamingMessageByIdRef.current.clear();
       bottomLockedRef.current = bottomLockedRef.current || followLatest || messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET;
@@ -1314,11 +1474,22 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
       }
       if (bufferedPatch) {
+        const streamingIdentity = activeStreamingIdentityRef.current;
+        if (streamingIdentity && bufferedPatch.id === streamingIdentity.messageId && bufferedPatch.generationId === streamingIdentity.generationId) {
+          publishStreamingMessage(streamingIdentity, {
+            content: bufferedPatch.content,
+            reasoningText: bufferedPatch.reasoningText,
+            status: bufferedPatch.status === 'completed' || bufferedPatch.status === 'failed' || bufferedPatch.status === 'generating' || bufferedPatch.status === 'stopped'
+              ? bufferedPatch.status
+              : undefined,
+          });
+        }
         applyStreamingMessagePatch(bufferedPatch);
       }
       if (shouldReloadFinal && targetThreadId) {
         await reloadMessages(targetThreadId, followLatest);
         await reloadMemoryCaptures(targetThreadId);
+        clearStreamingIdentity(pendingFinalStreamingIdentity);
       }
     },
     [applyStreamingMessagePatch, followLatestMessage, reloadMemoryCaptures, reloadMessages]
@@ -1389,6 +1560,7 @@ export function AiChatScreen({
     setSelectedVersionByMessageId({});
     setPendingAttachments([]);
     clearGenerationSubscription();
+    clearActiveStreamingIdentity();
     activeStreamGenerationRef.current += 1;
     resetStreamingReadBufferState();
     setGenerating(false);
@@ -1430,7 +1602,11 @@ export function AiChatScreen({
       if (currentBranchScopes.length > 0) {
         setSelectedVersionByMessageId(buildBranchSelectionMap(currentBranchScopes));
       }
-      await reloadMessages(targetThreadId, !hasSearchTarget, currentBranchScopes);
+      await reloadMessages(targetThreadId, {
+        anchorMessageId: searchTargetMessageId ?? undefined,
+        branchScopes: currentBranchScopes,
+        forceToLatest: !hasSearchTarget,
+      });
       if (!cancelled) {
         if (hasSearchTarget) {
           return;
@@ -1558,7 +1734,11 @@ export function AiChatScreen({
     selectedVersionByMessageIdRef.current = branchTreeSelection.selectionMap;
     setPersistedCurrentBranchScopes(branchTreeScopes);
     setSelectedVersionByMessageId(branchTreeSelection.selectionMap);
-    void reloadMessages(targetThreadId, true, branchTreeScopes);
+    void reloadMessages(targetThreadId, {
+      anchorMessageId: branchTreeSelection.branchRootMessageId,
+      branchScopes: branchTreeScopes,
+      forceToLatest: false,
+    });
   }, [branchTreeSelection, reloadMessages, threadId]);
 
   useEffect(() => {
@@ -1649,8 +1829,16 @@ export function AiChatScreen({
   }, [hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages]);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      appActiveRef.current = state === 'active';
+      if (state !== 'active') {
+        void flushActiveStreamingSnapshot();
+      }
+    });
     return () => {
       screenMountedRef.current = false;
+      void flushActiveStreamingSnapshot();
+      subscription.remove();
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();
       clearInlineEditVisibilityTimeouts();
@@ -1659,6 +1847,7 @@ export function AiChatScreen({
       clearSearchHighlightTimeout();
       cancelGenerationAction();
       clearGenerationSubscription();
+      clearActiveStreamingIdentity();
       activeStreamGenerationRef.current += 1;
       clearVoiceResetTimeout();
       if (newChatFeedbackTimeoutRef.current) {
@@ -2005,6 +2194,7 @@ export function AiChatScreen({
   }
 
   async function handleSend() {
+    const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
     const attachments = pendingAttachments;
     const content = buildChatMessageContent(typedText, attachments);
@@ -2041,6 +2231,7 @@ export function AiChatScreen({
         branchRootMessageId: activeBranch?.branchRootMessageId,
         branchVersionIndex: activeBranch?.branchVersionIndex,
         content,
+        sendPressedAt,
         space,
         subscriber: streamRequest.subscriber,
         threadId: targetThreadId,
@@ -2075,6 +2266,7 @@ export function AiChatScreen({
   }
 
   async function handleSubmitInlineRewrite(messageId: string, nextContent: string) {
+    const sendPressedAt = new Date().toISOString();
     const content = nextContent.trim();
     if (!content || generating || !activeThreadId) {
       return;
@@ -2098,14 +2290,15 @@ export function AiChatScreen({
       scheduleIntentionalLatestJump(false);
       const managedGeneration = aiGenerationManager.startRewriteUserMessage({
         content,
+        sendPressedAt,
         space,
         subscriber: {
           ...subscriber,
-          onCreated: ({ assistantMessageId }) => {
+          onCreated: ({ assistantMessageId, generationId }) => {
             if (!isCurrentStream(targetThreadId, streamGeneration)) {
               return;
             }
-            subscriber.onCreated?.({ userMessageId, assistantMessageId });
+            subscriber.onCreated?.({ userMessageId, assistantMessageId, generationId });
             showLatestMessageVersion(userMessageId);
             showLatestMessageVersion(assistantMessageId);
           },
@@ -2174,6 +2367,7 @@ export function AiChatScreen({
   }
 
   async function handleConfirmedRegenerate(targetThreadId: string, targetMessageId: string, actionToken: number) {
+    const sendPressedAt = new Date().toISOString();
     let streamUnsubscribe: (() => void) | null = null;
     const { generation: streamGeneration, subscriber } = beginStreamingRequest(targetThreadId);
     try {
@@ -2187,6 +2381,7 @@ export function AiChatScreen({
       scheduleIntentionalLatestJump(false);
       const managedGeneration = aiGenerationManager.startRegenerateAssistantMessage({
         assistantMessageId: targetMessageId,
+        sendPressedAt,
         space,
         subscriber,
         threadId: targetThreadId,
@@ -2348,7 +2543,11 @@ export function AiChatScreen({
     ({ item }: { item: VisibleMessageItem }) => {
       const { message } = item;
       const inlineMemoryCaptures = memoryCapturesBySourceMessageId.get(message.id) ?? [];
-      const favoriteIdentity = message.role === 'assistant' ? buildMessageFavoriteIdentity(message) : null;
+      const favoriteIdentity = message.role === 'assistant' ? favoriteIdentityByMessageId.get(message.id) ?? null : null;
+      const streamingIdentity =
+        generating && message.id === activeAssistantId && activeStreamingIdentityRef.current?.messageId === message.id
+          ? activeStreamingIdentityRef.current
+          : null;
       return (
         <>
           {item.showDateSeparator ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
@@ -2364,6 +2563,7 @@ export function AiChatScreen({
               pendingActionMessageId={pendingMessageActionId}
               showAvatar={item.showAvatar}
               space={space}
+              streamingIdentity={streamingIdentity}
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
               onCopy={(targetMessage) => {
                 void copyMessageContent(targetMessage);
@@ -2411,6 +2611,7 @@ export function AiChatScreen({
       editingUserMessageId,
       favoritePendingByKey,
       favoriteStateByKey,
+      favoriteIdentityByMessageId,
       generating,
       handleEditUserMessage,
       handleRegenerate,
@@ -2420,9 +2621,7 @@ export function AiChatScreen({
       memoryCapturesBySourceMessageId,
       openCitation,
       pendingMessageActionId,
-      persistedCurrentBranchScopes,
       searchHighlightMessageId,
-      selectedVersionByMessageId,
       space,
     ]
   );

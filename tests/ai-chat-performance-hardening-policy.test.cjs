@@ -51,6 +51,32 @@ test('AI chat streaming patches update by indexed message id before falling back
   assert.equal(mergeMatches.length, 1);
 });
 
+test('AI chat streaming assistant creation avoids an immediate full message reload', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const subscriberBody = /function createGenerationSubscriber[\s\S]*?\r?\n  }\r?\n\r?\n  function beginStreamingRequest/.exec(chat)?.[0] ?? '';
+  const onCreatedBody = /onCreated: \(\{ assistantMessageId, generationId \}\) => \{[\s\S]*?\r?\n      \},\r?\n      onMessagePatch/.exec(subscriberBody)?.[0] ?? '';
+
+  assert.match(onCreatedBody, /publishStreamingMessage\(streamingIdentity/);
+  assert.match(onCreatedBody, /createStreamingAssistantMessage\(targetThreadId, assistantMessageId\)/);
+  assert.match(onCreatedBody, /scheduleIntentionalLatestJump\(false\)/);
+  assert.doesNotMatch(onCreatedBody, /reloadMessages\(targetThreadId/);
+});
+
+test('AI chat favorite identity work is memoized outside row rendering', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const renderBody = /const renderMessageItem = useCallback\([\s\S]*?\r?\n  \);/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /type MessageFavoriteIdentity = \{/);
+  assert.match(chat, /const favoriteBranchIdentityState = useMemo/);
+  assert.match(chat, /branchScopeSignature: JSON\.stringify\(normalizedScopes\)/);
+  assert.match(chat, /const favoriteIdentityByMessageId = useMemo/);
+  assert.match(chat, /next\.set\(message\.id, buildMessageFavoriteIdentity\(message\)\)/);
+  assert.match(chat, /const assistantFavoriteKeyState = useMemo/);
+  assert.match(chat, /Array\.from\(favoriteIdentityByMessageId\.values\(\)\)\.map\(\(identity\) => identity\.key\)/);
+  assert.match(renderBody, /favoriteIdentityByMessageId\.get\(message\.id\)/);
+  assert.doesNotMatch(renderBody, /buildMessageFavoriteIdentity\(message\)/);
+});
+
 test('embedding retrieval limits vector candidates before JS cosine scoring', () => {
   const embedding = read('src/ai/aiEmbeddingService.ts');
   const retrievalBody = /export async function tryEmbeddingRetrieval[\s\S]*?\r?\n}\r?\n?$/.exec(embedding)?.[0] ?? '';
@@ -75,11 +101,13 @@ test('thread retrieval only generates query embeddings after bounded direct retr
   assert.match(retrieval, /async function withTimeout/);
   assert.match(retrievalBody, /const \[keyword, ipContext\] = await Promise\.all/);
   assert.match(retrievalBody, /const directSnippets = \[\.\.\.ipContext, \.\.\.keyword\]\.slice\(0, limit\)/);
-  assert.match(retrievalBody, /if \(directSnippets\.length >= limit\) \{\s*return \{ mode: 'keyword', snippets: directSnippets \};\s*\}/);
+  assert.match(retrievalBody, /if \(input\.tier === 'keyword'\)/);
+  assert.match(retrievalBody, /if \(directSnippets\.length >= limit\) \{\s*return \{ mode: 'keyword', partial: false, snippets: directSnippets, timedOut: false \};\s*\}/);
   assert.match(retrievalBody, /const canTryEmbedding = await hasAnyEmbeddingsForOwner/);
   assert.match(retrievalBody, /withTimeout\(\s*generateQueryEmbedding/);
   assert.match(retrievalBody, /QUERY_EMBEDDING_TIMEOUT_MS/);
-  assert.match(retrievalBody, /const queryEmbedding = input\.queryVector\?\.length/);
+  assert.match(retrievalBody, /const queryEmbeddingResult = input\.queryVector\?\.length/);
+  assert.match(retrievalBody, /const queryEmbedding = queryEmbeddingResult/);
   assert.match(retrievalBody, /canTryEmbedding\s*\?/);
   assert.match(retrievalBody, /: null;/);
   assert.match(retrievalBody, /const fallbackSnippets = directSnippets\.length === 0 \? await ownerPreviewSearch/);
@@ -91,8 +119,12 @@ test('thread message loading keeps version totals cheap and only hydrates select
   const chat = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const listBody = /export async function listThreadMessages[\s\S]*?\r?\n}\r?\n\r?\nexport async function searchThreadMessages/.exec(chat)?.[0] ?? '';
+  const anchorBody = /async listMessagesBaseAroundAnchor[\s\S]*?\r?\n  \},\r?\n\r?\n  async findMessageById/.exec(repository)?.[0] ?? '';
 
+  assert.match(chat, /anchorMessageId\?: string/);
   assert.match(chat, /selectedVersionByMessageId\?: Record<string, number>/);
+  assert.match(listBody, /options\.anchorMessageId && options\.limit/);
+  assert.match(listBody, /aiThreadRepository\.listMessagesBaseAroundAnchor/);
   assert.match(listBody, /aiThreadRepository\.listMessageVersionTotalsForMessages/);
   assert.match(listBody, /aiThreadRepository\.listMessagesBase/);
   assert.match(listBody, /const selectedVersionEntries = messagesWithBranchRoots/);
@@ -102,6 +134,13 @@ test('thread message loading keeps version totals cheap and only hydrates select
   assert.match(listBody, /versionIndex: selectedVersion\?\.versionIndex \?\? versionTotal/);
   assert.match(listBody, /versionTotal,/);
   assert.match(repository, /async listMessagesBase/);
+  assert.match(repository, /async listMessagesBaseAroundAnchor/);
+  assert.match(anchorBody, /const latestLimit = Math\.max\(1, limit\)/);
+  assert.match(anchorBody, /const sideLimit = Math\.max\(1, Math\.ceil\(limit \/ 2\)\)/);
+  assert.match(anchorBody, /aiThreadRepository\.listMessagesBase\(db, threadId, latestLimit, branchScopes\)/);
+  assert.match(anchorBody, /ORDER BY createdAt DESC, id DESC[\s\S]*LIMIT \?/);
+  assert.match(anchorBody, /ORDER BY createdAt ASC, id ASC[\s\S]*LIMIT \?/);
+  assert.match(anchorBody, /\[\.\.\.latestRows, \.\.\.beforeRows, anchor, \.\.\.afterRows\]/);
   assert.match(repository, /async listMessageVersionTotalsForMessages/);
   assert.match(repository, /async listMessageVersionsByIndexForMessages/);
   assert.doesNotMatch(listBody, /listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
@@ -148,7 +187,8 @@ test('material-bound prompt building starts thread and bound-owner retrieval in 
   const chat = read('src/ai/aiChatService.ts');
   const promptBody = /async function buildPromptForThread[\s\S]*?\r?\n}\r?\n\r?\nexport async function createThreadFromContext/.exec(chat)?.[0] ?? '';
 
-  assert.match(promptBody, /const threadMaterialRetrievalPromise = retrieveForThread/);
+  assert.match(promptBody, /const threadMaterialRetrievalPromise: Promise<ThreadRetrievalResult>/);
+  assert.match(promptBody, /retrieveForThread\(\{/);
   assert.match(promptBody, /const boundOwnerRetrievalPromise = ownerId/);
   assert.match(promptBody, /ownerType,/);
   assert.match(promptBody, /Promise\.all\(\[/);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image, Linking, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 import { radius, rhythm, spacing, typography } from '../../design/tokens';
 import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
@@ -86,6 +87,44 @@ const ESCAPED_MARKDOWN_TOKEN_PATTERN = /^\\([\\`*_[\]{}()#+\-.!|<>~])/;
 const INLINE_TOKEN_PATTERN = /(<(?:span|font|kbd|sup|sub)[^>]*>[\s\S]*?<\/(?:span|font|kbd|sup|sub)>|<br\s*\/?>|\\[\\`*_[\]{}()#+\-.!|<>~]|\[\^[^\]]+\]|\[[^\]]+\]\(https?:\/\/[^\s)]+(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]+\]\[[^\]]*\]|<https?:\/\/[^>\s]+>|<[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}>|`[^`]+`|\$[^$]+\$|\|\|[^|]+\|\||==[^=]+==|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*\n]+\*|_[^_\n]+_)/gi;
 const SAFE_INLINE_COLOR_PATTERN = /^(#[0-9A-F]{3}(?:[0-9A-F]{3})?|rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)|[a-z]+)$/i;
 const UNSAFE_COLOR_VALUE_PATTERN = /url|var|expression|calc|attr|;/i;
+const RICH_HTML_BLOCK_TAG_PATTERN = /<(address|article|aside|blockquote|canvas|dd|details|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|output|p|pre|section|style|summary|table|tbody|td|tfoot|th|thead|tr|ul)\b[\s\S]*?>/i;
+const RICH_HTML_INLINE_STYLE_PATTERN = /<(span|font|em|strong|b|i|u|s|mark|small)\b[^>]*(style|face|size)=/i;
+const RICH_HTML_LEGACY_FONT_PATTERN = /<font\b[^>]*(face|size)=/i;
+const RICH_HTML_STYLE_FEATURE_PATTERN = /\b(font-size|font-family|font-style|text-decoration|text-shadow|opacity|border|border-radius|padding|margin|letter-spacing|text-transform|display|white-space)\s*:|(?:linear-gradient|radial-gradient|repeating-linear-gradient)\s*\(/i;
+const RICH_HTML_CODE_LANGUAGE_PATTERN = /^(html?|xhtml)$/i;
+const RICH_HTML_CODE_START_PATTERN = /^\s*(?:<!doctype\s+html\b|<html\b|<body\b|<(?:div|section|article|main|table|style)\b)/i;
+const RICH_HTML_WHOLE_CONTENT_PATTERN = /^\s*(?:<!doctype\s+html\b|<html\b|<body\b|<(?:address|article|aside|blockquote|div|main|section|style|table)\b)/i;
+const MESSAGE_RENDER_CACHE_MAX_CONTENT_LENGTH = 30000;
+const MARKDOWN_PARSE_CACHE_LIMIT = 120;
+const RICH_HTML_HEIGHT_CACHE_LIMIT = 120;
+const RICH_HTML_MIN_HEIGHT = 28;
+const RICH_HTML_INITIAL_HEIGHT = 80;
+const RICH_HTML_HEIGHT_UPDATE_EPSILON = 1;
+
+const markdownParseCache = new Map<string, ParsedMarkdownContent>();
+const richHtmlHeightCache = new Map<string, number>();
+
+function trimMapToLimit<TKey, TValue>(map: Map<TKey, TValue>, limit: number) {
+  while (map.size > limit) {
+    const oldestEntry = map.keys().next();
+    if (oldestEntry.done) {
+      return;
+    }
+    map.delete(oldestEntry.value);
+  }
+}
+
+function shouldCacheMessageRenderContent(content: string): boolean {
+  return content.length <= MESSAGE_RENDER_CACHE_MAX_CONTENT_LENGTH;
+}
+
+function getMessageRenderCacheKey(content: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash = Math.imul(hash ^ content.charCodeAt(index), 16777619);
+  }
+  return `${content.length}:${(hash >>> 0).toString(36)}`;
+}
 
 function isImageMarkdownLine(line: string): boolean {
   return IMAGE_MARKDOWN_LINE_PATTERN.test(line.trim());
@@ -366,8 +405,24 @@ function parseMarkdownContent(content: string): ParsedMarkdownContent {
   return { blocks: blocks.length ? blocks : [{ type: 'paragraph', text: content }], footnotes, referenceLinks };
 }
 
+function getCachedMarkdownContent(content: string): ParsedMarkdownContent {
+  if (!shouldCacheMessageRenderContent(content)) {
+    return parseMarkdownContent(content);
+  }
+  const cached = markdownParseCache.get(content);
+  if (cached) {
+    markdownParseCache.delete(content);
+    markdownParseCache.set(content, cached);
+    return cached;
+  }
+  const parsed = parseMarkdownContent(content);
+  markdownParseCache.set(content, parsed);
+  trimMapToLimit(markdownParseCache, MARKDOWN_PARSE_CACHE_LIMIT);
+  return parsed;
+}
+
 function parseMarkdownBlocks(content: string): MarkdownBlock[] {
-  return parseMarkdownContent(content).blocks;
+  return getCachedMarkdownContent(content).blocks;
 }
 
 function isSafeLinkUrl(url: string): boolean {
@@ -400,6 +455,150 @@ function sanitizeInlineColor(part: string): string | undefined {
 function sanitizeInlineFontWeight(part: string): TextStyle['fontWeight'] | undefined {
   const weightMatch = part.match(/font-weight:\s*(bold|700|600)/i);
   return weightMatch ? (weightMatch[1].toLowerCase() === 'bold' ? '700' : weightMatch[1] as TextStyle['fontWeight']) : undefined;
+}
+
+function shouldRenderRichHtml(html: string): boolean {
+  return RICH_HTML_BLOCK_TAG_PATTERN.test(html) || RICH_HTML_LEGACY_FONT_PATTERN.test(html) || (RICH_HTML_INLINE_STYLE_PATTERN.test(html) && RICH_HTML_STYLE_FEATURE_PATTERN.test(html));
+}
+
+function shouldRenderWholeRichHtml(html: string): boolean {
+  return RICH_HTML_WHOLE_CONTENT_PATTERN.test(html) && shouldRenderRichHtml(html);
+}
+
+function shouldRenderHtmlCodeBlock(block: Extract<MarkdownBlock, { type: 'code' }>): boolean {
+  const language = block.language?.trim() ?? '';
+  if (RICH_HTML_CODE_LANGUAGE_PATTERN.test(language)) {
+    return shouldRenderRichHtml(block.text);
+  }
+  return !language && RICH_HTML_CODE_START_PATTERN.test(block.text) && shouldRenderRichHtml(block.text);
+}
+
+function sanitizeRichHtml(html: string): string {
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object\b[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed\b[\s\S]*?>/gi, '')
+    .replace(/<link\b[\s\S]*?>/gi, '')
+    .replace(/@import\s+(?:url\([^\)]*\)|"[^"]*"|'[^']*'|[^;]+);?/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(href|src)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*'|\s*javascript:[^\s>]+)/gi, '')
+    .replace(/\s+(src|srcset|poster)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/url\([^\)]*\)/gi, 'none');
+}
+
+function buildRichHtmlDocument(html: string): string {
+  const safeHtml = sanitizeRichHtml(html);
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+html,body{margin:0;padding:0;background:transparent;color:${aiLightColors.ink};font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.55;overflow:hidden;word-break:break-word;overflow-wrap:anywhere}
+*{box-sizing:border-box;max-width:100%}
+div,section,article,header,footer,main,p,blockquote,pre,ul,ol,li,table,thead,tbody,tr,th,td{max-width:100%}
+p{margin:0 0 0.65em}
+table{border-collapse:collapse;display:table;width:100%}
+th,td{overflow-wrap:anywhere;word-break:break-word}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}
+code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+a{color:${aiLightColors.coralActive};text-decoration:none}
+img,video{height:auto;max-width:100%}
+</style>
+</head>
+<body>
+<div id="pixory-rich-html-root">${safeHtml}</div>
+<script>
+(function(){
+  var root = document.getElementById('pixory-rich-html-root');
+  function postHeight(){
+    if(!root || !window.ReactNativeWebView){ return; }
+    var rect = root.getBoundingClientRect();
+    var height = Math.ceil(Math.max(rect.height, root.scrollHeight));
+    window.ReactNativeWebView.postMessage(String(height));
+  }
+  postHeight();
+  setTimeout(postHeight, 50);
+  setTimeout(postHeight, 180);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(postHeight).observe(root);
+  }
+  window.addEventListener('load', postHeight);
+})();
+</script>
+</body>
+</html>`;
+}
+
+function getCachedRichHtmlHeight(html: string): number {
+  if (!shouldCacheMessageRenderContent(html)) {
+    return RICH_HTML_INITIAL_HEIGHT;
+  }
+  const cacheKey = getMessageRenderCacheKey(html);
+  const cached = richHtmlHeightCache.get(cacheKey);
+  if (cached && Number.isFinite(cached) && cached > 0) {
+    richHtmlHeightCache.delete(cacheKey);
+    richHtmlHeightCache.set(cacheKey, cached);
+    return cached;
+  }
+  return RICH_HTML_INITIAL_HEIGHT;
+}
+
+function setCachedRichHtmlHeight(html: string, height: number) {
+  if (!shouldCacheMessageRenderContent(html)) {
+    return;
+  }
+  if (!Number.isFinite(height) || height <= 0) {
+    return;
+  }
+  const cacheKey = getMessageRenderCacheKey(html);
+  richHtmlHeightCache.set(cacheKey, Math.max(RICH_HTML_MIN_HEIGHT, Math.ceil(height)));
+  trimMapToLimit(richHtmlHeightCache, RICH_HTML_HEIGHT_CACHE_LIMIT);
+}
+
+function AiRichHtmlBlock({ html }: { html: string }) {
+  const [height, setHeight] = useState(() => getCachedRichHtmlHeight(html));
+  const richHtmlDocument = useMemo(() => buildRichHtmlDocument(html), [html]);
+
+  useEffect(() => {
+    setHeight(getCachedRichHtmlHeight(html));
+  }, [html]);
+
+  return (
+    <View style={[styles.richHtmlBlock, { height: Math.max(RICH_HTML_MIN_HEIGHT, height) }]}>
+      <WebView
+        allowFileAccess={false}
+        allowFileAccessFromFileURLs={false}
+        bounces={false}
+        domStorageEnabled={false}
+        javaScriptCanOpenWindowsAutomatically={false}
+        javaScriptEnabled
+        mixedContentMode="never"
+        onMessage={(event) => {
+          const nextHeight = Number(event.nativeEvent.data);
+          if (Number.isFinite(nextHeight) && nextHeight > 0) {
+            const measuredHeight = Math.max(RICH_HTML_MIN_HEIGHT, Math.ceil(nextHeight));
+            setCachedRichHtmlHeight(html, measuredHeight);
+            setHeight((currentHeight) => {
+              if (Math.abs(currentHeight - measuredHeight) <= RICH_HTML_HEIGHT_UPDATE_EPSILON) {
+                return currentHeight;
+              }
+              return measuredHeight;
+            });
+          }
+        }}
+        onShouldStartLoadWithRequest={(request) => request.url === 'about:blank'}
+        originWhitelist={['about:blank']}
+        scrollEnabled={false}
+        setSupportMultipleWindows={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        source={{ html: richHtmlDocument, baseUrl: 'about:blank' }}
+        style={styles.richHtmlWebView}
+      />
+    </View>
+  );
 }
 
 function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress: (url: string) => void, referenceLinks: ReferenceLinks, footnotes: Footnotes): ReactNode {
@@ -559,9 +758,10 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const shouldParseMarkdown = variant === 'assistant' && !streaming;
+  const renderWholeRichHtml = shouldRenderWholeRichHtml(content);
+  const shouldParseMarkdown = variant === 'assistant' && !streaming && !renderWholeRichHtml;
   const parsedMarkdown = useMemo(
-    () => (shouldParseMarkdown ? parseMarkdownContent(content) : null),
+    () => (shouldParseMarkdown ? getCachedMarkdownContent(content) : null),
     [content, shouldParseMarkdown]
   );
 
@@ -583,7 +783,19 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
   if (streaming) {
     return <Text selectable style={[styles.body, styles.assistantText]}>{content}{trailingInline ?? null}</Text>;
   }
-  const { blocks, footnotes, referenceLinks } = parsedMarkdown ?? parseMarkdownContent(content);
+  if (renderWholeRichHtml) {
+    return (
+      <View style={styles.wrap}>
+        <AiRichHtmlBlock html={content} key={getMessageRenderCacheKey(content)} />
+        {trailingInline ? (
+          <Text style={[styles.body, styles.assistantText]}>
+            {trailingInline}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
+  const { blocks, footnotes, referenceLinks } = parsedMarkdown ?? getCachedMarkdownContent(content);
 
   const trailingTargetIndex = trailingInline
     ? blocks.reduce((targetIndex, block, index) => (block.type === 'hr' || block.type === 'image' ? targetIndex : index), -1)
@@ -698,6 +910,9 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
           return <AiMarkdownImage alt={block.alt} key={key} uri={block.uri} />;
         }
         if (block.type === 'code') {
+          if (shouldRenderHtmlCodeBlock(block)) {
+            return <AiRichHtmlBlock html={block.text} key={`${key}-${getMessageRenderCacheKey(block.text)}`} />;
+          }
           return (
             <View key={key} style={styles.codeBlock}>
               <View style={styles.codeHeader}>
@@ -742,6 +957,9 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
               ))}
             </View>
           );
+        }
+        if (shouldRenderRichHtml(block.text)) {
+          return <AiRichHtmlBlock html={block.text} key={`${key}-${getMessageRenderCacheKey(block.text)}`} />;
         }
         return (
           <Text key={key} style={[styles.body, styles.assistantText]}>
@@ -789,10 +1007,9 @@ const styles = StyleSheet.create({
   inlineCode: {
     ...typography.textStyles.caption,
     backgroundColor: aiLightColors.surface,
-    borderRadius: radius.sm,
     color: aiLightColors.coralActive,
     fontFamily: typography.family.mono,
-    paddingHorizontal: spacing[1],
+    lineHeight: 22,
   },
   boldText: {
     fontWeight: '700',
@@ -986,6 +1203,15 @@ const styles = StyleSheet.create({
   },
   tableCellRight: {
     textAlign: 'right',
+  },
+  richHtmlBlock: {
+    backgroundColor: 'transparent',
+    maxWidth: '100%',
+    overflow: 'hidden',
+    width: '100%',
+  },
+  richHtmlWebView: {
+    backgroundColor: 'transparent',
   },
   pressed: {
     opacity: 0.78,

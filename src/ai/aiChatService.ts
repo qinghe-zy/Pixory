@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  aiKnowledgeRepository,
   aiProviderRepository,
   aiRoleCardRepository,
   aiThreadRepository,
@@ -17,9 +18,11 @@ import {
 } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
+import { classifyAiChatFastPath } from './aiChatFastPath';
+import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
 import { getAdapterForProvider, ensureBuiltInProviders, listProviderCards } from './aiProviderService';
-import { buildMaterialBoundPrompt, buildNormalChatPrompt } from './promptBuilder';
-import { retrieveForThread } from './aiRetrievalService';
+import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
+import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
 import { trimMessagesToContextBudget } from './aiContextBudget';
 import {
@@ -38,9 +41,27 @@ import {
 } from './aiPromptCache';
 import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
 import {
+  STREAMING_PRESSURE_RECOVERY_MS,
+  STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS,
+  type StreamingVisibilityState,
+  targetPersistIntervalMs,
+  targetStreamingFps,
+  targetStreamingPatchIntervalMs,
+  updateStreamingDevicePressure,
+} from './aiStreamingRuntime';
+import {
   aggregateAiUsageObservations,
   type AiUsageAggregate,
 } from './aiUsageAnalytics';
+import {
+  createGenerationMetricsDraft,
+  finalizeGenerationMetrics,
+  markGenerationMetric,
+  nowIso,
+  redactGenerationMetricsForDiagnostics,
+  toGenerationFailureCode,
+  type AiGenerationMetricsDraft,
+} from './aiGenerationMetrics';
 import {
   deleteThreadProviderApiKey,
   getProviderApiKey,
@@ -79,8 +100,10 @@ export interface SendUserMessageInput {
   content: string;
   branchRootMessageId?: string | null;
   branchVersionIndex?: number | null;
+  sendPressedAt?: string;
   signal?: AbortSignal;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
@@ -89,7 +112,10 @@ export interface RetryAssistantMessageInput {
   space: PixorySpace;
   threadId: string;
   assistantMessageId: string;
+  sendPressedAt?: string;
   signal?: AbortSignal;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
@@ -99,8 +125,10 @@ export interface RewriteUserMessageInput {
   threadId: string;
   userMessageId: string;
   content: string;
+  sendPressedAt?: string;
   signal?: AbortSignal;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string }) => void;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }
@@ -108,6 +136,14 @@ export interface RewriteUserMessageInput {
 export interface StopStreamingMessageInput {
   space: PixorySpace;
   assistantMessageId: string;
+}
+
+export interface FlushStreamingMessageSnapshotInput {
+  assistantMessageId: string;
+  content: string;
+  generationId: string;
+  reasoningText?: string | null;
+  space: PixorySpace;
 }
 
 export interface MoveAiThreadsInput {
@@ -174,10 +210,40 @@ type ThreadModelSource = 'global_default' | 'provider_default' | 'thread_model';
 
 type ThreadModelConfig = Pick<AiThreadRecord, 'id' | 'space' | 'providerId' | 'modelId' | 'sessionBaseUrl' | 'sessionApiKeyRef'>;
 
+type BuildPromptForThreadOptions = {
+  generationMetrics?: AiGenerationMetricsDraft | null;
+};
+
+type ThreadRetrievalResult = {
+  mode: RetrievalMode;
+  partial: boolean;
+  snippets: RetrievedSnippet[];
+  timedOut: boolean;
+};
+
+function snippetTextNeedle(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+function filterSnippetsPresentInPrompt(snippets: RetrievedSnippet[], prompt: { user: string }): RetrievedSnippet[] {
+  if (snippets.length === 0) {
+    return snippets;
+  }
+  const normalizedPromptUser = prompt.user.replace(/\s+/g, ' ');
+  return snippets.filter((snippet) => {
+    if (!prompt.user.includes(snippet.label)) {
+      return false;
+    }
+    const textNeedle = snippetTextNeedle(snippet.text);
+    return !textNeedle || normalizedPromptUser.includes(textNeedle);
+  });
+}
+
 type ResolvedThreadChatModel =
   | {
       status: 'ready';
       apiKey: string | null;
+      modelContextWindowTokens: number | null;
       modelId: string;
       provider: AiProviderRecord;
       source: ThreadModelSource;
@@ -186,6 +252,62 @@ type ResolvedThreadChatModel =
   | { status: 'invalid_thread_model'; message: string; providerId?: string | null; modelId?: string | null };
 
 const stoppedMessageIds = new Set<string>();
+
+function stoppedGenerationKey(messageId: string, generationId: string): string {
+  return `${messageId}:${generationId}`;
+}
+
+function buildGenerationGuardSnapshotJson(generationMetrics: AiGenerationMetricsDraft): string {
+  return JSON.stringify({
+    generationMetrics: redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(generationMetrics)),
+  });
+}
+
+function readSnapshotGenerationId(promptSnapshotJson: string | null | undefined): string | null {
+  try {
+    const parsed = JSON.parse(promptSnapshotJson || '{}') as {
+      generationMetrics?: {
+        context?: {
+          generationId?: unknown;
+        };
+      };
+    };
+    return typeof parsed.generationMetrics?.context?.generationId === 'string'
+      ? parsed.generationMetrics.context.generationId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function generationSnapshotNeedle(generationId: string): string {
+  return `"generationId":${JSON.stringify(generationId)}`;
+}
+
+async function isAssistantMessageCurrentGeneration(
+  db: SQLiteDatabase,
+  assistantMessageId: string,
+  generationId: string
+): Promise<boolean> {
+  const current = await aiThreadRepository.findMessageById(db, assistantMessageId);
+  return readSnapshotGenerationId(current?.promptSnapshotJson) === generationId;
+}
+
+async function updateAssistantMessageForGeneration(
+  db: SQLiteDatabase,
+  assistantMessageId: string,
+  generationId: string,
+  patch: Parameters<typeof aiThreadRepository.updateMessage>[2],
+  options?: { syncFts?: boolean }
+): Promise<AiMessageRecord | null> {
+  return aiThreadRepository.updateMessageWherePromptSnapshotJsonContains(
+    db,
+    assistantMessageId,
+    generationSnapshotNeedle(generationId),
+    patch,
+    options
+  );
+}
 
 function emptyThreadModelConfig(space: PixorySpace): ThreadModelConfig {
   return {
@@ -250,6 +372,7 @@ export type AiMessageWithCitations = AiMessageRecord & {
 
 export interface AiStreamingMessagePatch {
   id: string;
+  generationId: string;
   status?: AiMessageRecord['status'];
   content?: string;
   reasoningText?: string | null;
@@ -264,6 +387,7 @@ export interface AiStreamingMessagePatch {
 }
 
 export interface ListThreadMessagesOptions {
+  anchorMessageId?: string;
   branchScopes?: AiBranchScope[];
   limit?: number;
   selectedVersionByMessageId?: Record<string, number>;
@@ -304,8 +428,6 @@ export interface AiMessageFavoriteListItem {
 
 const CHAT_HISTORY_MESSAGE_LIMIT = 30;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
-const STREAMING_PERSIST_INTERVAL_MS = 120;
-const STREAMING_UI_PATCH_INTERVAL_MS = 80;
 const DEEP_MEMORY_LIMIT = 5;
 const RELATED_HISTORY_LIMIT = 4;
 const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
@@ -332,6 +454,23 @@ function patchThreadRoleSnapshot(roleSnapshotJson: string, patch: Partial<AiThre
     snapshot = {};
   }
   return JSON.stringify({ ...snapshot, ...patch });
+}
+
+function buildRolePromptContextFromThread(thread: AiThreadRecord) {
+  try {
+    const parsed: unknown = JSON.parse(thread.roleSnapshotJson);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const snapshot = parsed as { description?: unknown; name?: unknown; sourceJson?: unknown };
+    return {
+      description: typeof snapshot.description === 'string' ? snapshot.description : null,
+      name: typeof snapshot.name === 'string' ? snapshot.name : null,
+      sourceJson: typeof snapshot.sourceJson === 'string' ? snapshot.sourceJson : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function createAiId(prefix: string): string {
@@ -630,6 +769,7 @@ function buildPromptSnapshotJson(input: {
   contextTrimmedByBudget: boolean;
   contextTrimmedByCount: boolean;
   failureReason?: string | null;
+  generationMetrics?: AiGenerationMetricsDraft | null;
   materialRules: string | null;
   normalizedUsage: NormalizedProviderUsage | null;
   providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
@@ -652,7 +792,59 @@ function buildPromptSnapshotJson(input: {
     contextTrimmedByCount: input.contextTrimmedByCount,
     materialRules: input.materialRules,
     system: input.system,
+    generationMetrics: input.generationMetrics
+      ? redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(input.generationMetrics))
+      : null,
   });
+}
+
+function buildBranchRouteHash(branchScopes: AiBranchScope[]): string {
+  return hashPromptCacheText(JSON.stringify(branchScopes.map((scope) => ({
+    branchRootMessageId: scope.branchRootMessageId,
+    branchVersionIndex: scope.branchVersionIndex,
+  }))));
+}
+
+function buildGenerationParamsHash(input: { thinkingDisabled: boolean }): string {
+  return hashPromptCacheText(JSON.stringify(input));
+}
+
+function buildPromptScopeKey(thread: AiThreadRecord): string {
+  return [
+    `space:${thread.space}`,
+    `thread:${thread.id}`,
+    `context:${thread.contextType}`,
+    `role:${thread.roleCardId ?? 'none'}`,
+    `ip:${thread.boundIpId ?? 'none'}`,
+    `kb:${thread.boundKnowledgeBaseId ?? 'none'}`,
+  ].join('|');
+}
+
+function buildMetricsOnlyPromptSnapshotJson(input: {
+  failureReason?: string | null;
+  generationMetrics: AiGenerationMetricsDraft;
+  stopReason?: string | null;
+}): string {
+  if (input.failureReason) {
+    input.generationMetrics.context.failureReason = toGenerationFailureCode(input.failureReason);
+  }
+  if (input.stopReason) {
+    input.generationMetrics.context.stopReason = input.stopReason;
+  }
+  markGenerationMetric(input.generationMetrics, 'generationSettledAt');
+  return JSON.stringify({
+    cacheObservation: {
+      failureReason: input.failureReason ?? null,
+      stopReason: input.stopReason ?? null,
+    },
+    generationMetrics: redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(input.generationMetrics)),
+  });
+}
+
+function setGenerationFailureReason(metrics: AiGenerationMetricsDraft, reason: unknown): string {
+  const code = toGenerationFailureCode(reason);
+  metrics.context.failureReason = code;
+  return code;
 }
 
 function mergeProviderUsage(previous: unknown, next: unknown): unknown {
@@ -876,6 +1068,7 @@ async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelCon
       }
       return {
         apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKey(provider.id),
+        modelContextWindowTokens: resolvedModel.contextWindowTokens ?? null,
         modelId: resolvedModel.modelId,
         provider: {
           ...provider,
@@ -944,31 +1137,138 @@ async function resolveStreamingBranchScopes(
   return [];
 }
 
-async function buildPromptForThread(thread: AiThreadRecord, userMessage: string, branchScopes?: AiBranchScope[]) {
+async function buildPromptForThread(
+  thread: AiThreadRecord,
+  userMessage: string,
+  branchScopes?: AiBranchScope[],
+  options?: BuildPromptForThreadOptions
+) {
   const chatMode = deriveAiChatMode(thread, thread.space);
-  const memoryPrefixPromise = runWithDatabaseSpace(thread.space, async (db) => {
-    const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+  const generationMetrics = options?.generationMetrics ?? null;
+  const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
+    const [threadMaterialCount, messageCount] = await Promise.all([
+      aiKnowledgeRepository.countDocumentsByOwner(db, {
+        ownerId: thread.id,
+        ownerType: 'thread',
+        space: thread.space,
+      }),
+      aiThreadRepository.countCompletedNonSystemMessages(db, thread.id, branchScopes),
+    ]);
     return {
-      companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
-      stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+      hasThreadMaterials: threadMaterialCount > 0,
+      messageCount,
     };
   });
-  const dynamicMemoryContextPromise = runWithDatabaseSpace(
-    thread.space,
-    async (db) => retrieveDynamicMemoryContext(db, thread, userMessage, branchScopes)
-  );
-  const threadMaterialRetrievalPromise = retrieveForThread({
-    space: thread.space,
-    ownerType: 'thread',
-    ownerId: thread.id,
-    query: userMessage,
+  const fastPath = classifyAiChatFastPath({
+    contextType: thread.contextType,
+    hasThreadMaterials: fastPathContext.hasThreadMaterials,
+    includeIpDocuments: thread.includeIpDocuments,
+    messageCount: fastPathContext.messageCount,
+    userMessage,
   });
-  const [{ companionMemoryPrefix, stableMemoryPrefix }, dynamicMemoryContext, threadMaterialRetrieval] = await Promise.all([
-    memoryPrefixPromise,
-    dynamicMemoryContextPromise,
-    threadMaterialRetrievalPromise,
-  ]);
-  const threadMaterialSnippets = threadMaterialRetrieval.snippets;
+  const memoryPromise = (async () => {
+    if (generationMetrics) {
+      markGenerationMetric(generationMetrics, 'memoryResolveStartAt');
+    }
+    try {
+      const memoryPrefixPromise = runWithDatabaseSpace(thread.space, async (db) => {
+        const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+        return {
+          companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+          memorySettings,
+          stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+        };
+      });
+      const dynamicMemoryContextPromise = runWithDatabaseSpace(
+        thread.space,
+        async (db) => retrieveDynamicMemoryContext(db, thread, userMessage, branchScopes)
+      );
+      const [{ companionMemoryPrefix, memorySettings, stableMemoryPrefix }, dynamicMemoryContext] = await Promise.all([
+        memoryPrefixPromise,
+        dynamicMemoryContextPromise,
+      ]);
+      return { companionMemoryPrefix, dynamicMemoryContext, memorySettings, stableMemoryPrefix };
+    } finally {
+      if (generationMetrics) {
+        markGenerationMetric(generationMetrics, 'memoryResolveEndAt');
+      }
+    }
+  })();
+  const retrievalPromise = (async () => {
+    if (generationMetrics) {
+      markGenerationMetric(generationMetrics, 'retrievalStartAt');
+    }
+    try {
+      const skippedRetrievalResult: ThreadRetrievalResult = { mode: 'skipped', partial: false, snippets: [], timedOut: false };
+      const threadMaterialRetrievalPromise: Promise<ThreadRetrievalResult> = fastPath.retrievalTier === 'none'
+        ? Promise.resolve(skippedRetrievalResult)
+        : retrieveForThread({
+            space: thread.space,
+            ownerType: 'thread',
+            ownerId: thread.id,
+            query: userMessage,
+            tier: fastPath.retrievalTier === 'keyword' ? 'keyword' : 'full',
+          });
+      if (thread.contextType === 'normal') {
+        const threadMaterialRetrieval = await threadMaterialRetrievalPromise;
+        return {
+          boundOwnerSnippets: [],
+          threadMaterialRetrieval,
+          threadMaterialSnippets: threadMaterialRetrieval.snippets,
+        };
+      }
+      const ownerType = thread.contextType === 'ip' ? 'ip' : 'knowledge_base';
+      const ownerId = thread.contextType === 'ip' ? String(thread.boundIpId ?? '') : thread.boundKnowledgeBaseId ?? '';
+      const boundOwnerRetrievalPromise = ownerId
+        ? retrieveForThread({
+            includeDocumentChunks: ownerType !== 'ip' || thread.includeIpDocuments,
+            space: thread.space,
+            ownerType,
+            ownerId,
+            query: userMessage,
+            tier: 'full',
+          })
+        : { mode: 'keyword' as const, partial: false, snippets: [], timedOut: false };
+      const [threadMaterialRetrieval, boundOwnerRetrieval] = await Promise.all([
+        threadMaterialRetrievalPromise,
+        boundOwnerRetrievalPromise,
+      ]);
+      return {
+        boundOwnerSnippets: boundOwnerRetrieval.snippets,
+        threadMaterialRetrieval,
+        threadMaterialSnippets: threadMaterialRetrieval.snippets,
+      };
+    } finally {
+      if (generationMetrics) {
+        markGenerationMetric(generationMetrics, 'retrievalEndAt');
+      }
+    }
+  })();
+  const [
+    { companionMemoryPrefix, dynamicMemoryContext, memorySettings, stableMemoryPrefix },
+    { boundOwnerSnippets, threadMaterialRetrieval, threadMaterialSnippets },
+  ] = await Promise.all([memoryPromise, retrievalPromise]);
+  const finalFastPath = classifyAiChatFastPath({
+    contextType: thread.contextType,
+    hasMemoryContext: memorySettings.deepMemoryEnabled,
+    hasThreadMaterials: fastPathContext.hasThreadMaterials,
+    includeIpDocuments: thread.includeIpDocuments,
+    messageCount: fastPathContext.messageCount,
+    userMessage,
+  });
+  if (generationMetrics) {
+    generationMetrics.context.chatMode = chatMode;
+    generationMetrics.context.fastPathClassification = finalFastPath.classification;
+    generationMetrics.context.chatPerformanceProfile = resolveAiChatPerformanceProfile({
+      contextType: thread.contextType,
+      fastPathClassification: finalFastPath.classification,
+      space: thread.space,
+    });
+    generationMetrics.context.retrievalSkippedReason = finalFastPath.retrievalSkippedReason;
+    generationMetrics.context.retrievalMode = threadMaterialRetrieval.mode;
+    generationMetrics.context.retrievalPartial = threadMaterialRetrieval.partial;
+    generationMetrics.context.retrievalTimedOut = threadMaterialRetrieval.timedOut;
+  }
   const memoryEpoch = [
     'thread',
     thread.id,
@@ -976,8 +1276,14 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
     thread.boundaryMode,
     hashPromptCacheText([companionMemoryPrefix, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
   ].join(':');
+  const roleCardContext = buildRolePromptContextFromThread(thread);
 
   if (thread.contextType === 'normal') {
+    if (generationMetrics) {
+      generationMetrics.context.memoryEpoch = memoryEpoch;
+      generationMetrics.context.retrievalSnippetCount = threadMaterialSnippets.length;
+      generationMetrics.context.stablePrefixEstimatedTokens = null;
+    }
     return {
       prompt: buildNormalChatPrompt({
         chatMode,
@@ -987,6 +1293,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
         replyPreference: thread.replyPreference,
         companionMemoryPrefix,
         stableMemoryPrefix,
+        roleCardContext,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         materialSnippets: threadMaterialSnippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
         userMessage,
@@ -995,22 +1302,12 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
     };
   }
 
-  const ownerType = thread.contextType === 'ip' ? 'ip' : 'knowledge_base';
-  const ownerId = thread.contextType === 'ip' ? String(thread.boundIpId ?? '') : thread.boundKnowledgeBaseId ?? '';
-  const boundOwnerRetrievalPromise = ownerId
-    ? retrieveForThread({
-        space: thread.space,
-        ownerType,
-        ownerId,
-        query: userMessage,
-      })
-    : { mode: 'keyword' as const, snippets: [] };
-  const [, boundOwnerRetrieval] = await Promise.all([
-    threadMaterialRetrievalPromise,
-    boundOwnerRetrievalPromise,
-  ]);
-  const boundOwnerSnippets = boundOwnerRetrieval.snippets;
   const snippets = [...threadMaterialSnippets, ...boundOwnerSnippets];
+  if (generationMetrics) {
+    generationMetrics.context.memoryEpoch = memoryEpoch;
+    generationMetrics.context.retrievalSnippetCount = snippets.length;
+    generationMetrics.context.stablePrefixEstimatedTokens = null;
+  }
 
   return {
     prompt: buildMaterialBoundPrompt({
@@ -1022,6 +1319,7 @@ async function buildPromptForThread(thread: AiThreadRecord, userMessage: string,
       replyPreference: thread.replyPreference,
       companionMemoryPrefix,
       stableMemoryPrefix,
+      roleCardContext,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
       snippets: snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
@@ -1165,7 +1463,9 @@ async function loadBranchRootMessages(
 
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, async (db) => {
-    const messages = await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
+    const messages = options.anchorMessageId && options.limit
+      ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
+      : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
     const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
     const messageIds = messagesWithBranchRoots.map((message) => message.id);
     const [versionTotalsByMessageId, citationsByMessageId] = await Promise.all([
@@ -1217,25 +1517,42 @@ export async function searchThreadMessages(input: {
     return { hasMore: false, results: [] };
   }
   const branchScopes = input.branchScopes ?? [];
-  const messages = await listThreadMessages(input.space, input.threadId, {
-    branchScopes,
+  const candidateLimit = offset + limit + 1;
+  const matches = await runWithDatabaseSpace(input.space, async (db) => {
+    const candidateRows = await aiThreadRepository.searchCompletedMessageFts(db, {
+      branchScopes,
+      limit: candidateLimit,
+      query: input.query,
+      threadId: input.threadId,
+    });
+    const messageIds = candidateRows.map((message) => message.id);
+    const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
+    const candidates: AiMessageWithCitations[] = candidateRows
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        ...message,
+        citations: [] as AiCitationRecord[],
+        messageVersions: [],
+        versionIndex: versionTotalsByMessageId[message.id] ?? 1,
+        versionTotal: versionTotalsByMessageId[message.id] ?? 1,
+      }));
+    return candidates
+      .map((message) => {
+        const score = scoreChatSearchMessage(message, input.query, terms);
+        return score ? { message, ...score } : null;
+      })
+      .filter((item): item is { message: AiMessageWithCitations; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
+      .sort((left, right) =>
+        left.rank - right.rank ||
+        left.message.createdAt.localeCompare(right.message.createdAt) ||
+        left.message.id.localeCompare(right.message.id)
+      );
   });
-  const matches = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => {
-      const score = scoreChatSearchMessage(message, input.query, terms);
-      return score ? { message, ...score } : null;
-    })
-    .filter((item): item is { message: AiMessageWithCitations; matchKind: AiChatSearchMatchKind; rank: number } => Boolean(item))
-    .sort((left, right) =>
-      left.rank - right.rank ||
-      left.message.createdAt.localeCompare(right.message.createdAt) ||
-      left.message.id.localeCompare(right.message.id)
-    )
-    .map((item) => toChatSearchResult(item.message, input.query, terms, item.matchKind));
+  const pagedMatches = matches.slice(offset, offset + limit);
   return {
-    hasMore: offset + limit < matches.length,
-    results: matches.slice(offset, offset + limit),
+    hasMore: matches.length > offset + limit,
+    results: pagedMatches
+      .map((item) => toChatSearchResult(item.message, input.query, terms, item.matchKind)),
   };
 }
 
@@ -1618,13 +1935,14 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
 async function markAssistantFailed(
   space: PixorySpace,
   assistantMessageId: string,
+  generationId: string,
   message: string,
   partialContent = '',
   partialReasoningText: string | null = null,
   promptSnapshotJson?: string
 ): Promise<void> {
   await runWithDatabaseSpace(space, (db) =>
-    aiThreadRepository.updateMessage(db, assistantMessageId, {
+    updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
       status: 'failed',
       content: partialContent,
       reasoningText: partialReasoningText,
@@ -1638,13 +1956,14 @@ async function markAssistantFailed(
 async function markAssistantStopped(
   space: PixorySpace,
   assistantMessageId: string,
+  generationId: string,
   partialContent?: string,
   partialReasoningText?: string | null,
   promptSnapshotJson?: string
 ): Promise<string> {
   const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(space, (db) =>
-    aiThreadRepository.updateMessage(db, assistantMessageId, {
+    updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
       status: 'stopped',
       content: partialContent,
       reasoningText: partialReasoningText,
@@ -1652,8 +1971,19 @@ async function markAssistantStopped(
       completedAt,
     })
   );
-  stoppedMessageIds.delete(assistantMessageId);
+  stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   return completedAt;
+}
+
+async function updateAssistantPromptSnapshot(
+  space: PixorySpace,
+  assistantMessageId: string,
+  generationId: string,
+  promptSnapshotJson: string
+): Promise<void> {
+  await runWithDatabaseSpace(space, (db) =>
+    updateAssistantMessageForGeneration(db, assistantMessageId, generationId, { promptSnapshotJson }, { syncFts: false })
+  );
 }
 
 async function snapshotMessageVersion(
@@ -1681,7 +2011,10 @@ async function snapshotMessageVersion(
   });
 }
 
-function buildChatHistory(messages: AiMessageRecord[], userMessageId: string): {
+function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, options?: {
+  modelContextWindowTokens?: number | null;
+  protectedPrompt?: string;
+}): {
   contextTrimmedByBudget: boolean;
   history: Array<{ role: 'assistant' | 'user'; content: string }>;
 } {
@@ -1692,7 +2025,8 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string): {
     .slice(-CHAT_HISTORY_MESSAGE_LIMIT);
   const budgeted = trimMessagesToContextBudget({
     messages: completedMessages,
-    protectedPrompt: 'Current user message and role instruction are protected from context trimming.',
+    protectedPrompt: options?.protectedPrompt ?? 'Current user message and role instruction are protected from context trimming.',
+    modelContextWindowTokens: options?.modelContextWindowTokens,
   });
   return {
     contextTrimmedByBudget: budgeted.trimmed,
@@ -1793,25 +2127,41 @@ async function streamAssistantReply(input: {
   thread: AiThreadRecord;
   userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId: string;
+  generationMetrics: AiGenerationMetricsDraft;
   signal?: AbortSignal;
+  getStreamingVisibility?: () => StreamingVisibilityState;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
 }): Promise<void> {
   let answerText = '';
   let reasoningText = '';
   let assistantReset = false;
-  const stopForAbort = async (options?: { promptSnapshotJson?: string }): Promise<boolean> => {
+  const generationMetrics = input.generationMetrics;
+  const generationId = generationMetrics.context.generationId;
+  const emitMessagePatch = (patch: Omit<AiStreamingMessagePatch, 'generationId'>) => {
+    input.onMessagePatch?.({ generationId, ...patch });
+  };
+  markGenerationMetric(generationMetrics, 'generationStartAt');
+  const currentStopReason = () =>
+    stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId)) ? 'user_stopped' : 'aborted';
+  const stopForAbort = async (options?: { buildPromptSnapshotJson?: () => string }): Promise<boolean> => {
     if (!input.signal?.aborted) {
       return false;
     }
+    const stopReason = currentStopReason();
+    generationMetrics.context.stopReason = stopReason;
     const completedAt = await markAssistantStopped(
       input.space,
       input.assistantMessageId,
+      generationId,
       assistantReset ? answerText : undefined,
       assistantReset ? reasoningText || null : undefined,
-      options?.promptSnapshotJson
+      options?.buildPromptSnapshotJson?.() ?? buildMetricsOnlyPromptSnapshotJson({
+        generationMetrics,
+        stopReason,
+      })
     );
-    input.onMessagePatch?.({
+    emitMessagePatch({
       id: input.assistantMessageId,
       status: 'stopped',
       content: assistantReset ? answerText : undefined,
@@ -1824,10 +2174,13 @@ async function streamAssistantReply(input: {
   if (await stopForAbort()) {
     return;
   }
-  stoppedMessageIds.delete(input.assistantMessageId);
+  stoppedMessageIds.delete(stoppedGenerationKey(input.assistantMessageId, generationId));
   const startedAt = new Date().toISOString();
+  if (!generationMetrics.timestamps.assistantPlaceholderPersistStartAt) {
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
+  }
   await runWithDatabaseSpace(input.space, async (db) => {
-    await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+    const resetMessage = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
       status: 'generating',
       content: '',
       reasoningText: null,
@@ -1835,14 +2188,23 @@ async function streamAssistantReply(input: {
       providerId: null,
       modelId: null,
       modelSnapshotJson: '{}',
-      promptSnapshotJson: '{}',
+      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
       createdAt: startedAt,
       completedAt: null,
     });
+    if (!resetMessage) {
+      return;
+    }
     await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
   });
+  if (!(await runWithDatabaseSpace(input.space, (db) => isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)))) {
+    return;
+  }
+  if (!generationMetrics.timestamps.assistantPlaceholderPersistEndAt) {
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');
+  }
   assistantReset = true;
-  input.onMessagePatch?.({
+  emitMessagePatch({
     id: input.assistantMessageId,
     status: 'generating',
     content: '',
@@ -1862,108 +2224,255 @@ async function streamAssistantReply(input: {
     return;
   }
 
-  const resolvedModel = await resolveThreadChatModel(input.space, input.thread);
-  if (await stopForAbort()) {
-    return;
-  }
-  if (resolvedModel.status !== 'ready') {
-    await markAssistantFailed(input.space, input.assistantMessageId, resolvedModel.message);
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
-    input.onUpdated?.();
-    return;
-  }
-  const { apiKey, modelId, provider } = resolvedModel;
-  if (!apiKey) {
-    const apiKeyMessage = '当前模型账号不可用，请检查 API key 或切换当前会话模型。';
-    await markAssistantFailed(input.space, input.assistantMessageId, apiKeyMessage);
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
-    input.onUpdated?.();
-    return;
-  }
-
-  const branchScopes = await runWithDatabaseSpace(input.space, (db) =>
-    resolveStreamingBranchScopes(db, {
-      assistantMessageId: input.assistantMessageId,
-      userMessageId: input.userMessage.id,
-    })
-  );
-  const { prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes);
-  if (await stopForAbort()) {
-    return;
-  }
-  const historySource = await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.listRecentCompletedMessagesBefore(
-      db,
-      input.thread.id,
-      input.userMessage.id,
-      CHAT_HISTORY_MESSAGE_LIMIT + 1,
-      branchScopes
-    )
-  );
-  if (await stopForAbort()) {
-    return;
-  }
-  const contextTrimmedByCount = historySource.length > CHAT_HISTORY_MESSAGE_LIMIT;
-  const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
-  const { contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id);
-  const contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget;
+  let apiKey: string | null = '';
+  let branchScopes: AiBranchScope[] = [];
+  let cacheObservationBase: ReturnType<typeof buildCacheObservationBase>;
+  let contextTrimmed = false;
+  let contextTrimmedByBudget = false;
+  let contextTrimmedByCount = false;
+  let history: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+  let modelId = '';
+  let modelContextWindowTokens: number | null = null;
+  let previousRequestAt: string | null = null;
+  let prompt: Awaited<ReturnType<typeof buildPromptForThread>>['prompt'];
+  let provider: AiProviderRecord;
+  let providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
+  let snippets: Awaited<ReturnType<typeof buildPromptForThread>>['snippets'] = [];
   const requestedAt = startedAt;
-  const previousRequestAt = historyMessages.at(-1)?.completedAt ?? null;
-  const turnIntervalMs = previousRequestAt ? Date.parse(requestedAt) - Date.parse(previousRequestAt) : null;
-  const promptCacheSettings = await resolvePromptCacheSettings(input.space);
-  const providerCachePolicy = buildProviderCachePolicy({
-    metadata: prompt.cacheMetadata,
-    modelId,
-    previousRequestAt,
-    provider: {
-      ...provider,
-      openAiUsageObservationEnabled: openAiUsageObservationEnabled(provider),
-    },
-    requestedAt,
-    settings: promptCacheSettings,
-    stableSystemBlocks: prompt.stableSystemBlocks,
-  });
-  const cacheObservationBase = buildCacheObservationBase({
-    contextTrimmed,
-    contextTrimmedByBudget,
-    contextTrimmedByCount,
-    historyMessageCount: history.length,
-    modelId,
-    previousRequestAt,
-    prompt,
-    providerId: provider.id,
-    requestedAt,
-    ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt, settings: promptCacheSettings }),
-    turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
-  });
+
+  try {
+    markGenerationMetric(generationMetrics, 'providerResolveStartAt');
+    const resolvedModel = await resolveThreadChatModel(input.space, input.thread);
+    markGenerationMetric(generationMetrics, 'providerResolveEndAt');
+    if (await stopForAbort()) {
+      return;
+    }
+    if (resolvedModel.status !== 'ready') {
+      const failureCode = setGenerationFailureReason(generationMetrics, resolvedModel.status);
+      await markAssistantFailed(
+        input.space,
+        input.assistantMessageId,
+        generationId,
+        resolvedModel.message,
+        '',
+        null,
+        buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+      );
+      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
+      input.onUpdated?.();
+      return;
+    }
+    ({ apiKey, modelContextWindowTokens, modelId, provider } = resolvedModel);
+    generationMetrics.context.providerId = provider.id;
+    generationMetrics.context.modelId = modelId;
+    generationMetrics.context.modelContextWindowTokens = resolvedModel.modelContextWindowTokens;
+    if (!apiKey) {
+      const apiKeyMessage = '当前模型账号不可用，请检查 API key 或切换当前会话模型。';
+      const failureCode = setGenerationFailureReason(generationMetrics, 'missing_api_key');
+      await markAssistantFailed(
+        input.space,
+        input.assistantMessageId,
+        generationId,
+        apiKeyMessage,
+        '',
+        null,
+        buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+      );
+      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
+      input.onUpdated?.();
+      return;
+    }
+
+    markGenerationMetric(generationMetrics, 'branchResolveStartAt');
+    branchScopes = await runWithDatabaseSpace(input.space, (db) =>
+      resolveStreamingBranchScopes(db, {
+        assistantMessageId: input.assistantMessageId,
+        userMessageId: input.userMessage.id,
+      })
+    );
+    generationMetrics.context.branchScopeCount = branchScopes.length;
+    markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    markGenerationMetric(generationMetrics, 'promptBuildStartAt');
+    ({ prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes, { generationMetrics }));
+    prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
+    snippets = filterSnippetsPresentInPrompt(snippets, prompt);
+    generationMetrics.context.chatMode = prompt.cacheMetadata.chatMode;
+    generationMetrics.context.memoryEpoch = prompt.cacheMetadata.memoryEpoch;
+    generationMetrics.context.retrievalSnippetCount = snippets.length;
+    generationMetrics.context.stablePrefixEstimatedTokens = prompt.cacheMetadata.stablePrefixEstimatedTokens;
+    markGenerationMetric(generationMetrics, 'promptBuildEndAt');
+    if (await stopForAbort()) {
+      return;
+    }
+    markGenerationMetric(generationMetrics, 'historyLoadStartAt');
+    const historySource = await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.listRecentCompletedMessagesBefore(
+        db,
+        input.thread.id,
+        input.userMessage.id,
+        CHAT_HISTORY_MESSAGE_LIMIT + 1,
+        branchScopes
+      )
+    );
+    markGenerationMetric(generationMetrics, 'historyLoadEndAt');
+    if (await stopForAbort()) {
+      return;
+    }
+    contextTrimmedByCount = historySource.length > CHAT_HISTORY_MESSAGE_LIMIT;
+    const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
+    ({ contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
+      modelContextWindowTokens,
+      protectedPrompt: [
+        prompt.system,
+        prompt.user,
+        input.userMessage.content,
+      ].filter(Boolean).join('\n\n'),
+    }));
+    generationMetrics.context.loadedMessageCountAtSend = historySource.length;
+    generationMetrics.context.historyMessageCount = history.length;
+    contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget || Boolean(prompt.contextBudgetTrimmed);
+    previousRequestAt = historyMessages.at(-1)?.completedAt ?? null;
+    const turnIntervalMs = previousRequestAt ? Date.parse(requestedAt) - Date.parse(previousRequestAt) : null;
+    const promptCacheSettings = await resolvePromptCacheSettings(input.space);
+    providerCachePolicy = buildProviderCachePolicy({
+      branchRouteHash: buildBranchRouteHash(branchScopes),
+      generationParamsHash: buildGenerationParamsHash({ thinkingDisabled: input.thread.thinkingDisabled }),
+      metadata: prompt.cacheMetadata,
+      modelId,
+      previousRequestAt,
+      provider: {
+        ...provider,
+        openAiUsageObservationEnabled: openAiUsageObservationEnabled(provider),
+      },
+      requestedAt,
+      settings: promptCacheSettings,
+      scopeKey: buildPromptScopeKey(input.thread),
+      stableSystemBlocks: prompt.stableSystemBlocks,
+    });
+    cacheObservationBase = buildCacheObservationBase({
+      contextTrimmed,
+      contextTrimmedByBudget,
+      contextTrimmedByCount,
+      historyMessageCount: history.length,
+      modelId,
+      previousRequestAt,
+      prompt,
+      providerId: provider.id,
+      requestedAt,
+      ttlLikelyExpired: ttlLikelyExpired({ previousRequestAt, provider, requestedAt, settings: promptCacheSettings }),
+      turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
+    });
+  } catch (error) {
+    if (await stopForAbort({ buildPromptSnapshotJson: () => buildMetricsOnlyPromptSnapshotJson({ generationMetrics, stopReason: currentStopReason() }) })) {
+      return;
+    }
+    const readableError = normalizeAiErrorMessage(error);
+    const failureCode = setGenerationFailureReason(generationMetrics, error);
+    await markAssistantFailed(
+      input.space,
+      input.assistantMessageId,
+      generationId,
+      readableError,
+      answerText,
+      reasoningText || null,
+      buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+    );
+    emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
+    input.onUpdated?.();
+    return;
+  }
   let providerUsageRaw: unknown = null;
-  const createPromptSnapshotJson = (input?: { failureReason?: string | null; stopReason?: string | null }) => buildPromptSnapshotJson({
-    cacheObservationBase,
-    contextTrimmed,
-    contextTrimmedByBudget,
-    contextTrimmedByCount,
-    failureReason: input?.failureReason ?? null,
-    materialRules: prompt.materialRules ?? null,
-    normalizedUsage: providerUsageRaw ? normalizeProviderUsage(provider.protocol, providerUsageRaw) : null,
-    providerCachePolicy,
-    stopReason: input?.stopReason ?? null,
-    system: prompt.system,
-  });
+  const createPromptSnapshotJson = (input?: { failureReason?: string | null; stopReason?: string | null }) => {
+    if (input?.failureReason) {
+      setGenerationFailureReason(generationMetrics, input.failureReason);
+    }
+    if (input?.stopReason) {
+      generationMetrics.context.stopReason = input.stopReason;
+    }
+    if ((input?.failureReason || input?.stopReason) && !generationMetrics.timestamps.generationSettledAt) {
+      markGenerationMetric(generationMetrics, 'generationSettledAt');
+    }
+    return buildPromptSnapshotJson({
+      cacheObservationBase,
+      contextTrimmed,
+      contextTrimmedByBudget,
+      contextTrimmedByCount,
+      failureReason: input?.failureReason ?? null,
+      generationMetrics,
+      materialRules: prompt.materialRules ?? null,
+      normalizedUsage: providerUsageRaw ? normalizeProviderUsage(provider.protocol, providerUsageRaw) : null,
+      providerCachePolicy,
+      stopReason: input?.stopReason ?? null,
+      system: prompt.system,
+    });
+  };
 
   let streamFailed = false;
+  let consecutivePressureWindows = 0;
   let lastPersistAt = 0;
+  let lastPersistedAnswerChars = 0;
+  let lastPersistedReasoningChars = 0;
   let lastUiPatchAt = 0;
+  let lastUiPatchAnswerChars = 0;
+  let lastUiPatchReasoningChars = 0;
+  let pressureProbeExpectedAt = Date.now();
+  let pressureProbeActive = true;
+  const sampleStreamingDevicePressure = () => {
+    if (!pressureProbeActive || input.signal?.aborted) {
+      return;
+    }
+    const now = Date.now();
+    const pressure = updateStreamingDevicePressure({
+      consecutivePressureWindows,
+      observedDelayMs: now - pressureProbeExpectedAt,
+    });
+    consecutivePressureWindows = pressure.consecutivePressureWindows;
+    generationMetrics.context.devicePressureThrottled = pressure.devicePressureThrottled;
+    pressureProbeExpectedAt = now + STREAMING_PRESSURE_RECOVERY_MS;
+    setTimeout(sampleStreamingDevicePressure, STREAMING_PRESSURE_RECOVERY_MS);
+  };
+  pressureProbeExpectedAt += STREAMING_PRESSURE_RECOVERY_MS;
+  setTimeout(sampleStreamingDevicePressure, STREAMING_PRESSURE_RECOVERY_MS);
   const adapter = getAdapterForProvider(provider);
   const emitStreamingPatch = (force = false) => {
     if (input.signal?.aborted) {
       return;
     }
     const now = Date.now();
-    if (!force && now - lastUiPatchAt < STREAMING_UI_PATCH_INTERVAL_MS) {
+    const answerChars = answerText.length;
+    const reasoningChars = reasoningText.length;
+    if (!force && answerChars === lastUiPatchAnswerChars && reasoningChars === lastUiPatchReasoningChars) {
+      generationMetrics.counters.streamSkippedUiPatchCount += 1;
+      return;
+    }
+    const visibility = input.getStreamingVisibility?.() ?? { bottomLocked: true };
+    const streamingVisibility = {
+      ...visibility,
+      devicePressure: generationMetrics.context.devicePressureThrottled,
+      visibleChars: answerText.length + reasoningText.length,
+    };
+    const patchIntervalMs = targetStreamingPatchIntervalMs({
+      ...streamingVisibility,
+    });
+    generationMetrics.context.streamingTargetFps = targetStreamingFps({
+      ...streamingVisibility,
+    });
+    if (patchIntervalMs == null) {
+      generationMetrics.counters.streamSkippedUiPatchCount += 1;
+      return;
+    }
+    if (!force && now - lastUiPatchAt < patchIntervalMs) {
+      generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
     }
     lastUiPatchAt = now;
-    input.onMessagePatch?.({
+    lastUiPatchAnswerChars = answerChars;
+    lastUiPatchReasoningChars = reasoningChars;
+    generationMetrics.counters.streamUiPatchCount += 1;
+    if (!generationMetrics.timestamps.firstUiPatchAt && answerText.length + reasoningText.length > 0) {
+      markGenerationMetric(generationMetrics, 'firstUiPatchAt');
+    }
+    emitMessagePatch({
       id: input.assistantMessageId,
       content: answerText,
       reasoningText: reasoningText || null,
@@ -1975,19 +2484,31 @@ async function streamAssistantReply(input: {
       return;
     }
     const now = Date.now();
-    if (!force && now - lastPersistAt < STREAMING_PERSIST_INTERVAL_MS) {
+    const answerChars = answerText.length;
+    const reasoningChars = reasoningText.length;
+    if (!force && answerChars === lastPersistedAnswerChars && reasoningChars === lastPersistedReasoningChars) {
+      generationMetrics.counters.streamSkippedPersistCount += 1;
+      return;
+    }
+    const persistIntervalMs = targetPersistIntervalMs() || STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS;
+    if (!force && now - lastPersistAt < persistIntervalMs) {
+      generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
     }
     lastPersistAt = now;
+    lastPersistedAnswerChars = answerChars;
+    lastPersistedReasoningChars = reasoningChars;
+    generationMetrics.counters.streamPersistCount += 1;
     await runWithDatabaseSpace(input.space, (db) =>
-      aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+      updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
         content: answerText,
         reasoningText: reasoningText || null,
-      })
+      }, { syncFts: false })
     );
   };
 
   try {
+    markGenerationMetric(generationMetrics, 'providerRequestSentAt');
     await adapter.streamChat(
       {
         apiKey,
@@ -2001,70 +2522,107 @@ async function streamAssistantReply(input: {
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
-        if (input.signal?.aborted || stoppedMessageIds.has(input.assistantMessageId)) {
+        if (input.signal?.aborted || stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
           return;
         }
         if (event.type === 'provider_usage') {
           providerUsageRaw = mergeProviderUsage(providerUsageRaw, event.rawUsage);
+          const normalizedUsage = normalizeProviderUsage(provider.protocol, providerUsageRaw);
+          generationMetrics.context.totalPromptTokens = normalizedUsage?.totalPromptTokens ?? null;
+          generationMetrics.context.cachedInputTokens = normalizedUsage?.cachedInputTokens ?? null;
+          generationMetrics.context.cachedTokenRatio = normalizedUsage?.cachedTokenRatio ?? null;
           return;
         }
         if (event.type === 'answer_delta') {
+          generationMetrics.counters.providerDeltaCount += 1;
+          generationMetrics.counters.answerDeltaCount += 1;
+          if (!generationMetrics.timestamps.firstProviderDeltaAt) {
+            markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+          }
+          markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
           answerText += event.text;
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled) {
+          generationMetrics.counters.providerDeltaCount += 1;
+          generationMetrics.counters.reasoningDeltaCount += 1;
+          if (!generationMetrics.timestamps.firstProviderDeltaAt) {
+            markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+          }
+          markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
           reasoningText += event.text;
         }
+        generationMetrics.counters.maxBufferedChars = Math.max(
+          generationMetrics.counters.maxBufferedChars,
+          answerText.length + reasoningText.length
+        );
         if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled)) {
           emitStreamingPatch();
+          generationMetrics.counters.streamMergedDeltaCount = Math.max(
+            0,
+            generationMetrics.counters.providerDeltaCount - generationMetrics.counters.streamUiPatchCount
+          );
           await persistStreamingSnapshot();
         }
         if (event.type === 'error') {
           streamFailed = true;
           const readableError = normalizeAiErrorMessage(event.message);
-          await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: readableError }));
-          input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
+          const failureCode = setGenerationFailureReason(generationMetrics, event.message);
+          await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
+          emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
           input.onUpdated?.();
         }
       }
     );
   } catch (error) {
-    if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
+    if (await stopForAbort({ buildPromptSnapshotJson: () => createPromptSnapshotJson({ stopReason: currentStopReason() }) })) {
       return;
     }
     streamFailed = true;
     const readableError = normalizeAiErrorMessage(error);
-    await markAssistantFailed(input.space, input.assistantMessageId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: readableError }));
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
+    const failureCode = setGenerationFailureReason(generationMetrics, error);
+    await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
+    emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
     input.onUpdated?.();
+  } finally {
+    pressureProbeActive = false;
   }
 
   if (streamFailed) {
     return;
   }
 
-  if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
+  if (await stopForAbort({ buildPromptSnapshotJson: () => createPromptSnapshotJson({ stopReason: currentStopReason() }) })) {
     return;
   }
 
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 
-  if (await stopForAbort({ promptSnapshotJson: createPromptSnapshotJson({ stopReason: 'aborted' }) })) {
+  if (await stopForAbort({ buildPromptSnapshotJson: () => createPromptSnapshotJson({ stopReason: currentStopReason() }) })) {
     return;
   }
 
-  if (stoppedMessageIds.has(input.assistantMessageId)) {
-    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'user_stopped' }));
-    input.onMessagePatch?.({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
+  if (stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
+    generationMetrics.context.stopReason = 'user_stopped';
+    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, generationId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'user_stopped' }));
+    emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
     return;
   }
 
   let finalCitations: AiCitationRecord[] = [];
   const completedAt = new Date().toISOString();
+  generationMetrics.counters.finalAnswerChars = answerText.length;
+  generationMetrics.counters.finalReasoningChars = reasoningText.length;
+  const finalFailureReason = answerText ? null : 'empty_response';
+  if (!answerText) {
+    setGenerationFailureReason(generationMetrics, finalFailureReason);
+  }
+  markGenerationMetric(generationMetrics, 'finalPersistStartAt');
   const promptSnapshotJson = createPromptSnapshotJson();
+  let finalMessagePersisted = false;
   await runWithDatabaseSpace(input.space, async (db) => {
-    const current = await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+    const current = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
       status: answerText ? 'completed' : 'failed',
       content: answerText,
       reasoningText: reasoningText || null,
@@ -2075,6 +2633,7 @@ async function streamAssistantReply(input: {
       promptSnapshotJson,
       completedAt,
     });
+    finalMessagePersisted = Boolean(current);
     if (current?.status === 'completed' && snippets.length > 0) {
       const citations = snippets.map((snippet) => ({
         id: createAiId('aicite'),
@@ -2083,11 +2642,20 @@ async function streamAssistantReply(input: {
         label: snippet.label,
         locator: snippet.locator,
       }));
-      await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
+      if (await isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)) {
+        await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
+      }
       finalCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
     }
   });
-  input.onMessagePatch?.({
+  if (!finalMessagePersisted) {
+    return;
+  }
+  markGenerationMetric(generationMetrics, 'finalPersistEndAt');
+  markGenerationMetric(generationMetrics, 'generationSettledAt');
+  const finalPromptSnapshotJson = createPromptSnapshotJson({ failureReason: finalFailureReason });
+  await updateAssistantPromptSnapshot(input.space, input.assistantMessageId, generationId, finalPromptSnapshotJson);
+  emitMessagePatch({
     id: input.assistantMessageId,
     status: answerText ? 'completed' : 'failed',
     content: answerText,
@@ -2096,7 +2664,7 @@ async function streamAssistantReply(input: {
     providerId: provider.id,
     modelId,
     modelSnapshotJson: JSON.stringify({ providerId: provider.id, modelId }),
-    promptSnapshotJson,
+    promptSnapshotJson: finalPromptSnapshotJson,
     completedAt,
     citations: finalCitations,
   });
@@ -2144,7 +2712,16 @@ export async function sendUserMessage(
 
   const userMessageId = createAiId('aimsg');
   const assistantMessageId = createAiId('aimsg');
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId('aigen'),
+    messageId: assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
   await runWithDatabaseSpace(input.space, async (db) => {
+    markGenerationMetric(generationMetrics, 'userMessagePersistStartAt');
     await aiThreadRepository.createMessage(db, {
       id: userMessageId,
       threadId: thread.id,
@@ -2155,6 +2732,8 @@ export async function sendUserMessage(
       content: input.content,
       completedAt: new Date().toISOString(),
     });
+    markGenerationMetric(generationMetrics, 'userMessagePersistEndAt');
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
     await aiThreadRepository.createMessage(db, {
       id: assistantMessageId,
       threadId: thread.id,
@@ -2163,7 +2742,9 @@ export async function sendUserMessage(
       role: 'assistant',
       status: 'generating',
       content: '',
+      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
     });
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');
     await aiThreadRepository.updateThread(db, thread.id, {
       title: thread.titleStatus === 'fallback'
         ? fallbackAiThreadTitle({ contextTitle: thread.title, contextType: thread.contextType, firstUserMessage: input.content })
@@ -2177,12 +2758,14 @@ export async function sendUserMessage(
       threadId: thread.id,
     });
   });
-  input.onCreated?.({ userMessageId, assistantMessageId });
+  input.onCreated?.({ userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
   input.onUpdated?.();
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
     assistantMessageId,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     signal: input.signal,
@@ -2200,6 +2783,14 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     throw new Error('AI thread was not found.');
   }
 
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId('aigen'),
+    messageId: input.assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
   const userMessage = await runWithDatabaseSpace(input.space, async (db) => {
     const assistantMessage = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
     if (!assistantMessage || assistantMessage.threadId !== thread.id || assistantMessage.role !== 'assistant') {
@@ -2221,6 +2812,17 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: previousUserMessage.content.slice(0, 80),
       });
+      await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+        status: 'generating',
+        content: '',
+        reasoningText: null,
+        errorMessage: null,
+        providerId: null,
+        modelId: null,
+        modelSnapshotJson: '{}',
+        promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+        completedAt: null,
+      });
       await aiThreadRepository.setThreadCurrentBranch(db, {
         branchRootMessageId: input.assistantMessageId,
         branchVersionIndex: nextBranchVersionIndex,
@@ -2230,9 +2832,16 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     return previousUserMessage;
   });
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  input.onCreated?.({
+    userMessageId: userMessage.id,
+    assistantMessageId: input.assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+  });
 
   await streamAssistantReply({
     assistantMessageId: input.assistantMessageId,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     signal: input.signal,
@@ -2258,6 +2867,14 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
   }
 
   const assistantMessageId = createAiId('aimsg');
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId('aigen'),
+    messageId: assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
   await runWithDatabaseSpace(input.space, async (db) => {
     const userMessage = await aiThreadRepository.findMessageById(db, input.userMessageId);
     if (!userMessage || userMessage.threadId !== thread.id || userMessage.role !== 'user') {
@@ -2267,12 +2884,15 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
       const previousUserVersion = await snapshotMessageVersion(db, userMessage);
       const nextBranchVersionIndex = previousUserVersion.versionIndex + 1;
       await aiThreadRepository.markVisibleMessagesAfterAsBranch(db, thread.id, input.userMessageId, input.userMessageId, previousUserVersion.versionIndex, userMessage);
+      markGenerationMetric(generationMetrics, 'userMessagePersistStartAt');
       await aiThreadRepository.updateMessage(db, input.userMessageId, {
         status: 'completed',
         content,
         errorMessage: null,
         completedAt: new Date().toISOString(),
       });
+      markGenerationMetric(generationMetrics, 'userMessagePersistEndAt');
+      markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
       await aiThreadRepository.createMessage(db, {
         id: assistantMessageId,
         threadId: thread.id,
@@ -2281,7 +2901,9 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
         role: 'assistant',
         status: 'generating',
         content: '',
+        promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
       });
+      markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');
       await aiThreadRepository.updateThread(db, thread.id, {
         lastMessagePreview: content.slice(0, 80),
       });
@@ -2293,12 +2915,14 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     });
   });
 
-  input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId });
+  input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
   input.onUpdated?.();
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
     assistantMessageId,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
     onUpdated: input.onUpdated,
     signal: input.signal,
@@ -2311,12 +2935,30 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
 }
 
 export async function stopStreamingMessage(input: StopStreamingMessageInput): Promise<void> {
-  stoppedMessageIds.add(input.assistantMessageId);
-  await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const current = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
+    const generationId = readSnapshotGenerationId(current?.promptSnapshotJson);
+    if (!generationId) {
+      await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+        status: 'stopped',
+        completedAt: new Date().toISOString(),
+      });
+      return;
+    }
+    stoppedMessageIds.add(stoppedGenerationKey(input.assistantMessageId, generationId));
+    await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
       status: 'stopped',
       completedAt: new Date().toISOString(),
-    })
+    });
+  });
+}
+
+export async function flushStreamingMessageSnapshot(input: FlushStreamingMessageSnapshotInput): Promise<void> {
+  await runWithDatabaseSpace(input.space, (db) =>
+    updateAssistantMessageForGeneration(db, input.assistantMessageId, input.generationId, {
+      content: input.content,
+      reasoningText: input.reasoningText ?? null,
+    }, { syncFts: false })
   );
 }
 

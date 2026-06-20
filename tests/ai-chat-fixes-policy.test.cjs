@@ -22,12 +22,16 @@ test('AI thinking block shows timed thinking state instead of the old summary la
 test('AI regenerated and rewritten replies reset the thinking timer for the new generation', () => {
   const service = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
-  const resetBlock = /async function streamAssistantReply[\s\S]*?aiThreadRepository\.updateMessage\(db, input\.assistantMessageId, \{([\s\S]*?)\n    \}\);/.exec(service)?.[1] ?? '';
+  const resetBlock = /const resetMessage = await updateAssistantMessageForGeneration\(db, input\.assistantMessageId, generationId, \{([\s\S]*?)\n    \}\);/.exec(service)?.[1] ?? '';
+  const regenerateResetBlock = /await aiThreadRepository\.updateMessage\(db, input\.assistantMessageId, \{([\s\S]*?)\n      \}\);/.exec(service)?.[1] ?? '';
 
   assert.match(service, /const startedAt = new Date\(\)\.toISOString\(\)/);
   assert.match(resetBlock, /status:\s*'generating'/);
   assert.match(resetBlock, /createdAt:\s*startedAt/);
   assert.match(resetBlock, /completedAt:\s*null/);
+  assert.match(regenerateResetBlock, /status:\s*'generating'/);
+  assert.match(regenerateResetBlock, /promptSnapshotJson:\s*buildGenerationGuardSnapshotJson\(generationMetrics\)/);
+  assert.match(regenerateResetBlock, /completedAt:\s*null/);
   assert.match(service, /snapshotMessageVersion\(db, assistantMessage\)/);
   assert.match(service, /snapshotMessageVersion\(db, userMessage\)/);
   assert.match(repository, /createdAt\?: string/);
@@ -258,7 +262,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
-  assert.match(chat, /onCreated: \(\{ assistantMessageId \}\) => \{[\s\S]*scheduleIntentionalLatestJump\(false\)/);
+  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId \}\) => \{[\s\S]*publishStreamingMessage\(streamingIdentity[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*scheduleIntentionalLatestJump\(false\)/);
@@ -281,7 +285,7 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
   assert.match(routeReloadEffect, /currentBranchScopes = searchTargetBranchScopes \?\? await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
   assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
-  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, !hasSearchTarget, currentBranchScopes\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
   assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
   assert.match(chat, /reloadAvatarConfig\(threadId \?\? null/);
@@ -475,6 +479,62 @@ test('AI rich text rendering keeps untrusted HTML and network preview behavior b
   assert.match(linkPreview, /onPress=\{loadState === 'ready' \? openUrl : loadPreview\}/);
 });
 
+test('AI rich HTML uses a bounded WebView for CSS and block layout support', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /import \{ WebView \} from 'react-native-webview'/);
+  assert.match(content, /function shouldRenderRichHtml/);
+  assert.match(content, /function shouldRenderWholeRichHtml/);
+  assert.match(content, /function shouldRenderHtmlCodeBlock/);
+  assert.match(content, /function AiRichHtmlBlock/);
+  for (const property of [
+    'font-size',
+    'font-family',
+    'font-style',
+    'text-decoration',
+    'text-shadow',
+    'opacity',
+    'border',
+    'border-radius',
+    'padding',
+    'margin',
+    'letter-spacing',
+    'text-transform',
+    'display',
+    'white-space',
+  ]) {
+    assert.match(content, new RegExp(property.replace('-', '[-]')));
+  }
+  assert.match(content, /address\|article\|aside\|blockquote[\s\S]*div[\s\S]*section[\s\S]*table[\s\S]*thead[\s\S]*tbody[\s\S]*tr[\s\S]*th[\s\S]*td/);
+  assert.match(content, /linear-gradient|radial-gradient|repeating-linear-gradient/);
+  assert.match(content, /replace\(\s*\/url\\\(\[\^\\\)\]\*\\\)\/gi,\s*'none'\s*\)/);
+  assert.match(content, /replace\(\s*\/@import\\s\+/);
+  assert.match(content, /replace\(\s*\/\\s\+\(src\|srcset\|poster\)/);
+  assert.match(content, /shouldRenderWholeRichHtml\(content\)[\s\S]*<AiRichHtmlBlock html=\{content\}/);
+  assert.match(content, /const renderWholeRichHtml = shouldRenderWholeRichHtml\(content\)/);
+  assert.match(content, /shouldParseMarkdown \? getCachedMarkdownContent\(content\) : null/);
+  assert.match(content, /variant === 'assistant' && !streaming && !renderWholeRichHtml/);
+  assert.match(content, /Math\.max\(rect\.height, root\.scrollHeight\)/);
+  assert.doesNotMatch(content, /body\.scrollHeight/);
+  assert.doesNotMatch(content, /doc\.scrollHeight/);
+  assert.match(content, /originWhitelist=\{\['about:blank'\]\}/);
+  assert.match(content, /javaScriptCanOpenWindowsAutomatically=\{false\}/);
+  assert.match(content, /setSupportMultipleWindows=\{false\}/);
+  assert.match(content, /allowFileAccess=\{false\}/);
+  assert.match(content, /onShouldStartLoadWithRequest=\{\(request\) => request\.url === 'about:blank'\}/);
+  assert.match(content, /scrollEnabled=\{false\}/);
+  assert.match(content, /block\.type === 'code'[\s\S]*shouldRenderHtmlCodeBlock\(block\)[\s\S]*<AiRichHtmlBlock html=\{block\.text\}/);
+});
+
+test('AI inline code avoids Android Text background stacking artifacts', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  const inlineCodeStyle = /inlineCode:\s*\{[\s\S]*?\n  \},/.exec(content)?.[0] ?? '';
+
+  assert.match(inlineCodeStyle, /lineHeight:\s*22/);
+  assert.doesNotMatch(inlineCodeStyle, /paddingHorizontal/);
+  assert.doesNotMatch(inlineCodeStyle, /borderRadius/);
+});
+
 test('AI session settings rely on Android adjustResize without JS keyboard padding', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const scaffold = read('src/components/ai/AiLightScaffold.tsx');
@@ -575,9 +635,17 @@ test('AI chat uses thirty short-term messages and avoids full reload for every s
   assert.doesNotMatch(regenerateBlock, /listMessages\(db, thread\.id\)/);
   assert.doesNotMatch(rewriteBlock, /listMessages\(db, thread\.id\)/);
   assert.match(service, /onMessagePatch/);
-  assert.match(service, /STREAMING_PERSIST_INTERVAL_MS/);
-  assert.match(service, /STREAMING_UI_PATCH_INTERVAL_MS/);
+  assert.match(service, /targetPersistIntervalMs/);
+  assert.match(service, /targetStreamingPatchIntervalMs/);
+  assert.match(service, /STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS/);
   assert.match(chat, /applyStreamingMessagePatch/);
+  assert.match(chat, /publishStreamingMessage/);
+  assert.match(chat, /shouldUseLiveStreamingPatch/);
+  assert.match(chat, /activeStreamingIdentityRef/);
+  assert.match(chat, /generationId/);
+  assert.match(read('src/components/ai/AiMessageBubble.tsx'), /AiStreamingMessageText/);
+  assert.match(read('src/components/ai/AiStreamingMessageText.tsx'), /useStreamingMessageTextSnapshot/);
+  assert.match(read('src/components/ai/AiStreamingMessageText.tsx'), /useStreamingMessageReasoningSnapshot/);
   assert.match(chat, /<FlatList/);
   assert.match(chat, /CHAT_MESSAGE_PAGE_SIZE = 60/);
   assert.match(chat, /加载更早消息/);
@@ -787,7 +855,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(repository, /listSummarySegments\(db: SQLiteDatabase, threadId: string, branchScopes\?: AiBranchScope\[\]/);
   assert.match(repository, /listRecentCompletedMessagesBefore\([\s\S]*branchScopes\?: AiBranchScope\[\]/);
   assert.match(service, /resolveStreamingBranchScopes/);
-  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes\)/);
+  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{ generationMetrics \}\)/);
   assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
@@ -1155,11 +1223,53 @@ test('AI message content memoizes markdown and renders image markdown inline', (
   assert.match(content, /AiMarkdownImage/);
   assert.match(content, /const shouldParseMarkdown = variant === 'assistant' && !streaming/);
   assert.match(content, /const parsedMarkdown = useMemo\(/);
-  assert.match(content, /shouldParseMarkdown \? parseMarkdownContent\(content\) : null/);
-  assert.match(content, /const \{ blocks, footnotes, referenceLinks \} = parsedMarkdown \?\? parseMarkdownContent\(content\)/);
+  assert.match(content, /MARKDOWN_PARSE_CACHE_LIMIT/);
+  assert.match(content, /const markdownParseCache = new Map<string, ParsedMarkdownContent>\(\)/);
+  assert.match(content, /function getCachedMarkdownContent\(content: string\): ParsedMarkdownContent/);
+  assert.match(content, /trimMapToLimit\(markdownParseCache, MARKDOWN_PARSE_CACHE_LIMIT\)/);
+  assert.match(content, /shouldParseMarkdown \? getCachedMarkdownContent\(content\) : null/);
+  assert.match(content, /const \{ blocks, footnotes, referenceLinks \} = parsedMarkdown \?\? getCachedMarkdownContent\(content\)/);
+  assert.doesNotMatch(content, /shouldParseMarkdown \? parseMarkdownContent\(content\) : null/);
+  assert.doesNotMatch(content, /parsedMarkdown \?\? parseMarkdownContent\(content\)/);
   assert.match(content, /onError=\{\(\) => setLoadFailed\(true\)\}/);
   assert.match(content, /图片无法预览/);
   assert.doesNotMatch(content, /!\[alt\]\(url\)/);
+});
+
+test('AI rich HTML blocks cache measured heights and avoid redundant updates', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /MESSAGE_RENDER_CACHE_MAX_CONTENT_LENGTH/);
+  assert.match(content, /RICH_HTML_HEIGHT_CACHE_LIMIT/);
+  assert.match(content, /RICH_HTML_HEIGHT_UPDATE_EPSILON/);
+  assert.match(content, /const richHtmlHeightCache = new Map<string, number>\(\)/);
+  assert.match(content, /function shouldCacheMessageRenderContent\(content: string\): boolean/);
+  assert.match(content, /function getMessageRenderCacheKey\(content: string\): string/);
+  assert.match(content, /function getCachedRichHtmlHeight\(html: string\): number/);
+  assert.match(content, /function setCachedRichHtmlHeight\(html: string, height: number\)/);
+  assert.match(content, /const cacheKey = getMessageRenderCacheKey\(html\)/);
+  assert.match(content, /if \(!shouldCacheMessageRenderContent\(html\)\) \{\s*return RICH_HTML_INITIAL_HEIGHT;\s*\}/);
+  assert.match(content, /if \(!shouldCacheMessageRenderContent\(html\)\) \{\s*return;\s*\}/);
+  assert.match(content, /trimMapToLimit\(richHtmlHeightCache, RICH_HTML_HEIGHT_CACHE_LIMIT\)/);
+  assert.match(content, /useState\(\(\) => getCachedRichHtmlHeight\(html\)\)/);
+  assert.match(content, /useEffect\(\(\) => \{\s*setHeight\(getCachedRichHtmlHeight\(html\)\);\s*\}, \[html\]\)/);
+  assert.match(content, /setCachedRichHtmlHeight\(html, measuredHeight\)/);
+  assert.match(content, /Math\.abs\(currentHeight - measuredHeight\) <= RICH_HTML_HEIGHT_UPDATE_EPSILON/);
+  assert.match(content, /return currentHeight/);
+  assert.match(content, /<AiRichHtmlBlock html=\{content\} key=\{getMessageRenderCacheKey\(content\)\}/);
+  assert.match(content, /<AiRichHtmlBlock html=\{block\.text\} key=\{`\$\{key\}-\$\{getMessageRenderCacheKey\(block\.text\)\}`\}/);
+});
+
+test('AI message render caches skip oversized markdown and html content', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+
+  assert.match(content, /MESSAGE_RENDER_CACHE_MAX_CONTENT_LENGTH = 30000/);
+  assert.match(content, /hash = Math\.imul\(hash \^ content\.charCodeAt\(index\), 16777619\)/);
+  assert.match(content, /return `\$\{content\.length\}:\$\{\(hash >>> 0\)\.toString\(36\)\}`/);
+  assert.match(content, /return content\.length <= MESSAGE_RENDER_CACHE_MAX_CONTENT_LENGTH/);
+  assert.match(content, /if \(!shouldCacheMessageRenderContent\(content\)\) \{\s*return parseMarkdownContent\(content\);\s*\}/);
+  assert.match(content, /if \(!shouldCacheMessageRenderContent\(html\)\) \{\s*return RICH_HTML_INITIAL_HEIGHT;\s*\}/);
+  assert.match(content, /if \(!shouldCacheMessageRenderContent\(html\)\) \{\s*return;\s*\}/);
 });
 
 test('AI chat long histories chunk attached data lookups', () => {

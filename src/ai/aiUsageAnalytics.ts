@@ -62,6 +62,17 @@ function clampRatio(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
+function hasObservedUsageTokens(usage: CacheObservationUsage): boolean {
+  return [
+    usage.totalPromptTokens,
+    usage.promptTokens,
+    usage.completionTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationInputTokens,
+    usage.cacheReadInputTokens,
+  ].some((value) => finiteNumber(value) > 0);
+}
+
 function readUsageFromPromptSnapshot(promptSnapshotJson: string): CacheObservationUsage | null {
   try {
     const parsed = JSON.parse(promptSnapshotJson || '{}') as {
@@ -88,6 +99,9 @@ export function aggregateAiUsageObservations(input: {
   for (const observation of input.observations) {
     const usage = readUsageFromPromptSnapshot(observation.promptSnapshotJson);
     if (!usage) {
+      continue;
+    }
+    if (!hasObservedUsageTokens(usage)) {
       continue;
     }
 

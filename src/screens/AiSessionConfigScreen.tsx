@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -25,6 +25,7 @@ import {
 } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
+import { exportRoleContinuityPackage, getExportableRoleCardIdForThread } from '../ai/aiRoleCardContinuityExportService';
 import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
@@ -113,6 +114,7 @@ export function AiSessionConfigScreen({
   const [renameValue, setRenameValue] = useState(fallbackThreadTitle);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(getDefaultSystemPrompt(contextType));
+  const [currentRoleCardId, setCurrentRoleCardId] = useState<string | null>(null);
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
   const [avatarEnabled, setAvatarEnabled] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -132,6 +134,7 @@ export function AiSessionConfigScreen({
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [exportingRolePackage, setExportingRolePackage] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const systemPromptFieldRef = useRef<View | null>(null);
   const settingsLoadedRef = useRef(false);
@@ -145,6 +148,7 @@ export function AiSessionConfigScreen({
       setThreadTitle(fallbackThreadTitle);
       setRenameValue(fallbackThreadTitle);
       setSystemPrompt(getDefaultSystemPrompt(contextType));
+      setCurrentRoleCardId(null);
       setRoleInstructionWeight('default');
       setReplyPreference('auto');
       setThinkingDisabled(false);
@@ -183,6 +187,7 @@ export function AiSessionConfigScreen({
     setThreadUsage(nextThreadUsage);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
+    setCurrentRoleCardId(config.thread.roleCardId);
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
@@ -385,11 +390,54 @@ export function AiSessionConfigScreen({
       return;
     }
     await applyRoleCardToThread({ roleCardId: null, space, threadId });
+    setCurrentRoleCardId(null);
     setRoleCardSummary('默认角色');
     setAvatarEnabled(false);
     setAvatarUri(null);
     setStatus({ message: '当前会话已恢复为 Pixory 默认角色。', tone: 'success', title: '角色已重置' });
     await reloadConfig();
+  }
+
+  async function exportCurrentRolePackage() {
+    if (!threadId || exportingRolePackage) {
+      return;
+    }
+    setExportingRolePackage(true);
+    try {
+      const roleCardId = await getExportableRoleCardIdForThread(space, threadId);
+      if (!roleCardId) {
+        throw new Error('当前会话没有绑定可导出的角色卡。');
+      }
+      const result = await exportRoleContinuityPackage({
+        includeMarkdown: true,
+        roleCardId,
+        space,
+        threadId,
+      });
+      setStatus({
+        message: `已导出 ${result.pngFileName}${result.markdownFileName ? ` 和 ${result.markdownFileName}` : ''}。`,
+        tone: 'success',
+        title: '角色包已导出',
+      });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '角色包导出失败', tone: 'error', title: '导出失败' });
+    } finally {
+      setExportingRolePackage(false);
+    }
+  }
+
+  function confirmExportCurrentRolePackage() {
+    if (space !== 'personal') {
+      void exportCurrentRolePackage();
+      return;
+    }
+    Alert.alert('导出私密角色包',
+      '导出的 Markdown 会包含当前私密会话的全量可见上下文、上一轮对话和 active memory。请选择可信目录保存。',
+      [
+        { text: '取消', style: 'cancel' },
+        { text: '继续导出', style: 'destructive', onPress: () => void exportCurrentRolePackage() },
+      ]
+    );
   }
 
   function formatMinute(value: string): string {
@@ -495,6 +543,14 @@ export function AiSessionConfigScreen({
             </Pressable>
             <Pressable accessibilityRole="button" onPress={() => void clearRoleCard()} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
               <Text style={styles.compactButtonText}>默认角色</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!threadId || !currentRoleCardId || exportingRolePackage}
+              onPress={confirmExportCurrentRolePackage}
+              style={({ pressed }) => [styles.compactButton, (!threadId || !currentRoleCardId || exportingRolePackage) && styles.disabled, pressed && threadId && currentRoleCardId && !exportingRolePackage && styles.pressed]}
+            >
+              <Text style={styles.compactButtonText}>{exportingRolePackage ? '导出中' : '导出当前角色包'}</Text>
             </Pressable>
           </View>
         </AiLightCard>

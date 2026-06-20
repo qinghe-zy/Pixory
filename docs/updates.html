@@ -58,25 +58,30 @@
           </div>
 
           <div class="timeline">
-            <!-- 2.4.8 Release -->
+            <!-- 2.4.10 Release -->
             <div class="timeline-item anime-reveal">
-              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-16</div>
-              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.8</h2>
+              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-20</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.10</h2>
 
               <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">HTML 渲染更稳</h3>
-                  <p class="text-body-sm">AI 消息渲染增强安全内联 HTML、代码内 HTML 和多行 HTML 兼容，减少模型输出无法正常显示的情况。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">长聊天更轻</h3>
+                  <p class="text-body-sm">流式回复改为 generation-scoped 外部缓冲、自适应 UI 节流和低频持久化，减少长线程和长回复时的重复渲染压力。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">关闭思考过程</h3>
-                  <p class="text-body-sm">会话设置新增关闭思考过程开关，支持的模型会按 OpenAI、DeepSeek 和 Gemini 官方参数请求关闭推理输出。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">提示词缓存更稳</h3>
+                  <p class="text-body-sm">提示词管线加入 fast-path、分层 retrieval、真实上下文窗口裁剪和 stable prefix/cache key 保护，降低首字等待并保护缓存命中率。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">迁移路径修复</h3>
-                  <p class="text-body-sm">新增会话设置字段的 SQLite 迁移避开全新安装重复建列问题，旧库升级和新库初始化都保持稳定。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">角色包导出</h3>
+                  <p class="text-body-sm">角色卡可导出 SillyTavern PNG，并可另存续聊 Markdown，分离系统人设、记忆快照和当前分支上下文，方便跨平台保持人设连续。</p>
+                </div>
+
+                <div class="feature-card">
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">富文本更完整</h3>
+                  <p class="text-body-sm">聊天气泡增强 HTML/CSS 渲染，支持块级结构、表格和更多文本样式，并通过 Markdown/HTML 缓存降低长历史重复解析和测量。</p>
                 </div>
               </div>
             </div>
