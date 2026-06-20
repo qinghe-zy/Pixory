@@ -56,6 +56,21 @@ test('website release-facing files reference the current 2.4.10 release', () => 
   assert.doesNotMatch(read('docs/index.html') + read('docs/updates.html') + read('README.md'), /2\.1\.6/);
 });
 
+test('public homepage and README present the current AI-first product scope accurately', () => {
+  const publicCopy = read('docs/index.html') + read('docs/site.js') + read('README.md');
+
+  assert.match(read('docs/index.html'), /本地 AI 陪伴聊天、角色卡、记忆、知识库与视觉资料库/);
+  assert.match(read('docs/index.html'), /角色稳定、回复快、资料可追溯/);
+  assert.match(read('docs/index.html'), /SillyTavern PNG\/JSON/);
+  assert.match(read('docs/index.html'), /必要 prompt 会发往你配置的模型供应商/);
+  assert.match(read('README.md'), /陪伴型 AI 聊天为核心/);
+  assert.match(read('README.md'), /深度记忆/);
+  assert.match(read('README.md'), /分支对话/);
+  assert.match(read('README.md'), /多模型供应商但数据边界清楚/);
+
+  assert.doesNotMatch(publicCopy, /完全不需要联网|聊天内容出不了这块屏幕|纯粹的“Local-first”本地优先应用/);
+});
+
 test('release workflow requires README and update website pages', () => {
   const agents = read('AGENTS.md');
 

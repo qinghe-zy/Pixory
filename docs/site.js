@@ -263,12 +263,12 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
 
-        await addUserBubble("Pixory 主要是做什么的呀？", 500);
-        await addAiBubble("它是一款纯本地的 IP 图片资产管理器。帮你用角色、群组和标签来整理海量参考图，而且绝对不压缩、不修改原图！", 2000);
-        await addUserBubble("数据存在哪里？平时使用需要联网吗？", 2000);
-        await addAiBubble("完全不需要联网！所有的图片和数据都 100% 存储在你的设备本地，只有你自己能看到，安全又私密。", 2000);
-        await addUserBubble("那你这个 AI 助手也会把信息发到云端吗？", 2000);
-        await addAiBubble("当然不会啦。我是直接运行在你设备上的 Local Agent，咱们的聊天内容出不了这块屏幕的。", 2000);
+        await addUserBubble("这个角色后面还能接着聊吗？", 500);
+        await addAiBubble("可以。Pixory 会保存角色卡、当前分支、记忆快照和上下文摘要，下一轮不会只剩一段孤立聊天。", 2000);
+        await addUserBubble("SillyTavern 的角色卡能导进来吗？", 2000);
+        await addAiBubble("能导入 PNG/JSON，也能导出兼容 PNG。记忆和上一轮上下文会整理成 Markdown，方便跨平台续聊。", 2000);
+        await addUserBubble("资料和聊天内容会怎么保存？", 2000);
+        await addAiBubble("本地 SQLite 保存聊天、角色、记忆和材料；请求模型时，只把本轮所需 prompt 发给你配置的供应商。", 2000);
         
         // Wait before restarting loop
         await new Promise(r => setTimeout(r, 4000));

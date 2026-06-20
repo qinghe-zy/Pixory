@@ -332,6 +332,18 @@ Companion chat continuity and trust
 
 Do not sacrifice chat continuity, memory correctness, privacy isolation, or local data consistency for faster UI completion. Do not damage original asset safety while adding chat features.
 
+## Feature Matrix Maintenance
+
+The project-wide feature inventory lives in:
+
+```text
+docs/feature-matrix.md
+```
+
+When adding, removing, renaming, or materially changing any user-visible feature, backend/service capability, repository data model, native bridge behavior, import/export flow, AI chat capability, privacy behavior, backup behavior, storage behavior, release workflow, or major test coverage area, update `docs/feature-matrix.md` in the same change.
+
+Before packaging or writing release notes, review `docs/feature-matrix.md` against the changed files and tests. If the matrix is intentionally not updated, explain why in the final report.
+
 ## Release And Packaging Workflow
 
 When the user says `打包`, `发布`, `上线`, `推送更新`, or asks to package the current Pixory build without adding more qualifiers, treat it as permission to complete the full Android release workflow automatically.
