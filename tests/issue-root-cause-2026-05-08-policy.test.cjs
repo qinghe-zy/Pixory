@@ -26,11 +26,12 @@ test('package import restores Pixory manifests and imports mixed image video arc
   assert.match(importScreenSource, /视频\s*\{packageImportResult\.videoSuccessCount\}/);
 });
 
-test('video player uses auto play looped playback and scrub-safe animated controls', () => {
+test('video player uses auto play queue-aware playback and scrub-safe animated controls', () => {
   const source = readProjectFile('src/screens/VideoPlayerScreen.tsx');
 
   assert.match(source, /CONTROL_HIDE_DELAY_MS\s*=\s*5000/);
-  assert.match(source, /player\.loop\s*=\s*true/);
+  assert.match(source, /player\.loop\s*=\s*Boolean\(externalSource\) \|\| queue\.length <= 1/);
+  assert.match(source, /player\.addListener\('playToEnd'/);
   assert.match(source, /safePlayPlayer\(\)/);
   assert.match(source, /isScrubbing/);
   assert.match(source, /scrubDisplayTime/);

@@ -29,6 +29,7 @@ export type AiDocumentStatus =
   | 'failed';
 export type AiCitationSourceType = 'document_chunk' | 'ip_metadata' | 'image_note';
 export type AiModelSource = 'built_in' | 'synced' | 'manual';
+export type AiProviderVerifyStatus = 'ready' | 'changed' | 'failed' | 'untested';
 
 export interface AiModelCapabilities {
   supportsChat: boolean;
@@ -52,6 +53,11 @@ export interface AiProviderRecord {
   visionEnabled: boolean;
   defaultChatModelId: string | null;
   defaultEmbeddingModelId: string | null;
+  keyUpdatedAt: string | null;
+  lastVerifiedAt: string | null;
+  lastVerifyStatus: AiProviderVerifyStatus | null;
+  lastVerifyMessage: string | null;
+  verifyFingerprint: string | null;
   createdAt: string;
   updatedAt: string;
 }

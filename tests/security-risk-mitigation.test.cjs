@@ -55,7 +55,8 @@ test('video player auto-starts loaded videos but still pauses after lifecycle tr
   );
 
   assert.match(sourceLoadBlock, /safePlayPlayer\(\)/);
-  assert.match(sourceLoadBlock, /player\.loop\s*=\s*true/);
+  assert.match(sourceLoadBlock, /player\.loop\s*=\s*Boolean\(externalSource\) \|\| queue\.length <= 1/);
+  assert.match(playerSource, /player\.addListener\('playToEnd'/);
   assert.match(playerSource, /const \[isPlaying, setIsPlaying\] = useState\(false\)/);
   assert.match(playerSource, /AppState\.addEventListener\('change'[\s\S]*safePausePlayer\(\)/);
   assert.match(playerSource, /function handleBack\(\)[\s\S]*safePausePlayer\(\)[\s\S]*onBack\(\)/);

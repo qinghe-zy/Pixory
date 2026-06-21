@@ -40,6 +40,8 @@ type GenerationStartTimingInput = {
   sendPressedAt?: string;
 };
 
+type StopGenerationReason = 'timeout' | 'user';
+
 type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
@@ -179,6 +181,9 @@ function startSendUserMessage(input: StartSendUserMessageInput): ManagedTaskStar
     getStreamingVisibility: () => getTaskStreamingVisibility(task),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
+    onTimeout: () => {
+      void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId });
+    },
     onUpdated: () => emitUpdated(task),
     signal: task.controller.signal,
   }).finally(() => finishTask(task));
@@ -195,6 +200,9 @@ function startRegenerateAssistantMessage(input: StartRegenerateAssistantMessageI
     getStreamingVisibility: () => getTaskStreamingVisibility(task),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
+    onTimeout: () => {
+      void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId });
+    },
     onUpdated: () => emitUpdated(task),
     signal: task.controller.signal,
   }).finally(() => finishTask(task));
@@ -210,6 +218,9 @@ function startRewriteUserMessage(input: StartRewriteUserMessageInput): ManagedTa
     getStreamingVisibility: () => getTaskStreamingVisibility(task),
     onCreated: (ids) => emitCreated(task, ids),
     onMessagePatch: (patch) => emitMessagePatch(task, patch),
+    onTimeout: () => {
+      void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId });
+    },
     onUpdated: () => emitUpdated(task),
     signal: task.controller.signal,
   }).finally(() => finishTask(task));
@@ -245,7 +256,7 @@ function hasActiveTask(assistantMessageId: string): boolean {
   return tasksByAssistantId.has(assistantMessageId);
 }
 
-async function stopGeneration({ assistantMessageId, space, threadId }: { assistantMessageId: string | null; space: PixorySpace; threadId: string | null }): Promise<void> {
+async function stopGeneration({ assistantMessageId, reason = 'user', space, threadId }: { assistantMessageId: string | null; reason?: StopGenerationReason; space: PixorySpace; threadId: string | null }): Promise<void> {
   const task = assistantMessageId
     ? tasksByAssistantId.get(assistantMessageId)
     : threadId
@@ -258,7 +269,7 @@ async function stopGeneration({ assistantMessageId, space, threadId }: { assista
     return;
   }
   if (stoppedAssistantId) {
-    await stopStreamingMessage({ assistantMessageId: stoppedAssistantId, space });
+    await stopStreamingMessage({ assistantMessageId: stoppedAssistantId, reason, space });
   }
   task?.controller.abort();
 }

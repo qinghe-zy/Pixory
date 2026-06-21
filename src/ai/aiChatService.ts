@@ -20,7 +20,13 @@ import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRe
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
-import { getAdapterForProvider, ensureBuiltInProviders, listProviderCards } from './aiProviderService';
+import {
+  getAdapterForProvider,
+  ensureBuiltInProviders,
+  listProviderCards,
+  recordSuccessfulProviderModel,
+  saveManualChatModelCandidate,
+} from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
 import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
@@ -64,13 +70,13 @@ import {
 } from './aiGenerationMetrics';
 import {
   deleteThreadProviderApiKey,
-  getProviderApiKey,
+  getProviderApiKeyForSpace,
   getThreadProviderApiKey,
   hasThreadProviderApiKey,
   setThreadProviderApiKey,
 } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
-import type { AiStreamEvent } from './providers/base';
+import { normalizeBaseUrl, type AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
 
 export interface AiThreadAvatarConfig {
@@ -105,6 +111,7 @@ export interface SendUserMessageInput {
   getStreamingVisibility?: () => StreamingVisibilityState;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
   onUpdated?: () => void;
 }
 
@@ -117,6 +124,7 @@ export interface RetryAssistantMessageInput {
   getStreamingVisibility?: () => StreamingVisibilityState;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
   onUpdated?: () => void;
 }
 
@@ -130,12 +138,14 @@ export interface RewriteUserMessageInput {
   getStreamingVisibility?: () => StreamingVisibilityState;
   onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
   onUpdated?: () => void;
 }
 
 export interface StopStreamingMessageInput {
   space: PixorySpace;
   assistantMessageId: string;
+  reason?: 'timeout' | 'user';
 }
 
 export interface FlushStreamingMessageSnapshotInput {
@@ -172,6 +182,8 @@ export interface AiSessionModelOption {
 export interface AiThreadSessionModelConfig {
   currentLabel: string;
   currentStatus: 'follow_default' | 'fixed_provider' | 'fixed_model' | 'invalid';
+  defaultModelId: string | null;
+  defaultProviderId: string | null;
   followDefaultLabel: string;
   options: AiSessionModelOption[];
   providerId: string | null;
@@ -252,9 +264,15 @@ type ResolvedThreadChatModel =
   | { status: 'invalid_thread_model'; message: string; providerId?: string | null; modelId?: string | null };
 
 const stoppedMessageIds = new Set<string>();
+const stoppedTimeoutGenerationIds = new Set<string>();
 
 function stoppedGenerationKey(messageId: string, generationId: string): string {
   return `${messageId}:${generationId}`;
+}
+
+function hasStoppedGeneration(messageId: string, generationId: string): boolean {
+  const key = stoppedGenerationKey(messageId, generationId);
+  return stoppedMessageIds.has(key) || stoppedTimeoutGenerationIds.has(key);
 }
 
 function buildGenerationGuardSnapshotJson(generationMetrics: AiGenerationMetricsDraft): string {
@@ -1067,7 +1085,7 @@ async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelCon
           : invalidThreadModel(message, provider.id, modelId);
       }
       return {
-        apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKey(provider.id),
+        apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKeyForSpace(space, provider.id),
         modelContextWindowTokens: resolvedModel.contextWindowTokens ?? null,
         modelId: resolvedModel.modelId,
         provider: {
@@ -1683,7 +1701,10 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
         providerLabel: card.provider.displayName,
       }))
   );
-  const resolvedModel = await resolveThreadChatModel(space, thread);
+  const [resolvedModel, defaultResolvedModel] = await Promise.all([
+    resolveThreadChatModel(space, thread),
+    resolveThreadChatModel(space, emptyThreadModelConfig(space)),
+  ]);
   const resolvedOption = resolvedModel.status === 'ready'
     ? options.find((option) => option.providerId === resolvedModel.provider.id && option.modelId === resolvedModel.modelId) ?? null
     : null;
@@ -1703,6 +1724,8 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
           ? `${resolvedModel.provider.displayName} · ${resolvedOption?.label ?? resolvedModel.modelId}`
             : '模型配置已失效',
     currentStatus,
+    defaultModelId: defaultResolvedModel.status === 'ready' ? defaultResolvedModel.modelId : null,
+    defaultProviderId: defaultResolvedModel.status === 'ready' ? defaultResolvedModel.provider.id : null,
     followDefaultLabel: `跟随全局默认（当前：${defaultLabel}）`,
     modelId: thread.modelId,
     options,
@@ -1710,6 +1733,14 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
     sessionBaseUrl: thread.sessionBaseUrl,
     sessionHasApiKeyOverride: thread.providerId ? await hasThreadProviderApiKey(space, thread.id, thread.providerId) : false,
   };
+}
+
+export async function addThreadSessionManualModel(input: {
+  modelId: string;
+  providerId: string;
+  space: PixorySpace;
+}): Promise<void> {
+  await saveManualChatModelCandidate(input.space, input.providerId, input.modelId);
 }
 
 export async function saveThreadSessionModelOverride(input: {
@@ -1737,9 +1768,43 @@ export async function saveThreadSessionModelOverride(input: {
       modelId: input.modelId,
       providerId: input.providerId,
       sessionApiKeyRef,
-      sessionBaseUrl: input.baseUrl?.trim() || null,
+      sessionBaseUrl: input.baseUrl ? normalizeBaseUrl(input.baseUrl) || null : null,
     });
   });
+}
+
+function withProviderVerifyTimeout(ms: number): { cancel: () => void; signal: AbortSignal } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return { cancel: () => clearTimeout(timer), signal: controller.signal };
+}
+
+export async function verifyThreadSessionModelOverride(space: PixorySpace, threadId: string): Promise<void> {
+  const thread = await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId));
+  if (!thread || thread.space !== space) {
+    throw new Error('没有找到当前会话，模型未测试。');
+  }
+  const resolved = await resolveThreadChatModel(space, thread);
+  if (resolved.status !== 'ready') {
+    throw new Error(resolved.message);
+  }
+  if (!resolved.apiKey) {
+    throw new Error('请先保存当前会话 API Key，或复用全局模型配置。');
+  }
+  const timeout = withProviderVerifyTimeout(15000);
+  try {
+    await getAdapterForProvider(resolved.provider).verifyChatCompletion({
+      apiKey: resolved.apiKey,
+      baseUrl: resolved.provider.baseUrl ?? '',
+      modelId: resolved.modelId,
+      signal: timeout.signal,
+    });
+    await recordSuccessfulProviderModel(space, resolved.provider.id, resolved.modelId);
+  } catch (error) {
+    throw new Error(normalizeAiErrorMessage(error));
+  } finally {
+    timeout.cancel();
+  }
 }
 
 export async function clearThreadSessionModelOverride(space: PixorySpace, threadId: string): Promise<AiThreadRecord | null> {
@@ -2131,6 +2196,7 @@ async function streamAssistantReply(input: {
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
   onUpdated?: () => void;
 }): Promise<void> {
   let answerText = '';
@@ -2143,7 +2209,11 @@ async function streamAssistantReply(input: {
   };
   markGenerationMetric(generationMetrics, 'generationStartAt');
   const currentStopReason = () =>
-    stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId)) ? 'user_stopped' : 'aborted';
+    stoppedTimeoutGenerationIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))
+      ? 'timeout_stopped'
+      : stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))
+        ? 'user_stopped'
+        : 'aborted';
   const stopForAbort = async (options?: { buildPromptSnapshotJson?: () => string }): Promise<boolean> => {
     if (!input.signal?.aborted) {
       return false;
@@ -2175,6 +2245,7 @@ async function streamAssistantReply(input: {
     return;
   }
   stoppedMessageIds.delete(stoppedGenerationKey(input.assistantMessageId, generationId));
+  stoppedTimeoutGenerationIds.delete(stoppedGenerationKey(input.assistantMessageId, generationId));
   const startedAt = new Date().toISOString();
   if (!generationMetrics.timestamps.assistantPlaceholderPersistStartAt) {
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
@@ -2434,6 +2505,21 @@ async function streamAssistantReply(input: {
   pressureProbeExpectedAt += STREAMING_PRESSURE_RECOVERY_MS;
   setTimeout(sampleStreamingDevicePressure, STREAMING_PRESSURE_RECOVERY_MS);
   const adapter = getAdapterForProvider(provider);
+  const FIRST_PROVIDER_BYTE_TIMEOUT_MS = 20000;
+  const PROVIDER_IDLE_TIMEOUT_MS = 45000;
+  let providerTimeout: ReturnType<typeof setTimeout> | null = null;
+  const clearProviderTimeout = () => {
+    if (providerTimeout) {
+      clearTimeout(providerTimeout);
+      providerTimeout = null;
+    }
+  };
+  const scheduleProviderTimeout = (ms: number) => {
+    clearProviderTimeout();
+    providerTimeout = setTimeout(() => {
+      void input.onTimeout?.();
+    }, ms);
+  };
   const emitStreamingPatch = (force = false) => {
     if (input.signal?.aborted) {
       return;
@@ -2509,6 +2595,7 @@ async function streamAssistantReply(input: {
 
   try {
     markGenerationMetric(generationMetrics, 'providerRequestSentAt');
+    scheduleProviderTimeout(FIRST_PROVIDER_BYTE_TIMEOUT_MS);
     await adapter.streamChat(
       {
         apiKey,
@@ -2522,9 +2609,10 @@ async function streamAssistantReply(input: {
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
-        if (input.signal?.aborted || stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
+        if (input.signal?.aborted || hasStoppedGeneration(input.assistantMessageId, generationId)) {
           return;
         }
+        scheduleProviderTimeout(PROVIDER_IDLE_TIMEOUT_MS);
         if (event.type === 'provider_usage') {
           providerUsageRaw = mergeProviderUsage(providerUsageRaw, event.rawUsage);
           const normalizedUsage = normalizeProviderUsage(provider.protocol, providerUsageRaw);
@@ -2585,6 +2673,7 @@ async function streamAssistantReply(input: {
     input.onUpdated?.();
   } finally {
     pressureProbeActive = false;
+    clearProviderTimeout();
   }
 
   if (streamFailed) {
@@ -2607,6 +2696,9 @@ async function streamAssistantReply(input: {
     const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, generationId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'user_stopped' }));
     emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
     input.onUpdated?.();
+    if (answerText) {
+      await recordSuccessfulProviderModel(input.space, provider.id, modelId);
+    }
     return;
   }
 
@@ -2651,6 +2743,17 @@ async function streamAssistantReply(input: {
   if (!finalMessagePersisted) {
     return;
   }
+
+  if (stoppedTimeoutGenerationIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
+    generationMetrics.context.stopReason = 'timeout_stopped';
+    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, generationId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'timeout_stopped' }));
+    emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
+    input.onUpdated?.();
+    if (answerText) {
+      await recordSuccessfulProviderModel(input.space, provider.id, modelId);
+    }
+    return;
+  }
   markGenerationMetric(generationMetrics, 'finalPersistEndAt');
   markGenerationMetric(generationMetrics, 'generationSettledAt');
   const finalPromptSnapshotJson = createPromptSnapshotJson({ failureReason: finalFailureReason });
@@ -2669,6 +2772,7 @@ async function streamAssistantReply(input: {
     citations: finalCitations,
   });
   if (answerText) {
+    await recordSuccessfulProviderModel(input.space, provider.id, modelId);
     await finalizeThreadTitleAfterReply({
       assistantReply: answerText,
       space: input.space,
@@ -2767,6 +2871,7 @@ export async function sendUserMessage(
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
@@ -2843,6 +2948,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
@@ -2924,6 +3030,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
     onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
     signal: input.signal,
     space: input.space,
@@ -2945,7 +3052,11 @@ export async function stopStreamingMessage(input: StopStreamingMessageInput): Pr
       });
       return;
     }
-    stoppedMessageIds.add(stoppedGenerationKey(input.assistantMessageId, generationId));
+    if (input.reason === 'timeout') {
+      stoppedTimeoutGenerationIds.add(stoppedGenerationKey(input.assistantMessageId, generationId));
+    } else {
+      stoppedMessageIds.add(stoppedGenerationKey(input.assistantMessageId, generationId));
+    }
     await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
       status: 'stopped',
       completedAt: new Date().toISOString(),

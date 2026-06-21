@@ -117,20 +117,28 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
 }
 
 export const claudeProvider: AiProviderAdapter = {
-  async testConnection(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1/models`, {
-      headers: anthropicHeaders(input.apiKey),
-    });
-    await assertOkResponse(response, 'Claude connection failed');
-  },
-
   async listModels(input) {
     const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1/models`, {
       headers: anthropicHeaders(input.apiKey),
+      signal: input.signal,
     });
     await assertOkResponse(response, 'Claude model list sync failed');
     const json = (await response.json()) as ClaudeModelsResponse;
     return (json.data ?? []).map((model) => model.id).filter((modelId): modelId is string => Boolean(modelId));
+  },
+
+  async verifyChatCompletion(input) {
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1/messages`, {
+      method: 'POST',
+      headers: anthropicHeaders(input.apiKey),
+      signal: input.signal,
+      body: JSON.stringify({
+        model: input.modelId,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
+    });
+    await assertOkResponse(response, 'Claude connection failed');
   },
 
   async streamChat(input: AiChatRequest, onEvent) {

@@ -141,7 +141,7 @@ test('service no longer uses fixed high-frequency streaming persistence', () => 
   assert.doesNotMatch(service, /const visibleText = answerText \+ '\\n' \+ reasoningText/);
   assert.match(service, /generationMetrics\.context\.devicePressureThrottled = pressure\.devicePressureThrottled/);
   assert.match(service, /devicePressure: generationMetrics\.context\.devicePressureThrottled/);
-  assert.match(service, /finally \{\s*pressureProbeActive = false;\s*\}/);
+  assert.match(service, /finally \{\s*pressureProbeActive = false;[\s\S]{0,80}clearProviderTimeout\(\);[\s\S]{0,20}\}/);
   assert.match(service, /answerText\.length \+ reasoningText\.length > 0/);
   assert.doesNotMatch(service, /!generationMetrics\.timestamps\.firstUiPatchAt && answerText\.length > 0/);
   assert.match(service, /streamMergedDeltaCount = Math\.max/);
@@ -191,13 +191,32 @@ test('user stop records user_stopped before abort fallback can settle metrics', 
 
   assert.match(stopForAbortBody, /currentStopReason/);
   assert.match(stopForAbortBody, /user_stopped/);
-  assert.match(stopForAbortBody, /stoppedMessageIds\.has\(stoppedGenerationKey\(input\.assistantMessageId, generationId\)\)/);
+  assert.match(service, /stoppedMessageIds\.has\(key\)/);
   assert.match(stopForAbortBody, /generationMetrics\.context\.stopReason = stopReason/);
   assert.match(stopForAbortBody, /options\?\.buildPromptSnapshotJson\?\.\(\)/);
   assert.match(service, /buildPromptSnapshotJson: \(\) => createPromptSnapshotJson\(\{ stopReason: currentStopReason\(\) \}\)/);
   assert.match(service, /buildPromptSnapshotJson: \(\) => buildMetricsOnlyPromptSnapshotJson\(\{ generationMetrics, stopReason: currentStopReason\(\) \}\)/);
   assert.doesNotMatch(service, /stopForAbort\(\{ promptSnapshotJson:/);
-  assert.match(stopGenerationBody, /await stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, space \}\);[\s\S]*task\?\.controller\.abort\(\)/);
+  assert.match(stopGenerationBody, /await stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}\);[\s\S]*task\?\.controller\.abort\(\)/);
+});
+
+test('streaming timeout reuses stop recoverability with timeout reason', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const manager = read('src/ai/aiGenerationManager.ts');
+
+  assert.match(service, /timeout_stopped/);
+  assert.match(service, /stoppedTimeoutGenerationIds/);
+  assert.match(service, /currentStopReason[\s\S]*timeout_stopped/);
+  assert.match(service, /createPromptSnapshotJson\(\{ stopReason: 'timeout_stopped' \}\)/);
+  assert.match(service, /if \(answerText\) \{\s*await recordSuccessfulProviderModel\(input\.space, provider\.id, modelId\);\s*\}/);
+  assert.match(manager, /stopGeneration\(\{ assistantMessageId, reason = 'user', space, threadId \}/);
+  assert.match(manager, /reason: 'timeout'/);
+  assert.match(manager, /stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}/);
+  const streamAssistantCalls = service.match(/await streamAssistantReply\(\{[\s\S]*?\n  \}\);/g) ?? [];
+  assert.equal(streamAssistantCalls.length, 3);
+  for (const call of streamAssistantCalls) {
+    assert.match(call, /onTimeout: input\.onTimeout/);
+  }
 });
 
 test('screen forces a recoverability flush when app backgrounds during streaming', () => {

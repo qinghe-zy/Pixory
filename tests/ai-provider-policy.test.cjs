@@ -11,6 +11,7 @@ const providerServicePath = path.join(root, 'src/ai/aiProviderService.ts');
 const providerSettingsPath = path.join(root, 'src/screens/AiProviderSettingsScreen.tsx');
 const providerBasePath = path.join(root, 'src/ai/providers/base.ts');
 const registryPath = path.join(root, 'src/ai/providerRegistry.ts');
+const schemaPath = path.join(root, 'src/database/schema.ts');
 
 test('AI constants define required built-in providers without storing keys in SQLite', () => {
   const constants = fs.readFileSync(constantsPath, 'utf8');
@@ -35,22 +36,28 @@ test('secure AI settings service uses expo-secure-store for API keys', () => {
   assert.match(service, /setProviderApiKey/);
   assert.match(service, /getProviderApiKey/);
   assert.match(service, /deleteProviderApiKey/);
+  assert.match(service, /setProviderApiKeyForSpace/);
+  assert.match(service, /getProviderApiKeyForSpace/);
+  assert.match(service, /hasProviderApiKeyForSpace/);
   assert.match(providerService, /getSavedProviderApiKey/);
-  assert.match(providerSettings, /getSavedProviderApiKey\(selectedProviderId\)/);
+  assert.match(providerSettings, /getSavedProviderApiKey\(selectedProviderId, space\)/);
   assert.match(providerSettings, /setApiDraft\(apiKey\)/);
 });
 
 test('provider settings expose test sync and embedding model controls', () => {
   const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const providerBase = fs.readFileSync(providerBasePath, 'utf8');
   const chatService = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
-  assert.match(providerSettings, /testProvider/);
+  assert.match(providerSettings, /verifyCurrentProviderModel/);
   assert.match(providerSettings, /syncProviderModels/);
   assert.match(providerSettings, /saveProviderDraft/);
-  assert.match(providerSettings, /保存并测试/);
-  assert.match(providerSettings, /await saveProviderDraft\(\)/);
-  assert.match(providerSettings, /测试连接/);
-  assert.match(providerSettings, /同步模型/);
+  assert.doesNotMatch(providerSettings, /保存并测试/);
+  assert.match(providerSettings, /label="保存配置"/);
+  assert.match(providerSettings, /label="刷新模型列表"/);
+  assert.match(providerSettings, /label="测试当前模型"/);
+  assert.match(providerSettings, /测试当前模型/);
+  assert.match(providerSettings, /刷新模型列表/);
   assert.match(providerSettings, /embeddingModels/);
   assert.match(providerSettings, /默认 Embedding/);
   assert.match(providerSettings, /Embedding 接口/);
@@ -60,11 +67,108 @@ test('provider settings expose test sync and embedding model controls', () => {
   assert.match(providerSettings, /自定义 Embedding 模型/);
   assert.match(providerSettings, /defaultEmbeddingModelId/);
   assert.match(providerSettings, /advancedVisible/);
+  assert.match(providerSettings, /parsedBaseUrl\.search \|\| parsedBaseUrl\.hash/);
+  assert.match(providerSettings, /Base URL 不能包含查询参数或片段/);
   assert.match(providerService, /getDefaultChatProviderId/);
   assert.match(providerService, /saveProviderDefaultModels/);
   assert.match(providerService, /saveProviderEmbeddingBaseUrl/);
   assert.match(providerService, /saveManualEmbeddingModel/);
+  assert.match(providerService, /verifyCurrentProviderModel/);
+  assert.match(providerService, /saveProviderBaseUrl[\s\S]*normalizeBaseUrl\(baseUrl\)/);
+  assert.match(providerBase, /parsed\.search = ''/);
+  assert.match(providerBase, /parsed\.hash = ''/);
+  assert.match(providerBase, /replace\(\/\\\/\+\$\/, ''\)[\s\S]*replace\(\/\\\/\+\(chat\\\/completions\|completions\|models\|embeddings\)\$\/i, ''\)/);
   assert.match(chatService, /getDefaultAiProviderId/);
+});
+
+test('provider settings support non-mutating gateway connection import', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+
+  assert.match(providerSettings, /parseProviderConnectionImport/);
+  assert.match(providerSettings, /connectionImportDraft/);
+  assert.match(providerSettings, /连接信息导入/);
+  assert.match(providerSettings, /导入连接信息/);
+  assert.match(providerSettings, /setBaseUrlDraft\(result\.baseUrl\)/);
+  assert.match(providerSettings, /setApiDraft\(result\.apiKey\)/);
+  assert.match(providerSettings, /未识别到有效的 url 和 key/);
+  assert.match(providerSettings, /该连接未包含 `\/v1`/);
+  assert.doesNotMatch(providerSettings, /saveProviderApiKey[\s\S]{0,160}parseProviderConnectionImport/);
+});
+
+test('provider verification state is stored without API key plaintext', () => {
+  const schema = fs.readFileSync(schemaPath, 'utf8');
+  const types = fs.readFileSync(path.join(root, 'src/ai/types.ts'), 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+
+  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /keyUpdatedAt TEXT/);
+  assert.match(schema, /lastVerifiedAt TEXT/);
+  assert.match(schema, /lastVerifyStatus TEXT/);
+  assert.match(schema, /verifyFingerprint TEXT/);
+  assert.match(types, /keyUpdatedAt: string \| null/);
+  assert.match(types, /AiProviderVerifyStatus = 'ready' \| 'changed' \| 'failed' \| 'untested'/);
+  assert.match(types, /lastVerifyStatus: AiProviderVerifyStatus \| null/);
+  assert.match(repository, /updateProviderKeyUpdatedAt/);
+  assert.match(repository, /updateProviderVerification/);
+  assert.match(repository, /ai_provider_models\.source = 'manual' AND excluded\.source <> 'manual'/);
+  assert.match(repository, /THEN ai_provider_models\.capabilityJson ELSE excluded\.capabilityJson/);
+  assert.match(repository, /THEN ai_provider_models\.source ELSE excluded\.source/);
+  assert.match(providerService, /buildProviderVerifyFingerprint/);
+  assert.match(providerService, /keyUpdatedAt/);
+  assert.match(providerService, /saveProviderApiKey\(providerId: string, apiKey: string, space\?: PixorySpace\)/);
+  assert.match(providerService, /space \? await getProviderApiKeyForSpace\(space, providerId\) : await getProviderApiKey\(providerId\)/);
+  assert.match(providerService, /setProviderApiKeyForSpace\(space, providerId, apiKey\)/);
+  assert.match(providerService, /previousApiKey !== apiKey\.trim\(\)/);
+  assert.match(providerService, /hasProviderApiKeyForSpace\(space, provider\.id\)/);
+  assert.match(providerService, /provider\.verifyFingerprint && provider\.verifyFingerprint !== fingerprint/);
+  assert.match(providerService, /controller\.abort\(\)/);
+  assert.doesNotMatch(providerService, /new DOMException/);
+  assert.doesNotMatch(schema, /apiKey TEXT/);
+});
+
+test('provider verification uses chat completions and records successful models', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const openai = fs.readFileSync(path.join(root, 'src/ai/providers/openAiCompatibleProvider.ts'), 'utf8');
+  const claude = fs.readFileSync(path.join(root, 'src/ai/providers/claudeProvider.ts'), 'utf8');
+  const base = fs.readFileSync(providerBasePath, 'utf8');
+
+  assert.match(providerService, /verifyCurrentProviderModel/);
+  assert.match(providerService, /recordSuccessfulProviderModel/);
+  assert.match(providerService, /message\?: string/);
+  assert.match(providerService, /toUserProviderErrorMessage\(reason\)/);
+  assert.match(providerSettings, /当前模型不会被清空/);
+  assert.match(providerService, /defaultChatModelId/);
+  assert.match(providerService, /lastVerifyStatus: 'ready'/);
+  assert.match(providerService, /lastVerifyStatus: 'failed'/);
+  assert.match(openai, /verifyChatCompletion/);
+  assert.match(openai, /\/chat\/completions/);
+  assert.match(openai, /stream:\s*false/);
+  assert.match(openai, /max_tokens:\s*1/);
+  assert.match(openai, /temperature:\s*0/);
+  assert.match(openai, /Boolean\(json\?\.id \|\| json\?\.choices\)/);
+  assert.match(claude, /listModels\(input\)[\s\S]*signal: input\.signal/);
+  assert.doesNotMatch(base, /testConnection\(input:/);
+  assert.doesNotMatch(openai, /async testConnection/);
+  assert.doesNotMatch(claude, /async testConnection/);
+});
+
+test('provider API errors use a shared classifier with redaction', () => {
+  const classifier = fs.readFileSync(path.join(root, 'src/ai/aiProviderErrorClassifier.ts'), 'utf8');
+  const base = fs.readFileSync(providerBasePath, 'utf8');
+
+  for (const kind of ['auth', 'model', 'billing', 'rate_limit', 'timeout', 'network', 'upstream', 'bad_shape', 'empty_response', 'unknown']) {
+    assert.match(classifier, new RegExp(kind));
+  }
+  assert.match(classifier, /redactProviderErrorText/);
+  assert.match(classifier, /Authorization/);
+  assert.match(classifier, /sk-\[redacted\]/);
+  assert.match(classifier, /\$1\[redacted\]/);
+  assert.match(classifier, /\(\?:api_\)\?key=/);
+  assert.match(classifier, /authorization/);
+  assert.match(base, /classifyAiProviderError/);
+  assert.match(base, /toUserProviderErrorMessage/);
 });
 
 test('provider settings labels chat model selection as a global default', () => {
@@ -169,7 +273,8 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   assert.match(openai, /parseOpenAiChatCompletionJson/);
   assert.match(openai, /message\?\.content/);
   assert.doesNotMatch(openai, /if \(!contentType\.includes\('text\/event-stream'\)\)/);
-  assert.match(openai, /sawSseLine/);
+  assert.match(openai, /sawStreamPayload/);
+  assert.match(openai, /trimmed\.startsWith\('\{'\)/);
   assert.match(openai, /rawText/);
   assert.match(gemini, /:streamGenerateContent/);
   assert.match(gemini, /await emitCompletedGeminiChunks\(buffer, onEvent\)/);
@@ -181,10 +286,15 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
 
 test('provider API errors are normalized before reaching chat bubbles', () => {
   const base = fs.readFileSync(providerBasePath, 'utf8');
-  assert.match(base, /friendlyProviderErrorMessage/);
-  assert.match(base, /insufficient balance/);
-  assert.match(base, /余额或额度不足/);
-  assert.match(base, /API Key 无效或无权限/);
+  const classifier = fs.readFileSync(path.join(root, 'src/ai/aiProviderErrorClassifier.ts'), 'utf8');
+  const errors = fs.readFileSync(path.join(root, 'src/ai/aiErrorMessageService.ts'), 'utf8');
+  assert.match(base, /classifyAiProviderError/);
+  assert.match(base, /toUserProviderErrorMessage/);
+  assert.match(errors, /classifyAiProviderError/);
+  assert.match(errors, /toUserProviderErrorMessage/);
+  assert.match(classifier, /insufficient balance/);
+  assert.match(classifier, /中转站余额或额度不足/);
+  assert.match(classifier, /API Key 无效或已过期/);
   assert.doesNotMatch(base, /\$\{fallbackMessage\}: \$\{detail\.slice/);
 });
 

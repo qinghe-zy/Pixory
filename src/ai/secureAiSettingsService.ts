@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 import type { PixorySpace } from '../database';
-import { secureStoreKeyForProvider } from './aiConstants';
+import { secureStoreKeyForProvider, secureStoreKeyForProviderInSpace } from './aiConstants';
 
 export async function setProviderApiKey(providerId: string, apiKey: string): Promise<void> {
   const trimmed = apiKey.trim();
@@ -22,6 +22,32 @@ export async function deleteProviderApiKey(providerId: string): Promise<void> {
 
 export async function hasProviderApiKey(providerId: string): Promise<boolean> {
   return Boolean(await getProviderApiKey(providerId));
+}
+
+export async function setProviderApiKeyForSpace(space: PixorySpace, providerId: string, apiKey: string): Promise<void> {
+  const trimmed = apiKey.trim();
+  const key = secureStoreKeyForProviderInSpace(space, providerId);
+  if (!trimmed) {
+    await SecureStore.deleteItemAsync(key);
+    return;
+  }
+  await SecureStore.setItemAsync(key, trimmed);
+}
+
+export async function getProviderApiKeyForSpace(space: PixorySpace, providerId: string): Promise<string | null> {
+  const scoped = await SecureStore.getItemAsync(secureStoreKeyForProviderInSpace(space, providerId));
+  if (scoped || space === 'personal') {
+    return scoped;
+  }
+  return getProviderApiKey(providerId);
+}
+
+export async function deleteProviderApiKeyForSpace(space: PixorySpace, providerId: string): Promise<void> {
+  await SecureStore.deleteItemAsync(secureStoreKeyForProviderInSpace(space, providerId));
+}
+
+export async function hasProviderApiKeyForSpace(space: PixorySpace, providerId: string): Promise<boolean> {
+  return Boolean(await getProviderApiKeyForSpace(space, providerId));
 }
 
 function secureStoreKeyForThreadProvider(space: PixorySpace, threadId: string, providerId: string): string {

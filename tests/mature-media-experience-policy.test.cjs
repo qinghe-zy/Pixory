@@ -40,9 +40,22 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /isLandscape \? \([\s\S]*上一个视频/);
   assert.match(playerSource, /isLandscape \? \([\s\S]*下一个视频/);
   assert.match(playerSource, /当前视频/);
+  assert.match(playerSource, /playbackOrder/);
+  assert.match(playerSource, /togglePlaybackOrder/);
+  assert.match(playerSource, /accessibilityLabel=\{playbackOrder === 'shuffle' \? '切换为顺序播放' : '切换为随机播放'\}/);
+  assert.match(playerSource, /name=\{playbackOrder === 'shuffle' \? 'shuffle' : 'repeat-outline'\}/);
+  assert.match(playerSource, /accessibilityLabel=\{queueVisible \? '关闭待播放列表' : '打开待播放列表'\}/);
+  assert.doesNotMatch(playerSource, /<Ionicons color=\{colors\.text\.inverse\} name="list-outline"[\s\S]{0,160}<Text style=\{styles\.pillButtonText\}>待播放<\/Text>/);
+  assert.match(playerSource, /getRandomQueueVideo/);
+  assert.match(playerSource, /\(currentIndex \+ offset \+ queue\.length\) % queue\.length/);
+  assert.doesNotMatch(playerSource, /Math\.max\(0,\s*Math\.min\(queue\.length - 1,\s*currentIndex \+ offset\)\)/);
+  assert.match(playerSource, /player\.addListener\('playToEnd'/);
+  assert.match(playerSource, /player\.loop = Boolean\(externalSource\) \|\| queue\.length <= 1/);
   assert.match(preferenceSource, /videoPlayerPreferences/);
   assert.match(preferenceSource, /orientationPreference:\s*'portrait'/);
   assert.match(preferenceSource, /lockedByDefault/);
+  assert.match(preferenceSource, /VideoPlaybackOrder = 'sequence' \| 'shuffle'/);
+  assert.match(preferenceSource, /playbackOrder:\s*'sequence'/);
 });
 
 test('image viewer supports reader modes settings filmstrip and zoom-safe paging', () => {

@@ -1,4 +1,5 @@
 import type { AiProviderCachePolicy } from '../aiPromptCache';
+import { classifyAiProviderError, toUserProviderErrorMessage } from '../aiProviderErrorClassifier';
 
 export type AiStreamEvent =
   | { type: 'answer_delta'; text: string }
@@ -22,77 +23,38 @@ export interface AiChatRequest {
 }
 
 export interface AiProviderAdapter {
-  testConnection(input: { apiKey: string; baseUrl: string }): Promise<void>;
-  listModels(input: { apiKey: string; baseUrl: string }): Promise<string[]>;
+  listModels(input: { apiKey: string; baseUrl: string; signal?: AbortSignal }): Promise<string[]>;
+  verifyChatCompletion(input: { apiKey: string; baseUrl: string; modelId: string; signal?: AbortSignal }): Promise<void>;
   streamChat(input: AiChatRequest, onEvent: AiStreamEventHandler): Promise<void>;
   embedText(input: { apiKey: string; baseUrl: string; modelId: string; text: string }): Promise<number[]>;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '');
+  const trimmed = baseUrl.trim();
+  let withoutQuery = trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    parsed.search = '';
+    parsed.hash = '';
+    withoutQuery = parsed.toString();
+  } catch {
+    withoutQuery = trimmed.replace(/[?#].*$/, '');
+  }
+  return withoutQuery
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/+(chat\/completions|completions|models|embeddings)$/i, '')
+    .replace(/\/+$/, '');
+}
+
+export function providerEndpoint(baseUrl: string, path: string): string {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${normalizedBaseUrl}${normalizedPath}`;
 }
 
 export function isAbortError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || /aborted/i.test(error.message));
-}
-
-function titleForProviderError(fallbackMessage: string): string {
-  if (/model list|models/i.test(fallbackMessage)) {
-    return '模型列表获取失败';
-  }
-  if (/connection/i.test(fallbackMessage)) {
-    return '模型商连接失败';
-  }
-  return 'AI 请求失败';
-}
-
-function extractProviderErrorMessage(detail: string): string | null {
-  const trimmed = detail.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (parsed && typeof parsed === 'object') {
-      const record = parsed as Record<string, unknown>;
-      const error = record.error;
-      if (error && typeof error === 'object') {
-        const errorRecord = error as Record<string, unknown>;
-        if (typeof errorRecord.message === 'string') {
-          return errorRecord.message;
-        }
-      }
-      if (typeof record.message === 'string') {
-        return record.message;
-      }
-    }
-  } catch {
-    return trimmed;
-  }
-  return trimmed;
-}
-
-function friendlyProviderErrorMessage(detail: string, fallbackMessage: string): string {
-  const message = extractProviderErrorMessage(detail);
-  if (!message) {
-    return titleForProviderError(fallbackMessage);
-  }
-
-  const lower = message.toLowerCase();
-  if (lower.includes('insufficient balance') || lower.includes('insufficient quota') || lower.includes('quota exceeded')) {
-    return '余额或额度不足，请检查模型商账户后重试。';
-  }
-  if (lower.includes('invalid api key') || lower.includes('unauthorized') || lower.includes('authentication')) {
-    return 'API Key 无效或无权限，请检查模型账号设置。';
-  }
-  if (lower.includes('rate limit') || lower.includes('too many requests')) {
-    return '请求过于频繁，请稍后重试。';
-  }
-  if (lower.includes('model') && (lower.includes('not found') || lower.includes('invalid'))) {
-    return '当前模型不可用，请切换模型后重试。';
-  }
-
-  return `${titleForProviderError(fallbackMessage)}：${message.slice(0, 120)}`;
 }
 
 export async function assertOkResponse(response: Response, fallbackMessage: string): Promise<void> {
@@ -105,5 +67,6 @@ export async function assertOkResponse(response: Response, fallbackMessage: stri
   } catch {
     detail = '';
   }
-  throw new Error(friendlyProviderErrorMessage(detail, fallbackMessage));
+  const reason = classifyAiProviderError({ body: detail, status: response.status });
+  throw new Error(toUserProviderErrorMessage(reason) || fallbackMessage);
 }

@@ -4,11 +4,13 @@ import {
   assertOkResponse,
   isAbortError,
   normalizeBaseUrl,
+  providerEndpoint,
   type AiChatRequest,
   type AiProviderAdapter,
   type AiStreamEvent,
   type AiStreamEventHandler,
 } from './base';
+import { classifyAiProviderError, toUserProviderErrorMessage } from '../aiProviderErrorClassifier';
 
 interface OpenAiModelListResponse {
   data?: Array<{ id?: string }>;
@@ -18,12 +20,17 @@ interface OpenAiEmbeddingResponse {
   data?: Array<{ embedding?: number[] }>;
 }
 
+interface OpenAiChatCompletionVerifyResponse {
+  choices?: unknown[];
+  id?: string;
+}
+
 function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   const trimmed = line.trim();
-  if (!trimmed.startsWith('data:')) {
+  if (!trimmed.startsWith('data:') && !trimmed.startsWith('{')) {
     return [];
   }
-  const payload = trimmed.slice(5).trim();
+  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
   if (!payload || payload === '[DONE]') {
     return payload === '[DONE]' ? [{ type: 'completed' }] : [];
   }
@@ -96,7 +103,7 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   const decoder = new TextDecoder();
   let buffer = '';
   let rawText = '';
-  let sawSseLine = false;
+  let sawStreamPayload = false;
   while (true) {
     if (signal?.aborted) {
       return;
@@ -114,25 +121,25 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
-      if (line.trim().startsWith('data:')) {
-        sawSseLine = true;
-      }
       const events = parseOpenAiStreamLine(line);
+      if (events.length > 0 || line.trim().startsWith('data:')) {
+        sawStreamPayload = true;
+      }
       for (const event of events) {
         await onEvent(event);
       }
     }
   }
   if (buffer) {
-    if (buffer.trim().startsWith('data:')) {
-      sawSseLine = true;
-    }
     const events = parseOpenAiStreamLine(buffer);
+    if (events.length > 0 || buffer.trim().startsWith('data:')) {
+      sawStreamPayload = true;
+    }
     for (const event of events) {
       await onEvent(event);
     }
   }
-  if (!sawSseLine && rawText) {
+  if (!sawStreamPayload && rawText) {
     for (const event of parseOpenAiChatCompletionJson(rawText)) {
       await onEvent(event);
     }
@@ -176,20 +183,43 @@ function shouldDisableOpenAiReasoning(input: AiChatRequest): boolean {
 }
 
 export const openAiCompatibleProvider: AiProviderAdapter = {
-  async testConnection(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
-      headers: { Authorization: `Bearer ${input.apiKey}` },
-    });
-    await assertOkResponse(response, 'AI provider connection failed');
-  },
-
   async listModels(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/models`, {
+    const response = await expoFetch(providerEndpoint(input.baseUrl, '/models'), {
       headers: { Authorization: `Bearer ${input.apiKey}` },
+      signal: input.signal,
     });
     await assertOkResponse(response, 'AI model list sync failed');
     const json = (await response.json()) as OpenAiModelListResponse;
     return (json.data ?? []).map((model) => model.id).filter((modelId): modelId is string => Boolean(modelId));
+  },
+
+  async verifyChatCompletion(input) {
+    const response = await expoFetch(providerEndpoint(input.baseUrl, '/chat/completions'), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: input.signal,
+      body: JSON.stringify({
+        model: input.modelId,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false,
+        temperature: 0,
+      }),
+    });
+    await assertOkResponse(response, 'AI provider connection failed');
+    const text = await response.text();
+    let json: OpenAiChatCompletionVerifyResponse | null = null;
+    try {
+      json = JSON.parse(text) as OpenAiChatCompletionVerifyResponse;
+    } catch {
+      json = null;
+    }
+    if (!json || !Boolean(json?.id || json?.choices)) {
+      throw new Error(toUserProviderErrorMessage(classifyAiProviderError({ body: text, fallbackKind: 'bad_shape', status: response.status })));
+    }
   },
 
   async streamChat(input: AiChatRequest, onEvent) {
@@ -215,7 +245,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       if (shouldDisableDeepSeekThinking(input)) {
         body.thinking = { type: 'disabled' };
       }
-      const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/chat/completions`, {
+      const response = await expoFetch(providerEndpoint(input.baseUrl, '/chat/completions'), {
         method: 'POST',
         headers: {
           Accept: 'text/event-stream',
@@ -240,7 +270,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
   },
 
   async embedText(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/embeddings`, {
+    const response = await expoFetch(providerEndpoint(input.baseUrl, '/embeddings'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.apiKey}`,

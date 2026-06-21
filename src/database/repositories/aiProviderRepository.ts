@@ -75,9 +75,14 @@ export const aiProviderRepository = {
         visionEnabled,
         defaultChatModelId,
         defaultEmbeddingModelId,
+        keyUpdatedAt,
+        lastVerifiedAt,
+        lastVerifyStatus,
+        lastVerifyMessage,
+        verifyFingerprint,
         createdAt,
         updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         providerType = excluded.providerType,
         displayName = excluded.displayName,
@@ -89,6 +94,11 @@ export const aiProviderRepository = {
         visionEnabled = excluded.visionEnabled,
         defaultChatModelId = COALESCE(ai_providers.defaultChatModelId, excluded.defaultChatModelId),
         defaultEmbeddingModelId = COALESCE(ai_providers.defaultEmbeddingModelId, excluded.defaultEmbeddingModelId),
+        keyUpdatedAt = ai_providers.keyUpdatedAt,
+        lastVerifiedAt = ai_providers.lastVerifiedAt,
+        lastVerifyStatus = ai_providers.lastVerifyStatus,
+        lastVerifyMessage = ai_providers.lastVerifyMessage,
+        verifyFingerprint = ai_providers.verifyFingerprint,
         updatedAt = ai_providers.updatedAt`,
       provider.id,
       provider.providerType,
@@ -101,6 +111,11 @@ export const aiProviderRepository = {
       booleanToSqlite(provider.visionEnabled),
       provider.defaultChatModelId,
       provider.defaultEmbeddingModelId,
+      provider.keyUpdatedAt,
+      provider.lastVerifiedAt,
+      provider.lastVerifyStatus,
+      provider.lastVerifyMessage,
+      provider.verifyFingerprint,
       provider.createdAt || now,
       now
     );
@@ -133,6 +148,48 @@ export const aiProviderRepository = {
        SET embeddingBaseUrl = ?, updatedAt = ?
        WHERE id = ?`,
       embeddingBaseUrl,
+      createTimestamp(),
+      providerId
+    );
+  },
+
+  async updateProviderKeyUpdatedAt(db: SQLiteDatabase, providerId: string, keyUpdatedAt: string): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_providers
+       SET keyUpdatedAt = ?, updatedAt = ?
+       WHERE id = ?`,
+      keyUpdatedAt,
+      createTimestamp(),
+      providerId
+    );
+  },
+
+  async updateProviderVerification(
+    db: SQLiteDatabase,
+    providerId: string,
+    verification: {
+      lastVerifiedAt?: string | null;
+      lastVerifyMessage?: string | null;
+      lastVerifyStatus?: AiProviderRecord['lastVerifyStatus'];
+      verifyFingerprint?: string | null;
+    }
+  ): Promise<void> {
+    const current = await aiProviderRepository.findProviderById(db, providerId);
+    if (!current) {
+      return;
+    }
+    await db.runAsync(
+      `UPDATE ai_providers
+       SET lastVerifiedAt = ?,
+           lastVerifyStatus = ?,
+           lastVerifyMessage = ?,
+           verifyFingerprint = ?,
+           updatedAt = ?
+       WHERE id = ?`,
+      verification.lastVerifiedAt === undefined ? current.lastVerifiedAt : verification.lastVerifiedAt,
+      verification.lastVerifyStatus === undefined ? current.lastVerifyStatus : verification.lastVerifyStatus,
+      verification.lastVerifyMessage === undefined ? current.lastVerifyMessage : verification.lastVerifyMessage,
+      verification.verifyFingerprint === undefined ? current.verifyFingerprint : verification.verifyFingerprint,
       createTimestamp(),
       providerId
     );
@@ -179,15 +236,15 @@ export const aiProviderRepository = {
           updatedAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(providerId, modelId) DO UPDATE SET
-          displayName = excluded.displayName,
-          supportsChat = excluded.supportsChat,
-          supportsEmbedding = excluded.supportsEmbedding,
-          supportsThinking = excluded.supportsThinking,
-          supportsVision = excluded.supportsVision,
-          supportsTools = excluded.supportsTools,
-          contextWindowTokens = excluded.contextWindowTokens,
-          capabilityJson = excluded.capabilityJson,
-          source = excluded.source,
+          displayName = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.displayName ELSE excluded.displayName END,
+          supportsChat = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.supportsChat ELSE excluded.supportsChat END,
+          supportsEmbedding = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.supportsEmbedding ELSE excluded.supportsEmbedding END,
+          supportsThinking = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.supportsThinking ELSE excluded.supportsThinking END,
+          supportsVision = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.supportsVision ELSE excluded.supportsVision END,
+          supportsTools = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.supportsTools ELSE excluded.supportsTools END,
+          contextWindowTokens = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.contextWindowTokens ELSE excluded.contextWindowTokens END,
+          capabilityJson = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.capabilityJson ELSE excluded.capabilityJson END,
+          source = CASE WHEN ai_provider_models.source = 'manual' AND excluded.source <> 'manual' THEN ai_provider_models.source ELSE excluded.source END,
           updatedAt = excluded.updatedAt`,
         model.id,
         providerId,

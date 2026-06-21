@@ -15,7 +15,7 @@ import { assetRepository, imageRepository, ipRepository, runWithDatabaseSpace, t
 import { colors, radius, spacing, typography } from '../design/tokens';
 import { useToast } from '../components/AppToast';
 import { importVideosToIp, saveVideoToSystemAlbum, type PickedVideoAsset } from '../services/videoImportService';
-import { loadVideoPlayerPreferences, saveVideoPlayerPreferences } from '../services/mediaExperiencePreferences';
+import { loadVideoPlayerPreferences, saveVideoPlayerPreferences, type VideoPlaybackOrder } from '../services/mediaExperiencePreferences';
 import { formatDuration } from '../utils/formatters';
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 2, 3] as const;
@@ -85,6 +85,14 @@ function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orienta
   return null;
 }
 
+function pickRandomQueueIndex(queueLength: number, currentIndex: number): number {
+  if (queueLength <= 1) {
+    return currentIndex;
+  }
+  const randomIndex = Math.floor(Math.random() * (queueLength - 1));
+  return randomIndex >= currentIndex ? randomIndex + 1 : randomIndex;
+}
+
 export function VideoPlayerScreen({
   videoId,
   externalSource,
@@ -102,6 +110,7 @@ export function VideoPlayerScreen({
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(1);
   const [holdSpeed, setHoldSpeed] = useState<(typeof SPEED_OPTIONS)[number]>(3);
+  const [playbackOrder, setPlaybackOrder] = useState<VideoPlaybackOrder>('sequence');
   const [controlsVisible, setControlsVisible] = useState(true);
   const [speedMenuVisible, setSpeedMenuVisible] = useState(false);
   const [queueVisible, setQueueVisible] = useState(false);
@@ -149,6 +158,7 @@ export function VideoPlayerScreen({
   const lastSurfaceTapAtRef = useRef(0);
   const lastSurfacePressLocationXRef = useRef(0);
   const queueVisibleRef = useRef(false);
+  const videoPreferencesLoadedRef = useRef(false);
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const floatingMenuOpacity = useRef(new Animated.Value(0)).current;
   const floatingMenuTranslateY = useRef(new Animated.Value(10)).current;
@@ -163,6 +173,7 @@ export function VideoPlayerScreen({
     instance.playbackRate = speed;
     instance.loop = true;
   });
+  const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
 
   useEffect(() => {
     Animated.timing(controlsOpacity, {
@@ -224,9 +235,11 @@ export function VideoPlayerScreen({
       if (SPEED_OPTIONS.includes(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number])) {
         setHoldSpeed(preferences.holdSpeed as (typeof SPEED_OPTIONS)[number]);
       }
+      setPlaybackOrder(preferences.playbackOrder === 'shuffle' ? 'shuffle' : 'sequence');
       setIsPlayerLocked(preferences.lockedByDefault);
       const shouldUseLandscape = preferences.orientationPreference === 'landscape';
       setIsLandscape(shouldUseLandscape);
+      videoPreferencesLoadedRef.current = true;
       void ScreenOrientation.lockAsync(shouldUseLandscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
     });
     void VolumeManager.showNativeVolumeUI({ enabled: false }).catch(() => undefined);
@@ -315,7 +328,7 @@ export function VideoPlayerScreen({
       }
       player.timeUpdateEventInterval = 0.25;
       player.playbackRate = speed;
-      player.loop = true;
+      player.loop = Boolean(externalSource) || queue.length <= 1;
       if (initialDisplayTime > 0) {
         player.currentTime = initialDisplayTime;
         currentTimeRef.current = initialDisplayTime;
@@ -329,16 +342,30 @@ export function VideoPlayerScreen({
     return () => {
       isActive = false;
     };
-  }, [activeVideoSource?.id, externalSource, player, showToast, sourceUri]);
+  }, [activeVideoSource?.id, externalSource, player, queue.length, showToast, sourceUri]);
+
+  useEffect(() => {
+    player.loop = Boolean(externalSource) || queue.length <= 1;
+  }, [externalSource, player, queue.length]);
 
   useEffect(() => {
     player.playbackRate = speed;
-    void saveVideoPlayerPreferences({ speed });
+    if (videoPreferencesLoadedRef.current) {
+      void saveVideoPlayerPreferences({ speed });
+    }
   }, [player, speed]);
 
   useEffect(() => {
-    void saveVideoPlayerPreferences({ holdSpeed });
+    if (videoPreferencesLoadedRef.current) {
+      void saveVideoPlayerPreferences({ holdSpeed });
+    }
   }, [holdSpeed]);
+
+  useEffect(() => {
+    if (videoPreferencesLoadedRef.current) {
+      void saveVideoPlayerPreferences({ playbackOrder });
+    }
+  }, [playbackOrder]);
 
   useEffect(() => {
     const timeSubscription = player.addListener('timeUpdate', (payload) => {
@@ -358,13 +385,15 @@ export function VideoPlayerScreen({
     const sourceSubscription = player.addListener('sourceLoad', (payload) => {
       setDuration(payload.duration);
     });
+    const playToEndSubscription = player.addListener('playToEnd', handlePlayToEnd);
 
     return () => {
       timeSubscription.remove();
       playingSubscription.remove();
       sourceSubscription.remove();
+      playToEndSubscription.remove();
     };
-  }, [duration, player]);
+  }, [activeVideoId, currentIndex, duration, externalSource, playbackOrder, player, queue]);
 
   useEffect(() => {
     resetHideTimer();
@@ -404,7 +433,6 @@ export function VideoPlayerScreen({
 
   const displayTime = isScrubbing ? scrubDisplayTime : currentTime;
   const progress = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
-  const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
   const floatingPanelAnimatedStyle = {
     opacity: floatingMenuOpacity,
     transform: [{ translateY: floatingMenuTranslateY }],
@@ -575,7 +603,7 @@ export function VideoPlayerScreen({
         },
         onShouldBlockNativeResponder: () => true,
       }),
-    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, isVideoSwitchTransitioning, player, queue.length, speed, surfaceWidth, surfaceHeight]
+    [activeVideoId, currentIndex, duration, externalSource, holdSpeed, isLandscape, isPlayerLocked, isPlaying, isVideoSwitchTransitioning, playbackOrder, player, queue.length, speed, surfaceWidth, surfaceHeight]
   );
 
   async function handleSaveLocal() {
@@ -878,6 +906,15 @@ export function VideoPlayerScreen({
   function finishVerticalGesture() {
     verticalGestureKindRef.current = null;
     resetHideTimer();
+  }
+
+  function togglePlaybackOrder() {
+    setPlaybackOrder((current) => {
+      const nextOrder: VideoPlaybackOrder = current === 'shuffle' ? 'sequence' : 'shuffle';
+      showControls();
+      showToast(nextOrder === 'shuffle' ? '已切换为随机播放' : '已切换为顺序播放');
+      return nextOrder;
+    });
   }
 
   function shouldSwitchVideoFromCenterVerticalGesture(locationX: number, absDx: number, absDy: number) {
@@ -1231,19 +1268,44 @@ export function VideoPlayerScreen({
     }
   }
 
-  function getVideoByOffset(offset: 1 | -1) {
+  function getSequenceVideoByOffset(offset: 1 | -1) {
     if (queue.length === 0 || currentIndex < 0) {
       return null;
     }
-    const nextIndex = Math.max(0, Math.min(queue.length - 1, currentIndex + offset));
+    const nextIndex = (currentIndex + offset + queue.length) % queue.length;
     const nextVideo = queue[nextIndex];
     return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
+  }
+
+  function getRandomQueueVideo() {
+    if (queue.length <= 1 || currentIndex < 0) {
+      return null;
+    }
+    const nextVideo = queue[pickRandomQueueIndex(queue.length, currentIndex)];
+    return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
+  }
+
+  function getVideoByOffset(offset: 1 | -1) {
+    if (playbackOrder === 'shuffle') {
+      return getRandomQueueVideo();
+    }
+    return getSequenceVideoByOffset(offset);
   }
 
   function switchVideoByOffset(offset: 1 | -1) {
     const nextVideo = getVideoByOffset(offset);
     if (nextVideo) {
       switchVideo(nextVideo.id, nextVideo);
+    }
+  }
+
+  function handlePlayToEnd() {
+    if (externalSource || queue.length <= 1) {
+      return;
+    }
+    const nextVideo = playbackOrder === 'shuffle' ? getRandomQueueVideo() : getSequenceVideoByOffset(1);
+    if (nextVideo) {
+      switchVideo(nextVideo.id, nextVideo, { showControls: false });
     }
   }
 
@@ -1436,15 +1498,29 @@ export function VideoPlayerScreen({
                 ) : null}
               </View>
               <View style={styles.controlActions}>
+                <Pressable
+                  accessibilityLabel={playbackOrder === 'shuffle' ? '切换为顺序播放' : '切换为随机播放'}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: playbackOrder === 'shuffle' }}
+                  onPress={togglePlaybackOrder}
+                  style={({ pressed }) => [styles.controlButton, playbackOrder === 'shuffle' ? styles.controlButtonActive : null, pressed && styles.pressed]}
+                >
+                  <Ionicons color={playbackOrder === 'shuffle' ? colors.primary.hover : colors.text.inverse} name={playbackOrder === 'shuffle' ? 'shuffle' : 'repeat-outline'} size={19} />
+                </Pressable>
                 <Pressable onPress={() => { setSpeedMenuVisible((current) => !current); setQueueVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
                   <Text style={styles.pillButtonText}>{speed}x</Text>
                 </Pressable>
                 <Pressable accessibilityLabel="横竖屏" onPress={toggleOrientation} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                   <Ionicons color={colors.text.inverse} name={isLandscape ? 'phone-portrait-outline' : 'phone-landscape-outline'} size={19} />
                 </Pressable>
-                <Pressable onPress={() => { setQueueVisible((current) => !current); setSpeedMenuVisible(false); showControls(); }} style={({ pressed }) => [styles.pillButton, pressed && styles.pressed]}>
-                  <Ionicons color={colors.text.inverse} name="list-outline" size={16} />
-                  <Text style={styles.pillButtonText}>待播放</Text>
+                <Pressable
+                  accessibilityLabel={queueVisible ? '关闭待播放列表' : '打开待播放列表'}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: queueVisible }}
+                  onPress={() => { setQueueVisible((current) => !current); setSpeedMenuVisible(false); showControls(); }}
+                  style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}
+                >
+                  <Ionicons color={colors.text.inverse} name="list-outline" size={19} />
                 </Pressable>
                 <Pressable accessibilityLabel="锁定播放器" onPress={togglePlayerLock} style={({ pressed }) => [styles.controlButton, pressed && styles.pressed]}>
                   <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={18} />
@@ -1842,6 +1918,10 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     width: 40,
+  },
+  controlButtonActive: {
+    backgroundColor: 'rgba(213, 228, 202, 0.16)',
+    borderRadius: radius.pill,
   },
   timeText: {
     ...typography.textStyles.micro,

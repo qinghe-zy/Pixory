@@ -27,10 +27,8 @@ test('AI failed assistant bubbles provide readable errors and inline retry', () 
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
   assert.match(errors, /normalizeAiErrorMessage/);
-  assert.match(errors, /API Key 无效或已过期/);
-  assert.match(errors, /额度不足或请求过于频繁/);
-  assert.match(errors, /模型暂时不可用/);
-  assert.match(errors, /网络连接失败/);
+  assert.match(errors, /classifyAiProviderError/);
+  assert.match(errors, /toUserProviderErrorMessage/);
   assert.match(chatService, /normalizeAiErrorMessage/);
   assert.match(chatService, /invalid_global_default/);
   assert.match(chatService, /invalid_thread_model/);
@@ -200,7 +198,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   const gemini = read('src/ai/providers/geminiProvider.ts');
 
   assert.match(types, /thinkingDisabled: boolean/);
-  assert.match(schema, /DATABASE_VERSION = 40/);
+  assert.match(schema, /DATABASE_VERSION = 41/);
   assert.match(schema, /thinkingDisabled INTEGER NOT NULL DEFAULT 0/);
   assert.match(schema, /MIGRATION_STATEMENTS_V40/);
   assert.match(db, /MIGRATION_STATEMENTS_V40/);
@@ -432,7 +430,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 40/);
+  assert.match(schema, /DATABASE_VERSION = 41/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);
@@ -470,14 +468,30 @@ test('AI session model override resolution uses thread endpoint and key before p
 
 test('AI session settings edits only current session model endpoint and key', () => {
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const chatService = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?\n}\n/)?.[0] ?? '';
+
   assert.match(sessionConfig, /saveThreadSessionModelOverride/);
   assert.match(sessionConfig, /clearThreadSessionModelOverride/);
   assert.match(sessionConfig, /sessionBaseUrlDraft/);
   assert.match(sessionConfig, /sessionApiKeyDraft/);
+  assert.match(sessionConfig, /manualSessionModelDraft/);
   assert.match(sessionConfig, /仅本会话/);
   assert.match(sessionConfig, /清除 API/);
+  assert.match(sessionConfig, /保存本会话配置/);
+  assert.match(sessionConfig, /测试当前模型/);
+  assert.match(sessionConfig, /复用全局模型配置/);
+  assert.match(sessionConfig, /添加新模型/);
+  assert.match(sessionConfig, /添加并用于当前会话/);
+  assert.match(sessionConfig, /verifyThreadSessionModelOverride/);
+  assert.match(sessionConfig, /addThreadSessionManualModel/);
   assert.match(sessionConfig, /apiKey: ''/);
   assert.match(sessionConfig, /跟随全局默认/);
+  assert.match(chatService, /verifyThreadSessionModelOverride[\s\S]*verifyChatCompletion/);
+  assert.match(chatService, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, emptyThreadModelConfig\(space\)\)/);
+  assert.match(candidateFunction, /manualModelRecord/);
+  assert.doesNotMatch(candidateFunction, /updateProviderDefaults/);
   assert.doesNotMatch(sessionConfig, /saveProviderBaseUrl\(space/);
   assert.doesNotMatch(sessionConfig, /saveProviderApiKey/);
 });

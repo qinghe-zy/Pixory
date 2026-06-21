@@ -30,6 +30,17 @@ test('AI session settings exposes current session model and follow-global option
   assert.match(screen, /当前会话模型/);
   assert.match(screen, /仅在当前会话生效/);
   assert.match(screen, /跟随全局默认/);
+  assert.match(screen, /保存本会话配置/);
+  assert.match(screen, /测试当前模型/);
+  assert.match(screen, /复用全局模型配置/);
+  assert.match(screen, /添加新模型/);
+  assert.match(screen, /添加并用于当前会话/);
+  assert.match(screen, /manualSessionModelDraft/);
+  assert.match(screen, /addThreadSessionManualModel/);
+  assert.match(screen, /verifyThreadSessionModelOverride/);
+  assert.match(screen, /persistCurrentSessionModelDraft/);
+  assert.match(screen, /sessionModelConfig\?\.providerId \?\? sessionModelConfig\?\.defaultProviderId/);
+  assert.match(screen, /sessionModelConfig\?\.modelId \?\? sessionModelConfig\?\.defaultModelId/);
   assert.match(screen, /saveSessionModel\(null,\s*null\)/);
   assert.match(screen, /updateAiThreadSessionConfig/);
   assert.match(screen, /loadThreadSessionModelConfig/);
@@ -71,6 +82,31 @@ test('session model settings uses the same resolver as generation', () => {
   const service = read('src/ai/aiChatService.ts');
 
   assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, thread\)/);
+  assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolveThreadChatModel\(space, emptyThreadModelConfig\(space\)\)/);
   assert.match(service, /loadThreadSessionModelConfig[\s\S]*resolvedModel\.status !== 'ready'/);
   assert.match(service, /loadThreadSessionModelConfig[\s\S]*currentStatus[\s\S]*'invalid'/);
+});
+
+test('current session manual model candidates do not replace the global default model', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?\n}\n/)?.[0] ?? '';
+
+  assert.match(chat, /addThreadSessionManualModel/);
+  assert.match(chat, /saveManualChatModelCandidate/);
+  assert.match(candidateFunction, /manualModelRecord/);
+  assert.doesNotMatch(candidateFunction, /updateProviderDefaults/);
+  assert.match(sessionConfig, /addManualSessionModel[\s\S]*saveThreadSessionModelOverride/);
+  assert.doesNotMatch(sessionConfig, /addManualSessionModel[\s\S]*saveManualChatModel\(/);
+});
+
+test('session model draft persistence is not blocked by the outer saving flag', () => {
+  const screen = read('src/screens/AiSessionConfigScreen.tsx');
+  const persistBody = screen.match(/async function persistCurrentSessionModelDraft\(\): Promise<boolean> \{[\s\S]*?\n  \}/)?.[0] ?? '';
+
+  assert.match(persistBody, /saveThreadSessionModelOverride/);
+  assert.doesNotMatch(persistBody, /savingModel/);
+  assert.match(screen, /async function saveCurrentSessionModelDraft\(\) \{[\s\S]*if \(savingModel\)/);
+  assert.match(screen, /async function testCurrentSessionModel\(\) \{[\s\S]*if \(!threadId \|\| savingModel\)/);
 });

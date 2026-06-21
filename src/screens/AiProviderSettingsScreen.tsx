@@ -15,14 +15,15 @@ import {
   listProviderCards,
   saveManualChatModel,
   saveManualEmbeddingModel,
-  saveProviderApiKey,
+  saveProviderApiKeyForSpace,
   saveProviderBaseUrl,
   saveProviderEmbeddingBaseUrl,
   saveProviderDefaultModels,
   selectProvider,
   syncProviderModels,
-  testProvider,
+  verifyCurrentProviderModel,
 } from '../ai/aiProviderService';
+import { parseProviderConnectionImport } from '../ai/aiProviderConnectionImport';
 import {
   resolveMemoryMaintenanceModel,
   testMemoryMaintenanceModel,
@@ -113,6 +114,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [loading, setLoading] = useState(false);
   const [apiDraft, setApiDraft] = useState('');
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
+  const [baseUrlHint, setBaseUrlHint] = useState<string | null>(null);
+  const [connectionImportDraft, setConnectionImportDraft] = useState('');
   const [embeddingBaseUrlDraft, setEmbeddingBaseUrlDraft] = useState('');
   const [manualModelDraft, setManualModelDraft] = useState('');
   const [manualEmbeddingModelDraft, setManualEmbeddingModelDraft] = useState('');
@@ -183,6 +186,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!selectedProviderId) {
       setApiDraft('');
       setBaseUrlDraft('');
+      setBaseUrlHint(null);
+      setConnectionImportDraft('');
       setEmbeddingBaseUrlDraft('');
       setManualEmbeddingModelDraft('');
       return;
@@ -190,9 +195,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     let active = true;
     const selected = orderedCards.find((card) => card.provider.id === selectedProviderId);
     setBaseUrlDraft(selected?.provider.baseUrl ?? '');
+    setBaseUrlHint(null);
+    setConnectionImportDraft('');
     setEmbeddingBaseUrlDraft(selected?.provider.embeddingBaseUrl ?? '');
     setManualEmbeddingModelDraft('');
-    void getSavedProviderApiKey(selectedProviderId).then((apiKey) => {
+    void getSavedProviderApiKey(selectedProviderId, space).then((apiKey) => {
       if (active) {
         setApiDraft(apiKey ?? '');
       }
@@ -200,7 +207,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     return () => {
       active = false;
     };
-  }, [orderedCards, selectedProviderId]);
+  }, [orderedCards, selectedProviderId, space]);
 
   async function chooseProvider(providerId: string) {
     const nextCard = orderedCards.find((card) => card.provider.id === providerId) ?? null;
@@ -209,6 +216,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     setModelSheetVisible(false);
     setApiDraft('');
     setBaseUrlDraft(nextCard?.provider.baseUrl ?? '');
+    setBaseUrlHint(null);
+    setConnectionImportDraft('');
     setEmbeddingBaseUrlDraft(nextCard?.provider.embeddingBaseUrl ?? '');
     setManualModelDraft('');
     setManualEmbeddingModelDraft('');
@@ -225,12 +234,23 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     setStatus({ message: '正在保存模型账号设置...', tone: 'info' });
     try {
       if (selectedIsOtherProvider) {
+        let parsedBaseUrl: URL;
+        try {
+          parsedBaseUrl = new URL(baseUrlDraft.trim());
+        } catch {
+          setStatus({ message: '服务地址格式不正确，请检查 Base URL。', tone: 'warning' });
+          return false;
+        }
+        if (parsedBaseUrl.search || parsedBaseUrl.hash) {
+          setStatus({ message: 'Base URL 不能包含查询参数或片段，请只填写服务地址。', tone: 'warning' });
+          return false;
+        }
         await saveProviderBaseUrl(space, selectedCard.provider.id, baseUrlDraft);
       }
       await saveProviderEmbeddingBaseUrl(space, selectedCard.provider.id, embeddingBaseUrlDraft);
       const apiKey = apiDraft.trim();
       await selectProvider(space, selectedCard.provider.id);
-      await saveProviderApiKey(selectedCard.provider.id, apiKey);
+      await saveProviderApiKeyForSpace(space, selectedCard.provider.id, apiKey);
       await runWithDatabaseSpace(space, (db) =>
         settingsRepository.updateMemoryMaintenanceSettings(db, {
           memoryMaintenanceLastTestAt: null,
@@ -246,6 +266,19 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       setStatus({ message: error instanceof Error ? error.message : '保存失败', tone: 'error' });
       return false;
     }
+  }
+
+  function importProviderConnection() {
+    const result = parseProviderConnectionImport(connectionImportDraft);
+    if (!result.ok) {
+      setStatus({ message: '未识别到有效的 url 和 key。', tone: 'warning', title: '导入失败' });
+      return;
+    }
+    setBaseUrlDraft(result.baseUrl);
+    setApiDraft(result.apiKey);
+    setVisibleKey(false);
+    setBaseUrlHint(result.hasPath ? null : '该连接未包含 `/v1`，如果测试失败，优先尝试在末尾加 `/v1`。');
+    setStatus({ message: '已识别连接信息，请检查后先保存配置，再测试当前模型。', tone: 'success', title: '导入成功' });
   }
 
   async function selectModel(model: AiProviderModelRecord) {
@@ -286,10 +319,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '正在验证 API key、模型和服务地址...', tone: 'info', title: '测试连接中' });
+    setStatus({ message: '正在验证 API key、模型和服务地址...', tone: 'info', title: '测试当前模型' });
     try {
-      await testProvider(selectedCard.provider.id, space);
-      setStatus({ message: `${selectedCard.provider.displayName} 连接可用，可以开始对话。`, tone: 'success', title: '连接成功' });
+      await verifyCurrentProviderModel(selectedCard.provider.id, space);
+      setStatus({ message: `${selectedCard.provider.displayName} 当前模型可用，可以开始对话。`, tone: 'success', title: '已验证' });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '连接失败' });
     }
@@ -303,13 +336,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     if (!saved) {
       return;
     }
-    setStatus({ message: '正在从模型商读取模型列表...', tone: 'info', title: '同步模型中' });
+    setStatus({ message: '正在从模型商读取模型列表...', tone: 'info', title: '刷新模型列表' });
     try {
       const result = await syncProviderModels(selectedCard.provider.id, space);
       setStatus(
         result.synced > 0
-          ? { message: `已同步 ${result.synced} 个模型。`, tone: 'success', title: '同步完成' }
-          : { message: `没有读取到远程列表，已使用 ${result.fallback} 个内置模型。`, tone: 'warning', title: '使用内置模型' }
+          ? { message: `已同步 ${result.synced} 个模型。`, tone: 'success', title: '刷新完成' }
+          : { message: `${result.message ? `${result.message} ` : ''}已使用 ${result.fallback} 个内置模型，当前模型不会被清空。`, tone: 'warning', title: '使用内置模型' }
       );
       await loadProviders();
     } catch (error) {
@@ -428,6 +461,18 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>全局默认模型</Text>
           <Text style={styles.caption}>新创建会话的默认选择。修改此项不会影响已有独立设置的会话。</Text>
+          {selectedCard?.provider.lastVerifyStatus ? (
+            <Text style={styles.caption}>
+              当前模型状态：{selectedCard.provider.lastVerifyStatus === 'ready'
+                ? '已验证'
+                : selectedCard.provider.lastVerifyStatus === 'changed'
+                  ? '配置已变更'
+                  : selectedCard.provider.lastVerifyStatus === 'failed'
+                    ? '测试失败'
+                    : '未验证'}
+              {selectedCard.provider.lastVerifyMessage ? ` · ${selectedCard.provider.lastVerifyMessage}` : ''}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -478,6 +523,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               style={styles.input}
               value={baseUrlDraft}
             />
+            {baseUrlHint ? <Text style={styles.caption}>{baseUrlHint}</Text> : null}
           </View>
         ) : null}
 
@@ -503,9 +549,27 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               <Ionicons color={aiLightColors.muted} name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={18} />
             </Pressable>
           </View>
-          <AiLightButton disabled={saveDisabled} label="保存并测试连接" onPress={() => void testSelectedProvider()} />
+          {selectedIsOtherProvider ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>连接信息导入（可选）</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                multiline
+                onChangeText={setConnectionImportDraft}
+                placeholder='{"_type":"newapi_channel_conn","key":"sk-...","url":"https://example.com"}'
+                placeholderTextColor={aiLightColors.mutedSoft}
+                selectionColor={aiLightColors.coral}
+                style={[styles.input, styles.importInput]}
+                value={connectionImportDraft}
+              />
+              <AiLightButton disabled={!connectionImportDraft.trim()} label="导入连接信息" onPress={importProviderConnection} variant="outline" />
+            </View>
+          ) : null}
+          <AiLightButton disabled={saveDisabled} label="保存配置" onPress={() => void saveProviderDraft()} />
           <View style={styles.inlineActions}>
-            <AiLightButton label="同步模型" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
+            <AiLightButton label="刷新模型列表" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
+            <AiLightButton disabled={saveDisabled} label="测试当前模型" onPress={() => void testSelectedProvider()} variant="outline" />
           </View>
         </View>
 
@@ -926,6 +990,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
+  },
+  importInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
   },
   iconButton: {
     alignItems: 'center',

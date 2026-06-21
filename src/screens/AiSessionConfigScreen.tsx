@@ -13,6 +13,7 @@ import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import {
   applyRoleCardToThread,
+  addThreadSessionManualModel,
   clearThreadSessionModelOverride,
   deleteAiThreads,
   loadThreadAiUsageOverview,
@@ -20,6 +21,7 @@ import {
   loadThreadSessionModelConfig,
   renameAiThread,
   saveThreadSessionModelOverride,
+  verifyThreadSessionModelOverride,
   updateAiThreadSessionConfig,
   type AiThreadSessionModelConfig,
 } from '../ai/aiChatService';
@@ -128,6 +130,7 @@ export function AiSessionConfigScreen({
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
   const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
   const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
+  const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
@@ -158,6 +161,7 @@ export function AiSessionConfigScreen({
       setSessionModelConfig(null);
       setSessionBaseUrlDraft('');
       setSessionApiKeyDraft('');
+      setManualSessionModelDraft('');
       setThreadUsage(null);
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
@@ -184,6 +188,7 @@ export function AiSessionConfigScreen({
     setSessionModelConfig(nextSessionModelConfig);
     setSessionBaseUrlDraft(nextSessionModelConfig?.sessionBaseUrl ?? '');
     setSessionApiKeyDraft('');
+    setManualSessionModelDraft('');
     setThreadUsage(nextThreadUsage);
     setAdvancedPromptVisible(config.thread.systemPrompt.trim().length > 0 || contextType !== 'normal');
     setBoundaryMode(config.thread.boundaryMode);
@@ -296,9 +301,134 @@ export function AiSessionConfigScreen({
       setSessionModelConfig(modelConfig);
       setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
       setSessionApiKeyDraft('');
+      setManualSessionModelDraft('');
       setStatus({ message: '仅本会话已更新。', tone: 'success', title: '模型已更新' });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '模型保存失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function persistCurrentSessionModelDraft(): Promise<boolean> {
+    const providerId = sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId ?? null;
+    const modelId = sessionModelConfig?.modelId ?? sessionModelConfig?.defaultModelId ?? null;
+    if (!threadId || !providerId) {
+      return false;
+    }
+    const updated = await saveThreadSessionModelOverride({
+      apiKey: sessionApiKeyDraft || undefined,
+      baseUrl: sessionBaseUrlDraft,
+      modelId,
+      providerId,
+      space,
+      threadId,
+    });
+    if (!updated) {
+      throw new Error('没有找到当前会话，模型未保存。');
+    }
+    const modelConfig = await loadThreadSessionModelConfig(space, threadId);
+    setSessionModelConfig(modelConfig);
+    setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+    setSessionApiKeyDraft('');
+    setManualSessionModelDraft('');
+    return true;
+  }
+
+  async function saveCurrentSessionModelDraft() {
+    if (savingModel) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const saved = await persistCurrentSessionModelDraft();
+      if (saved) {
+        setStatus({ message: '本会话模型配置已保存。', tone: 'success', title: '模型已保存' });
+      }
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '模型保存失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function reuseGlobalModelConfig() {
+    if (!threadId || savingModel || !sessionModelConfig?.defaultProviderId) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const updated = await saveThreadSessionModelOverride({
+        apiKey: '',
+        baseUrl: null,
+        modelId: sessionModelConfig.defaultModelId,
+        providerId: sessionModelConfig.defaultProviderId,
+        space,
+        threadId,
+      });
+      if (!updated) {
+        throw new Error('没有找到当前会话，模型未保存。');
+      }
+      const modelConfig = await loadThreadSessionModelConfig(space, threadId);
+      setSessionModelConfig(modelConfig);
+      setSessionBaseUrlDraft('');
+      setSessionApiKeyDraft('');
+      setManualSessionModelDraft('');
+      setStatus({ message: '当前会话已复用全局模型账号配置。', tone: 'success', title: '已复用全局配置' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '复用失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function testCurrentSessionModel() {
+    if (!threadId || savingModel) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      const saved = await persistCurrentSessionModelDraft();
+      if (!saved) {
+        throw new Error('请先选择或复用一个模型后再测试。');
+      }
+      await verifyThreadSessionModelOverride(space, threadId);
+      setStatus({ message: '当前会话模型可用。', tone: 'success', title: '测试通过' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '测试失败' });
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
+  async function addManualSessionModel() {
+    const modelId = manualSessionModelDraft.trim();
+    const providerId = sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId ?? null;
+    if (!threadId || savingModel || !providerId || !modelId) {
+      return;
+    }
+    setSavingModel(true);
+    try {
+      await addThreadSessionManualModel({ modelId, providerId, space });
+      const updated = await saveThreadSessionModelOverride({
+        apiKey: sessionApiKeyDraft || undefined,
+        baseUrl: sessionBaseUrlDraft,
+        modelId,
+        providerId,
+        space,
+        threadId,
+      });
+      if (!updated) {
+        throw new Error('没有找到当前会话，模型未保存。');
+      }
+      const modelConfig = await loadThreadSessionModelConfig(space, threadId);
+      setSessionModelConfig(modelConfig);
+      setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+      setSessionApiKeyDraft('');
+      setManualSessionModelDraft('');
+      setStatus({ message: `已添加并切换到 ${modelId}。`, tone: 'success', title: '模型已添加' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '添加模型失败', tone: 'error', title: '保存失败' });
     } finally {
       setSavingModel(false);
     }
@@ -745,6 +875,66 @@ export function AiSessionConfigScreen({
                   <Text style={styles.textActionLabel}>清除 API</Text>
                 </Pressable>
               ) : null}
+              <View style={styles.modelActionRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={savingModel || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)}
+                  onPress={() => void saveCurrentSessionModelDraft()}
+                  style={({ pressed }) => [
+                    styles.modelInlineAction,
+                    (savingModel || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)) && styles.disabled,
+                    pressed && !savingModel && (sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId) && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.textActionLabel}>保存本会话配置</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={savingModel || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)}
+                  onPress={() => void testCurrentSessionModel()}
+                  style={({ pressed }) => [
+                    styles.modelInlineAction,
+                    (savingModel || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)) && styles.disabled,
+                    pressed && !savingModel && (sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId) && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.textActionLabel}>测试当前模型</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                disabled={savingModel || !sessionModelConfig?.defaultProviderId}
+                onPress={() => void reuseGlobalModelConfig()}
+                style={({ pressed }) => [styles.modelInlineAction, (savingModel || !sessionModelConfig?.defaultProviderId) && styles.disabled, pressed && !savingModel && sessionModelConfig?.defaultProviderId && styles.pressed]}
+              >
+                <Text style={styles.textActionLabel}>复用全局模型配置</Text>
+              </Pressable>
+            </View>
+            <View style={styles.modelOverrideFields}>
+              <Text style={styles.caption}>添加新模型</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!savingModel}
+                onChangeText={setManualSessionModelDraft}
+                placeholder="模型 ID / 中转站别名"
+                placeholderTextColor={aiLightColors.mutedSoft}
+                selectionColor={aiLightColors.coral}
+                style={styles.dialogInput}
+                value={manualSessionModelDraft}
+              />
+              <Pressable
+                accessibilityRole="button"
+                disabled={savingModel || !manualSessionModelDraft.trim() || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)}
+                onPress={() => void addManualSessionModel()}
+                style={({ pressed }) => [
+                  styles.modelInlineAction,
+                  (savingModel || !manualSessionModelDraft.trim() || !(sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId)) && styles.disabled,
+                  pressed && !savingModel && manualSessionModelDraft.trim() && (sessionModelConfig?.providerId ?? sessionModelConfig?.defaultProviderId) && styles.pressed,
+                ]}
+              >
+                <Text style={styles.textActionLabel}>添加并用于当前会话</Text>
+              </Pressable>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -1034,6 +1224,11 @@ const styles = StyleSheet.create({
     maxHeight: 320,
   },
   modelOverrideFields: {
+    gap: rhythm.compactGridGap,
+  },
+  modelActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
   },
   modelInlineAction: {

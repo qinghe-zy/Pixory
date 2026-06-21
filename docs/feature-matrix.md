@@ -47,8 +47,8 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；连接测试、模型列表、不可枚举模型的手动 ID、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
-| Provider 设置 | 全局默认 provider/model、手动模型 ID、中转网关模型别名、API Key SecureStore、session override | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
+| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
+| Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
 | 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite | `aiChatService`, `aiGenerationManager` |
 | 流式性能 | generationId 防旧流污染、外部 streaming store、自适应 UI fps、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `AiStreamingMessageText` |
@@ -123,7 +123,7 @@
 | --- | --- | --- |
 | 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序 | `ImageViewerScreen`, `mediaExperiencePreferences` |
 | 系统相册保存 | 保存单张/多张图片到系统相册 | `mediaLibraryService`, `AlbumSaveDialog` |
-| 视频播放器 | 自动播放、循环、播放/暂停、进度拖动、队列、横竖屏、锁定 | `VideoPlayerScreen` |
+| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
 | 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub | `VideoPlayerScreen` |
 | 视频偏好 | 播放器偏好持久化、图片 viewer 偏好持久化 | `mediaExperiencePreferences` |
 | 外部视频 | open-with 外部视频进入播放器 | `App.tsx`, native media module |

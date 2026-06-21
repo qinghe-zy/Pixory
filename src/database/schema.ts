@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 40;
+export const DATABASE_VERSION = 41;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -335,6 +335,11 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   visionEnabled INTEGER NOT NULL DEFAULT 0,
   defaultChatModelId TEXT,
   defaultEmbeddingModelId TEXT,
+  keyUpdatedAt TEXT,
+  lastVerifiedAt TEXT,
+  lastVerifyStatus TEXT CHECK (lastVerifyStatus IN ('ready', 'changed', 'failed', 'untested')),
+  lastVerifyMessage TEXT,
+  verifyFingerprint TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -902,6 +907,14 @@ ALTER TABLE ai_threads ADD COLUMN modelTitleGeneratedAt TEXT;
 
 export const MIGRATION_STATEMENTS_V40 = `
 ALTER TABLE ai_threads ADD COLUMN thinkingDisabled INTEGER NOT NULL DEFAULT 0;
+`;
+
+export const MIGRATION_STATEMENTS_V41 = `
+ALTER TABLE ai_providers ADD COLUMN keyUpdatedAt TEXT;
+ALTER TABLE ai_providers ADD COLUMN lastVerifiedAt TEXT;
+ALTER TABLE ai_providers ADD COLUMN lastVerifyStatus TEXT CHECK (lastVerifyStatus IN ('ready', 'changed', 'failed', 'untested'));
+ALTER TABLE ai_providers ADD COLUMN lastVerifyMessage TEXT;
+ALTER TABLE ai_providers ADD COLUMN verifyFingerprint TEXT;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

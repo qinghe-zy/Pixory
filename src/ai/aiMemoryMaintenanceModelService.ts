@@ -7,7 +7,7 @@ import {
 } from '../database';
 import type { AiThreadRecord } from './types';
 import { ensureBuiltInProviders, getAdapterForProvider } from './aiProviderService';
-import { getProviderApiKey } from './secureAiSettingsService';
+import { getProviderApiKeyForSpace } from './secureAiSettingsService';
 
 export type MemoryMaintenanceStatus = 'ready' | 'follow_chat' | 'local_fallback' | 'error';
 
@@ -129,7 +129,7 @@ async function resolveDeepSeekFlash(space: PixorySpace): Promise<ResolvedMemoryM
   if (!provider) {
     return null;
   }
-  const apiKey = await getProviderApiKey(provider.id);
+  const apiKey = await getProviderApiKeyForSpace(space, provider.id);
   return {
     apiKey,
     hasApiKey: Boolean(apiKey),
@@ -153,7 +153,7 @@ async function resolveFollowChat(space: PixorySpace, thread?: AiThreadRecord | n
     return null;
   }
   const modelId = thread?.modelId ?? provider.defaultChatModelId;
-  const apiKey = await getProviderApiKey(provider.id);
+  const apiKey = await getProviderApiKeyForSpace(space, provider.id);
   return {
     apiKey,
     hasApiKey: Boolean(apiKey),
@@ -179,7 +179,7 @@ export async function resolveMemoryMaintenanceModel(
   const settings = await runWithDatabaseSpace(space, (db) => settingsRepository.getMemoryMaintenanceSettings(db));
   if (settings.memoryMaintenanceMode === 'custom') {
     const provider = await resolveProvider(space, settings.memoryMaintenanceProviderId);
-    const apiKey = provider ? await getProviderApiKey(provider.id) : null;
+    const apiKey = provider ? await getProviderApiKeyForSpace(space, provider.id) : null;
     return appendLastTestState({
       apiKey,
       hasApiKey: Boolean(apiKey),

@@ -82,6 +82,10 @@ export function secureStoreKeyForProvider(providerId: string): string {
   return `pixory.ai.provider.${providerId}.apiKey`;
 }
 
+export function secureStoreKeyForProviderInSpace(space: 'normal' | 'personal', providerId: string): string {
+  return `pixory.ai.provider.${space}.${providerId}.apiKey`;
+}
+
 export function capabilityLabels(capabilities: AiModelCapabilities): string[] {
   const labels: string[] = [];
   if (capabilities.contextWindowTokens && capabilities.contextWindowTokens >= 1_000_000) {

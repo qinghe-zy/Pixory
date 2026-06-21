@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 export type VideoOrientationPreference = 'portrait' | 'landscape' | 'system';
+export type VideoPlaybackOrder = 'sequence' | 'shuffle';
 export type ImageReaderMode = 'horizontal-ltr' | 'horizontal-rtl' | 'vertical-continuous';
 export type ImageFitMode = 'contain' | 'width' | 'original';
 
@@ -8,6 +9,7 @@ export interface VideoPlayerPreferences {
   speed: number;
   holdSpeed: number;
   orientationPreference: VideoOrientationPreference;
+  playbackOrder: VideoPlaybackOrder;
   lockedByDefault: boolean;
 }
 
@@ -25,6 +27,7 @@ export const DEFAULT_VIDEO_PLAYER_PREFERENCES: VideoPlayerPreferences = {
   speed: 1,
   holdSpeed: 3,
   orientationPreference: 'portrait',
+  playbackOrder: 'sequence',
   lockedByDefault: false,
 };
 

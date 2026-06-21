@@ -2,7 +2,7 @@ import { aiKnowledgeRepository, aiProviderRepository, runWithDatabaseSpace, type
 import type { ReplaceEmbeddingInput } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentOwnerType } from './types';
 import { getAdapterForProvider } from './aiProviderService';
-import { getProviderApiKey } from './secureAiSettingsService';
+import { getProviderApiKeyForSpace } from './secureAiSettingsService';
 
 export interface GenerateMissingEmbeddingsInput {
   space: PixorySpace;
@@ -78,7 +78,7 @@ export async function generateMissingEmbeddingsForDocument(
   const providerId = configured.providerId;
   const modelId = configured.modelId;
   const provider = await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findProviderById(db, providerId));
-  const apiKey = provider ? await getProviderApiKey(provider.id) : null;
+  const apiKey = provider ? await getProviderApiKeyForSpace(input.space, provider.id) : null;
   if (!provider || !apiKey) {
     return { generated: 0, failed: 0 };
   }
@@ -164,7 +164,7 @@ export async function generateQueryEmbedding(input: {
     return null;
   }
   const provider = await runWithDatabaseSpace(input.space, (db) => aiProviderRepository.findProviderById(db, configured.providerId));
-  const apiKey = provider ? await getProviderApiKey(provider.id) : null;
+  const apiKey = provider ? await getProviderApiKeyForSpace(input.space, provider.id) : null;
   if (!provider || !apiKey) {
     return null;
   }

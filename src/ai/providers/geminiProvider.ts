@@ -149,18 +149,26 @@ function shouldDisableGeminiThinking(input: AiChatRequest): boolean {
 }
 
 export const geminiProvider: AiProviderAdapter = {
-  async testConnection(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
-    await assertOkResponse(response, 'Gemini connection failed');
-  },
-
   async listModels(input) {
-    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`);
+    const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`, { signal: input.signal });
     await assertOkResponse(response, 'Gemini model list sync failed');
     const json = (await response.json()) as GeminiModelsResponse;
     return (json.models ?? [])
       .map((model) => model.name?.replace(/^models\//, ''))
       .filter((modelId): modelId is string => Boolean(modelId));
+  },
+
+  async verifyChatCompletion(input) {
+    const response = await expoFetch(
+      `${normalizeBaseUrl(input.baseUrl)}/v1beta/models/${encodeURIComponent(input.modelId)}:generateContent?key=${encodeURIComponent(input.apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: input.signal,
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] }),
+      }
+    );
+    await assertOkResponse(response, 'Gemini connection failed');
   },
 
   async streamChat(input: AiChatRequest, onEvent) {
