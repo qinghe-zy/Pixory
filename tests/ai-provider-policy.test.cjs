@@ -71,6 +71,7 @@ test('provider settings labels chat model selection as a global default', () => 
   const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
 
   assert.match(providerSettings, /全局默认模型/);
+  assert.doesNotMatch(providerSettings, /默认对话模型/);
   assert.match(providerSettings, /新创建会话的默认选择/);
   assert.match(providerSettings, /不会影响已有独立设置的会话/);
   assert.match(providerSettings, /saveProviderDefaultModels/);
@@ -140,8 +141,10 @@ test('OpenAI-compatible built-in providers can manually configure embedding endp
   const deepSeekBlock = /providerType: 'deepseek'[\s\S]*?visionEnabled: false,\r?\n  \}/.exec(constants)?.[0] ?? '';
 
   assert.match(deepSeekBlock, /embeddingEnabled:\s*false/);
+  assert.match(providerSettings, /selectedSupportsManualChatModel/);
   assert.match(providerSettings, /selectedSupportsManualEmbedding/);
   assert.match(providerSettings, /selectedCard\?\.provider\.protocol === 'openai_compatible'/);
+  assert.match(providerSettings, /selectedSupportsManualChatModel \?/);
   assert.match(providerSettings, /selectedCard\?\.provider\.embeddingEnabled \|\| selectedSupportsManualEmbedding/);
   assert.match(providerSettings, /DeepSeek 官方接口暂未列出 Embedding/);
   assert.match(providerSettings, /兼容网关/);
@@ -163,6 +166,11 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   }
   assert.match(openai, /\/embeddings/);
   assert.match(openai, /stream:\s*true/);
+  assert.match(openai, /parseOpenAiChatCompletionJson/);
+  assert.match(openai, /message\?\.content/);
+  assert.doesNotMatch(openai, /if \(!contentType\.includes\('text\/event-stream'\)\)/);
+  assert.match(openai, /sawSseLine/);
+  assert.match(openai, /rawText/);
   assert.match(gemini, /:streamGenerateContent/);
   assert.match(gemini, /await emitCompletedGeminiChunks\(buffer, onEvent\)/);
   assert.match(gemini, /buffer \+= decoder\.decode\(value, \{ stream: true \}\);[\s\S]{0,120}buffer = await emitCompletedGeminiChunks\(buffer, onEvent\)/);

@@ -51,6 +51,31 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   }
 }
 
+function parseOpenAiChatCompletionJson(text: string): AiStreamEvent[] {
+  try {
+    const parsed = JSON.parse(text);
+    const events: AiStreamEvent[] = [];
+    if (parsed.usage) {
+      events.push({ type: 'provider_usage', rawUsage: parsed.usage });
+    }
+    const message = parsed.choices?.[0]?.message ?? {};
+    const reasoningText = message.reasoning_content ?? message.reasoning ?? message.reasoningText;
+    if (typeof reasoningText === 'string' && reasoningText) {
+      events.push({ type: 'reasoning_delta', text: reasoningText });
+    }
+    if (typeof message?.content === 'string' && message.content) {
+      events.push({ type: 'answer_delta', text: message.content });
+    }
+    const finishReason = parsed.choices?.[0]?.finish_reason;
+    if (finishReason) {
+      events.push({ type: 'completed', finishReason });
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
 async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
@@ -58,10 +83,11 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
     if (signal?.aborted) {
       return;
     }
-    for (const line of text.split('\n')) {
-      for (const event of parseOpenAiStreamLine(line)) {
-        await onEvent(event);
-      }
+    const events = text.includes('data:')
+      ? text.split('\n').flatMap(parseOpenAiStreamLine)
+      : parseOpenAiChatCompletionJson(text);
+    for (const event of events) {
+      await onEvent(event);
     }
     return;
   }
@@ -69,6 +95,8 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let rawText = '';
+  let sawSseLine = false;
   while (true) {
     if (signal?.aborted) {
       return;
@@ -80,17 +108,32 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
     if (done) {
       break;
     }
-    buffer += decoder.decode(value, { stream: true });
+    const chunk = decoder.decode(value, { stream: true });
+    rawText += chunk;
+    buffer += chunk;
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
-      for (const event of parseOpenAiStreamLine(line)) {
+      if (line.trim().startsWith('data:')) {
+        sawSseLine = true;
+      }
+      const events = parseOpenAiStreamLine(line);
+      for (const event of events) {
         await onEvent(event);
       }
     }
   }
   if (buffer) {
-    for (const event of parseOpenAiStreamLine(buffer)) {
+    if (buffer.trim().startsWith('data:')) {
+      sawSseLine = true;
+    }
+    const events = parseOpenAiStreamLine(buffer);
+    for (const event of events) {
+      await onEvent(event);
+    }
+  }
+  if (!sawSseLine && rawText) {
+    for (const event of parseOpenAiChatCompletionJson(rawText)) {
       await onEvent(event);
     }
   }

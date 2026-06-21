@@ -129,6 +129,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const orderedCards = useMemo(() => [...cards.filter((card) => !isOtherProvider(card)), ...cards.filter(isOtherProvider)], [cards]);
   const selectedCard = orderedCards.find((card) => card.provider.id === selectedProviderId) ?? orderedCards[0] ?? null;
   const selectedIsOtherProvider = selectedCard ? isOtherProvider(selectedCard) : false;
+  const selectedSupportsManualChatModel = selectedCard?.provider.protocol === 'openai_compatible';
   const selectedSupportsManualEmbedding = selectedCard?.provider.protocol === 'openai_compatible';
   const chatModels = selectedCard?.models.filter((model) => model.supportsChat) ?? [];
   const embeddingModels = selectedCard?.models.filter((model) => model.supportsEmbedding) ?? [];
@@ -248,7 +249,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   }
 
   async function selectModel(model: AiProviderModelRecord) {
-    setStatus({ message: '正在切换默认对话模型...', tone: 'info' });
+    setStatus({ message: '正在切换全局默认模型...', tone: 'info' });
     try {
       await saveProviderDefaultModels(space, model.providerId, { defaultChatModelId: model.modelId });
       await runWithDatabaseSpace(space, (db) =>
@@ -509,7 +510,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
         </View>
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>默认对话模型</Text>
+          <Text style={styles.fieldLabel}>全局默认模型</Text>
           <Pressable
             accessibilityRole="button"
             disabled={chatModels.length === 0}
@@ -612,19 +613,20 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                   </View>
                 ) : null}
 
-                {selectedIsOtherProvider ? (
+                {selectedSupportsManualChatModel ? (
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>自定义模型</Text>
+                    <Text style={styles.fieldLabel}>手动模型 ID</Text>
                     <TextInput
                       autoCapitalize="none"
                       autoCorrect={false}
                       onChangeText={setManualModelDraft}
-                      placeholder="模型名称"
+                      placeholder="例如 gpt-4o-mini 或网关模型别名"
                       placeholderTextColor={aiLightColors.mutedSoft}
                       selectionColor={aiLightColors.coral}
                       style={styles.input}
                       value={manualModelDraft}
                     />
+                    <Text style={styles.caption}>中转站不一定支持读取模型列表；这里保存后会作为全局默认模型直接用于对话。</Text>
                     <AiLightButton disabled={!manualModelDraft.trim()} label="保存模型" onPress={() => void saveManualModel()} variant="outline" />
                   </View>
                 ) : null}

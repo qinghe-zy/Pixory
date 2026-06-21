@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-06-20  
+最后更新：2026-06-22
 适用版本：Pixory 2.4.10  
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -47,8 +47,8 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；连接测试、模型列表、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
-| Provider 设置 | 全局默认 provider/model、手动模型、API Key SecureStore、session override | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
+| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；连接测试、模型列表、不可枚举模型的手动 ID、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
+| Provider 设置 | 全局默认 provider/model、手动模型 ID、中转网关模型别名、API Key SecureStore、session override | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
 | 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite | `aiChatService`, `aiGenerationManager` |
 | 流式性能 | generationId 防旧流污染、外部 streaming store、自适应 UI fps、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `AiStreamingMessageText` |
@@ -218,4 +218,3 @@
 - 新模块：新增功能域小节，并补充主要入口、文件和测试。
 - 功能下线：标记为“移除”或删除条目，并说明替代路径。
 - 发布前：检查本文档是否与 release notes、README、测试文件和源码入口一致。
-
