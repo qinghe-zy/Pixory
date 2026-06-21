@@ -91,7 +91,7 @@ test('current session manual model candidates do not replace the global default 
   const chat = read('src/ai/aiChatService.ts');
   const providerService = read('src/ai/aiProviderService.ts');
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
-  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?\n}\n/)?.[0] ?? '';
+  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?(?=\nexport async function recordSuccessfulProviderModel)/)?.[0] ?? '';
 
   assert.match(chat, /addThreadSessionManualModel/);
   assert.match(chat, /saveManualChatModelCandidate/);

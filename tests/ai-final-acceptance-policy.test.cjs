@@ -470,7 +470,7 @@ test('AI session settings edits only current session model endpoint and key', ()
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const chatService = read('src/ai/aiChatService.ts');
   const providerService = read('src/ai/aiProviderService.ts');
-  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?\n}\n/)?.[0] ?? '';
+  const candidateFunction = providerService.match(/export async function saveManualChatModelCandidate[\s\S]*?(?=\nexport async function recordSuccessfulProviderModel)/)?.[0] ?? '';
 
   assert.match(sessionConfig, /saveThreadSessionModelOverride/);
   assert.match(sessionConfig, /clearThreadSessionModelOverride/);
