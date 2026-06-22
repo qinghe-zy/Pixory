@@ -149,6 +149,7 @@ export function VideoPlayerScreen({
   const sourceLoadVersionRef = useRef(0);
   const currentTimeRef = useRef(0);
   const currentPlaybackVideoIdRef = useRef<number | null>(null);
+  const spaceRef = useRef(space);
   const scrubDisplayTimeRef = useRef(0);
   const isScrubbingRef = useRef(false);
   const holdWasPlayingRef = useRef(false);
@@ -176,6 +177,10 @@ export function VideoPlayerScreen({
     instance.loop = true;
   });
   const currentIndex = queue.findIndex((item) => item.id === activeVideoId);
+
+  useEffect(() => {
+    spaceRef.current = space;
+  }, [space]);
 
   useEffect(() => {
     Animated.timing(controlsOpacity, {
@@ -266,7 +271,9 @@ export function VideoPlayerScreen({
     if (externalSource) {
       setVideo(null);
       setSwitchPreviewVideo(null);
+      setLoadingCoverVideo(null);
       setQueue([]);
+      currentPlaybackVideoIdRef.current = null;
       const initialDisplayTime = 0;
       currentTimeRef.current = initialDisplayTime;
       setCurrentTime(initialDisplayTime);
@@ -410,7 +417,7 @@ export function VideoPlayerScreen({
       safePausePlayer();
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
       if (currentPlaybackVideoIdRef.current) {
-        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, currentPlaybackVideoIdRef.current as number, Math.round(currentTimeRef.current * 1000)));
+        void runWithDatabaseSpace(spaceRef.current, (db) => assetRepository.updatePlaybackPosition(db, currentPlaybackVideoIdRef.current as number, Math.round(currentTimeRef.current * 1000)));
       }
     };
   }, []);

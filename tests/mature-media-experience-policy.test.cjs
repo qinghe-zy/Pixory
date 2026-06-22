@@ -55,6 +55,10 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /loadingCoverVideo\?\.coverThumbnailFileUri \?\? loadingCoverVideo\?\.thumbnailFileUri/);
   assert.match(playerSource, /<View pointerEvents="none" style=\{styles\.videoLoadingCover\}>/);
   assert.match(playerSource, /style=\{styles\.videoLoadingCoverImage\}/);
+  assert.match(playerSource, /const spaceRef = useRef\(space\)/);
+  assert.match(playerSource, /useEffect\(\(\) => \{\s*spaceRef\.current = space;\s*\}, \[space\]\)/);
+  assert.match(playerSource, /if \(externalSource\) \{[\s\S]*currentPlaybackVideoIdRef\.current = null;[\s\S]*setLoadingCoverVideo\(null\)/);
+  assert.match(playerSource, /runWithDatabaseSpace\(spaceRef\.current/);
   assert.match(playerSource, /useEffect\(\(\) => \{\s*resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[\]\)/);
   assert.doesNotMatch(playerSource, /resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[externalSource, space, video\]\)/);
   assert.match(playerSource, /player\.addListener\('playToEnd'/);
