@@ -50,6 +50,13 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /getRandomQueueVideo/);
   assert.match(playerSource, /\(currentIndex \+ offset \+ queue\.length\) % queue\.length/);
   assert.doesNotMatch(playerSource, /Math\.max\(0,\s*Math\.min\(queue\.length - 1,\s*currentIndex \+ offset\)\)/);
+  assert.match(playerSource, /switchVideoWithTransition[\s\S]*setSwitchPreviewVideo\(nextVideo\)[\s\S]*Animated\.timing\(videoSwitchTranslateY/);
+  assert.match(playerSource, /switchVideoWithTransition[\s\S]*setLoadingCoverVideo\(nextVideo\)/);
+  assert.match(playerSource, /loadingCoverVideo\?\.coverThumbnailFileUri \?\? loadingCoverVideo\?\.thumbnailFileUri/);
+  assert.match(playerSource, /<View pointerEvents="none" style=\{styles\.videoLoadingCover\}>/);
+  assert.match(playerSource, /style=\{styles\.videoLoadingCoverImage\}/);
+  assert.match(playerSource, /useEffect\(\(\) => \{\s*resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[\]\)/);
+  assert.doesNotMatch(playerSource, /resetHideTimer\(\);[\s\S]*safePausePlayer\(\);[\s\S]*\}, \[externalSource, space, video\]\)/);
   assert.match(playerSource, /player\.addListener\('playToEnd'/);
   assert.match(playerSource, /player\.loop = Boolean\(externalSource\) \|\| queue\.length <= 1/);
   assert.match(preferenceSource, /videoPlayerPreferences/);

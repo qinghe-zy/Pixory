@@ -131,6 +131,7 @@ export function VideoPlayerScreen({
   const [isLandscape, setIsLandscape] = useState(false);
   const [isVideoSwitchTransitioning, setIsVideoSwitchTransitioning] = useState(false);
   const [switchPreviewVideo, setSwitchPreviewVideo] = useState<ImageListItem | null>(null);
+  const [loadingCoverVideo, setLoadingCoverVideo] = useState<ImageListItem | ImageDetailRecord | null>(null);
   const [trackWidth, setTrackWidth] = useState(1);
   const [surfaceWidth, setSurfaceWidth] = useState(1);
   const [surfaceHeight, setSurfaceHeight] = useState(1);
@@ -147,6 +148,7 @@ export function VideoPlayerScreen({
   const committedSeekStartedAtRef = useRef(0);
   const sourceLoadVersionRef = useRef(0);
   const currentTimeRef = useRef(0);
+  const currentPlaybackVideoIdRef = useRef<number | null>(null);
   const scrubDisplayTimeRef = useRef(0);
   const isScrubbingRef = useRef(false);
   const holdWasPlayingRef = useRef(false);
@@ -287,6 +289,7 @@ export function VideoPlayerScreen({
         return;
       }
       setVideo(detail);
+      currentPlaybackVideoIdRef.current = detail.id;
       setSwitchPreviewVideo((current) => (current?.id === detail.id ? null : current));
       const savedTime = (detail.lastPlaybackPositionMs ?? 0) / 1000;
       currentTimeRef.current = savedTime;
@@ -322,6 +325,7 @@ export function VideoPlayerScreen({
     committedSeekTargetRef.current = initialDisplayTime > 0 ? initialDisplayTime : null;
     committedSeekStartedAtRef.current = Date.now();
     setIsPlaying(false);
+    setLoadingCoverVideo(activeVideoSource);
     void player.replaceAsync({ uri: sourceUri }).then(() => {
       if (!isActive || sourceLoadVersionRef.current !== loadVersion) {
         return;
@@ -334,8 +338,10 @@ export function VideoPlayerScreen({
         currentTimeRef.current = initialDisplayTime;
       }
       safePlayPlayer();
+      setLoadingCoverVideo(null);
     }).catch((error) => {
       if (isActive) {
+        setLoadingCoverVideo(null);
         showToast(error instanceof Error ? `视频加载失败：${error.message}` : '视频加载失败');
       }
     });
@@ -403,11 +409,11 @@ export function VideoPlayerScreen({
       clearPreviewSeekTimer();
       safePausePlayer();
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
-      if (!externalSource && video) {
-        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
+      if (currentPlaybackVideoIdRef.current) {
+        void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, currentPlaybackVideoIdRef.current as number, Math.round(currentTimeRef.current * 1000)));
       }
     };
-  }, [externalSource, space, video]);
+  }, []);
 
   useEffect(() => {
     const persistPlaybackPosition = () => {
@@ -959,6 +965,8 @@ export function VideoPlayerScreen({
       return;
     }
     setIsVideoSwitchTransitioning(true);
+    setSwitchPreviewVideo(nextVideo);
+    setLoadingCoverVideo(nextVideo);
     clearHideTimer();
     clearLongPressTimer();
     setSpeedMenuVisible(false);
@@ -976,7 +984,7 @@ export function VideoPlayerScreen({
         resetHideTimer();
         return;
       }
-      switchVideo(nextVideo.id, nextVideo, { showControls: false });
+      switchVideo(nextVideo.id, nextVideo, { pauseBeforeSwitch: false, showControls: false });
       videoSwitchTranslateY.setValue(direction * transitionHeight);
       requestAnimationFrame(() => {
         Animated.timing(videoSwitchTranslateY, {
@@ -1252,11 +1260,13 @@ export function VideoPlayerScreen({
     }
   }
 
-  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { showControls?: boolean }) {
+  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { pauseBeforeSwitch?: boolean; showControls?: boolean }) {
     if (!externalSource && video) {
       void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
     }
-    safePausePlayer();
+    if (options?.pauseBeforeSwitch !== false) {
+      safePausePlayer();
+    }
     setSwitchPreviewVideo(nextVideo ?? null);
     setActiveVideoId(nextVideoId);
     setQueueVisible(false);
@@ -1334,6 +1344,16 @@ export function VideoPlayerScreen({
           startsPictureInPictureAutomatically={false}
           style={styles.videoView}
         />
+        {loadingCoverVideo?.coverThumbnailFileUri ?? loadingCoverVideo?.thumbnailFileUri ? (
+          <View pointerEvents="none" style={styles.videoLoadingCover}>
+            <SecureImage
+              contentFit="contain"
+              space={space}
+              style={styles.videoLoadingCoverImage}
+              uri={(loadingCoverVideo.coverThumbnailFileUri ?? loadingCoverVideo.thumbnailFileUri) as string}
+            />
+          </View>
+        ) : null}
         <View
           {...surfacePanResponder.panHandlers}
           style={styles.videoGestureLayer}
@@ -1621,6 +1641,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   videoView: {
+    height: '100%',
+    width: '100%',
+  },
+  videoLoadingCover: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#050607',
+  },
+  videoLoadingCoverImage: {
     height: '100%',
     width: '100%',
   },
