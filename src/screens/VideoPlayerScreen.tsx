@@ -912,7 +912,6 @@ export function VideoPlayerScreen({
     setPlaybackOrder((current) => {
       const nextOrder: VideoPlaybackOrder = current === 'shuffle' ? 'sequence' : 'shuffle';
       showControls();
-      showToast(nextOrder === 'shuffle' ? '已切换为随机播放' : '已切换为顺序播放');
       return nextOrder;
     });
   }

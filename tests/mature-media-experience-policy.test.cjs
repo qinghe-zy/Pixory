@@ -44,6 +44,7 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /togglePlaybackOrder/);
   assert.match(playerSource, /accessibilityLabel=\{playbackOrder === 'shuffle' \? '切换为顺序播放' : '切换为随机播放'\}/);
   assert.match(playerSource, /name=\{playbackOrder === 'shuffle' \? 'shuffle' : 'repeat-outline'\}/);
+  assert.doesNotMatch(playerSource, /已切换为随机播放|已切换为顺序播放/);
   assert.match(playerSource, /accessibilityLabel=\{queueVisible \? '关闭待播放列表' : '打开待播放列表'\}/);
   assert.doesNotMatch(playerSource, /<Ionicons color=\{colors\.text\.inverse\} name="list-outline"[\s\S]{0,160}<Text style=\{styles\.pillButtonText\}>待播放<\/Text>/);
   assert.match(playerSource, /getRandomQueueVideo/);
