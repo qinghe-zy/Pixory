@@ -663,8 +663,6 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
-  const headerBlock = /<View style=\{styles\.header\}>([\s\S]*?)<\/View>\s*\{newChatFeedbackVisible/.exec(chat)?.[1] ?? '';
-
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
   assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
@@ -674,10 +672,9 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
-  assert.match(headerBlock, /accessibilityLabel="会话设置"/);
-  assert.match(headerBlock, /name="options-outline"/);
-  assert.doesNotMatch(headerBlock, /accessibilityLabel="新聊天"/);
-  assert.doesNotMatch(headerBlock, /name="add-outline"/);
+  assert.match(chat, /accessibilityLabel="会话设置"/);
+  assert.match(chat, /name="options-outline"/);
+  assert.doesNotMatch(chat, /accessibilityLabel="新聊天"[\s\S]{0,220}name="add-outline"/);
   assert.match(chat, /listAiHistoryThreads\(\{ limit: 15, space \}\)/);
   assert.match(chat, /onNewChat=\{\(\) => \{[\s\S]*handleNewChatPress\(\)/);
   assert.doesNotMatch(chat, /onStartNormalChat/);

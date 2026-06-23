@@ -58,30 +58,30 @@
           </div>
 
           <div class="timeline">
-            <!-- 2.4.10 Release -->
+            <!-- 2.5.1 Release -->
             <div class="timeline-item anime-reveal">
-              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-20</div>
-              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.4.10</h2>
+              <div class="text-caption-caps" style="color: var(--primary); margin-bottom: var(--space-xs);">2026-06-24</div>
+              <h2 class="text-display-md" style="margin-bottom: var(--space-xl);">Version 2.5.1</h2>
 
               <div style="display: flex; flex-direction: column; gap: var(--space-lg);">
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">长聊天更轻</h3>
-                  <p class="text-body-sm">流式回复改为 generation-scoped 外部缓冲、自适应 UI 节流和低频持久化，减少长线程和长回复时的重复渲染压力。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">连续性导入</h3>
+                  <p class="text-body-sm">支持把 Pixory 原生续聊包直接接回，也支持把其他平台整理出的迁移文档导回当前线程，继续沿着角色与分支上下文聊天。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">提示词缓存更稳</h3>
-                  <p class="text-body-sm">提示词管线加入 fast-path、分层 retrieval、真实上下文窗口裁剪和 stable prefix/cache key 保护，降低首字等待并保护缓存命中率。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">记忆审读门禁</h3>
+                  <p class="text-body-sm">外部导入内容先做结构提取，再交给记忆模型审读和验收；可解析消息会渲染到聊天页，其余压缩内容也会走审读后再进入后续记忆链路。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">角色包导出</h3>
-                  <p class="text-body-sm">角色卡可导出 SillyTavern PNG，并可另存续聊 Markdown，分离系统人设、记忆快照和当前分支上下文，方便跨平台保持人设连续。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">附件可回放</h3>
+                  <p class="text-body-sm">聊天附件改为持久化保存，重试、再生成和后续回放都能重新附带原始图片或文档上下文，不再丢失附件语义。</p>
                 </div>
 
                 <div class="feature-card">
-                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">富文本更完整</h3>
-                  <p class="text-body-sm">聊天气泡增强 HTML/CSS 渲染，支持块级结构、表格和更多文本样式，并通过 Markdown/HTML 缓存降低长历史重复解析和测量。</p>
+                  <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">模型与播放器修复</h3>
+                  <p class="text-body-sm">Provider 模型支持删除手动/同步模型并自动清理默认值与会话悬挂引用，同时修复视频播放器随机逻辑和相关记忆维护缺口。</p>
                 </div>
               </div>
             </div>

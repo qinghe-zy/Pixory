@@ -52,7 +52,7 @@ test('duplicate detection schema and native bridge expose content and visual has
   const nativeBridgeSource = readProjectFile('src/native/pixoryMediaModule.ts');
   const androidSource = readProjectFile('plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
 
-  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*42/);
+  assert.match(schemaSource, /DATABASE_VERSION\s*=\s*45/);
   assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN contentHash TEXT/);
   assert.match(schemaSource, /ALTER TABLE image_assets ADD COLUMN visualHash TEXT/);
   assert.match(schemaSource, /idx_image_assets_content_hash/);
