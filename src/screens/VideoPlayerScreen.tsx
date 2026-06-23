@@ -75,6 +75,8 @@ interface VideoPlayerScreenProps {
   onBack: () => void;
 }
 
+type VideoSwitchHistoryMode = 'append' | 'back';
+
 function getLandscapeStateFromOrientation(orientation: ScreenOrientation.Orientation): boolean | null {
   if (orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT || orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT) {
     return true;
@@ -150,6 +152,7 @@ export function VideoPlayerScreen({
   const currentTimeRef = useRef(0);
   const currentPlaybackVideoIdRef = useRef<number | null>(null);
   const spaceRef = useRef(space);
+  const watchedVideoIdsRef = useRef<number[]>(videoId ? [videoId] : []);
   const scrubDisplayTimeRef = useRef(0);
   const isScrubbingRef = useRef(false);
   const holdWasPlayingRef = useRef(false);
@@ -265,6 +268,7 @@ export function VideoPlayerScreen({
   useEffect(() => {
     setActiveVideoId(videoId ?? 0);
     setSwitchPreviewVideo(null);
+    watchedVideoIdsRef.current = videoId ? [videoId] : [];
   }, [videoId]);
 
   useEffect(() => {
@@ -949,7 +953,7 @@ export function VideoPlayerScreen({
       resetVideoSwitchDrag();
       return;
     }
-    switchVideoWithTransition(nextVideo, offset);
+    switchVideoWithTransition(nextVideo, offset, getVideoSwitchHistoryMode(offset));
   }
 
   function updateVideoSwitchDrag(deltaY: number) {
@@ -967,7 +971,7 @@ export function VideoPlayerScreen({
     });
   }
 
-  function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1) {
+  function switchVideoWithTransition(nextVideo: ImageListItem, direction: 1 | -1, historyMode: VideoSwitchHistoryMode = 'append') {
     if (isVideoSwitchTransitioning) {
       return;
     }
@@ -991,7 +995,7 @@ export function VideoPlayerScreen({
         resetHideTimer();
         return;
       }
-      switchVideo(nextVideo.id, nextVideo, { pauseBeforeSwitch: false, showControls: false });
+      switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
       videoSwitchTranslateY.setValue(direction * transitionHeight);
       requestAnimationFrame(() => {
         Animated.timing(videoSwitchTranslateY, {
@@ -1267,7 +1271,7 @@ export function VideoPlayerScreen({
     }
   }
 
-  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { pauseBeforeSwitch?: boolean; showControls?: boolean }) {
+  function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { historyMode?: VideoSwitchHistoryMode; pauseBeforeSwitch?: boolean; showControls?: boolean }) {
     if (!externalSource && video) {
       void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
     }
@@ -1276,6 +1280,11 @@ export function VideoPlayerScreen({
     }
     setSwitchPreviewVideo(nextVideo ?? null);
     setActiveVideoId(nextVideoId);
+    if (options?.historyMode === 'back') {
+      forgetCurrentWatchedVideo();
+    } else {
+      rememberWatchedVideo(nextVideoId);
+    }
     setQueueVisible(false);
     if (options?.showControls === false) {
       resetHideTimer();
@@ -1301,17 +1310,41 @@ export function VideoPlayerScreen({
     return nextVideo && nextVideo.id !== activeVideoId ? nextVideo : null;
   }
 
+  function rememberWatchedVideo(nextVideoId: number) {
+    const watchedVideoIds = watchedVideoIdsRef.current.filter((id) => id !== nextVideoId);
+    watchedVideoIds.push(nextVideoId);
+    watchedVideoIdsRef.current = watchedVideoIds;
+  }
+
+  function forgetCurrentWatchedVideo() {
+    if (watchedVideoIdsRef.current[watchedVideoIdsRef.current.length - 1] === activeVideoId) {
+      watchedVideoIdsRef.current = watchedVideoIdsRef.current.slice(0, -1);
+    }
+  }
+
+  function getPreviousWatchedVideo() {
+    if (watchedVideoIdsRef.current.length <= 1) {
+      return null;
+    }
+    const previousVideoId = watchedVideoIdsRef.current[watchedVideoIdsRef.current.length - 2];
+    return queue.find((item) => item.id === previousVideoId) ?? null;
+  }
+
   function getVideoByOffset(offset: 1 | -1) {
     if (playbackOrder === 'shuffle') {
-      return getRandomQueueVideo();
+      return offset === -1 ? getPreviousWatchedVideo() : getRandomQueueVideo();
     }
     return getSequenceVideoByOffset(offset);
+  }
+
+  function getVideoSwitchHistoryMode(offset: 1 | -1): VideoSwitchHistoryMode {
+    return playbackOrder === 'shuffle' && offset === -1 ? 'back' : 'append';
   }
 
   function switchVideoByOffset(offset: 1 | -1) {
     const nextVideo = getVideoByOffset(offset);
     if (nextVideo) {
-      switchVideo(nextVideo.id, nextVideo);
+      switchVideo(nextVideo.id, nextVideo, { historyMode: getVideoSwitchHistoryMode(offset) });
     }
   }
 

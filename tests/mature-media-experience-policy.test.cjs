@@ -48,6 +48,14 @@ test('video player exposes mature gesture controls and preference persistence', 
   assert.match(playerSource, /accessibilityLabel=\{queueVisible \? '关闭待播放列表' : '打开待播放列表'\}/);
   assert.doesNotMatch(playerSource, /<Ionicons color=\{colors\.text\.inverse\} name="list-outline"[\s\S]{0,160}<Text style=\{styles\.pillButtonText\}>待播放<\/Text>/);
   assert.match(playerSource, /getRandomQueueVideo/);
+  assert.match(playerSource, /watchedVideoIdsRef/);
+  assert.match(playerSource, /getPreviousWatchedVideo/);
+  assert.match(playerSource, /const offset = deltaY < 0 \? 1 : -1/);
+  assert.match(playerSource, /playbackOrder === 'shuffle'[\s\S]*offset === -1 \? getPreviousWatchedVideo\(\) : getRandomQueueVideo\(\)/);
+  assert.match(playerSource, /rememberWatchedVideo\(nextVideoId/);
+  assert.match(playerSource, /forgetCurrentWatchedVideo\(\)/);
+  assert.match(playerSource, /options\?\.historyMode === 'back'[\s\S]*forgetCurrentWatchedVideo\(\)/);
+  assert.match(playerSource, /switchVideoWithTransition\(nextVideo, offset, getVideoSwitchHistoryMode\(offset\)\)/);
   assert.match(playerSource, /\(currentIndex \+ offset \+ queue\.length\) % queue\.length/);
   assert.doesNotMatch(playerSource, /Math\.max\(0,\s*Math\.min\(queue\.length - 1,\s*currentIndex \+ offset\)\)/);
   assert.match(playerSource, /switchVideoWithTransition[\s\S]*setSwitchPreviewVideo\(nextVideo\)[\s\S]*Animated\.timing\(videoSwitchTranslateY/);
