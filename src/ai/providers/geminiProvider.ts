@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
   type AiChatRequest,
@@ -18,9 +19,11 @@ interface GeminiEmbeddingResponse {
   embedding?: { values?: number[] };
 }
 
+type GeminiChatPart = { text: string } | { inlineData: { data: string; mimeType: string } };
+
 interface GeminiChatContent {
   role: 'model' | 'user';
-  parts: Array<{ text: string }>;
+  parts: GeminiChatPart[];
 }
 
 interface GeminiChatRequestBody {
@@ -148,6 +151,18 @@ function shouldDisableGeminiThinking(input: AiChatRequest): boolean {
   return Boolean(input.thinkingDisabled && /^gemini-2\.5-flash/i.test(input.modelId));
 }
 
+function buildGeminiUserParts(text: string, attachments?: AiChatAttachment[]): GeminiChatPart[] {
+  return [
+    { text },
+    ...(attachments ?? []).map((attachment) => ({
+      inlineData: {
+        data: attachment.base64Data,
+        mimeType: attachment.mimeType,
+      },
+    })),
+  ];
+}
+
 export const geminiProvider: AiProviderAdapter = {
   async listModels(input) {
     const response = await expoFetch(`${normalizeBaseUrl(input.baseUrl)}/v1beta/models?key=${encodeURIComponent(input.apiKey)}`, { signal: input.signal });
@@ -179,7 +194,7 @@ export const geminiProvider: AiProviderAdapter = {
           role: message.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: message.content }],
         })),
-        { role: 'user', parts: [{ text: input.userPrompt }] },
+        { role: 'user', parts: buildGeminiUserParts(input.userPrompt, input.attachments) },
       ],
     };
     if (shouldDisableGeminiThinking(input)) {

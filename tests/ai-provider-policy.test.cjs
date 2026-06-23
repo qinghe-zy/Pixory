@@ -101,7 +101,7 @@ test('provider verification state is stored without API key plaintext', () => {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
 
-  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /DATABASE_VERSION = 42/);
   assert.match(schema, /keyUpdatedAt TEXT/);
   assert.match(schema, /lastVerifiedAt TEXT/);
   assert.match(schema, /lastVerifyStatus TEXT/);
@@ -152,6 +152,24 @@ test('provider verification uses chat completions and records successful models'
   assert.doesNotMatch(base, /testConnection\(input:/);
   assert.doesNotMatch(openai, /async testConnection/);
   assert.doesNotMatch(claude, /async testConnection/);
+});
+
+test('OpenAI-compatible gateways retry naked base URLs with a v1 endpoint fallback', () => {
+  const openai = fs.readFileSync(path.join(root, 'src/ai/providers/openAiCompatibleProvider.ts'), 'utf8');
+  const settings = fs.readFileSync(providerSettingsPath, 'utf8');
+
+  assert.match(openai, /function openAiCompatibleEndpointCandidates/);
+  assert.match(openai, /\/v1/);
+  assert.match(openai, /shouldRetryWithNextEndpoint/);
+  assert.match(openai, /fetchOpenAiCompatibleResponse/);
+  assert.match(openai, /providerEndpoint\(candidateBaseUrl, path\)/);
+  assert.match(openai, /status === 404/);
+  assert.match(openai, /status === 405/);
+  assert.match(openai, /bodyKind === 'bad_shape'/);
+  assert.match(openai, /verifyChatCompletion[\s\S]*fetchOpenAiCompatibleResponse/);
+  assert.match(openai, /streamChat[\s\S]*fetchOpenAiCompatibleResponse/);
+  assert.match(openai, /listModels[\s\S]*fetchOpenAiCompatibleResponse/);
+  assert.match(settings, /如果测试失败，优先尝试在末尾加 `\/v1`/);
 });
 
 test('provider API errors use a shared classifier with redaction', () => {

@@ -157,7 +157,7 @@ test('AI chat supports stopping, regenerating replies, and rewriting user messag
   assert.doesNotMatch(composer, /retryAvailable/);
 });
 
-test('AI chat composer supports image, video, and document attachments', () => {
+test('AI chat composer supports image and document attachments without a video upload entry', () => {
   const content = chat();
   const composer = fs.readFileSync(path.join(root, 'src/components/ai/AiChatComposer.tsx'), 'utf8');
 
@@ -165,17 +165,18 @@ test('AI chat composer supports image, video, and document attachments', () => {
   assert.match(content, /expo-image-picker/);
   assert.match(content, /CHAT_DOCUMENT_TYPES/);
   assert.match(content, /pickChatImages/);
-  assert.match(content, /pickChatVideos/);
   assert.match(content, /pickChatDocuments/);
   assert.match(content, /buildChatMessageContent/);
   assert.match(content, /\[附件\]/);
+  assert.doesNotMatch(content, /pickChatVideos/);
+  assert.doesNotMatch(content, /mediaTypes: \['videos'\]/);
   assert.match(composer, /上传图片/);
-  assert.match(composer, /上传视频/);
   assert.match(composer, /上传文档/);
+  assert.doesNotMatch(composer, /上传视频/);
   assert.match(composer, /AiComposerAttachment/);
   assert.match(composer, /attachments/);
   assert.match(composer, /onAddImageAttachment/);
-  assert.match(composer, /onAddVideoAttachment/);
+  assert.doesNotMatch(composer, /onAddVideoAttachment/);
   assert.match(composer, /onAddDocumentAttachment/);
   assert.match(composer, /onRemoveAttachment/);
   assert.match(composer, /styles\.attachmentRail/);

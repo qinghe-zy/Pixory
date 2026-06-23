@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 41;
+export const DATABASE_VERSION = 42;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -501,6 +501,22 @@ CREATE TABLE IF NOT EXISTS ai_message_citations (
   FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ai_message_attachments (
+  id TEXT PRIMARY KEY NOT NULL,
+  messageId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('image', 'document')),
+  name TEXT NOT NULL,
+  localUri TEXT NOT NULL,
+  documentId TEXT,
+  mimeType TEXT,
+  fileSize INTEGER,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (documentId) REFERENCES ai_documents(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS ai_message_versions (
   id TEXT PRIMARY KEY NOT NULL,
   originalMessageId TEXT NOT NULL,
@@ -532,6 +548,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_threads_role_card_activity
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_created_at ON ai_messages(threadId, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_messages_branch ON ai_messages(threadId, branchRootMessageId, branchVersionIndex, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_message_versions_message ON ai_message_versions(originalMessageId, versionIndex);
+CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message ON ai_message_attachments(messageId, createdAt);
 CREATE INDEX IF NOT EXISTS idx_ai_knowledge_space_updated_at ON ai_knowledge_bases(space, updatedAt);
 CREATE INDEX IF NOT EXISTS idx_ai_documents_owner_status ON ai_documents(space, ownerType, ownerId, parserStatus);
 CREATE INDEX IF NOT EXISTS idx_ai_chunks_owner ON ai_chunks(space, ownerType, ownerId);
@@ -915,6 +932,27 @@ ALTER TABLE ai_providers ADD COLUMN lastVerifiedAt TEXT;
 ALTER TABLE ai_providers ADD COLUMN lastVerifyStatus TEXT CHECK (lastVerifyStatus IN ('ready', 'changed', 'failed', 'untested'));
 ALTER TABLE ai_providers ADD COLUMN lastVerifyMessage TEXT;
 ALTER TABLE ai_providers ADD COLUMN verifyFingerprint TEXT;
+`;
+
+export const MIGRATION_STATEMENTS_V42 = `
+CREATE TABLE IF NOT EXISTS ai_message_attachments (
+  id TEXT PRIMARY KEY NOT NULL,
+  messageId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('image', 'document')),
+  name TEXT NOT NULL,
+  localUri TEXT NOT NULL,
+  documentId TEXT,
+  mimeType TEXT,
+  fileSize INTEGER,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (documentId) REFERENCES ai_documents(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message
+  ON ai_message_attachments(messageId, createdAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

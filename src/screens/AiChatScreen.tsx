@@ -95,9 +95,6 @@ function describeAttachmentKind(kind: AiComposerAttachment['kind']): string {
   if (kind === 'image') {
     return '图片';
   }
-  if (kind === 'video') {
-    return '视频';
-  }
   return '文档';
 }
 
@@ -2128,37 +2125,6 @@ export function AiChatScreen({
     }
   }
 
-  async function pickChatVideos() {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        throw new Error('需要相册权限才能上传视频。');
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: false,
-        allowsMultipleSelection: true,
-        mediaTypes: ['videos'],
-        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
-        quality: 1,
-      });
-      if (result.canceled) {
-        return;
-      }
-      const picked = result.assets.map<AiComposerAttachment>((asset, index) => ({
-        id: `video-${Date.now()}-${index}-${asset.uri}`,
-        kind: 'video',
-        mimeType: asset.mimeType ?? null,
-        name: asset.fileName ?? getFileNameFromUri(asset.uri, `video-${index + 1}`),
-        size: asset.fileSize ?? null,
-        uri: asset.uri,
-      }));
-      setPendingAttachments((current) => [...current, ...picked]);
-      setErrorMessage(null);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '选择视频失败');
-    }
-  }
-
   async function pickChatDocuments() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -2228,6 +2194,7 @@ export function AiChatScreen({
       streamGeneration = streamRequest.generation;
       const activeBranch = getActiveBranchForNextMessage();
       const managedGeneration = aiGenerationManager.startSendUserMessage({
+        attachments,
         branchRootMessageId: activeBranch?.branchRootMessageId,
         branchVersionIndex: activeBranch?.branchVersionIndex,
         content,
@@ -2750,7 +2717,6 @@ export function AiChatScreen({
             generating={generating}
             onAddDocumentAttachment={() => void pickChatDocuments()}
             onAddImageAttachment={() => void pickChatImages()}
-            onAddVideoAttachment={() => void pickChatVideos()}
             onChangeText={setComposerText}
             onComposerHeightChange={handleComposerHeightChange}
             onFocus={handleComposerFocus}

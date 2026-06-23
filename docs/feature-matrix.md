@@ -50,7 +50,7 @@
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
 | Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
-| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite | `aiChatService`, `aiGenerationManager` |
+| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
 | 流式性能 | generationId 防旧流污染、外部 streaming store、自适应 UI fps、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `AiStreamingMessageText` |
 | 生成指标 | prompt/memory/retrieval/provider/first delta/UI patch/final persist 等 content-free metrics | `aiGenerationMetrics` |
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request | `promptBuilder` |

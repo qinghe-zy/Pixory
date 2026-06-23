@@ -10,6 +10,13 @@ export type AiStreamEvent =
 
 export type AiStreamEventHandler = (event: AiStreamEvent) => void | Promise<void>;
 
+export interface AiChatAttachment {
+  type: 'input_image';
+  name: string;
+  mimeType: string;
+  base64Data: string;
+}
+
 export interface AiChatRequest {
   apiKey: string;
   baseUrl: string;
@@ -17,6 +24,7 @@ export interface AiChatRequest {
   systemPrompt: string;
   userPrompt: string;
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  attachments?: AiChatAttachment[];
   providerCachePolicy?: AiProviderCachePolicy;
   thinkingDisabled?: boolean;
   signal?: AbortSignal;

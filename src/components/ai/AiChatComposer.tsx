@@ -8,7 +8,7 @@ import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus
 
 export interface AiComposerAttachment {
   id: string;
-  kind: 'image' | 'video' | 'document';
+  kind: 'image' | 'document';
   name: string;
   uri: string;
   mimeType?: string | null;
@@ -29,7 +29,6 @@ interface AiChatComposerProps {
   voiceState?: AiVoiceInputState;
   voiceError?: string | null;
   onAddImageAttachment: () => void;
-  onAddVideoAttachment: () => void;
   onAddDocumentAttachment: () => void;
   onChangeText: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
@@ -44,9 +43,6 @@ interface AiChatComposerProps {
 function getAttachmentIcon(kind: AiComposerAttachment['kind']): keyof typeof Ionicons.glyphMap {
   if (kind === 'image') {
     return 'image-outline';
-  }
-  if (kind === 'video') {
-    return 'videocam-outline';
   }
   return 'document-text-outline';
 }
@@ -93,7 +89,6 @@ export function AiChatComposer({
   voiceState = 'idle',
   voiceError = null,
   onAddImageAttachment,
-  onAddVideoAttachment,
   onAddDocumentAttachment,
   onChangeText,
   onFocus,
@@ -167,15 +162,6 @@ export function AiChatComposer({
                 onPress={() => {
                   setAttachmentPopoverVisible(false);
                   onAddImageAttachment();
-                }}
-              />
-              <AttachmentOption
-                accessibilityLabel="上传视频"
-                disabled={generating}
-                icon="videocam-outline"
-                onPress={() => {
-                  setAttachmentPopoverVisible(false);
-                  onAddVideoAttachment();
                 }}
               />
               <AttachmentOption

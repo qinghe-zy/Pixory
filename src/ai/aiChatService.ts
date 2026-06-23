@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
@@ -10,6 +11,7 @@ import {
   type AiBoundaryMode,
   type AiCitationRecord,
   type AiContextType,
+  type AiProviderModelRecord,
   type AiProviderRecord,
   type AiReplyPreference,
   type AiRoleInstructionWeight,
@@ -17,6 +19,7 @@ import {
   type PixorySpace,
 } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
@@ -29,7 +32,7 @@ import {
 } from './aiProviderService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
 import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
-import { cleanupDeletedMaterialFiles, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
+import { cleanupDeletedMaterialFiles, importPickedDocumentsToThread, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
 import { trimMessagesToContextBudget } from './aiContextBudget';
 import {
   buildCompanionMemoryPrefix,
@@ -76,7 +79,14 @@ import {
   setThreadProviderApiKey,
 } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
-import { normalizeBaseUrl, type AiStreamEvent } from './providers/base';
+import {
+  copyLocalFile,
+  ensureLocalDirectory,
+  generateInternalFilename,
+  getAiDocumentsDir,
+  joinStoragePath,
+} from '../services/fileStorageService';
+import { normalizeBaseUrl, type AiChatAttachment, type AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
 
 export interface AiThreadAvatarConfig {
@@ -104,6 +114,7 @@ export interface SendUserMessageInput {
   space: PixorySpace;
   threadId: string;
   content: string;
+  attachments?: AiOutgoingAttachment[];
   branchRootMessageId?: string | null;
   branchVersionIndex?: number | null;
   sendPressedAt?: string;
@@ -113,6 +124,16 @@ export interface SendUserMessageInput {
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
+}
+
+export interface AiOutgoingAttachment {
+  documentId?: string | null;
+  id: string;
+  kind: 'image' | 'video' | 'document';
+  mimeType?: string | null;
+  name: string;
+  size?: number | null;
+  uri: string;
 }
 
 export interface RetryAssistantMessageInput {
@@ -223,6 +244,7 @@ type ThreadModelSource = 'global_default' | 'provider_default' | 'thread_model';
 type ThreadModelConfig = Pick<AiThreadRecord, 'id' | 'space' | 'providerId' | 'modelId' | 'sessionBaseUrl' | 'sessionApiKeyRef'>;
 
 type BuildPromptForThreadOptions = {
+  attachmentPromptContext?: string | null;
   generationMetrics?: AiGenerationMetricsDraft | null;
 };
 
@@ -257,6 +279,7 @@ type ResolvedThreadChatModel =
       apiKey: string | null;
       modelContextWindowTokens: number | null;
       modelId: string;
+      model: AiProviderModelRecord;
       provider: AiProviderRecord;
       source: ThreadModelSource;
     }
@@ -877,6 +900,223 @@ function truncateForPrompt(value: string, maxLength: number): string {
   return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`;
 }
 
+function describeOutgoingAttachmentKind(kind: AiOutgoingAttachment['kind']): string {
+  if (kind === 'image') {
+    return '图片';
+  }
+  if (kind === 'video') {
+    return '视频';
+  }
+  return '文档';
+}
+
+async function readImageAttachment(attachment: AiOutgoingAttachment): Promise<AiChatAttachment> {
+  const base64Data = await FileSystem.readAsStringAsync(attachment.uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return {
+    base64Data,
+    mimeType: attachment.mimeType || 'image/jpeg',
+    name: attachment.name,
+    type: 'input_image',
+  };
+}
+
+async function buildDocumentAttachmentContext(input: {
+  attachments: AiOutgoingAttachment[];
+  space: PixorySpace;
+  threadId: string;
+}): Promise<string[]> {
+  const documents = input.attachments.filter((attachment) => attachment.kind === 'document');
+  if (documents.length === 0) {
+    return [];
+  }
+  const contexts: string[] = [];
+  for (const attachment of documents) {
+    const document = attachment.documentId
+      ? await runWithDatabaseSpace(input.space, (db) => aiKnowledgeRepository.findDocumentById(db, attachment.documentId as string))
+      : (await importPickedDocumentsToThread({
+          assets: [{
+            fileName: attachment.name,
+            fileSize: attachment.size ?? null,
+            mimeType: attachment.mimeType ?? null,
+            sourceUri: attachment.uri,
+          }],
+          space: input.space,
+          threadId: input.threadId,
+        }))[0] ?? null;
+    if (!document) {
+      contexts.push(`文档：${attachment.name}\n状态：没有找到已导入的文档内容。`);
+      continue;
+    }
+    await runWithDatabaseSpace(input.space, async (db) => {
+      const chunks = await aiKnowledgeRepository.listChunksByDocumentId(db, document.id);
+      if (chunks.length === 0) {
+        contexts.push(`文档：${document.originalFilename}\n状态：${document.parserError || '没有提取到可发送的文本内容。'}`);
+        return;
+      }
+      contexts.push([
+        `文档：${document.originalFilename}`,
+        ...chunks.slice(0, 4).map((chunk) => `${chunk.sourceLabel}\n${truncateForPrompt(chunk.text, 900)}`),
+      ].join('\n\n'));
+    });
+  }
+  return contexts;
+}
+
+function buildAttachmentPromptContext(input: {
+  attachments: AiOutgoingAttachment[];
+  documentContexts: string[];
+  imageCount: number;
+  visionEnabled: boolean;
+}): string {
+  if (input.attachments.length === 0) {
+    return '';
+  }
+  const lines = [
+    '本轮附件上下文：',
+    ...input.attachments.map((attachment, index) => {
+      const type = attachment.mimeType ? `，类型：${attachment.mimeType}` : '';
+      const size = typeof attachment.size === 'number' ? `，大小：${attachment.size} 字节` : '';
+      return `${index + 1}. ${describeOutgoingAttachmentKind(attachment.kind)}：${attachment.name}${type}${size}`;
+    }),
+  ];
+  if (input.imageCount > 0 && input.visionEnabled) {
+    lines.push(`图片附件：已随本轮请求作为视觉输入发送 ${input.imageCount} 张。`);
+  } else if (input.imageCount > 0) {
+    lines.push('图片附件：当前模型未启用视觉能力，只能基于文件名、类型、大小和用户描述讨论。');
+  }
+  if (input.attachments.some((attachment) => attachment.kind === 'video')) {
+    lines.push('视频附件：当前版本不会直接把视频帧或音轨发送给模型；只能基于文件名、类型、大小和用户描述讨论。');
+  }
+  if (input.documentContexts.length > 0) {
+    lines.push('文档附件摘录：', input.documentContexts.join('\n\n---\n\n'));
+  }
+  return lines.join('\n\n');
+}
+
+async function prepareOutgoingAttachments(input: {
+  attachments?: AiOutgoingAttachment[];
+  space: PixorySpace;
+  threadId: string;
+  visionEnabled: boolean;
+}): Promise<{ promptContext: string; providerAttachments: AiChatAttachment[] }> {
+  const attachments = input.attachments ?? [];
+  if (attachments.length === 0) {
+    return { promptContext: '', providerAttachments: [] };
+  }
+  const [providerAttachments, documentContexts] = await Promise.all([
+    input.visionEnabled
+      ? Promise.all(attachments.filter((attachment) => attachment.kind === 'image').map(readImageAttachment))
+      : Promise.resolve([]),
+    buildDocumentAttachmentContext({ attachments, space: input.space, threadId: input.threadId }),
+  ]);
+  return {
+    promptContext: buildAttachmentPromptContext({
+      attachments,
+      documentContexts,
+      imageCount: attachments.filter((attachment) => attachment.kind === 'image').length,
+      visionEnabled: input.visionEnabled,
+    }),
+    providerAttachments,
+  };
+}
+
+function getThreadAttachmentDirectory(space: PixorySpace, threadId: string): string {
+  return `${joinStoragePath(joinStoragePath(getAiDocumentsDir(space), `thread_${threadId}`), 'attachments')}/`;
+}
+
+async function copyAttachmentToThreadStorage(input: {
+  attachment: AiOutgoingAttachment;
+  space: PixorySpace;
+  threadId: string;
+}): Promise<string> {
+  const targetDir = getThreadAttachmentDirectory(input.space, input.threadId);
+  await ensureLocalDirectory(targetDir);
+  const targetUri = joinStoragePath(targetDir, generateInternalFilename(input.attachment.name));
+  await copyLocalFile(input.attachment.uri, targetUri);
+  return targetUri;
+}
+
+async function importDocumentAttachment(input: {
+  attachment: AiOutgoingAttachment;
+  space: PixorySpace;
+  threadId: string;
+}): Promise<AiDocumentRecord> {
+  const [document] = await importPickedDocumentsToThread({
+    assets: [{
+      fileName: input.attachment.name,
+      fileSize: input.attachment.size ?? null,
+      mimeType: input.attachment.mimeType ?? null,
+      sourceUri: input.attachment.uri,
+    }],
+    space: input.space,
+    threadId: input.threadId,
+  });
+  if (!document) {
+    throw new Error(`文档附件 ${input.attachment.name} 导入失败。`);
+  }
+  return document;
+}
+
+async function persistOutgoingAttachments(input: {
+  attachments?: AiOutgoingAttachment[];
+  messageId: string;
+  space: PixorySpace;
+  threadId: string;
+}): Promise<AiOutgoingAttachment[]> {
+  const attachments = input.attachments ?? [];
+  if (attachments.length === 0) {
+    return [];
+  }
+  const persisted: AiOutgoingAttachment[] = [];
+  for (const attachment of attachments) {
+    if (attachment.kind === 'video') {
+      continue;
+    }
+    const attachmentKind = attachment.kind;
+    const importedDocument = attachment.kind === 'document'
+      ? await importDocumentAttachment({ attachment, space: input.space, threadId: input.threadId })
+      : null;
+    const localUri = importedDocument?.localUri
+      ?? await copyAttachmentToThreadStorage({ attachment, space: input.space, threadId: input.threadId });
+    const persistedAttachment: AiOutgoingAttachment = { ...attachment, documentId: importedDocument?.id ?? null, uri: localUri };
+    await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.createMessageAttachment(db, {
+        documentId: importedDocument?.id ?? null,
+        id: createAiId('aiattach'),
+        fileSize: attachment.size ?? null,
+        kind: attachmentKind,
+        localUri,
+        messageId: input.messageId,
+        mimeType: attachment.mimeType ?? null,
+        name: attachment.name,
+        threadId: input.threadId,
+      })
+    );
+    persisted.push(persistedAttachment);
+  }
+  return persisted;
+}
+
+async function loadOutgoingAttachmentsForMessage(input: {
+  messageId: string;
+  space: PixorySpace;
+}): Promise<AiOutgoingAttachment[]> {
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const rows = await aiThreadRepository.listMessageAttachments(db, input.messageId);
+    return rows.map((row) => ({
+      documentId: row.documentId,
+      id: row.id,
+      kind: row.kind,
+      mimeType: row.mimeType,
+      name: row.name,
+      size: row.fileSize,
+      uri: row.localUri,
+    }));
+  });
+}
+
 function getQueryTerms(value: string): string[] {
   return [...new Set(value.toLowerCase().split(/[\s,，。！？!?;；:：、]+/).filter((term) => term.length >= 2))].slice(0, 10);
 }
@@ -1086,6 +1326,7 @@ async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelCon
       }
       return {
         apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKeyForSpace(space, provider.id),
+        model: resolvedModel,
         modelContextWindowTokens: resolvedModel.contextWindowTokens ?? null,
         modelId: resolvedModel.modelId,
         provider: {
@@ -1314,6 +1555,7 @@ async function buildPromptForThread(
         roleCardContext,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         materialSnippets: threadMaterialSnippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
+        attachmentPromptContext: options?.attachmentPromptContext ?? null,
         userMessage,
       }),
       snippets: threadMaterialSnippets,
@@ -1341,6 +1583,7 @@ async function buildPromptForThread(
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
       snippets: snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
+      attachmentPromptContext: options?.attachmentPromptContext ?? null,
       userMessage,
     }),
     snippets,
@@ -2191,6 +2434,7 @@ async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
   userMessage: Pick<AiMessageRecord, 'id' | 'content'>;
+  attachments?: AiOutgoingAttachment[];
   assistantMessageId: string;
   generationMetrics: AiGenerationMetricsDraft;
   signal?: AbortSignal;
@@ -2304,6 +2548,7 @@ async function streamAssistantReply(input: {
   let history: Array<{ role: 'assistant' | 'user'; content: string }> = [];
   let modelId = '';
   let modelContextWindowTokens: number | null = null;
+  let outgoingAttachments: AiChatAttachment[] = [];
   let previousRequestAt: string | null = null;
   let prompt: Awaited<ReturnType<typeof buildPromptForThread>>['prompt'];
   let provider: AiProviderRecord;
@@ -2363,8 +2608,20 @@ async function streamAssistantReply(input: {
     );
     generationMetrics.context.branchScopeCount = branchScopes.length;
     markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    const canSendVisionAttachments = provider.visionEnabled && resolvedModel.model.supportsVision;
+    const preparedAttachments = await prepareOutgoingAttachments({
+      attachments: input.attachments,
+      space: input.space,
+      threadId: input.thread.id,
+      visionEnabled: canSendVisionAttachments,
+    });
+    outgoingAttachments = preparedAttachments.providerAttachments;
+    const attachmentPromptContext = preparedAttachments.promptContext;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
-    ({ prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes, { generationMetrics }));
+    ({ prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes, {
+      attachmentPromptContext,
+      generationMetrics,
+    }));
     prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
     snippets = filterSnippetsPresentInPrompt(snippets, prompt);
     generationMetrics.context.chatMode = prompt.cacheMetadata.chatMode;
@@ -2603,6 +2860,7 @@ async function streamAssistantReply(input: {
         modelId,
         systemPrompt: prompt.system,
         userPrompt: prompt.user,
+        attachments: outgoingAttachments,
         history,
         providerCachePolicy,
         thinkingDisabled: input.thread.thinkingDisabled,
@@ -2864,9 +3122,42 @@ export async function sendUserMessage(
   });
   input.onCreated?.({ userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
   input.onUpdated?.();
+  let persistedAttachments: AiOutgoingAttachment[] = [];
+  try {
+    persistedAttachments = await persistOutgoingAttachments({
+      attachments: input.attachments,
+      messageId: userMessageId,
+      space: input.space,
+      threadId: thread.id,
+    });
+  } catch (error) {
+    const readableError = normalizeAiErrorMessage(error);
+    const failureCode = setGenerationFailureReason(generationMetrics, error);
+    await markAssistantFailed(
+      input.space,
+      assistantMessageId,
+      generationMetrics.context.generationId,
+      readableError,
+      '',
+      null,
+      buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+    );
+    input.onMessagePatch?.({
+      generationId: generationMetrics.context.generationId,
+      id: assistantMessageId,
+      status: 'failed',
+      content: '',
+      reasoningText: null,
+      errorMessage: readableError,
+      completedAt: new Date().toISOString(),
+    });
+    input.onUpdated?.();
+    throw error;
+  }
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
 
   await streamAssistantReply({
+    attachments: persistedAttachments,
     assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
@@ -2937,6 +3228,10 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     return previousUserMessage;
   });
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  const replayAttachments = await loadOutgoingAttachmentsForMessage({
+    messageId: userMessage.id,
+    space: input.space,
+  });
   input.onCreated?.({
     userMessageId: userMessage.id,
     assistantMessageId: input.assistantMessageId,
@@ -2944,6 +3239,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
   });
 
   await streamAssistantReply({
+    attachments: replayAttachments,
     assistantMessageId: input.assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,

@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
   type AiChatRequest,
@@ -13,6 +14,11 @@ import {
 interface ClaudeModelsResponse {
   data?: Array<{ id?: string }>;
 }
+
+type ClaudeUserContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+>;
 
 function anthropicHeaders(apiKey: string): Record<string, string> {
   return {
@@ -64,6 +70,23 @@ function buildClaudeSystem(input: AiChatRequest): string | Array<{ type: 'text';
       text: block.text,
       ...(block.cacheControl ? { cache_control: { type: 'ephemeral' as const } } : {}),
     }));
+}
+
+function buildClaudeUserContent(text: string, attachments?: AiChatAttachment[]): ClaudeUserContent {
+  if (!attachments?.length) {
+    return text;
+  }
+  return [
+    { type: 'text', text },
+    ...attachments.map((attachment) => ({
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: attachment.mimeType,
+        data: attachment.base64Data,
+      },
+    })),
+  ];
 }
 
 async function flushClaudeBuffer(buffer: string, onEvent: AiStreamEventHandler): Promise<void> {
@@ -157,7 +180,7 @@ export const claudeProvider: AiProviderAdapter = {
           system: buildClaudeSystem(input),
           messages: [
             ...input.history,
-            { role: 'user', content: input.userPrompt },
+            { role: 'user', content: buildClaudeUserContent(input.userPrompt, input.attachments) },
           ],
         }),
       });

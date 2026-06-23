@@ -356,6 +356,7 @@ export function buildNormalChatPrompt(input: {
   roleCardContext?: AiRolePromptContext | null;
   rolePrompt?: string | null;
   materialSnippets?: Array<{ label: string; text: string }>;
+  attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   const resolvedRoleContext = resolveRolePromptContext(input.roleCardContext);
@@ -367,6 +368,7 @@ export function buildNormalChatPrompt(input: {
         ...input.materialSnippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
       ].join('\n\n')
     : '';
+  const retrievalContext = [materialSection, input.attachmentPromptContext].filter(Boolean).join('\n\n');
 
   const stableBlocks = [
     block('stable_app_policy', '', true),
@@ -389,11 +391,11 @@ export function buildNormalChatPrompt(input: {
   const dynamicBlocks = [
     block('history_window', '', false),
     block('dynamic_memory', input.dynamicMemoryContext, false),
-    block('retrieval_context', materialSection, false),
+    block('retrieval_context', retrievalContext, false),
     block('current_user_message', [
       `用户当前问题：\n${input.userMessage}`,
       buildNextReplyNudge({
-        hasMaterialContext: Boolean(materialSection),
+        hasMaterialContext: Boolean(retrievalContext),
         postHistoryInstruction: buildPostHistoryInstruction(resolvedRoleContext),
         replyPreference: input.replyPreference,
       }),
@@ -423,6 +425,7 @@ export function buildMaterialBoundPrompt(input: {
   materialRules?: string;
   contextSummary: string;
   snippets: Array<{ label: string; text: string }>;
+  attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   const resolvedRoleContext = resolveRolePromptContext(input.roleCardContext);
@@ -433,6 +436,7 @@ export function buildMaterialBoundPrompt(input: {
     input.contextSummary,
     '可引用资料片段：',
     ...input.snippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
+    input.attachmentPromptContext,
   ].join('\n\n');
   const stableBlocks = [
     block('stable_app_policy', '', true),

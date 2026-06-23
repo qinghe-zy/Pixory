@@ -45,7 +45,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /DATABASE_VERSION = 42/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -226,6 +226,68 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(composer, /attachmentCountRef/);
   assert.match(composer, /onComposerHeightChange\?\.\(\)/);
   assert.match(composer, /if \(nextHeight !== inputHeight\)/);
+});
+
+test('AI chat sends attachments as provider payloads instead of filename-only prompt text', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const service = read('src/ai/aiChatService.ts');
+  const base = read('src/ai/providers/base.ts');
+  const openai = read('src/ai/providers/openAiCompatibleProvider.ts');
+  const gemini = read('src/ai/providers/geminiProvider.ts');
+  const claude = read('src/ai/providers/claudeProvider.ts');
+
+  assert.match(base, /export interface AiChatAttachment/);
+  assert.match(base, /type:\s*'input_image'/);
+  assert.match(base, /base64Data:\s*string/);
+  assert.match(base, /attachments\?: AiChatAttachment\[\]/);
+
+  assert.match(chat, /attachments,/);
+  assert.match(chat, /startSendUserMessage\(\{[\s\S]*attachments/);
+
+  assert.match(service, /export interface AiOutgoingAttachment/);
+  assert.match(service, /prepareOutgoingAttachments/);
+  assert.match(service, /FileSystem\.readAsStringAsync\(attachment\.uri,[\s\S]*EncodingType\.Base64/);
+  assert.match(service, /buildAttachmentPromptContext/);
+  assert.match(service, /input\.attachments/);
+  assert.match(service, /visionEnabled: canSendVisionAttachments/);
+  assert.match(service, /attachments: outgoingAttachments/);
+
+  assert.match(openai, /buildOpenAiUserContent/);
+  assert.match(openai, /image_url/);
+  assert.match(openai, /data:\$\{attachment\.mimeType\};base64,\$\{attachment\.base64Data\}/);
+  assert.match(gemini, /buildGeminiUserParts/);
+  assert.match(gemini, /inlineData/);
+  assert.match(claude, /buildClaudeUserContent/);
+  assert.match(claude, /source:\s*\{\s*type:\s*'base64'/);
+});
+
+test('AI chat attachment pipeline is replayable and budget-safe', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const schema = read('src/database/schema.ts');
+  const repository = read('src/database/repositories/aiThreadRepository.ts');
+
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_attachments/);
+  assert.match(schema, /documentId TEXT/);
+  assert.match(schema, /FOREIGN KEY \(documentId\) REFERENCES ai_documents\(id\) ON DELETE SET NULL/);
+  assert.match(repository, /createMessageAttachment/);
+  assert.match(repository, /listMessageAttachments/);
+
+  assert.match(service, /persistOutgoingAttachments/);
+  assert.match(service, /loadOutgoingAttachmentsForMessage/);
+  assert.match(service, /importDocumentAttachment/);
+  assert.match(service, /documentId: importedDocument\?\.id \?\? null/);
+  assert.match(service, /findDocumentById\(db, attachment\.documentId as string\)/);
+  assert.match(service, /regenerateAssistantMessage[\s\S]*loadOutgoingAttachmentsForMessage/);
+  assert.match(service, /retryAssistantMessage/);
+
+  assert.match(service, /const canSendVisionAttachments = provider\.visionEnabled && resolvedModel\.model\.supportsVision/);
+  assert.match(service, /canSendVisionAttachments/);
+  assert.match(service, /input\.visionEnabled\s*\?\s*Promise\.all/);
+
+  assert.match(service, /attachmentPromptContext/);
+  assert.match(service, /buildDocumentAttachmentContext/);
+  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{[\s\S]*attachmentPromptContext/);
+  assert.doesNotMatch(service, /const userPromptWithAttachments = \[/);
 });
 
 test('AI chat buffers streaming patches while reading history and only flushes at safe points', () => {
@@ -775,7 +837,7 @@ test('AI editing a user message keeps full branch history instead of deleting la
   const chat = read('src/screens/AiChatScreen.tsx');
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /DATABASE_VERSION = 42/);
   assert.match(schema, /branchRootMessageId TEXT/);
   assert.match(schema, /branchVersionIndex INTEGER/);
   assert.match(schema, /MIGRATION_STATEMENTS_V31/);
@@ -835,7 +897,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /DATABASE_VERSION = 42/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V32/);
   assert.match(db, /currentVersion < 32/);
@@ -855,7 +917,8 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(repository, /listSummarySegments\(db: SQLiteDatabase, threadId: string, branchScopes\?: AiBranchScope\[\]/);
   assert.match(repository, /listRecentCompletedMessagesBefore\([\s\S]*branchScopes\?: AiBranchScope\[\]/);
   assert.match(service, /resolveStreamingBranchScopes/);
-  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{ generationMetrics \}\)/);
+  assert.match(service, /const attachmentPromptContext = preparedAttachments\.promptContext/);
+  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{[\s\S]*attachmentPromptContext[\s\S]*generationMetrics/);
   assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
@@ -1376,7 +1439,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 41/);
+  assert.match(schema, /DATABASE_VERSION = 42/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);
@@ -1439,12 +1502,12 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
   assert.match(composer, /attachmentPopoverVisible/);
   assert.match(composer, /styles\.attachmentPopover/);
   assert.match(composer, /accessibilityLabel="上传图片"/);
-  assert.match(composer, /accessibilityLabel="上传视频"/);
   assert.match(composer, /accessibilityLabel="上传文档"/);
+  assert.doesNotMatch(composer, /accessibilityLabel="上传视频"/);
   assert.match(composer, /disabled=\{generating\}/);
   assert.match(composer, /if \(generating\) \{[\s\S]{0,120}setAttachmentPopoverVisible\(false\)/);
   assert.match(composer, /flexDirection: 'row'/);
-  assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传图片[\s\S]{0,400}上传视频[\s\S]{0,400}上传文档/);
+  assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传视频/);
   assert.doesNotMatch(chat, /attachmentSheetVisible/);
 });
 

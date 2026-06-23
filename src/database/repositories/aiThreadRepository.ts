@@ -34,6 +34,19 @@ export interface AiMessageRecord {
   completedAt: string | null;
 }
 
+export interface AiMessageAttachmentRecord {
+  id: string;
+  messageId: string;
+  threadId: string;
+  kind: 'image' | 'document';
+  name: string;
+  localUri: string;
+  documentId: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  createdAt: string;
+}
+
 export interface AiUsageObservationMessageRecord {
   id: string;
   threadId: string;
@@ -345,6 +358,18 @@ export interface CreateAiMessageInput {
   modelSnapshotJson?: string;
   promptSnapshotJson?: string;
   completedAt?: string | null;
+}
+
+export interface CreateAiMessageAttachmentInput {
+  id: string;
+  messageId: string;
+  threadId: string;
+  kind: AiMessageAttachmentRecord['kind'];
+  name: string;
+  localUri: string;
+  documentId?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
 }
 
 export type UpdateAiMessagePatch = Partial<Omit<CreateAiMessageInput, 'id' | 'threadId' | 'role'>> & {
@@ -1601,6 +1626,48 @@ export const aiThreadRepository = {
       await aiThreadRepository.syncMessageFts(db, message);
     }
     return message;
+  },
+
+  async createMessageAttachment(db: SQLiteDatabase, input: CreateAiMessageAttachmentInput): Promise<AiMessageAttachmentRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_message_attachments (
+        id,
+        messageId,
+        threadId,
+        kind,
+        name,
+        localUri,
+        documentId,
+        mimeType,
+        fileSize,
+        createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.messageId,
+      input.threadId,
+      input.kind,
+      input.name,
+      input.localUri,
+      input.documentId ?? null,
+      input.mimeType ?? null,
+      input.fileSize ?? null,
+      now
+    );
+    const row = await db.getFirstAsync<AiMessageAttachmentRecord>('SELECT * FROM ai_message_attachments WHERE id = ?', input.id);
+    if (!row) {
+      throw new Error(`AI message attachment ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async listMessageAttachments(db: SQLiteDatabase, messageId: string): Promise<AiMessageAttachmentRecord[]> {
+    return db.getAllAsync<AiMessageAttachmentRecord>(
+      `SELECT * FROM ai_message_attachments
+       WHERE messageId = ?
+       ORDER BY createdAt ASC`,
+      messageId
+    );
   },
 
   async updateMessageWherePromptSnapshotJsonContains(

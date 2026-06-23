@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
   providerEndpoint,
@@ -23,6 +24,61 @@ interface OpenAiEmbeddingResponse {
 interface OpenAiChatCompletionVerifyResponse {
   choices?: unknown[];
   id?: string;
+}
+
+type OpenAiMessageContent = string | Array<
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+>;
+
+type OpenAiCompatibleFetchInit = {
+  body?: string;
+  headers?: Record<string, string>;
+  method?: string;
+  signal?: AbortSignal;
+};
+
+function openAiCompatibleEndpointCandidates(baseUrl: string): string[] {
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) {
+    return [normalizedBaseUrl];
+  }
+  const candidates = [normalizedBaseUrl];
+  try {
+    const parsed = new URL(normalizedBaseUrl);
+    const path = parsed.pathname.replace(/\/+$/, '');
+    if (!path || path === '') {
+      parsed.pathname = '/v1';
+      candidates.push(normalizeBaseUrl(parsed.toString()));
+    }
+  } catch {
+    // Invalid URLs are handled by fetch/error classification at the call site.
+  }
+  return Array.from(new Set(candidates));
+}
+
+function shouldRetryWithNextEndpoint(response: Response, bodyKind?: 'bad_shape' | null): boolean {
+  const status = response.status;
+  return status === 404 || status === 405 || status >= 500 || bodyKind === 'bad_shape';
+}
+
+async function fetchOpenAiCompatibleResponse(
+  baseUrl: string,
+  path: string,
+  init: OpenAiCompatibleFetchInit,
+  shouldRetryBody?: (response: Response) => Promise<'bad_shape' | null>
+): Promise<Response> {
+  const candidates = openAiCompatibleEndpointCandidates(baseUrl);
+  let lastResponse: Response | null = null;
+  for (const candidateBaseUrl of candidates) {
+    const response = await expoFetch(providerEndpoint(candidateBaseUrl, path), init);
+    lastResponse = response;
+    const bodyKind = response.ok && shouldRetryBody ? await shouldRetryBody(response.clone()) : null;
+    if (!shouldRetryWithNextEndpoint(response, bodyKind) || candidateBaseUrl === candidates[candidates.length - 1]) {
+      return response;
+    }
+  }
+  return lastResponse as Response;
 }
 
 function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
@@ -182,9 +238,22 @@ function shouldDisableOpenAiReasoning(input: AiChatRequest): boolean {
   }
 }
 
+function buildOpenAiUserContent(text: string, attachments?: AiChatAttachment[]): OpenAiMessageContent {
+  if (!attachments?.length) {
+    return text;
+  }
+  return [
+    { type: 'text', text },
+    ...attachments.map((attachment) => ({
+      type: 'image_url' as const,
+      image_url: { url: `data:${attachment.mimeType};base64,${attachment.base64Data}` },
+    })),
+  ];
+}
+
 export const openAiCompatibleProvider: AiProviderAdapter = {
   async listModels(input) {
-    const response = await expoFetch(providerEndpoint(input.baseUrl, '/models'), {
+    const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/models', {
       headers: { Authorization: `Bearer ${input.apiKey}` },
       signal: input.signal,
     });
@@ -194,21 +263,35 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
   },
 
   async verifyChatCompletion(input) {
-    const response = await expoFetch(providerEndpoint(input.baseUrl, '/chat/completions'), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${input.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      signal: input.signal,
-      body: JSON.stringify({
-        model: input.modelId,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-        stream: false,
-        temperature: 0,
-      }),
+    const verifyBody = JSON.stringify({
+      model: input.modelId,
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 1,
+      stream: false,
+      temperature: 0,
     });
+    const response = await fetchOpenAiCompatibleResponse(
+      input.baseUrl,
+      '/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${input.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        signal: input.signal,
+        body: verifyBody,
+      },
+      async (candidateResponse) => {
+        const text = await candidateResponse.text();
+        try {
+          const json = JSON.parse(text) as OpenAiChatCompletionVerifyResponse;
+          return Boolean(json?.id || json?.choices) ? null : 'bad_shape';
+        } catch {
+          return 'bad_shape';
+        }
+      }
+    );
     await assertOkResponse(response, 'AI provider connection failed');
     const text = await response.text();
     let json: OpenAiChatCompletionVerifyResponse | null = null;
@@ -230,7 +313,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
         messages: [
           { role: 'system', content: input.systemPrompt },
           ...input.history,
-          { role: 'user', content: input.userPrompt },
+          { role: 'user', content: buildOpenAiUserContent(input.userPrompt, input.attachments) },
         ],
       };
       if (input.providerCachePolicy?.openAiIncludeUsage) {
@@ -245,7 +328,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       if (shouldDisableDeepSeekThinking(input)) {
         body.thinking = { type: 'disabled' };
       }
-      const response = await expoFetch(providerEndpoint(input.baseUrl, '/chat/completions'), {
+      const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/chat/completions', {
         method: 'POST',
         headers: {
           Accept: 'text/event-stream',
@@ -270,7 +353,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
   },
 
   async embedText(input) {
-    const response = await expoFetch(providerEndpoint(input.baseUrl, '/embeddings'), {
+    const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
