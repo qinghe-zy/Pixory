@@ -44,8 +44,10 @@ These decisions are binding for the first implementation pass unless the user ex
 - Imported continuity must attach to the current thread as a new branch, not a new thread and not a destructive append to the current visible mainline.
 - After import succeeds, the UI must automatically switch to the imported branch and leave the composer empty so the user can continue naturally.
 - Pixory-native continuity packages must support exact structural import without calling the memory system or any model to understand the file.
+- V1 Pixory-native import must target one exact artifact: the UTF-8 Markdown continuity document exported by Pixory's continuity export flow, upgraded with explicit native markers and structural sections. The companion PNG role card remains supplemental continuity metadata in V1 and is not the native import source of truth.
 - External continuity documents may be plain text or Markdown and may require both structural parsing and model-assisted memory review.
 - Imported content that is rendered as chat messages must still be reviewed by Pixory's existing memory system before it can influence formal long-term memory, summary, or profile state.
+- External-import messages must not enter ordinary memory extraction, summary compression, or profile update paths until the import session enters an accepted review state or a dedicated import-aware maintenance mode explicitly marks its outputs as reversible.
 - Rollback to the pre-import state is allowed only within the first 10 post-import effective conversation rounds.
 - After the rollback window closes, the import is considered stabilized and must no longer be revertible because later memory extraction and summary compression may already depend on it.
 
@@ -72,6 +74,7 @@ Two distinct user needs must be satisfied:
    - A user exports continuity from Pixory.
    - Later, the user imports that package back into Pixory.
    - This path must recover structure exactly and deterministically.
+   - In V1, the authoritative native package is the Pixory continuity Markdown document, not the PNG role card image.
 
 2. External-platform continuity return.
    - A user chats on another platform.
@@ -136,6 +139,7 @@ Continuity import must support two separate pipelines behind one auto-detected U
    - Triggered when the imported file is recognized as a Pixory-native continuity package.
    - File parsing alone must be enough to recover the import branch structure and continuity payload accurately.
    - This path must not require model reasoning to understand the file.
+   - In V1, this means a single UTF-8 Markdown file with explicit Pixory-native markers and stable structural sections.
 
 2. External continuity re-entry.
    - Triggered when the imported file is an external continuity text or Markdown document.
@@ -162,6 +166,12 @@ The entry must:
 - allow selecting a `.txt` or `.md` file in V1,
 - auto-detect native versus external mode,
 - explain import errors clearly without silently polluting the current thread.
+
+V1 file-mode rules are:
+
+- `.md` may be either Pixory-native or external.
+- `.txt` is always treated as external in V1.
+- PNG role cards are not continuity-import inputs in V1, even if they were exported alongside the Markdown continuity file.
 
 ### After Successful Import
 
@@ -205,7 +215,14 @@ The native format must declare:
 
 - `formatVersion`
 - `source = pixory-native`
+- a stable Markdown section layout defined by Pixory
 - enough structural fields to reconstruct continuity deterministically
+
+V1 native import uses one exact artifact:
+
+- a single UTF-8 Markdown continuity document produced by Pixory export,
+- with the native markers above,
+- and with machine-parseable structural sections for thread, branch, message, summary, and memory continuity payloads.
 
 The package must contain enough information to recover:
 
@@ -317,6 +334,22 @@ For external continuity import, Pixory's memory system must review all of the fo
 - the non-message continuity text blocks,
 - any externally compressed continuity blocks.
 
+### Review Gate During Observation
+
+For external continuity import, there must be an explicit gate between `chat became renderable` and `ordinary long-term memory maintenance may absorb this continuity`.
+
+During the observation window and before review acceptance:
+
+- external imported messages may render and may be used as immediate conversational context on the imported branch,
+- but they must not enter ordinary summary compression, profile update, or formal memory extraction as if they were already trusted Pixory-native history,
+- any maintenance that does run on them must run in an import-aware mode that marks all resulting outputs as reversible and attributable to the import session,
+- if import review is pending or failed, no irreversible formal memory, summary, or profile effects may be committed from those external imported messages.
+
+After review acceptance:
+
+- the imported branch may join ordinary memory maintenance behavior,
+- subject to the same rollback-window reversibility rules defined later in this spec.
+
 ### Review Outcomes
 
 Pixory's existing memory system must decide, conservatively:
@@ -369,6 +402,12 @@ Each import session should record at least:
 - `containsCompressedContinuity`
 - `memoryReviewStatus`
 - `memoryReviewError`
+- `reviewGateState`
+- `rolledBackAt`
+- `stabilizedAt`
+- `importAnchorMessageId`
+- `importAnchorMessageRole`
+- `importBranchRootKind`
 
 V1 may represent non-message continuity blocks either:
 
@@ -381,9 +420,35 @@ as long as the content remains locally auditable and rollback-safe.
 
 ### Anchor Selection
 
-Import must branch from the current visible route's last completed visible message.
+Import must branch from the current visible route's last completed visible message, but V1 must not leave the branch-root mechanics implicit.
+
+The import anchor is:
+
+- the last completed visible message on the currently selected visible route at import time,
+- or `null` if the thread has no completed visible messages yet.
 
 This preserves the existing long-running relationship while making imported continuity an explicit alternate continuation path.
+
+### Imported Branch Root
+
+Because Pixory branch routing is version-root based, V1 must create an explicit imported branch root instead of relying on an ambiguous "fork anywhere" interpretation.
+
+The imported branch root is:
+
+- a dedicated synthetic system milestone message created by the import flow,
+- inserted immediately after the import anchor,
+- associated with the import session,
+- used as the authoritative `branchRootMessageId` for the imported continuity route.
+
+If the thread already has completed visible history:
+
+- the synthetic import root is created after the last completed visible message on the selected route,
+- and all reconstructed imported messages belong to the imported branch rooted at that synthetic message.
+
+If the thread has no completed visible history yet:
+
+- the synthetic import root becomes the first continuity message in the thread,
+- and the imported branch starts from that root without needing a pre-existing conversational message root.
 
 ### Imported Branch
 
@@ -421,6 +486,7 @@ During the first 10 effective post-import rounds:
 
 - imported continuity is visible and usable,
 - memory review can run,
+- external imported continuity remains behind the review gate for irreversible long-term maintenance unless accepted,
 - continuity-derived summary/profile/memory outputs must remain attributable to the import session,
 - rollback remains available.
 
@@ -446,6 +512,16 @@ That includes:
 - reverting import-derived reversible memory candidates,
 - reverting import-derived reversible summary or summary-segment outputs,
 - reverting import-derived reversible profile updates.
+
+Rollback in V1 must preserve auditability:
+
+- the import session record must remain stored locally,
+- the raw imported document must remain stored locally,
+- parsed continuity blocks must remain stored locally,
+- imported messages and the synthetic import root must remain recoverable as rolled-back historical import payload, not physically destroyed by default,
+- rolled-back payload must be hidden from the active route and excluded from active maintenance and prompt use.
+
+In other words, rollback in V1 is a reversible deactivation plus route restoration, not silent physical deletion of the imported payload.
 
 Rollback must not modify:
 
@@ -512,7 +588,14 @@ V1 should prefer an explicit native marker, such as:
 - `source = pixory-native`
 - stable structural sections for branch and continuity recovery
 
-This spec does not require a specific exact serialization layout yet, but the implementation plan must choose one exact native format and keep backward-compatibility expectations explicit.
+V1 now fixes the exact native container type:
+
+- the native continuity artifact is one UTF-8 Markdown document,
+- exported by Pixory continuity export,
+- parsed by Pixory native continuity import,
+- with backward compatibility handled at the Markdown-structure version level via `formatVersion`.
+
+The implementation plan must still choose the exact section schema, but it must remain within this single native Markdown artifact model.
 
 ## Suggested External Prompt Contract
 
@@ -567,6 +650,7 @@ If transcript length is too large:
 
 - A Pixory-native continuity export can be re-imported through the single import entry.
 - Mode detection identifies it as native.
+- The authoritative native input is the Pixory continuity Markdown file, not the PNG role card.
 - Structural recovery succeeds without using a model to understand the file.
 - The imported branch renders correctly and becomes the active route.
 
@@ -580,19 +664,21 @@ If transcript length is too large:
 ### Branch Safety
 
 - Pre-import thread history remains untouched.
-- Imported continuity becomes a new branch from the current visible route.
+- Imported continuity becomes a new branch rooted at a synthetic import milestone placed after the current visible route's last completed visible message, or at thread start when no completed visible message exists.
 - The thread auto-switches to the imported branch.
 
 ### Rollback
 
 - During the first 10 effective post-import rounds, the user can roll back to the pre-import state.
 - Rollback restores the pre-import route and removes import-derived reversible active effects.
+- Rollback preserves the import payload locally as rolled-back audit data instead of physically deleting it by default.
 - After the observation window closes, rollback is no longer allowed.
 
 ### Memory Trust
 
 - External compressed continuity content is not directly inserted into formal memory.
 - Parsed imported messages do not bypass memory review.
+- External imported messages do not enter irreversible ordinary memory maintenance before review acceptance.
 - Accepted continuity effects land in summary, profile, or memory through Pixory's existing memory system rules.
 
 ### Failure Handling
@@ -611,4 +697,3 @@ These may be designed later but are not required in V1:
 - imported continuity quality scoring UI,
 - batch import queues,
 - arbitrary third-party JSON package support.
-

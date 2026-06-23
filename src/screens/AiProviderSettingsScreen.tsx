@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
@@ -10,6 +10,7 @@ import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { loadAiUsageOverview } from '../ai/aiChatService';
 import {
+  deleteProviderModel,
   getDefaultChatProviderId,
   getSavedProviderApiKey,
   listProviderCards,
@@ -24,6 +25,7 @@ import {
   verifyCurrentProviderModel,
 } from '../ai/aiProviderService';
 import { parseProviderConnectionImport } from '../ai/aiProviderConnectionImport';
+import { builtInModelsForProvider } from '../ai/providerRegistry';
 import {
   resolveMemoryMaintenanceModel,
   testMemoryMaintenanceModel,
@@ -63,6 +65,11 @@ const EMPTY_USAGE_OVERVIEW: AiUsageAggregate = {
 
 function isOtherProvider(card: ProviderCard): boolean {
   return card.provider.providerType === 'openai_compatible' || card.provider.providerType === 'custom';
+}
+
+function isProtectedProviderModel(card: ProviderCard, modelId: string): boolean {
+  const builtInModelIds = new Set(builtInModelsForProvider(card.provider.id, card.provider.providerType).map((model) => model.modelId));
+  return builtInModelIds.has(modelId);
 }
 
 function formatMaintenanceTestTime(value: string | null | undefined): string {
@@ -380,6 +387,32 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     }
   }
 
+  function confirmDeleteModel(model: AiProviderModelRecord, kind: 'chat' | 'embedding') {
+    Alert.alert(
+      '删除模型',
+      `删除后，这个模型会从全局和会话模型列表中移除。${kind === 'chat' ? '如果它正被设为默认聊天模型，会自动取消默认。' : '如果它正被设为默认 Embedding，会自动取消默认。'}`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setStatus({ message: `正在删除 ${model.displayName}...`, tone: 'info', title: '删除模型' });
+              try {
+                await deleteProviderModel(space, model.providerId, model.modelId);
+                setStatus({ message: `${model.displayName} 已删除。`, tone: 'success', title: '模型已删除' });
+                await loadProviders();
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error', title: '删除失败' });
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
   async function saveMemoryMaintenancePatch(patch: {
     memoryMaintenanceMode?: MemoryMaintenanceMode;
     memoryMaintenanceProviderId?: string | null;
@@ -603,17 +636,29 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               {chatModels.map((model) => {
                 const selected = model.modelId === selectedCard?.provider.defaultChatModelId;
                 return (
-                  <Pressable
-                    accessibilityRole="button"
-                    key={model.id}
-                    onPress={() => {
-                      void selectModel(model);
-                    }}
-                    style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
-                  >
-                    <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                    {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
-                  </Pressable>
+                  <View key={model.id} style={[styles.dropdownRow, selected && styles.selectedDropdownRow]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        void selectModel(model);
+                      }}
+                      style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
+                    >
+                      <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                      {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                    </Pressable>
+                    {!isProtectedProviderModel(selectedCard, model.modelId) ? (
+                      <Pressable
+                        accessibilityLabel={`删除模型 ${model.displayName}`}
+                        accessibilityRole="button"
+                        onPress={() => confirmDeleteModel(model, 'chat')}
+                        style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
+                      >
+                        <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                        <Text style={styles.dropdownDeleteText}>删除模型</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 );
               })}
             </View>
@@ -640,17 +685,29 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       {embeddingModels.map((model) => {
                         const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
                         return (
-                          <Pressable
-                            accessibilityRole="button"
-                            key={model.id}
-                            onPress={() => {
-                              void selectEmbeddingModel(model);
-                            }}
-                            style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
-                          >
-                            <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                            {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
-                          </Pressable>
+                          <View key={model.id} style={[styles.dropdownRow, selected && styles.selectedDropdownRow]}>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => {
+                                void selectEmbeddingModel(model);
+                              }}
+                              style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
+                            >
+                              <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                              {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                            </Pressable>
+                            {!isProtectedProviderModel(selectedCard, model.modelId) ? (
+                              <Pressable
+                                accessibilityLabel={`删除模型 ${model.displayName}`}
+                                accessibilityRole="button"
+                                onPress={() => confirmDeleteModel(model, 'embedding')}
+                                style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
+                              >
+                                <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                                <Text style={styles.dropdownDeleteText}>删除模型</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
                         );
                       })}
                     </View>
@@ -849,6 +906,25 @@ const styles = StyleSheet.create({
     gap: rhythm.inlineGap,
     minHeight: 44,
     paddingHorizontal: spacing[3],
+  },
+  dropdownSelectAction: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+    minHeight: 44,
+  },
+  dropdownDeleteAction: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[1],
+    marginLeft: spacing[2],
+    minHeight: 32,
+  },
+  dropdownDeleteText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
+    fontWeight: '600',
   },
   selectedDropdownRow: {
     backgroundColor: aiLightColors.card,

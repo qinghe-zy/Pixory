@@ -282,6 +282,51 @@ export const aiProviderRepository = {
     );
     return row ? mapModelRow(row) : null;
   },
+
+  async deleteProviderModelAndCleanup(
+    db: SQLiteDatabase,
+    providerId: string,
+    modelId: string
+  ): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        `UPDATE ai_providers
+         SET defaultChatModelId = CASE WHEN defaultChatModelId = ? THEN NULL ELSE defaultChatModelId END,
+             defaultEmbeddingModelId = CASE WHEN defaultEmbeddingModelId = ? THEN NULL ELSE defaultEmbeddingModelId END,
+             updatedAt = ?
+         WHERE id = ?`,
+        modelId,
+        modelId,
+        createTimestamp(),
+        providerId
+      );
+      await db.runAsync(
+        `UPDATE ai_threads
+         SET providerId = CASE WHEN providerId = ? AND modelId = ? THEN NULL ELSE providerId END,
+             modelId = CASE WHEN providerId = ? AND modelId = ? THEN NULL ELSE modelId END,
+             sessionBaseUrl = CASE WHEN providerId = ? AND modelId = ? THEN NULL ELSE sessionBaseUrl END,
+             sessionApiKeyRef = CASE WHEN providerId = ? AND modelId = ? THEN NULL ELSE sessionApiKeyRef END,
+             updatedAt = ?
+         WHERE providerId = ? AND modelId = ?`,
+        providerId,
+        modelId,
+        providerId,
+        modelId,
+        providerId,
+        modelId,
+        providerId,
+        modelId,
+        createTimestamp(),
+        providerId,
+        modelId
+      );
+      await db.runAsync(
+        'DELETE FROM ai_provider_models WHERE providerId = ? AND modelId = ?',
+        providerId,
+        modelId
+      );
+    });
+  },
 };
 
 export default aiProviderRepository;

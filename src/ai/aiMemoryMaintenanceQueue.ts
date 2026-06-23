@@ -40,6 +40,11 @@ interface MaintenancePassAccumulator {
   usedRemote: boolean;
 }
 
+type ImportAwareMaintenanceContext = {
+  reversibleImportSessionId?: string | null;
+  allowIrreversibleImportEffects: boolean;
+};
+
 const activeMaintenanceTasks = new Map<string, ActiveMaintenanceTask>();
 const queuedMaintenanceTasks: ActiveMaintenanceTask[] = [];
 let globalMaintenanceRunnerActive = false;
@@ -123,6 +128,8 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     usedRemote: false,
   };
   let allowRemoteModel = true;
+  let reversibleImportSessionId: string | null = null;
+  let rollbackState: 'available' | 'locked' | 'rolled_back' | null = null;
   const runStep = async (step: Promise<MemoryMaintenanceStepResult>) => {
     const result = await step;
     consumeStep(accumulator, result);
@@ -131,27 +138,56 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     }
   };
 
-  await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes }));
-  await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes }));
-  await runStep(maybeUpdateUserProfile(input.space, input.threadId, profileReasonForMaintenance(input.reason), { allowRemoteModel, branchScopes }));
+  const reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.loadContinuityImportReviewGateState(db, input.threadId, branchScopes)
+  );
+  rollbackState = await runWithDatabaseSpace(input.space, async (db) => {
+    const importSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes);
+    if (!importSessionId) {
+      return null;
+    }
+    const session = await aiThreadRepository.findContinuityImportSessionById(db, importSessionId);
+    return session?.rollbackState ?? null;
+  });
+  const importAwareContext: ImportAwareMaintenanceContext = {
+    allowIrreversibleImportEffects: true,
+    reversibleImportSessionId,
+  };
+  if ((reviewGateState === 'pending_review' || reviewGateState === 'failed') || rollbackState === 'available') {
+    importAwareContext.allowIrreversibleImportEffects = false;
+    reversibleImportSessionId = await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes)
+    );
+    importAwareContext.reversibleImportSessionId = reversibleImportSessionId;
+  }
+  if (importAwareContext.allowIrreversibleImportEffects === false && !importAwareContext.reversibleImportSessionId) {
+    await recordMaintenanceResult(input.space, input.threadId, accumulator);
+    return;
+  }
+
+  await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
+  await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
+  await runStep(maybeUpdateUserProfile(input.space, input.threadId, profileReasonForMaintenance(input.reason), { allowRemoteModel, branchScopes, ...importAwareContext }));
 
   const lastUserMessage = await loadLastUserMessage(input.space, input.threadId, branchScopes);
   if (lastUserMessage && hasStrongProfileSignal(lastUserMessage.content)) {
-    await runStep(maybeUpdateUserProfile(input.space, input.threadId, 'strong_signal', { allowRemoteModel, branchScopes }));
+    await runStep(maybeUpdateUserProfile(input.space, input.threadId, 'strong_signal', { allowRemoteModel, branchScopes, ...importAwareContext }));
   }
 
   if (input.thread && input.userMessage && input.assistantMessageId) {
     await runStep(captureDeepMemoryForExchange({
       allowRemoteModel,
+      allowIrreversibleImportEffects: importAwareContext.allowIrreversibleImportEffects,
       assistantMessageId: input.assistantMessageId,
       branchScopes,
+      reversibleImportSessionId: importAwareContext.reversibleImportSessionId,
       space: input.space,
       thread: input.thread,
       userMessage: input.userMessage,
     }));
   }
 
-  await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel, branchScopes }));
+  await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
   await recordMaintenanceResult(input.space, input.threadId, accumulator);
 }
 

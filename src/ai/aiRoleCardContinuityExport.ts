@@ -21,10 +21,15 @@ type ExportThread = Pick<
   | 'roleCardId'
   | 'boundIpId'
   | 'boundKnowledgeBaseId'
+  | 'currentBranchRootMessageId'
+  | 'currentBranchVersionIndex'
 >;
 
 type ExportMemory = Pick<AiMemoryRecord, 'id' | 'scope' | 'type' | 'content' | 'importance' | 'confidence'>;
-type ExportMessage = Pick<AiMessageRecord, 'id' | 'role' | 'status' | 'content' | 'createdAt'>;
+type ExportMessage = Pick<
+  AiMessageRecord,
+  'id' | 'role' | 'status' | 'content' | 'createdAt' | 'branchRootMessageId' | 'branchVersionIndex'
+>;
 
 export interface RoleContinuityMarkdownInput {
   exportedAt: string;
@@ -60,6 +65,10 @@ function fencedText(value: string | null | undefined): string {
   const longestFence = text.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
   const fence = '`'.repeat(Math.max(4, longestFence + 1));
   return `${fence}text\n${text}\n${fence}`;
+}
+
+function fencedJson(value: unknown): string {
+  return ['```json', JSON.stringify(value, null, 2), '```'].join('\n');
 }
 
 function parseSourceJson(sourceJson: string | null | undefined): Record<string, unknown> | null {
@@ -218,11 +227,66 @@ export function buildRoleContinuityMarkdown(input: RoleContinuityMarkdownInput):
     ? previousRound.map(formatMessage).join('\n\n')
     : '暂无上一轮可续聊上下文。';
   const thread = input.thread;
+  const nativeBranchPayload = {
+    threadId: thread?.id ?? null,
+    currentBranchRootMessageId: thread?.currentBranchRootMessageId ?? null,
+    currentBranchVersionIndex: thread?.currentBranchVersionIndex ?? null,
+    exportBranchScopes: messages.map((message) => ({
+      branchRootMessageId: message.branchRootMessageId ?? null,
+      branchVersionIndex: message.branchVersionIndex ?? null,
+      messageId: message.id,
+    })),
+  };
+  const nativeMessagePayload = messages.map((message) => ({
+    id: message.id,
+    role: message.role,
+    status: message.status,
+    content: message.content,
+    createdAt: message.createdAt,
+    branchRootMessageId: message.branchRootMessageId ?? null,
+    branchVersionIndex: message.branchVersionIndex ?? null,
+  }));
+  const nativeSummaryPayload = {
+    threadSummary: thread?.summary ?? null,
+    systemPrompt: thread?.systemPrompt ?? null,
+    materialRulesSnapshot: thread?.materialRulesSnapshot ?? null,
+  };
+  const nativeMemoryPayload = memories.map((memory) => ({
+    id: memory.id,
+    scope: memory.scope,
+    type: memory.type,
+    content: memory.content,
+    importance: memory.importance,
+    confidence: memory.confidence,
+  }));
 
   return [
     '# Pixory Role Continuity Export',
     '',
     '这是 Pixory 角色连续性 Markdown 包。PNG 角色卡只承载标准角色设定；本文件承载全量上下文、记忆和续聊说明。',
+    '',
+    '## Native Continuity Metadata',
+    '',
+    '- Format Version: 1',
+    '- Source: pixory-native',
+    bullet('Space', input.space),
+    bullet('Exported At', input.exportedAt),
+    '',
+    '## Native Branch Payload',
+    '',
+    fencedJson(nativeBranchPayload),
+    '',
+    '## Native Message Payload',
+    '',
+    fencedJson(nativeMessagePayload),
+    '',
+    '## Native Summary Payload',
+    '',
+    fencedJson(nativeSummaryPayload),
+    '',
+    '## Native Memory Payload',
+    '',
+    fencedJson(nativeMemoryPayload),
     '',
     '## Export Metadata',
     '',

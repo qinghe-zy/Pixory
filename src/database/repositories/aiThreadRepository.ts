@@ -12,6 +12,12 @@ import type {
   AiRoleInstructionWeight,
   AiThreadRecord,
 } from '../types';
+import type {
+  AiContinuityImportReviewGateState,
+  AiContinuityImportRollbackState,
+  AiContinuityImportSourceKind,
+  AiContinuitySyntheticMessageKind,
+} from '../../ai/aiContinuityImportTypes';
 import type { PixorySpace } from '../db';
 import { booleanToSqlite, buildUpdateStatement, createTimestamp, normalizeOptionalText, sqliteToBoolean } from '../utils';
 
@@ -29,6 +35,8 @@ export interface AiMessageRecord {
   modelId: string | null;
   modelSnapshotJson: string;
   promptSnapshotJson: string;
+  continuityImportSessionId: string | null;
+  continuitySyntheticKind: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -215,8 +223,73 @@ export interface AiThreadSummarySegmentRecord {
   endAt: string | null;
   roundCount: number;
   sourceSegmentIdsJson: string;
+  continuityImportSessionId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AiContinuityImportSessionRecord {
+  id: string;
+  threadId: string;
+  space: PixorySpace;
+  sourceKind: AiContinuityImportSourceKind;
+  sourcePlatform: string | null;
+  formatVersion: string | null;
+  status: string;
+  rollbackState: AiContinuityImportRollbackState;
+  rollbackRoundsRemaining: number;
+  reviewGateState: AiContinuityImportReviewGateState;
+  preImportBranchRootMessageId: string | null;
+  preImportBranchVersionIndex: number | null;
+  importedBranchRootMessageId: string | null;
+  importedBranchVersionIndex: number | null;
+  importAnchorMessageId: string | null;
+  importAnchorMessageRole: AiMessageRole | null;
+  importBranchRootKind: string | null;
+  rawDocumentText: string;
+  rawDocumentHash: string;
+  parsedMessageCount: number;
+  containsCompressedContinuity: number;
+  memoryReviewStatus: string | null;
+  memoryReviewError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  rolledBackAt: string | null;
+  stabilizedAt: string | null;
+}
+
+export interface AiContinuityImportBlockRecord {
+  id: string;
+  importSessionId: string;
+  kind: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface AiContinuityImportEffectRecord {
+  id: string;
+  importSessionId: string;
+  effectOrder: number;
+  effectType: string;
+  targetRecordId: string | null;
+  beforeStateJson: string | null;
+  afterStateJson: string | null;
+  createdAt: string;
+}
+
+export interface AiThreadContinuityMilestoneRecord {
+  importSessionId: string;
+  branchRootMessageId: string;
+  rollbackState: AiContinuityImportRollbackState;
+  rollbackRoundsRemaining: number;
+  sourceKind: AiContinuityImportSourceKind;
+  sourcePlatform: string | null;
+  parsedMessageCount: number;
+  containsCompressedContinuity: number;
+  reviewGateState: AiContinuityImportReviewGateState;
+  memoryReviewStatus: string | null;
+  createdAt: string;
 }
 
 export interface AiMemoryRecord {
@@ -340,6 +413,8 @@ export type UpdateAiThreadPatch = Partial<
   >
 > & {
   lastMessagePreview?: string | null;
+  currentBranchRootMessageId?: string | null;
+  currentBranchVersionIndex?: number | null;
   archivedAt?: string | null;
 };
 
@@ -357,6 +432,8 @@ export interface CreateAiMessageInput {
   modelId?: string | null;
   modelSnapshotJson?: string;
   promptSnapshotJson?: string;
+  continuityImportSessionId?: string | null;
+  continuitySyntheticKind?: AiContinuitySyntheticMessageKind | null;
   completedAt?: string | null;
 }
 
@@ -375,6 +452,73 @@ export interface CreateAiMessageAttachmentInput {
 export type UpdateAiMessagePatch = Partial<Omit<CreateAiMessageInput, 'id' | 'threadId' | 'role'>> & {
   createdAt?: string;
 };
+
+export interface CreateAiContinuityImportSessionInput {
+  id: string;
+  threadId: string;
+  space: PixorySpace;
+  sourceKind: AiContinuityImportSourceKind;
+  sourcePlatform?: string | null;
+  formatVersion?: string | null;
+  status: string;
+  rollbackState: AiContinuityImportRollbackState;
+  rollbackRoundsRemaining?: number;
+  reviewGateState: AiContinuityImportReviewGateState;
+  preImportBranchRootMessageId?: string | null;
+  preImportBranchVersionIndex?: number | null;
+  importedBranchRootMessageId?: string | null;
+  importedBranchVersionIndex?: number | null;
+  importAnchorMessageId?: string | null;
+  importAnchorMessageRole?: AiMessageRole | null;
+  importBranchRootKind?: string | null;
+  rawDocumentText: string;
+  rawDocumentHash: string;
+  parsedMessageCount?: number;
+  containsCompressedContinuity?: boolean;
+  memoryReviewStatus?: string | null;
+  memoryReviewError?: string | null;
+  rolledBackAt?: string | null;
+  stabilizedAt?: string | null;
+}
+
+export interface CreateAiContinuityImportBlockInput {
+  id: string;
+  kind: string;
+  title: string;
+  content: string;
+  createdAt?: string;
+}
+
+export interface CreateAiContinuityImportEffectInput {
+  id: string;
+  importSessionId: string;
+  effectOrder: number;
+  effectType: string;
+  targetRecordId?: string | null;
+  beforeStateJson?: string | null;
+  afterStateJson?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateSyntheticContinuityImportRootInput {
+  id: string;
+  threadId: string;
+  importSessionId: string;
+  createdAt: string;
+}
+
+export interface CreateContinuityImportMessageInput {
+  id: string;
+  threadId: string;
+  role: AiMessageRole;
+  status: AiMessageStatus;
+  content: string;
+  branchRootMessageId: string;
+  branchVersionIndex: number;
+  continuityImportSessionId: string;
+  continuitySyntheticKind?: AiContinuitySyntheticMessageKind | null;
+  completedAt?: string | null;
+}
 
 export interface CreateAiMessageVersionInput {
   id: string;
@@ -769,6 +913,15 @@ function buildMemorySourceVisibilityClause(
   };
 }
 
+function excludeRolledBackContinuityPayload(alias: string): string {
+  return `NOT EXISTS (
+    SELECT 1
+    FROM ai_continuity_import_sessions rolled_back_import
+    WHERE rolled_back_import.id = ${alias}.continuityImportSessionId
+      AND rolled_back_import.reviewGateState = 'rolled_back'
+  )`;
+}
+
 function buildSummarySegmentVisibilityClause(
   alias: string,
   branchScopes?: AiBranchScope[]
@@ -785,6 +938,30 @@ function buildSummarySegmentVisibilityClause(
           ${visibleBranchClause.clause}
       ))`,
     values: visibleBranchClause.values,
+  };
+}
+
+function buildContinuityImportSessionBranchScopeClause(
+  alias: string,
+  currentBranchRootMessageId: string | null,
+  branchScopes?: AiBranchScope[]
+): { clause: string; values: Array<string | number> } {
+  const normalized = normalizeBranchScopes(branchScopes);
+  if (!normalized) {
+    return { clause: '', values: [] };
+  }
+  if (normalized.length === 0) {
+    if (!currentBranchRootMessageId) {
+      return { clause: '', values: [] };
+    }
+    return {
+      clause: `AND ${alias}.importedBranchRootMessageId = ?`,
+      values: [currentBranchRootMessageId],
+    };
+  }
+  return {
+    clause: `AND (${normalized.map(() => `${alias}.importedBranchRootMessageId = ?`).join(' OR ')})`,
+    values: normalized.map((scope) => scope.branchRootMessageId),
   };
 }
 
@@ -1093,6 +1270,8 @@ export const aiThreadRepository = {
       boundaryMode: patch.boundaryMode,
       summary: patch.summary,
       lastMessagePreview: normalizeOptionalText(patch.lastMessagePreview),
+      currentBranchRootMessageId: patch.currentBranchRootMessageId,
+      currentBranchVersionIndex: patch.currentBranchVersionIndex,
       archivedAt: patch.archivedAt,
       updatedAt: createTimestamp(),
     });
@@ -1302,15 +1481,17 @@ export const aiThreadRepository = {
           status,
           content,
           reasoningText,
-          errorMessage,
-          providerId,
-          modelId,
-          modelSnapshotJson,
-          promptSnapshotJson,
-          createdAt,
-          updatedAt,
-          completedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      errorMessage,
+      providerId,
+      modelId,
+      modelSnapshotJson,
+      promptSnapshotJson,
+      continuityImportSessionId,
+      continuitySyntheticKind,
+      createdAt,
+      updatedAt,
+      completedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         message.id,
         message.threadId,
         message.branchRootMessageId ?? null,
@@ -1324,6 +1505,8 @@ export const aiThreadRepository = {
         message.modelId,
         message.modelSnapshotJson,
         message.promptSnapshotJson,
+        message.continuityImportSessionId ?? null,
+        message.continuitySyntheticKind ?? null,
         message.createdAt,
         message.updatedAt,
         message.completedAt
@@ -1572,10 +1755,12 @@ export const aiThreadRepository = {
         modelId,
         modelSnapshotJson,
         promptSnapshotJson,
+        continuityImportSessionId,
+        continuitySyntheticKind,
         createdAt,
         updatedAt,
         completedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
       input.branchRootMessageId ?? null,
@@ -1589,6 +1774,8 @@ export const aiThreadRepository = {
       input.modelId ?? null,
       input.modelSnapshotJson ?? '{}',
       input.promptSnapshotJson ?? '{}',
+      input.continuityImportSessionId ?? null,
+      input.continuitySyntheticKind ?? null,
       now,
       now,
       input.completedAt ?? null
@@ -1613,6 +1800,8 @@ export const aiThreadRepository = {
       modelId: patch.modelId,
       modelSnapshotJson: patch.modelSnapshotJson,
       promptSnapshotJson: patch.promptSnapshotJson,
+      continuityImportSessionId: patch.continuityImportSessionId,
+      continuitySyntheticKind: patch.continuitySyntheticKind,
       createdAt: patch.createdAt,
       completedAt: patch.completedAt,
       updatedAt: createTimestamp(),
@@ -1670,6 +1859,677 @@ export const aiThreadRepository = {
     );
   },
 
+  async createContinuityImportSession(
+    db: SQLiteDatabase,
+    input: CreateAiContinuityImportSessionInput
+  ): Promise<AiContinuityImportSessionRecord> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_continuity_import_sessions (
+        id,
+        threadId,
+        space,
+        sourceKind,
+        sourcePlatform,
+        formatVersion,
+        status,
+        rollbackState,
+        rollbackRoundsRemaining,
+        reviewGateState,
+        preImportBranchRootMessageId,
+        preImportBranchVersionIndex,
+        importedBranchRootMessageId,
+        importedBranchVersionIndex,
+        importAnchorMessageId,
+        importAnchorMessageRole,
+        importBranchRootKind,
+        rawDocumentText,
+        rawDocumentHash,
+        parsedMessageCount,
+        containsCompressedContinuity,
+        memoryReviewStatus,
+        memoryReviewError,
+        createdAt,
+        updatedAt,
+        rolledBackAt,
+        stabilizedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.threadId,
+      input.space,
+      input.sourceKind,
+      input.sourcePlatform ?? null,
+      input.formatVersion ?? null,
+      input.status,
+      input.rollbackState,
+      input.rollbackRoundsRemaining ?? 10,
+      input.reviewGateState,
+      input.preImportBranchRootMessageId ?? null,
+      input.preImportBranchVersionIndex ?? null,
+      input.importedBranchRootMessageId ?? null,
+      input.importedBranchVersionIndex ?? null,
+      input.importAnchorMessageId ?? null,
+      input.importAnchorMessageRole ?? null,
+      input.importBranchRootKind ?? null,
+      input.rawDocumentText,
+      input.rawDocumentHash,
+      input.parsedMessageCount ?? 0,
+      booleanToSqlite(input.containsCompressedContinuity ?? false),
+      input.memoryReviewStatus ?? null,
+      input.memoryReviewError ?? null,
+      now,
+      now,
+      input.rolledBackAt ?? null,
+      input.stabilizedAt ?? null
+    );
+    const row = await db.getFirstAsync<AiContinuityImportSessionRecord>(
+      'SELECT * FROM ai_continuity_import_sessions WHERE id = ?',
+      input.id
+    );
+    if (!row) {
+      throw new Error(`AI continuity import session ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async createContinuityImportBlocks(
+    db: SQLiteDatabase,
+    importSessionId: string,
+    blocks: CreateAiContinuityImportBlockInput[]
+  ): Promise<AiContinuityImportBlockRecord[]> {
+    if (blocks.length === 0) {
+      return [];
+    }
+    for (const block of blocks) {
+      await db.runAsync(
+        `INSERT INTO ai_continuity_import_blocks (
+          id,
+          importSessionId,
+          kind,
+          title,
+          content,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        block.id,
+        importSessionId,
+        block.kind,
+        block.title,
+        block.content,
+        block.createdAt ?? createTimestamp()
+      );
+    }
+    return aiThreadRepository.listContinuityImportBlocksBySessionId(db, importSessionId);
+  },
+
+  async listContinuityImportEffectsBySessionId(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<AiContinuityImportEffectRecord[]> {
+    return db.getAllAsync<AiContinuityImportEffectRecord>(
+      `SELECT * FROM ai_continuity_import_effects
+       WHERE importSessionId = ?
+       ORDER BY effectOrder ASC, createdAt ASC, id ASC`,
+      importSessionId
+    );
+  },
+
+  async createContinuityImportEffect(
+    db: SQLiteDatabase,
+    input: CreateAiContinuityImportEffectInput
+  ): Promise<AiContinuityImportEffectRecord> {
+    const now = input.createdAt ?? createTimestamp();
+    await db.runAsync(
+      `INSERT INTO ai_continuity_import_effects (
+        id,
+        importSessionId,
+        effectOrder,
+        effectType,
+        targetRecordId,
+        beforeStateJson,
+        afterStateJson,
+        createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.id,
+      input.importSessionId,
+      input.effectOrder,
+      input.effectType,
+      input.targetRecordId ?? null,
+      input.beforeStateJson ?? null,
+      input.afterStateJson ?? null,
+      now
+    );
+    const row = await db.getFirstAsync<AiContinuityImportEffectRecord>(
+      'SELECT * FROM ai_continuity_import_effects WHERE id = ?',
+      input.id
+    );
+    if (!row) {
+      throw new Error(`AI continuity import effect ${input.id} was created but could not be reloaded.`);
+    }
+    return row;
+  },
+
+  async recordContinuityImportMemoryEffect(
+    db: SQLiteDatabase,
+    input: {
+      id: string;
+      importSessionId: string;
+      effectType: 'memory_create' | 'memory_update' | 'memory_stale' | 'memory_keep';
+      targetRecordId?: string | null;
+      before: AiMemoryRecord | null;
+      after: AiMemoryRecord | null;
+    }
+  ): Promise<AiContinuityImportEffectRecord> {
+    const orderRow = await db.getFirstAsync<{ nextOrder: number | null }>(
+      `SELECT COALESCE(MAX(effectOrder), 0) + 1 AS nextOrder
+       FROM ai_continuity_import_effects
+       WHERE importSessionId = ?`,
+      input.importSessionId
+    );
+    return aiThreadRepository.createContinuityImportEffect(db, {
+      id: input.id,
+      importSessionId: input.importSessionId,
+      effectOrder: orderRow?.nextOrder ?? 1,
+      effectType: input.effectType,
+      targetRecordId: input.targetRecordId ?? input.after?.id ?? input.before?.id ?? null,
+      beforeStateJson: input.before ? JSON.stringify(input.before) : null,
+      afterStateJson: input.after ? JSON.stringify(input.after) : null,
+    });
+  },
+
+  async recordContinuityImportProfileEffect(
+    db: SQLiteDatabase,
+    input: {
+      id: string;
+      importSessionId: string;
+      before: AiUserProfileRecord | null;
+      after: AiUserProfileRecord | null;
+    }
+  ): Promise<AiContinuityImportEffectRecord> {
+    const orderRow = await db.getFirstAsync<{ nextOrder: number | null }>(
+      `SELECT COALESCE(MAX(effectOrder), 0) + 1 AS nextOrder
+       FROM ai_continuity_import_effects
+       WHERE importSessionId = ?`,
+      input.importSessionId
+    );
+    return aiThreadRepository.createContinuityImportEffect(db, {
+      id: input.id,
+      importSessionId: input.importSessionId,
+      effectOrder: orderRow?.nextOrder ?? 1,
+      effectType: 'profile_upsert',
+      targetRecordId: input.after?.id ?? input.before?.id ?? null,
+      beforeStateJson: input.before ? JSON.stringify(input.before) : null,
+      afterStateJson: input.after ? JSON.stringify(input.after) : null,
+    });
+  },
+
+  async updateContinuityImportSession(
+    db: SQLiteDatabase,
+    importSessionId: string,
+    patch: Partial<
+      Pick<
+        CreateAiContinuityImportSessionInput,
+        | 'status'
+        | 'importedBranchRootMessageId'
+        | 'importedBranchVersionIndex'
+        | 'importAnchorMessageId'
+        | 'importAnchorMessageRole'
+        | 'importBranchRootKind'
+        | 'memoryReviewStatus'
+        | 'memoryReviewError'
+        | 'rolledBackAt'
+        | 'stabilizedAt'
+      >
+    >
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    const updates = buildUpdateStatement({
+      status: patch.status,
+      importedBranchRootMessageId: patch.importedBranchRootMessageId,
+      importedBranchVersionIndex: patch.importedBranchVersionIndex,
+      importAnchorMessageId: patch.importAnchorMessageId,
+      importAnchorMessageRole: patch.importAnchorMessageRole,
+      importBranchRootKind: patch.importBranchRootKind,
+      memoryReviewStatus: patch.memoryReviewStatus,
+      memoryReviewError: patch.memoryReviewError,
+      rolledBackAt: patch.rolledBackAt,
+      stabilizedAt: patch.stabilizedAt,
+      updatedAt: createTimestamp(),
+    });
+    await db.runAsync(
+      `UPDATE ai_continuity_import_sessions
+       SET ${updates.setClause}
+       WHERE id = ?`,
+      ...updates.values,
+      importSessionId
+    );
+    return aiThreadRepository.findContinuityImportSessionById(db, importSessionId);
+  },
+
+  async listContinuityImportBlocksBySessionId(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<AiContinuityImportBlockRecord[]> {
+    return db.getAllAsync<AiContinuityImportBlockRecord>(
+      `SELECT * FROM ai_continuity_import_blocks
+       WHERE importSessionId = ?
+       ORDER BY createdAt ASC`,
+      importSessionId
+    );
+  },
+
+  async listContinuityImportMessagesBySessionId(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<AiMessageRecord[]> {
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM ai_messages
+       WHERE continuityImportSessionId = ?
+       ORDER BY createdAt ASC, id ASC`,
+      importSessionId
+    );
+  },
+
+  async createSyntheticContinuityImportRoot(
+    db: SQLiteDatabase,
+    input: CreateSyntheticContinuityImportRootInput
+  ): Promise<AiMessageRecord> {
+    return aiThreadRepository.createMessage(db, {
+      id: input.id,
+      threadId: input.threadId,
+      role: 'system',
+      status: 'completed',
+      content: '已接回外部对话',
+      branchRootMessageId: null,
+      branchVersionIndex: null,
+      continuityImportSessionId: input.importSessionId,
+      continuitySyntheticKind: 'continuity_import_root',
+      completedAt: input.createdAt,
+    });
+  },
+
+  async createContinuityImportMessage(
+    db: SQLiteDatabase,
+    input: CreateContinuityImportMessageInput
+  ): Promise<AiMessageRecord> {
+    return aiThreadRepository.createMessage(db, {
+      id: input.id,
+      threadId: input.threadId,
+      role: input.role,
+      status: input.status,
+      content: input.content,
+      branchRootMessageId: input.branchRootMessageId,
+      branchVersionIndex: input.branchVersionIndex,
+      continuityImportSessionId: input.continuityImportSessionId,
+      continuitySyntheticKind: input.continuitySyntheticKind ?? null,
+      completedAt: input.completedAt ?? null,
+    });
+  },
+
+  async listThreadContinuityMilestones(
+    db: SQLiteDatabase,
+    threadId: string
+  ): Promise<AiThreadContinuityMilestoneRecord[]> {
+    return db.getAllAsync<AiThreadContinuityMilestoneRecord>(
+      `SELECT
+         id AS importSessionId,
+         importedBranchRootMessageId AS branchRootMessageId,
+         rollbackState,
+         rollbackRoundsRemaining,
+         sourceKind,
+         sourcePlatform,
+         parsedMessageCount,
+         containsCompressedContinuity,
+         reviewGateState,
+         memoryReviewStatus,
+         createdAt
+       FROM ai_continuity_import_sessions
+       WHERE threadId = ?
+         AND importedBranchRootMessageId IS NOT NULL
+         AND reviewGateState <> 'rolled_back'
+       ORDER BY createdAt ASC`,
+      threadId
+    );
+  },
+
+  async loadContinuityImportReviewGateState(
+    db: SQLiteDatabase,
+    threadId: string,
+    branchScopes?: AiBranchScope[]
+  ): Promise<AiContinuityImportReviewGateState | null> {
+    const importSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(
+      db,
+      threadId,
+      branchScopes
+    );
+    if (!importSessionId) {
+      return null;
+    }
+    const row = await db.getFirstAsync<{ reviewGateState: AiContinuityImportReviewGateState }>(
+      `SELECT reviewGateState
+       FROM ai_continuity_import_sessions
+       WHERE id = ?
+       LIMIT 1`,
+      importSessionId
+    );
+    return row?.reviewGateState ?? null;
+  },
+
+  async markContinuityImportReviewAccepted(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_continuity_import_sessions
+       SET reviewGateState = 'accepted',
+           memoryReviewStatus = 'accepted',
+           updatedAt = ?
+       WHERE id = ? AND reviewGateState <> 'rolled_back'`,
+      createTimestamp(),
+      importSessionId
+    );
+  },
+
+  async markContinuityImportReviewFailed(
+    db: SQLiteDatabase,
+    importSessionId: string,
+    errorMessage: string
+  ): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_continuity_import_sessions
+       SET reviewGateState = 'failed',
+           memoryReviewStatus = 'failed',
+           memoryReviewError = ?,
+           updatedAt = ?
+       WHERE id = ? AND reviewGateState <> 'rolled_back'`,
+      errorMessage,
+      createTimestamp(),
+      importSessionId
+    );
+  },
+
+  async findContinuityImportSessionById(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    return db.getFirstAsync<AiContinuityImportSessionRecord>(
+      'SELECT * FROM ai_continuity_import_sessions WHERE id = ?',
+      importSessionId
+    );
+  },
+
+  async findActiveContinuityImportSessionIdForBranch(
+    db: SQLiteDatabase,
+    threadId: string,
+    assistantMessageId: string
+  ): Promise<string | null> {
+    const row = await db.getFirstAsync<{ continuityImportSessionId: string | null }>(
+      `SELECT ai_continuity_import_sessions.id AS continuityImportSessionId
+       FROM ai_messages
+       JOIN ai_continuity_import_sessions
+         ON ai_continuity_import_sessions.importedBranchRootMessageId = ai_messages.branchRootMessageId
+       WHERE ai_messages.id = ?
+         AND ai_messages.threadId = ?
+         AND ai_continuity_import_sessions.threadId = ?
+         AND ai_continuity_import_sessions.rollbackState = 'available'
+         AND ai_continuity_import_sessions.reviewGateState <> 'rolled_back'
+       LIMIT 1`,
+      assistantMessageId,
+      threadId,
+      threadId
+    );
+    return row?.continuityImportSessionId ?? null;
+  },
+
+  async resolveContinuityImportSessionIdForBranchScopes(
+    db: SQLiteDatabase,
+    threadId: string,
+    branchScopes?: AiBranchScope[]
+  ): Promise<string | null> {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    const scopeClause = buildContinuityImportSessionBranchScopeClause(
+      'ai_continuity_import_sessions',
+      thread?.currentBranchRootMessageId ?? null,
+      branchScopes
+    );
+    const row = await db.getFirstAsync<{ continuityImportSessionId: string | null }>(
+      `SELECT ai_continuity_import_sessions.id AS continuityImportSessionId
+       FROM ai_continuity_import_sessions
+       WHERE ai_continuity_import_sessions.threadId = ?
+         AND ai_continuity_import_sessions.importedBranchRootMessageId IS NOT NULL
+         ${scopeClause.clause}
+       ORDER BY ai_continuity_import_sessions.createdAt DESC
+       LIMIT 1`,
+      threadId,
+      ...scopeClause.values
+    );
+    return row?.continuityImportSessionId ?? null;
+  },
+
+  async decrementContinuityRollbackRoundsRemaining(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    await db.runAsync(
+      `UPDATE ai_continuity_import_sessions
+       SET rollbackRoundsRemaining = CASE
+             WHEN rollbackRoundsRemaining > 0 THEN rollbackRoundsRemaining - 1
+             ELSE rollbackRoundsRemaining
+           END,
+           updatedAt = ?
+       WHERE id = ?
+         AND rollbackState = 'available'`,
+      createTimestamp(),
+      importSessionId
+    );
+    return aiThreadRepository.findContinuityImportSessionById(db, importSessionId);
+  },
+
+  async setContinuityImportRollbackState(
+    db: SQLiteDatabase,
+    input: {
+      importSessionId: string;
+      rollbackState: AiContinuityImportRollbackState;
+      reviewGateState?: AiContinuityImportReviewGateState;
+      rollbackRoundsRemaining?: number;
+      rolledBackAt?: string | null;
+      stabilizedAt?: string | null;
+    }
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    const updates = buildUpdateStatement({
+      rollbackState: input.rollbackState,
+      reviewGateState: input.reviewGateState,
+      rollbackRoundsRemaining: input.rollbackRoundsRemaining,
+      rolledBackAt: input.rolledBackAt,
+      stabilizedAt: input.stabilizedAt,
+      updatedAt: createTimestamp(),
+    });
+    await db.runAsync(
+      `UPDATE ai_continuity_import_sessions
+       SET ${updates.setClause}
+       WHERE id = ?`,
+      ...updates.values,
+      input.importSessionId
+    );
+    return aiThreadRepository.findContinuityImportSessionById(db, input.importSessionId);
+  },
+
+  async stabilizeContinuityImportSession(
+    db: SQLiteDatabase,
+    importSessionId: string,
+    stabilizedAt: string
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    return aiThreadRepository.setContinuityImportRollbackState(db, {
+      importSessionId,
+      rollbackState: 'locked',
+      rollbackRoundsRemaining: 0,
+      stabilizedAt,
+    });
+  },
+
+  async markContinuityImportRolledBack(
+    db: SQLiteDatabase,
+    importSessionId: string,
+    rolledBackAt: string
+  ): Promise<AiContinuityImportSessionRecord | null> {
+    return aiThreadRepository.setContinuityImportRollbackState(db, {
+      importSessionId,
+      rollbackState: 'rolled_back',
+      reviewGateState: 'rolled_back',
+      rolledBackAt,
+    });
+  },
+
+  async rollbackContinuityImportAcceptedEffects(
+    db: SQLiteDatabase,
+    importSessionId: string
+  ): Promise<void> {
+    const effects = await aiThreadRepository.listContinuityImportEffectsBySessionId(db, importSessionId);
+    for (const effect of [...effects].reverse()) {
+      if (effect.effectType === 'profile_upsert') {
+        const before = effect.beforeStateJson
+          ? JSON.parse(effect.beforeStateJson) as AiUserProfileRecord
+          : null;
+        const after = effect.afterStateJson
+          ? JSON.parse(effect.afterStateJson) as AiUserProfileRecord
+          : null;
+        const targetId = after?.id ?? before?.id ?? effect.targetRecordId ?? null;
+        if (!before) {
+          if (targetId) {
+            await db.runAsync('DELETE FROM ai_user_profiles WHERE id = ?', targetId);
+          }
+          continue;
+        }
+        if (targetId && targetId !== before.id) {
+          await db.runAsync('DELETE FROM ai_user_profiles WHERE id = ?', targetId);
+        }
+        await db.runAsync(
+          `INSERT INTO ai_user_profiles (
+             id, space, boundIpId, boundThreadId, profileJson, profileText, version, sourceThreadId, sourceStartMessageId,
+             sourceEndMessageId, messageCountAtUpdate, lastUpdatedAt, createdAt, updatedAt
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             space = excluded.space,
+             boundIpId = excluded.boundIpId,
+             boundThreadId = excluded.boundThreadId,
+             profileJson = excluded.profileJson,
+             profileText = excluded.profileText,
+             version = excluded.version,
+             sourceThreadId = excluded.sourceThreadId,
+             sourceStartMessageId = excluded.sourceStartMessageId,
+             sourceEndMessageId = excluded.sourceEndMessageId,
+             messageCountAtUpdate = excluded.messageCountAtUpdate,
+             lastUpdatedAt = excluded.lastUpdatedAt,
+             createdAt = excluded.createdAt,
+             updatedAt = excluded.updatedAt`,
+          before.id,
+          before.space,
+          before.boundIpId,
+          before.boundThreadId,
+          before.profileJson,
+          before.profileText,
+          before.version,
+          before.sourceThreadId,
+          before.sourceStartMessageId,
+          before.sourceEndMessageId,
+          before.messageCountAtUpdate,
+          before.lastUpdatedAt,
+          before.createdAt,
+          before.updatedAt
+        );
+        continue;
+      }
+      const before = effect.beforeStateJson
+        ? JSON.parse(effect.beforeStateJson) as AiMemoryRecord
+        : null;
+      const after = effect.afterStateJson
+        ? JSON.parse(effect.afterStateJson) as AiMemoryRecord
+        : null;
+      const targetId = after?.id ?? before?.id ?? effect.targetRecordId ?? null;
+      if (!before) {
+        if (targetId) {
+          await db.runAsync('DELETE FROM ai_memories WHERE id = ?', targetId);
+          await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', targetId);
+        }
+        continue;
+      }
+      if (targetId && targetId !== before.id) {
+        await db.runAsync('DELETE FROM ai_memories WHERE id = ?', targetId);
+        await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', targetId);
+      }
+      await db.runAsync(
+        `INSERT INTO ai_memories (
+           id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
+           confidence, importance, status, lastUsedAt, createdAt, updatedAt, deletedAt,
+           ipId, groupId, imageAssetId, assetSnapshotJson, sourceKind,
+           supersededByMemoryId, mergeReason, mergedAt, lastReconciledAt, reconcileSourceMessageId
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           space = excluded.space,
+           scope = excluded.scope,
+           scopeId = excluded.scopeId,
+           type = excluded.type,
+           content = excluded.content,
+           normalizedContent = excluded.normalizedContent,
+           sourceMessageId = excluded.sourceMessageId,
+           confidence = excluded.confidence,
+           importance = excluded.importance,
+           status = excluded.status,
+           lastUsedAt = excluded.lastUsedAt,
+           createdAt = excluded.createdAt,
+           updatedAt = excluded.updatedAt,
+           deletedAt = excluded.deletedAt,
+           ipId = excluded.ipId,
+           groupId = excluded.groupId,
+           imageAssetId = excluded.imageAssetId,
+           assetSnapshotJson = excluded.assetSnapshotJson,
+           sourceKind = excluded.sourceKind,
+           supersededByMemoryId = excluded.supersededByMemoryId,
+           mergeReason = excluded.mergeReason,
+           mergedAt = excluded.mergedAt,
+           lastReconciledAt = excluded.lastReconciledAt,
+           reconcileSourceMessageId = excluded.reconcileSourceMessageId`,
+        before.id,
+        before.space,
+        before.scope,
+        before.scopeId,
+        before.type,
+        before.content,
+        before.normalizedContent,
+        before.sourceMessageId,
+        before.confidence,
+        before.importance,
+        before.status,
+        before.lastUsedAt,
+        before.createdAt,
+        before.updatedAt,
+        before.deletedAt,
+        before.ipId,
+        before.groupId,
+        before.imageAssetId,
+        before.assetSnapshotJson,
+        before.sourceKind,
+        before.supersededByMemoryId,
+        before.mergeReason,
+        before.mergedAt,
+        before.lastReconciledAt,
+        before.reconcileSourceMessageId
+      );
+      const restored = await db.getFirstAsync<AiMemoryRecord>('SELECT * FROM ai_memories WHERE id = ?', before.id);
+      if (restored) {
+        await aiThreadRepository.syncMemoryFts(db, restored);
+      }
+    }
+  },
+
+  async createReversibleContinuitySummarySegment(
+    db: SQLiteDatabase,
+    input: Omit<AiThreadSummarySegmentRecord, 'createdAt' | 'updatedAt'>
+  ): Promise<AiThreadSummarySegmentRecord> {
+    return aiThreadRepository.createSummarySegment(db, {
+      ...input,
+      continuityImportSessionId: input.continuityImportSessionId ?? null,
+    });
+  },
+
   async updateMessageWherePromptSnapshotJsonContains(
     db: SQLiteDatabase,
     messageId: string,
@@ -1688,6 +2548,8 @@ export const aiThreadRepository = {
       modelId: patch.modelId,
       modelSnapshotJson: patch.modelSnapshotJson,
       promptSnapshotJson: patch.promptSnapshotJson,
+      continuityImportSessionId: patch.continuityImportSessionId,
+      continuitySyntheticKind: patch.continuitySyntheticKind,
       createdAt: patch.createdAt,
       completedAt: patch.completedAt,
       updatedAt: createTimestamp(),
@@ -2078,6 +2940,7 @@ export const aiThreadRepository = {
            SELECT * FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
+             AND ${excludeRolledBackContinuityPayload('ai_messages')}
            ORDER BY createdAt DESC
            LIMIT ?
           )
@@ -2092,6 +2955,7 @@ export const aiThreadRepository = {
       `SELECT * FROM ai_messages
        WHERE threadId = ?
          ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('ai_messages')}
        ORDER BY createdAt ASC`,
       threadId,
       ...visibleBranchClause.values
@@ -2107,6 +2971,7 @@ export const aiThreadRepository = {
            SELECT * FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
+             AND ${excludeRolledBackContinuityPayload('ai_messages')}
            ORDER BY createdAt DESC
            LIMIT ?
           )
@@ -2120,6 +2985,7 @@ export const aiThreadRepository = {
       `SELECT * FROM ai_messages
        WHERE threadId = ?
          ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('ai_messages')}
        ORDER BY createdAt ASC`,
       threadId,
       ...visibleBranchClause.values
@@ -2134,6 +3000,7 @@ export const aiThreadRepository = {
       `SELECT * FROM ai_messages
        WHERE id = ?
          AND threadId = ?
+         AND ${excludeRolledBackContinuityPayload('ai_messages')}
          ${visibleBranchClause.clause}`,
       anchorMessageId,
       threadId,
@@ -2149,6 +3016,7 @@ export const aiThreadRepository = {
            SELECT * FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
+             AND ${excludeRolledBackContinuityPayload('ai_messages')}
              AND (
                createdAt < ?
                OR (createdAt = ? AND id < ?)
@@ -2168,6 +3036,7 @@ export const aiThreadRepository = {
         `SELECT * FROM ai_messages
          WHERE threadId = ?
            ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
            AND (
              createdAt > ?
              OR (createdAt = ? AND id > ?)
@@ -2853,8 +3722,8 @@ export const aiThreadRepository = {
     await db.runAsync(
       `INSERT INTO ai_thread_summary_segments (
         id, threadId, space, kind, summaryText, startMessageId, endMessageId,
-        startAt, endAt, roundCount, sourceSegmentIdsJson, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
       input.space,
@@ -2866,6 +3735,7 @@ export const aiThreadRepository = {
       input.endAt,
       input.roundCount,
       input.sourceSegmentIdsJson,
+      input.continuityImportSessionId ?? null,
       now,
       now
     );
@@ -2881,6 +3751,7 @@ export const aiThreadRepository = {
     return db.getAllAsync<AiThreadSummarySegmentRecord>(
       `SELECT * FROM ai_thread_summary_segments
        WHERE threadId = ?
+         AND ${excludeRolledBackContinuityPayload('ai_thread_summary_segments')}
          ${visibilityClause.clause ? `AND ${visibilityClause.clause}` : ''}
        ORDER BY createdAt ASC, id ASC`,
       threadId,

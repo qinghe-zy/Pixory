@@ -64,6 +64,7 @@ test('AI session model resolver documents invalid and partial-null cases', () =>
   assert.match(service, /if\s*\(thread\.providerId\)/);
   assert.match(service, /thread\.modelId\s*\?/);
   assert.match(service, /supportsChat/);
+  assert.match(service, /thread\.modelId \? 'thread_model' : 'provider_default'/);
 });
 
 test('new AI chats follow global default unless a model is explicitly supplied', () => {
@@ -87,6 +88,17 @@ test('session model settings uses the same resolver as generation', () => {
   assert.match(service, /loadThreadSessionModelConfig[\s\S]*currentStatus[\s\S]*'invalid'/);
 });
 
+test('session model resolver falls back to another chat-capable provider model after a deleted default clears provider default bindings', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const repository = read('src/database/repositories/aiProviderRepository.ts');
+
+  assert.match(repository, /defaultChatModelId = CASE WHEN defaultChatModelId = \? THEN NULL ELSE defaultChatModelId END/);
+  assert.match(service, /const defaultModel = provider\.defaultChatModelId/);
+  assert.match(service, /if \(provider\.defaultChatModelId && !defaultModel && !explicitModel\)/);
+  assert.match(service, /const resolvedModel = explicitModel \?\? defaultModel \?\? models\.find\(\(model\) => model\.supportsChat\) \?\? null/);
+  assert.match(service, /return resolveProviderModel\(provider, thread\.modelId, thread\.modelId \? 'thread_model' : 'provider_default'\)/);
+});
+
 test('current session manual model candidates do not replace the global default model', () => {
   const chat = read('src/ai/aiChatService.ts');
   const providerService = read('src/ai/aiProviderService.ts');
@@ -99,6 +111,16 @@ test('current session manual model candidates do not replace the global default 
   assert.doesNotMatch(candidateFunction, /updateProviderDefaults/);
   assert.match(sessionConfig, /addManualSessionModel[\s\S]*saveThreadSessionModelOverride/);
   assert.doesNotMatch(sessionConfig, /addManualSessionModel[\s\S]*saveManualChatModel\(/);
+});
+
+test('session model list supports deleting stale provider models so current-thread options do not keep old gateway entries', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(chat, /export async function deleteProviderModel/);
+  assert.match(sessionConfig, /删除模型/);
+  assert.match(sessionConfig, /deleteProviderModel/);
+  assert.match(sessionConfig, /loadThreadSessionModelConfig/);
 });
 
 test('session model draft persistence is not blocked by the outer saving flag', () => {

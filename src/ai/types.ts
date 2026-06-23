@@ -16,6 +16,7 @@ export type AiRoleCardSourceType =
 export type AiMemorySourceKind = 'auto' | 'manual';
 export type AiMessageRole = 'user' | 'assistant' | 'system';
 export type AiMessageStatus = 'draft' | 'queued' | 'generating' | 'completed' | 'failed' | 'stopped';
+export type AiMessageSourceKind = 'default' | 'continuity_import';
 export type AiDocumentOwnerType = 'knowledge_base' | 'ip' | 'thread';
 export type AiDocumentSourceType = 'manual_text' | 'txt' | 'markdown' | 'pdf' | 'docx' | 'ip_generated';
 export type AiDocumentStatus =

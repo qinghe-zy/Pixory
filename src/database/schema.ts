@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 42;
+export const DATABASE_VERSION = 45;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -953,6 +953,83 @@ CREATE TABLE IF NOT EXISTS ai_message_attachments (
 
 CREATE INDEX IF NOT EXISTS idx_ai_message_attachments_message
   ON ai_message_attachments(messageId, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V43 = `
+CREATE TABLE IF NOT EXISTS ai_continuity_import_sessions (
+  id TEXT PRIMARY KEY NOT NULL,
+  threadId TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  sourceKind TEXT NOT NULL,
+  sourcePlatform TEXT,
+  formatVersion TEXT,
+  status TEXT NOT NULL,
+  rollbackState TEXT NOT NULL,
+  rollbackRoundsRemaining INTEGER NOT NULL DEFAULT 10,
+  reviewGateState TEXT NOT NULL,
+  preImportBranchRootMessageId TEXT,
+  preImportBranchVersionIndex INTEGER,
+  importedBranchRootMessageId TEXT,
+  importedBranchVersionIndex INTEGER,
+  importAnchorMessageId TEXT,
+  importAnchorMessageRole TEXT,
+  importBranchRootKind TEXT,
+  rawDocumentText TEXT NOT NULL,
+  rawDocumentHash TEXT NOT NULL,
+  parsedMessageCount INTEGER NOT NULL DEFAULT 0,
+  containsCompressedContinuity INTEGER NOT NULL DEFAULT 0,
+  memoryReviewStatus TEXT,
+  memoryReviewError TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  rolledBackAt TEXT,
+  stabilizedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_continuity_import_blocks (
+  id TEXT PRIMARY KEY NOT NULL,
+  importSessionId TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (importSessionId) REFERENCES ai_continuity_import_sessions(id) ON DELETE CASCADE
+);
+
+ALTER TABLE ai_messages ADD COLUMN continuityImportSessionId TEXT REFERENCES ai_continuity_import_sessions(id) ON DELETE SET NULL;
+ALTER TABLE ai_messages ADD COLUMN continuitySyntheticKind TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_continuity_import_session
+  ON ai_messages(continuityImportSessionId, continuitySyntheticKind, createdAt);
+CREATE INDEX IF NOT EXISTS idx_ai_continuity_import_sessions_thread
+  ON ai_continuity_import_sessions(threadId, createdAt);
+CREATE INDEX IF NOT EXISTS idx_ai_continuity_import_blocks_session
+  ON ai_continuity_import_blocks(importSessionId, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V44 = `
+ALTER TABLE ai_thread_summary_segments ADD COLUMN continuityImportSessionId TEXT REFERENCES ai_continuity_import_sessions(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ai_summary_segments_continuity_import_session
+  ON ai_thread_summary_segments(continuityImportSessionId, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V45 = `
+CREATE TABLE IF NOT EXISTS ai_continuity_import_effects (
+  id TEXT PRIMARY KEY NOT NULL,
+  importSessionId TEXT NOT NULL,
+  effectOrder INTEGER NOT NULL,
+  effectType TEXT NOT NULL,
+  targetRecordId TEXT,
+  beforeStateJson TEXT,
+  afterStateJson TEXT,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (importSessionId) REFERENCES ai_continuity_import_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_continuity_import_effects_session
+  ON ai_continuity_import_effects(importSessionId, effectOrder, createdAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

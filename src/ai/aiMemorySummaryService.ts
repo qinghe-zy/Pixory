@@ -90,7 +90,16 @@ async function loadThreadOrReturn(db: SQLiteDatabase, threadId: string): Promise
   return aiThreadRepository.findThreadById(db, threadId);
 }
 
-export async function compressOldestThreadRounds(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function compressOldestThreadRounds(
+  space: PixorySpace,
+  threadId: string,
+  options: {
+    allowRemoteModel?: boolean;
+    branchScopes?: AiBranchScope[];
+    reversibleImportSessionId?: string | null;
+    allowIrreversibleImportEffects?: boolean;
+  } = {}
+): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -144,7 +153,25 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
   const summaryText = modelResult.text ?? buildLocalCompressionSummary(prepared.conversation);
 
   await runWithDatabaseSpace(space, async (db) => {
+    if (!options.allowIrreversibleImportEffects && options.reversibleImportSessionId) {
+      await aiThreadRepository.createReversibleContinuitySummarySegment(db, {
+        continuityImportSessionId: options.reversibleImportSessionId,
+        endAt: prepared.endAt,
+        endMessageId: prepared.endMessageId,
+        id: createAiMemoryId('aisum'),
+        kind: 'compressed',
+        roundCount: prepared.roundCount,
+        sourceSegmentIdsJson: '[]',
+        space,
+        startAt: prepared.startAt,
+        startMessageId: prepared.startMessageId,
+        summaryText,
+        threadId,
+      });
+      return;
+    }
     await aiThreadRepository.createSummarySegment(db, {
+      continuityImportSessionId: null,
       endAt: prepared.endAt,
       endMessageId: prepared.endMessageId,
       id: createAiMemoryId('aisum'),
@@ -167,7 +194,19 @@ export async function compressOldestThreadRounds(space: PixorySpace, threadId: s
   return stepResultFromModel(modelResult, !modelResult.text);
 }
 
-export async function maybeMergeSummarySegments(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function maybeMergeSummarySegments(
+  space: PixorySpace,
+  threadId: string,
+  options: {
+    allowRemoteModel?: boolean;
+    branchScopes?: AiBranchScope[];
+    reversibleImportSessionId?: string | null;
+    allowIrreversibleImportEffects?: boolean;
+  } = {}
+): Promise<MemoryMaintenanceStepResult> {
+  if (options.allowIrreversibleImportEffects === false) {
+    return emptyMaintenanceStepResult();
+  }
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await loadThreadOrReturn(db, threadId);
     if (!thread) {
@@ -207,6 +246,7 @@ export async function maybeMergeSummarySegments(space: PixorySpace, threadId: st
   const summaryText = modelResult.text ?? buildLocalMergedSummary(prepared.summaries);
   await runWithDatabaseSpace(space, async (db) => {
     await aiThreadRepository.createSummarySegment(db, {
+      continuityImportSessionId: null,
       endAt: prepared.endAt,
       endMessageId: prepared.endMessageId,
       id: createAiMemoryId('aisum'),

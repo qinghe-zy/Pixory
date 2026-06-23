@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
@@ -15,10 +18,12 @@ import {
   applyRoleCardToThread,
   addThreadSessionManualModel,
   clearThreadSessionModelOverride,
+  deleteProviderModel,
   deleteAiThreads,
   loadThreadAiUsageOverview,
   loadThreadSessionConfig,
   loadThreadSessionModelConfig,
+  importThreadContinuity,
   renameAiThread,
   saveThreadSessionModelOverride,
   verifyThreadSessionModelOverride,
@@ -26,12 +31,15 @@ import {
   type AiThreadSessionModelConfig,
 } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
+import { buildExternalContinuityPrompt } from '../ai/aiContinuityImportPrompt';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
+import { builtInModelsForProvider } from '../ai/providerRegistry';
 import { exportRoleContinuityPackage, getExportableRoleCardIdForThread } from '../ai/aiRoleCardContinuityExportService';
 import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
+import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
 
 interface AiSessionConfigScreenProps {
   space: PixorySpace;
@@ -97,6 +105,16 @@ function getDefaultSystemPrompt(contextType: AiContextType): string {
   return contextType === 'normal' ? '' : DEFAULT_AI_ROLE_PROMPT;
 }
 
+function isProtectedSessionModelOption(option: NonNullable<AiThreadSessionModelConfig['options']>[number]): boolean {
+  const providerType = BUILT_IN_PROVIDERS.find((provider) => provider.providerType === option.providerId)?.providerType
+    ?? (option.providerId === 'openai_compatible' || option.providerId === 'custom' ? option.providerId : null);
+  if (!providerType) {
+    return false;
+  }
+  const builtInModelIds = new Set(builtInModelsForProvider(option.providerId, providerType).map((model) => model.modelId));
+  return builtInModelIds.has(option.modelId);
+}
+
 export function AiSessionConfigScreen({
   space,
   threadId,
@@ -138,6 +156,7 @@ export function AiSessionConfigScreen({
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const [exportingRolePackage, setExportingRolePackage] = useState(false);
+  const [importingContinuity, setImportingContinuity] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const systemPromptFieldRef = useRef<View | null>(null);
   const settingsLoadedRef = useRef(false);
@@ -570,6 +589,98 @@ export function AiSessionConfigScreen({
     );
   }
 
+  async function pickAndImportContinuity() {
+    if (!threadId || importingContinuity) {
+      return;
+    }
+    setImportingContinuity(true);
+    try {
+      const pickerResult = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        type: ['text/plain', 'text/markdown', '*/*'],
+      });
+      if (pickerResult.canceled || !pickerResult.assets?.[0]) {
+        return;
+      }
+      const asset = pickerResult.assets[0];
+      const text = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const importResult = await importThreadContinuity({
+        fileName: asset.name,
+        text,
+        space,
+        threadId,
+      });
+      setStatus({
+        message: importResult.partial
+          ? `已部分接回 ${asset.name}：恢复 ${importResult.importedMessageCount} 条消息，另有 ${importResult.continuityBlockCount} 段内容保留为连续性块交给记忆系统审读。`
+          : `已接回 ${asset.name}，当前会话会切到导入分支继续聊天。`,
+        tone: 'success',
+        title: importResult.partial ? '外部对话已部分接回' : '外部对话已接回',
+      });
+    } catch (error) {
+      setStatus({
+        message: error instanceof Error ? error.message : '外部对话接回失败',
+        tone: 'error',
+        title: '导入失败',
+      });
+    } finally {
+      setImportingContinuity(false);
+    }
+  }
+
+  function confirmDeleteSessionModel(option: NonNullable<AiThreadSessionModelConfig['options']>[number]) {
+    Alert.alert(
+      '删除模型',
+      '删除后，这个模型会从全局和本会话模型列表中移除；如果当前会话正在使用它，会自动回退为跟随全局默认。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setSavingModel(true);
+              try {
+                await deleteProviderModel({
+                  modelId: option.modelId,
+                  providerId: option.providerId,
+                  space,
+                });
+                const modelConfig = threadId ? await loadThreadSessionModelConfig(space, threadId) : null;
+                setSessionModelConfig(modelConfig);
+                setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+                setSessionApiKeyDraft('');
+                setManualSessionModelDraft('');
+                setStatus({ message: `${option.label} 已删除。`, tone: 'success', title: '模型已删除' });
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error', title: '删除失败' });
+              } finally {
+                setSavingModel(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  async function copyExternalContinuityPrompt() {
+    try {
+      await Clipboard.setStringAsync(buildExternalContinuityPrompt());
+      setStatus({
+        message: '已复制外部迁移提示词，可发给其他平台 AI 生成导回 Pixory 的连续性文档。',
+        tone: 'success',
+        title: '提示词已复制',
+      });
+    } catch (error) {
+      setStatus({
+        message: error instanceof Error ? error.message : '复制迁移提示词失败',
+        tone: 'error',
+        title: '复制失败',
+      });
+    }
+  }
+
   function formatMinute(value: string): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -681,6 +792,21 @@ export function AiSessionConfigScreen({
               style={({ pressed }) => [styles.compactButton, (!threadId || !currentRoleCardId || exportingRolePackage) && styles.disabled, pressed && threadId && currentRoleCardId && !exportingRolePackage && styles.pressed]}
             >
               <Text style={styles.compactButtonText}>{exportingRolePackage ? '导出中' : '导出当前角色包'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!threadId || importingContinuity}
+              onPress={() => void pickAndImportContinuity()}
+              style={({ pressed }) => [styles.compactButton, (!threadId || importingContinuity) && styles.disabled, pressed && threadId && !importingContinuity && styles.pressed]}
+            >
+              <Text style={styles.compactButtonText}>{importingContinuity ? '导入中' : '接回外部对话'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void copyExternalContinuityPrompt()}
+              style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.compactButtonText}>复制迁移提示词</Text>
             </Pressable>
           </View>
         </AiLightCard>
@@ -946,16 +1072,29 @@ export function AiSessionConfigScreen({
               <Text style={styles.caption}>{sessionModelConfig?.followDefaultLabel ?? '使用全局默认模型'}</Text>
             </Pressable>
             {sessionModelConfig?.options.map((option) => (
-              <Pressable
-                accessibilityRole="button"
-                disabled={savingModel}
-                key={`${option.providerId}:${option.modelId}`}
-                onPress={() => void saveSessionModel(option.providerId, option.modelId)}
-                style={({ pressed }) => [styles.modelOption, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
-              >
-                <Text style={styles.modelOptionTitle}>{option.providerLabel} · {option.label}</Text>
-                <Text style={styles.caption}>{option.hasApiKey ? '可用于当前会话' : '未填写 API key'}</Text>
-              </Pressable>
+              <View key={`${option.providerId}:${option.modelId}`} style={styles.modelOption}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={savingModel}
+                  onPress={() => void saveSessionModel(option.providerId, option.modelId)}
+                  style={({ pressed }) => [styles.modelOptionSelectAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+                >
+                  <Text style={styles.modelOptionTitle}>{option.providerLabel} · {option.label}</Text>
+                  <Text style={styles.caption}>{option.hasApiKey ? '可用于当前会话' : '未填写 API key'}</Text>
+                </Pressable>
+                {!isProtectedSessionModelOption(option) ? (
+                  <Pressable
+                    accessibilityLabel={`删除模型 ${option.label}`}
+                    accessibilityRole="button"
+                    disabled={savingModel}
+                    onPress={() => confirmDeleteSessionModel(option)}
+                    style={({ pressed }) => [styles.modelOptionDeleteAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+                  >
+                    <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                    <Text style={styles.textActionLabel}>删除模型</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ))}
           </View>
         </ScrollView>
@@ -1250,6 +1389,16 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
+  },
+  modelOptionSelectAction: {
+    gap: rhythm.microGap,
+  },
+  modelOptionDeleteAction: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing[1],
+    marginTop: spacing[2],
   },
   modelOptionTitle: {
     ...typography.textStyles.body,

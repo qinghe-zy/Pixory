@@ -101,7 +101,7 @@ test('provider verification state is stored without API key plaintext', () => {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
 
-  assert.match(schema, /DATABASE_VERSION = 42/);
+  assert.match(schema, /DATABASE_VERSION = 45/);
   assert.match(schema, /keyUpdatedAt TEXT/);
   assert.match(schema, /lastVerifiedAt TEXT/);
   assert.match(schema, /lastVerifyStatus TEXT/);
@@ -197,6 +197,78 @@ test('provider settings labels chat model selection as a global default', () => 
   assert.match(providerSettings, /新创建会话的默认选择/);
   assert.match(providerSettings, /不会影响已有独立设置的会话/);
   assert.match(providerSettings, /saveProviderDefaultModels/);
+});
+
+test('provider model entries can be deleted with cleanup across defaults and session overrides', () => {
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+  const registry = fs.readFileSync(registryPath, 'utf8');
+  const sessionSettings = fs.readFileSync(path.join(root, 'src/screens/AiSessionConfigScreen.tsx'), 'utf8');
+  const chatService = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+
+  assert.match(repository, /deleteProviderModelAndCleanup/);
+  assert.match(repository, /DELETE FROM ai_provider_models WHERE providerId = \? AND modelId = \?/);
+  assert.match(repository, /defaultChatModelId = CASE WHEN defaultChatModelId = \? THEN NULL ELSE defaultChatModelId END/);
+  assert.match(repository, /defaultEmbeddingModelId = CASE WHEN defaultEmbeddingModelId = \? THEN NULL ELSE defaultEmbeddingModelId END/);
+  assert.match(repository, /UPDATE ai_threads/);
+  assert.match(repository, /providerId = CASE WHEN providerId = \? AND modelId = \? THEN NULL ELSE providerId END/);
+  assert.match(repository, /modelId = CASE WHEN providerId = \? AND modelId = \? THEN NULL ELSE modelId END/);
+  assert.match(providerService, /export async function deleteProviderModel/);
+  assert.match(providerService, /builtInModelsForProvider\(providerId, provider\.providerType\)/);
+  assert.match(providerService, /builtInModelIds\.has\(modelId\)/);
+  assert.match(chatService, /deleteProviderModel/);
+  assert.match(providerSettings, /删除模型/);
+  assert.match(providerSettings, /deleteProviderModel/);
+  assert.match(providerSettings, /isProtectedProviderModel/);
+  assert.match(providerSettings, /builtInModelsForProvider\(card\.provider\.id, card\.provider\.providerType\)/);
+  assert.doesNotMatch(providerSettings, /source !== 'built_in'/);
+  assert.doesNotMatch(providerSettings, /model\.source/);
+  assert.match(sessionSettings, /isProtectedSessionModelOption/);
+  assert.match(sessionSettings, /deleteProviderModel/);
+  assert.match(sessionSettings, /builtInModelsForProvider\(option\.providerId, providerType\)/);
+  assert.doesNotMatch(sessionSettings, /source !== 'built_in'/);
+  assert.doesNotMatch(sessionSettings, /option\.source/);
+  assert.match(registry, /source: 'built_in'/);
+});
+
+test('provider verification preserves built-in and synced model provenance instead of downgrading them to manual entries', () => {
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const repository = fs.readFileSync(repositoryPath, 'utf8');
+
+  assert.match(providerService, /async function buildSuccessfulModelRecord/);
+  assert.match(providerService, /if \(builtIn\) \{[\s\S]*source: 'built_in'/);
+  assert.match(providerService, /const existingModel = await runWithDatabaseSpace\(space, \(db\) => aiProviderRepository\.findModel\(db, providerId, trimmedModelId\)\)/);
+  assert.match(providerService, /if \(existingModel\) \{[\s\S]*source: existingModel\.source/);
+  assert.match(providerService, /labels\.includes\('Verified'\)/);
+  assert.match(providerService, /source: 'synced'/);
+  assert.match(providerService, /labels: verifiedLabels\(builtIn\.labels\)/);
+  assert.match(providerService, /labels: verifiedLabels\(existingModel\.labels\)/);
+  assert.match(providerService, /labels: verifiedLabels\(baseRecord\.labels\)/);
+  assert.match(repository, /ai_provider_models\.source = 'manual' AND excluded\.source <> 'manual'/);
+});
+
+test('manual provider model entry does not overwrite existing built-in or synced model records with a conflicting source', () => {
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+
+  assert.match(providerService, /async function loadProviderAndModel/);
+  assert.match(providerService, /if \(!existingModel \|\| existingModel\.source === 'manual'\) \{/);
+  assert.match(providerService, /if \(existingModel\.source !== 'manual'\) \{\s*return;\s*\}/);
+  assert.match(providerService, /该模型已存在，但当前没有标记为聊天模型。/);
+  assert.match(providerService, /该模型已存在，但当前没有标记为 Embedding 模型。/);
+});
+
+test('manual chat and embedding model saves keep existing built-in or synced records while still allowing compatible defaults', () => {
+  const providerService = fs.readFileSync(providerServicePath, 'utf8');
+  const saveManualChatBody = providerService.match(/export async function saveManualChatModel[\s\S]*?(?=\nexport async function saveManualChatModelCandidate)/)?.[0] ?? '';
+  const saveManualEmbeddingBody = providerService.match(/export async function saveManualEmbeddingModel[\s\S]*?(?=\nexport async function deleteProviderModel)/)?.[0] ?? '';
+
+  assert.match(saveManualChatBody, /if \(existingModel && !existingModel\.supportsChat\) \{/);
+  assert.match(saveManualChatBody, /await aiProviderRepository\.updateProviderDefaults\(db, provider\.id, \{ defaultChatModelId: trimmedModelId \}\)/);
+  assert.match(saveManualEmbeddingBody, /if \(existingModel && !existingModel\.supportsEmbedding\) \{/);
+  assert.match(saveManualEmbeddingBody, /await aiProviderRepository\.updateProviderDefaults\(db, provider\.id, \{ defaultEmbeddingModelId: trimmedModelId \}\)/);
+  assert.doesNotMatch(saveManualChatBody, /existingModel\.source !== 'manual'[\s\S]*throw new Error/);
+  assert.doesNotMatch(saveManualEmbeddingBody, /existingModel\.source !== 'manual'[\s\S]*throw new Error/);
 });
 
 test('AI memory maintenance model resolves status and reuses SecureStore keys', () => {

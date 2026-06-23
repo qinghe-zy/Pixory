@@ -19,17 +19,24 @@ import {
   type PixorySpace,
 } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
 import {
+  deleteProviderModel as deleteProviderModelService,
   getAdapterForProvider,
   ensureBuiltInProviders,
   listProviderCards,
   recordSuccessfulProviderModel,
   saveManualChatModelCandidate,
 } from './aiProviderService';
+import {
+  importThreadContinuity as importThreadContinuityService,
+  onContinuityImportConversationRoundCompleted,
+  rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
+} from './aiContinuityImportService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
 import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, importPickedDocumentsToThread, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
@@ -198,6 +205,7 @@ export interface AiSessionModelOption {
   modelId: string;
   providerId: string;
   providerLabel: string;
+  source: AiProviderModelRecord['source'];
 }
 
 export interface AiThreadSessionModelConfig {
@@ -1673,6 +1681,26 @@ export async function createNormalThreadFromRoleCard(input: {
   });
 }
 
+export async function importThreadContinuity(input: {
+  fileName: string;
+  text: string;
+  space: PixorySpace;
+  threadId: string;
+}) {
+  return importThreadContinuityService(input);
+}
+
+export async function rollbackThreadContinuityImport(input: {
+  importSessionId: string;
+  space: PixorySpace;
+}) {
+  return rollbackThreadContinuityImportService(input);
+}
+
+export async function loadThreadContinuityMilestones(space: PixorySpace, threadId: string): Promise<AiThreadContinuityMilestoneRecord[]> {
+  return runWithDatabaseSpace(space, (db) => aiThreadRepository.listThreadContinuityMilestones(db, threadId));
+}
+
 export async function loadThreadTitle(space: PixorySpace, threadId: string): Promise<string | null> {
   return runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
@@ -1942,6 +1970,7 @@ export async function loadThreadSessionModelConfig(space: PixorySpace, threadId:
         modelId: model.modelId,
         providerId: card.provider.id,
         providerLabel: card.provider.displayName,
+        source: model.source,
       }))
   );
   const [resolvedModel, defaultResolvedModel] = await Promise.all([
@@ -1984,6 +2013,14 @@ export async function addThreadSessionManualModel(input: {
   space: PixorySpace;
 }): Promise<void> {
   await saveManualChatModelCandidate(input.space, input.providerId, input.modelId);
+}
+
+export async function deleteProviderModel(input: {
+  modelId: string;
+  providerId: string;
+  space: PixorySpace;
+}): Promise<void> {
+  await deleteProviderModelService(input.space, input.providerId, input.modelId);
 }
 
 export async function saveThreadSessionModelOverride(input: {
@@ -2762,7 +2799,7 @@ async function streamAssistantReply(input: {
   pressureProbeExpectedAt += STREAMING_PRESSURE_RECOVERY_MS;
   setTimeout(sampleStreamingDevicePressure, STREAMING_PRESSURE_RECOVERY_MS);
   const adapter = getAdapterForProvider(provider);
-  const FIRST_PROVIDER_BYTE_TIMEOUT_MS = 20000;
+  const FIRST_PROVIDER_BYTE_TIMEOUT_MS = 60000;
   const PROVIDER_IDLE_TIMEOUT_MS = 45000;
   let providerTimeout: ReturnType<typeof setTimeout> | null = null;
   const clearProviderTimeout = () => {
@@ -3031,6 +3068,19 @@ async function streamAssistantReply(input: {
   });
   if (answerText) {
     await recordSuccessfulProviderModel(input.space, provider.id, modelId);
+    const activeImportSessionId = await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.findActiveContinuityImportSessionIdForBranch(
+        db,
+        input.thread.id,
+        input.assistantMessageId
+      )
+    );
+    if (activeImportSessionId) {
+      await onContinuityImportConversationRoundCompleted({
+        importSessionId: activeImportSessionId,
+        space: input.space,
+      });
+    }
     await finalizeThreadTitleAfterReply({
       assistantReply: answerText,
       space: input.space,

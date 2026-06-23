@@ -23,10 +23,12 @@ import {
   flushStreamingMessageSnapshot,
   getCurrentChatModelLabel,
   listThreadMessages,
+  loadThreadContinuityMilestones,
   loadThreadTitle,
   loadThreadAvatarConfig,
   listAiHistoryThreads,
   renameAiThread,
+  rollbackThreadContinuityImport,
   listFavoriteAssistantMessageKeys,
   toggleAssistantMessageFavorite,
   type AiMessageWithCitations,
@@ -55,7 +57,7 @@ import {
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
-import type { AiBranchScope, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiThreadContinuityMilestoneRecord, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
 import { layout, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
@@ -116,6 +118,8 @@ function createStreamingAssistantMessage(threadId: string, assistantMessageId: s
     branchVersionIndex: null,
     citations: [],
     completedAt: null,
+    continuityImportSessionId: null,
+    continuitySyntheticKind: null,
     content: '',
     createdAt: now,
     errorMessage: null,
@@ -207,6 +211,36 @@ type ReloadMessagesOptions = {
   forceToLatest?: boolean;
   limitOverride?: number;
 };
+
+type ActiveContinuityMilestone = AiThreadContinuityMilestoneRecord & {
+  label: string;
+  detailLines: string[];
+};
+
+function formatMinute(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function continuitySourceLabel(sourceKind: AiThreadContinuityMilestoneRecord['sourceKind']): string {
+  return sourceKind === 'pixory_native_markdown' ? 'Pixory 原生连续性' : '外部连续性文档';
+}
+
+function continuityReviewLabel(reviewGateState: AiThreadContinuityMilestoneRecord['reviewGateState']): string {
+  if (reviewGateState === 'accepted' || reviewGateState === 'not_required') {
+    return '记忆审读：已通过';
+  }
+  if (reviewGateState === 'failed') {
+    return '记忆审读：未通过';
+  }
+  if (reviewGateState === 'pending_review') {
+    return '记忆审读：待审读';
+  }
+  return '记忆审读：不可用';
+}
 
 const shouldUseLiveStreamingPatch = (patch: AiStreamingMessagePatch) => {
   return (
@@ -418,6 +452,7 @@ export function AiChatScreen({
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
   const [searchHighlightMessageId, setSearchHighlightMessageId] = useState<string | null>(null);
+  const [continuityMilestones, setContinuityMilestones] = useState<AiThreadContinuityMilestoneRecord[]>([]);
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
@@ -530,6 +565,34 @@ export function AiChatScreen({
     visibleMessageItems,
     visibleMessages,
   } = visibleMessageState;
+  const activeContinuityMilestone = useMemo<ActiveContinuityMilestone | null>(() => {
+    if (continuityMilestones.length === 0) {
+      return null;
+    }
+    const visibleBranchRootIds = new Set(
+      visibleMessages
+        .map((message) => message.branchRootMessageId)
+        .filter((branchRootMessageId): branchRootMessageId is string => typeof branchRootMessageId === 'string' && branchRootMessageId.length > 0)
+    );
+    const matched = continuityMilestones.find((milestone) => visibleBranchRootIds.has(milestone.branchRootMessageId));
+    if (!matched) {
+      return null;
+    }
+    return {
+      ...matched,
+      label: matched.rollbackState === 'available'
+        ? `还可回退：剩余 ${matched.rollbackRoundsRemaining} 轮`
+        : '已稳定接入，不能回退',
+      detailLines: [
+        continuitySourceLabel(matched.sourceKind),
+        matched.sourcePlatform ? `来源平台：${matched.sourcePlatform}` : null,
+        `导入时间：${formatMinute(matched.createdAt)}`,
+        `恢复消息：${matched.parsedMessageCount} 条`,
+        matched.containsCompressedContinuity ? '包含压缩连续性块' : '无压缩连续性块',
+        continuityReviewLabel(matched.reviewGateState),
+      ].filter((line): line is string => Boolean(line)),
+    };
+  }, [continuityMilestones, visibleMessages]);
   const fallbackMemoryCaptures = useMemo(
     () => memoryCaptures.filter((item) => !item.sourceMessageId),
     [memoryCaptures]
@@ -1244,6 +1307,7 @@ export function AiChatScreen({
       if (!targetThreadId) {
         resetStreamingReadBufferState();
         replaceMessages([]);
+        setContinuityMilestones([]);
         setHasEarlierMessages(false);
         loadedMessageLimitRef.current = CHAT_MESSAGE_PAGE_SIZE;
         setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
@@ -1263,10 +1327,12 @@ export function AiChatScreen({
         limit: messageLimit,
         selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
       });
+      const nextContinuityMilestones = await loadThreadContinuityMilestones(space, targetThreadId);
       if (!isLatestRequest('messages', requestId, targetThreadId)) {
         return;
       }
       activeMessageBranchScopesRef.current = branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
+      setContinuityMilestones(nextContinuityMilestones);
       setHasEarlierMessages(options.anchorMessageId ? true : nextMessages.length >= messageLimit);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
@@ -2604,7 +2670,7 @@ export function AiChatScreen({
         style={styles.keyboardAvoidingHost}
       >
       <View style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
-      <View style={styles.header}>
+        <View style={styles.header}>
         <Pressable accessibilityLabel="打开综合记录" accessibilityRole="button" onPress={() => setRecordDrawerVisible(true)} style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}>
           <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
         </Pressable>
@@ -2647,6 +2713,64 @@ export function AiChatScreen({
           </Pressable>
         </View>
       </View>
+      {activeContinuityMilestone ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            if (activeContinuityMilestone.rollbackState !== 'available') {
+              return;
+            }
+            Alert.alert(
+              '回退接回分支',
+              '这会回到接回前的会话状态，并保留导入内容作为审计记录。',
+              [
+                { text: '取消', style: 'cancel' },
+                {
+                  text: '确认回退',
+                  style: 'destructive',
+                  onPress: () => {
+                    void (async () => {
+                      try {
+                        await rollbackThreadContinuityImport({
+                          importSessionId: activeContinuityMilestone.importSessionId,
+                          space,
+                        });
+                        const targetThreadId = activeThreadIdRef.current;
+                        if (targetThreadId) {
+                          const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
+                          await reloadMessages(targetThreadId, {
+                            branchScopes: currentBranchScopes,
+                            forceToLatest: false,
+                          });
+                        }
+                      } catch (error) {
+                        setErrorMessage(error instanceof Error ? error.message : '回退连续性导入失败');
+                      }
+                    })();
+                  },
+                },
+              ]
+            );
+          }}
+          style={({ pressed }) => [
+            styles.continuityMilestone,
+            activeContinuityMilestone.rollbackState !== 'available' && styles.continuityMilestoneLocked,
+            pressed && activeContinuityMilestone.rollbackState === 'available' && styles.pressed,
+          ]}
+        >
+          <Ionicons
+            color={activeContinuityMilestone.rollbackState === 'available' ? aiLightColors.coralActive : aiLightColors.muted}
+            name={activeContinuityMilestone.rollbackState === 'available' ? 'git-branch-outline' : 'lock-closed-outline'}
+            size={14}
+          />
+          <View style={styles.continuityMilestoneCopy}>
+            <Text style={styles.continuityMilestoneText}>{activeContinuityMilestone.label}</Text>
+            {activeContinuityMilestone.detailLines.map((line) => (
+              <Text key={line} style={styles.continuityMilestoneMeta}>{line}</Text>
+            ))}
+          </View>
+        </Pressable>
+      ) : null}
       {newChatFeedbackVisible ? (
         <View accessibilityLiveRegion="polite" style={styles.newChatFeedback}>
           <Ionicons color={aiLightColors.coralActive} name="checkmark-circle-outline" size={14} />
@@ -2870,6 +2994,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   newChatFeedbackText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.ink,
+    fontWeight: '600',
+  },
+  continuityMilestone: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[1],
+    minHeight: spacing[7],
+    paddingHorizontal: spacing[3],
+  },
+  continuityMilestoneCopy: {
+    flex: 1,
+    gap: spacing[1],
+  },
+  continuityMilestoneLocked: {
+    opacity: 0.9,
+  },
+  continuityMilestoneMeta: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontWeight: '500',
+  },
+  continuityMilestoneText: {
     ...typography.textStyles.caption,
     color: aiLightColors.ink,
     fontWeight: '600',

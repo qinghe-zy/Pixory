@@ -48,7 +48,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
-| Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService` |
+| Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
 | 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
 | 流式性能 | generationId 防旧流污染、外部 streaming store、自适应 UI fps、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `AiStreamingMessageText` |
@@ -59,6 +59,7 @@
 | 上下文预算 | 真实 model context window、历史裁剪、保护 role/current request/retrieval/memory | `aiContextBudget` |
 | 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句 | `sillyTavernRoleCardParser`, `aiRoleCardRepository` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
+| 连续性导入 | 原生 Markdown 精确导入、外部文档接回、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁 | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
 | 深度记忆 | 自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板 | `aiMemory*`, `AiMemoryBoardScreen` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |

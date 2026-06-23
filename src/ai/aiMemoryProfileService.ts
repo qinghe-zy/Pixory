@@ -214,7 +214,19 @@ export async function updateUserProfile(space: PixorySpace, profileText: string,
   });
 }
 
-export async function maybeInitializeUserProfile(space: PixorySpace, threadId: string, options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}): Promise<MemoryMaintenanceStepResult> {
+export async function maybeInitializeUserProfile(
+  space: PixorySpace,
+  threadId: string,
+  options: {
+    allowRemoteModel?: boolean;
+    branchScopes?: AiBranchScope[];
+    reversibleImportSessionId?: string | null;
+    allowIrreversibleImportEffects?: boolean;
+  } = {}
+): Promise<MemoryMaintenanceStepResult> {
+  if (options.allowIrreversibleImportEffects === false) {
+    return emptyMaintenanceStepResult();
+  }
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
     if (!thread) {
@@ -298,8 +310,16 @@ export async function maybeUpdateUserProfile(
   space: PixorySpace,
   threadId: string,
   reason: ProfileUpdateReason,
-  options: { allowRemoteModel?: boolean; branchScopes?: AiBranchScope[] } = {}
+  options: {
+    allowRemoteModel?: boolean;
+    branchScopes?: AiBranchScope[];
+    reversibleImportSessionId?: string | null;
+    allowIrreversibleImportEffects?: boolean;
+  } = {}
 ): Promise<MemoryMaintenanceStepResult> {
+  if (options.allowIrreversibleImportEffects === false) {
+    return emptyMaintenanceStepResult();
+  }
   const prepared = await runWithDatabaseSpace(space, async (db) => {
     const thread = await aiThreadRepository.findThreadById(db, threadId);
     if (!thread) {

@@ -250,7 +250,12 @@ export async function captureDeepMemoryForExchange(input: {
   assistantMessageId: string;
   branchScopes?: AiBranchScope[];
   allowRemoteModel?: boolean;
+  reversibleImportSessionId?: string | null;
+  allowIrreversibleImportEffects?: boolean;
 }): Promise<MemoryMaintenanceStepResult> {
+  if (input.allowIrreversibleImportEffects === false) {
+    return emptyMaintenanceStepResult();
+  }
   const exchangeText = `${input.userMessage.content}`;
   const shouldCaptureImmediately = shouldRunImmediateMemoryCapture(exchangeText);
   const prepared = await runWithDatabaseSpace(input.space, async (db) => {

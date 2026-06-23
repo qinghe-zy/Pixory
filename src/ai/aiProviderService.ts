@@ -111,14 +111,55 @@ function manualModelRecord(provider: AiProviderRecord, modelId: string): AiProvi
   };
 }
 
-function verifiedModelRecord(provider: AiProviderRecord, modelId: string): AiProviderModelRecord {
-  const now = createTimestamp();
+function verifiedLabels(labels: string[]): string[] {
+  return labels.includes('Verified') ? labels : [...labels, 'Verified'];
+}
+
+async function buildSuccessfulModelRecord(
+  space: PixorySpace,
+  providerId: string,
+  provider: AiProviderRecord,
+  trimmedModelId: string
+): Promise<AiProviderModelRecord> {
+  const builtIn = builtInModelsForProvider(provider.id, provider.providerType).find((model) => model.modelId === trimmedModelId);
+  if (builtIn) {
+    return {
+      ...builtIn,
+      labels: verifiedLabels(builtIn.labels),
+      source: 'built_in',
+      updatedAt: createTimestamp(),
+    };
+  }
+  const existingModel = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findModel(db, providerId, trimmedModelId));
+  if (existingModel) {
+    return {
+      ...existingModel,
+      source: existingModel.source,
+      labels: verifiedLabels(existingModel.labels),
+      updatedAt: createTimestamp(),
+    };
+  }
+  const baseRecord = syncedModelRecord(provider, trimmedModelId);
   return {
-    ...manualModelRecord(provider, modelId),
-    labels: ['Chat', 'Manual', 'Verified'],
-    createdAt: now,
-    updatedAt: now,
+    ...baseRecord,
+    labels: verifiedLabels(baseRecord.labels),
+    source: 'synced',
+    updatedAt: createTimestamp(),
   };
+}
+
+async function loadProviderAndModel(space: PixorySpace, providerId: string, modelId: string): Promise<{
+  existingModel: AiProviderModelRecord | null;
+  provider: AiProviderRecord;
+}> {
+  const [provider, existingModel] = await runWithDatabaseSpace(space, async (db) => Promise.all([
+    aiProviderRepository.findProviderById(db, providerId),
+    aiProviderRepository.findModel(db, providerId, modelId),
+  ]));
+  if (!provider) {
+    throw new Error('AI provider is not configured.');
+  }
+  return { existingModel, provider };
 }
 
 function manualEmbeddingModelRecord(provider: AiProviderRecord, modelId: string): AiProviderModelRecord {
@@ -240,12 +281,14 @@ export async function saveManualChatModel(space: PixorySpace, providerId: string
   if (!trimmedModelId) {
     throw new Error('请输入模型 ID。');
   }
-  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
-  if (!provider) {
-    throw new Error('AI provider is not configured.');
+  const { existingModel, provider } = await loadProviderAndModel(space, providerId, trimmedModelId);
+  if (existingModel && !existingModel.supportsChat) {
+    throw new Error('该模型已存在，但当前没有标记为聊天模型。');
   }
   await runWithDatabaseSpace(space, async (db) => {
-    await aiProviderRepository.upsertModels(db, provider.id, [manualModelRecord(provider, trimmedModelId)]);
+    if (!existingModel || existingModel.source === 'manual') {
+      await aiProviderRepository.upsertModels(db, provider.id, [manualModelRecord(provider, trimmedModelId)]);
+    }
     await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultChatModelId: trimmedModelId });
   });
 }
@@ -255,9 +298,14 @@ export async function saveManualChatModelCandidate(space: PixorySpace, providerI
   if (!trimmedModelId) {
     throw new Error('请输入模型 ID。');
   }
-  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
-  if (!provider) {
-    throw new Error('AI provider is not configured.');
+  const { existingModel, provider } = await loadProviderAndModel(space, providerId, trimmedModelId);
+  if (existingModel) {
+    if (!existingModel.supportsChat) {
+      throw new Error('该模型已存在，但当前没有标记为聊天模型。');
+    }
+    if (existingModel.source !== 'manual') {
+      return;
+    }
   }
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.upsertModels(db, provider.id, [manualModelRecord(provider, trimmedModelId)]));
 }
@@ -271,7 +319,8 @@ export async function recordSuccessfulProviderModel(space: PixorySpace, provider
   if (!provider) {
     return;
   }
-  await runWithDatabaseSpace(space, (db) => aiProviderRepository.upsertModels(db, provider.id, [verifiedModelRecord(provider, trimmedModelId)]));
+  const successfulModelRecord = await buildSuccessfulModelRecord(space, providerId, provider, trimmedModelId);
+  await runWithDatabaseSpace(space, (db) => aiProviderRepository.upsertModels(db, provider.id, [successfulModelRecord]));
 }
 
 export async function saveManualEmbeddingModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
@@ -279,14 +328,31 @@ export async function saveManualEmbeddingModel(space: PixorySpace, providerId: s
   if (!trimmedModelId) {
     throw new Error('请输入 Embedding 模型 ID。');
   }
-  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
-  if (!provider) {
-    throw new Error('AI provider is not configured.');
+  const { existingModel, provider } = await loadProviderAndModel(space, providerId, trimmedModelId);
+  if (existingModel && !existingModel.supportsEmbedding) {
+    throw new Error('该模型已存在，但当前没有标记为 Embedding 模型。');
   }
   await runWithDatabaseSpace(space, async (db) => {
-    await aiProviderRepository.upsertModels(db, provider.id, [manualEmbeddingModelRecord(provider, trimmedModelId)]);
+    if (!existingModel || existingModel.source === 'manual') {
+      await aiProviderRepository.upsertModels(db, provider.id, [manualEmbeddingModelRecord(provider, trimmedModelId)]);
+    }
     await aiProviderRepository.updateProviderDefaults(db, provider.id, { defaultEmbeddingModelId: trimmedModelId });
   });
+}
+
+export async function deleteProviderModel(space: PixorySpace, providerId: string, modelId: string): Promise<void> {
+  const [provider, model] = await runWithDatabaseSpace(space, async (db) => Promise.all([
+    aiProviderRepository.findProviderById(db, providerId),
+    aiProviderRepository.findModel(db, providerId, modelId),
+  ]));
+  if (!provider || !model) {
+    throw new Error('模型不存在或已被删除。');
+  }
+  const builtInModelIds = new Set(builtInModelsForProvider(providerId, provider.providerType).map((item) => item.modelId));
+  if (builtInModelIds.has(modelId)) {
+    throw new Error('内置模型不能删除。');
+  }
+  await runWithDatabaseSpace(space, (db) => aiProviderRepository.deleteProviderModelAndCleanup(db, providerId, modelId));
 }
 
 export async function verifyCurrentProviderModel(providerId: string, space: PixorySpace = 'normal'): Promise<void> {

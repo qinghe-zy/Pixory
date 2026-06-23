@@ -45,7 +45,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 42/);
+  assert.match(schema, /DATABASE_VERSION = 45/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -837,7 +837,7 @@ test('AI editing a user message keeps full branch history instead of deleting la
   const chat = read('src/screens/AiChatScreen.tsx');
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(schema, /DATABASE_VERSION = 42/);
+  assert.match(schema, /DATABASE_VERSION = 45/);
   assert.match(schema, /branchRootMessageId TEXT/);
   assert.match(schema, /branchVersionIndex INTEGER/);
   assert.match(schema, /MIGRATION_STATEMENTS_V31/);
@@ -897,7 +897,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 42/);
+  assert.match(schema, /DATABASE_VERSION = 45/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V32/);
   assert.match(db, /currentVersion < 32/);
@@ -931,8 +931,10 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(memoryService, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
   assert.match(maintenance, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(maintenance, /const branchScopes = input\.branchScopes \?\? \[\]/);
-  assert.match(maintenance, /compressOldestThreadRounds\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes \}\)/);
-  assert.match(maintenance, /maybeMergeSummarySegments\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes \}\)/);
+  assert.match(maintenance, /allowIrreversibleImportEffects/);
+  assert.match(maintenance, /reversibleImportSessionId/);
+  assert.match(maintenance, /compressOldestThreadRounds\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes, \.\.\.importAwareContext \}\)/);
+  assert.match(maintenance, /maybeMergeSummarySegments\(input\.space, input\.threadId, \{ allowRemoteModel, branchScopes, \.\.\.importAwareContext \}\)/);
   assert.match(maintenance, /loadLastUserMessage\(input\.space, input\.threadId, branchScopes\)/);
   assert.match(capture, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(capture, /listMessages\(db, input\.thread\.id, 80, input\.branchScopes\)/);
@@ -1439,7 +1441,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 42/);
+  assert.match(schema, /DATABASE_VERSION = 45/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);
@@ -1509,6 +1511,20 @@ test('AI composer uses compact icon-only attachment popover anchored above add b
   assert.match(composer, /flexDirection: 'row'/);
   assert.doesNotMatch(composer, /添加附件[\s\S]{0,400}上传视频/);
   assert.doesNotMatch(chat, /attachmentSheetVisible/);
+});
+
+test('AI streaming timeout only stops when the provider stays silent for 60 seconds before the first event, then relaxes to idle timeout', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const manager = read('src/ai/aiGenerationManager.ts');
+
+  assert.match(service, /const FIRST_PROVIDER_BYTE_TIMEOUT_MS = 60000/);
+  assert.match(service, /const PROVIDER_IDLE_TIMEOUT_MS = 45000/);
+  assert.match(service, /scheduleProviderTimeout\(FIRST_PROVIDER_BYTE_TIMEOUT_MS\)/);
+  assert.match(service, /async \(event: AiStreamEvent\) => \{[\s\S]*scheduleProviderTimeout\(PROVIDER_IDLE_TIMEOUT_MS\)/);
+  assert.match(service, /if \(event\.type === 'provider_usage'\) \{[\s\S]*return;/);
+  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*answerText \+= event\.text;/);
+  assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled\) \{[\s\S]*reasoningText \+= event\.text;/);
+  assert.match(manager, /reason: 'timeout'/);
 });
 
 test('AI streaming cursor is rendered inline with assistant text', () => {

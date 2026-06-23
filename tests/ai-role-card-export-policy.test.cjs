@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 function loadTsModule(relativePath) {
   const filename = path.join(root, relativePath);
@@ -199,4 +200,17 @@ test('current-thread role export is scoped to the visible branch and lives in se
   assert.match(sessionConfigSource, /disabled=\{!threadId \|\| !currentRoleCardId \|\| exportingRolePackage\}/);
   assert.match(sessionConfigSource, /Alert\.alert\('导出私密角色包'/);
   assert.match(sessionConfigSource, /导出当前角色包/);
+});
+
+test('role continuity markdown exports explicit pixory native continuity markers', () => {
+  const exporter = read('src/ai/aiRoleCardContinuityExport.ts');
+
+  assert.match(exporter, /# Pixory Role Continuity Export/);
+  assert.match(exporter, /## Native Continuity Metadata/);
+  assert.match(exporter, /- Format Version: 1/);
+  assert.match(exporter, /- Source: pixory-native/);
+  assert.match(exporter, /## Native Branch Payload/);
+  assert.match(exporter, /## Native Message Payload/);
+  assert.match(exporter, /## Native Summary Payload/);
+  assert.match(exporter, /## Native Memory Payload/);
 });
