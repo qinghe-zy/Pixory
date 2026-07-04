@@ -73,28 +73,38 @@
     }
 
     .layout {
-      max-width: 1080px;
+      max-width: 1320px;
       margin: 0 auto;
-      padding: 48px 24px;
+      padding: 64px 40px;
       display: flex;
-      gap: 64px;
+      gap: 100px;
     }
     
     .sidebar {
-      width: 220px;
+      width: 280px;
       flex-shrink: 0;
       position: sticky;
       top: 100px;
       align-self: flex-start;
       max-height: calc(100vh - 120px);
       overflow-y: auto;
+      padding-right: 16px;
+    }
+    
+    /* 自定义滚动条使侧边栏更干净 */
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background-color: var(--hairline);
+      border-radius: 4px;
     }
     
     .toc-title {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--muted);
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       letter-spacing: 0.05em;
     }
     
@@ -106,17 +116,17 @@
     }
     
     .toc-list li {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
     
     .toc-list a {
       color: var(--body);
       text-decoration: none;
       font-size: 14px;
-      transition: color 0.2s;
+      transition: all 0.2s;
       display: block;
-      line-height: 1.4;
-      padding-left: 12px;
+      line-height: 1.5;
+      padding-left: 16px;
       position: relative;
       left: -2px;
       border-left: 2px solid transparent;
@@ -125,10 +135,11 @@
     .toc-list a:hover {
       color: var(--primary);
       border-left-color: var(--primary);
+      background-color: rgba(204, 120, 92, 0.05); /* subtle hover background */
     }
     
     .toc-list .toc-h3 {
-      padding-left: 24px;
+      padding-left: 28px;
       font-size: 13px;
       color: var(--muted);
     }
@@ -136,7 +147,7 @@
     .container {
       flex-grow: 1;
       min-width: 0;
-      max-width: 720px;
+      max-width: 760px;
     }
 
     /* Markdown Styling */
