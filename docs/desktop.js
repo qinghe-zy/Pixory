@@ -685,11 +685,4 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-    // Close on escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && docModal.classList.contains('active')) {
-        docModal.classList.remove('active');
-      }
-    });
-  }
 });
