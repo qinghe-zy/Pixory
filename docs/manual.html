@@ -460,6 +460,10 @@
         padding: 12px 32px 24px 32px;
         -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
         mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
+        scrollbar-width: none; /* Firefox */
+      }
+      .toc-list::-webkit-scrollbar { 
+        display: none; /* Chrome/Safari/Edge */
       }
       .toc-list a { 
         color: rgba(255,255,255,0.7); 
