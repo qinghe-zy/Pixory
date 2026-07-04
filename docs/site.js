@@ -516,6 +516,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const targetSrc = isMobile ? v.getAttribute('data-mobile-src') : v.getAttribute('data-desktop-src');
     if (targetSrc) {
       v.src = targetSrc;
+      v.load(); // explicitly load the new source
+      if (v.classList.contains('active')) {
+        v.play().catch(() => {});
+      }
     }
   });
   const textGroups = document.querySelectorAll('.hero-text-group');
