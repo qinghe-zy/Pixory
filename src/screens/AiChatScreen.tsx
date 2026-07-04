@@ -265,6 +265,16 @@ function findLatestAssistantMessage(messages: AiMessageWithCitations[]): AiMessa
   return undefined;
 }
 
+function findLatestVisibleBranchRootMessageId(messages: AiMessageWithCitations[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const branchRootMessageId = messages[index]?.branchRootMessageId;
+    if (typeof branchRootMessageId === 'string' && branchRootMessageId.length > 0) {
+      return branchRootMessageId;
+    }
+  }
+  return null;
+}
+
 function AiChatStarterHints({ onPickSuggestion }: { onPickSuggestion: (value: string) => void }) {
   return (
     <View style={styles.starterWrap}>
@@ -394,6 +404,7 @@ export function AiChatScreen({
   const activeThreadIdRef = useRef<string | null>(threadId ?? null);
   const latestRequestRef = useRef({
     avatar: 0,
+    continuity: 0,
     memory: 0,
     messages: 0,
     model: 0,
@@ -549,7 +560,6 @@ export function AiChatScreen({
     const latestVisibleAssistant = findLatestAssistantMessage(nextVisibleMessages);
 
     return {
-      contextTrimNotice: latestVisibleAssistant ? messageHasContextTrim(latestVisibleAssistant) : false,
       invertedMessageIndexById: nextInvertedMessageIndexById,
       invertedMessageItems: nextInvertedMessageItems,
       messagesById: nextMessagesById,
@@ -558,31 +568,34 @@ export function AiChatScreen({
     };
   }, [messages, selectedVersionByMessageId]);
   const {
-    contextTrimNotice,
     invertedMessageIndexById,
     invertedMessageItems,
     messagesById,
     visibleMessageItems,
     visibleMessages,
   } = visibleMessageState;
+  const latestVisibleBranchRootMessageId = useMemo(
+    () => findLatestVisibleBranchRootMessageId(visibleMessages),
+    [visibleMessages]
+  );
   const activeContinuityMilestone = useMemo<ActiveContinuityMilestone | null>(() => {
     if (continuityMilestones.length === 0) {
       return null;
     }
-    const visibleBranchRootIds = new Set(
-      visibleMessages
-        .map((message) => message.branchRootMessageId)
-        .filter((branchRootMessageId): branchRootMessageId is string => typeof branchRootMessageId === 'string' && branchRootMessageId.length > 0)
-    );
-    const matched = continuityMilestones.find((milestone) => visibleBranchRootIds.has(milestone.branchRootMessageId));
+    const matched = latestVisibleBranchRootMessageId
+      ? continuityMilestones.find((milestone) => milestone.branchRootMessageId === latestVisibleBranchRootMessageId)
+      : null;
     if (!matched) {
+      return null;
+    }
+    if (matched.rollbackState !== 'available') {
       return null;
     }
     return {
       ...matched,
       label: matched.rollbackState === 'available'
         ? `还可回退：剩余 ${matched.rollbackRoundsRemaining} 轮`
-        : '已稳定接入，不能回退',
+        : '回退窗口已关闭',
       detailLines: [
         continuitySourceLabel(matched.sourceKind),
         matched.sourcePlatform ? `来源平台：${matched.sourcePlatform}` : null,
@@ -592,7 +605,7 @@ export function AiChatScreen({
         continuityReviewLabel(matched.reviewGateState),
       ].filter((line): line is string => Boolean(line)),
     };
-  }, [continuityMilestones, visibleMessages]);
+  }, [continuityMilestones, latestVisibleBranchRootMessageId]);
   const fallbackMemoryCaptures = useMemo(
     () => memoryCaptures.filter((item) => !item.sourceMessageId),
     [memoryCaptures]
@@ -633,6 +646,64 @@ export function AiChatScreen({
       return false;
     }
     return patch.id === activeStreamingIdentityRef.current.messageId;
+  }
+
+  function promptRollbackContinuityImport(milestone: ActiveContinuityMilestone) {
+    if (milestone.rollbackState !== 'available') {
+      return;
+    }
+    Alert.alert(
+      '回退接回分支',
+      '这会回到接回前的会话状态，并保留导入内容作为审计记录。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确认回退',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await rollbackThreadContinuityImport({
+                  importSessionId: milestone.importSessionId,
+                  space,
+                });
+                const targetThreadId = activeThreadIdRef.current;
+                if (targetThreadId) {
+                  const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
+                  await reloadMessages(targetThreadId, {
+                    branchScopes: currentBranchScopes,
+                    forceToLatest: false,
+                  });
+                }
+              } catch (error) {
+                setErrorMessage(error instanceof Error ? error.message : '回退连续性导入失败');
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function showContinuityMilestoneDetails(milestone: ActiveContinuityMilestone) {
+    const detailText = [
+      ...milestone.detailLines,
+      milestone.rollbackState === 'available'
+        ? `还可回退：剩余 ${milestone.rollbackRoundsRemaining} 轮`
+        : '回退窗口已关闭',
+    ].join('\n');
+    if (milestone.rollbackState !== 'available') {
+      Alert.alert('接回详情', detailText);
+      return;
+    }
+    Alert.alert(
+      '接回详情',
+      detailText,
+      [
+        { text: '关闭', style: 'cancel' },
+        { text: '回退接回分支', style: 'destructive', onPress: () => promptRollbackContinuityImport(milestone) },
+      ]
+    );
   }
 
   function clearActiveStreamingIdentity() {
@@ -749,6 +820,7 @@ export function AiChatScreen({
         }
         void (async () => {
           await reloadMessages(targetThreadId);
+          await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {
             clearActiveStreamingIdentity();
@@ -760,6 +832,7 @@ export function AiChatScreen({
           return;
         }
         void reloadMessages(targetThreadId);
+        void reloadContinuityMilestones(targetThreadId);
       },
     };
   }
@@ -1289,6 +1362,22 @@ export function AiChatScreen({
     setMessages(nextMessages);
   }
 
+  const reloadContinuityMilestones = useCallback(
+    async (targetThreadId: string | null) => {
+      const requestId = nextRequestId('continuity');
+      if (!targetThreadId) {
+        setContinuityMilestones([]);
+        return;
+      }
+      const nextContinuityMilestones = await loadThreadContinuityMilestones(space, targetThreadId);
+      if (!isLatestRequest('continuity', requestId, targetThreadId)) {
+        return;
+      }
+      setContinuityMilestones(nextContinuityMilestones);
+    },
+    [space]
+  );
+
   const reloadMessages = useCallback(
     async (
       targetThreadId: string | null,
@@ -1307,7 +1396,7 @@ export function AiChatScreen({
       if (!targetThreadId) {
         resetStreamingReadBufferState();
         replaceMessages([]);
-        setContinuityMilestones([]);
+        void reloadContinuityMilestones(null);
         setHasEarlierMessages(false);
         loadedMessageLimitRef.current = CHAT_MESSAGE_PAGE_SIZE;
         setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
@@ -1327,12 +1416,10 @@ export function AiChatScreen({
         limit: messageLimit,
         selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
       });
-      const nextContinuityMilestones = await loadThreadContinuityMilestones(space, targetThreadId);
       if (!isLatestRequest('messages', requestId, targetThreadId)) {
         return;
       }
       activeMessageBranchScopesRef.current = branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
-      setContinuityMilestones(nextContinuityMilestones);
       setHasEarlierMessages(options.anchorMessageId ? true : nextMessages.length >= messageLimit);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
@@ -1348,8 +1435,9 @@ export function AiChatScreen({
           applyDisplayTitle(title);
         }
       });
+      void reloadContinuityMilestones(targetThreadId);
     },
-    [applyDisplayTitle, space]
+    [applyDisplayTitle, reloadContinuityMilestones, space]
   );
 
   async function loadPersistedCurrentBranchScopes(targetThreadId: string): Promise<AiBranchScope[]> {
@@ -1551,11 +1639,12 @@ export function AiChatScreen({
       }
       if (shouldReloadFinal && targetThreadId) {
         await reloadMessages(targetThreadId, followLatest);
+        await reloadContinuityMilestones(targetThreadId);
         await reloadMemoryCaptures(targetThreadId);
         clearStreamingIdentity(pendingFinalStreamingIdentity);
       }
     },
-    [applyStreamingMessagePatch, followLatestMessage, reloadMemoryCaptures, reloadMessages]
+    [applyStreamingMessagePatch, followLatestMessage, reloadContinuityMilestones, reloadMemoryCaptures, reloadMessages]
   );
 
   const handleMessageScrollEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -2272,9 +2361,7 @@ export function AiChatScreen({
       streamUnsubscribe = managedGeneration.unsubscribe;
       generationSubscriptionRef.current = managedGeneration.unsubscribe;
       await managedGeneration.promise;
-      const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
-      await reloadMessages(targetThreadId, false, currentBranchScopes);
-      await reloadMemoryCaptures(targetThreadId);
+      await syncPersistedCurrentBranchRoute(targetThreadId, true);
     } catch (error) {
       if (!screenMountedRef.current || (nextThreadId && !isCurrentStream(nextThreadId, streamGeneration))) {
         return;
@@ -2342,9 +2429,7 @@ export function AiChatScreen({
       streamUnsubscribe = managedGeneration.unsubscribe;
       generationSubscriptionRef.current = managedGeneration.unsubscribe;
       await managedGeneration.promise;
-      const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
-      await reloadMessages(targetThreadId, false, currentBranchScopes);
-      await reloadMemoryCaptures(targetThreadId);
+      await syncPersistedCurrentBranchRoute(targetThreadId, true);
     } catch (error) {
       if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
@@ -2422,9 +2507,7 @@ export function AiChatScreen({
       streamUnsubscribe = managedGeneration.unsubscribe;
       generationSubscriptionRef.current = managedGeneration.unsubscribe;
       await managedGeneration.promise;
-      const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
-      await reloadMessages(targetThreadId, false, currentBranchScopes);
-      await reloadMemoryCaptures(targetThreadId);
+      await syncPersistedCurrentBranchRoute(targetThreadId, true);
     } catch (error) {
       if (!isCurrentStream(targetThreadId, streamGeneration)) {
         return;
@@ -2596,6 +2679,7 @@ export function AiChatScreen({
               pendingActionMessageId={pendingMessageActionId}
               showAvatar={item.showAvatar}
               space={space}
+              streaming={generating && message.id === activeAssistantId && Boolean(streamingIdentity)}
               streamingIdentity={streamingIdentity}
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
               onCopy={(targetMessage) => {
@@ -2617,7 +2701,6 @@ export function AiChatScreen({
               onThinkingExpandedChange={(messageId, expanded) => {
                 thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
               }}
-              streaming={generating && message.id === activeAssistantId}
             />
           </View>
           {inlineMemoryCaptures.length > 0 ? (
@@ -2713,64 +2796,6 @@ export function AiChatScreen({
           </Pressable>
         </View>
       </View>
-      {activeContinuityMilestone ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => {
-            if (activeContinuityMilestone.rollbackState !== 'available') {
-              return;
-            }
-            Alert.alert(
-              '回退接回分支',
-              '这会回到接回前的会话状态，并保留导入内容作为审计记录。',
-              [
-                { text: '取消', style: 'cancel' },
-                {
-                  text: '确认回退',
-                  style: 'destructive',
-                  onPress: () => {
-                    void (async () => {
-                      try {
-                        await rollbackThreadContinuityImport({
-                          importSessionId: activeContinuityMilestone.importSessionId,
-                          space,
-                        });
-                        const targetThreadId = activeThreadIdRef.current;
-                        if (targetThreadId) {
-                          const currentBranchScopes = await syncPersistedCurrentBranchRoute(targetThreadId, true);
-                          await reloadMessages(targetThreadId, {
-                            branchScopes: currentBranchScopes,
-                            forceToLatest: false,
-                          });
-                        }
-                      } catch (error) {
-                        setErrorMessage(error instanceof Error ? error.message : '回退连续性导入失败');
-                      }
-                    })();
-                  },
-                },
-              ]
-            );
-          }}
-          style={({ pressed }) => [
-            styles.continuityMilestone,
-            activeContinuityMilestone.rollbackState !== 'available' && styles.continuityMilestoneLocked,
-            pressed && activeContinuityMilestone.rollbackState === 'available' && styles.pressed,
-          ]}
-        >
-          <Ionicons
-            color={activeContinuityMilestone.rollbackState === 'available' ? aiLightColors.coralActive : aiLightColors.muted}
-            name={activeContinuityMilestone.rollbackState === 'available' ? 'git-branch-outline' : 'lock-closed-outline'}
-            size={14}
-          />
-          <View style={styles.continuityMilestoneCopy}>
-            <Text style={styles.continuityMilestoneText}>{activeContinuityMilestone.label}</Text>
-            {activeContinuityMilestone.detailLines.map((line) => (
-              <Text key={line} style={styles.continuityMilestoneMeta}>{line}</Text>
-            ))}
-          </View>
-        </Pressable>
-      ) : null}
       {newChatFeedbackVisible ? (
         <View accessibilityLiveRegion="polite" style={styles.newChatFeedback}>
           <Ionicons color={aiLightColors.coralActive} name="checkmark-circle-outline" size={14} />
@@ -2824,7 +2849,27 @@ export function AiChatScreen({
 
       {inlineEditingActive ? null : (
         <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
-          {contextTrimNotice ? <Text style={styles.contextTrimNotice}>较早的部分对话可能不会被本次回复参考。</Text> : null}
+          {activeContinuityMilestone ? (
+            <View style={styles.continuityInlineNotice}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => showContinuityMilestoneDetails(activeContinuityMilestone)}
+                style={({ pressed }) => [styles.continuityInlineNoticeMain, pressed && styles.pressed]}
+              >
+                <Ionicons
+                  color={activeContinuityMilestone.rollbackState === 'available' ? aiLightColors.coralActive : aiLightColors.muted}
+                  name={activeContinuityMilestone.rollbackState === 'available' ? 'git-branch-outline' : 'lock-closed-outline'}
+                  size={14}
+                />
+                <Text numberOfLines={1} style={styles.continuityInlineNoticeText}>
+                  {`${continuitySourceLabel(activeContinuityMilestone.sourceKind)} · ${activeContinuityMilestone.label}`}
+                </Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => showContinuityMilestoneDetails(activeContinuityMilestone)} style={({ pressed }) => [styles.continuityInlineNoticeDetail, pressed && styles.pressed]}>
+                <Text style={styles.continuityInlineNoticeDetailText}>查看详情</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {fallbackMemoryCaptures.length > 0 ? (
             <AiMemoryCaptureNotice
               count={fallbackMemoryCaptures.length}
@@ -2918,12 +2963,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing[2],
     ...shadows.none,
   },
-  contextTrimNotice: {
-    ...typography.textStyles.micro,
-    alignSelf: 'center',
-    color: aiLightColors.muted,
-    paddingBottom: spacing[1],
-  },
   header: {
     alignItems: 'center',
     borderBottomColor: aiLightColors.hairline,
@@ -2998,33 +3037,33 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
     fontWeight: '600',
   },
-  continuityMilestone: {
+  continuityInlineNotice: {
     alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: spacing[1],
-    minHeight: spacing[7],
-    paddingHorizontal: spacing[3],
+    gap: spacing[2],
+    minHeight: spacing[6],
+    paddingVertical: spacing[1],
   },
-  continuityMilestoneCopy: {
+  continuityInlineNoticeMain: {
+    alignItems: 'center',
     flex: 1,
-    gap: spacing[1],
+    flexDirection: 'row',
+    gap: spacing[2],
   },
-  continuityMilestoneLocked: {
-    opacity: 0.9,
-  },
-  continuityMilestoneMeta: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
-    fontWeight: '500',
-  },
-  continuityMilestoneText: {
+  continuityInlineNoticeText: {
     ...typography.textStyles.caption,
     color: aiLightColors.ink,
+    flex: 1,
+    fontWeight: '600',
+  },
+  continuityInlineNoticeDetail: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: spacing[7],
+  },
+  continuityInlineNoticeDetailText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.coralActive,
     fontWeight: '600',
   },
   liveDot: {

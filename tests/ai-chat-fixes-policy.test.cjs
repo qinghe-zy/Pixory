@@ -1116,7 +1116,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(chat, /const nextVisibleMessageItems = nextVisibleMessages\.map/);
   assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
-  assert.match(chat, /const \{\s*contextTrimNotice,\s*invertedMessageIndexById,\s*invertedMessageItems,/);
+  assert.match(chat, /const \{\s*invertedMessageIndexById,\s*invertedMessageItems,\s*messagesById,/);
   assert.match(chat, /showAvatar: message\.role === 'assistant'/);
   assert.match(chat, /previousMessage\?\.role !== 'assistant'/);
   assert.match(chat, /messageKeyExtractor = useCallback/);
@@ -1144,11 +1144,50 @@ test('AI chat surfaces a subtle notice when older context was trimmed', () => {
 
   assert.match(service, /contextTrimmedByBudget/);
   assert.match(service, /contextTrimmedByCount/);
-  assert.match(chat, /contextTrimNotice/);
+  assert.doesNotMatch(chat, /contextTrimNotice/);
   assert.match(chat, /function findLatestAssistantMessage/);
   assert.match(chat, /const latestVisibleAssistant = findLatestAssistantMessage\(nextVisibleMessages\)/);
-  assert.match(chat, /较早的部分对话可能不会被本次回复参考/);
+  assert.match(chat, /const activeContinuityMilestone = useMemo<ActiveContinuityMilestone \| null>/);
+  assert.match(chat, /continuityMilestones/);
+  assert.match(chat, /continuityInlineNotice/);
+  assert.match(chat, /latestVisibleBranchRootMessageId/);
+  assert.match(chat, /reloadContinuityMilestones/);
+  assert.match(chat, /查看详情/);
+  assert.doesNotMatch(chat, /较早的部分对话可能不会被本次回复参考/);
   assert.match(chat, /promptSnapshotJson/);
+});
+
+test('AI streaming first-token path keeps the live subscriber attached instead of falling back to the waiting placeholder after creation', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(chat, /setMessages\(\(current\) => \{/);
+  assert.match(chat, /publishStreamingMessage\(streamingIdentity, \{ content: '', reasoningText: null, status: 'generating' \}\)/);
+  assert.match(chat, /activeStreamingIdentityRef\.current\?\.messageId === message\.id/);
+  assert.match(chat, /streaming=\{generating && message\.id === activeAssistantId && Boolean\(streamingIdentity\)\}/);
+  assert.match(bubble, /const waitingForFirstToken = generating && !message\.content\.trim\(\)/);
+  assert.match(bubble, /streaming && streamingIdentity \?/);
+});
+
+test('AI send and settle paths avoid redundant full-message reloads after a streaming generation already patched the active row', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const sendBlock = /async function handleSend\(\)[\s\S]*?async function handleSubmitInlineRewrite/.exec(chat)?.[0] ?? '';
+  const rewriteBlock = /async function handleSubmitInlineRewrite[\s\S]*?async function stopCurrentGeneration/.exec(chat)?.[0] ?? '';
+  const regenerateBlock = /async function handleConfirmedRegenerate[\s\S]*?function handleFavoriteKeyChange/.exec(chat)?.[0] ?? '';
+  const settledBlock = /onSettled: \(\) => \{[\s\S]*?onUpdated: \(\) => \{/.exec(chat)?.[0] ?? '';
+
+  assert.match(settledBlock, /setGenerating\(false\)/);
+  assert.match(settledBlock, /setActiveAssistantId\(null\)/);
+  assert.doesNotMatch(settledBlock, /await reloadMessages\(targetThreadId\)/);
+  assert.doesNotMatch(sendBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
+  assert.doesNotMatch(sendBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
+  assert.doesNotMatch(rewriteBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
+  assert.doesNotMatch(rewriteBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
+  assert.doesNotMatch(regenerateBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
+  assert.doesNotMatch(regenerateBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
+  assert.match(sendBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
+  assert.match(rewriteBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
+  assert.match(regenerateBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
 });
 
 test('AI user text supports selection while assistant markdown stays Android layout safe', () => {

@@ -132,3 +132,23 @@ test('session model draft persistence is not blocked by the outer saving flag', 
   assert.match(screen, /async function saveCurrentSessionModelDraft\(\) \{[\s\S]*if \(savingModel\)/);
   assert.match(screen, /async function testCurrentSessionModel\(\) \{[\s\S]*if \(!threadId \|\| savingModel\)/);
 });
+
+test('provider and session model settings support long-press multi-delete and same-provider cleanup', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const providerService = read('src/ai/aiProviderService.ts');
+  const providerScreen = read('src/screens/AiProviderSettingsScreen.tsx');
+  const sessionScreen = read('src/screens/AiSessionConfigScreen.tsx');
+
+  assert.match(chat, /export async function deleteProviderModels/);
+  assert.match(chat, /export async function deleteProviderModelsByProvider/);
+  assert.match(providerService, /export async function deleteProviderModels\(/);
+  assert.match(providerService, /export async function deleteProviderModelsByProvider\(/);
+  assert.match(providerScreen, /selectedModelKeys/);
+  assert.match(providerScreen, /onLongPress/);
+  assert.match(providerScreen, /批量删除/);
+  assert.match(providerScreen, /删除同一来源/);
+  assert.match(sessionScreen, /selectedSessionModelKeys/);
+  assert.match(sessionScreen, /onLongPress/);
+  assert.match(sessionScreen, /批量删除/);
+  assert.match(sessionScreen, /删除同一来源/);
+});

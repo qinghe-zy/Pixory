@@ -26,6 +26,8 @@ import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
 import {
   deleteProviderModel as deleteProviderModelService,
+  deleteProviderModels as deleteProviderModelsService,
+  deleteProviderModelsByProvider as deleteProviderModelsByProviderService,
   getAdapterForProvider,
   ensureBuiltInProviders,
   listProviderCards,
@@ -2021,6 +2023,20 @@ export async function deleteProviderModel(input: {
   space: PixorySpace;
 }): Promise<void> {
   await deleteProviderModelService(input.space, input.providerId, input.modelId);
+}
+
+export async function deleteProviderModels(input: {
+  models: Array<{ providerId: string; modelId: string }>;
+  space: PixorySpace;
+}): Promise<number> {
+  return deleteProviderModelsService(input.space, input.models);
+}
+
+export async function deleteProviderModelsByProvider(input: {
+  providerId: string;
+  space: PixorySpace;
+}): Promise<number> {
+  return deleteProviderModelsByProviderService(input.space, input.providerId);
 }
 
 export async function saveThreadSessionModelOverride(input: {

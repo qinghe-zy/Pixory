@@ -19,6 +19,8 @@ import {
   addThreadSessionManualModel,
   clearThreadSessionModelOverride,
   deleteProviderModel,
+  deleteProviderModels,
+  deleteProviderModelsByProvider,
   deleteAiThreads,
   loadThreadAiUsageOverview,
   loadThreadSessionConfig,
@@ -99,6 +101,8 @@ interface MemoryMaintenanceStatus {
   profileUpdatedAt: string | null;
   summarySegmentCount: number;
   uncompressedRoundCount: number;
+  ordinaryUncompressedRoundCount: number;
+  protectedImportRoundCount: number;
 }
 
 function getDefaultSystemPrompt(contextType: AiContextType): string {
@@ -113,6 +117,19 @@ function isProtectedSessionModelOption(option: NonNullable<AiThreadSessionModelC
   }
   const builtInModelIds = new Set(builtInModelsForProvider(option.providerId, providerType).map((model) => model.modelId));
   return builtInModelIds.has(option.modelId);
+}
+
+function sessionModelOptionKey(option: NonNullable<AiThreadSessionModelConfig['options']>[number]): string {
+  return `${option.providerId}:${option.modelId}`;
+}
+
+function formatPendingRoundsSummary(status: MemoryMaintenanceStatus | null): string {
+  const ordinaryRounds = status?.ordinaryUncompressedRoundCount ?? status?.uncompressedRoundCount ?? 0;
+  const protectedRounds = status?.protectedImportRoundCount ?? 0;
+  if (protectedRounds > 0) {
+    return `待整理 ${ordinaryRounds} 轮 · 导入保护 ${protectedRounds} 轮`;
+  }
+  return `待整理 ${ordinaryRounds} 轮`;
 }
 
 export function AiSessionConfigScreen({
@@ -149,6 +166,7 @@ export function AiSessionConfigScreen({
   const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
   const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
   const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
+  const [selectedSessionModelKeys, setSelectedSessionModelKeys] = useState<string[]>([]);
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
@@ -164,6 +182,8 @@ export function AiSessionConfigScreen({
   const promptConfigured = systemPrompt.trim().length > 0;
   const promptSummary = promptConfigured ? `已配置 ${systemPrompt.trim().length} 字` : '未配置';
   const avatarSummary = avatarEnabled ? (avatarUri ? '头像已启用' : '头像已启用，使用默认标记') : '无头像';
+  const sessionModelSelectionMode = selectedSessionModelKeys.length > 0;
+  const selectedSessionModelProviderId = selectedSessionModelKeys[0]?.split(':')[0] ?? null;
 
   const reloadConfig = useCallback(async () => {
     if (!threadId) {
@@ -241,6 +261,10 @@ export function AiSessionConfigScreen({
   useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
+
+  useEffect(() => {
+    setSelectedSessionModelKeys([]);
+  }, [threadId, modelPickerVisible]);
 
   function handleSystemPromptFocus() {
     if (Platform.OS !== 'android') {
@@ -589,6 +613,19 @@ export function AiSessionConfigScreen({
     );
   }
 
+  function toggleSelectedSessionModel(option: NonNullable<AiThreadSessionModelConfig['options']>[number]) {
+    const key = sessionModelOptionKey(option);
+    setSelectedSessionModelKeys((current) =>
+      current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key]
+    );
+  }
+
+  function beginSessionModelSelection(option: NonNullable<AiThreadSessionModelConfig['options']>[number]) {
+    setSelectedSessionModelKeys([sessionModelOptionKey(option)]);
+  }
+
   async function pickAndImportContinuity() {
     if (!threadId || importingContinuity) {
       return;
@@ -610,12 +647,17 @@ export function AiSessionConfigScreen({
         space,
         threadId,
       });
+      const importedMessageCount = importResult.importedMessageCount;
+      const continuityBlockCount = importResult.continuityBlockCount;
+      const blocksOnlyImport = importedMessageCount === 0 && continuityBlockCount > 0;
       setStatus({
-        message: importResult.partial
-          ? `已部分接回 ${asset.name}：恢复 ${importResult.importedMessageCount} 条消息，另有 ${importResult.continuityBlockCount} 段内容保留为连续性块交给记忆系统审读。`
-          : `已接回 ${asset.name}，当前会话会切到导入分支继续聊天。`,
+        message: blocksOnlyImport
+          ? `已导入 ${asset.name} 的连续性内容：暂未安全恢复出可渲染聊天消息，已保留 ${continuityBlockCount} 段连续性块交给记忆系统审读。`
+          : importResult.partial
+            ? `已部分接回 ${asset.name}：恢复 ${importedMessageCount} 条消息，另有 ${continuityBlockCount} 段内容保留为连续性块交给记忆系统审读。`
+            : `已接回 ${asset.name}，当前会话会切到导入分支继续聊天。`,
         tone: 'success',
-        title: importResult.partial ? '外部对话已部分接回' : '外部对话已接回',
+        title: blocksOnlyImport ? '连续性内容已导入' : importResult.partial ? '外部对话已部分接回' : '外部对话已接回',
       });
     } catch (error) {
       setStatus({
@@ -654,6 +696,92 @@ export function AiSessionConfigScreen({
                 setStatus({ message: `${option.label} 已删除。`, tone: 'success', title: '模型已删除' });
               } catch (error) {
                 setStatus({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error', title: '删除失败' });
+              } finally {
+                setSavingModel(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmDeleteSelectedSessionModels() {
+    const models = selectedSessionModelKeys
+      .map((key) => {
+        const [providerId, ...rest] = key.split(':');
+        return { providerId, modelId: rest.join(':') };
+      })
+      .filter((item) => item.providerId && item.modelId);
+    if (models.length === 0) {
+      return;
+    }
+    Alert.alert(
+      '批量删除',
+      `删除后，这 ${models.length} 个模型会从全局和本会话模型列表中移除，当前会话若命中会自动回退。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '批量删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setSavingModel(true);
+              try {
+                const deletedCount = await deleteProviderModels({ models, space });
+                const modelConfig = threadId ? await loadThreadSessionModelConfig(space, threadId) : null;
+                setSelectedSessionModelKeys([]);
+                setSessionModelConfig(modelConfig);
+                setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+                setSessionApiKeyDraft('');
+                setManualSessionModelDraft('');
+                setStatus({
+                  message: deletedCount > 0 ? `已删除 ${deletedCount} 个模型。` : '没有可删除的模型。',
+                  tone: deletedCount > 0 ? 'success' : 'warning',
+                  title: deletedCount > 0 ? '删除完成' : '未删除模型',
+                });
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '批量删除失败', tone: 'error', title: '删除失败' });
+              } finally {
+                setSavingModel(false);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmDeleteSameProviderSessionModels() {
+    if (!selectedSessionModelProviderId) {
+      return;
+    }
+    Alert.alert(
+      '删除同一来源',
+      '将删除当前来源下全部可删除模型，当前会话命中时会自动回退为可用配置。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除同一来源',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setSavingModel(true);
+              try {
+                const deletedCount = await deleteProviderModelsByProvider({ providerId: selectedSessionModelProviderId, space });
+                const modelConfig = threadId ? await loadThreadSessionModelConfig(space, threadId) : null;
+                setSelectedSessionModelKeys([]);
+                setSessionModelConfig(modelConfig);
+                setSessionBaseUrlDraft(modelConfig?.sessionBaseUrl ?? '');
+                setSessionApiKeyDraft('');
+                setManualSessionModelDraft('');
+                setStatus({
+                  message: deletedCount > 0 ? `已删除该来源下 ${deletedCount} 个模型。` : '该来源下没有可删除模型。',
+                  tone: deletedCount > 0 ? 'success' : 'warning',
+                  title: deletedCount > 0 ? '清理完成' : '未删除模型',
+                });
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '删除同一来源失败', tone: 'error', title: '删除失败' });
               } finally {
                 setSavingModel(false);
               }
@@ -799,7 +927,14 @@ export function AiSessionConfigScreen({
               onPress={() => void pickAndImportContinuity()}
               style={({ pressed }) => [styles.compactButton, (!threadId || importingContinuity) && styles.disabled, pressed && threadId && !importingContinuity && styles.pressed]}
             >
-              <Text style={styles.compactButtonText}>{importingContinuity ? '导入中' : '接回外部对话'}</Text>
+              <Text style={styles.compactButtonText}>{importingContinuity ? '导入中' : '导入外部记忆'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenRoleCardEditor}
+              style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.compactButtonText}>导入角色卡</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -875,9 +1010,10 @@ export function AiSessionConfigScreen({
             <View style={styles.settingGroup}>
               <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
               <Text style={styles.caption}>
-                上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · 待整理 {maintenanceStatus?.uncompressedRoundCount ?? 0} 轮 · 摘要 {maintenanceStatus?.summarySegmentCount ?? 0} 段
+                上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · {formatPendingRoundsSummary(maintenanceStatus)} · 摘要 {maintenanceStatus?.summarySegmentCount ?? 0} 段
               </Text>
               {maintenanceStatus?.profileUpdatedAt ? <Text style={styles.caption}>用户画像更新于 {formatMinute(maintenanceStatus.profileUpdatedAt)}</Text> : null}
+              {(maintenanceStatus?.protectedImportRoundCount ?? 0) > 0 ? <Text style={styles.caption}>导入保护期内的轮次会先保留可回退状态，暂不进入普通不可逆压缩。</Text> : null}
               {maintenanceStatus?.lastMaintenanceUsedFallback ? <Text style={styles.maintenanceWarning}>远程失败，已使用本地轻量整理</Text> : null}
             </View>
           ) : null}
@@ -1064,19 +1200,45 @@ export function AiSessionConfigScreen({
             </View>
             <Pressable
               accessibilityRole="button"
-              disabled={savingModel}
+              disabled={savingModel || sessionModelSelectionMode}
               onPress={() => void saveSessionModel(null, null)}
-              style={({ pressed }) => [styles.modelOption, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
+              style={({ pressed }) => [styles.modelOption, (savingModel || sessionModelSelectionMode) && styles.disabled, pressed && !savingModel && !sessionModelSelectionMode && styles.pressed]}
             >
               <Text style={styles.modelOptionTitle}>跟随全局默认</Text>
               <Text style={styles.caption}>{sessionModelConfig?.followDefaultLabel ?? '使用全局默认模型'}</Text>
             </Pressable>
+            {sessionModelSelectionMode ? (
+              <View style={styles.modelBatchActionRow}>
+                <Text style={styles.caption}>已选 {selectedSessionModelKeys.length} 项</Text>
+                <View style={styles.modelActionRow}>
+                  <Pressable accessibilityRole="button" onPress={confirmDeleteSelectedSessionModels} style={({ pressed }) => [styles.modelInlineAction, pressed && styles.pressed]}>
+                    <Text style={styles.textActionLabel}>批量删除</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={confirmDeleteSameProviderSessionModels} style={({ pressed }) => [styles.modelInlineAction, pressed && styles.pressed]}>
+                    <Text style={styles.textActionLabel}>删除同一来源</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => setSelectedSessionModelKeys([])} style={({ pressed }) => [styles.modelInlineAction, pressed && styles.pressed]}>
+                    <Text style={styles.caption}>取消</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
             {sessionModelConfig?.options.map((option) => (
-              <View key={`${option.providerId}:${option.modelId}`} style={styles.modelOption}>
+              <View key={`${option.providerId}:${option.modelId}`} style={[
+                styles.modelOption,
+                selectedSessionModelKeys.includes(sessionModelOptionKey(option)) && styles.modelOptionSelected,
+              ]}>
                 <Pressable
                   accessibilityRole="button"
                   disabled={savingModel}
-                  onPress={() => void saveSessionModel(option.providerId, option.modelId)}
+                  onLongPress={() => beginSessionModelSelection(option)}
+                  onPress={() => {
+                    if (sessionModelSelectionMode) {
+                      toggleSelectedSessionModel(option);
+                      return;
+                    }
+                    void saveSessionModel(option.providerId, option.modelId);
+                  }}
                   style={({ pressed }) => [styles.modelOptionSelectAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
                 >
                   <Text style={styles.modelOptionTitle}>{option.providerLabel} · {option.label}</Text>
@@ -1087,6 +1249,7 @@ export function AiSessionConfigScreen({
                     accessibilityLabel={`删除模型 ${option.label}`}
                     accessibilityRole="button"
                     disabled={savingModel}
+                    onLongPress={() => beginSessionModelSelection(option)}
                     onPress={() => confirmDeleteSessionModel(option)}
                     style={({ pressed }) => [styles.modelOptionDeleteAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
                   >
@@ -1390,7 +1553,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
   },
+  modelOptionSelected: {
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.coral,
+  },
   modelOptionSelectAction: {
+    gap: rhythm.microGap,
+  },
+  modelBatchActionRow: {
     gap: rhythm.microGap,
   },
   modelOptionDeleteAction: {

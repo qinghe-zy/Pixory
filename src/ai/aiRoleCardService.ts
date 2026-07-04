@@ -58,6 +58,11 @@ export async function saveImportedRoleCard(input: {
   avatarUri?: string | null;
   firstMessage?: string | null;
 }): Promise<AiRoleCardRecord> {
+  const existing = await findExistingImportedRoleCard(input.space, input.imported.sourceType, input.imported.sourceJson);
+  if (existing) {
+    return existing;
+  }
+
   return saveRoleCard({
     alternateGreetings: input.imported.alternateGreetings,
     avatarEnabled: Boolean(input.avatarUri),
@@ -75,4 +80,18 @@ export async function saveImportedRoleCard(input: {
 
 export async function deleteRoleCards(space: PixorySpace, roleCardIds: string[]): Promise<number> {
   return runWithDatabaseSpace(space, (db) => aiRoleCardRepository.archiveMany(db, roleCardIds));
+}
+
+async function findExistingImportedRoleCard(
+  space: PixorySpace,
+  sourceType: AiRoleCardSourceType | null | undefined,
+  sourceJson: string | null | undefined
+): Promise<AiRoleCardRecord | null> {
+  if (!sourceType || !sourceJson) {
+    return null;
+  }
+
+  return runWithDatabaseSpace(space, (db) =>
+    aiRoleCardRepository.findActiveByImportSource(db, space, sourceType, sourceJson)
+  );
 }

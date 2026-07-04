@@ -91,6 +91,17 @@ interface MemoryMaintenanceStatus {
   profileUpdatedAt: string | null;
   summarySegmentCount: number;
   uncompressedRoundCount: number;
+  ordinaryUncompressedRoundCount: number;
+  protectedImportRoundCount: number;
+}
+
+function formatPendingRoundsSummary(status: MemoryMaintenanceStatus | null): string {
+  const ordinaryRounds = status?.ordinaryUncompressedRoundCount ?? status?.uncompressedRoundCount ?? 0;
+  const protectedRounds = status?.protectedImportRoundCount ?? 0;
+  if (protectedRounds > 0) {
+    return `待整理轮数 ${ordinaryRounds} · 导入保护 ${protectedRounds}`;
+  }
+  return `待整理轮数 ${ordinaryRounds}`;
 }
 
 function resolveManualMemoryScope(thread: AiThreadRecord, scope: AiMemoryScope): { scope: AiMemoryScope; scopeId: string | null } | null {
@@ -402,8 +413,9 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
               上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatAiFullMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'}
             </Text>
             <Text style={styles.caption}>
-              待整理轮数 {maintenanceStatus?.uncompressedRoundCount ?? 0} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatAiFullMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
+              {formatPendingRoundsSummary(maintenanceStatus)} · 摘要段数 {maintenanceStatus?.summarySegmentCount ?? summarySegments.length} · 画像更新 {maintenanceStatus?.profileUpdatedAt ? formatAiFullMinute(maintenanceStatus.profileUpdatedAt) : '暂无'}
             </Text>
+            {(maintenanceStatus?.protectedImportRoundCount ?? 0) > 0 ? <Text style={styles.caption}>导入保护期内的轮次仍保持可回退，不会按普通待整理轮次理解。</Text> : null}
             {maintenanceStatus?.lastMaintenanceModelProviderId || maintenanceStatus?.lastMaintenanceModelId ? (
               <Text style={styles.caption}>
                 维护模型：{[maintenanceStatus.lastMaintenanceModelProviderId, maintenanceStatus.lastMaintenanceModelId].filter(Boolean).join(' · ')}

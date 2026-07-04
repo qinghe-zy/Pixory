@@ -1754,7 +1754,7 @@ export default function App() {
         onBack={popRoute}
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space, threadId: currentRoute.threadId, mode: 'apply_to_thread' })}
+        onOpenRoleCardEditor={() => pushRoute({ name: 'ai-role-card-editor', space: currentRoute.space, threadId: currentRoute.threadId })}
         onOpenThreadMaterials={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })

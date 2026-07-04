@@ -91,9 +91,40 @@ test('external imported messages are reviewed, gated, and only become accepted a
   assert.match(repository, /createReversibleContinuitySummarySegment/);
 });
 
+test('external continuity import escalates to memory-model structure recovery when local parsing is insufficient', () => {
+  const service = read('src/ai/aiContinuityImportService.ts');
+  const maintenanceModel = read('src/ai/aiMemoryMaintenanceModelService.ts');
+
+  assert.match(service, /callMemoryMaintenanceModel/);
+  assert.match(service, /recover.*continuity.*structure|structure.*recovery|恢复结构/si);
+  assert.match(service, /local parsing is insufficient|recoverable transcript|零条消息|residue|partial/i);
+  assert.match(service, /messages/);
+  assert.match(service, /blocks/);
+  assert.match(service, /sourcePlatform/);
+  assert.match(service, /containsCompressedContinuity/);
+  assert.match(service, /confidence/);
+  assert.match(service, /warnings/);
+  assert.match(service, /role !== 'user' && role !== 'assistant' && role !== 'system'/);
+  assert.match(maintenanceModel, /export async function callMemoryMaintenanceModel/);
+});
+
+test('continuity review reads explicit target fan-out fields before fallback parsing the whole review text', () => {
+  const review = read('src/ai/aiContinuityImportReviewService.ts');
+
+  assert.match(review, /profilePatch/);
+  assert.match(review, /memoryOperations/);
+  assert.match(review, /summaryArtifacts/);
+  assert.match(review, /rejectedItems/);
+  assert.match(review, /warnings/);
+  assert.match(review, /recordContinuityImportMemoryEffect/);
+  assert.match(review, /recordContinuityImportProfileEffect/);
+  assert.match(review, /createReversibleContinuitySummarySegment/);
+});
+
 test('continuity rollback stays available for 10 effective rounds and preserves audit payload', () => {
   const service = read('src/ai/aiContinuityImportService.ts');
   const chatService = read('src/ai/aiChatService.ts');
+  const chatScreen = read('src/screens/AiChatScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
   assert.match(service, /rollbackRoundsRemaining/);
@@ -105,6 +136,8 @@ test('continuity rollback stays available for 10 effective rounds and preserves 
   assert.doesNotMatch(repository, /reviewGateState:\s*'stabilized'/);
   assert.match(chatService, /onContinuityImportConversationRoundCompleted/);
   assert.match(chatService, /assistantMessageId/);
+  assert.match(chatScreen, /const reloadContinuityMilestones = useCallback/);
+  assert.match(chatScreen, /void reloadContinuityMilestones\(targetThreadId\)/);
 });
 
 test('session config exposes continuity import and feature matrix records the capability', () => {
@@ -113,22 +146,55 @@ test('session config exposes continuity import and feature matrix records the ca
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const matrix = read('docs/feature-matrix.md');
 
-  assert.match(session, /接回外部对话/);
+  assert.match(session, /导入外部记忆/);
+  assert.match(session, /导入角色卡/);
   assert.match(session, /DocumentPicker\.getDocumentAsync/);
   assert.match(session, /importThreadContinuity/);
   assert.match(session, /buildExternalContinuityPrompt/);
   assert.match(session, /Clipboard\.setStringAsync/);
   assert.match(session, /复制迁移提示词/);
+  assert.match(session, /暂未安全恢复出可渲染聊天消息/);
   assert.match(session, /importResult\.partial/);
   assert.match(session, /部分接回/);
   assert.match(repository, /listThreadContinuityMilestones/);
+  assert.match(chat, /continuityInlineNotice/);
+  assert.match(chat, /查看详情/);
   assert.match(chat, /还可回退：剩余/);
-  assert.match(chat, /已稳定接入，不能回退/);
+  assert.match(chat, /回退接回分支/);
   assert.match(chat, /sourcePlatform/);
   assert.match(chat, /parsedMessageCount/);
   assert.match(chat, /containsCompressedContinuity/);
   assert.match(chat, /reviewGateState/);
+  assert.match(chat, /latestVisibleBranchRootMessageId/);
+  const continuityNoticeStyle = /continuityInlineNotice:\s*\{[\s\S]*?\n  \},\n  continuityInlineNoticeMain:/.exec(chat)?.[0] ?? '';
+  assert.doesNotMatch(continuityNoticeStyle, /backgroundColor/);
+  assert.doesNotMatch(continuityNoticeStyle, /border(Color|Width)/);
+  assert.doesNotMatch(chat, /较早的部分对话可能不会被本次回复参考/);
+  assert.doesNotMatch(chat, /已稳定接入，不能回退/);
   assert.match(matrix, /连续性导入|外部对话接回|原生连续性导入/);
+});
+
+test('session settings role-card import is a direct import-and-apply flow for the current thread instead of a library detour', () => {
+  const app = read('App.tsx');
+  const session = read('src/screens/AiSessionConfigScreen.tsx');
+  const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+
+  assert.match(session, /导入角色卡/);
+  assert.match(app, /onOpenRoleCardEditor=\{\(\) => pushRoute\(\{ name: 'ai-role-card-editor'/);
+  assert.doesNotMatch(app, /onOpenRoleCardEditor=\{\(\) => pushRoute\(\{ name: 'ai-role-library'.*mode: 'apply_to_thread'/);
+  assert.match(editor, /threadId/);
+  assert.match(editor, /await applyRoleCard\(card\.id\)/);
+});
+
+test('memory maintenance status separates import protection from ordinary pending rounds', () => {
+  const session = read('src/screens/AiSessionConfigScreen.tsx');
+  const board = read('src/screens/AiMemoryBoardScreen.tsx');
+  const service = read('src/ai/aiMemoryService.ts');
+
+  assert.match(service, /protectedImportRoundCount/);
+  assert.match(service, /ordinaryUncompressedRoundCount/);
+  assert.match(session, /导入保护/);
+  assert.match(board, /导入保护/);
 });
 
 test('continuity import binds imported branch roots and scopes review gates to the active branch', () => {

@@ -207,3 +207,14 @@ test('role editor keeps IP avatar images collapsed until the user selects an IP'
   assert.match(editor, /avatarPanel:\s*\{[\s\S]{0,220}gap:\s*rhythm\.inlineGap[\s\S]{0,120}padding:\s*spacing\[2\]/);
   assert.match(editor, /avatarChoice:\s*\{[\s\S]{0,180}height:\s*metrics\.minTouchSize[\s\S]{0,80}width:\s*metrics\.minTouchSize/);
 });
+
+test('imported role cards use strict de-duplication by exact source payload before creating a new library entry', () => {
+  const repository = read('src/database/repositories/aiRoleCardRepository.ts');
+  const service = read('src/ai/aiRoleCardService.ts');
+
+  assert.match(repository, /findActiveByImportSource/);
+  assert.match(service, /findExistingImportedRoleCard/);
+  assert.match(service, /sourceType/);
+  assert.match(service, /sourceJson/);
+  assert.match(service, /return existing;/);
+});

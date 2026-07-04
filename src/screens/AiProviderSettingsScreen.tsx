@@ -11,6 +11,8 @@ import { aiLightColors } from '../components/ai/aiLightTheme';
 import { loadAiUsageOverview } from '../ai/aiChatService';
 import {
   deleteProviderModel,
+  deleteProviderModels,
+  deleteProviderModelsByProvider,
   getDefaultChatProviderId,
   getSavedProviderApiKey,
   listProviderCards,
@@ -70,6 +72,10 @@ function isOtherProvider(card: ProviderCard): boolean {
 function isProtectedProviderModel(card: ProviderCard, modelId: string): boolean {
   const builtInModelIds = new Set(builtInModelsForProvider(card.provider.id, card.provider.providerType).map((model) => model.modelId));
   return builtInModelIds.has(modelId);
+}
+
+function providerModelKey(providerId: string, modelId: string): string {
+  return `${providerId}:${modelId}`;
 }
 
 function formatMaintenanceTestTime(value: string | null | undefined): string {
@@ -133,6 +139,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [maintenanceInfoExpanded, setMaintenanceInfoExpanded] = useState(false);
   const [visibleKey, setVisibleKey] = useState(false);
   const [advancedVisible, setAdvancedVisible] = useState(false);
+  const [selectedModelKeys, setSelectedModelKeys] = useState<string[]>([]);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [usageOverview, setUsageOverview] = useState<AiUsageAggregate | null>(null);
 
@@ -145,6 +152,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const embeddingModels = selectedCard?.models.filter((model) => model.supportsEmbedding) ?? [];
   const selectedModel = chatModels.find((model) => model.modelId === selectedCard?.provider.defaultChatModelId) ?? null;
   const selectedEmbeddingModel = embeddingModels.find((model) => model.modelId === selectedCard?.provider.defaultEmbeddingModelId) ?? null;
+  const selectedModelProviderId = selectedModelKeys[0]?.split(':')[0] ?? selectedCard?.provider.id ?? null;
+  const providerSelectionMode = selectedModelKeys.length > 0;
   const maintenanceTone = maintenanceBannerTone(maintenanceStatus);
   const maintenanceTestTime = formatMaintenanceTestTime(maintenanceStatus?.lastTestAt);
   const maintenanceStatusMessage = maintenanceStatus?.lastTestMessage || maintenanceStatus?.statusText || '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型';
@@ -215,6 +224,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       active = false;
     };
   }, [orderedCards, selectedProviderId, space]);
+
+  useEffect(() => {
+    setSelectedModelKeys([]);
+  }, [selectedProviderId]);
 
   async function chooseProvider(providerId: string) {
     const nextCard = orderedCards.find((card) => card.provider.id === providerId) ?? null;
@@ -387,6 +400,19 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
     }
   }
 
+  function toggleSelectedModel(model: AiProviderModelRecord) {
+    const key = providerModelKey(model.providerId, model.modelId);
+    setSelectedModelKeys((current) =>
+      current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key]
+    );
+  }
+
+  function beginModelSelection(model: AiProviderModelRecord) {
+    setSelectedModelKeys([providerModelKey(model.providerId, model.modelId)]);
+  }
+
   function confirmDeleteModel(model: AiProviderModelRecord, kind: 'chat' | 'embedding') {
     Alert.alert(
       '删除模型',
@@ -405,6 +431,80 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 await loadProviders();
               } catch (error) {
                 setStatus({ message: error instanceof Error ? error.message : '删除模型失败', tone: 'error', title: '删除失败' });
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmDeleteSelectedModels() {
+    const models = selectedModelKeys
+      .map((key) => {
+        const [providerId, ...rest] = key.split(':');
+        return { providerId, modelId: rest.join(':') };
+      })
+      .filter((item) => item.providerId && item.modelId);
+    if (models.length === 0) {
+      return;
+    }
+    Alert.alert(
+      '批量删除',
+      `将删除已选中的 ${models.length} 个模型，并同步清理会话中的失效绑定。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '批量删除',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setStatus({ message: `正在删除 ${models.length} 个模型...`, tone: 'info', title: '批量删除' });
+              try {
+                const deletedCount = await deleteProviderModels(space, models);
+                setSelectedModelKeys([]);
+                setStatus({
+                  message: deletedCount > 0 ? `已删除 ${deletedCount} 个模型。` : '没有可删除的模型。',
+                  tone: deletedCount > 0 ? 'success' : 'warning',
+                  title: deletedCount > 0 ? '删除完成' : '未删除模型',
+                });
+                await loadProviders();
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '批量删除失败', tone: 'error', title: '删除失败' });
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmDeleteSameProviderModels() {
+    if (!selectedModelProviderId) {
+      return;
+    }
+    Alert.alert(
+      '删除同一来源',
+      '将删除当前来源下全部可删除模型，内置模型会被保留。',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除同一来源',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setStatus({ message: '正在清理同一来源模型...', tone: 'info', title: '删除同一来源' });
+              try {
+                const deletedCount = await deleteProviderModelsByProvider(space, selectedModelProviderId);
+                setSelectedModelKeys([]);
+                setStatus({
+                  message: deletedCount > 0 ? `已删除该来源下 ${deletedCount} 个模型。` : '该来源下没有可删除模型。',
+                  tone: deletedCount > 0 ? 'success' : 'warning',
+                  title: deletedCount > 0 ? '清理完成' : '未删除模型',
+                });
+                await loadProviders();
+              } catch (error) {
+                setStatus({ message: error instanceof Error ? error.message : '删除同一来源失败', tone: 'error', title: '删除失败' });
               }
             })();
           },
@@ -633,24 +733,48 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           </Pressable>
           {modelSheetVisible ? (
             <View style={styles.dropdownPanel}>
+              {providerSelectionMode ? (
+                <View style={styles.batchActionRow}>
+                  <Text style={styles.caption}>已选 {selectedModelKeys.length} 项</Text>
+                  <View style={styles.batchActionButtons}>
+                    <Pressable accessibilityRole="button" onPress={confirmDeleteSelectedModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                      <Text style={styles.dropdownDeleteText}>批量删除</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" onPress={confirmDeleteSameProviderModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                      <Text style={styles.dropdownDeleteText}>删除同一来源</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" onPress={() => setSelectedModelKeys([])} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                      <Text style={styles.caption}>取消</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
               {chatModels.map((model) => {
                 const selected = model.modelId === selectedCard?.provider.defaultChatModelId;
+                const modelKey = providerModelKey(model.providerId, model.modelId);
+                const selectedForDelete = selectedModelKeys.includes(modelKey);
                 return (
-                  <View key={model.id} style={[styles.dropdownRow, selected && styles.selectedDropdownRow]}>
+                  <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
                     <Pressable
                       accessibilityRole="button"
+                      onLongPress={() => beginModelSelection(model)}
                       onPress={() => {
+                        if (providerSelectionMode) {
+                          toggleSelectedModel(model);
+                          return;
+                        }
                         void selectModel(model);
                       }}
                       style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
                     >
                       <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                      {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                      {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
                     </Pressable>
                     {!isProtectedProviderModel(selectedCard, model.modelId) ? (
                       <Pressable
                         accessibilityLabel={`删除模型 ${model.displayName}`}
                         accessibilityRole="button"
+                        onLongPress={() => beginModelSelection(model)}
                         onPress={() => confirmDeleteModel(model, 'chat')}
                         style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
                       >
@@ -682,24 +806,48 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>默认 Embedding</Text>
                     <View style={styles.dropdownPanel}>
+                      {providerSelectionMode ? (
+                        <View style={styles.batchActionRow}>
+                          <Text style={styles.caption}>已选 {selectedModelKeys.length} 项</Text>
+                          <View style={styles.batchActionButtons}>
+                            <Pressable accessibilityRole="button" onPress={confirmDeleteSelectedModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                              <Text style={styles.dropdownDeleteText}>批量删除</Text>
+                            </Pressable>
+                            <Pressable accessibilityRole="button" onPress={confirmDeleteSameProviderModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                              <Text style={styles.dropdownDeleteText}>删除同一来源</Text>
+                            </Pressable>
+                            <Pressable accessibilityRole="button" onPress={() => setSelectedModelKeys([])} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                              <Text style={styles.caption}>取消</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
                       {embeddingModels.map((model) => {
                         const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
+                        const modelKey = providerModelKey(model.providerId, model.modelId);
+                        const selectedForDelete = selectedModelKeys.includes(modelKey);
                         return (
-                          <View key={model.id} style={[styles.dropdownRow, selected && styles.selectedDropdownRow]}>
+                          <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
                             <Pressable
                               accessibilityRole="button"
+                              onLongPress={() => beginModelSelection(model)}
                               onPress={() => {
+                                if (providerSelectionMode) {
+                                  toggleSelectedModel(model);
+                                  return;
+                                }
                                 void selectEmbeddingModel(model);
                               }}
                               style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
                             >
                               <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                              {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                              {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
                             </Pressable>
                             {!isProtectedProviderModel(selectedCard, model.modelId) ? (
                               <Pressable
                                 accessibilityLabel={`删除模型 ${model.displayName}`}
                                 accessibilityRole="button"
+                                onLongPress={() => beginModelSelection(model)}
                                 onPress={() => confirmDeleteModel(model, 'embedding')}
                                 style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
                               >
@@ -925,6 +1073,29 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: aiLightColors.coralActive,
     fontWeight: '600',
+  },
+  batchActionRow: {
+    borderBottomColor: aiLightColors.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: rhythm.microGap,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  batchActionButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
+  },
+  batchActionButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: aiLightColors.card,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    minHeight: 30,
+    paddingHorizontal: spacing[3],
   },
   selectedDropdownRow: {
     backgroundColor: aiLightColors.card,

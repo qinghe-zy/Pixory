@@ -45,8 +45,29 @@ const INLINE_ROLE_LABELS: Record<string, ParsedContinuityTranscriptMessage['role
   系统: 'system',
 };
 
+const EXTERNAL_SECTION_TITLES = [
+  'Metadata',
+  'Relationship Continuity',
+  'Psychological Background',
+  'Biological Or Physical State',
+  'State Continuity Summary',
+  'Long-Term Memory Candidates',
+  'Compressed History',
+  'Chat Transcript',
+  '元数据',
+  '关系连续性',
+  '关系背景',
+  '心理背景',
+  '生物或身体状态',
+  '生理或身体状态',
+  '状态连续摘要',
+  '长期记忆候选',
+  '压缩历史',
+  '聊天记录',
+];
+
 function normalizeHeadingTitle(value: string): string {
-  return value.replace(/^#+\s*/, '').trim();
+  return value.replace(/^#+\s*/, '').replace(/[:：]\s*$/, '').trim();
 }
 
 function classifyBlockKind(title: string): ParsedContinuityBlock['kind'] {
@@ -140,6 +161,14 @@ function parseInlineTranscriptLine(line: string): {
   };
 }
 
+function parseInlineTranscriptRoleStart(line: string): ParsedContinuityTranscriptMessage['role'] | null {
+  const match = /^\s*([A-Za-z\u4E00-\u9FFF]+)\s*[:：]\s*$/.exec(line);
+  if (!match) {
+    return null;
+  }
+  return normalizeInlineRoleLabel(match[1]);
+}
+
 function transcriptSectionPriority(title: string): number {
   const normalized = title.trim().toLowerCase();
   if (
@@ -174,6 +203,26 @@ function isSkippableFallbackSection(title: string): boolean {
     || title === '原生连续性元数据'
     || title === '导出元数据'
   );
+}
+
+function normalizeLooseSectionTitle(value: string): string {
+  return value.replace(/[:：]\s*$/, '').trim();
+}
+
+function isExternalSectionTitle(value: string): boolean {
+  const normalized = normalizeLooseSectionTitle(value).toLowerCase();
+  return EXTERNAL_SECTION_TITLES.some((title) => title.toLowerCase() === normalized);
+}
+
+function parseLooseSectionHeading(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed || /^#{1,6}\s+/.test(trimmed) || /^[-*]\s+/.test(trimmed) || /^```/.test(trimmed)) {
+    return null;
+  }
+  if (!isExternalSectionTitle(trimmed)) {
+    return null;
+  }
+  return normalizeLooseSectionTitle(trimmed);
 }
 
 function parseStructuredTranscriptHeading(line: string): {
@@ -250,19 +299,194 @@ function parseTranscriptSection(lines: string[]): {
       }
     }
     const match = parseInlineTranscriptLine(trimmed);
-    if (!match) {
-      residueLines.push(line);
-      index += 1;
+    if (match) {
+      const contentLines = [match.content];
+      let nextIndex = index + 1;
+      while (nextIndex < lines.length) {
+        const nextLine = lines[nextIndex];
+        const nextTrimmed = nextLine.trim();
+        if (!nextTrimmed) {
+          break;
+        }
+        if (
+          parseStructuredTranscriptHeading(nextTrimmed)
+          || parseInlineTranscriptLine(nextTrimmed)
+          || parseInlineTranscriptRoleStart(nextTrimmed)
+        ) {
+          break;
+        }
+        contentLines.push(nextLine);
+        nextIndex += 1;
+      }
+      messages.push({
+        role: match.role,
+        content: contentLines.join('\n').trim(),
+        createdAt: null,
+      });
+      index = nextIndex;
       continue;
     }
-    messages.push({
-      role: match.role,
-      content: match.content,
-      createdAt: null,
-    });
+    const multilineRole = parseInlineTranscriptRoleStart(trimmed);
+    if (multilineRole) {
+      const contentLines: string[] = [];
+      let nextIndex = index + 1;
+      while (nextIndex < lines.length) {
+        const nextLine = lines[nextIndex];
+        const nextTrimmed = nextLine.trim();
+        if (!nextTrimmed) {
+          if (contentLines.length > 0) {
+            break;
+          }
+          nextIndex += 1;
+          continue;
+        }
+        if (
+          parseStructuredTranscriptHeading(nextTrimmed)
+          || parseInlineTranscriptLine(nextTrimmed)
+          || parseInlineTranscriptRoleStart(nextTrimmed)
+        ) {
+          break;
+        }
+        contentLines.push(nextLine);
+        nextIndex += 1;
+      }
+      if (contentLines.length > 0) {
+        messages.push({
+          role: multilineRole,
+          content: contentLines.join('\n').trim(),
+          createdAt: null,
+        });
+        index = nextIndex;
+        continue;
+      }
+    }
+    residueLines.push(line);
     index += 1;
   }
   return { messages, residueLines };
+}
+
+function extractDelimitedContinuityBody(text: string): string {
+  const match = /PIXORY-CONTINUITY-BEGIN\s*([\s\S]*?)\s*PIXORY-CONTINUITY-END/i.exec(text);
+  return match?.[1]?.trim() ?? text;
+}
+
+function normalizeSectionTitleForMetadata(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+function isMetadataSectionTitle(title: string): boolean {
+  const normalized = normalizeSectionTitleForMetadata(title);
+  return normalized === 'metadata' || normalized === '元数据';
+}
+
+function normalizeContinuityBlockContent(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/^(无|none)$/i.test(trimmed)) {
+    return '无';
+  }
+  return trimmed;
+}
+
+function parseSectionedContinuityDocument(
+  text: string,
+  mode: 'external_markdown' | 'external_text'
+): ParsedContinuityImportDocument | null {
+  const body = extractDelimitedContinuityBody(text);
+  const lines = body.split(/\r?\n/);
+  const transcriptSections: Array<{
+    messages: ParsedContinuityTranscriptMessage[];
+    priority: number;
+    residueLines: string[];
+    title: string;
+  }> = [];
+  const blocks: ParsedContinuityBlock[] = [];
+  let partial = false;
+  let currentTitle: string | null = null;
+  let currentLines: string[] = [];
+
+  const flushSection = () => {
+    if (!currentTitle) {
+      currentLines = [];
+      return;
+    }
+    const sectionText = normalizeContinuityBlockContent(currentLines.join('\n'));
+    if (!sectionText) {
+      currentLines = [];
+      return;
+    }
+    if (isTranscriptSectionTitle(currentTitle)) {
+      const parsedTranscript = parseTranscriptSection(currentLines);
+      transcriptSections.push({
+        title: currentTitle,
+        priority: transcriptSectionPriority(currentTitle),
+        messages: parsedTranscript.messages,
+        residueLines: parsedTranscript.residueLines,
+      });
+    } else if (!isSkippableFallbackSection(currentTitle) && !isMetadataSectionTitle(currentTitle)) {
+      blocks.push({
+        kind: classifyBlockKind(currentTitle),
+        title: currentTitle,
+        content: sectionText,
+      });
+    }
+    currentLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const markdownHeading = /^##\s+/.test(rawLine) ? normalizeHeadingTitle(rawLine) : null;
+    const looseHeading = markdownHeading ? null : parseLooseSectionHeading(rawLine);
+    const nextTitle = markdownHeading ?? looseHeading;
+    if (nextTitle) {
+      flushSection();
+      currentTitle = nextTitle;
+      continue;
+    }
+    if (currentTitle) {
+      currentLines.push(rawLine);
+    }
+  }
+  flushSection();
+
+  if (transcriptSections.length === 0 && blocks.length === 0) {
+    return null;
+  }
+
+  const selectedTranscriptPriority = transcriptSections.reduce(
+    (max, section) => Math.max(max, section.messages.length > 0 ? section.priority : 0),
+    0
+  );
+  const selectedTranscriptSections = transcriptSections.filter((section) =>
+    selectedTranscriptPriority > 0
+      ? section.priority === selectedTranscriptPriority
+      : section.messages.length > 0 || section.residueLines.length > 0
+  );
+  const messages = dedupeTranscriptMessages(selectedTranscriptSections.flatMap((section) => section.messages));
+  for (const section of selectedTranscriptSections) {
+    const residue = section.residueLines.join('\n').trim();
+    if (residue) {
+      partial = true;
+      blocks.push({
+        kind: 'unknown',
+        title: `${section.title}（未安全还原部分）`,
+        content: residue,
+      });
+    }
+  }
+
+  return {
+    mode,
+    messages,
+    blocks,
+    rawText: text,
+    containsCompressedContinuity: blocks.some((block) => block.kind === 'compressed_history'),
+    partial,
+    sourcePlatform: extractBulletMetadataValue(body, ['Source Platform', '来源平台']),
+    formatVersion: extractBulletMetadataValue(body, ['Format Version', '格式版本']),
+  };
 }
 
 function escapeRegExp(value: string): string {
@@ -364,6 +588,10 @@ function fileExtension(fileName: string): string {
 }
 
 function parseExternalMarkdown(text: string): ParsedContinuityImportDocument {
+  const sectioned = parseSectionedContinuityDocument(text, 'external_markdown');
+  if (sectioned) {
+    return sectioned;
+  }
   const lines = text.split(/\r?\n/);
   const transcriptSections: Array<{
     messages: ParsedContinuityTranscriptMessage[];
@@ -450,7 +678,11 @@ function parseExternalMarkdown(text: string): ParsedContinuityImportDocument {
 }
 
 function parseExternalText(text: string): ParsedContinuityImportDocument {
-  const transcript = parseTranscriptSection(text.split(/\r?\n/));
+  const sectioned = parseSectionedContinuityDocument(text, 'external_text');
+  if (sectioned) {
+    return sectioned;
+  }
+  const transcript = parseTranscriptSection(extractDelimitedContinuityBody(text).split(/\r?\n/));
   const residue = transcript.residueLines.join('\n').trim();
   return {
     mode: 'external_text',

@@ -194,6 +194,24 @@ export const aiRoleCardRepository = {
     return row ? mapRoleCardRow(row) : null;
   },
 
+  async findActiveByImportSource(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    sourceType: AiRoleCardSourceType,
+    sourceJson: string
+  ): Promise<AiRoleCardRecord | null> {
+    const row = await db.getFirstAsync<AiRoleCardRow>(
+      `SELECT *
+       FROM ai_role_cards
+       WHERE space = ? AND sourceType = ? AND sourceJson = ? AND archivedAt IS NULL
+       LIMIT 1`,
+      space,
+      sourceType,
+      sourceJson
+    );
+    return row ? mapRoleCardRow(row) : null;
+  },
+
   async update(db: SQLiteDatabase, roleCardId: string, input: UpdateAiRoleCardInput): Promise<AiRoleCardRecord | null> {
     const now = createTimestamp();
     const result = await db.runAsync(

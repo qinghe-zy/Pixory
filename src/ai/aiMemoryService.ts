@@ -161,6 +161,8 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
   profileUpdatedAt: string | null;
   summarySegmentCount: number;
   uncompressedRoundCount: number;
+  ordinaryUncompressedRoundCount: number;
+  protectedImportRoundCount: number;
 }> {
   return runWithDatabaseSpace(space, async (db) => {
     const [job, thread, segments] = await Promise.all([
@@ -169,6 +171,16 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
       aiThreadRepository.listSummarySegments(db, threadId),
     ]);
     const profile = thread ? await aiThreadRepository.getUserProfile(db, space, null, thread.id) : null;
+    const activeImportSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, threadId);
+    const activeImportSession = activeImportSessionId
+      ? await aiThreadRepository.findContinuityImportSessionById(db, activeImportSessionId)
+      : null;
+    const protectedImportRoundCount = activeImportSession
+      && activeImportSession.rollbackState === 'available'
+      && activeImportSession.reviewGateState !== 'rolled_back'
+      ? Math.min(job.uncompressedRoundCount, Math.max(0, activeImportSession.parsedMessageCount))
+      : 0;
+    const ordinaryUncompressedRoundCount = Math.max(0, job.uncompressedRoundCount - protectedImportRoundCount);
     return {
       lastMaintenanceCompletedAt: job.lastMaintenanceCompletedAt,
       lastMaintenanceError: job.lastMaintenanceError,
@@ -178,6 +190,8 @@ export async function loadMemoryMaintenanceStatus(space: PixorySpace, threadId: 
       profileUpdatedAt: profile?.lastUpdatedAt ?? null,
       summarySegmentCount: segments.length,
       uncompressedRoundCount: job.uncompressedRoundCount,
+      ordinaryUncompressedRoundCount,
+      protectedImportRoundCount,
     };
   });
 }

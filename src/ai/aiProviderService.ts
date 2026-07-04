@@ -355,6 +355,40 @@ export async function deleteProviderModel(space: PixorySpace, providerId: string
   await runWithDatabaseSpace(space, (db) => aiProviderRepository.deleteProviderModelAndCleanup(db, providerId, modelId));
 }
 
+export async function deleteProviderModels(
+  space: PixorySpace,
+  models: Array<{ providerId: string; modelId: string }>
+): Promise<number> {
+  let deletedCount = 0;
+  const uniqueModels = Array.from(
+    new Map(models.map((item) => [`${item.providerId}:${item.modelId}`, item] as const)).values()
+  );
+  for (const model of uniqueModels) {
+    try {
+      await deleteProviderModel(space, model.providerId, model.modelId);
+      deletedCount += 1;
+    } catch {
+      // Keep batch deletion best-effort so one protected or stale model does not block the rest.
+    }
+  }
+  return deletedCount;
+}
+
+export async function deleteProviderModelsByProvider(space: PixorySpace, providerId: string): Promise<number> {
+  const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
+  if (!provider) {
+    throw new Error('模型来源不存在或已被删除。');
+  }
+  const protectedModelIds = new Set(
+    builtInModelsForProvider(providerId, provider.providerType).map((model) => model.modelId)
+  );
+  const models = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listModels(db, providerId));
+  const deletableModels = models
+    .filter((model) => !protectedModelIds.has(model.modelId))
+    .map((model) => ({ providerId, modelId: model.modelId }));
+  return deleteProviderModels(space, deletableModels);
+}
+
 export async function verifyCurrentProviderModel(providerId: string, space: PixorySpace = 'normal'): Promise<void> {
   const provider = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findProviderById(db, providerId));
   if (!provider) {

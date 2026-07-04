@@ -85,7 +85,7 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const waitingForFirstToken = streaming && !message.content.trim() && !streamingIdentity;
+  const waitingForFirstToken = generating && !message.content.trim();
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
