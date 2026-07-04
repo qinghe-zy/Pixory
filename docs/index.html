@@ -22,7 +22,7 @@
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
     <link rel="stylesheet" href="assets/fonts/fonts.css?v=2">
     <link rel="stylesheet" href="site.css?v=24">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown-dark.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.0/github-markdown-dark.min.css">
   </head>
   <body>
     <!-- Cinematic Fullscreen Hero Section -->
@@ -179,9 +179,16 @@
     </div>
     <!-- Doc Modal -->
     <div class="download-modal-overlay" id="doc-modal">
-      <div class="download-modal-content liquid-glass" style="max-height: 85vh; overflow-y: auto; text-align: left; padding: 40px; display: flex; flex-direction: column; max-width: 900px; width: 100%; border-radius: 24px; position: relative;">
-        <button class="download-modal-close" id="doc-modal-close" style="position: absolute; top: 20px; right: 20px;">&times;</button>
-        <div id="doc-content" class="markdown-body" style="background: transparent; color: inherit;">
+      <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .markdown-body {
+          color: rgba(255, 255, 255, 0.9) !important;
+          background: transparent !important;
+        }
+      </style>
+      <div class="download-modal-content liquid-glass no-scrollbar" style="max-height: 85vh; overflow-y: auto; text-align: left; padding: 40px; display: flex; flex-direction: column; max-width: 900px; width: 100%; border-radius: 24px; position: relative; scrollbar-width: none; -ms-overflow-style: none;">
+        <button class="download-modal-close" id="doc-modal-close" style="position: absolute; top: 20px; right: 20px; z-index: 10;">&times;</button>
+        <div id="doc-content" class="markdown-body">
           Loading...
         </div>
       </div>
@@ -189,7 +196,7 @@
 
     <!-- Include Anime.js from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
-    <script src="desktop.js?v=4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="desktop.js?v=5"></script>
   </body>
 </html>
