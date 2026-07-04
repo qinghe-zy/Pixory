@@ -1875,61 +1875,20 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   .switcher-btn { font-size: 12px; }
   .hero-subtext-en { font-size: 13px; }
 
-  /* Mobile menu button */
-  .mobile-menu-btn {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    padding: 0;
-    color: #fff;
-  }
-  .mobile-menu-btn .icon-close { display: none; }
-  .mobile-menu-btn.open .icon-menu { display: none; }
-  .mobile-menu-btn.open .icon-close { display: block; }
-  .mobile-menu-btn svg { width: 20px; height: 20px; }
+  /* Hide specific pill links on mobile to save space */
+  .hide-on-mobile { display: none !important; }
 
-  /* Mobile menu overlay */
-  .hero-mobile-menu {
-    position: fixed;
-    inset: 0;
-    z-index: 99;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
+  /* Adjust capsule size for mobile */
+  .nav-pill {
+    padding: 3px;
   }
-  .hero-mobile-menu.open {
-    opacity: 1;
-    pointer-events: auto;
+  .nav-pill-link {
+    font-size: 13px;
+    padding: 6px 12px;
   }
-  .hero-mobile-menu-links {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 24px;
-  }
-  .hero-mobile-menu-links a {
-    color: #fff;
-    font-size: 18px;
-    text-decoration: none;
-    font-family: 'Instrument Serif', serif;
-    font-style: italic;
-  }
-  .hero-mobile-menu-links a.menu-btn-primary {
-    background: #fff;
-    color: #111;
-    padding: 12px 32px;
-    border-radius: 9999px;
-    font-weight: 500;
-    font-style: normal;
+  .nav-pill-btn {
+    font-size: 13px;
+    padding: 6px 16px;
   }
 
   /* Download modal mobile */

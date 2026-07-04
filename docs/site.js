@@ -505,30 +505,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* --- Cinematic Hero Interaction Logic --- */
 document.addEventListener('DOMContentLoaded', () => {
-  // Mobile Menu
-  const menuToggle = document.getElementById('mobile-menu-toggle');
-  const mobileMenu = document.getElementById('hero-mobile-menu');
-  const menuLinks = document.querySelectorAll('#hero-mobile-menu a');
 
-  if (menuToggle && mobileMenu) {
-    menuToggle.addEventListener('click', () => {
-      menuToggle.classList.toggle('open');
-      mobileMenu.classList.toggle('open');
-      if (mobileMenu.classList.contains('open')) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
-      }
-    });
-
-    menuLinks.forEach(link => {
-      link.addEventListener('click', () => {
-        menuToggle.classList.remove('open');
-        mobileMenu.classList.remove('open');
-        document.body.style.overflow = '';
-      });
-    });
-  }
 
   // Video & Text Switcher with Auto-rotation
   const switcherBtns = document.querySelectorAll('.switcher-btn');
