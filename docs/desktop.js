@@ -511,15 +511,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const switcherBtns = document.querySelectorAll('.switcher-btn');
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
-  // Set correct src based on device
+  // Ensure the active video plays
   videos.forEach(v => {
-    const targetSrc = isMobile ? v.getAttribute('data-mobile-src') : v.getAttribute('data-desktop-src');
-    if (targetSrc) {
-      v.src = targetSrc;
-      if (v.classList.contains('active')) {
-        v.load(); // explicitly load only the active source
-        v.play().catch(() => {});
-      }
+    if (v.classList.contains('active')) {
+      v.play().catch(() => {});
     }
   });
   const textGroups = document.querySelectorAll('.hero-text-group');
