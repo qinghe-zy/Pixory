@@ -478,9 +478,13 @@
                 if (sidebar && sidebar.offsetParent !== null) {
                   const linkRect = a.getBoundingClientRect();
                   const sidebarRect = sidebar.getBoundingClientRect();
-                  // Check if the active link is outside the visible sidebar area
-                  if (linkRect.top < sidebarRect.top + 60 || linkRect.bottom > sidebarRect.bottom - 20) {
-                    a.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  // Check if the active link is hidden behind the sticky title (top + 60) or below the visible area
+                  if (linkRect.top < sidebarRect.top + 60) {
+                    const targetTop = sidebar.scrollTop + (linkRect.top - (sidebarRect.top + 60));
+                    sidebar.scrollTo({ top: targetTop, behavior: 'smooth' });
+                  } else if (linkRect.bottom > sidebarRect.bottom - 20) {
+                    const targetTop = sidebar.scrollTop + (linkRect.bottom - (sidebarRect.bottom - 20));
+                    sidebar.scrollTo({ top: targetTop, behavior: 'smooth' });
                   }
                 }
               }
