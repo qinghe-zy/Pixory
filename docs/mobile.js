@@ -717,8 +717,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Mobile Pull-to-Refresh ---
   (function initPullToRefresh() {
-    const THRESHOLD = 80;   // px needed to trigger refresh
-    const MAX_PULL = 140;   // max visual distance
+    const THRESHOLD = 110;   // px needed to trigger refresh
+    const MAX_PULL = 180;   // max visual distance
     let startY = 0;
     let pulling = false;
     let pullDistance = 0;
@@ -728,10 +728,8 @@ document.addEventListener('DOMContentLoaded', () => {
     indicator.className = 'ptr-indicator';
     indicator.innerHTML = `
       <div class="ptr-spinner">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M23 4v6h-6"/>
-          <path d="M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10" stroke-dasharray="16 16" stroke-linecap="round"/>
         </svg>
       </div>
       <span class="ptr-text">下拉刷新</span>
@@ -795,4 +793,46 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, { passive: true });
   })();
+
+  // --- Fetch Release Notes ---
+  async function loadReleaseNotes() {
+    const container = document.getElementById('release-notes-container');
+    if (!container) return;
+    
+    try {
+      const res = await fetch('https://api.github.com/repos/qinghe-zy/Pixory/releases?per_page=5');
+      if (!res.ok) throw new Error('Failed to fetch releases');
+      const releases = await res.json();
+      
+      let html = '';
+      releases.forEach(r => {
+        const date = new Date(r.published_at).toISOString().split('T')[0];
+        const bodyHtml = typeof marked !== 'undefined' ? marked.parse(r.body) : r.body;
+        
+        html += `
+          <div class="timeline-item" style="margin-bottom: 40px;">
+            <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">${date}</div>
+            <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">${r.name || r.tag_name}</h3>
+            <div class="markdown-body" style="color: rgba(255,255,255,0.8); font-size: 14px;">
+              ${bodyHtml}
+            </div>
+          </div>
+        `;
+      });
+      
+      html += `
+        <div style="text-align: center; margin-top: 40px;">
+          <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" style="color: #fff; opacity: 0.7; text-decoration: none; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 2px;">访问 GitHub 查看完整记录</a>
+        </div>
+      `;
+      
+      container.innerHTML = html;
+    } catch (e) {
+      console.error('Error fetching release notes:', e);
+      container.innerHTML = '<div style="opacity: 0.6; text-align: center; padding: 40px 0;">Failed to load release history.</div>';
+    }
+  }
+
+  loadReleaseNotes();
 });
+

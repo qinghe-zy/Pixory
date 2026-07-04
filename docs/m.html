@@ -21,7 +21,7 @@
     <meta property="og:description" content="为长期 AI 角色、私有上下文和本地视觉资料设计的 Android 工作台。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
     <link rel="stylesheet" href="assets/fonts/fonts.css?v=2">
-    <link rel="stylesheet" href="site.css?v=25">
+    <link rel="stylesheet" href="site.css?v=26">
   </head>
   <body>
     <!-- Cinematic Fullscreen Hero Section -->
@@ -111,38 +111,8 @@
           <p class="text-body-md" style="color: rgba(255,255,255,0.7); margin-bottom: 40px;">
             稳定。清晰。耐用。更新不是喧哗，是秩序继续变清楚。
           </p>
-          <div class="timeline" style="color: rgba(255,255,255,0.9);">
-            <!-- 2.5.1 Release -->
-            <div class="timeline-item" style="margin-bottom: 40px;">
-              <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">2026-06-24</div>
-              <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">Version 2.5.1</h3>
-              <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div>
-                  <h4 style="margin-bottom: 8px; font-weight: 600;">同版本 OTA 热修</h4>
-                  <p style="font-size: 14px; opacity: 0.8;">2.5.1 发布后追加推送了同版本热更新，补齐外部 txt/md 在解析不足时的模型辅助结构恢复，并把导入评审结果显式分流到 summary、profile 和 formal memory。</p>
-                </div>
-                <div>
-                  <h4 style="margin-bottom: 8px; font-weight: 600;">连续性导入</h4>
-                  <p style="font-size: 14px; opacity: 0.8;">支持把 Pixory 原生续聊包直接接回，也支持把其他平台整理出的迁移文档导回当前线程，继续沿着角色与分支上下文聊天。</p>
-                </div>
-                <div>
-                  <h4 style="margin-bottom: 8px; font-weight: 600;">记忆审读门禁</h4>
-                  <p style="font-size: 14px; opacity: 0.8;">外部导入内容先做结构提取，再交给记忆模型审读和验收；可解析消息会渲染到聊天页，其余压缩内容也会走审读后再进入后续记忆链路。</p>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 2.4.5 Release -->
-            <div class="timeline-item" style="margin-bottom: 40px;">
-              <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">2026-06-13</div>
-              <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">Version 2.4.5</h3>
-              <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div>
-                  <h4 style="margin-bottom: 8px; font-weight: 600;">AI 工作台更顺手</h4>
-                  <p style="font-size: 14px; opacity: 0.8;">工作台加入最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间，并按页面级节奏拉开组件间距。</p>
-                </div>
-              </div>
-            </div>
+          <div class="timeline" id="release-notes-container" style="color: rgba(255,255,255,0.9); min-height: 200px; position: relative;">
+            <div style="opacity: 0.6; text-align: center; padding: 40px 0; font-style: italic;">Loading release history...</div>
             
             <div style="text-align: center; margin-top: 40px;">
               <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" style="color: #fff; opacity: 0.7; text-decoration: none; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 2px;">访问 GitHub 查看完整记录</a>
@@ -182,6 +152,6 @@
     <!-- Include Anime.js from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-    <script src="mobile.js?v=6"></script>
+    <script src="mobile.js?v=7"></script>
   </body>
 </html>
