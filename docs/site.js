@@ -525,9 +525,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let isTransitioning = false;
   let autoplayTimer = null;
   let idleTimer = null;
-  const IDLE_DELAY = 10000;   // 10s before first auto-play
-  const SLIDE_INTERVAL = 5000; // 5s per slide
-  const RESUME_DELAY = 5000;  // 5s after click to resume
+  const IDLE_DELAY = 30000;   // 30s before first auto-play
+  const SLIDE_INTERVAL = 20000; // 20s per slide
+  const RESUME_DELAY = 20000;  // 20s after click to resume
 
   function showContent(nextContentIndex) {
     if (isTransitioning || nextContentIndex === activeContentIndex) return;
