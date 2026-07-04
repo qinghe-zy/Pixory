@@ -880,7 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="timeline-item" style="margin-bottom: 40px;">
             <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">${date}</div>
             <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">${r.name || r.tag_name}</h3>
-            <div class="markdown-body" style="color: rgba(255,255,255,0.8); font-size: 14px;">
+            <div class="markdown-body" style="color: rgba(255,255,255,0.8); font-size: 14px; font-family: var(--font-body);">
               ${bodyHtml}
             </div>
           </div>
