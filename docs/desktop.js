@@ -694,6 +694,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (heroTextContainer && featuresModal && featuresModalClose) {
     heroTextContainer.addEventListener('click', (e) => {
       e.preventDefault();
+      const activeGroup = heroTextContainer.querySelector('.hero-text-group.active');
+      if (activeGroup) {
+        const contentId = activeGroup.getAttribute('data-content');
+        featuresModal.querySelectorAll('.feature-detail').forEach(detail => {
+          detail.style.display = 'none';
+        });
+        const activeDetail = featuresModal.querySelector(`.feature-detail[data-feature-detail="${contentId}"]`);
+        if (activeDetail) {
+          activeDetail.style.display = 'block';
+        }
+      }
       featuresModal.classList.add('active');
     });
 
