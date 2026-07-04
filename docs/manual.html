@@ -72,10 +72,71 @@
       color: var(--ink);
     }
 
-    .container {
-      max-width: 720px;
+    .layout {
+      max-width: 1080px;
       margin: 0 auto;
       padding: 48px 24px;
+      display: flex;
+      gap: 64px;
+    }
+    
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 100px;
+      align-self: flex-start;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    
+    .toc-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 16px;
+      letter-spacing: 0.05em;
+    }
+    
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      border-left: 2px solid var(--hairline);
+    }
+    
+    .toc-list li {
+      margin-bottom: 10px;
+    }
+    
+    .toc-list a {
+      color: var(--body);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+      display: block;
+      line-height: 1.4;
+      padding-left: 12px;
+      position: relative;
+      left: -2px;
+      border-left: 2px solid transparent;
+    }
+    
+    .toc-list a:hover {
+      color: var(--primary);
+      border-left-color: var(--primary);
+    }
+    
+    .toc-list .toc-h3 {
+      padding-left: 24px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .container {
+      flex-grow: 1;
+      min-width: 0;
+      max-width: 720px;
     }
 
     /* Markdown Styling */
@@ -191,8 +252,17 @@
     }
 
     /* Mobile adaptations */
+    @media (max-width: 900px) {
+      .sidebar {
+        display: none;
+      }
+      .layout {
+        gap: 0;
+      }
+    }
+    
     @media (max-width: 768px) {
-      .container {
+      .layout {
         padding: 32px 20px;
       }
       .markdown-body h1 { font-size: 30px; }
@@ -216,9 +286,15 @@
   </div>
 
   <!-- Content Container -->
-  <div class="container">
-    <div id="loading">正在加载文档...</div>
-    <div id="doc-content" class="markdown-body" style="display: none;"></div>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="toc-title">目录导览</div>
+      <ul id="toc" class="toc-list"></ul>
+    </div>
+    <div class="container">
+      <div id="loading">正在加载文档...</div>
+      <div id="doc-content" class="markdown-body" style="display: none;"></div>
+    </div>
   </div>
 
   <script>
@@ -235,6 +311,23 @@
           // Fix relative image paths for the docs site
           const fixedText = text.replace(/docs\/assets\//g, 'assets/');
           contentDiv.innerHTML = marked.parse(fixedText);
+
+          // Generate TOC
+          const headings = contentDiv.querySelectorAll('h2, h3');
+          const tocList = document.getElementById('toc');
+          headings.forEach((heading, index) => {
+            const id = 'heading-' + index;
+            heading.id = id;
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = '#' + id;
+            a.textContent = heading.textContent;
+            if (heading.tagName.toLowerCase() === 'h3') {
+              a.className = 'toc-h3';
+            }
+            li.appendChild(a);
+            tocList.appendChild(li);
+          });
         })
         .catch(err => {
           document.getElementById('loading').innerText = '加载文档失败，请检查网络或稍后重试。';
