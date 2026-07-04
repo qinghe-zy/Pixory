@@ -1768,6 +1768,14 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   font-size: 13px;
   color: rgba(255,255,255,0.8);
   margin-bottom: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.hero-badge:hover {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
 }
 
 .hero-text-container {

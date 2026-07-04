@@ -600,6 +600,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start idle countdown on page load
     idleTimer = setTimeout(() => { startAutoplay(); }, IDLE_DELAY);
 
+    // Hero badge click (switch to English main)
+    const heroBadge = document.querySelector('.hero-badge');
+    if (heroBadge) {
+      heroBadge.addEventListener('click', () => {
+        showContent(0);
+        scheduleResume(RESUME_DELAY);
+      });
+    }
+
     // Pause video when page is hidden to save battery/CPU
     document.addEventListener('visibilitychange', () => {
       const activeVid = document.querySelector('.hero-video.active');
