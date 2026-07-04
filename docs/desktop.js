@@ -685,4 +685,52 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // --- Doc Modal Logic ---
+  const docTriggers = document.querySelectorAll('.doc-btn-trigger');
+  const docModal = document.getElementById('doc-modal');
+  const docModalClose = document.getElementById('doc-modal-close');
+  const docContent = document.getElementById('doc-content');
+  let docLoaded = false;
+
+  if (docModal && docModalClose) {
+    docTriggers.forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        docModal.classList.add('active');
+        if (!docLoaded) {
+          try {
+            const response = await fetch('manual.md');
+            if (response.ok) {
+              const text = await response.text();
+              docContent.innerHTML = marked.parse(text);
+              docLoaded = true;
+            } else {
+              docContent.innerHTML = '<p>Failed to load document.</p>';
+            }
+          } catch (error) {
+            docContent.innerHTML = '<p>Error loading document.</p>';
+          }
+        }
+      });
+    });
+
+    docModalClose.addEventListener('click', () => {
+      docModal.classList.remove('active');
+    });
+
+    // Close on clicking outside the content
+    docModal.addEventListener('click', (e) => {
+      if (e.target === docModal) {
+        docModal.classList.remove('active');
+      }
+    });
+    
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && docModal.classList.contains('active')) {
+        docModal.classList.remove('active');
+      }
+    });
+  }
 });
