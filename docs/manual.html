@@ -371,7 +371,9 @@
       width: 56px;
       height: 56px;
       border-radius: 28px;
-      background: rgba(250, 249, 245, 0.98);
+      background: rgba(250, 249, 245, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       box-shadow: 0 8px 24px rgba(0,0,0,0.15);
       z-index: 900;
       align-items: center;
@@ -410,7 +412,9 @@
         width: 100%;
         height: 75vh;
         max-height: 75vh;
-        background: rgba(24, 23, 21, 0.98);
+        background: rgba(24, 23, 21, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
         z-index: 1000;
         border-radius: 24px 24px 0 0;
         padding: 24px 32px;
@@ -422,21 +426,22 @@
         transform: translateY(0);
       }
       .toc-title { 
-        background: transparent; 
-        color: rgba(255,255,255,0.5); 
+        background: rgba(24, 23, 21, 0.95); /* Solid enough to prevent text overlap */
+        color: rgba(255,255,255,0.7); 
         justify-content: center;
         padding-top: 16px;
+        box-shadow: 0 10px 10px rgba(24, 23, 21, 0.95); /* Fade out bottom */
       }
       .toc-title::before {
         content: '';
         position: absolute;
-        top: 0;
+        top: 2px;
         left: 50%;
         transform: translateX(-50%);
         width: 36px;
         height: 4px;
         border-radius: 2px;
-        background: rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.3);
       }
       .toc-toggle, .toc-expand-btn { display: none !important; }
       .toc-list { border-left: none; }
@@ -567,20 +572,27 @@
             });
 
             let lastScrollY = window.scrollY;
+            let scrollDownDistance = 0;
             window.addEventListener('scroll', () => {
               if (window.innerWidth <= 900) {
-                if (window.scrollY > lastScrollY && window.scrollY > 100) {
-                  mobileFab.classList.add('hidden');
+                const currentScrollY = window.scrollY;
+                if (currentScrollY > lastScrollY) {
+                  scrollDownDistance += (currentScrollY - lastScrollY);
+                  if (scrollDownDistance > 100 && currentScrollY > 100) {
+                    mobileFab.classList.add('hidden');
+                  }
                 } else {
+                  scrollDownDistance = 0;
                   mobileFab.classList.remove('hidden');
                 }
+                lastScrollY = currentScrollY;
               }
-              lastScrollY = window.scrollY;
             }, { passive: true });
           }
 
           // ScrollSpy for TOC highlight
           const tocLinks = document.querySelectorAll('.toc-list a');
+          let lastActiveId = '';
           const scrollSpy = () => {
             let current = '';
             for (let i = headings.length - 1; i >= 0; i--) {
@@ -595,6 +607,10 @@
             if (!current && headings.length > 0) {
               current = headings[0].id;
             }
+            
+            // Early exit to prevent layout thrashing and severe lag on mobile!
+            if (current === lastActiveId) return;
+            lastActiveId = current;
             
             tocLinks.forEach(a => {
               a.classList.remove('active');
