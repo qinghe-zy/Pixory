@@ -624,17 +624,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Pause video when page is hidden to save battery/CPU
-    document.addEventListener('visibilitychange', () => {
-      const activeVid = document.querySelector('.hero-video.active');
-      if (activeVid) {
-        if (document.hidden) {
-          activeVid.pause();
-        } else {
-          activeVid.play().catch(() => {});
-        }
-      }
-    });
   }
 
   // --- Download Modal Logic ---
