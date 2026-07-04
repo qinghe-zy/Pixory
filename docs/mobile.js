@@ -746,6 +746,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pullDistance = 0;
         indicator.classList.remove('ptr-refreshing', 'ptr-ready');
         ptrText.textContent = '下拉刷新';
+        // Restore arrow icon (in case it was swapped to spinner)
+        ptrIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><line x1="12" y1="18" x2="12" y2="6"/></svg>`;
         ptrIcon.style.transform = '';
       }
     }, { passive: true });
@@ -790,6 +792,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pullDistance >= THRESHOLD) {
         indicator.classList.add('ptr-refreshing');
         ptrText.textContent = '正在刷新';
+        // Swap arrow to a circle spinner
+        ptrIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>`;
+        ptrIcon.style.transform = '';
         document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
         document.body.style.transform = `translateY(56px)`;
         indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
