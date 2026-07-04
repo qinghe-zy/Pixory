@@ -145,6 +145,13 @@
       background-color: rgba(204, 120, 92, 0.05); /* subtle hover background */
     }
     
+    .toc-list a.active {
+      color: var(--primary);
+      border-left-color: var(--primary);
+      background-color: rgba(204, 120, 92, 0.08);
+      font-weight: 500;
+    }
+    
     .toc-list .toc-h3 {
       padding-left: 28px;
       font-size: 13.5px;
@@ -347,6 +354,33 @@
             li.appendChild(a);
             tocList.appendChild(li);
           });
+
+          // ScrollSpy for TOC highlight
+          const tocLinks = document.querySelectorAll('.toc-list a');
+          const scrollSpy = () => {
+            let current = '';
+            for (let i = headings.length - 1; i >= 0; i--) {
+              const h = headings[i];
+              // 120px offset to account for sticky nav and scroll-margin
+              if (h.getBoundingClientRect().top <= 120) {
+                current = h.id;
+                break;
+              }
+            }
+            // Fallback to first if at the very top
+            if (!current && headings.length > 0) {
+              current = headings[0].id;
+            }
+            
+            tocLinks.forEach(a => {
+              a.classList.remove('active');
+              if (a.getAttribute('href') === '#' + current) {
+                a.classList.add('active');
+              }
+            });
+          };
+          window.addEventListener('scroll', scrollSpy);
+          scrollSpy(); // Trigger once on load
         })
         .catch(err => {
           document.getElementById('loading').innerText = '加载文档失败，请检查网络或稍后重试。';
