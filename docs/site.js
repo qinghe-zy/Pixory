@@ -507,9 +507,17 @@ document.addEventListener("DOMContentLoaded", () => {
 document.addEventListener('DOMContentLoaded', () => {
 
 
-  // Video & Text Switcher with Auto-rotation
-  const switcherBtns = document.querySelectorAll('.switcher-btn');
   const videos = document.querySelectorAll('.hero-video');
+  const switcherBtns = document.querySelectorAll('.switcher-btn');
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+  // Set correct src based on device
+  videos.forEach(v => {
+    const targetSrc = isMobile ? v.getAttribute('data-mobile-src') : v.getAttribute('data-desktop-src');
+    if (targetSrc) {
+      v.src = targetSrc;
+    }
+  });
   const textGroups = document.querySelectorAll('.hero-text-group');
   const contentLayer = document.getElementById('hero-content');
   // activeContentIndex tracks which text group is visible (0=English, 1-4=features)
