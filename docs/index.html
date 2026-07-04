@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
@@ -13,372 +13,177 @@
     <meta property="og:title" content="Pixory">
     <meta property="og:description" content="为长期 AI 角色、私有上下文和本地视觉资料设计的 Android 工作台。">
     <meta property="og:image" content="https://mist01.com/assets/og-cover.png">
-    <link rel="stylesheet" href="site.css?v=15">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="site.css?v=18">
   </head>
   <body>
-    <div class="scroll-progress" aria-hidden="true"></div>
+    <!-- Cinematic Fullscreen Hero Section -->
+    <section class="cinematic-hero">
+      <!-- Background Videos -->
+      <div class="hero-bg-layer">
+        <video id="hero-vid-0" class="hero-video active" src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4" autoplay muted loop playsinline></video>
+        <video id="hero-vid-1" class="hero-video" src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4" muted loop playsinline preload="none"></video>
+        <video id="hero-vid-2" class="hero-video" src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4" muted loop playsinline preload="none"></video>
+        <video id="hero-vid-3" class="hero-video" src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4" muted loop playsinline preload="none"></video>
+      </div>
 
-    <!-- Mobile Navigation Overlay -->
-    <div class="mobile-nav-overlay">
-      <a href="#about">边界</a>
-      <a href="#matrix">AI 能力</a>
-      <a href="#workflow">工作流</a>
-      <a href="#faq">FAQ</a>
-      <a href="#download">下载</a>
-      <a href="updates.html">近况</a>
-    </div>
+      <!-- Transparent PNG Overlay -->
+      <div class="hero-png-overlay">
+        <img src="https://soft-zoom-63098134.figma.site/_assets/v11/0b4a435b2df2747593c43d7a1c9b4578f7d8d90c.png" alt="" aria-hidden="true" class="train-bob" loading="lazy">
+      </div>
 
-    <!-- Top Navigation -->
-    <header class="top-nav">
-      <div class="container nav-inner">
-        <a class="nav-brand" href="index.html">
-          <img src="favicon.svg" alt="" style="height: 28px; width: 28px; object-fit: contain; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px rgba(20,20,19,0.08);">
-          Pixory
-        </a>
-        <div class="nav-links">
-          <a href="#about">边界</a>
-          <a href="#matrix">AI 能力</a>
-          <a href="#workflow">工作流</a>
-          <a href="#faq">FAQ</a>
-          <a href="#download">获取</a>
-          <a href="updates.html">近况</a>
-        </div>
-        <div class="nav-actions">
-          <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-ghost">GitHub</a>
-          <a href="#download" class="btn btn-primary">Try Pixory</a>
-          <button class="menu-toggle" aria-expanded="false" aria-label="打开导航">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </button>
+      <!-- Content Layer -->
+      <div class="hero-content-layer" id="hero-content">
+        <!-- Navigation (top) -->
+        <header class="hero-nav">
+          <div class="hero-nav-left">
+            <a href="index.html" class="hero-logo">Pixory</a>
+          </div>
+          
+          <div class="hero-nav-right desktop-only">
+            <div class="nav-pill">
+              <a href="#" class="nav-pill-link updates-btn-trigger">版本近况</a>
+              <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="nav-pill-link">查看源码</a>
+              <a href="#" class="nav-pill-btn download-btn-trigger">获取 App</a>
+            </div>
+          </div>
+
+          <div class="hero-nav-right mobile-only">
+            <button class="liquid-glass mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle Menu">
+              <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <!-- Hero Content Center -->
+        <main class="hero-main">
+          <div class="liquid-glass hero-badge">
+            本地 AI 陪伴聊天与视觉资料库
+          </div>
+          
+          <div class="hero-text-container">
+            <div class="hero-text-group active" data-content="0">
+              <h1 class="hero-heading hero-heading-en">Stories that stay.<br>Companions that grow.</h1>
+              <p class="hero-subtext hero-subtext-en">角色卡、长线程、深度记忆、分支对话、本地素材——都在你手中。</p>
+            </div>
+            <div class="hero-text-group" data-content="1">
+              <h1 class="hero-heading">沉浸式的长效陪伴</h1>
+              <p class="hero-subtext">将角色、对话与素材整合在本地，支持上下文与记忆管理，提供连贯的互动体验。</p>
+            </div>
+            <div class="hero-text-group" data-content="2">
+              <h1 class="hero-heading">结构化视觉资产</h1>
+              <p class="hero-subtext">图片、视频、IP 资料无损保存。通过标签和分组进行本地管理与查阅，数据真正掌握在您手中。</p>
+            </div>
+            <div class="hero-text-group" data-content="3">
+              <h1 class="hero-heading">可控的深度记忆</h1>
+              <p class="hero-subtext">从对话中自动提取事实，支持用户级、线程级记忆面板。让长线角色不再忘记重要事实。</p>
+            </div>
+            <div class="hero-text-group" data-content="4">
+              <h1 class="hero-heading">坚定的隐私优先</h1>
+              <p class="hero-subtext">所有交互记录仅存储在您的 Android 本地，模型边界清晰，让私域体验更受保护。</p>
+            </div>
+          </div>
+
+          <div class="hero-video-switcher">
+            <button class="switcher-btn" data-vid="1">Companion Chat</button>
+            <button class="switcher-btn" data-vid="2">Visual Archive</button>
+            <button class="switcher-btn" data-vid="3">Deep Memory</button>
+            <button class="switcher-btn" data-vid="4">Local Privacy</button>
+          </div>
+        </main>
+      </div>
+
+      <!-- Mobile Menu Overlay -->
+      <div class="hero-mobile-menu" id="hero-mobile-menu">
+        <div class="hero-mobile-menu-links">
+          <a href="#" class="nav-pill-link updates-btn-trigger">版本近况</a>
+          <a href="#" class="menu-btn-primary mt-6 download-btn-trigger">获取 Android 版本</a>
         </div>
       </div>
-    </header>
+    </section>
 
-    <main>
-      <!-- Hero Section -->
-      <section class="section hero-section">
-        <div class="container">
-          <div class="grid hero-grid" style="align-items: center;">
-            <!-- Left: Copy -->
-            <div class="hero-copy" style="grid-column: 1 / 6;">
-              <h1 class="text-display-xl hero-reveal" style="margin-bottom: var(--space-xl); opacity: 0; visibility: hidden;">Meet your local<br>AI companion archive.</h1>
-              <p class="text-body-md hero-reveal" style="margin-bottom: var(--space-xl); max-width: 480px; font-size: 1.125rem; opacity: 0; visibility: hidden;">
-                Pixory 是 Android 上的本地 AI 陪伴聊天与视觉资料库。角色卡、长线程、深度记忆、分支对话、知识库和本地素材一起工作，让 AI 角色和资料上下文可以长期延续。
-              </p>
-              <div class="hero-actions hero-reveal" style="display: flex; gap: var(--space-md); opacity: 0; visibility: hidden;">
-                <a href="#download" class="btn btn-primary">获取 Android 版本</a>
-                <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="btn btn-secondary">查看源码</a>
-              </div>
-            </div>
-
-            <!-- Right: Product Mockup Card -->
-            <div class="hero-visual" style="grid-column: 7 / 13;">
-              <div class="mockup-card-light hero-mockup product-mockup" data-product-mockup>
-                <div class="hero-signal" aria-hidden="true"></div>
-                <div class="mockup-topbar">
-                  <div class="mockup-header" aria-hidden="true">
-                    <div class="mockup-dot red"></div>
-                    <div class="mockup-dot yellow"></div>
-                    <div class="mockup-dot green"></div>
-                  </div>
-                  <div class="mockup-status">
-                    <span class="mockup-status-dot"></span>
-                    Local data · user-routed AI
-                  </div>
-                </div>
-
-                <div class="mockup-interface product-interface">
-                  <aside class="mockup-sidebar product-sidebar" aria-label="演示侧边栏" style="display: flex; flex-direction: column;">
-                    <div class="text-caption-caps">Views</div>
-                    <div class="mockup-nav-list" style="margin-bottom: var(--space-lg);">
-                      <button class="mockup-nav-item is-active" type="button" data-mockup-tab="library">
-                        <span>Library</span>
-                        <small>Local Archives</small>
-                      </button>
-                      <button class="mockup-nav-item" type="button" data-mockup-tab="chat">
-                        <span>AI Chat</span>
-                        <small>Role · Memory · RAG</small>
-                      </button>
-                    </div>
-
-                    <div class="text-caption-caps mobile-hidden">Archives</div>
-                    <div class="mockup-nav-list mobile-hidden" id="mockup-archives-nav">
-                      <button class="mockup-nav-item is-active" type="button" data-mockup-preset="character">
-                        <span>IP_Character</span>
-                        <small>248 assets</small>
-                      </button>
-                      <button class="mockup-nav-item" type="button" data-mockup-preset="brand">
-                        <span>Brand System</span>
-                        <small>96 assets</small>
-                      </button>
-                      <button class="mockup-nav-item" type="button" data-mockup-preset="moodboard">
-                        <span>Moodboards</span>
-                        <small>37 boards</small>
-                      </button>
-                    </div>
-                  </aside>
-
-                  <div class="mockup-main product-main" style="position: relative;">
-                    <!-- Library View -->
-                    <div id="mockup-view-library" style="display: flex; flex-direction: column; height: 100%;">
-                    <div class="product-panel-head">
-                      <div>
-                        <div class="text-caption-caps">Companion Base</div>
-                        <h3 data-mockup-title>角色与资料库</h3>
-                      </div>
-                    </div>
-
-                    <div class="mockup-asset-grid" aria-label="演示图片资产">
-                      <button class="asset-sheen mockup-asset-card is-selected" type="button" data-asset-name="Spring_look_041" data-asset-meta="Scene group · 12.4 MB · 原图已保留">
-                        <span class="asset-thumb asset-thumb-warm"></span>
-                        <strong>Spring_look_041</strong>
-                        <small>Scene · favorite</small>
-                      </button>
-                      <button class="asset-sheen mockup-asset-card" type="button" data-asset-name="Expression_set" data-asset-meta="Character group · 8 tags · 最近查看">
-                        <span class="asset-thumb asset-thumb-teal"></span>
-                        <strong>Expression_set</strong>
-                        <small>Character · tags</small>
-                      </button>
-                    </div>
-
-
-
-                    <div class="mockup-toolbar">
-                      <a href="https://mist01.com/downloads/Pixory-v2.5.1.apk" class="mockup-action mockup-action-primary" download>直接下载</a>
-                      <a href="#matrix" class="mockup-action">查看能力</a>
-                      <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer" class="mockup-action">源码</a>
-                    </div>
-                    </div> <!-- End of Library View -->
-
-                    <!-- Chat View -->
-                    <div id="mockup-view-chat" class="chat-container" style="display: none; flex-direction: column; height: 100%; overflow: hidden; position: relative; z-index: 1;">
-                      <div class="chat-aurora-bg">
-                        <div class="aurora-orb aurora-orb-1"></div>
-                        <div class="aurora-orb aurora-orb-2"></div>
-                        <div class="aurora-orb aurora-orb-3"></div>
-                      </div>
-                      <div class="chat-header" style="display: flex; align-items: center; justify-content: center; gap: var(--space-md); border-bottom: 1px solid var(--hairline); padding-bottom: var(--space-md); margin-bottom: var(--space-lg); position: relative; z-index: 2;">
-                        <div style="font-weight: 600; color: var(--ink);">角色聊天 · 本地上下文</div>
-                      </div>
-
-                      <div class="chat-thread" id="mockup-chat-thread" style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-xl); padding-bottom: var(--space-xl); scrollbar-width: none;">
-                      </div>
-                    </div> <!-- End of Chat View -->
-                  </div> <!-- End of mockup-main -->
-                </div> <!-- End of mockup-interface -->
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Local AI Boundaries (Cream Cards) -->
-      <section id="about" class="section">
-        <div class="container" data-anime-group>
-          <div class="anime-reveal" style="text-align: center; margin-bottom: var(--space-section); max-width: 800px; margin-inline: auto;">
-            <h2 class="text-display-lg" style="margin-bottom: var(--space-lg);">Local First, AI Aware</h2>
-            <p class="text-title-md" style="color: var(--muted);">聊天、角色、记忆、材料和视觉素材优先保存在本机。模型请求只发往你配置的供应商，资料边界由你掌控。</p>
-          </div>
-
-          <div class="grid">
-            <div class="feature-card anime-reveal" style="grid-column: span 4;">
-              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">01 / 长期角色上下文</h3>
-              <p class="text-body-sm">角色卡、首句、记忆、分支路线和续聊 Markdown 都围绕“下一轮还能接上”设计，不把聊天当一次性问答。</p>
-            </div>
-            <div class="feature-card anime-reveal" style="grid-column: span 4;">
-              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">02 / 本地资料基础</h3>
-              <p class="text-body-sm">聊天、素材、IP、文档、标签和记忆写入本地 SQLite 与私有目录；原图和视频不会被压缩替换。</p>
-            </div>
-            <div class="feature-card anime-reveal" style="grid-column: span 4;">
-              <h3 class="text-title-md" style="margin-bottom: var(--space-sm);">03 / 可迁移角色包</h3>
-              <p class="text-body-sm">支持 SillyTavern 角色卡导入导出，并可把系统人设、记忆快照和上一轮上下文整理成续聊文档。</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Feature Matrix (Deep Dive) -->
-      <section id="matrix" class="section section-dark">
-        <div class="container" data-anime-group>
-          <div class="anime-reveal" style="margin-bottom: var(--space-xl);">
-            <span class="text-caption-caps" style="color: var(--on-dark-soft);">AI Chat Matrix</span>
-            <h2 class="text-display-lg mt-3" style="color: var(--on-dark); max-width: 660px;">真正重要的是：角色稳定、回复快、资料可追溯。</h2>
-          </div>
-
-          <div class="grid">
-            <!-- 6-Grid Matrix -->
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">陪伴型长聊天</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">线程保存模型、角色、分支和资料范围。流式回复使用 generation-scoped 缓冲、UI 节流和低频持久化，长聊天也能停、能恢复。</p>
-            </div>
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">角色卡与 SillyTavern</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">支持 SillyTavern PNG/JSON/V1/V2/V3 导入，保留 sourceJson、首句、头像和高级字段；也能导出兼容 PNG 与续聊 Markdown。</p>
-            </div>
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">深度记忆可控</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">自动捕获、手动记忆、用户画像、摘要片段、作用域、撤销和标记不准都在记忆板中可见，不把长期记忆变成黑箱。</p>
-            </div>
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">本地材料与知识库</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">手动文本、TXT、Markdown、PDF、DOCX、IP 快照和线程材料可以进入检索上下文，资料型回复带 citation。</p>
-            </div>
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">Prompt 与缓存保护</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">Prompt 分 stable/dynamic 层，普通聊天 fast-path 跳过无关 retrieval，诊断指标不进入 prompt/cache key，保护 AI 聊天缓存命中率。</p>
-            </div>
-            <div class="anime-reveal" style="grid-column: span 4; padding: var(--space-lg) 0; border-top: 1px solid var(--surface-dark-elevated);">
-              <h3 class="text-title-md" style="color: var(--on-dark); margin-bottom: var(--space-sm);">视觉资料仍是地基</h3>
-              <p class="text-body-sm" style="color: var(--on-dark-soft);">图片、视频、IP、分组、标签、备注、重复检测、回收站、备份和隐私空间继续支撑角色设定与资料沉淀。</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Workflow (Terminal Mockup) -->
-      <section id="workflow" class="section">
-        <div class="container" data-anime-group>
-          <div class="grid" style="align-items: center;">
-            <div class="workflow-copy anime-reveal" style="grid-column: 1 / 6;">
-              <span class="text-caption-caps">Workflow & Continuity</span>
-              <h2 class="text-display-lg mt-3">从角色开始，到资料和记忆沉淀。</h2>
-              <p class="text-body-md mt-4" style="color: var(--muted);">
-                Pixory 把角色、对话、材料和素材放在同一个本地系统里。你可以先聊，再把重要事实沉淀为记忆；也可以先整理资料，再让 AI 基于资料继续回复。
-              </p>
-
-              <ul class="mt-6" style="display: flex; flex-direction: column; gap: var(--space-lg);">
-                <li>
-                  <strong style="font-weight: 500;">Role First</strong>
-                  <p class="text-body-sm mt-1">导入或创建角色卡，保存首句、头像、提示词和模型偏好。</p>
-                </li>
-                <li>
-                  <strong style="font-weight: 500;">Memory & Materials</strong>
-                  <p class="text-body-sm mt-1">把对话事实沉淀为可控记忆，把文档、IP 快照和视觉素材作为可引用上下文。</p>
-                </li>
-              </ul>
-            </div>
-
-            <div class="workflow-visual anime-reveal" style="grid-column: 7 / 13;">
-              <div class="code-window">
-                <div class="mockup-header">
-                  <div class="mockup-dot red"></div>
-                  <div class="mockup-dot yellow"></div>
-                  <div class="mockup-dot green"></div>
-                </div>
-                <pre><code><span class="code-comment">// Companion Context Simulation</span>
-> pixory chat --role "Mira" --thread "chapter-12"
-
-<span class="code-keyword">Loaded</span> role card, memory snapshot, branch route.
-Retrieval tier: <span class="code-string">material_keyword_only</span>
-
-<span class="code-comment">/* Stable prompt prefix preserved */</span>
-[ role ] SillyTavern card · avatar · first message
-[ memory ] user profile + thread summaries
-[ material ] PDF chunks + IP snapshot citations
-
-<span class="code-keyword">Status:</span> streaming, recoverable, branch-safe.</code></pre>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <!-- FAQ Section -->
-      <section id="faq" class="section" style="background-color: var(--surface-soft);">
-        <div class="container" data-anime-group>
-          <div class="anime-reveal" style="max-width: 600px; margin-bottom: var(--space-xl);">
-            <h2 class="text-display-lg">Technical FAQ</h2>
-            <p class="text-body-md" style="color: var(--muted); margin-top: var(--space-md);">那些有关数据边界的尖锐问题。</p>
-          </div>
-
-          <div class="grid">
-            <div class="anime-reveal" style="grid-column: 1 / 11;">
-              <div class="faq-item">
-                <h3 class="text-title-md">Pixory 的 AI 聊天是完全离线的吗？</h3>
-                <p class="text-body-md mt-2" style="color: var(--muted);">不是。聊天数据、角色卡、记忆、材料和索引优先保存在本机；当你向模型发送消息时，必要 prompt 会发往你配置的模型供应商。Pixory 的重点是让本地数据边界清楚，并由你决定使用哪个供应商。</p>
-              </div>
-              <div class="faq-item">
-                <h3 class="text-title-md">它和普通 AI 聊天 App 最大区别是什么？</h3>
-                <p class="text-body-md mt-2" style="color: var(--muted);">Pixory 把角色卡、长期记忆、分支对话、本地材料、视觉素材和备份放在同一个 Android 本地工作流里。它更适合长期角色、IP 设定和资料型聊天，而不是一次性问答。</p>
-              </div>
-              <div class="faq-item">
-                <h3 class="text-title-md">SillyTavern 角色卡能用吗？</h3>
-                <p class="text-body-md mt-2" style="color: var(--muted);">可以。Pixory 支持导入 SillyTavern PNG/JSON 角色卡，并能导出兼容 PNG；不适合塞进 PNG 的记忆和上一轮上下文会整理成 Markdown，方便复制到其他平台继续使用。</p>
-              </div>
-              <div class="faq-item">
-                <h3 class="text-title-md">如果应用被意外卸载，我的资料还在吗？</h3>
-                <p class="text-body-md mt-2" style="color: var(--muted);">如果你在 Android 系统中清除了应用数据，Android 会删除应用专属目录下的文件。因此，定期使用全量备份或系统目录导出，是保护图片、视频、聊天、角色和材料的基础。</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Download CTA (Coral Callout) -->
-      <section id="download" class="section">
-        <div class="container" data-anime-group>
-          <div class="callout-card-coral anime-reveal text-center">
-            <h2 class="text-display-lg" style="margin-bottom: var(--space-md);">把 Pixory 装进手机。</h2>
-            <p class="text-title-md" style="margin-bottom: var(--space-xl); opacity: 0.9;">
-              当前版本：2.5.1 · 最新 Android 稳定包
-            </p>
-            <div class="download-options">
-              <a href="https://mist01.com/downloads/Pixory-v2.5.1.apk" class="download-option download-option-light" download>
-                <span class="download-option-title">直接下载</span>
-                <span class="download-option-caption">最新版 Android APK</span>
-              </a>
-              <a href="https://github.com/qinghe-zy/Pixory/releases/latest" target="_blank" rel="noreferrer" class="download-option download-option-dark">
-                <span class="download-option-title">GitHub 备用</span>
-                <span class="download-option-caption">历史版本与镜像</span>
-              </a>
-            </div>
-            <div class="mt-4 text-caption" style="opacity: 0.8;">
-              SHA-256: b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="site-footer">
-      <div class="container footer-grid">
-        <div class="footer-brand">
-          <div class="nav-brand" style="color: var(--on-dark);">
-            <span class="nav-brand-mark nav-brand-mark-image" aria-hidden="true"></span>
-            Pixory
-          </div>
-          <p class="mt-3 text-body-sm" style="max-width: 280px;">
-            Android 上的本地 AI 陪伴聊天与视觉资料库。<br>角色、记忆、材料和原始素材一起保留。
+    <!-- Updates Modal -->
+    <div class="download-modal-overlay" id="updates-modal">
+      <style>.no-scrollbar::-webkit-scrollbar { display: none; }</style><div class="no-scrollbar" style="max-height: 85vh; overflow-y: auto; text-align: left; padding: 40px; display: flex; flex-direction: column; max-width: 800px; width: 100%; scrollbar-width: none; -ms-overflow-style: none;">
+        <button class="download-modal-close" id="updates-modal-close" style="position: fixed; top: 40px; right: 40px; z-index: 10;">&times;</button>
+        <div style="margin-top: -20px;">
+          <h2 class="text-display-lg" style="margin-bottom: var(--space-md); color: #fff; font-family: 'Instrument Serif', serif; font-weight: normal;">Release Notes</h2>
+          <p class="text-body-md" style="color: rgba(255,255,255,0.7); margin-bottom: 40px;">
+            稳定。清晰。耐用。更新不是喧哗，是秩序继续变清楚。
           </p>
-        </div>
-        <div class="footer-nav">
-          <div>
-            <h4>探索</h4>
-            <a href="#about">数据边界</a>
-            <a href="#matrix">AI 能力</a>
-            <a href="#workflow">工作流</a>
-            <a href="#faq">常见问题</a>
-          </div>
-          <div>
-            <h4>资源</h4>
-            <a href="updates.html">版本近况</a>
-            <a href="#download">获取 Android 版</a>
-          </div>
-          <div>
-            <h4>支持</h4>
-            <a href="https://github.com/qinghe-zy/Pixory" target="_blank" rel="noreferrer">GitHub 仓库</a>
-            <a href="https://github.com/qinghe-zy/Pixory/issues" target="_blank" rel="noreferrer">报告问题</a>
+          <div class="timeline" style="color: rgba(255,255,255,0.9);">
+            <!-- 2.5.1 Release -->
+            <div class="timeline-item" style="margin-bottom: 40px;">
+              <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">2026-06-24</div>
+              <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">Version 2.5.1</h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                  <h4 style="margin-bottom: 8px; font-weight: 600;">同版本 OTA 热修</h4>
+                  <p style="font-size: 14px; opacity: 0.8;">2.5.1 发布后追加推送了同版本热更新，补齐外部 txt/md 在解析不足时的模型辅助结构恢复，并把导入评审结果显式分流到 summary、profile 和 formal memory。</p>
+                </div>
+                <div>
+                  <h4 style="margin-bottom: 8px; font-weight: 600;">连续性导入</h4>
+                  <p style="font-size: 14px; opacity: 0.8;">支持把 Pixory 原生续聊包直接接回，也支持把其他平台整理出的迁移文档导回当前线程，继续沿着角色与分支上下文聊天。</p>
+                </div>
+                <div>
+                  <h4 style="margin-bottom: 8px; font-weight: 600;">记忆审读门禁</h4>
+                  <p style="font-size: 14px; opacity: 0.8;">外部导入内容先做结构提取，再交给记忆模型审读和验收；可解析消息会渲染到聊天页，其余压缩内容也会走审读后再进入后续记忆链路。</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 2.4.5 Release -->
+            <div class="timeline-item" style="margin-bottom: 40px;">
+              <div class="text-caption-caps" style="color: #fff; margin-bottom: 8px; opacity: 0.8;">2026-06-13</div>
+              <h3 style="margin-bottom: 24px; font-size: 24px; font-family: 'Instrument Serif', serif; font-weight: normal;">Version 2.4.5</h3>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                  <h4 style="margin-bottom: 8px; font-weight: 600;">AI 工作台更顺手</h4>
+                  <p style="font-size: 14px; opacity: 0.8;">工作台加入最近角色头像、最近聊天和紧凑入口，最近聊天显示完整日期时间，并按页面级节奏拉开组件间距。</p>
+                </div>
+              </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 40px;">
+              <a href="https://github.com/qinghe-zy/Pixory/releases" target="_blank" rel="noreferrer" style="color: #fff; opacity: 0.7; text-decoration: none; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 2px;">访问 GitHub 查看完整记录</a>
+            </div>
           </div>
         </div>
       </div>
-      <div class="container footer-bottom">
-        <span>&copy; 2026 Pixory. All rights reserved.</span>
-        <span>mist01.com</span>
+    </div>
+    
+    <!-- Download Modal -->
+    <div class="download-modal-overlay" id="download-modal">
+      <div class="download-modal-content liquid-glass text-center">
+        <button class="download-modal-close" id="download-modal-close">&times;</button>
+        <h2 class="text-display-lg" style="margin-bottom: var(--space-md); color: #fff; font-family: 'Instrument Serif', serif; font-weight: normal;">把 Pixory 装进手机。</h2>
+        <p class="text-title-md" style="margin-bottom: var(--space-xl); color: rgba(255,255,255,0.8);">
+          当前版本：2.5.1 · 最新 Android 稳定包
+        </p>
+        <div class="download-options" style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+          <a href="https://mist01.com/downloads/Pixory-v2.5.1.apk" class="download-option download-option-light" download style="background: #fff; color: #000; padding: 16px 24px; border-radius: 12px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start; transition: transform 0.2s;">
+            <span style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">直接下载</span>
+            <span style="font-size: 13px; opacity: 0.7;">最新版 Android APK</span>
+          </a>
+          <a href="https://github.com/qinghe-zy/Pixory/releases/latest" target="_blank" rel="noreferrer" class="download-option download-option-dark" style="background: rgba(255,255,255,0.1); color: #fff; padding: 16px 24px; border-radius: 12px; text-decoration: none; display: flex; flex-direction: column; align-items: flex-start; transition: background 0.2s;">
+            <span style="font-weight: 600; font-size: 16px; margin-bottom: 4px;">GitHub 备用</span>
+            <span style="font-size: 13px; opacity: 0.7;">历史版本与镜像</span>
+          </a>
+        </div>
+        <div class="mt-4" style="margin-top: 32px; font-size: 12px; color: rgba(255,255,255,0.5);">
+          SHA-256: b64a034ebd68c7fbc2e8c345e7c461c471f461ba59a034f8f81cc72b7e957e2e<br><br>
+          Requires Android 10.0+ (API 29) • Approx 40MB
+        </div>
       </div>
-    </footer>
+    </div>
 
     <!-- Include Anime.js from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
-    <script src="site.js?v=13"></script>
+    <script src="site.js?v=14"></script>
   </body>
 </html>
+
+

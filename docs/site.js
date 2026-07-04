@@ -502,3 +502,182 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 1000);
   }
 });
+
+/* --- Cinematic Hero Interaction Logic --- */
+document.addEventListener('DOMContentLoaded', () => {
+  // Mobile Menu
+  const menuToggle = document.getElementById('mobile-menu-toggle');
+  const mobileMenu = document.getElementById('hero-mobile-menu');
+  const menuLinks = document.querySelectorAll('#hero-mobile-menu a');
+
+  if (menuToggle && mobileMenu) {
+    menuToggle.addEventListener('click', () => {
+      menuToggle.classList.toggle('open');
+      mobileMenu.classList.toggle('open');
+      if (mobileMenu.classList.contains('open')) {
+        document.body.style.overflow = 'hidden';
+      } else {
+        document.body.style.overflow = '';
+      }
+    });
+
+    menuLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        menuToggle.classList.remove('open');
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+      });
+    });
+  }
+
+  // Video & Text Switcher with Auto-rotation
+  const switcherBtns = document.querySelectorAll('.switcher-btn');
+  const videos = document.querySelectorAll('.hero-video');
+  const textGroups = document.querySelectorAll('.hero-text-group');
+  const contentLayer = document.getElementById('hero-content');
+  // activeContentIndex tracks which text group is visible (0=English, 1-4=features)
+  let activeContentIndex = 0;
+  let isTransitioning = false;
+  let autoplayTimer = null;
+  let idleTimer = null;
+  const IDLE_DELAY = 10000;   // 10s before first auto-play
+  const SLIDE_INTERVAL = 5000; // 5s per slide
+  const RESUME_DELAY = 5000;  // 5s after click to resume
+
+  function showContent(nextContentIndex) {
+    if (isTransitioning || nextContentIndex === activeContentIndex) return;
+    isTransitioning = true;
+
+    // Update text groups
+    textGroups.forEach(g => g.classList.remove('active'));
+    const nextGroup = document.querySelector(`[data-content="${nextContentIndex}"]`);
+    if (nextGroup) nextGroup.classList.add('active');
+
+    // Update videos: content 0 uses video 0, content 1-4 maps to video 0-3
+    const nextVideoIndex = nextContentIndex === 0 ? 0 : nextContentIndex - 1;
+    const prevVideoIndex = activeContentIndex === 0 ? 0 : activeContentIndex - 1;
+    if (nextVideoIndex !== prevVideoIndex) {
+      // Pause old video
+      if (videos[prevVideoIndex]) videos[prevVideoIndex].pause();
+      videos.forEach(v => v.classList.remove('active'));
+      // Play new video
+      const nextVid = videos[nextVideoIndex];
+      if (nextVid) {
+        nextVid.classList.add('active');
+        nextVid.play().catch(() => {});
+      }
+      // Preload the next video in sequence so it's ready
+      const peekIndex = (nextVideoIndex + 1) % videos.length;
+      if (videos[peekIndex] && videos[peekIndex].preload === 'none') {
+        videos[peekIndex].preload = 'auto';
+      }
+    }
+
+    // Update buttons: only highlight if content 1-4
+    switcherBtns.forEach(b => b.classList.remove('active'));
+    if (nextContentIndex >= 1) {
+      const matchBtn = document.querySelector(`[data-vid="${nextContentIndex}"]`);
+      if (matchBtn) matchBtn.classList.add('active');
+    }
+
+    activeContentIndex = nextContentIndex;
+    setTimeout(() => { isTransitioning = false; }, 1000);
+  }
+
+  function startAutoplay() {
+    stopAutoplay();
+    autoplayTimer = setInterval(() => {
+      // Cycle through all 5 groups: 0 → 1 → 2 → 3 → 4 → 0 → ...
+      const next = (activeContentIndex + 1) % 5;
+      showContent(next);
+    }, SLIDE_INTERVAL);
+  }
+
+  function stopAutoplay() {
+    if (autoplayTimer) { clearInterval(autoplayTimer); autoplayTimer = null; }
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  }
+
+  function scheduleResume(delay) {
+    stopAutoplay();
+    idleTimer = setTimeout(() => { startAutoplay(); }, delay);
+  }
+
+  if (switcherBtns.length > 0 && videos.length > 0) {
+    // Button clicks
+    switcherBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const nextIndex = parseInt(btn.getAttribute('data-vid'), 10);
+        showContent(nextIndex);
+        scheduleResume(RESUME_DELAY);
+      });
+    });
+
+    // Start idle countdown on page load
+    idleTimer = setTimeout(() => { startAutoplay(); }, IDLE_DELAY);
+  }
+
+  // --- Download Modal Logic ---
+  const downloadTriggers = document.querySelectorAll('.download-btn-trigger');
+  const downloadModal = document.getElementById('download-modal');
+  const modalClose = document.getElementById('download-modal-close');
+
+  if (downloadModal && modalClose) {
+    downloadTriggers.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        downloadModal.classList.add('active');
+      });
+    });
+
+    modalClose.addEventListener('click', () => {
+      downloadModal.classList.remove('active');
+    });
+
+    // Close on clicking outside the content
+    downloadModal.addEventListener('click', (e) => {
+      if (e.target === downloadModal) {
+        downloadModal.classList.remove('active');
+      }
+    });
+    
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && downloadModal.classList.contains('active')) {
+        downloadModal.classList.remove('active');
+      }
+    });
+  }
+
+  // --- Updates Modal Logic ---
+  const updatesTriggers = document.querySelectorAll('.updates-btn-trigger');
+  const updatesModal = document.getElementById('updates-modal');
+  const updatesModalClose = document.getElementById('updates-modal-close');
+
+  if (updatesModal && updatesModalClose) {
+    updatesTriggers.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        updatesModal.classList.add('active');
+      });
+    });
+
+    updatesModalClose.addEventListener('click', () => {
+      updatesModal.classList.remove('active');
+    });
+
+    // Close on clicking outside the content
+    updatesModal.addEventListener('click', (e) => {
+      if (e.target === updatesModal) {
+        updatesModal.classList.remove('active');
+      }
+    });
+    
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && updatesModal.classList.contains('active')) {
+        updatesModal.classList.remove('active');
+      }
+    });
+  }
+});
