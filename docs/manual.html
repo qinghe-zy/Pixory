@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pixory 产品使用指南</title>
+  <!-- 引入 marked.js 解析 Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- 引入 Inter 字体 (作为 StyreneB 替代) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <!-- 引入 Cormorant Garamond 字体 (作为 Copernicus 替代) -->
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* CSS Variables from design.md */
+    :root {
+      --canvas: #faf9f5;
+      --surface-card: #efe9de;
+      --surface-dark: #181715;
+      --ink: #141413;
+      --body-strong: #252523;
+      --body: #3d3d3a;
+      --muted: #6c6a64;
+      --primary: #cc785c;
+      --hairline: #e6dfd8;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--canvas);
+      color: var(--body);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .nav-bar {
+      position: sticky;
+      top: 0;
+      background: rgba(250, 249, 245, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--hairline);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+    }
+
+    .nav-bar a.back-btn {
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      transition: color 0.2s ease;
+    }
+
+    .nav-bar a.back-btn:hover {
+      color: var(--primary);
+    }
+
+    .nav-bar .logo-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+
+    /* Markdown Styling */
+    .markdown-body {
+      color: var(--body);
+      font-size: 16px;
+    }
+
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4 {
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', 'Tiempos Headline', serif;
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      margin-top: 2em;
+      margin-bottom: 1em;
+    }
+
+    .markdown-body h1 {
+      font-size: 36px;
+      letter-spacing: -0.5px;
+    }
+
+    .markdown-body h2 {
+      font-size: 28px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    .markdown-body h3 {
+      font-size: 22px;
+    }
+
+    .markdown-body p {
+      margin-bottom: 1.5em;
+    }
+
+    .markdown-body strong {
+      color: var(--body-strong);
+      font-weight: 500;
+    }
+
+    .markdown-body a {
+      color: var(--primary);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+
+    .markdown-body a:hover {
+      border-bottom-color: var(--primary);
+    }
+
+    .markdown-body ul,
+    .markdown-body ol {
+      margin-bottom: 1.5em;
+      padding-left: 24px;
+    }
+
+    .markdown-body li {
+      margin-bottom: 0.5em;
+    }
+
+    .markdown-body code {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      background-color: var(--surface-card);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: var(--ink);
+    }
+
+    .markdown-body pre {
+      background-color: var(--surface-dark);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+      margin-bottom: 1.5em;
+    }
+
+    .markdown-body pre code {
+      background-color: transparent;
+      color: #e6edf3;
+      padding: 0;
+    }
+
+    .markdown-body blockquote {
+      margin: 0 0 1.5em 0;
+      padding: 16px 24px;
+      background-color: var(--surface-card);
+      border-left: 4px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .markdown-body img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      margin: 2em 0;
+    }
+
+    #loading {
+      text-align: center;
+      padding: 60px 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    /* Mobile adaptations */
+    @media (max-width: 768px) {
+      .container {
+        padding: 32px 20px;
+      }
+      .markdown-body h1 { font-size: 30px; }
+      .markdown-body h2 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <div class="nav-bar">
+    <a href="index.html" class="back-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      返回
+    </a>
+    <div class="logo-text">Pixory</div>
+    <div style="width: 60px;"></div> <!-- Spacer for centering -->
+  </div>
+
+  <!-- Content Container -->
+  <div class="container">
+    <div id="loading">正在加载文档...</div>
+    <div id="doc-content" class="markdown-body" style="display: none;"></div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      fetch('manual.md')
+        .then(response => {
+          if (!response.ok) throw new Error('Document not found');
+          return response.text();
+        })
+        .then(text => {
+          document.getElementById('loading').style.display = 'none';
+          const contentDiv = document.getElementById('doc-content');
+          contentDiv.style.display = 'block';
+          contentDiv.innerHTML = marked.parse(text);
+        })
+        .catch(err => {
+          document.getElementById('loading').innerText = '加载文档失败，请检查网络或稍后重试。';
+          console.error('Failed to load manual.md', err);
+        });
+    });
+  </script>
+</body>
+</html>
