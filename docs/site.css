@@ -1695,11 +1695,11 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 }
 
 .liquid-glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
 .nav-pill {
@@ -1774,7 +1774,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   -webkit-tap-highlight-color: transparent;
 }
 .hero-badge:hover {
-  background: rgba(255,255,255,0.15);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
   color: #fff;
 }
 
