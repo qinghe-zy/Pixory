@@ -2000,28 +2000,23 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 
 /* --- Pull-to-Refresh Indicator --- */
 .ptr-indicator {
-  position: fixed;
-  top: 0;
+  position: absolute;
+  top: -60px;
   left: 50%;
-  transform: translate(-50%, -60px);
+  transform: translateX(-50%);
   z-index: 9999;
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(24, 23, 21, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.85);
-  padding: 10px 24px;
-  border-radius: 100px;
-  font-family: 'Instrument Serif', serif;
-  font-size: 18px;
-  letter-spacing: 0.5px;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
   pointer-events: none;
   opacity: 0;
-  will-change: transform, opacity;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  will-change: opacity;
+}
+
+.ptr-spinner svg {
+  width: 28px;
+  height: 28px;
 }
 
 .ptr-spinner {

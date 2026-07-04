@@ -723,16 +723,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let pulling = false;
     let pullDistance = 0;
 
-    // Create pull indicator element
     const indicator = document.createElement('div');
     indicator.className = 'ptr-indicator';
     indicator.innerHTML = `
       <div class="ptr-spinner">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="10" stroke-dasharray="16 16" stroke-linecap="round"/>
         </svg>
       </div>
-      <span class="ptr-text">下拉刷新</span>
     `;
     document.body.prepend(indicator);
 
@@ -753,7 +751,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (diff > 0 && window.scrollY <= 0) {
         // Apply rubber-band resistance
         pullDistance = Math.min(diff * 0.45, MAX_PULL);
-        indicator.style.transform = `translateY(${pullDistance - 60}px)`;
+        
+        // Translate entire body
+        document.body.style.transform = `translateY(${pullDistance}px)`;
+        
         indicator.style.opacity = Math.min(pullDistance / THRESHOLD, 1);
 
         const spinner = indicator.querySelector('.ptr-spinner');
@@ -763,10 +764,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (pullDistance >= THRESHOLD) {
           indicator.classList.add('ptr-ready');
-          indicator.querySelector('.ptr-text').textContent = '松开刷新';
         } else {
           indicator.classList.remove('ptr-ready');
-          indicator.querySelector('.ptr-text').textContent = '下拉刷新';
         }
       }
     }, { passive: true });
@@ -777,17 +776,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (pullDistance >= THRESHOLD) {
         indicator.classList.add('ptr-refreshing');
-        indicator.querySelector('.ptr-text').textContent = '正在刷新…';
-        indicator.style.transform = 'translateY(10px)';
+        document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
+        document.body.style.transform = `translateY(60px)`; // keep it down slightly to show spinner
 
         setTimeout(() => {
           window.location.reload();
         }, 600);
       } else {
-        indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s ease';
-        indicator.style.transform = 'translateY(-60px)';
+        document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
+        document.body.style.transform = 'translateY(0)';
+        indicator.style.transition = 'opacity 0.3s ease';
         indicator.style.opacity = '0';
+        
         setTimeout(() => {
+          document.body.style.transition = '';
           indicator.style.transition = '';
         }, 320);
       }
