@@ -71,7 +71,7 @@
             本地 AI 陪伴聊天与视觉资料库
           </div>
           
-          <div class="hero-text-container">
+          <div class="hero-text-container" id="hero-text-container" style="cursor: pointer;" title="点击阅读详情">
             <div class="hero-text-group active" data-content="0">
               <h1 class="hero-heading hero-heading-en">Stories that stay.<br>Companions that grow.</h1>
               <p class="hero-subtext hero-subtext-en">角色卡、长线程、深度记忆、分支对话、本地素材——都在你手中。</p>
@@ -92,6 +92,8 @@
               <h1 class="hero-heading">坚定的隐私优先</h1>
               <p class="hero-subtext">所有交互记录仅存储在您的 Android 本地，模型边界清晰，让私域体验更受保护。</p>
             </div>
+            
+            <div style="margin-top: 32px; font-size: 13px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; pointer-events: none; transition: opacity 0.3s; opacity: 0.8;" class="hero-click-hint">Click to read details →</div>
           </div>
 
           <div class="hero-video-switcher">
@@ -105,6 +107,77 @@
 
 
     </section>
+
+    <!-- Features Modal -->
+    <div class="download-modal-overlay" id="features-modal">
+      <style>
+        .features-modal-content {
+          max-height: 85vh; 
+          overflow-y: auto; 
+          text-align: left; 
+          padding: 40px; 
+          display: flex; 
+          flex-direction: column; 
+          max-width: 800px; 
+          width: 100%; 
+          scrollbar-width: none; 
+          -ms-overflow-style: none;
+          color: rgba(255,255,255,0.9);
+        }
+        .features-modal-content::-webkit-scrollbar { display: none; }
+        .feature-block { margin-bottom: 40px; }
+        .feature-title { font-family: 'Instrument Serif', serif; font-size: 32px; font-weight: normal; margin-bottom: 16px; color: #fff; }
+        .feature-desc { font-size: 16px; line-height: 1.8; color: rgba(255,255,255,0.7); }
+        .feature-main-intro { 
+          font-family: 'STKaiti', 'Kaiti SC', 'KaiTi', serif; 
+          font-size: 22px; 
+          line-height: 1.8; 
+          color: rgba(255,255,255,0.95); 
+          font-style: italic;
+          margin-bottom: 56px;
+          border-left: 3px solid rgba(255,255,255,0.3);
+          padding-left: 24px;
+        }
+        @media (max-width: 768px) {
+          .features-modal-content { padding: 32px 24px; }
+          .feature-title { font-size: 28px; margin-bottom: 12px; }
+          .feature-main-intro { font-size: 18px; padding-left: 16px; margin-bottom: 40px; }
+          .feature-desc { font-size: 15px; }
+        }
+      </style>
+      <div class="features-modal-content">
+        <button class="download-modal-close" id="features-modal-close" style="position: fixed; top: 40px; right: 40px; z-index: 10;">&times;</button>
+        <div style="margin-top: -20px;">
+          <h2 class="text-display-lg" style="margin-bottom: 40px; color: #fff; font-family: 'Instrument Serif', serif; font-weight: normal;">Stories that stay.<br>Companions that grow.</h2>
+          
+          <div class="feature-main-intro">
+            故事不会走散，陪伴与日生长。<br><br>
+            这里不只有你来我往的对话，更有能沉淀下来的长久陪伴。生动的角色、完整的素材、不会褪色的记忆 —— 所有设计都只为一件事：让你能安心投入地续写每一段故事，沉淀每一份羁绊。陪伴会随时光日渐深厚，故事会伴岁月安然长留。
+          </div>
+
+          <div class="feature-block">
+            <div class="feature-title">沉浸式的长效陪伴</div>
+            <div class="feature-desc">拒绝用完即走的冰冷工具感。Pixory 专为建立长期羁绊而生，支持多维度的角色卡设定与无限延伸的长线程对话。如丝般顺滑的流式生成，配合可随时回放与修改的对话分支，让每一场跨越时空的交谈，都能保持情感的连贯与共鸣。</div>
+          </div>
+
+          <div class="feature-block">
+            <div class="feature-title">结构化视觉资产</div>
+            <div class="feature-desc">不仅是陪伴，更是你的私域数字藏宝阁。原文件无损入库，拒绝压缩与阉割。通过灵活的标签系统与 IP 分组，将海量图片、视频沉淀为专属的视觉记忆库。这些素材不仅随时可查，还能作为 AI 聊天的强大上下文，让虚拟互动栩栩如生。</div>
+          </div>
+
+          <div class="feature-block">
+            <div class="feature-title">可控的深度记忆</div>
+            <div class="feature-desc">告别像金鱼一样的 AI。独创的多层级深度记忆系统（全局/线程/角色/IP），能够从对话中精准提取并固化关键事实。更重要的是——记忆的最终决定权完全在你，支持透明查阅、随时编辑与版本回退，让那些重要的约定永远不会被遗忘。</div>
+          </div>
+
+          <div class="feature-block">
+            <div class="feature-title" style="margin-bottom: 12px;">坚定的隐私优先</div>
+            <div class="feature-desc">你的秘密，只有你的设备知道。所有的对话历史、角色设定、记忆快照与密钥配置，均采用 SQLite 物理级隔离，被死死锁在你的本地设备中。独有的“双空间”机制，将普通空间与私密空间彻底分离，为你守护最纯粹、绝对安全的数字自留地。</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
 
     <!-- Updates Modal -->
     <div class="download-modal-overlay" id="updates-modal">

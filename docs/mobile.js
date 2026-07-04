@@ -686,6 +686,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // --- Features Modal Logic ---
+  const heroTextContainer = document.getElementById('hero-text-container');
+  const featuresModal = document.getElementById('features-modal');
+  const featuresModalClose = document.getElementById('features-modal-close');
+
+  if (heroTextContainer && featuresModal && featuresModalClose) {
+    heroTextContainer.addEventListener('click', (e) => {
+      e.preventDefault();
+      featuresModal.classList.add('active');
+    });
+
+    featuresModalClose.addEventListener('click', () => {
+      featuresModal.classList.remove('active');
+    });
+
+    // Close on clicking outside the content
+    featuresModal.addEventListener('click', (e) => {
+      if (e.target === featuresModal) {
+        featuresModal.classList.remove('active');
+      }
+    });
+    
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && featuresModal.classList.contains('active')) {
+        featuresModal.classList.remove('active');
+      }
+    });
+  }
+
   // --- History Back-Button Protection ---
   // When a modal opens, push a state so the back button closes it first
   function setupHistoryProtection(modalEl, closeCallback) {
