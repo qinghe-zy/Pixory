@@ -1923,7 +1923,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
     font-family: 'Instrument Serif', serif;
     font-style: italic;
   }
-  .menu-btn-primary {
+  .hero-mobile-menu-links a.menu-btn-primary {
     background: #fff;
     color: #111;
     padding: 12px 32px;
