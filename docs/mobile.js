@@ -732,7 +732,8 @@ document.addEventListener('DOMContentLoaded', () => {
         </svg>
       </div>
     `;
-    document.body.prepend(indicator);
+    // Append to html instead of body to avoid body overflow clipping
+    document.documentElement.appendChild(indicator);
 
     document.addEventListener('touchstart', (e) => {
       if (window.scrollY <= 0 && !document.querySelector('.download-modal-overlay.active')) {
@@ -754,6 +755,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Translate entire body
         document.body.style.transform = `translateY(${pullDistance}px)`;
+        // Translate indicator manually since it is outside body now
+        indicator.style.transform = `translate(-50%, ${pullDistance}px)`;
         
         indicator.style.opacity = Math.min(pullDistance / THRESHOLD, 1);
 
@@ -778,6 +781,8 @@ document.addEventListener('DOMContentLoaded', () => {
         indicator.classList.add('ptr-refreshing');
         document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
         document.body.style.transform = `translateY(60px)`; // keep it down slightly to show spinner
+        indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
+        indicator.style.transform = `translate(-50%, 60px)`;
 
         setTimeout(() => {
           window.location.reload();
@@ -785,12 +790,15 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
         document.body.style.transform = 'translateY(0)';
-        indicator.style.transition = 'opacity 0.3s ease';
+        indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s ease';
+        indicator.style.transform = 'translate(-50%, 0)';
         indicator.style.opacity = '0';
         
         setTimeout(() => {
           document.body.style.transition = '';
+          document.body.style.transform = ''; // CRITICAL: clear transform to prevent fixed positioning bugs
           indicator.style.transition = '';
+          indicator.style.transform = 'translate(-50%, 0)';
         }, 320);
       }
     }, { passive: true });

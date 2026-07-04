@@ -2000,7 +2000,7 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 
 /* --- Pull-to-Refresh Indicator --- */
 .ptr-indicator {
-  position: absolute;
+  position: fixed;
   top: -60px;
   left: 50%;
   transform: translateX(-50%);
