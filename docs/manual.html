@@ -392,7 +392,8 @@
       border: 1px solid var(--hairline);
       color: var(--ink);
       cursor: pointer;
-      transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s;
+      /* Remove transform transition by default so JS can sync it 1:1 with scroll */
+      transition: opacity 0.3s;
     }
     
     .mobile-toc-fab.hidden {
@@ -440,7 +441,7 @@
         background: transparent; 
         color: rgba(255,255,255,0.5); 
         justify-content: center;
-        padding: 24px 32px 16px 32px;
+        padding: 24px 32px 0 32px;
       }
       .toc-title::before {
         content: '';
@@ -456,9 +457,9 @@
       .toc-toggle, .toc-expand-btn { display: none !important; }
       .toc-list { 
         border-left: none; 
-        padding: 0 32px 24px 32px;
-        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
-        mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
+        padding: 12px 32px 24px 32px;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
+        mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
       }
       .toc-list a { 
         color: rgba(255,255,255,0.7); 
@@ -587,19 +588,48 @@
             });
 
             let lastScrollY = window.scrollY;
-            let scrollDownDistance = 0;
+            let accumulatedScrollDown = 0;
+            let fabOffset = 0;
+            const maxFabOffset = 100; // 56px FAB + 32px bottom margin + 12px extra shadow
+
             window.addEventListener('scroll', () => {
               if (window.innerWidth <= 900) {
-                const currentScrollY = window.scrollY;
-                if (currentScrollY > lastScrollY) {
-                  scrollDownDistance += (currentScrollY - lastScrollY);
-                  if (scrollDownDistance > 200 && currentScrollY > 200) {
-                    mobileFab.classList.add('hidden');
+                const currentScrollY = Math.max(0, window.scrollY);
+                const delta = currentScrollY - lastScrollY;
+                
+                if (delta > 0) {
+                  // Scrolling down
+                  if (fabOffset > 0) {
+                    // Already partially hidden, hide immediately
+                    fabOffset += delta;
+                  } else {
+                    // Fully visible, apply threshold
+                    const prevAcc = accumulatedScrollDown;
+                    accumulatedScrollDown += delta;
+                    if (accumulatedScrollDown > 120) {
+                       if (prevAcc < 120) {
+                          fabOffset += (accumulatedScrollDown - 120);
+                       } else {
+                          fabOffset += delta;
+                       }
+                    }
                   }
-                } else {
-                  scrollDownDistance = 0;
-                  mobileFab.classList.remove('hidden');
+                } else if (delta < 0) {
+                  // Scrolling up
+                  accumulatedScrollDown = 0;
+                  fabOffset += delta;
                 }
+                
+                // Clamp offset
+                if (fabOffset < 0) fabOffset = 0;
+                if (fabOffset > maxFabOffset) fabOffset = maxFabOffset;
+                
+                // Ensure fully visible at the very top of the page
+                if (currentScrollY <= 50) {
+                  fabOffset = 0;
+                }
+                
+                mobileFab.style.transform = `translateY(${fabOffset}px)`;
                 lastScrollY = currentScrollY;
               }
             }, { passive: true });
