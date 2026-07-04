@@ -376,6 +376,16 @@
               a.classList.remove('active');
               if (a.getAttribute('href') === '#' + current) {
                 a.classList.add('active');
+                // Auto-scroll sidebar to keep highlighted item visible
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar && sidebar.offsetParent !== null) {
+                  const linkRect = a.getBoundingClientRect();
+                  const sidebarRect = sidebar.getBoundingClientRect();
+                  // Check if the active link is outside the visible sidebar area
+                  if (linkRect.top < sidebarRect.top + 60 || linkRect.bottom > sidebarRect.bottom - 20) {
+                    a.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }
+                }
               }
             });
           };

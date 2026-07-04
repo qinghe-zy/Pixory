@@ -685,11 +685,114 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-    // Close on escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && docModal.classList.contains('active')) {
-        docModal.classList.remove('active');
-      }
+
+  // --- History Back-Button Protection ---
+  // When a modal opens, push a state so the back button closes it first
+  function setupHistoryProtection(modalEl, closeCallback) {
+    if (!modalEl) return;
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach(m => {
+        if (m.attributeName === 'class') {
+          if (modalEl.classList.contains('active')) {
+            history.pushState({ modal: modalEl.id }, '');
+          }
+        }
+      });
     });
+    observer.observe(modalEl, { attributes: true });
   }
+
+  if (downloadModal) setupHistoryProtection(downloadModal);
+  if (updatesModal) setupHistoryProtection(updatesModal);
+
+  window.addEventListener('popstate', (e) => {
+    // Close any active modal on back
+    const activeModal = document.querySelector('.download-modal-overlay.active');
+    if (activeModal) {
+      activeModal.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+  });
+
+  // --- Mobile Pull-to-Refresh ---
+  (function initPullToRefresh() {
+    const THRESHOLD = 80;   // px needed to trigger refresh
+    const MAX_PULL = 140;   // max visual distance
+    let startY = 0;
+    let pulling = false;
+    let pullDistance = 0;
+
+    // Create pull indicator element
+    const indicator = document.createElement('div');
+    indicator.className = 'ptr-indicator';
+    indicator.innerHTML = `
+      <div class="ptr-spinner">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M23 4v6h-6"/>
+          <path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </div>
+      <span class="ptr-text">下拉刷新</span>
+    `;
+    document.body.prepend(indicator);
+
+    document.addEventListener('touchstart', (e) => {
+      if (window.scrollY <= 0 && !document.querySelector('.download-modal-overlay.active')) {
+        startY = e.touches[0].clientY;
+        pulling = true;
+        pullDistance = 0;
+        indicator.classList.remove('ptr-refreshing', 'ptr-ready');
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!pulling) return;
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - startY;
+
+      if (diff > 0 && window.scrollY <= 0) {
+        // Apply rubber-band resistance
+        pullDistance = Math.min(diff * 0.45, MAX_PULL);
+        indicator.style.transform = `translateY(${pullDistance - 60}px)`;
+        indicator.style.opacity = Math.min(pullDistance / THRESHOLD, 1);
+
+        const spinner = indicator.querySelector('.ptr-spinner');
+        if (spinner) {
+          spinner.style.transform = `rotate(${pullDistance * 3}deg)`;
+        }
+
+        if (pullDistance >= THRESHOLD) {
+          indicator.classList.add('ptr-ready');
+          indicator.querySelector('.ptr-text').textContent = '松开刷新';
+        } else {
+          indicator.classList.remove('ptr-ready');
+          indicator.querySelector('.ptr-text').textContent = '下拉刷新';
+        }
+      }
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      if (!pulling) return;
+      pulling = false;
+
+      if (pullDistance >= THRESHOLD) {
+        indicator.classList.add('ptr-refreshing');
+        indicator.querySelector('.ptr-text').textContent = '正在刷新…';
+        indicator.style.transform = 'translateY(10px)';
+
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
+      } else {
+        indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s ease';
+        indicator.style.transform = 'translateY(-60px)';
+        indicator.style.opacity = '0';
+        setTimeout(() => {
+          indicator.style.transition = '';
+        }, 320);
+      }
+    }, { passive: true });
+  })();
 });

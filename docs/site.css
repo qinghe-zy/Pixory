@@ -1995,3 +1995,44 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   .hero-heading-en { font-size: 36px; }
 }
 
+/* --- Pull-to-Refresh Indicator --- */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -60px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(24, 23, 21, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 10px 20px;
+  border-radius: 100px;
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.ptr-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s linear;
+}
+
+.ptr-indicator.ptr-ready .ptr-spinner {
+  color: #cc785c;
+}
+
+.ptr-indicator.ptr-refreshing .ptr-spinner {
+  animation: ptrSpin 0.8s linear infinite;
+}
+
+@keyframes ptrSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
