@@ -2001,37 +2001,52 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
 /* --- Pull-to-Refresh Indicator --- */
 .ptr-indicator {
   position: fixed;
-  top: -60px;
+  top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -40px);
   z-index: 9999;
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.9);
+  gap: 6px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 100px;
+  background: rgba(30, 28, 26, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   pointer-events: none;
   opacity: 0;
-  will-change: opacity;
+  will-change: transform, opacity;
 }
 
-.ptr-spinner svg {
-  width: 28px;
-  height: 28px;
-}
-
-.ptr-spinner {
+.ptr-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s linear;
+  color: rgba(255, 255, 255, 0.7);
+  transition: transform 0.15s ease;
 }
 
-.ptr-indicator.ptr-ready .ptr-spinner {
-  color: #cc785c;
+.ptr-text {
+  font-family: var(--font-body, -apple-system, sans-serif);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
 }
 
-.ptr-indicator.ptr-refreshing .ptr-spinner {
-  animation: ptrSpin 0.8s linear infinite;
+.ptr-indicator.ptr-ready .ptr-icon,
+.ptr-indicator.ptr-ready .ptr-text {
+  color: var(--primary, #cc785c);
+}
+
+.ptr-indicator.ptr-refreshing .ptr-icon {
+  animation: ptrSpin 0.7s linear infinite;
+  color: var(--primary, #cc785c);
+}
+
+.ptr-indicator.ptr-refreshing .ptr-text {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 @keyframes ptrSpin {

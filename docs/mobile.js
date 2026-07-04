@@ -717,8 +717,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Mobile Pull-to-Refresh ---
   (function initPullToRefresh() {
-    const THRESHOLD = 110;   // px needed to trigger refresh
-    const MAX_PULL = 180;   // max visual distance
+    const THRESHOLD = 100;
+    const MAX_PULL = 160;
     let startY = 0;
     let pulling = false;
     let pullDistance = 0;
@@ -726,14 +726,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const indicator = document.createElement('div');
     indicator.className = 'ptr-indicator';
     indicator.innerHTML = `
-      <div class="ptr-spinner">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10" stroke-dasharray="16 16" stroke-linecap="round"/>
+      <div class="ptr-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="7 13 12 18 17 13"/>
+          <line x1="12" y1="18" x2="12" y2="6"/>
         </svg>
       </div>
+      <span class="ptr-text">下拉刷新</span>
     `;
-    // Append to html instead of body to avoid body overflow clipping
     document.documentElement.appendChild(indicator);
+
+    const ptrIcon = indicator.querySelector('.ptr-icon');
+    const ptrText = indicator.querySelector('.ptr-text');
 
     document.addEventListener('touchstart', (e) => {
       if (window.scrollY <= 0 && !document.querySelector('.download-modal-overlay.active')) {
@@ -741,6 +745,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pulling = true;
         pullDistance = 0;
         indicator.classList.remove('ptr-refreshing', 'ptr-ready');
+        ptrText.textContent = '下拉刷新';
+        ptrIcon.style.transform = '';
       }
     }, { passive: true });
 
@@ -750,25 +756,29 @@ document.addEventListener('DOMContentLoaded', () => {
       const diff = currentY - startY;
 
       if (diff > 0 && window.scrollY <= 0) {
-        // Apply rubber-band resistance
         pullDistance = Math.min(diff * 0.45, MAX_PULL);
         
-        // Translate entire body
         document.body.style.transform = `translateY(${pullDistance}px)`;
-        // Translate indicator manually since it is outside body now
-        indicator.style.transform = `translate(-50%, ${pullDistance}px)`;
         
-        indicator.style.opacity = Math.min(pullDistance / THRESHOLD, 1);
+        // Position indicator in the center of the revealed gap
+        const indicatorY = pullDistance / 2 - 16;
+        indicator.style.transform = `translate(-50%, ${Math.max(0, indicatorY)}px)`;
+        indicator.style.opacity = Math.min(pullDistance / (THRESHOLD * 0.6), 1);
 
-        const spinner = indicator.querySelector('.ptr-spinner');
-        if (spinner) {
-          spinner.style.transform = `rotate(${pullDistance * 3}deg)`;
-        }
+        // Rotate arrow based on pull progress
+        const rotation = Math.min(pullDistance / THRESHOLD, 1) * 180;
+        ptrIcon.style.transform = `rotate(${rotation}deg)`;
 
         if (pullDistance >= THRESHOLD) {
-          indicator.classList.add('ptr-ready');
+          if (!indicator.classList.contains('ptr-ready')) {
+            indicator.classList.add('ptr-ready');
+            ptrText.textContent = '松开刷新';
+          }
         } else {
-          indicator.classList.remove('ptr-ready');
+          if (indicator.classList.contains('ptr-ready')) {
+            indicator.classList.remove('ptr-ready');
+            ptrText.textContent = '下拉刷新';
+          }
         }
       }
     }, { passive: true });
@@ -779,10 +789,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (pullDistance >= THRESHOLD) {
         indicator.classList.add('ptr-refreshing');
+        ptrText.textContent = '正在刷新';
         document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
-        document.body.style.transform = `translateY(60px)`; // keep it down slightly to show spinner
+        document.body.style.transform = `translateY(56px)`;
         indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
-        indicator.style.transform = `translate(-50%, 60px)`;
+        indicator.style.transform = `translate(-50%, 12px)`;
 
         setTimeout(() => {
           window.location.reload();
@@ -791,14 +802,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
         document.body.style.transform = 'translateY(0)';
         indicator.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s ease';
-        indicator.style.transform = 'translate(-50%, 0)';
+        indicator.style.transform = 'translate(-50%, -40px)';
         indicator.style.opacity = '0';
         
         setTimeout(() => {
           document.body.style.transition = '';
-          document.body.style.transform = ''; // CRITICAL: clear transform to prevent fixed positioning bugs
+          document.body.style.transform = '';
           indicator.style.transition = '';
-          indicator.style.transform = 'translate(-50%, 0)';
+          indicator.style.transform = 'translate(-50%, -40px)';
         }, 320);
       }
     }, { passive: true });
