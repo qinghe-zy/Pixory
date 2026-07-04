@@ -516,7 +516,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v.classList.contains('active')) {
       v.play().catch(() => {});
     }
+    // Auto-resume if video was stalled and finally buffered
+    v.addEventListener('canplay', () => {
+      if (v.classList.contains('active') && v.paused) {
+        v.play().catch(() => {});
+      }
+    });
   });
+
+  // Mobile browser autoplay policy workaround: play on first touch interaction
+  document.addEventListener('touchstart', () => {
+    const activeVid = document.querySelector('.hero-video.active');
+    if (activeVid && activeVid.paused) {
+      activeVid.play().catch(() => {});
+    }
+  }, { once: true, passive: true });
+
   const textGroups = document.querySelectorAll('.hero-text-group');
   const contentLayer = document.getElementById('hero-content');
   // activeContentIndex tracks which text group is visible (0=English, 1-4=features)
