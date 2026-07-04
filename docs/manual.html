@@ -232,7 +232,9 @@
           document.getElementById('loading').style.display = 'none';
           const contentDiv = document.getElementById('doc-content');
           contentDiv.style.display = 'block';
-          contentDiv.innerHTML = marked.parse(text);
+          // Fix relative image paths for the docs site
+          const fixedText = text.replace(/docs\/assets\//g, 'assets/');
+          contentDiv.innerHTML = marked.parse(fixedText);
         })
         .catch(err => {
           document.getElementById('loading').innerText = '加载文档失败，请检查网络或稍后重试。';
