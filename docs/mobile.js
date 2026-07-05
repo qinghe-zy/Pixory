@@ -1110,6 +1110,7 @@ document.addEventListener('DOMContentLoaded', () => {
       case 4: fx.particles = makeSparklers(x, y, pal, 14 + (rand(0,8)|0)); break;
     }
 
+    if (effects.length > 5) effects.shift(); // Limit max concurrent effects
     effects.push(fx);
     if (!running) { running = true; requestAnimationFrame(tick); }
   }
@@ -1415,10 +1416,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // =========================================================
-  //  Click handler
+  //  Click handler (with throttling)
   // =========================================================
-  document.addEventListener('click', (e) => {
+  let lastSpawn = 0;
+  document.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, a, .hero-text-container, .download-modal-overlay, .hero-video-switcher, .hero-nav')) return;
+    const now = performance.now();
+    if (now - lastSpawn < 150) return; // Throttle to prevent spam-click freezing
+    lastSpawn = now;
+    
     let idx = 0;
     const g = document.querySelector('.hero-text-group.active');
     if (g) idx = parseInt(g.getAttribute('data-content') || '0', 10);
