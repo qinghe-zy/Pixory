@@ -949,11 +949,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let effects = [];
   let running = false;
 
-  // Auto-throttling variables
-  let fpsDrops = 0;
-  let isChoking = false;
-  let lastChokeTime = 0;
-
   function rgba(c, a) { return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${Math.max(0,Math.min(1,a))})`; }
   function rand(a, b) { return Math.random() * (b - a) + a; }
   function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
@@ -1064,15 +1059,6 @@ document.addEventListener('DOMContentLoaded', () => {
   //  Spawn
   // =========================================================
   function spawn(x, y, scene) {
-    if (isChoking) {
-      if (performance.now() - lastChokeTime > 1000) {
-        isChoking = false; // Timeout recovery
-        fpsDrops = 0;
-      } else {
-        return; // Prevent spawning if GPU is currently choked
-      }
-    }
-
     effects = []; // Enforce EXACTLY ONE active effect. Clear previous immediately.
 
     const pal = palettes[scene] || palettes[0];
@@ -1133,23 +1119,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let prev = 0;
   function tick(now) {
     if (!prev) prev = now;
-    const actualDt = now - prev;
-    const dt = Math.min(actualDt / 1000, 0.05);
+    const dt = Math.min((now - prev) / 1000, 0.05);
     prev = now;
-
-    // Dynamic framerate monitoring & auto-cleaning
-    if (actualDt > 45 && actualDt < 250) { // If frame took > 45ms (less than 22 FPS) and isn't a tab switch
-      fpsDrops += 2;
-      if (fpsDrops > 6) {
-        isChoking = true; // Engage choke mode
-        lastChokeTime = now;
-        if (effects.length > 1) effects.shift(); // Clean oldest effect on the fly
-        fpsDrops = 2; // Keep it high to sustain cleaning if stutter continues
-      }
-    } else {
-      if (fpsDrops > 0) fpsDrops -= 1; // Recover faster
-      if (isChoking && fpsDrops <= 0) isChoking = false; // Disengage choke mode
-    }
 
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
@@ -1243,8 +1214,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (effects.length === 0) {
       running = false;
-      isChoking = false;
-      fpsDrops = 0;
       prev = 0;
     } else {
       requestAnimationFrame(tick);
