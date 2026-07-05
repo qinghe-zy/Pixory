@@ -822,18 +822,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const ps = [];
     for (let i = 0; i < count; i++) {
       const a = rand(0, Math.PI * 2);
-      const spd = rand(60, 180);
+      const spd = rand(150, 350);
       ps.push({
         type: 'firefly',
         x, y,
         vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd - rand(30, 80),
-        size: rand(2, 4.5),
-        life: 0, maxLife: rand(2.0, 4.0),
-        delay: rand(0, 0.15),
+        vy: Math.sin(a) * spd - rand(50, 100),
+        size: rand(3, 6),
+        life: 0, maxLife: rand(2.0, 3.5),
+        delay: rand(0, 0.1),
         phase: rand(0, Math.PI * 2),
         pulseSpd: rand(3, 8),
         col: pal[Math.floor(rand(0, 3))],
+        drag: rand(0.94, 0.97),
         trail: [],
       });
     }
@@ -846,19 +847,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const golds = [[255,215,140],[255,235,180],[240,200,100]];
     for (let i = 0; i < count; i++) {
       const a = rand(0, Math.PI * 2);
-      const spd = rand(80, 250);
+      const spd = rand(200, 450);
       ps.push({
         type: 'dust',
         x, y,
         vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-        size: rand(1, 3),
-        life: 0, maxLife: rand(1.0, 2.5),
-        delay: rand(0, 0.1),
+        vy: Math.sin(a) * spd - rand(50, 150),
+        size: rand(2, 4.5),
+        life: 0, maxLife: rand(1.5, 3.0),
+        delay: rand(0, 0.08),
         twinkleSpd: rand(6, 14),
         phase: rand(0, Math.PI * 2),
         col: golds[Math.floor(rand(0, 3))],
-        drag: rand(0.96, 0.985),
+        drag: rand(0.95, 0.98),
+        gravity: rand(80, 200),
+        trail: [],
       });
     }
     return ps;
@@ -869,21 +872,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const ps = [];
     for (let i = 0; i < count; i++) {
       const a = rand(0, Math.PI * 2);
-      const spd = rand(60, 180);
+      const spd = rand(150, 380);
       ps.push({
         type: 'snow',
         x, y,
         vx: Math.cos(a) * spd,
-        vy: Math.sin(a) * spd,
-        size: rand(3, 8),
-        life: 0, maxLife: rand(2.5, 5.0),
-        delay: rand(0, 0.12),
-        spin: rand(-2, 2),
-        wobbleSpd: rand(1.5, 4),
-        wobbleAmp: rand(15, 40),
+        vy: Math.sin(a) * spd - rand(40, 120),
+        size: rand(4, 10),
+        life: 0, maxLife: rand(2.0, 4.0),
+        delay: rand(0, 0.1),
+        spin: rand(-4, 4),
+        wobbleSpd: rand(2, 6),
+        wobbleAmp: rand(20, 60),
         phase: rand(0, Math.PI * 2),
         col: [rand(200,240)|0, rand(225,250)|0, 255],
-        drag: rand(0.97, 0.993),
+        drag: rand(0.95, 0.98),
+        gravity: rand(60, 150),
         branches: (Math.random() > 0.5) ? 6 : 4,
       });
     }
@@ -1093,132 +1097,127 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Firefly ---
   function drawFirefly(p, t, dt) {
-    // Burst outward then organic drift
     p.vx += Math.sin(p.life * p.pulseSpd * 0.7 + p.phase) * 25 * dt;
     p.vy += Math.cos(p.life * p.pulseSpd * 0.5 + p.phase) * 18 * dt;
-    p.vx *= 0.99; p.vy *= 0.99;
-    p.vy -= 12 * dt; // float up
+    p.vx *= p.drag; p.vy *= p.drag;
+    p.vy -= 25 * dt; // float up strongly
     p.x += p.vx * dt; p.y += p.vy * dt;
 
-    // Store trail
     p.trail.push({ x: p.x, y: p.y });
-    if (p.trail.length > 8) p.trail.shift();
+    if (p.trail.length > 12) p.trail.shift();
 
-    const pulse = 0.4 + 0.6 * Math.pow(Math.sin(p.life * p.pulseSpd + p.phase) * 0.5 + 0.5, 2);
+    const pulse = 0.5 + 0.5 * Math.pow(Math.sin(p.life * p.pulseSpd + p.phase), 2);
     const fadeIn = t < 0.1 ? t / 0.1 : 1;
-    const fadeOut = t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+    const fadeOut = t > 0.5 ? 1 - (t - 0.5) / 0.5 : 1;
     const a = fadeIn * fadeOut * pulse;
-    const sz = p.size * (1 - t * 0.3);
+    const sz = p.size * (1 - t * 0.2);
 
-    // Trail glow
     if (p.trail.length > 2) {
       ctx.beginPath();
       ctx.moveTo(p.trail[0].x, p.trail[0].y);
       for (let i = 1; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
-      ctx.strokeStyle = rgba(p.col, a * 0.15);
-      ctx.lineWidth = sz * 1.5;
+      ctx.strokeStyle = rgba(p.col, a * 0.4);
+      ctx.lineWidth = sz * 2.0;
       ctx.lineCap = 'round';
       ctx.stroke();
     }
 
-    // Core glow
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 5);
-    g.addColorStop(0, rgba([255,255,255], a * 0.8));
-    g.addColorStop(0.15, rgba(p.col, a * 0.6));
-    g.addColorStop(0.5, rgba(p.col, a * 0.15));
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 4);
+    g.addColorStop(0, rgba([255,255,255], a));
+    g.addColorStop(0.3, rgba(p.col, a * 0.8));
     g.addColorStop(1, rgba(p.col, 0));
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 4, 0, Math.PI * 2); ctx.fill();
   }
 
   // --- Golden dust ---
   function drawDust(p, t, dt) {
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 8) p.trail.shift();
+
     p.vx *= p.drag; p.vy *= p.drag;
+    p.vy += p.gravity * dt;
     p.x += p.vx * dt; p.y += p.vy * dt;
 
-    const twinkle = 0.3 + 0.7 * Math.pow(Math.sin(p.life * p.twinkleSpd + p.phase) * 0.5 + 0.5, 3);
+    const twinkle = 0.4 + 0.6 * Math.pow(Math.sin(p.life * p.twinkleSpd + p.phase), 2);
     const fadeIn = t < 0.1 ? t / 0.1 : 1;
     const fadeOut = t > 0.5 ? 1 - (t - 0.5) / 0.5 : 1;
     const a = fadeIn * fadeOut * twinkle;
-    const sz = p.size;
+    const sz = p.size * (1 - t * 0.2);
 
-    // Soft glow
-    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 3);
+    if (p.trail.length > 2) {
+      for (let i = 1; i < p.trail.length; i++) {
+        const ta = (i / p.trail.length) * a * 0.5;
+        const tw = (i / p.trail.length) * sz * 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y);
+        ctx.lineTo(p.trail[i].x, p.trail[i].y);
+        ctx.strokeStyle = rgba(p.col, ta);
+        ctx.lineWidth = tw;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 3.5);
     g.addColorStop(0, rgba([255,255,255], a * 0.9));
-    g.addColorStop(0.2, rgba(p.col, a * 0.7));
+    g.addColorStop(0.3, rgba(p.col, a * 0.8));
     g.addColorStop(1, rgba(p.col, 0));
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 3.5, 0, Math.PI * 2); ctx.fill();
 
-    // Tiny cross sparkle at peak twinkle
-    if (twinkle > 0.8) {
+    if (twinkle > 0.7) {
       ctx.save();
       ctx.translate(p.x, p.y);
-      ctx.rotate(p.phase);
-      ctx.strokeStyle = rgba([255,255,255], a * 0.5);
-      ctx.lineWidth = 0.5;
-      const sLen = sz * 5 * twinkle;
-      ctx.beginPath(); ctx.moveTo(-sLen, 0); ctx.lineTo(sLen, 0); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, -sLen); ctx.lineTo(0, sLen); ctx.stroke();
+      ctx.rotate(p.phase + p.life * 2);
+      ctx.strokeStyle = rgba([255,255,255], a * 0.8);
+      ctx.lineWidth = 1.0;
+      const sLen = sz * 6 * twinkle;
+      ctx.beginPath();
+      ctx.moveTo(-sLen, 0); ctx.lineTo(sLen, 0);
+      ctx.moveTo(0, -sLen); ctx.lineTo(0, sLen);
+      ctx.stroke();
       ctx.restore();
     }
   }
 
   // --- Snowflake ---
   function drawSnowflake(p, t, dt) {
-    // Wobble
     p.vx += Math.sin(p.life * p.wobbleSpd + p.phase) * p.wobbleAmp * dt;
     p.vx *= p.drag; p.vy *= p.drag;
-    p.vy += 15 * dt; // gentle gravity
+    p.vy += p.gravity * dt;
     p.x += p.vx * dt; p.y += p.vy * dt;
 
     const fadeIn = t < 0.1 ? t / 0.1 : 1;
-    const fadeOut = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+    const fadeOut = t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
     const a = fadeIn * fadeOut;
-    const sz = p.size * (1 - t * 0.2);
+    const sz = p.size * (1 - t * 0.1);
     const rot = p.life * p.spin;
 
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(rot);
 
-    // Draw crystalline snowflake
     const br = p.branches;
     for (let i = 0; i < br; i++) {
       ctx.save();
       ctx.rotate((Math.PI * 2 / br) * i);
-
-      // Main branch
+      
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.lineTo(sz, 0);
-      ctx.strokeStyle = rgba(p.col, a * 0.7);
+      ctx.lineTo(0, -sz * 2.5);
+      ctx.strokeStyle = rgba(p.col, a * 0.9);
       ctx.lineWidth = 1.2;
       ctx.lineCap = 'round';
       ctx.stroke();
-
-      // Side branches
-      const sideLen = sz * 0.4;
-      const sidePos = sz * 0.55;
+      
       ctx.beginPath();
-      ctx.moveTo(sidePos, 0);
-      ctx.lineTo(sidePos + sideLen * 0.7, -sideLen * 0.7);
-      ctx.moveTo(sidePos, 0);
-      ctx.lineTo(sidePos + sideLen * 0.7, sideLen * 0.7);
-      ctx.strokeStyle = rgba(p.col, a * 0.5);
+      ctx.moveTo(0, -sz * 1.2);
+      ctx.lineTo(-sz * 0.6, -sz * 1.8);
+      ctx.moveTo(0, -sz * 1.2);
+      ctx.lineTo(sz * 0.6, -sz * 1.8);
+      ctx.strokeStyle = rgba(p.col, a * 0.6);
       ctx.lineWidth = 0.8;
-      ctx.stroke();
-
-      // Tiny tip branch
-      const tipLen = sz * 0.2;
-      const tipPos = sz * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(tipPos, 0);
-      ctx.lineTo(tipPos + tipLen * 0.6, -tipLen * 0.8);
-      ctx.moveTo(tipPos, 0);
-      ctx.lineTo(tipPos + tipLen * 0.6, tipLen * 0.8);
-      ctx.strokeStyle = rgba(p.col, a * 0.35);
-      ctx.lineWidth = 0.5;
       ctx.stroke();
 
       ctx.restore();
