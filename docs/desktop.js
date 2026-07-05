@@ -552,6 +552,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextGroup = document.querySelector(`[data-content="${nextContentIndex}"]`);
     if (nextGroup) nextGroup.classList.add('active');
 
+    // Update fallback gradient background
+    const heroSection = document.querySelector('.cinematic-hero');
+    if (heroSection) {
+      heroSection.className = `cinematic-hero scene-${nextContentIndex}`;
+    }
+
     // Update videos: content 0 uses video 0, content 1-4 maps to video 0-3
     const nextVideoIndex = nextContentIndex === 0 ? 0 : nextContentIndex - 1;
     const prevVideoIndex = activeContentIndex === 0 ? 0 : activeContentIndex - 1;
@@ -772,3 +778,507 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadReleaseNotes();
 });
+
+/* --- Cinematic Click: Glass-Touch Ripple + Scene Particles --- */
+(function() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  let dpr = 1;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    canvas.width  = window.innerWidth  * dpr;
+    canvas.height = window.innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Per-scene palettes [core, mid, outer]
+  const palettes = {
+    0: [[255,195,110],[255,165,80],[255,140,60]],
+    1: [[255,185,170],[255,150,145],[240,120,130]],
+    2: [[170,230,210],[130,210,180],[100,190,160]],
+    3: [[195,225,245],[160,205,230],[130,190,220]],
+    4: [[235,210,240],[215,185,225],[200,160,215]],
+  };
+
+  let effects = [];
+  let running = false;
+
+  function rgba(c, a) { return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${Math.max(0,Math.min(1,a))})`; }
+  function rand(a, b) { return Math.random() * (b - a) + a; }
+  function easeOutQuart(t) { return 1 - Math.pow(1 - t, 4); }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  // =========================================================
+  //  Scene-specific particle generators
+  // =========================================================
+
+  // Scene 0 & 1: Fireflies — warm glowing orbs that burst outward then drift
+  function makeFireflies(x, y, pal, count) {
+    const ps = [];
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const spd = rand(60, 180);
+      ps.push({
+        type: 'firefly',
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - rand(30, 80),
+        size: rand(2, 4.5),
+        life: 0, maxLife: rand(2.0, 4.0),
+        delay: rand(0, 0.15),
+        phase: rand(0, Math.PI * 2),
+        pulseSpd: rand(3, 8),
+        col: pal[Math.floor(rand(0, 3))],
+        trail: [],
+      });
+    }
+    return ps;
+  }
+
+  // Scene 2: Golden dust — sparkling specks that scatter wide
+  function makeGoldenDust(x, y, pal, count) {
+    const ps = [];
+    const golds = [[255,215,140],[255,235,180],[240,200,100]];
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const spd = rand(80, 250);
+      ps.push({
+        type: 'dust',
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd,
+        size: rand(1, 3),
+        life: 0, maxLife: rand(1.0, 2.5),
+        delay: rand(0, 0.1),
+        twinkleSpd: rand(6, 14),
+        phase: rand(0, Math.PI * 2),
+        col: golds[Math.floor(rand(0, 3))],
+        drag: rand(0.96, 0.985),
+      });
+    }
+    return ps;
+  }
+
+  // Scene 3: Snowflakes — hex-shaped flakes that burst then drift down
+  function makeSnowflakes(x, y, pal, count) {
+    const ps = [];
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const spd = rand(60, 180);
+      ps.push({
+        type: 'snow',
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd,
+        size: rand(3, 8),
+        life: 0, maxLife: rand(2.5, 5.0),
+        delay: rand(0, 0.12),
+        spin: rand(-2, 2),
+        wobbleSpd: rand(1.5, 4),
+        wobbleAmp: rand(15, 40),
+        phase: rand(0, Math.PI * 2),
+        col: [rand(200,240)|0, rand(225,250)|0, 255],
+        drag: rand(0.97, 0.993),
+        branches: (Math.random() > 0.5) ? 6 : 4,
+      });
+    }
+    return ps;
+  }
+
+  // Scene 4: Firework sparklers — bright streaks that arc outward with gravity
+  function makeSparklers(x, y, pal, count) {
+    const ps = [];
+    const colors = [[255,230,180],[255,200,100],[255,180,220],[200,220,255],[255,255,220]];
+    for (let i = 0; i < count; i++) {
+      const a = rand(0, Math.PI * 2);
+      const spd = rand(180, 450);
+      ps.push({
+        type: 'sparkler',
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - rand(60, 160),
+        size: rand(1.5, 3),
+        life: 0, maxLife: rand(1.0, 2.2),
+        delay: rand(0, 0.05),
+        col: colors[Math.floor(rand(0, colors.length))],
+        drag: rand(0.97, 0.99),
+        gravity: rand(120, 280),
+        trail: [],
+      });
+    }
+    return ps;
+  }
+
+  // =========================================================
+  //  Spawn
+  // =========================================================
+  function spawn(x, y, scene) {
+    const pal = palettes[scene] || palettes[0];
+    const fx = {
+      x, y, pal, scene,
+      birth: performance.now(),
+      waves: [],
+      bloom: { maxR: 18, dur: 0.6 },
+      motes: [],
+      particles: [], // scene-specific
+    };
+
+    // Base ripple waves (4-6)
+    const waveCount = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < waveCount; i++) {
+      fx.waves.push({
+        delay:    i * 0.08 + rand(0, 0.03),
+        maxR:     50 + i * 18 + rand(0, 12),
+        peakW:    6 - i * 0.7 + rand(0, 1.5),
+        dur:      1.0 + i * 0.15 + rand(0, 0.1),
+        colorIdx: Math.min(i < 2 ? 0 : i < 4 ? 1 : 2, 2),
+      });
+    }
+
+    // Base motes (6-10)
+    const moteCount = 6 + Math.floor(rand(0, 5));
+    for (let i = 0; i < moteCount; i++) {
+      const a = rand(0, Math.PI * 2);
+      const spd = 30 + rand(0, 80);
+      fx.motes.push({
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - 20 - rand(0, 40),
+        size: 1.2 + rand(0, 2),
+        life: 0, maxLife: 1.5 + rand(0, 1.5),
+        delay: 0.03 + rand(0, 0.12),
+        phase: rand(0, Math.PI * 2),
+        colorIdx: Math.floor(rand(0, 3)),
+      });
+    }
+
+    // Scene-specific particles
+    switch (scene) {
+      case 0: fx.particles = makeFireflies(x, y, pal, 8 + (rand(0,5)|0)); break;
+      case 1: fx.particles = makeFireflies(x, y, pal, 10 + (rand(0,5)|0)); break;
+      case 2: fx.particles = makeGoldenDust(x, y, pal, 15 + (rand(0,8)|0)); break;
+      case 3: fx.particles = makeSnowflakes(x, y, pal, 12 + (rand(0,6)|0)); break;
+      case 4: fx.particles = makeSparklers(x, y, pal, 14 + (rand(0,8)|0)); break;
+    }
+
+    effects.push(fx);
+    if (!running) { running = true; requestAnimationFrame(tick); }
+  }
+
+  // =========================================================
+  //  Render
+  // =========================================================
+  let prev = 0;
+  function tick(now) {
+    if (!prev) prev = now;
+    const dt = Math.min((now - prev) / 1000, 0.05);
+    prev = now;
+
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+    for (let ei = effects.length - 1; ei >= 0; ei--) {
+      const fx = effects[ei];
+      const elapsed = (now - fx.birth) / 1000;
+      let alive = false;
+
+      // --- Central bloom ---
+      const bt = elapsed / fx.bloom.dur;
+      if (bt < 1) {
+        alive = true;
+        const br = fx.bloom.maxR * easeOutCubic(bt);
+        const ba = bt < 0.15 ? bt / 0.15 : Math.pow(1 - (bt - 0.15) / 0.85, 2);
+        const g1 = ctx.createRadialGradient(fx.x, fx.y, 0, fx.x, fx.y, br * 2.5);
+        g1.addColorStop(0, rgba(fx.pal[0], ba * 0.25));
+        g1.addColorStop(0.5, rgba(fx.pal[1], ba * 0.08));
+        g1.addColorStop(1, rgba(fx.pal[2], 0));
+        ctx.fillStyle = g1;
+        ctx.beginPath(); ctx.arc(fx.x, fx.y, br * 2.5, 0, Math.PI * 2); ctx.fill();
+        const g2 = ctx.createRadialGradient(fx.x, fx.y, 0, fx.x, fx.y, br);
+        g2.addColorStop(0, rgba([255,255,255], ba * 0.85));
+        g2.addColorStop(0.4, rgba(fx.pal[0], ba * 0.5));
+        g2.addColorStop(1, rgba(fx.pal[0], 0));
+        ctx.fillStyle = g2;
+        ctx.beginPath(); ctx.arc(fx.x, fx.y, br, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // --- Ripple waves ---
+      for (const w of fx.waves) {
+        const wt = (elapsed - w.delay) / w.dur;
+        if (wt < 0) { alive = true; continue; }
+        if (wt >= 1) continue;
+        alive = true;
+        const r = w.maxR * easeOutQuart(wt);
+        const width = w.peakW * (wt < 0.25 ? wt / 0.25 : 1 - (wt - 0.25) / 0.75);
+        const alpha = wt < 0.1 ? wt / 0.1 : Math.pow(1 - (wt - 0.1) / 0.9, 1.8);
+        const col = fx.pal[w.colorIdx];
+        if (r > 0 && width > 0.2) {
+          const inner = Math.max(0, r - width), outer = r + width;
+          const g = ctx.createRadialGradient(fx.x, fx.y, inner, fx.x, fx.y, outer);
+          g.addColorStop(0,    rgba(col, 0));
+          g.addColorStop(0.2,  rgba(col, alpha * 0.15));
+          g.addColorStop(0.45, rgba(col, alpha * 0.4));
+          g.addColorStop(0.55, rgba([255,255,255], alpha * 0.2));
+          g.addColorStop(0.7,  rgba(col, alpha * 0.3));
+          g.addColorStop(0.9,  rgba(col, alpha * 0.08));
+          g.addColorStop(1,    rgba(col, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(fx.x, fx.y, outer, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // --- Base motes ---
+      for (const m of fx.motes) {
+        const mt = elapsed - m.delay;
+        if (mt < 0) { alive = true; continue; }
+        m.life += dt; if (m.life >= m.maxLife) continue;
+        alive = true;
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        m.vx *= 0.97; m.vy *= 0.97; m.vy -= 3 * dt;
+        const mp = m.life / m.maxLife;
+        const ma = (mp < 0.15 ? mp / 0.15 : 1) * (mp > 0.5 ? 1 - (mp - 0.5) / 0.5 : 1) * (0.6 + 0.4 * Math.sin(m.life * 8 + m.phase));
+        const col = fx.pal[m.colorIdx], sz = m.size * (1 - mp * 0.3);
+        const mg = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, sz * 4);
+        mg.addColorStop(0, rgba([255,255,255], ma * 0.6));
+        mg.addColorStop(0.3, rgba(col, ma * 0.35));
+        mg.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = mg;
+        ctx.beginPath(); ctx.arc(m.x, m.y, sz * 4, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // --- Scene-specific particles ---
+      for (const p of fx.particles) {
+        const pt = elapsed - (p.delay || 0);
+        if (pt < 0) { alive = true; continue; }
+        p.life += dt; if (p.life >= p.maxLife) continue;
+        alive = true;
+        const t = p.life / p.maxLife;
+
+        switch (p.type) {
+          case 'firefly': drawFirefly(p, t, dt); break;
+          case 'dust':    drawDust(p, t, dt);    break;
+          case 'snow':    drawSnowflake(p, t, dt); break;
+          case 'sparkler': drawSparkler(p, t, dt); break;
+        }
+      }
+
+      if (!alive) effects.splice(ei, 1);
+    }
+
+    if (effects.length > 0) {
+      requestAnimationFrame(tick);
+    } else {
+      running = false; prev = 0;
+    }
+  }
+
+  // =========================================================
+  //  Particle renderers
+  // =========================================================
+
+  // --- Firefly ---
+  function drawFirefly(p, t, dt) {
+    // Burst outward then organic drift
+    p.vx += Math.sin(p.life * p.pulseSpd * 0.7 + p.phase) * 25 * dt;
+    p.vy += Math.cos(p.life * p.pulseSpd * 0.5 + p.phase) * 18 * dt;
+    p.vx *= 0.99; p.vy *= 0.99;
+    p.vy -= 12 * dt; // float up
+    p.x += p.vx * dt; p.y += p.vy * dt;
+
+    // Store trail
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 8) p.trail.shift();
+
+    const pulse = 0.4 + 0.6 * Math.pow(Math.sin(p.life * p.pulseSpd + p.phase) * 0.5 + 0.5, 2);
+    const fadeIn = t < 0.1 ? t / 0.1 : 1;
+    const fadeOut = t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+    const a = fadeIn * fadeOut * pulse;
+    const sz = p.size * (1 - t * 0.3);
+
+    // Trail glow
+    if (p.trail.length > 2) {
+      ctx.beginPath();
+      ctx.moveTo(p.trail[0].x, p.trail[0].y);
+      for (let i = 1; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
+      ctx.strokeStyle = rgba(p.col, a * 0.15);
+      ctx.lineWidth = sz * 1.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    // Core glow
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 5);
+    g.addColorStop(0, rgba([255,255,255], a * 0.8));
+    g.addColorStop(0.15, rgba(p.col, a * 0.6));
+    g.addColorStop(0.5, rgba(p.col, a * 0.15));
+    g.addColorStop(1, rgba(p.col, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // --- Golden dust ---
+  function drawDust(p, t, dt) {
+    p.vx *= p.drag; p.vy *= p.drag;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+
+    const twinkle = 0.3 + 0.7 * Math.pow(Math.sin(p.life * p.twinkleSpd + p.phase) * 0.5 + 0.5, 3);
+    const fadeIn = t < 0.1 ? t / 0.1 : 1;
+    const fadeOut = t > 0.5 ? 1 - (t - 0.5) / 0.5 : 1;
+    const a = fadeIn * fadeOut * twinkle;
+    const sz = p.size;
+
+    // Soft glow
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz * 3);
+    g.addColorStop(0, rgba([255,255,255], a * 0.9));
+    g.addColorStop(0.2, rgba(p.col, a * 0.7));
+    g.addColorStop(1, rgba(p.col, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, sz * 3, 0, Math.PI * 2); ctx.fill();
+
+    // Tiny cross sparkle at peak twinkle
+    if (twinkle > 0.8) {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.phase);
+      ctx.strokeStyle = rgba([255,255,255], a * 0.5);
+      ctx.lineWidth = 0.5;
+      const sLen = sz * 5 * twinkle;
+      ctx.beginPath(); ctx.moveTo(-sLen, 0); ctx.lineTo(sLen, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -sLen); ctx.lineTo(0, sLen); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // --- Snowflake ---
+  function drawSnowflake(p, t, dt) {
+    // Wobble
+    p.vx += Math.sin(p.life * p.wobbleSpd + p.phase) * p.wobbleAmp * dt;
+    p.vx *= p.drag; p.vy *= p.drag;
+    p.vy += 15 * dt; // gentle gravity
+    p.x += p.vx * dt; p.y += p.vy * dt;
+
+    const fadeIn = t < 0.1 ? t / 0.1 : 1;
+    const fadeOut = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1;
+    const a = fadeIn * fadeOut;
+    const sz = p.size * (1 - t * 0.2);
+    const rot = p.life * p.spin;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(rot);
+
+    // Draw crystalline snowflake
+    const br = p.branches;
+    for (let i = 0; i < br; i++) {
+      ctx.save();
+      ctx.rotate((Math.PI * 2 / br) * i);
+
+      // Main branch
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(sz, 0);
+      ctx.strokeStyle = rgba(p.col, a * 0.7);
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Side branches
+      const sideLen = sz * 0.4;
+      const sidePos = sz * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(sidePos, 0);
+      ctx.lineTo(sidePos + sideLen * 0.7, -sideLen * 0.7);
+      ctx.moveTo(sidePos, 0);
+      ctx.lineTo(sidePos + sideLen * 0.7, sideLen * 0.7);
+      ctx.strokeStyle = rgba(p.col, a * 0.5);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Tiny tip branch
+      const tipLen = sz * 0.2;
+      const tipPos = sz * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(tipPos, 0);
+      ctx.lineTo(tipPos + tipLen * 0.6, -tipLen * 0.8);
+      ctx.moveTo(tipPos, 0);
+      ctx.lineTo(tipPos + tipLen * 0.6, tipLen * 0.8);
+      ctx.strokeStyle = rgba(p.col, a * 0.35);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Center glow
+    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, sz * 0.8);
+    cg.addColorStop(0, rgba([255,255,255], a * 0.5));
+    cg.addColorStop(1, rgba(p.col, 0));
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(0, 0, sz * 0.8, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  // --- Firework sparkler ---
+  function drawSparkler(p, t, dt) {
+    // Store trail
+    p.trail.push({ x: p.x, y: p.y, a: 1 - t });
+    if (p.trail.length > 10) p.trail.shift();
+
+    p.vx *= p.drag; p.vy *= p.drag;
+    p.vy += p.gravity * dt; // gravity pull
+    p.x += p.vx * dt; p.y += p.vy * dt;
+
+    const fadeIn = t < 0.05 ? t / 0.05 : 1;
+    const fadeOut = t > 0.4 ? 1 - (t - 0.4) / 0.6 : 1;
+    const a = fadeIn * fadeOut;
+
+    // Trail
+    if (p.trail.length > 2) {
+      for (let i = 1; i < p.trail.length; i++) {
+        const ta = (i / p.trail.length) * a * 0.6;
+        const tw = (i / p.trail.length) * p.size;
+        ctx.beginPath();
+        ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y);
+        ctx.lineTo(p.trail[i].x, p.trail[i].y);
+        ctx.strokeStyle = rgba(p.col, ta);
+        ctx.lineWidth = tw;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+    }
+
+    // Bright head
+    const hg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
+    hg.addColorStop(0, rgba([255,255,255], a * 0.9));
+    hg.addColorStop(0.2, rgba(p.col, a * 0.7));
+    hg.addColorStop(1, rgba(p.col, 0));
+    ctx.fillStyle = hg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2); ctx.fill();
+
+    // Sub-sparkle at head (tiny cross)
+    if (a > 0.3) {
+      ctx.strokeStyle = rgba([255,255,255], a * 0.4);
+      ctx.lineWidth = 0.5;
+      const sL = p.size * 6 * a;
+      ctx.beginPath(); ctx.moveTo(p.x - sL, p.y); ctx.lineTo(p.x + sL, p.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - sL); ctx.lineTo(p.x, p.y + sL); ctx.stroke();
+    }
+  }
+
+  // =========================================================
+  //  Click handler
+  // =========================================================
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('button, a, .hero-text-container, .download-modal-overlay, .hero-video-switcher, .hero-nav')) return;
+    let idx = 0;
+    const g = document.querySelector('.hero-text-group.active');
+    if (g) idx = parseInt(g.getAttribute('data-content') || '0', 10);
+    spawn(e.clientX, e.clientY, idx);
+  });
+})();
+

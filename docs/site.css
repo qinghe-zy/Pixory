@@ -1616,8 +1616,18 @@ button { font: inherit; background: none; border: none; cursor: pointer; padding
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background-color: #000;
+  background-color: #181715; /* Fallback */
+  background-image: var(--hero-bg-gradient, linear-gradient(135deg, #181715, #000));
+  background-size: cover;
+  transition: background-image 1.2s ease-in-out;
 }
+
+/* Fallback gradient classes for each scene */
+.cinematic-hero.scene-0 { --hero-bg-gradient: linear-gradient(135deg, #4a2c16 0%, #1a0f08 100%); }
+.cinematic-hero.scene-1 { --hero-bg-gradient: linear-gradient(135deg, #5c2d33 0%, #1f0f11 100%); }
+.cinematic-hero.scene-2 { --hero-bg-gradient: linear-gradient(135deg, #2a4c41 0%, #0e1a16 100%); }
+.cinematic-hero.scene-3 { --hero-bg-gradient: linear-gradient(135deg, #2b3a4a 0%, #0f141a 100%); }
+.cinematic-hero.scene-4 { --hero-bg-gradient: linear-gradient(135deg, #42304d 0%, #16101a 100%); }
 
 .hero-bg-layer {
   position: absolute;
