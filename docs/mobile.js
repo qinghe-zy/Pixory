@@ -615,7 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
     idleTimer = setTimeout(() => { startAutoplay(); }, delay);
   }
 
-  if (switcherBtns.length > 0 && videos.length > 0) {
+  if (switcherBtns.length > 0) {
     // Button clicks
     switcherBtns.forEach(btn => {
       btn.addEventListener('click', () => {
