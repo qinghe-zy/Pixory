@@ -1118,16 +1118,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================
   let prev = 0;
   function tick(now) {
-    if (!prev) prev = now;
-    const dt = Math.min((now - prev) / 1000, 0.05);
-    prev = now;
+    try {
+      if (!prev) prev = now;
+      const dt = Math.min((now - prev) / 1000, 0.05);
+      prev = now;
 
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
-    for (let ei = effects.length - 1; ei >= 0; ei--) {
-      const fx = effects[ei];
-      const elapsed = (now - fx.birth) / 1000;
-      let alive = false;
+      for (let ei = effects.length - 1; ei >= 0; ei--) {
+        const fx = effects[ei];
+        // Prevent negative elapsed time if rAF timestamp is slightly older than performance.now()
+        const elapsed = Math.max(0, (now - fx.birth) / 1000);
+        let alive = false;
 
       // --- Central bloom ---
       const bt = elapsed / fx.bloom.dur;
@@ -1212,11 +1214,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!alive) effects.splice(ei, 1);
     }
 
-    if (effects.length === 0) {
+      if (effects.length === 0) {
+        running = false;
+        prev = 0;
+      } else {
+        requestAnimationFrame(tick);
+      }
+    } catch (err) {
+      console.error("Canvas render error, recovering:", err);
       running = false;
       prev = 0;
-    } else {
-      requestAnimationFrame(tick);
+      effects = []; // Drop broken effects
     }
   }
 
