@@ -179,10 +179,7 @@ export function AiChatComposer({
             }
           }}
           onChangeText={onChangeText}
-          onFocus={() => {
-            setAttachmentPopoverVisible(false);
-            onFocus?.();
-          }}
+          onFocus={onFocus}
           placeholder={placeholder}
           placeholderTextColor={aiLightColors.mutedSoft}
           selectionColor={aiLightColors.coral}
@@ -258,7 +255,7 @@ export function AiChatComposer({
                 onPress={onSend}
                 style={({ pressed }) => [styles.sendButton, !canSend && styles.disabledSendButton, pressed && canSend && styles.pressed]}
               >
-                <Ionicons color={aiLightColors.onDark} name="arrow-up" size={spacing[5]} />
+                <Ionicons color={aiLightColors.onDark} name="paper-plane-outline" size={spacing[5]} />
               </Pressable>
             )}
           </View>
@@ -275,8 +272,9 @@ const styles = StyleSheet.create({
   composerShell: {
     backgroundColor: aiLightColors.canvas,
     borderColor: aiLightColors.mutedSoft,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
+    minHeight: spacing[10],
     paddingHorizontal: spacing[3],
     paddingTop: spacing[2],
     paddingBottom: spacing[2],

@@ -284,7 +284,7 @@ test('AI provider and model screens keep preset providers simple and custom addr
   const constants = fs.readFileSync(path.join(root, 'src/ai/aiConstants.ts'), 'utf8');
   const providerService = fs.readFileSync(path.join(root, 'src/ai/aiProviderService.ts'), 'utf8');
 
-  assert.match(providerSettings, /AiLightCard/);
+  assert.match(providerSettings, /AiLightListGroup/);
   assert.match(providerSettings, /AiLightButton/);
   assert.match(providerSettings, /aiLightColors/);
   assert.match(providerSettings, /dropdownPanel/);
@@ -459,7 +459,7 @@ test('AI session settings can rename and delete the current thread', () => {
   assert.match(sessionConfig, /AppDialog/);
   assert.match(sessionConfig, /TextInput/);
   assert.match(sessionConfig, /accessibilityLabel="重命名当前会话"/);
-  assert.match(sessionConfig, /name="create-outline"/);
+  assert.match(sessionConfig, /create-outline/);
   assert.match(sessionConfig, /title="重命名当前会话"/);
   assert.match(sessionConfig, /onPrimary=\{\(\) => void confirmRenameThread\(\)\}/);
   assert.match(sessionConfig, /deleteAiThreads\(space, \[threadId\]\)/);

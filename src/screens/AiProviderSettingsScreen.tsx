@@ -665,7 +665,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           
           {selectedIsOtherProvider ? (
             <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-              <Text style={styles.fieldLabel}>连接信息快捷导入</Text>
+              <Text style={styles.fieldLabel}>连接信息导入</Text>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -677,7 +677,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 style={[styles.input, styles.importInput]}
                 value={connectionImportDraft}
               />
-              <AiLightButton disabled={!connectionImportDraft.trim()} label="一键解析并导入" onPress={importProviderConnection} variant="outline" />
+              <AiLightButton disabled={!connectionImportDraft.trim()} label="导入连接信息" onPress={importProviderConnection} variant="outline" />
             </View>
           ) : null}
 
@@ -685,13 +685,13 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             <AiLightButton disabled={saveDisabled} label="保存配置" onPress={() => void saveProviderDraft()} />
             <View style={styles.inlineActions}>
               <AiLightButton label="刷新模型列表" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
-              <AiLightButton disabled={saveDisabled} label="测试连接" onPress={() => void testSelectedProvider()} variant="outline" />
+              <AiLightButton disabled={saveDisabled} label="测试当前模型" onPress={() => void testSelectedProvider()} variant="outline" />
             </View>
           </View>
         </View>
       </AiLightListGroup>
 
-      <AiLightListGroup title="默认对话与向量模型">
+      <AiLightListGroup footer="不会影响已有独立设置的会话。" title="全局对话与向量模型">
         {selectedCard?.provider.lastVerifyStatus ? (
           <AiLightListItem
             icon={selectedCard.provider.lastVerifyStatus === 'ready' ? 'checkmark-circle-outline' : selectedCard.provider.lastVerifyStatus === 'failed' ? 'close-circle-outline' : 'help-circle-outline'}
@@ -705,7 +705,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
         <AiLightListItem
           icon="chatbubbles-outline"
-          title="选择全局对话模型"
+          title="全局对话模型"
+          subtitle="新创建会话的默认选择"
           value={selectedModel?.displayName ?? (chatModels.length > 0 ? '未选择' : '暂无可用模型')}
           disabled={chatModels.length === 0}
           onPress={() => {
@@ -861,7 +862,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       style={styles.input}
                       value={embeddingBaseUrlDraft}
                     />
-                    <Text style={styles.caption}>留空时使用对话服务地址；仅支持自定义中转站或特定官方 API。</Text>
+                    <Text style={styles.caption}>留空时使用对话服务地址；只有向量检索和材料索引会调用这里。DeepSeek 官方接口暂未列出 Embedding，兼容网关可在这里填写 /embeddings 所在的基础地址。</Text>
                   </View>
                 ) : null}
 
@@ -887,7 +888,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
                 {selectedSupportsManualEmbedding ? (
                   <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
-                    <Text style={styles.fieldLabel}>手动添加 Embedding 模型</Text>
+                    <Text style={styles.fieldLabel}>自定义 Embedding 模型</Text>
                     <View style={styles.inputRow}>
                       <TextInput
                         autoCapitalize="none"

@@ -1,27 +1,27 @@
 import { Platform } from 'react-native';
 
 export const aiLightColors = {
-  canvas: '#F2F2F7',
-  surface: '#FFFFFF',
-  card: '#FFFFFF',
-  cardWash: 'rgba(255, 255, 255, 0.82)',
-  coral: '#1C1C1E', // Premium dark ink for primary actions
-  coralActive: '#000000',
-  coralSoft: '#E5E5EA',
-  dark: '#000000',
-  hairline: '#E5E5EA',
-  ink: '#1C1C1E',
-  muted: '#8E8E93',
-  mutedSoft: '#C7C7CC',
-  onDark: '#FFFFFF',
-  paperMark: 'rgba(28, 28, 30, 0.04)',
-  posterBottomFade: 'rgba(242, 242, 247, 0.95)',
-  posterRightFade: 'rgba(242, 242, 247, 0.85)',
-  posterWarmOverlay: 'rgba(0, 0, 0, 0.02)',
+  canvas: '#FAF9F5',
+  surface: '#F5F0E8',
+  card: '#EFE9DE',
+  cardWash: 'rgba(255, 250, 242, 0.72)',
+  coral: '#CC785C',
+  coralActive: '#A9583E',
+  coralSoft: '#F4E2D4',
+  dark: '#181715',
+  hairline: '#E6DFD8',
+  ink: '#141413',
+  muted: '#6C6A64',
+  mutedSoft: '#8E8B82',
+  onDark: '#FAF9F5',
+  paperMark: 'rgba(204, 120, 92, 0.08)',
+  posterBottomFade: 'rgba(250, 249, 245, 0.92)',
+  posterRightFade: 'rgba(250, 249, 245, 0.82)',
+  posterWarmOverlay: 'rgba(250, 249, 245, 0.14)',
 } as const;
 
 export const aiLightDisplayFont = Platform.select({
-  ios: 'System',
-  android: 'sans-serif',
-  default: 'sans-serif',
+  ios: 'Georgia',
+  android: 'serif',
+  default: 'serif',
 });

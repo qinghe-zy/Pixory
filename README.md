@@ -6,11 +6,20 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 本地素材库仍然是 Pixory 的地基。图片、视频、IP 设定、文档、记忆和角色资产都优先落在本地 SQLite 与应用私有文件目录中，方便备份、迁移、回溯和继续喂给 AI 使用。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.2.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.2`
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.3.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.3`
 
-![Pixory preview](docs/assets/og-cover.png)
+<br>
+
+<div align="center">
+  <img src="docs/assets/app-preview.png" alt="Pixory App Preview" width="800">
+</div>
 
 ## 最新版本
+
+### Pixory 2.5.3
+
+- **AI 设置页 UI 升级**：全局模型配置页（`AiProviderSettingsScreen`）焕新重构，抛弃了之前的巨型表单卡片，全面转向高级 iOS 分组列表风格（`AiLightListGroup`）。操作更清晰，界面更加清爽优雅，告别拥挤与杂乱。
+- **配置项精细化**：细化了内边距与下拉框层级渲染，修复了双重边框等视觉毛刺，完美融合新设计的列表结构。
 
 ### Pixory 2.5.2
 

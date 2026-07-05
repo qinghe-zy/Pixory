@@ -836,7 +836,8 @@ export function AiSessionConfigScreen({
         <View style={styles.content}>
           <AiLightListGroup title="当前会话">
             <AiLightListItem
-              icon="chatbubbles-outline"
+              accessibilityLabel="重命名当前会话"
+              icon="create-outline"
               title="会话名称"
               value={threadTitle}
               onPress={() => {
@@ -865,13 +866,17 @@ export function AiSessionConfigScreen({
             <AiLightListItem
               icon="person-circle-outline"
               title="角色身份"
+              subtitle="导入角色卡或编辑当前角色"
               value={roleCardSummary}
               onPress={onOpenRoleCardEditor}
             />
             <AiLightListItem
+              accessibilityRole="switch"
               icon="image-outline"
               title="显示角色头像"
               subtitle={avatarSummary}
+              value={avatarEnabled ? '头像开启' : '头像关闭'}
+              onPress={() => setAvatarEnabled((current) => !current)}
               showChevron={false}
               action={
                 <Switch
@@ -882,11 +887,14 @@ export function AiSessionConfigScreen({
               }
             />
             <AiLightListItem
+              accessibilityRole="switch"
+              accessibilityState={{ checked: thinkingDisabled }}
               icon="flash-outline"
-              title="思考过程"
+              title="关闭思考过程"
               value={thinkingDisabled ? '已关闭' : '允许输出'}
               showChevron={false}
               isLast
+              onPress={() => setThinkingDisabled((current) => !current)}
               action={
                 <Switch
                   value={!thinkingDisabled}
@@ -929,6 +937,7 @@ export function AiSessionConfigScreen({
             title="记忆与历史"
           >
             <AiLightListItem
+              accessibilityRole="switch"
               action={
                 <Switch
                   onValueChange={setDeepMemoryEnabled}
@@ -936,9 +945,11 @@ export function AiSessionConfigScreen({
                   value={deepMemoryEnabled}
                 />
               }
+              onPress={() => setDeepMemoryEnabled((current) => !current)}
               icon="albums-outline"
               showChevron={false}
               title="深度记忆"
+              subtitle="开启后在本地保存会话摘要和可复用记忆，用于长对话回看；关闭后不会继续注入记忆背景。"
               isLast={!threadId}
             />
             {threadId ? (
@@ -946,12 +957,30 @@ export function AiSessionConfigScreen({
                 icon="layers-outline"
                 onPress={onOpenMemoryBoard}
                 title="管理记忆黑板"
+                isLast={!maintenanceStatus?.lastMaintenanceUsedFallback && !lastMaintenanceError}
+              />
+            ) : null}
+            {maintenanceStatus?.lastMaintenanceUsedFallback ? (
+              <AiLightListItem
+                icon="warning-outline"
+                title="维护警告"
+                subtitle="远程失败，已使用本地轻量整理"
+                showChevron={false}
+                isLast={!lastMaintenanceError}
+              />
+            ) : null}
+            {lastMaintenanceError ? (
+              <AiLightListItem
+                icon="alert-circle-outline"
+                title="维护失败"
+                subtitle={formatMaintenanceError(lastMaintenanceError)}
+                showChevron={false}
                 isLast
               />
             ) : null}
           </AiLightListGroup>
 
-          <AiLightListGroup title="高级选项">
+          <AiLightListGroup footer="这些选项会自动保存。" title="回复设置">
             <AiLightListItem
               icon="code-working-outline"
               onPress={() => setAdvancedPromptVisible((current) => !current)}
@@ -1034,8 +1063,8 @@ export function AiSessionConfigScreen({
           </AiLightListGroup>
 
           <View style={styles.actions}>
-            <AiLightButton label="保存设置并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
-            <AiLightButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
+            <AiLightButton label="保存角色指令并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+            <AiLightButton label="仅保存角色指令" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
           </View>
 
           <AiLightListGroup>
@@ -1058,7 +1087,7 @@ export function AiSessionConfigScreen({
 
 
       <AppDialog
-        message="选择跟随全局默认后，此会话会使用模型账号页里的全局默认模型。选择具体模型后，只影响当前会话。"
+        message="选择跟随全局默认后，此会话会使用模型账号页里的全局默认模型。选择具体模型后，仅在当前会话生效。"
         onClose={() => {
           if (!savingModel) {
             setModelPickerVisible(false);
