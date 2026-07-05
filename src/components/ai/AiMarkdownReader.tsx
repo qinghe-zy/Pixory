@@ -1,77 +1,67 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
-import { rhythm, spacing, typography } from '../../design/tokens';
-import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
+import { getAiMarkdownReaderHtml } from './aiMarkdownReaderTemplate';
 
 interface AiMarkdownReaderProps {
   readable: AiReadableDocument;
   locator?: AiDocumentReaderLocator;
 }
 
+/**
+ * Injects a `<mark>` wrapper around the N-th non-empty line in the raw
+ * markdown so that the WebView can scroll to and highlight the paragraph
+ * referenced by an AI citation (locator).
+ */
+function applyLocator(text: string, locator?: AiDocumentReaderLocator): string {
+  if (locator?.paragraph === undefined) {
+    return text;
+  }
+  const lines = text.split('\n');
+  let pIndex = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) {
+      pIndex += 1;
+      if (pIndex === locator.paragraph) {
+        lines[i] = `<mark id="locator-target" class="locator-highlight">${lines[i]}</mark>`;
+        break;
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
 export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
-  const lines = (readable.text || '暂无可阅读文本。').split('\n');
-  const targetParagraph = locator?.paragraph;
-  let paragraphIndex = 0;
+  const rawText = readable.text || '暂无可阅读文本。';
+
+  const htmlContent = useMemo(() => {
+    const marked = applyLocator(rawText, locator);
+    return getAiMarkdownReaderHtml(marked);
+  }, [rawText, locator]);
 
   return (
     <View style={styles.wrap}>
-      {lines.map((line, index) => {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          return null;
-        }
-        paragraphIndex += 1;
-        const highlighted = paragraphIndex === targetParagraph;
-        if (trimmed.startsWith('#')) {
-          return <Text key={`${index}-${trimmed}`} style={[styles.heading, highlighted && styles.highlighted]}>{trimmed.replace(/^#+\s*/, '')}</Text>;
-        }
-        if (trimmed.startsWith('>')) {
-          return <Text key={`${index}-${trimmed}`} style={[styles.quote, highlighted && styles.highlighted]}>{trimmed.replace(/^>\s?/, '')}</Text>;
-        }
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          return <Text key={`${index}-${trimmed}`} style={[styles.body, highlighted && styles.highlighted]}>• {trimmed.slice(2)}</Text>;
-        }
-        if (trimmed.startsWith('```')) {
-          return <Text key={`${index}-${trimmed}`} style={[styles.code, highlighted && styles.highlighted]}>{trimmed}</Text>;
-        }
-        return <Text key={`${index}-${trimmed}`} style={[styles.body, highlighted && styles.highlighted]}>{trimmed}</Text>;
-      })}
+      <WebView
+        allowFileAccess={false}
+        allowFileAccessFromFileURLs={false}
+        javaScriptEnabled
+        originWhitelist={['*']}
+        showsVerticalScrollIndicator={false}
+        source={{ html: htmlContent }}
+        style={styles.webview}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: rhythm.cardContentGap,
+    flex: 1,
   },
-  heading: {
-    ...typography.textStyles.sectionTitle,
-    color: aiLightColors.ink,
-    fontFamily: aiLightDisplayFont,
-    fontWeight: '400',
-  },
-  body: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
-    lineHeight: 25,
-  },
-  quote: {
-    ...typography.textStyles.body,
-    color: aiLightColors.muted,
-    fontStyle: 'italic',
-    lineHeight: 25,
-    paddingLeft: spacing[2],
-  },
-  code: {
-    ...typography.textStyles.caption,
-    backgroundColor: aiLightColors.surface,
-    color: aiLightColors.ink,
-    fontFamily: typography.family.mono,
-    lineHeight: 20,
-    paddingVertical: spacing[1],
-  },
-  highlighted: {
-    backgroundColor: aiLightColors.card,
+  webview: {
+    flex: 1,
+    backgroundColor: '#faf9f5', // match --canvas so there's no white flash
   },
 });

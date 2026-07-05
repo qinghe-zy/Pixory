@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-06-24（含 2.5.1 OTA 热更新）
-适用版本：Pixory 2.5.1
+最后更新：2026-07-05（含 2.5.2 OTA 与新版 Markdown 渲染更新）
+适用版本：Pixory 2.5.2
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -67,7 +67,7 @@
 | 聊天搜索 | 当前路线 local exact/fuzzy 搜索，定位回聊天 | `AiChatSearchScreen`, `aiThreadRepository` |
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
 | Usage | provider usage 归一化、cached token ratio、线程/总览用量 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary` |
-| 消息渲染 | Markdown、代码块、表格、HTML/CSS WebView、数学块、citation、thinking block、render cache | `AiMessageContent`, `AiMessageBubble`, `AiMathBlock` |
+| 消息渲染 | Markdown (全新标记解析器防注入)、代码块、表格、原生图片附件画廊展示、HTML/CSS WebView、数学块、citation、thinking block、render cache | `AiMessageContent`, `AiMessageBubble`, `AiMarkdownReader` |
 | AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史 | `src/screens/Ai*.tsx`, `src/components/ai/` |
 
 ---

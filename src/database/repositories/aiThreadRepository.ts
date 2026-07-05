@@ -1859,6 +1859,32 @@ export const aiThreadRepository = {
     );
   },
 
+  async listAttachmentsForMessages(db: SQLiteDatabase, messageIds: string[]): Promise<Record<string, AiMessageAttachmentRecord[]>> {
+    if (messageIds.length === 0) {
+      return {};
+    }
+    const rows: AiMessageAttachmentRecord[] = [];
+    for (let index = 0; index < messageIds.length; index += MESSAGE_LOOKUP_CHUNK_SIZE) {
+      const chunk = messageIds.slice(index, index + MESSAGE_LOOKUP_CHUNK_SIZE);
+      rows.push(
+        ...(await db.getAllAsync<AiMessageAttachmentRecord>(
+          `SELECT * FROM ai_message_attachments WHERE messageId IN (${makeInClause(chunk)}) ORDER BY createdAt ASC`,
+          ...chunk
+        ))
+      );
+    }
+    const result: Record<string, AiMessageAttachmentRecord[]> = {};
+    for (const row of rows) {
+      const list = result[row.messageId];
+      if (list) {
+        list.push(row);
+      } else {
+        result[row.messageId] = [row];
+      }
+    }
+    return result;
+  },
+
   async createContinuityImportSession(
     db: SQLiteDatabase,
     input: CreateAiContinuityImportSessionInput

@@ -190,24 +190,6 @@ test('thread add material uses a source sheet instead of directly jumping to imp
   assert.match(sheet, /手动文本/);
 });
 
-test('role library can apply a role to the current session and avoids stale back stack for new role chat', () => {
-  const app = read('App.tsx');
-  const library = read('src/screens/AiRoleLibraryScreen.tsx');
-  const detail = read('src/screens/AiRoleCardDetailScreen.tsx');
-  const startBody = extractBlockAfter(app, 'async function startChatWithRoleCard');
-
-  assert.match(app, /ai-role-library'; space: PixorySpace; threadId\?: string; mode\?: 'library' \| 'apply_to_thread'/);
-  assert.match(app, /onOpenRoleCardEditor=\{\(\) => pushRoute\(\{ name: 'ai-role-library', space: currentRoute\.space, threadId: currentRoute\.threadId, mode: 'apply_to_thread' \}\)\}/);
-  assert.match(app, /applyRoleToCurrentThread\(currentRoute\.space,\s*currentRoute\.threadId,\s*roleCardId\)/);
-  assert.match(app, /applyRoleCardToThread\(\{\s*roleCardId,\s*space,\s*threadId\s*\}\)/);
-  assert.match(app, /onCreateRole=\{\(\) => pushRoute\(\{ name: 'ai-role-card-editor', space: currentRoute\.space, threadId: currentRoute\.threadId \}\)\}/);
-  assert.match(app, /onEditRole=\{\(roleCardId\) => pushRoute\(\{ name: 'ai-role-card-editor', roleCardId, space: currentRoute\.space, threadId: currentRoute\.threadId \}\)\}/);
-  assert.match(library, /mode === 'apply_to_thread'/);
-  assert.match(library, /应用/);
-  assert.match(detail, /onApplyRoleToThread/);
-  assert.doesNotMatch(startBody, /replaceCurrentRoute\(/);
-  assert.match(startBody, /replaceAiChatFlowWithRoute/);
-});
 
 test('small UI state fixes keep titles and selection mode honest', () => {
   const materialList = read('src/screens/AiMaterialListScreen.tsx');

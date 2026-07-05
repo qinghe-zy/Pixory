@@ -94,25 +94,35 @@ function AiMessageBubbleComponent({
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
   const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
-  const [editDraft, setEditDraft] = useState(message.content);
+  const [editDraft, setEditDraft] = useState('');
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
-  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  function clearCopyFeedbackTimer() {
-    if (copyFeedbackTimeoutRef.current) {
-      clearTimeout(copyFeedbackTimeoutRef.current);
-      copyFeedbackTimeoutRef.current = null;
+  const rawContent = message.content;
+  let displayContent = rawContent;
+  if (isUser) {
+    const attachmentMarkerIndex = rawContent.indexOf('\n\n[附件]');
+    if (attachmentMarkerIndex !== -1) {
+      displayContent = rawContent.slice(0, attachmentMarkerIndex);
+    }
+    if (displayContent === '请根据以下附件继续对话。') {
+      displayContent = '';
     }
   }
 
   useEffect(() => {
     if (editing) {
-      setEditDraft(message.content);
+      setEditDraft(displayContent);
     }
-  }, [editing, message.content]);
+  }, [editing, displayContent]);
 
   useEffect(() => {
-    return clearCopyFeedbackTimer;
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+        copyFeedbackTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   function updateEditDraft(nextDraft: string) {
@@ -125,6 +135,17 @@ function AiMessageBubbleComponent({
     if (nextVersionIndex !== message.versionIndex) {
       onSelectVersion(message.id, nextVersionIndex);
     }
+  }
+
+  function handleSubmitEdit() {
+    let finalDraft = editDraft;
+    const attachmentMarkerIndex = rawContent.indexOf('\n\n[附件]');
+    if (attachmentMarkerIndex !== -1) {
+      finalDraft = `${editDraft}${rawContent.slice(attachmentMarkerIndex)}`;
+    } else if (rawContent === '请根据以下附件继续对话。' && !editDraft.trim()) {
+      finalDraft = rawContent;
+    }
+    onSubmitEdit(message.id, finalDraft);
   }
 
   return (
@@ -183,13 +204,28 @@ function AiMessageBubbleComponent({
                 <Pressable accessibilityLabel="取消重写" accessibilityRole="button" onPress={onCancelEdit} style={({ pressed }) => [styles.inlineEditorButton, pressed && styles.pressed]}>
                   <Text style={styles.inlineEditorButtonText}>取消</Text>
                 </Pressable>
-                <Pressable accessibilityLabel="提交重写" accessibilityRole="button" disabled={!editDraft.trim()} onPress={() => onSubmitEdit(message.id, editDraft)} style={({ pressed }) => [styles.inlineEditorButton, styles.inlineEditorPrimary, !editDraft.trim() && styles.disabledAction, pressed && editDraft.trim() && styles.pressed]}>
+                <Pressable accessibilityLabel="提交重写" accessibilityRole="button" disabled={!editDraft.trim() && rawContent !== '请根据以下附件继续对话。'} onPress={handleSubmitEdit} style={({ pressed }) => [styles.inlineEditorButton, styles.inlineEditorPrimary, (!editDraft.trim() && rawContent !== '请根据以下附件继续对话。') && styles.disabledAction, pressed && (editDraft.trim() || rawContent === '请根据以下附件继续对话。') && styles.pressed]}>
                   <Text style={[styles.inlineEditorButtonText, styles.inlineEditorPrimaryText]}>发送</Text>
                 </Pressable>
               </View>
             </View>
           ) : isUser ? (
-            <Text selectable style={[styles.content, styles.userText]}>{content}</Text>
+            <View style={styles.userContentWrap}>
+              {displayContent ? <Text selectable style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
+              {message.attachments && message.attachments.length > 0 ? (
+                <View style={styles.attachmentGallery}>
+                  {message.attachments.filter((a) => a.kind === 'image').map((attachment) => (
+                    <SecureImage
+                      key={attachment.id}
+                      contentFit="cover"
+                      space={space}
+                      style={styles.attachmentImage}
+                      uri={attachment.localUri}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </View>
           ) : (
             <>
               {waitingForFirstToken ? (
@@ -219,7 +255,9 @@ function AiMessageBubbleComponent({
             onPress={() => {
               onCopy(message);
               setCopyFeedbackVisible(true);
-              clearCopyFeedbackTimer();
+              if (copyFeedbackTimeoutRef.current) {
+                clearTimeout(copyFeedbackTimeoutRef.current);
+              }
               copyFeedbackTimeoutRef.current = setTimeout(() => {
                 setCopyFeedbackVisible(false);
                 copyFeedbackTimeoutRef.current = null;
@@ -519,5 +557,21 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78,
+  },
+  userContentWrap: {
+    gap: spacing[2],
+  },
+  attachmentGallery: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1],
+    marginTop: spacing[1],
+  },
+  attachmentImage: {
+    borderRadius: radius.md,
+    height: 140,
+    width: 140,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
 });

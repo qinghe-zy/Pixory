@@ -383,7 +383,6 @@ test('AI reading and citation components use the shared AI light tokens', () => 
     'AiMessageContent.tsx',
     'AiThinkingBlock.tsx',
     'AiTextReader.tsx',
-    'AiMarkdownReader.tsx',
     'AiPdfReader.tsx',
     'AiDocxReader.tsx',
   ]) {

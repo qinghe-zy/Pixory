@@ -6,11 +6,20 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 本地素材库仍然是 Pixory 的地基。图片、视频、IP 设定、文档、记忆和角色资产都优先落在本地 SQLite 与应用私有文件目录中，方便备份、迁移、回溯和继续喂给 AI 使用。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.1.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.1`
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.2.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.2`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
+
+### Pixory 2.5.2
+
+这一版针对聊天体验与安全性进行了打磨，主要是为 Markdown 与多模态引入了更现代、稳健的基础渲染链路：
+
+- 全新 Markdown 渲染引擎：支持复杂的语法解析，全面杜绝恶意标签注入风险。
+- 原生图片画廊：发送的图片会在聊天流中以真实缩略图画廊的形式展示，而不是原先的纯文本附件提示，界面更清晰更美观。
+- 信任用户意图：无论本地记录的模型是否支持视觉，当用户主动附带图片时，均会强行发送给大模型进行验证。
+- 深度修复体验细节：全面修复了编辑、重写分支下的附件状态遗失和变量极限崩溃问题。
 
 ### Pixory 2.5.1
 

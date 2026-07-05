@@ -60,7 +60,7 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
   }, [documentId, space]);
 
   const reader = readable ? renderReader(readable, locator) : null;
-  const pdfMode = readable?.document.sourceType === 'pdf';
+  const webViewMode = readable?.document.sourceType === 'pdf' || readable?.document.sourceType === 'markdown';
 
   return (
     <AppScreen backgroundColor={aiLightColors.canvas} contentStyle={styles.screen}>
@@ -83,7 +83,7 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : reader ? (
-          pdfMode ? reader : (
+          webViewMode ? reader : (
             <ScrollView contentContainerStyle={styles.textScrollContent} showsVerticalScrollIndicator={false}>
               {reader}
             </ScrollView>

@@ -18,7 +18,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
@@ -415,6 +415,7 @@ const ASSISTANT_TOPIC_PATTERNS = [
 ];
 
 export type AiMessageWithCitations = AiMessageRecord & {
+  attachments?: AiMessageAttachmentRecord[];
   citations: AiCitationRecord[];
   messageVersions: AiMessageVersionRecord[];
   versionIndex: number;
@@ -994,7 +995,7 @@ function buildAttachmentPromptContext(input: {
   if (input.imageCount > 0 && input.visionEnabled) {
     lines.push(`图片附件：已随本轮请求作为视觉输入发送 ${input.imageCount} 张。`);
   } else if (input.imageCount > 0) {
-    lines.push('图片附件：当前模型未启用视觉能力，只能基于文件名、类型、大小和用户描述讨论。');
+    lines.push(`图片附件：用户发送了 ${input.imageCount} 张图片，但视觉传入未就绪，仅可基于文件名和用户描述讨论。`);
   }
   if (input.attachments.some((attachment) => attachment.kind === 'video')) {
     lines.push('视频附件：当前版本不会直接把视频帧或音轨发送给模型；只能基于文件名、类型、大小和用户描述讨论。');
@@ -1759,9 +1760,10 @@ export async function listThreadMessages(space: PixorySpace, threadId: string, o
       : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
     const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
     const messageIds = messagesWithBranchRoots.map((message) => message.id);
-    const [versionTotalsByMessageId, citationsByMessageId] = await Promise.all([
+    const [versionTotalsByMessageId, citationsByMessageId, attachmentsByMessageId] = await Promise.all([
       aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds),
       aiThreadRepository.listCitationsForMessages(db, messageIds),
+      aiThreadRepository.listAttachmentsForMessages(db, messageIds),
     ]);
     const selectedVersionEntries = messagesWithBranchRoots
       .map((message) => {
@@ -1784,6 +1786,7 @@ export async function listThreadMessages(space: PixorySpace, threadId: string, o
       const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
       return {
         ...message,
+        attachments: attachmentsByMessageId[message.id] ?? [],
         citations: citationsByMessageId[message.id] ?? [],
         messageVersions: selectedVersion ? [selectedVersion] : [],
         versionIndex: selectedVersion?.versionIndex ?? versionTotal,
@@ -2661,7 +2664,11 @@ async function streamAssistantReply(input: {
     );
     generationMetrics.context.branchScopeCount = branchScopes.length;
     markGenerationMetric(generationMetrics, 'branchResolveEndAt');
-    const canSendVisionAttachments = provider.visionEnabled && resolvedModel.model.supportsVision;
+    const hasImageAttachments = (input.attachments ?? []).some((a) => a.kind === 'image');
+    // If the user attached images, always send them — the user's intent is the
+    // strongest signal.  Model capability flags may be stale or incomplete; let
+    // the provider return an error if the model truly cannot handle images.
+    const canSendVisionAttachments = hasImageAttachments || (provider.visionEnabled && resolvedModel.model.supportsVision);
     const preparedAttachments = await prepareOutgoingAttachments({
       attachments: input.attachments,
       space: input.space,
@@ -3386,8 +3393,13 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
   input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
   input.onUpdated?.();
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  const replayAttachments = await loadOutgoingAttachmentsForMessage({
+    messageId: input.userMessageId,
+    space: input.space,
+  });
 
   await streamAssistantReply({
+    attachments: replayAttachments,
     assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,

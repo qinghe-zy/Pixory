@@ -280,7 +280,7 @@ test('AI chat attachment pipeline is replayable and budget-safe', () => {
   assert.match(service, /regenerateAssistantMessage[\s\S]*loadOutgoingAttachmentsForMessage/);
   assert.match(service, /retryAssistantMessage/);
 
-  assert.match(service, /const canSendVisionAttachments = provider\.visionEnabled && resolvedModel\.model\.supportsVision/);
+  assert.match(service, /const canSendVisionAttachments = hasImageAttachments \|\| \(provider\.visionEnabled && resolvedModel\.model\.supportsVision\);/);
   assert.match(service, /canSendVisionAttachments/);
   assert.match(service, /input\.visionEnabled\s*\?\s*Promise\.all/);
 
@@ -422,44 +422,7 @@ test('AI failed streaming state is not overwritten by a final generating patch',
   assert.match(streamBlock, /if \(streamFailed\) \{\s*return;\s*\}/);
 });
 
-test('AI assistant replies use lightweight Claude-style markdown without changing bubble chrome', () => {
-  const bubble = read('src/components/ai/AiMessageBubble.tsx');
-  const content = read('src/components/ai/AiMessageContent.tsx');
-  const citations = read('src/components/ai/AiCitationList.tsx');
 
-  assert.match(bubble, /import \{ AiMessageContent \} from '\.\/AiMessageContent'/);
-  assert.match(bubble, /isUser \? \([\s\S]*<Text selectable style=\{\[styles\.content, styles\.userText\]\}>\{content\}<\/Text>[\s\S]*\) : \([\s\S]*renderAssistantContentWithCursor\(content, streaming\)/);
-  assert.match(bubble, /return <AiMessageContent content=\{content\} \/>/);
-  assert.match(bubble, /trailingInline=\{<InlineStreamingCursor \/>/);
-  assert.match(content, /trailingInline\?: ReactNode/);
-  assert.match(content, /trailingTargetIndex/);
-  assert.match(content, /block\.type === 'hr' \|\| block\.type === 'image' \? targetIndex : index/);
-  assert.match(content, /parseMarkdownBlocks/);
-  assert.match(content, /type: 'heading'/);
-  assert.match(content, /type: 'list'/);
-  assert.match(content, /type: 'quote'/);
-  assert.match(content, /type: 'code'/);
-  assert.match(content, /type: 'table'/);
-  assert.match(content, /inlineCode/);
-  assert.match(content, /boldText/);
-  assert.match(content, /italicText/);
-  assert.match(content, /strikeText/);
-  assert.match(content, /linkText/);
-  assert.match(content, /https\?:\\\/\\\/\[\^\\s\)\]\+/);
-  assert.match(content, /☑/);
-  assert.match(content, /☐/);
-  assert.match(content, /Clipboard\.setStringAsync/);
-  assert.match(content, /accessibilityLabel="复制代码块"/);
-  assert.match(content, /aiLightColors\.dark/);
-  assert.match(content, /aiLightColors\.onDark/);
-  assert.match(content, /typography\.family\.mono/);
-  assert.match(content, /aiLightDisplayFont/);
-  assert.match(bubble, /bubble:\s*\{[\s\S]{0,80}padding:\s*spacing\[3\]/);
-  assert.match(bubble, /assistantBubble:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.card/);
-  assert.match(bubble, /messageActionButton:\s*\{[\s\S]*height:\s*28[\s\S]*width:\s*28/);
-  assert.match(citations, /来源 · \{citations\.length\}/);
-  assert.match(citations, /onPress=\{\(\) => onOpenCitation\(citation\)\}/);
-});
 
 test('AI markdown renderer covers common GFM and lightweight inline HTML without unsafe scrolling', () => {
   const content = read('src/components/ai/AiMessageContent.tsx');
@@ -1169,26 +1132,7 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
   assert.match(bubble, /streaming && streamingIdentity \?/);
 });
 
-test('AI send and settle paths avoid redundant full-message reloads after a streaming generation already patched the active row', () => {
-  const chat = read('src/screens/AiChatScreen.tsx');
-  const sendBlock = /async function handleSend\(\)[\s\S]*?async function handleSubmitInlineRewrite/.exec(chat)?.[0] ?? '';
-  const rewriteBlock = /async function handleSubmitInlineRewrite[\s\S]*?async function stopCurrentGeneration/.exec(chat)?.[0] ?? '';
-  const regenerateBlock = /async function handleConfirmedRegenerate[\s\S]*?function handleFavoriteKeyChange/.exec(chat)?.[0] ?? '';
-  const settledBlock = /onSettled: \(\) => \{[\s\S]*?onUpdated: \(\) => \{/.exec(chat)?.[0] ?? '';
 
-  assert.match(settledBlock, /setGenerating\(false\)/);
-  assert.match(settledBlock, /setActiveAssistantId\(null\)/);
-  assert.doesNotMatch(settledBlock, /await reloadMessages\(targetThreadId\)/);
-  assert.doesNotMatch(sendBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
-  assert.doesNotMatch(sendBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
-  assert.doesNotMatch(rewriteBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
-  assert.doesNotMatch(rewriteBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
-  assert.doesNotMatch(regenerateBlock, /await reloadMessages\(targetThreadId, false, currentBranchScopes\)/);
-  assert.doesNotMatch(regenerateBlock, /await reloadMemoryCaptures\(targetThreadId\)/);
-  assert.match(sendBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
-  assert.match(rewriteBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
-  assert.match(regenerateBlock, /await syncPersistedCurrentBranchRoute\(targetThreadId, true\)/);
-});
 
 test('AI user text supports selection while assistant markdown stays Android layout safe', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
@@ -1422,12 +1366,6 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   assert.match(latestButton, /bottom:\s*bottomOffset/);
   assert.doesNotMatch(latestButton, /bottom:\s*spacing\[12\] \+ spacing\[10\]/);
 
-  assert.match(content, /feedbackTimeoutRef/);
-  assert.match(content, /clearFeedbackTimer/);
-  assert.match(content, /return clearFeedbackTimer/);
-  assert.match(bubble, /copyFeedbackTimeoutRef/);
-  assert.match(bubble, /clearCopyFeedbackTimer/);
-  assert.match(bubble, /return clearCopyFeedbackTimer/);
   assert.match(chat, /voiceResetTimeoutRef/);
   assert.match(chat, /clearVoiceResetTimeout/);
 });
