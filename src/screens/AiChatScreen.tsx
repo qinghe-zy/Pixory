@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, AppState, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, AppState, Easing, FlatList, KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, PermissionsAndroid, Platform, Pressable, StatusBar, StyleSheet, Text, type ViewToken, View, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiChatComposer, type AiComposerAttachment } from '../components/ai/AiChatComposer';
@@ -13,6 +13,7 @@ import type { AiVoiceInputState } from '../components/ai/AiVoiceInputStatus';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import { AiMemoryCaptureNotice } from '../components/ai/AiMemoryCaptureNotice';
 import { AiMessageBubble } from '../components/ai/AiMessageBubble';
+import { SecureImage } from '../components/SecureImage';
 import { AiScrollToLatestButton } from '../components/ai/AiScrollToLatestButton';
 import { AppScreen } from '../components/AppScreen';
 import { recognizeSpeech } from '../native/pixoryMediaModule';
@@ -22,6 +23,7 @@ import {
   deleteAiThreads,
   flushStreamingMessageSnapshot,
   getCurrentChatModelLabel,
+  getCurrentChatModelIconBrand,
   listThreadMessages,
   loadThreadContinuityMilestones,
   loadThreadTitle,
@@ -34,6 +36,7 @@ import {
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
 } from '../ai/aiChatService';
+import type { AiModelIconBrand } from '../ai/aiModelIconService';
 import { aiGenerationManager, type AiGenerationSubscriber } from '../ai/aiGenerationManager';
 import {
   getActiveBranchForNextMessageFromVisibleMessages,
@@ -448,10 +451,12 @@ export function AiChatScreen({
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
   const [pendingMessageActionId, setPendingMessageActionId] = useState<string | null>(null);
   const [favoriteStateByKey, setFavoriteStateByKey] = useState<Record<string, boolean>>({});
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [favoritePendingByKey, setFavoritePendingByKey] = useState<Record<string, boolean>>({});
   const [selectedVersionByMessageId, setSelectedVersionByMessageId] = useState<Record<string, number>>({});
   const [persistedCurrentBranchScopes, setPersistedCurrentBranchScopes] = useState<AiBranchScope[]>([]);
   const [modelLabel, setModelLabel] = useState('');
+  const [modelIconBrand, setModelIconBrand] = useState<AiModelIconBrand>('default');
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
   const [avatarConfig, setAvatarConfig] = useState({ avatarEnabled: false, avatarUri: null as string | null });
   const [memoryCaptures, setMemoryCaptures] = useState<MemoryCaptureNoticeItem[]>([]);
@@ -1560,11 +1565,15 @@ export function AiChatScreen({
   const reloadModelLabel = useCallback(
     async (targetThreadId: string | null) => {
       const requestId = nextRequestId('model');
-      const label = await getCurrentChatModelLabel(space, targetThreadId);
+      const [label, brand] = await Promise.all([
+        getCurrentChatModelLabel(space, targetThreadId),
+        getCurrentChatModelIconBrand(space, targetThreadId),
+      ]);
       if (!isLatestRequest('model', requestId, targetThreadId)) {
         return;
       }
       setModelLabel(label);
+      setModelIconBrand(brand);
     },
     [space]
   );
@@ -2676,6 +2685,13 @@ export function AiChatScreen({
               favoritePending={favoriteIdentity ? Boolean(favoritePendingByKey[favoriteIdentity.key]) : false}
               generating={generating}
               message={message}
+              onAttachmentPress={(attachment) => {
+                if (attachment.kind === 'document' && attachment.documentId) {
+                  onOpenSource(attachment.documentId, attachment.name);
+                } else if (attachment.kind === 'image' && attachment.localUri) {
+                  setPreviewImageUri(attachment.localUri);
+                }
+              }}
               pendingActionMessageId={pendingMessageActionId}
               showAvatar={item.showAvatar}
               space={space}
@@ -2884,11 +2900,13 @@ export function AiChatScreen({
           <AiChatComposer
             attachments={pendingAttachments}
             generating={generating}
+            modelIconBrand={modelIconBrand}
             onAddDocumentAttachment={() => void pickChatDocuments()}
             onAddImageAttachment={() => void pickChatImages()}
             onChangeText={setComposerText}
             onComposerHeightChange={handleComposerHeightChange}
             onFocus={handleComposerFocus}
+            onModelIconPress={() => void handleOpenSessionConfig()}
             onRemoveAttachment={(id) => setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id))}
             placeholder=""
             onSend={() => {
@@ -2937,6 +2955,27 @@ export function AiChatScreen({
         onRenameThread={(thread, title) => renameRecentThread(thread, title)}
         onDeleteThread={(thread) => deleteRecentThread(thread)}
       />
+      <Modal animationType="fade" onRequestClose={() => setPreviewImageUri(null)} transparent visible={Boolean(previewImageUri)}>
+        <View style={StyleSheet.absoluteFill}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' }}>
+            {previewImageUri ? (
+              <SecureImage
+                contentFit="contain"
+                space={space}
+                style={{ flex: 1 }}
+                uri={previewImageUri}
+              />
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setPreviewImageUri(null)}
+              style={{ position: 'absolute', top: Math.max(statusBarHeight, 20) + 20, right: 20, padding: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 30 }}
+            >
+              <Ionicons color="#fff" name="close" size={24} />
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </AppScreen>
   );
 }

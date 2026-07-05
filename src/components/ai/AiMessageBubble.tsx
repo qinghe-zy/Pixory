@@ -16,6 +16,7 @@ import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
 import { formatAiMessageMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
+import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
 
 interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
@@ -44,6 +45,7 @@ interface AiMessageBubbleProps {
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
   onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
+  onAttachmentPress?: (attachment: AiMessageAttachmentRecord) => void;
 }
 
 function InlineStreamingCursor() {
@@ -81,6 +83,7 @@ function AiMessageBubbleComponent({
   onToggleFavorite,
   onThinkingExpandedChange,
   onSubmitEdit,
+  onAttachmentPress,
 }: AiMessageBubbleProps) {
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
@@ -160,6 +163,28 @@ function AiMessageBubbleComponent({
         </View>
       ) : null}
       <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack]}>
+        {message.attachments && message.attachments.length > 0 ? (
+          <View style={[styles.attachmentGalleryOuter, !isUser && styles.attachmentGalleryOuterAssistant]}>
+            {message.attachments.filter((a) => a.kind === 'image').map((attachment) => (
+              <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
+                <SecureImage
+                  contentFit="cover"
+                  space={space}
+                  style={styles.attachmentImageOuter}
+                  uri={attachment.localUri}
+                />
+              </Pressable>
+            ))}
+            {message.attachments.filter((a) => a.kind === 'document').map((attachment) => (
+              <Pressable key={attachment.id} onPress={() => onAttachmentPress?.(attachment)}>
+                <View style={styles.attachmentDocumentOuter}>
+                  <Ionicons color={aiLightColors.ink} name="document-text-outline" size={24} />
+                  <Text numberOfLines={1} style={styles.attachmentDocumentTextOuter}>{attachment.name}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {!isUser ? (
           <View style={styles.thinkingWrap}>
             {streaming && streamingIdentity ? (
@@ -212,19 +237,6 @@ function AiMessageBubbleComponent({
           ) : isUser ? (
             <View style={styles.userContentWrap}>
               {displayContent ? <Text selectable style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
-              {message.attachments && message.attachments.length > 0 ? (
-                <View style={styles.attachmentGallery}>
-                  {message.attachments.filter((a) => a.kind === 'image').map((attachment) => (
-                    <SecureImage
-                      key={attachment.id}
-                      contentFit="cover"
-                      space={space}
-                      style={styles.attachmentImage}
-                      uri={attachment.localUri}
-                    />
-                  ))}
-                </View>
-              ) : null}
             </View>
           ) : (
             <>
@@ -561,17 +573,40 @@ const styles = StyleSheet.create({
   userContentWrap: {
     gap: spacing[2],
   },
-  attachmentGallery: {
+  attachmentGalleryOuter: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing[1],
-    marginTop: spacing[1],
+    gap: spacing[2],
+    marginBottom: spacing[2],
+    justifyContent: 'flex-end',
   },
-  attachmentImage: {
+  attachmentGalleryOuterAssistant: {
+    justifyContent: 'flex-start',
+  },
+  attachmentImageOuter: {
     borderRadius: radius.md,
-    height: 140,
-    width: 140,
+    height: 120,
+    width: 120,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  attachmentDocumentOuter: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[2],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    minWidth: 160,
+    maxWidth: 260,
+  },
+  attachmentDocumentTextOuter: {
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    flex: 1,
   },
 });

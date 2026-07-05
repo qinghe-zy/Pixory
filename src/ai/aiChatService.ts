@@ -97,6 +97,7 @@ import {
 } from '../services/fileStorageService';
 import { normalizeBaseUrl, type AiChatAttachment, type AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
+import { resolveModelIconBrand, type AiModelIconBrand } from './aiModelIconService';
 
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
@@ -1721,6 +1722,16 @@ export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: st
   const model = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findModel(db, resolved.provider.id, resolved.modelId));
   const modelName = model?.displayName ?? resolved.modelId;
   return `${resolved.provider.displayName} · ${modelName}`;
+}
+
+export async function getCurrentChatModelIconBrand(space: PixorySpace, threadId?: string | null): Promise<AiModelIconBrand> {
+  await ensureBuiltInProviders(space);
+  const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
+  const resolved = await resolveThreadChatModel(space, thread ?? emptyThreadModelConfig(space));
+  if (resolved.status !== 'ready') {
+    return 'default';
+  }
+  return resolveModelIconBrand(resolved.provider.providerType, resolved.modelId, resolved.provider.baseUrl);
 }
 
 async function loadBranchRootMessages(
