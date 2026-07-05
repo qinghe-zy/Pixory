@@ -179,9 +179,9 @@ export function AiChatComposer({
             }
           }}
           onChangeText={onChangeText}
-          onFocus={(e) => {
+          onFocus={() => {
             setAttachmentPopoverVisible(false);
-            onFocus?.(e);
+            onFocus?.();
           }}
           placeholder={placeholder}
           placeholderTextColor={aiLightColors.mutedSoft}

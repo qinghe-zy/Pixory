@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -11,6 +11,7 @@ import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightChip } from '../components/ai/AiLightChip';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
+import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors } from '../components/ai/aiLightTheme';
@@ -170,6 +171,7 @@ export function AiSessionConfigScreen({
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
+  const [advancedUsageVisible, setAdvancedUsageVisible] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
@@ -832,260 +834,228 @@ export function AiSessionConfigScreen({
         title="会话设置"
       >
         <View style={styles.content}>
-          <AiLightCard>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryCopy}>
-                <Text style={styles.sectionTitle}>当前会话</Text>
-                <View style={styles.threadTitleRow}>
-                  <Text numberOfLines={1} style={[styles.body, styles.threadTitleText]}>{threadTitle}</Text>
-                  <Pressable
-                    accessibilityLabel="重命名当前会话"
-                    accessibilityRole="button"
-                    disabled={!threadId || saving}
-                    hitSlop={spacing[2]}
-                    onPress={() => {
-                      setRenameValue(threadTitle);
-                      setRenameDialogVisible(true);
-                    }}
-                    style={({ pressed }) => [styles.titleIconButton, (!threadId || saving) && styles.disabled, pressed && threadId && !saving && styles.pressed]}
-                  >
-                    <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
-                  </Pressable>
-                </View>
-              </View>
-              <Pressable accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
-                <Text style={styles.textActionLabel}>全局默认</Text>
-              </Pressable>
-              {threadId && onOpenThreadMaterials ? (
-                <Pressable accessibilityRole="button" onPress={onOpenThreadMaterials} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
-                  <Text style={styles.textActionLabel}>资料库</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <View style={styles.summaryMetaRow}>
-              <Text style={styles.metaPill}>{spaceLabel}</Text>
-              <Text style={styles.metaPill}>{BOUNDARY_MODES.find((mode) => mode.value === boundaryMode)?.label ?? '自由'}</Text>
-              <Text numberOfLines={1} style={styles.metaPill}>{roleCardSummary}</Text>
-            </View>
-          </AiLightCard>
-
-        <AiLightCard>
-          <View style={styles.roleRow}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.sectionTitle}>当前会话模型</Text>
-              <Text numberOfLines={1} style={styles.body}>{sessionModelConfig?.currentLabel ?? '加载中'}</Text>
-              <Text style={styles.caption}>仅在当前会话生效。切换后，下一次发送或重新生成会使用新模型。</Text>
-              {sessionModelConfig?.currentStatus === 'invalid' ? (
-                <Text style={styles.maintenanceWarning}>模型配置已失效，请重新选择模型，或切换为跟随全局默认。</Text>
-              ) : null}
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              disabled={!threadId || saving || savingModel}
+          <AiLightListGroup title="当前会话">
+            <AiLightListItem
+              icon="chatbubbles-outline"
+              title="会话名称"
+              value={threadTitle}
+              onPress={() => {
+                setRenameValue(threadTitle);
+                setRenameDialogVisible(true);
+              }}
+            />
+            <AiLightListItem
+              icon="hardware-chip-outline"
+              title="会话模型"
+              value={sessionModelConfig?.currentLabel ?? '加载中'}
+              subtitle={sessionModelConfig?.currentStatus === 'invalid' ? '模型配置已失效，请重新选择' : undefined}
+              destructive={sessionModelConfig?.currentStatus === 'invalid'}
               onPress={() => setModelPickerVisible(true)}
-              style={({ pressed }) => [styles.textAction, (!threadId || saving || savingModel) && styles.disabled, pressed && threadId && !saving && !savingModel && styles.pressed]}
-            >
-              <Text style={styles.textActionLabel}>{savingModel ? '保存中' : '更换'}</Text>
-            </Pressable>
-          </View>
-        </AiLightCard>
+            />
+            {threadId && onOpenThreadMaterials ? (
+              <AiLightListItem
+                icon="library-outline"
+                title="会话资料库"
+                onPress={onOpenThreadMaterials}
+              />
+            ) : null}
+          </AiLightListGroup>
 
-        <AiLightCard>
-          <Text style={styles.sectionTitle}>本会话用量</Text>
-          <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
-        </AiLightCard>
-
-        <AiLightCard>
-          <View style={styles.roleRow}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.sectionTitle}>角色显示</Text>
-              <Text numberOfLines={1} style={styles.body}>{roleCardSummary}</Text>
-              <Text style={styles.caption}>{avatarSummary}</Text>
-            </View>
-            <Pressable accessibilityRole="button" onPress={onOpenRoleCardEditor} style={({ pressed }) => [styles.textAction, pressed && styles.pressed]}>
-              <Text style={styles.textActionLabel}>更换</Text>
-            </Pressable>
-          </View>
-          <View style={styles.roleActions}>
-            <Pressable accessibilityRole="switch" accessibilityState={{ checked: avatarEnabled }} onPress={() => setAvatarEnabled((current) => !current)} style={({ pressed }) => [styles.compactButton, avatarEnabled && styles.compactButtonActive, pressed && styles.pressed]}>
-              <Text style={[styles.compactButtonText, avatarEnabled && styles.compactButtonTextActive]}>{avatarEnabled ? '头像开启' : '头像关闭'}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => void clearRoleCard()} style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}>
-              <Text style={styles.compactButtonText}>默认角色</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={!threadId || !currentRoleCardId || exportingRolePackage}
-              onPress={confirmExportCurrentRolePackage}
-              style={({ pressed }) => [styles.compactButton, (!threadId || !currentRoleCardId || exportingRolePackage) && styles.disabled, pressed && threadId && currentRoleCardId && !exportingRolePackage && styles.pressed]}
-            >
-              <Text style={styles.compactButtonText}>{exportingRolePackage ? '导出中' : '导出当前角色包'}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={!threadId || importingContinuity}
-              onPress={() => void pickAndImportContinuity()}
-              style={({ pressed }) => [styles.compactButton, (!threadId || importingContinuity) && styles.disabled, pressed && threadId && !importingContinuity && styles.pressed]}
-            >
-              <Text style={styles.compactButtonText}>{importingContinuity ? '导入中' : '导入外部记忆'}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+          <AiLightListGroup title="角色与表现">
+            <AiLightListItem
+              icon="person-circle-outline"
+              title="角色身份"
+              value={roleCardSummary}
               onPress={onOpenRoleCardEditor}
-              style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.compactButtonText}>导入角色卡</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void copyExternalContinuityPrompt()}
-              style={({ pressed }) => [styles.compactButton, pressed && styles.pressed]}
-            >
-              <Text style={styles.compactButtonText}>复制迁移提示词</Text>
-            </Pressable>
-          </View>
-        </AiLightCard>
-
-        <AiLightCard>
-          <Text style={styles.sectionTitle}>回复设置</Text>
-          <Text style={styles.caption}>资料范围、回复倾向和深度记忆这些选项会自动保存。</Text>
-          <View style={styles.settingGroup}>
-            <Text style={styles.caption}>资料范围</Text>
-            <View style={styles.chips}>
-              {BOUNDARY_MODES.map((mode) => (
-                <AiLightChip
-                  active={boundaryMode === mode.value}
-                  key={mode.value}
-                  label={mode.label}
-                  onPress={() => setBoundaryMode(mode.value)}
+            />
+            <AiLightListItem
+              icon="image-outline"
+              title="显示角色头像"
+              subtitle={avatarSummary}
+              showChevron={false}
+              action={
+                <Switch
+                  value={avatarEnabled}
+                  onValueChange={setAvatarEnabled}
+                  trackColor={{ true: aiLightColors.ink }}
                 />
-              ))}
-            </View>
-          </View>
-          <View style={styles.settingGroup}>
-            <Text style={styles.caption}>回复倾向</Text>
-            <View style={styles.chips}>
-              {REPLY_PREFERENCES.map((item) => (
-                <AiLightChip
-                  active={replyPreference === item.value}
-                  key={item.value}
-                  label={item.label}
-                  onPress={() => setReplyPreference(item.value)}
+              }
+            />
+            <AiLightListItem
+              icon="flash-outline"
+              title="思考过程"
+              value={thinkingDisabled ? '已关闭' : '允许输出'}
+              showChevron={false}
+              isLast
+              action={
+                <Switch
+                  value={!thinkingDisabled}
+                  onValueChange={(val) => setThinkingDisabled(!val)}
+                  trackColor={{ true: aiLightColors.ink }}
                 />
-              ))}
-            </View>
-          </View>
-          <View style={styles.memoryRow}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.caption}>关闭思考过程</Text>
-              <Text style={styles.caption}>支持的模型会请求关闭推理输出；若模型仍返回思考内容，本会话也不会展示或保存。</Text>
-            </View>
-            <Pressable
-              accessibilityRole="switch"
-              accessibilityState={{ checked: thinkingDisabled }}
-              onPress={() => setThinkingDisabled((current) => !current)}
-              style={({ pressed }) => [styles.memorySwitch, thinkingDisabled && styles.memorySwitchActive, pressed && styles.pressed]}
-            >
-              <Text style={[styles.memorySwitchText, thinkingDisabled && styles.memorySwitchTextActive]}>{thinkingDisabled ? '关闭' : '开启'}</Text>
-            </Pressable>
-          </View>
-        </AiLightCard>
+              }
+            />
+          </AiLightListGroup>
 
-        <AiLightCard>
-          <View style={styles.memoryRow}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.sectionTitle}>深度记忆</Text>
-              <Text style={styles.caption}>开启后在本地保存会话摘要和可复用记忆，用于长对话回看；关闭后不会继续注入记忆背景。</Text>
+          <AiLightListGroup title="上下文与偏好">
+            <View style={styles.inlineConfigPadding}>
+              <Text style={styles.caption}>资料范围</Text>
+              <View style={styles.chips}>
+                {BOUNDARY_MODES.map((mode) => (
+                  <AiLightChip
+                    active={boundaryMode === mode.value}
+                    key={mode.value}
+                    label={mode.label}
+                    onPress={() => setBoundaryMode(mode.value)}
+                  />
+                ))}
+              </View>
+              <Text style={[styles.caption, { marginTop: spacing[4] }]}>回复倾向</Text>
+              <View style={styles.chips}>
+                {REPLY_PREFERENCES.map((item) => (
+                  <AiLightChip
+                    active={replyPreference === item.value}
+                    key={item.value}
+                    label={item.label}
+                    onPress={() => setReplyPreference(item.value)}
+                  />
+                ))}
+              </View>
             </View>
-            <Pressable
-              accessibilityRole="switch"
-              accessibilityState={{ checked: deepMemoryEnabled }}
-              onPress={() => setDeepMemoryEnabled((current) => !current)}
-              style={({ pressed }) => [styles.memorySwitch, deepMemoryEnabled && styles.memorySwitchActive, pressed && styles.pressed]}
-            >
-              <Text style={[styles.memorySwitchText, deepMemoryEnabled && styles.memorySwitchTextActive]}>{deepMemoryEnabled ? '开启' : '关闭'}</Text>
-            </Pressable>
-          </View>
-          {deepMemoryEnabled ? (
-            <View style={styles.settingGroup}>
-              <Text style={styles.caption}>记忆只作为背景参考，不会覆盖当前最新要求、角色指令或资料事实。</Text>
-              <Text style={styles.caption}>
-                上次维护：{maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · {formatPendingRoundsSummary(maintenanceStatus)} · 摘要 {maintenanceStatus?.summarySegmentCount ?? 0} 段
-              </Text>
-              {maintenanceStatus?.profileUpdatedAt ? <Text style={styles.caption}>用户画像更新于 {formatMinute(maintenanceStatus.profileUpdatedAt)}</Text> : null}
-              {(maintenanceStatus?.protectedImportRoundCount ?? 0) > 0 ? <Text style={styles.caption}>导入保护期内的轮次会先保留可回退状态，暂不进入普通不可逆压缩。</Text> : null}
-              {maintenanceStatus?.lastMaintenanceUsedFallback ? <Text style={styles.maintenanceWarning}>远程失败，已使用本地轻量整理</Text> : null}
-            </View>
-          ) : null}
-          {deepMemoryEnabled && lastMaintenanceError ? (
-            <Text style={styles.maintenanceWarning}>{formatMaintenanceError(lastMaintenanceError)}</Text>
-          ) : null}
-          {threadId ? (
-            <Pressable accessibilityRole="button" onPress={onOpenMemoryBoard} style={({ pressed }) => [styles.memoryManageButton, pressed && styles.pressed]}>
-              <Text style={styles.textActionLabel}>管理记忆</Text>
-            </Pressable>
-          ) : null}
-        </AiLightCard>
+          </AiLightListGroup>
 
-        <AiLightCard>
-          <Pressable accessibilityRole="button" onPress={() => setAdvancedPromptVisible((current) => !current)} style={({ pressed }) => [styles.advancedHeader, pressed && styles.pressed]}>
-            <View style={styles.summaryCopy}>
-              <Text style={styles.sectionTitle}>高级角色指令</Text>
-              <Text style={styles.caption}>{promptSummary}</Text>
-            </View>
-            <Text style={styles.textActionLabel}>{advancedPromptVisible ? '收起' : '展开'}</Text>
-          </Pressable>
-          {advancedPromptVisible ? (
-            <View style={styles.advancedContent}>
-              <Text style={styles.caption}>角色指令需要点击保存后生效，避免输入过程中频繁改写当前会话。</Text>
-              <View style={styles.weightRow}>
-                <Text style={styles.caption}>权重等级</Text>
-                <View style={styles.weightChips}>
-                  {ROLE_INSTRUCTION_WEIGHTS.map((item) => (
-                    <AiLightChip
-                      active={roleInstructionWeight === item.value}
-                      dense
-                      key={item.value}
-                      label={item.label}
-                      onPress={() => setRoleInstructionWeight(item.value)}
-                    />
-                  ))}
+          <AiLightListGroup
+            footer={deepMemoryEnabled ? `上次维护：${maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · 摘要 ${maintenanceStatus?.summarySegmentCount ?? 0} 段` : '开启后在本地保存会话摘要和可复用记忆，用于长对话回看。'}
+            title="记忆与历史"
+          >
+            <AiLightListItem
+              action={
+                <Switch
+                  onValueChange={setDeepMemoryEnabled}
+                  trackColor={{ true: aiLightColors.ink }}
+                  value={deepMemoryEnabled}
+                />
+              }
+              icon="albums-outline"
+              showChevron={false}
+              title="深度记忆"
+              isLast={!threadId}
+            />
+            {threadId ? (
+              <AiLightListItem
+                icon="layers-outline"
+                onPress={onOpenMemoryBoard}
+                title="管理记忆黑板"
+                isLast
+              />
+            ) : null}
+          </AiLightListGroup>
+
+          <AiLightListGroup title="高级选项">
+            <AiLightListItem
+              icon="code-working-outline"
+              onPress={() => setAdvancedPromptVisible((current) => !current)}
+              title="高级角色指令"
+              value={advancedPromptVisible ? '收起' : '展开'}
+            />
+            {advancedPromptVisible ? (
+              <View style={styles.advancedContent}>
+                <Text style={styles.caption}>角色指令需要点击保存后生效，避免输入过程中频繁改写当前会话。</Text>
+                <View style={styles.weightRow}>
+                  <Text style={styles.caption}>权重等级</Text>
+                  <View style={styles.weightChips}>
+                    {ROLE_INSTRUCTION_WEIGHTS.map((item) => (
+                      <AiLightChip
+                        active={roleInstructionWeight === item.value}
+                        dense
+                        key={item.value}
+                        label={item.label}
+                        onPress={() => setRoleInstructionWeight(item.value)}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <View collapsable={false} ref={systemPromptFieldRef}>
+                  <AiLightTextareaRow
+                    label="角色指令"
+                    minHeight={104}
+                    onChangeText={setSystemPrompt}
+                    onFocus={handleSystemPromptFocus}
+                    placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
+                    scrollEnabled
+                    style={styles.systemPromptTextarea}
+                    value={systemPrompt}
+                  />
                 </View>
               </View>
-              <View collapsable={false} ref={systemPromptFieldRef}>
-                <AiLightTextareaRow
-                  label="角色指令"
-                  minHeight={104}
-                  onChangeText={setSystemPrompt}
-                  onFocus={handleSystemPromptFocus}
-                  placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
-                  scrollEnabled
-                  style={styles.systemPromptTextarea}
-                  value={systemPrompt}
-                />
+            ) : null}
+            <AiLightListItem
+              icon="bar-chart-outline"
+              onPress={() => setAdvancedUsageVisible((current) => !current)}
+              title="本会话用量统计"
+              value={advancedUsageVisible ? '收起' : '展开'}
+              isLast={!advancedUsageVisible}
+            />
+            {advancedUsageVisible ? (
+              <View style={styles.inlineConfigPadding}>
+                <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
               </View>
-            </View>
-          ) : null}
-        </AiLightCard>
+            ) : null}
+          </AiLightListGroup>
+
+          <AiLightListGroup title="角色与数据迁移">
+            <AiLightListItem
+              icon="refresh-outline"
+              title="恢复默认角色"
+              onPress={() => void clearRoleCard()}
+              showChevron={false}
+            />
+            <AiLightListItem
+              icon="push-outline"
+              title={exportingRolePackage ? '导出中' : '导出当前角色包'}
+              onPress={confirmExportCurrentRolePackage}
+              disabled={!threadId || !currentRoleCardId || exportingRolePackage}
+              showChevron={false}
+            />
+            <AiLightListItem
+              icon="download-outline"
+              title={importingContinuity ? '导入中' : '导入外部记忆'}
+              onPress={() => void pickAndImportContinuity()}
+              disabled={!threadId || importingContinuity}
+              showChevron={false}
+            />
+            <AiLightListItem
+              icon="copy-outline"
+              title="复制迁移提示词"
+              onPress={() => void copyExternalContinuityPrompt()}
+              showChevron={false}
+              isLast
+            />
+          </AiLightListGroup>
 
           <View style={styles.actions}>
-            <AiLightButton label="保存角色指令并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
-            <AiLightButton label="仅保存角色指令" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
-            <View style={styles.dangerSection}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={!threadId || saving}
-                onPress={() => setDeleteDialogVisible(true)}
-                style={({ pressed }) => [styles.deleteButton, (!threadId || saving) && styles.disabled, pressed && threadId && !saving && styles.pressed]}
-              >
-                <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={17} />
-                <Text style={styles.deleteButtonText}>移入回收站</Text>
-              </Pressable>
-            </View>
+            <AiLightButton label="保存设置并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
+            <AiLightButton label="仅保存设置" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
           </View>
+
+          <AiLightListGroup>
+            <AiLightListItem
+              destructive
+              icon="trash-outline"
+              iconBackgroundColor="#FFECEB"
+              iconColor="#FF3B30"
+              isLast
+              onPress={() => setDeleteDialogVisible(true)}
+              showChevron={false}
+              title="移入回收站"
+            />
+          </AiLightListGroup>
+
           {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
         </View>
       </AiLightScaffold>
+
+
 
       <AppDialog
         message="选择跟随全局默认后，此会话会使用模型账号页里的全局默认模型。选择具体模型后，只影响当前会话。"
@@ -1469,6 +1439,9 @@ const styles = StyleSheet.create({
   },
   advancedContent: {
     gap: rhythm.cardContentGap,
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[4],
+    paddingTop: spacing[3],
   },
   weightRow: {
     gap: rhythm.microGap,
@@ -1585,5 +1558,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  inlineConfigPadding: {
+    paddingBottom: spacing[4],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
   },
 });
