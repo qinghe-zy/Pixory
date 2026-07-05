@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
-import { AiLightCard } from '../components/ai/AiLightCard';
+import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLightFeedbackBanner';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
@@ -583,45 +583,25 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       subtitle={spaceLabel}
       title="全局默认模型"
     >
-      <AiLightCard>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.sectionTitle}>AI 用量</Text>
+      <AiLightListGroup title="全应用 AI 用量">
+        <View style={styles.inlineConfigPadding}>
           <AiUsageSummary showRecent={false} usage={usageOverview ?? EMPTY_USAGE_OVERVIEW} />
         </View>
-      </AiLightCard>
+      </AiLightListGroup>
 
-      <AiLightCard>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>全局默认模型</Text>
-          <Text style={styles.caption}>新创建会话的默认选择。修改此项不会影响已有独立设置的会话。</Text>
-          {selectedCard?.provider.lastVerifyStatus ? (
-            <Text style={styles.caption}>
-              当前模型状态：{selectedCard.provider.lastVerifyStatus === 'ready'
-                ? '已验证'
-                : selectedCard.provider.lastVerifyStatus === 'changed'
-                  ? '配置已变更'
-                  : selectedCard.provider.lastVerifyStatus === 'failed'
-                    ? '测试失败'
-                    : '未验证'}
-              {selectedCard.provider.lastVerifyMessage ? ` · ${selectedCard.provider.lastVerifyMessage}` : ''}
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>模型商</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setProviderSheetVisible((current) => !current);
-              setModelSheetVisible(false);
-            }}
-            style={({ pressed }) => [styles.selectBox, providerSheetVisible && styles.activeSelectBox, pressed && styles.pressed]}
-          >
-            <Text numberOfLines={1} style={styles.selectText}>{selectedCard?.provider.displayName ?? '选择模型商'}</Text>
-            <Ionicons color={aiLightColors.mutedSoft} name={providerSheetVisible ? 'chevron-up' : 'chevron-down'} size={18} />
-          </Pressable>
-          {providerSheetVisible ? (
+      <AiLightListGroup title="接口与连接配置">
+        <AiLightListItem
+          icon="business-outline"
+          title="选择模型商"
+          value={selectedCard?.provider.displayName ?? '未选择'}
+          onPress={() => {
+            setProviderSheetVisible((current) => !current);
+            setModelSheetVisible(false);
+          }}
+          isLast={!providerSheetVisible && !selectedIsOtherProvider}
+        />
+        {providerSheetVisible ? (
+          <View style={styles.inlineConfigPadding}>
             <View style={styles.dropdownPanel}>
               {orderedCards.map((card) => {
                 const selected = card.provider.id === selectedCard?.provider.id;
@@ -640,12 +620,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 );
               })}
             </View>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         {selectedIsOtherProvider ? (
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>地址</Text>
+          <View style={styles.inlineConfigPadding}>
+            <Text style={styles.fieldLabel}>基础地址 (Base URL)</Text>
             <TextInput
               autoCapitalize="none"
               autoCorrect={false}
@@ -660,14 +640,14 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           </View>
         ) : null}
 
-        <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>API</Text>
+        <View style={styles.inlineConfigPadding}>
+          <Text style={styles.fieldLabel}>API Key</Text>
           <View style={styles.inputRow}>
             <TextInput
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setApiDraft}
-              placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API'}
+              placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API Key'}
               placeholderTextColor={aiLightColors.mutedSoft}
               secureTextEntry={!visibleKey}
               selectionColor={aiLightColors.coral}
@@ -682,9 +662,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               <Ionicons color={aiLightColors.muted} name={visibleKey ? 'eye-off-outline' : 'eye-outline'} size={18} />
             </Pressable>
           </View>
+          
           {selectedIsOtherProvider ? (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>连接信息导入（可选）</Text>
+            <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
+              <Text style={styles.fieldLabel}>连接信息快捷导入</Text>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -696,42 +677,45 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 style={[styles.input, styles.importInput]}
                 value={connectionImportDraft}
               />
-              <AiLightButton disabled={!connectionImportDraft.trim()} label="导入连接信息" onPress={importProviderConnection} variant="outline" />
+              <AiLightButton disabled={!connectionImportDraft.trim()} label="一键解析并导入" onPress={importProviderConnection} variant="outline" />
             </View>
           ) : null}
-          <AiLightButton disabled={saveDisabled} label="保存配置" onPress={() => void saveProviderDraft()} />
-          <View style={styles.inlineActions}>
-            <AiLightButton label="刷新模型列表" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
-            <AiLightButton disabled={saveDisabled} label="测试当前模型" onPress={() => void testSelectedProvider()} variant="outline" />
+
+          <View style={[styles.fieldGroup, { marginTop: spacing[4] }]}>
+            <AiLightButton disabled={saveDisabled} label="保存配置" onPress={() => void saveProviderDraft()} />
+            <View style={styles.inlineActions}>
+              <AiLightButton label="刷新模型列表" onPress={() => void syncSelectedProviderModels()} variant="ghost" />
+              <AiLightButton disabled={saveDisabled} label="测试连接" onPress={() => void testSelectedProvider()} variant="outline" />
+            </View>
           </View>
         </View>
+      </AiLightListGroup>
 
-        <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>全局默认模型</Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={chatModels.length === 0}
-            onPress={() => {
-              setModelSheetVisible((current) => !current);
-              setProviderSheetVisible(false);
-            }}
-            style={({ pressed }) => [
-              styles.selectBox,
-              modelSheetVisible && styles.activeSelectBox,
-              chatModels.length === 0 && styles.disabledSelect,
-              pressed && chatModels.length > 0 && styles.pressed,
-            ]}
-          >
-            <Text numberOfLines={1} style={[styles.selectText, chatModels.length === 0 && styles.disabledSelectText]}>
-              {selectedModel?.displayName ?? (chatModels.length > 0 ? '选择模型' : '暂无可用模型')}
-            </Text>
-            <Ionicons
-              color={chatModels.length > 0 ? aiLightColors.mutedSoft : aiLightColors.mutedSoft}
-              name={modelSheetVisible ? 'chevron-up' : 'chevron-down'}
-              size={18}
-            />
-          </Pressable>
-          {modelSheetVisible ? (
+      <AiLightListGroup title="默认对话与向量模型">
+        {selectedCard?.provider.lastVerifyStatus ? (
+          <AiLightListItem
+            icon={selectedCard.provider.lastVerifyStatus === 'ready' ? 'checkmark-circle-outline' : selectedCard.provider.lastVerifyStatus === 'failed' ? 'close-circle-outline' : 'help-circle-outline'}
+            iconBackgroundColor={selectedCard.provider.lastVerifyStatus === 'ready' ? '#E8F5E9' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#FFECEB' : aiLightColors.canvas}
+            iconColor={selectedCard.provider.lastVerifyStatus === 'ready' ? '#4CAF50' : selectedCard.provider.lastVerifyStatus === 'failed' ? '#FF3B30' : aiLightColors.muted}
+            title={selectedCard.provider.lastVerifyStatus === 'ready' ? '接口已验证' : selectedCard.provider.lastVerifyStatus === 'changed' ? '配置已变更' : selectedCard.provider.lastVerifyStatus === 'failed' ? '接口测试失败' : '接口未验证'}
+            subtitle={selectedCard.provider.lastVerifyMessage || '新创建会话将默认继承这些配置'}
+            showChevron={false}
+          />
+        ) : null}
+
+        <AiLightListItem
+          icon="chatbubbles-outline"
+          title="选择全局对话模型"
+          value={selectedModel?.displayName ?? (chatModels.length > 0 ? '未选择' : '暂无可用模型')}
+          disabled={chatModels.length === 0}
+          onPress={() => {
+            setModelSheetVisible((current) => !current);
+            setProviderSheetVisible(false);
+          }}
+          isLast={!modelSheetVisible && !(embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding)}
+        />
+        {modelSheetVisible ? (
+          <View style={styles.inlineConfigPadding}>
             <View style={styles.dropdownPanel}>
               {providerSelectionMode ? (
                 <View style={styles.batchActionRow}>
@@ -786,147 +770,149 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 );
               })}
             </View>
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         {embeddingModels.length > 0 || selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
-          <View style={styles.fieldGroup}>
-            <Pressable
-              accessibilityRole="button"
+          <>
+            <AiLightListItem
+              icon="layers-outline"
+              title="高级设置"
+              subtitle="向量模型 (Embedding) 与手动配置"
+              value={advancedVisible ? '收起' : '展开'}
               onPress={() => setAdvancedVisible((current) => !current)}
-              style={({ pressed }) => [styles.advancedToggle, pressed && styles.pressed]}
-            >
-              <Text style={styles.fieldLabel}>高级设置</Text>
-              <Ionicons color={aiLightColors.mutedSoft} name={advancedVisible ? 'chevron-up' : 'chevron-down'} size={18} />
-            </Pressable>
-
+              isLast={!advancedVisible}
+            />
             {advancedVisible ? (
-              <View style={styles.advancedPanel}>
+              <View style={styles.inlineConfigPadding}>
                 {embeddingModels.length > 0 ? (
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>默认 Embedding</Text>
-                    <View style={styles.dropdownPanel}>
-                      {providerSelectionMode ? (
-                        <View style={styles.batchActionRow}>
-                          <Text style={styles.caption}>已选 {selectedModelKeys.length} 项</Text>
-                          <View style={styles.batchActionButtons}>
-                            <Pressable accessibilityRole="button" onPress={confirmDeleteSelectedModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
-                              <Text style={styles.dropdownDeleteText}>批量删除</Text>
-                            </Pressable>
-                            <Pressable accessibilityRole="button" onPress={confirmDeleteSameProviderModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
-                              <Text style={styles.dropdownDeleteText}>删除同一来源</Text>
-                            </Pressable>
-                            <Pressable accessibilityRole="button" onPress={() => setSelectedModelKeys([])} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
-                              <Text style={styles.caption}>取消</Text>
-                            </Pressable>
+                    <View style={styles.inlineConfigPadding}>
+                      <View style={styles.dropdownPanel}>
+                        {providerSelectionMode ? (
+                          <View style={styles.batchActionRow}>
+                            <Text style={styles.caption}>已选 {selectedModelKeys.length} 项</Text>
+                            <View style={styles.batchActionButtons}>
+                              <Pressable accessibilityRole="button" onPress={confirmDeleteSelectedModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                                <Text style={styles.dropdownDeleteText}>批量删除</Text>
+                              </Pressable>
+                              <Pressable accessibilityRole="button" onPress={confirmDeleteSameProviderModels} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                                <Text style={styles.dropdownDeleteText}>删除同一来源</Text>
+                              </Pressable>
+                              <Pressable accessibilityRole="button" onPress={() => setSelectedModelKeys([])} style={({ pressed }) => [styles.batchActionButton, pressed && styles.pressed]}>
+                                <Text style={styles.caption}>取消</Text>
+                              </Pressable>
+                            </View>
                           </View>
-                        </View>
-                      ) : null}
-                      {embeddingModels.map((model) => {
-                        const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
-                        const modelKey = providerModelKey(model.providerId, model.modelId);
-                        const selectedForDelete = selectedModelKeys.includes(modelKey);
-                        return (
-                          <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
-                            <Pressable
-                              accessibilityRole="button"
-                              onLongPress={() => beginModelSelection(model)}
-                              onPress={() => {
-                                if (providerSelectionMode) {
-                                  toggleSelectedModel(model);
-                                  return;
-                                }
-                                void selectEmbeddingModel(model);
-                              }}
-                              style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
-                            >
-                              <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                              {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
-                            </Pressable>
-                            {!isProtectedProviderModel(selectedCard, model.modelId) ? (
+                        ) : null}
+                        {embeddingModels.map((model) => {
+                          const selected = model.modelId === selectedCard?.provider.defaultEmbeddingModelId;
+                          const modelKey = providerModelKey(model.providerId, model.modelId);
+                          const selectedForDelete = selectedModelKeys.includes(modelKey);
+                          return (
+                            <View key={model.id} style={[styles.dropdownRow, (selected || selectedForDelete) && styles.selectedDropdownRow]}>
                               <Pressable
-                                accessibilityLabel={`删除模型 ${model.displayName}`}
                                 accessibilityRole="button"
                                 onLongPress={() => beginModelSelection(model)}
-                                onPress={() => confirmDeleteModel(model, 'embedding')}
-                                style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
+                                onPress={() => {
+                                  if (providerSelectionMode) {
+                                    toggleSelectedModel(model);
+                                    return;
+                                  }
+                                  void selectEmbeddingModel(model);
+                                }}
+                                style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
                               >
-                                <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
-                                <Text style={styles.dropdownDeleteText}>删除模型</Text>
+                                <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
+                                {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
                               </Pressable>
-                            ) : null}
-                          </View>
-                        );
-                      })}
+                              {!isProtectedProviderModel(selectedCard, model.modelId) ? (
+                                <Pressable
+                                  accessibilityLabel={`删除模型 ${model.displayName}`}
+                                  accessibilityRole="button"
+                                  onLongPress={() => beginModelSelection(model)}
+                                  onPress={() => confirmDeleteModel(model, 'embedding')}
+                                  style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
+                                >
+                                  <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                                  <Text style={styles.dropdownDeleteText}>删除</Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
                     </View>
                     <Text style={styles.caption}>{selectedEmbeddingModel ? `当前：${selectedEmbeddingModel.displayName}` : '选择后，材料会在导入后尝试生成本地向量索引。'}</Text>
                   </View>
                 ) : null}
 
                 {selectedCard?.provider.embeddingEnabled || selectedSupportsManualEmbedding ? (
-                  <View style={styles.fieldGroup}>
+                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
                     <Text style={styles.fieldLabel}>Embedding 接口</Text>
                     <TextInput
                       autoCapitalize="none"
                       autoCorrect={false}
                       onChangeText={setEmbeddingBaseUrlDraft}
-                      placeholder="默认复用上方服务地址，可单独填写 Embedding 接口"
+                      placeholder="默认复用上方服务地址"
                       placeholderTextColor={aiLightColors.mutedSoft}
                       selectionColor={aiLightColors.coral}
                       style={styles.input}
                       value={embeddingBaseUrlDraft}
                     />
-                    <Text style={styles.caption}>
-                      留空时使用对话服务地址；只有向量检索和材料索引会调用这里。DeepSeek 官方接口暂未列出 Embedding，兼容网关可在这里填写 /embeddings 所在的基础地址。
-                    </Text>
+                    <Text style={styles.caption}>留空时使用对话服务地址；仅支持自定义中转站或特定官方 API。</Text>
                   </View>
                 ) : null}
 
                 {selectedSupportsManualChatModel ? (
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>手动模型 ID</Text>
-                    <TextInput
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      onChangeText={setManualModelDraft}
-                      placeholder="例如 gpt-4o-mini 或网关模型别名"
-                      placeholderTextColor={aiLightColors.mutedSoft}
-                      selectionColor={aiLightColors.coral}
-                      style={styles.input}
-                      value={manualModelDraft}
-                    />
-                    <Text style={styles.caption}>中转站不一定支持读取模型列表；这里保存后会作为全局默认模型直接用于对话。</Text>
-                    <AiLightButton disabled={!manualModelDraft.trim()} label="保存模型" onPress={() => void saveManualModel()} variant="outline" />
+                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
+                    <Text style={styles.fieldLabel}>手动添加对话模型</Text>
+                    <View style={styles.inputRow}>
+                      <TextInput
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        onChangeText={setManualModelDraft}
+                        placeholder="gpt-4o-mini"
+                        placeholderTextColor={aiLightColors.mutedSoft}
+                        selectionColor={aiLightColors.coral}
+                        style={styles.input}
+                        value={manualModelDraft}
+                      />
+                      <AiLightButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} variant="outline" />
+                    </View>
+                    <Text style={styles.caption}>中转站无法读取模型列表时手动配置。</Text>
                   </View>
                 ) : null}
 
                 {selectedSupportsManualEmbedding ? (
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.fieldLabel}>自定义 Embedding 模型</Text>
-                    <TextInput
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      onChangeText={setManualEmbeddingModelDraft}
-                      placeholder="text-embedding-3-small"
-                      placeholderTextColor={aiLightColors.mutedSoft}
-                      selectionColor={aiLightColors.coral}
-                      style={styles.input}
-                      value={manualEmbeddingModelDraft}
-                    />
-                    <AiLightButton disabled={!manualEmbeddingModelDraft.trim()} label="保存 Embedding 模型" onPress={() => void saveManualEmbeddingModelDraft()} variant="outline" />
+                  <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
+                    <Text style={styles.fieldLabel}>手动添加 Embedding 模型</Text>
+                    <View style={styles.inputRow}>
+                      <TextInput
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        onChangeText={setManualEmbeddingModelDraft}
+                        placeholder="text-embedding-3-small"
+                        placeholderTextColor={aiLightColors.mutedSoft}
+                        selectionColor={aiLightColors.coral}
+                        style={styles.input}
+                        value={manualEmbeddingModelDraft}
+                      />
+                      <AiLightButton disabled={!manualEmbeddingModelDraft.trim()} label="保存" onPress={() => void saveManualEmbeddingModelDraft()} variant="outline" />
+                    </View>
                   </View>
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </>
         ) : null}
+      </AiLightListGroup>
 
-        {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
+      {status ? <View style={{ paddingHorizontal: spacing[4], paddingBottom: spacing[4] }}><AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /></View> : null}
 
-        <View style={styles.sectionDivider} />
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.sectionTitle}>记忆维护模型</Text>
+      <AiLightListGroup title="后台智能与记忆模型">
+        <View style={styles.inlineConfigPadding}>
           <View style={styles.statusPanel}>
             <View style={[
               styles.maintenanceResultBanner,
@@ -966,6 +952,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               </Text>
             ) : null}
           </View>
+          
           <View style={styles.modeGrid}>
             {MEMORY_MAINTENANCE_MODES.map((mode) => (
               <Pressable
@@ -989,25 +976,28 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
           </Text>
           <View style={styles.inlineActions}>
             <AiLightButton label="配置 Key" onPress={() => void focusMaintenanceProviderKey()} variant="outline" />
-            <AiLightButton label="测试记忆模型" onPress={() => void testSelectedMemoryMaintenanceModel()} />
+            <AiLightButton label="测试连通性" onPress={() => void testSelectedMemoryMaintenanceModel()} />
           </View>
-          <View style={styles.fieldGroup}>
+
+          <View style={[styles.fieldGroup, { marginTop: spacing[3] }]}>
             <Text style={styles.fieldLabel}>自定义记忆模型 ID</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setMemoryMaintenanceModelDraft}
-              placeholder="deepseek-v4-flash"
-              placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.coral}
-              style={styles.input}
-              value={memoryMaintenanceModelDraft}
-            />
+            <View style={styles.inputRow}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setMemoryMaintenanceModelDraft}
+                placeholder="deepseek-v4-flash"
+                placeholderTextColor={aiLightColors.mutedSoft}
+                selectionColor={aiLightColors.coral}
+                style={styles.input}
+                value={memoryMaintenanceModelDraft}
+              />
+              <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存" onPress={() => void saveCustomMemoryMaintenanceModel()} variant="outline" />
+            </View>
             <Text style={styles.caption}>自定义模式复用当前选中的模型商和上方 API Key，不会保存第二份 Key。</Text>
-            <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存自定义记忆模型" onPress={() => void saveCustomMemoryMaintenanceModel()} variant="outline" />
           </View>
         </View>
-      </AiLightCard>
+      </AiLightListGroup>
     </AiLightScaffold>
   );
 }
@@ -1110,6 +1100,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   fieldGroup: {
+    gap: rhythm.fieldContentGap,
+  },
+  inlineConfigPadding: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[4],
     gap: rhythm.fieldContentGap,
   },
   inlineActions: {
