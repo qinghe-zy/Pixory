@@ -929,7 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let dpr = 1;
 
   function resize() {
-    dpr = window.devicePixelRatio || 1;
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5); // Clamp DPR to save GPU fill-rate on mobile
     canvas.width  = window.innerWidth  * dpr;
     canvas.height = window.innerHeight * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1098,16 +1098,16 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Scene-specific particles
+    // Scene-specific particles (reduced counts for mobile)
     switch (scene) {
-      case 0: fx.particles = makeFireflies(x, y, pal, 8 + (rand(0,5)|0)); break;
-      case 1: fx.particles = makeFireflies(x, y, pal, 10 + (rand(0,5)|0)); break;
-      case 2: fx.particles = makeGoldenDust(x, y, pal, 15 + (rand(0,8)|0)); break;
-      case 3: fx.particles = makeSnowflakes(x, y, pal, 12 + (rand(0,6)|0)); break;
-      case 4: fx.particles = makeSparklers(x, y, pal, 14 + (rand(0,8)|0)); break;
+      case 0: fx.particles = makeFireflies(x, y, pal, 5 + (rand(0,3)|0)); break;
+      case 1: fx.particles = makeFireflies(x, y, pal, 6 + (rand(0,3)|0)); break;
+      case 2: fx.particles = makeGoldenDust(x, y, pal, 8 + (rand(0,5)|0)); break;
+      case 3: fx.particles = makeSnowflakes(x, y, pal, 6 + (rand(0,3)|0)); break;
+      case 4: fx.particles = makeSparklers(x, y, pal, 8 + (rand(0,4)|0)); break;
     }
 
-    if (effects.length > 5) effects.shift(); // Limit max concurrent effects
+    if (effects.length > 2) effects.shift(); // Max 2 concurrent effects on mobile
     effects.push(fx);
     if (!running) { running = true; requestAnimationFrame(tick); }
   }
@@ -1419,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, a, .hero-text-container, .download-modal-overlay, .hero-video-switcher, .hero-nav')) return;
     const now = performance.now();
-    if (now - lastSpawn < 150) return; // Throttle to prevent spam-click freezing
+    if (now - lastSpawn < 300) return; // Aggressive throttle for mobile (300ms)
     lastSpawn = now;
     
     let idx = 0;
