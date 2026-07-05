@@ -1073,6 +1073,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    effects = []; // Enforce EXACTLY ONE active effect. Clear previous immediately.
+
     const pal = palettes[scene] || palettes[0];
     const fx = {
       x, y, pal, scene,
@@ -1121,7 +1123,6 @@ document.addEventListener('DOMContentLoaded', () => {
       case 4: fx.particles = makeSparklers(x, y, pal, 8 + (rand(0,4)|0)); break;
     }
 
-    if (effects.length > 2) effects.shift(); // Max 2 concurrent effects on mobile
     effects.push(fx);
     if (!running) { running = true; requestAnimationFrame(tick); }
   }

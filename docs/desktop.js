@@ -932,6 +932,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    effects = []; // Enforce EXACTLY ONE active effect. Clear previous immediately.
+
     const pal = palettes[scene] || palettes[0];
     const fx = {
       x, y, pal, scene,
@@ -980,7 +982,6 @@ document.addEventListener('DOMContentLoaded', () => {
       case 4: fx.particles = makeSparklers(x, y, pal, 14 + (rand(0,8)|0)); break;
     }
 
-    if (effects.length > 5) effects.shift(); // Limit max concurrent effects
     effects.push(fx);
     if (!running) { running = true; requestAnimationFrame(tick); }
   }
