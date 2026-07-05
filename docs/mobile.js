@@ -952,6 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-throttling variables
   let fpsDrops = 0;
   let isChoking = false;
+  let lastChokeTime = 0;
 
   function rgba(c, a) { return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${Math.max(0,Math.min(1,a))})`; }
   function rand(a, b) { return Math.random() * (b - a) + a; }
@@ -1063,7 +1064,14 @@ document.addEventListener('DOMContentLoaded', () => {
   //  Spawn
   // =========================================================
   function spawn(x, y, scene) {
-    if (isChoking) return; // Prevent spawning if GPU is currently choked
+    if (isChoking) {
+      if (performance.now() - lastChokeTime > 1000) {
+        isChoking = false; // Timeout recovery
+        fpsDrops = 0;
+      } else {
+        return; // Prevent spawning if GPU is currently choked
+      }
+    }
 
     const pal = palettes[scene] || palettes[0];
     const fx = {
@@ -1133,11 +1141,12 @@ document.addEventListener('DOMContentLoaded', () => {
       fpsDrops += 2;
       if (fpsDrops > 6) {
         isChoking = true; // Engage choke mode
+        lastChokeTime = now;
         if (effects.length > 1) effects.shift(); // Clean oldest effect on the fly
         fpsDrops = 2; // Keep it high to sustain cleaning if stutter continues
       }
-    } else if (actualDt <= 35) {
-      if (fpsDrops > 0) fpsDrops -= 0.5; // Recover slowly
+    } else {
+      if (fpsDrops > 0) fpsDrops -= 1; // Recover faster
       if (isChoking && fpsDrops <= 0) isChoking = false; // Disengage choke mode
     }
 
@@ -1231,10 +1240,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!alive) effects.splice(ei, 1);
     }
 
-    if (effects.length > 0) {
-      requestAnimationFrame(tick);
+    if (effects.length === 0) {
+      running = false;
+      isChoking = false;
+      fpsDrops = 0;
+      prev = 0;
     } else {
-      running = false; prev = 0;
+      requestAnimationFrame(tick);
     }
   }
 
