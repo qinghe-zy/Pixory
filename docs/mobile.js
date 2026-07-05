@@ -564,6 +564,13 @@ document.addEventListener('DOMContentLoaded', () => {
       "assets/videos/mobile_hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4",
       "assets/videos/mobile_hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4"
     ];
+    
+    const posterSrcs = [
+      "assets/videos/poster-0.jpg",
+      "assets/videos/poster-1.jpg",
+      "assets/videos/poster-2.jpg",
+      "assets/videos/poster-3.jpg"
+    ];
 
     // Update videos: content 0 uses video 0, content 1-4 maps to video 0-3
     const nextVideoIndex = nextContentIndex === 0 ? 0 : nextContentIndex - 1;
@@ -571,20 +578,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (nextVideoIndex !== prevVideoIndex) {
       const vid = document.getElementById('hero-vid-0');
       if (vid) {
-        vid.classList.remove('active'); // Fade out to show beautiful gradient
-        
-        // Wait 300ms for fade out to progress, then swap src
-        setTimeout(() => {
-          vid.src = videoSrcs[nextVideoIndex];
-          vid.load();
-          vid.play().catch(() => {});
-          
-          // Fade back in once new video has enough data
-          vid.addEventListener('loadeddata', function onLoaded() {
-            vid.classList.add('active');
-            vid.removeEventListener('loadeddata', onLoaded);
-          });
-        }, 300);
+        vid.poster = posterSrcs[nextVideoIndex];
+        vid.src = videoSrcs[nextVideoIndex];
+        vid.load();
+        vid.play().catch(() => {});
       }
     }
 
