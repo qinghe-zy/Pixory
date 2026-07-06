@@ -23,6 +23,7 @@ interface MeScreenProps {
   onOpenBackup: () => void;
   onOpenStorageUsage: () => void;
   onOpenDuplicateReview: () => void;
+  onOpenAbout: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -72,6 +73,11 @@ const ENTRY_ITEMS = [
     icon: 'pie-chart-outline',
   },
   {
+    key: 'about',
+    label: '关于',
+    icon: 'information-circle-outline',
+  },
+  {
     key: 'settings',
     label: '设置',
     icon: 'settings-outline',
@@ -89,6 +95,7 @@ export function MeScreen({
   onOpenBackup,
   onOpenStorageUsage,
   onOpenDuplicateReview,
+  onOpenAbout,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
@@ -168,6 +175,11 @@ export function MeScreen({
 
     if (key === 'storage-usage') {
       onOpenStorageUsage();
+      return;
+    }
+
+    if (key === 'about') {
+      onOpenAbout();
     }
   }
 

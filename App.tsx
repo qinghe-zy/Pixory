@@ -31,6 +31,7 @@ import { GlobalSearchScreen } from './src/screens/GlobalSearchScreen';
 import { GroupImagesScreen } from './src/screens/GroupImagesScreen';
 import { GroupCoverPickerScreen } from './src/screens/GroupCoverPickerScreen';
 import { GroupOverviewScreen } from './src/screens/GroupOverviewScreen';
+import { AboutScreen } from './src/screens/AboutScreen';
 import { HomeLibraryScreen } from './src/screens/HomeLibraryScreen';
 import { AiBranchTreeScreen } from './src/screens/AiBranchTreeScreen';
 import { AiChatScreen } from './src/screens/AiChatScreen';
@@ -209,6 +210,7 @@ type AppRoute =
   | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
   | { name: 'ai-history'; space: PixorySpace }
+  | { name: 'about'; space?: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -1608,6 +1610,8 @@ export default function App() {
         space={currentRoute.space}
       />
     );
+  } else if (currentRoute.name === 'about') {
+    content = <AboutScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'original-storage') {
     content = (
       <OriginalStorageScreen
@@ -1958,6 +1962,7 @@ export default function App() {
         onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
         onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
         onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
+        onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
         onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
         onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
         onLockPersonalSpace={() => {
