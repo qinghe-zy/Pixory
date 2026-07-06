@@ -42,7 +42,7 @@
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
-      "checkAutomatically": "NEVER",
+      "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
       "requestHeaders": {
         "expo-channel-name": "production"

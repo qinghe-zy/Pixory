@@ -367,6 +367,8 @@ export function MeScreen({
                           ? '扫描'
                         : item.key === 'storage-usage'
                           ? '查看'
+                        : item.key === 'about'
+                          ? ''
                           : data?.ipCount ?? 0}
                 </Text>
               )}
