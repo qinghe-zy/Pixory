@@ -101,7 +101,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
             onChangeText={setName}
             placeholder="名称"
             placeholderTextColor={aiLightColors.mutedSoft}
-            selectionColor={aiLightColors.coral}
+            selectionColor={aiLightColors.primary}
             style={styles.input}
             value={name}
           />
@@ -129,7 +129,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
                   style={({ pressed }) => [styles.kbRow, selectedItem && styles.selectedRow, batchSelected && styles.batchSelectedRow, pressed && styles.pressed]}
                 >
                   <View style={styles.kbIcon}>
-                    <Ionicons color={aiLightColors.coralActive} name={batchSelected ? 'checkmark-circle' : selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
+                    <Ionicons color={aiLightColors.primaryActive} name={batchSelected ? 'checkmark-circle' : selectedItem ? 'radio-button-on' : 'library-outline'} size={20} />
                   </View>
                   <View style={styles.kbCopy}>
                     <Text style={styles.kbName}>{item.name}</Text>
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   input: {
     ...typography.textStyles.body,
@@ -211,11 +211,11 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedRow: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   batchSelectedRow: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   pressed: {
     opacity: 0.78,

@@ -37,7 +37,7 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
     >
       <View style={styles.hero}>
         <View style={styles.iconWrap}>
-          <Ionicons color={aiLightColors.coralActive} name={icon} size={24} />
+          <Ionicons color={aiLightColors.primaryActive} name={icon} size={24} />
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{title}</Text>
@@ -56,7 +56,7 @@ export function AiPlaceholderScreen({ title, subtitle, description, icon, space,
               style={({ pressed }) => [styles.action, pressed && styles.pressed]}
             >
               <View style={styles.actionIcon}>
-                <Ionicons color={aiLightColors.coralActive} name={action.icon} size={18} />
+                <Ionicons color={aiLightColors.primaryActive} name={action.icon} size={18} />
               </View>
               <View style={styles.actionCopy}>
                 <Text style={styles.actionLabel}>{action.label}</Text>

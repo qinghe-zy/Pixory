@@ -130,7 +130,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
           style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
         >
           <View style={styles.iconWrap}>
-            <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
+            <Ionicons color={aiLightColors.primaryActive} name={selected ? 'checkmark-circle' : iconForStatus(item.parserStatus)} size={20} />
           </View>
           <View style={styles.copy}>
             <Text numberOfLines={compact ? 1 : undefined} style={styles.title}>{item.title}</Text>
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   list: {
     gap: rhythm.listCardGap,
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   },
   selectedRow: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   rowMain: {
     alignItems: 'center',
@@ -355,12 +355,12 @@ const styles = StyleSheet.create({
   },
   textActionLabel: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   error: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   failedActions: {
     gap: rhythm.inlineGap,

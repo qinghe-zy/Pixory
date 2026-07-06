@@ -51,7 +51,7 @@ export function AiRoleCardImportPreview({
           {avatarUri ? (
             <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={avatarUri} />
           ) : (
-            <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
+            <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconButtonSize} />
           )}
         </View>
         <View style={styles.headerCopy}>
@@ -94,7 +94,7 @@ export function AiRoleCardImportPreview({
             >
               <Text numberOfLines={3} style={styles.greetingText}>{greeting}</Text>
               {selectedGreeting === greeting ? (
-                <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeMd} />
+                <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={metrics.iconSizeMd} />
               ) : null}
             </Pressable>
           ))}
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     padding: spacing[2],
   },
   greetingRowActive: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   greetingText: {
     ...typography.textStyles.caption,
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   },
   warning: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   actions: {
     gap: rhythm.inlineGap,

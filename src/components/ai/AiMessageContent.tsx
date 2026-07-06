@@ -503,7 +503,7 @@ table{border-collapse:collapse;display:table;width:100%}
 th,td{overflow-wrap:anywhere;word-break:break-word}
 pre{white-space:pre-wrap;overflow-wrap:anywhere}
 code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-a{color:${aiLightColors.coralActive};text-decoration:none}
+a{color:${aiLightColors.primaryActive};text-decoration:none}
 img,video{height:auto;max-width:100%}
 </style>
 </head>
@@ -699,7 +699,7 @@ function renderInlineText(text: string, style: StyleProp<TextStyle>, onLinkPress
       return <Text key={key} style={styles.inlineCode}>{rawCode}</Text>;
     }
     if (part.startsWith('$') && part.endsWith('$') && part.length > 1) {
-      return <Text key={key} style={[styles.inlineCode, { color: aiLightColors.coral, fontFamily: 'serif' }]}>{part.slice(1, -1)}</Text>;
+      return <Text key={key} style={[styles.inlineCode, { color: aiLightColors.primary, fontFamily: 'serif' }]}>{part.slice(1, -1)}</Text>;
     }
     if (part.startsWith('||') && part.endsWith('||') && part.length > 3) {
       return <AiSpoilerText key={key} text={part.slice(2, -2)} textStyle={style} />;
@@ -1007,7 +1007,7 @@ const styles = StyleSheet.create({
   inlineCode: {
     ...typography.textStyles.caption,
     backgroundColor: aiLightColors.surface,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontFamily: typography.family.mono,
     lineHeight: 22,
   },
@@ -1018,13 +1018,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   highlightText: {
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.primarySoft,
   },
   strikeText: {
     textDecorationLine: 'line-through',
   },
   linkText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   kbdText: {
     backgroundColor: aiLightColors.surface,
@@ -1048,7 +1048,7 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
   },
   footnoteMarker: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   footnoteText: {
@@ -1087,14 +1087,14 @@ const styles = StyleSheet.create({
   },
   definitionText: {
     ...typography.textStyles.body,
-    borderLeftColor: aiLightColors.coral,
+    borderLeftColor: aiLightColors.primary,
     borderLeftWidth: StyleSheet.hairlineWidth,
     color: aiLightColors.muted,
     lineHeight: 22,
     paddingLeft: spacing[2],
   },
   quote: {
-    borderLeftColor: aiLightColors.coral,
+    borderLeftColor: aiLightColors.primary,
     borderLeftWidth: StyleSheet.hairlineWidth,
     paddingLeft: spacing[2],
   },

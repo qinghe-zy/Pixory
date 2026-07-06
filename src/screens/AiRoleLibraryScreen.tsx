@@ -101,7 +101,7 @@ export function AiRoleLibraryScreen({
       onBack={onBack}
       rightAction={(
         <Pressable accessibilityLabel="新建角色" accessibilityRole="button" onPress={onCreateRole} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.coralActive} name="add" size={metrics.iconSizeMd} />
+          <Ionicons color={aiLightColors.primaryActive} name="add" size={metrics.iconSizeMd} />
         </Pressable>
       )}
       scrollable
@@ -139,7 +139,7 @@ export function AiRoleLibraryScreen({
       ) : (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
+            <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconButtonSize} />
           </View>
           <Text style={styles.emptyTitle}>还没有角色</Text>
           <Text style={styles.emptyText}>创建或导入角色卡后，可以在这里直接开聊。</Text>
@@ -168,7 +168,7 @@ export function AiRoleLibraryScreen({
 const styles = StyleSheet.create({
   addButton: {
     alignItems: 'center',
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     height: metrics.iconButtonSize,
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   emptyState: {
     alignItems: 'center',

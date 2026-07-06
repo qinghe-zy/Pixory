@@ -41,9 +41,9 @@ function iconName(tone: FeedbackTone): keyof typeof Ionicons.glyphMap {
 }
 
 function iconColor(tone: FeedbackTone): string {
-  if (tone === 'success') return aiLightColors.coral;
-  if (tone === 'warning') return aiLightColors.coralActive;
-  if (tone === 'error') return aiLightColors.coralActive;
+  if (tone === 'success') return aiLightColors.primary;
+  if (tone === 'warning') return aiLightColors.primaryActive;
+  if (tone === 'error') return aiLightColors.primaryActive;
   return aiLightColors.muted;
 }
 
@@ -74,15 +74,15 @@ const styles = StyleSheet.create({
   },
   successBanner: {
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   warningBanner: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coralActive,
+    borderColor: aiLightColors.primaryActive,
   },
   errorBanner: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coralActive,
+    borderColor: aiLightColors.primaryActive,
   },
   infoBanner: {
     backgroundColor: aiLightColors.surface,
@@ -103,13 +103,13 @@ const styles = StyleSheet.create({
     ...typography.textStyles.bodyStrong,
   },
   successTitle: {
-    color: aiLightColors.coral,
+    color: aiLightColors.primary,
   },
   warningTitle: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   errorTitle: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   infoTitle: {
     color: aiLightColors.muted,

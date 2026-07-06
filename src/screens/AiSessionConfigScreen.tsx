@@ -1110,7 +1110,7 @@ export function AiSessionConfigScreen({
                 onChangeText={setSessionBaseUrlDraft}
                 placeholder="地址"
                 placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.primary}
                 style={styles.dialogInput}
                 value={sessionBaseUrlDraft}
               />
@@ -1122,7 +1122,7 @@ export function AiSessionConfigScreen({
                 placeholder={sessionModelConfig?.sessionHasApiKeyOverride ? '已保存本会话 API' : 'API'}
                 placeholderTextColor={aiLightColors.mutedSoft}
                 secureTextEntry
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.primary}
                 style={styles.dialogInput}
                 value={sessionApiKeyDraft}
               />
@@ -1180,7 +1180,7 @@ export function AiSessionConfigScreen({
                 onChangeText={setManualSessionModelDraft}
                 placeholder="模型 ID / 中转站别名"
                 placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.primary}
                 style={styles.dialogInput}
                 value={manualSessionModelDraft}
               />
@@ -1252,7 +1252,7 @@ export function AiSessionConfigScreen({
                     onPress={() => confirmDeleteSessionModel(option)}
                     style={({ pressed }) => [styles.modelOptionDeleteAction, savingModel && styles.disabled, pressed && !savingModel && styles.pressed]}
                   >
-                    <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                    <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
                     <Text style={styles.textActionLabel}>删除模型</Text>
                   </Pressable>
                 ) : null}
@@ -1280,7 +1280,7 @@ export function AiSessionConfigScreen({
           onChangeText={setRenameValue}
           placeholder="会话名称"
           placeholderTextColor={aiLightColors.mutedSoft}
-          selectionColor={aiLightColors.coral}
+          selectionColor={aiLightColors.primary}
           style={styles.dialogInput}
           value={renameValue}
         />
@@ -1370,7 +1370,7 @@ const styles = StyleSheet.create({
   },
   maintenanceWarning: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   roleRow: {
     alignItems: 'center',
@@ -1401,8 +1401,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   memorySwitchActive: {
-    backgroundColor: aiLightColors.coral,
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
+    borderColor: aiLightColors.primary,
   },
   memorySwitchText: {
     ...typography.textStyles.caption,
@@ -1435,7 +1435,7 @@ const styles = StyleSheet.create({
   },
   textActionLabel: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   compactButton: {
@@ -1449,8 +1449,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   compactButtonActive: {
-    backgroundColor: aiLightColors.coral,
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
+    borderColor: aiLightColors.primary,
   },
   compactButtonText: {
     ...typography.textStyles.caption,
@@ -1508,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     ...typography.textStyles.bodyStrong,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   dialogInput: {
@@ -1557,7 +1557,7 @@ const styles = StyleSheet.create({
   },
   modelOptionSelected: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   modelOptionSelectAction: {
     gap: rhythm.microGap,

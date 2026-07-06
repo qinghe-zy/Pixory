@@ -196,12 +196,12 @@ export function AiBranchTreeScreen({
     >
       {loading ? (
         <View style={styles.stateScreen}>
-          <ActivityIndicator color={aiLightColors.coral} />
+          <ActivityIndicator color={aiLightColors.primary} />
           <Text style={styles.stateText}>正在整理路线</Text>
         </View>
       ) : nodes.length === 0 ? (
         <View style={styles.stateScreen}>
-          <Ionicons color={aiLightColors.coral} name="git-branch-outline" size={24} />
+          <Ionicons color={aiLightColors.primary} name="git-branch-outline" size={24} />
           <Text style={styles.stateTitle}>暂无分支</Text>
           <Text style={styles.stateText}>改写消息或重新生成回复后，会在这里形成创作路线。</Text>
         </View>

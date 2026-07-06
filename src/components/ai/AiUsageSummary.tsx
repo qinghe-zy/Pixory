@@ -172,10 +172,10 @@ const styles = StyleSheet.create({
     minWidth: spacing[1],
   },
   cachedSegment: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
   },
   inputSegment: {
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.primarySoft,
   },
   outputSegment: {
     backgroundColor: aiLightColors.dark,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   legendCached: {
     ...typography.textStyles.micro,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   legendInput: {
     ...typography.textStyles.micro,

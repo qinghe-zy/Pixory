@@ -37,8 +37,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
   active: {
-    backgroundColor: aiLightColors.coral,
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
+    borderColor: aiLightColors.primary,
   },
   pressed: {
     opacity: 0.78,

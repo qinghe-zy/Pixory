@@ -18,7 +18,7 @@ export function AiCitationList({ citations, onOpenCitation }: AiCitationListProp
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Ionicons color={aiLightColors.coralActive} name="document-text-outline" size={16} />
+        <Ionicons color={aiLightColors.primaryActive} name="document-text-outline" size={16} />
         <Text style={styles.title}>来源 · {citations.length}</Text>
       </View>
       {citations.map((citation) => (
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   citation: {
     alignItems: 'center',

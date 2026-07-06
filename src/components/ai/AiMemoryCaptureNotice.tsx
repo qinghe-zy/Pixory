@@ -69,7 +69,7 @@ export function AiMemoryCaptureNotice({ count, items = [], onManage, onMarkInacc
                 <TextInput
                   multiline
                   onChangeText={setDraft}
-                  selectionColor={aiLightColors.coral}
+                  selectionColor={aiLightColors.primary}
                   style={styles.input}
                   textAlignVertical="top"
                   value={draft}
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   pressed: {

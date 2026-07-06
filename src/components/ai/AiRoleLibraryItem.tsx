@@ -42,14 +42,14 @@ export function AiRoleLibraryItem({ card, selected = false, selectionMode = fals
         {card.avatarEnabled && card.avatarUri ? (
           <SecureImage contentFit="cover" space={space} style={styles.coverImage} uri={card.avatarUri} />
         ) : (
-          <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize} />
+          <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconButtonSize} />
         )}
       </View>
       <View style={styles.copy}>
         <View style={styles.titleRow}>
           <Text numberOfLines={1} style={styles.title}>{card.name}</Text>
           <Text style={styles.sourceBadge}>{sourceLabel}</Text>
-          {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={metrics.iconSizeSm} /> : null}
+          {selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={metrics.iconSizeSm} /> : null}
         </View>
         <Text numberOfLines={2} style={styles.description}>{card.description ?? card.prompt}</Text>
         <Text numberOfLines={1} style={styles.meta}>{getRoleCardMeta(card)}</Text>
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   },
   rowSelected: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   cover: {
     alignItems: 'center',
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     overflow: 'hidden',
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   },
   startPill: {
     alignItems: 'center',
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   },
   startText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   pressed: {

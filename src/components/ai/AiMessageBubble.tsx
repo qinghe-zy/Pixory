@@ -158,7 +158,7 @@ function AiMessageBubbleComponent({
           {assistantAvatar.avatarUri ? (
             <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
           ) : (
-            <Ionicons color={aiLightColors.coral} name="sparkles-outline" size={metrics.iconSizeSm} />
+            <Ionicons color={aiLightColors.primary} name="sparkles-outline" size={metrics.iconSizeSm} />
           )}
         </View>
       ) : null}
@@ -250,7 +250,7 @@ function AiMessageBubbleComponent({
               {isFailed && message.content.trim() && message.errorMessage ? <Text style={styles.errorText}>{message.errorMessage}</Text> : null}
               {isFailed && canRegenerate ? (
                 <Pressable accessibilityRole="button" onPress={() => onRegenerate(message.id)} style={({ pressed }) => [styles.inlineRetryButton, pressed && styles.pressed]}>
-                  <Ionicons color={aiLightColors.coralActive} name="refresh-outline" size={15} />
+                  <Ionicons color={aiLightColors.primaryActive} name="refresh-outline" size={15} />
                   <Text style={styles.inlineRetryText}>重试</Text>
                 </Pressable>
               ) : null}
@@ -289,7 +289,7 @@ function AiMessageBubbleComponent({
               onPress={() => onToggleFavorite?.(message)}
               style={({ pressed }) => [styles.messageActionButton, favorited ? styles.favoriteActionButtonActive : null, !canFavorite && styles.disabledAction, pressed && canFavorite && styles.pressed]}
             >
-              <Ionicons color={favorited ? aiLightColors.coralActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
+              <Ionicons color={favorited ? aiLightColors.primaryActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
             </Pressable>
           ) : null}
           {isUser ? (
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
   },
@@ -427,14 +427,14 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   failedBubble: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   content: {
     ...typography.textStyles.body,
     lineHeight: 22,
   },
   inlineStreamingCursor: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   userText: {
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   inlineRetryButton: {
     alignItems: 'center',
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
   },
   inlineRetryText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   thinkingWrap: {
@@ -490,8 +490,8 @@ const styles = StyleSheet.create({
     width: 28,
   },
   favoriteActionButtonActive: {
-    backgroundColor: aiLightColors.coralSoft,
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primarySoft,
+    borderColor: aiLightColors.primary,
   },
   versionControl: {
     alignItems: 'center',
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   inlineEditorPrimaryText: {
-    color: aiLightColors.coral,
+    color: aiLightColors.primary,
   },
   disabledAction: {
     opacity: 0.36,

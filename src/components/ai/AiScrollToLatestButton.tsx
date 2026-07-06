@@ -26,7 +26,7 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.pill,
     flexDirection: 'row',
     gap: rhythm.microGap,

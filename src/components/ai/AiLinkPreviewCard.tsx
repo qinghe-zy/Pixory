@@ -173,7 +173,7 @@ export function AiLinkPreviewCard({ url }: { url: string }) {
       style={styles.card}
     >
       <View style={styles.iconWrap}>
-        <Ionicons color={aiLightColors.coralActive} name={isReady ? 'open-outline' : 'link-outline'} size={18} />
+        <Ionicons color={aiLightColors.primaryActive} name={isReady ? 'open-outline' : 'link-outline'} size={18} />
       </View>
       <View style={styles.content}>
         <Text numberOfLines={2} style={styles.title}>
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.sm,
     height: 32,
     justifyContent: 'center',

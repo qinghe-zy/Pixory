@@ -140,7 +140,7 @@ export function AiChatComposer({
                   {attachment.kind === 'image' ? (
                     <Image source={{ uri: attachment.uri }} style={styles.attachmentThumb} />
                   ) : (
-                    <Ionicons color={aiLightColors.coral} name={getAttachmentIcon(attachment.kind)} size={16} />
+                    <Ionicons color={aiLightColors.primary} name={getAttachmentIcon(attachment.kind)} size={16} />
                   )}
                   <View style={styles.attachmentCopy}>
                     <Text numberOfLines={1} style={styles.attachmentName}>{attachment.name}</Text>
@@ -182,7 +182,7 @@ export function AiChatComposer({
           onFocus={onFocus}
           placeholder={placeholder}
           placeholderTextColor={aiLightColors.mutedSoft}
-          selectionColor={aiLightColors.coral}
+          selectionColor={aiLightColors.primary}
           scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
           style={[styles.input, { height: inputHeight }]}
           textAlignVertical="top"
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.pill,
     height: spacing[8],
     justifyContent: 'center',

@@ -154,7 +154,7 @@ test('AI inline edit cursor stays visible on the user bubble', () => {
 
   assert.match(editorInput, /cursorColor=\{aiLightColors\.onDark\}/);
   assert.match(editorInput, /selectionColor=\{aiLightColors\.onDark\}/);
-  assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.coral\}/);
+  assert.doesNotMatch(editorInput, /selectionColor=\{aiLightColors\.primary\}/);
 });
 
 test('AI inline edit keeps the edited user message visible above the keyboard', () => {

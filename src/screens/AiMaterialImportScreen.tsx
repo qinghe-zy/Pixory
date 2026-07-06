@@ -214,7 +214,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initi
               onChangeText={setTitle}
               placeholder="材料标题"
               placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.coral}
+              selectionColor={aiLightColors.primary}
               style={styles.input}
               value={title}
             />
@@ -223,7 +223,7 @@ export function AiMaterialImportScreen({ space, knowledgeBaseId, threadId, initi
               onChangeText={setText}
               placeholder="粘贴角色资料、研究记录或标签体系"
               placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.coral}
+              selectionColor={aiLightColors.primary}
               style={[styles.input, styles.textarea]}
               textAlignVertical="top"
               value={text}
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     color: aiLightColors.muted,
   },
   selectedIpChoice: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
 });

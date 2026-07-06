@@ -23,7 +23,7 @@ export function AiLightInputRow({
       <FieldCopy hint={hint} label={label} />
       <TextInput
         placeholderTextColor={aiLightColors.mutedSoft}
-        selectionColor={aiLightColors.coral}
+        selectionColor={aiLightColors.primary}
         style={[styles.input, errorMessage ? styles.errorInput : null, style]}
         {...inputProps}
       />
@@ -52,7 +52,7 @@ export function AiLightTextareaRow({
       <TextInput
         multiline
         placeholderTextColor={aiLightColors.mutedSoft}
-        selectionColor={aiLightColors.coral}
+        selectionColor={aiLightColors.primary}
         style={[styles.input, styles.textarea, { minHeight }, errorMessage ? styles.errorInput : null, style]}
         textAlignVertical="top"
         {...inputProps}
@@ -76,7 +76,7 @@ export function AiLightSearchBar({ value, onChangeText, placeholder }: AiLightSe
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={aiLightColors.mutedSoft}
-        selectionColor={aiLightColors.coral}
+        selectionColor={aiLightColors.primary}
         style={styles.searchInput}
         value={value}
       />
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[3],
   },
   errorInput: {
-    borderColor: aiLightColors.coralActive,
+    borderColor: aiLightColors.primaryActive,
   },
   searchBox: {
     alignItems: 'center',

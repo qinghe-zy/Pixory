@@ -23,7 +23,7 @@ const TAB_ITEMS: Array<{
 ];
 
 function getActiveTintColor(tab: RootTabKey) {
-  return tab === 'ai' ? aiLightColors.coralActive : colors.primary.default;
+  return tab === 'ai' ? aiLightColors.primaryActive : colors.primary.default;
 }
 
 export function BottomTabBar({ activeTab, onSelectTab }: BottomTabBarProps) {

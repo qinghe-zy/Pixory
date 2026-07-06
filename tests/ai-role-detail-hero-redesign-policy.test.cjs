@@ -43,7 +43,7 @@ test('role detail sections render dossier preview cards with icons and compact g
   assert.match(section, /accessibilityState=\{\{ expanded \}\}/);
   assert.match(section, /onPress=\{\(\) => setExpanded\(true\)\}/);
   assert.match(section, /name="chevron-forward"/);
-  assert.match(section, /backgroundColor: aiLightColors\.coralSoft/);
+  assert.match(section, /backgroundColor: aiLightColors\.primarySoft/);
   assert.match(section, /backgroundColor: aiLightColors\.cardWash/);
   assert.doesNotMatch(section, /#F4E2D4|rgba\(255, 250, 242/);
 
@@ -60,11 +60,11 @@ test('role detail sections render dossier preview cards with icons and compact g
   assert.match(detail, /Hero art-board constants/);
   assert.match(detail, /ROLE_HERO_TITLE_SIZE/);
   assert.match(detail, /ROLE_HERO_FADE_BOTTOM_HEIGHT/);
-  assert.match(detail, /backgroundColor: aiLightColors\.coralSoft/);
+  assert.match(detail, /backgroundColor: aiLightColors\.primarySoft/);
   assert.doesNotMatch(detail, /#F4E2D4|rgba\(|fontSize: 48|height: 118/);
   assert.match(detail, /styles\.tagSection/);
   assert.match(detail, /styles\.tagChip/);
 
-  assert.match(theme, /coralSoft:/);
+  assert.match(theme, /primarySoft:/);
   assert.match(theme, /cardWash:/);
 });

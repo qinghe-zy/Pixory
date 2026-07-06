@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   inlineStreamingCursor: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontSize: typography.size.body,
     lineHeight: 22,
   },

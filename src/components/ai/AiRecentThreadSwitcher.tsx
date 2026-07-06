@@ -18,7 +18,7 @@ export function AiRecentThreadSwitcher({ items, onOpenThread }: AiRecentThreadSw
     <View style={styles.wrap}>
       {items.slice(0, 3).map((thread) => (
         <Pressable accessibilityRole="button" key={thread.id} onPress={() => onOpenThread(thread)} style={({ pressed }) => [styles.item, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.coralActive} name="chatbubble-ellipses-outline" size={13} />
+          <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={13} />
           <Text numberOfLines={1} style={styles.text}>{thread.title}</Text>
         </Pressable>
       ))}

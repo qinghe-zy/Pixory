@@ -142,7 +142,7 @@ export function AiChatSearchScreen({
 
         {!hasQuery && !errorMessage ? (
           <View style={styles.stateBox}>
-            <Ionicons color={aiLightColors.coralActive} name="search-outline" size={24} />
+            <Ionicons color={aiLightColors.primaryActive} name="search-outline" size={24} />
             <Text style={styles.stateTitle}>输入关键词查找聊天</Text>
             <Text style={styles.stateText}>会先显示精确查询结果，再显示本地模糊查询内容。</Text>
           </View>
@@ -158,7 +158,7 @@ export function AiChatSearchScreen({
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={aiLightColors.coralActive} />
+            <ActivityIndicator color={aiLightColors.primaryActive} />
             <Text style={styles.stateText}>正在搜索当前路线</Text>
           </View>
         ) : null}
@@ -189,7 +189,7 @@ export function AiChatSearchScreen({
           ListFooterComponent={
             hasMore ? (
               <Pressable accessibilityLabel="继续加载更多搜索结果" accessibilityRole="button" disabled={loadingMore} onPress={loadMore} style={({ pressed }) => [styles.loadMoreButton, pressed && styles.pressed]}>
-                {loadingMore ? <ActivityIndicator color={aiLightColors.coralActive} size="small" /> : null}
+                {loadingMore ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" /> : null}
                 <Text style={styles.loadMoreText}>继续加载更多结果</Text>
               </Pressable>
             ) : null
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   exactResultRow: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   resultHeader: {
     alignItems: 'center',
@@ -335,12 +335,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
   userRolePill: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     color: aiLightColors.onDark,
   },
   matchKind: {
     ...typography.textStyles.micro,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   versionText: {
@@ -358,8 +358,8 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   matchHighlight: {
-    backgroundColor: aiLightColors.coralSoft,
-    color: aiLightColors.coralActive,
+    backgroundColor: aiLightColors.primarySoft,
+    color: aiLightColors.primaryActive,
     fontWeight: '800',
   },
   loadMoreButton: {

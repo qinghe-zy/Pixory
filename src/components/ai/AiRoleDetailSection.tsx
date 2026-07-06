@@ -42,7 +42,7 @@ export function AiRoleDetailSection({
       >
         <View style={styles.headerCopy}>
           <View style={styles.iconBubble}>
-            <Ionicons color={aiLightColors.coralActive} name={iconName} size={18} />
+            <Ionicons color={aiLightColors.primaryActive} name={iconName} size={18} />
           </View>
           <Text style={styles.title}>{title}</Text>
         </View>
@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   },
   iconBubble: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.pill,
     height: 40,
     justifyContent: 'center',

@@ -32,7 +32,7 @@ export function AiLightButton({ label, onPress, loading = false, disabled = fals
       ]}
     >
       <View style={styles.content}>
-        {loading ? <ActivityIndicator color={variant === 'solid' ? aiLightColors.onDark : aiLightColors.coral} size="small" /> : null}
+        {loading ? <ActivityIndicator color={variant === 'solid' ? aiLightColors.onDark : aiLightColors.primary} size="small" /> : null}
         <Text style={[styles.label, variant === 'solid' ? styles.solidLabel : styles.subtleLabel]}>{label}</Text>
       </View>
     </Pressable>
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   solid: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
   },
   outline: {
     backgroundColor: aiLightColors.canvas,
@@ -78,6 +78,6 @@ const styles = StyleSheet.create({
     color: aiLightColors.onDark,
   },
   subtleLabel: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
 });

@@ -615,7 +615,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                     style={({ pressed }) => [styles.dropdownRow, selected && styles.selectedDropdownRow, pressed && styles.pressed]}
                   >
                     <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{card.provider.displayName}</Text>
-                    {selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                    {selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
                   </Pressable>
                 );
               })}
@@ -632,7 +632,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               onChangeText={setBaseUrlDraft}
               placeholder="https://api.example.com/v1"
               placeholderTextColor={aiLightColors.mutedSoft}
-              selectionColor={aiLightColors.coral}
+              selectionColor={aiLightColors.primary}
               style={styles.input}
               value={baseUrlDraft}
             />
@@ -650,7 +650,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               placeholder={selectedCard?.hasApiKey ? '已保存' : '输入 API Key'}
               placeholderTextColor={aiLightColors.mutedSoft}
               secureTextEntry={!visibleKey}
-              selectionColor={aiLightColors.coral}
+              selectionColor={aiLightColors.primary}
               style={styles.input}
               value={apiDraft}
             />
@@ -673,7 +673,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 onChangeText={setConnectionImportDraft}
                 placeholder='{"_type":"newapi_channel_conn","key":"sk-...","url":"https://example.com"}'
                 placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.primary}
                 style={[styles.input, styles.importInput]}
                 value={connectionImportDraft}
               />
@@ -753,7 +753,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
                     >
                       <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                      {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                      {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
                     </Pressable>
                     {!isProtectedProviderModel(selectedCard, model.modelId) ? (
                       <Pressable
@@ -763,7 +763,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                         onPress={() => confirmDeleteModel(model, 'chat')}
                         style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
                       >
-                        <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                        <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
                         <Text style={styles.dropdownDeleteText}>删除模型</Text>
                       </Pressable>
                     ) : null}
@@ -826,7 +826,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                                 style={({ pressed }) => [styles.dropdownSelectAction, pressed && styles.pressed]}
                               >
                                 <Text numberOfLines={1} style={[styles.dropdownText, selected && styles.selectedDropdownText]}>{model.displayName}</Text>
-                                {selectedForDelete ? <Ionicons color={aiLightColors.coralActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.coralActive} name="checkmark-circle" size={18} /> : null}
+                                {selectedForDelete ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-done-circle" size={18} /> : selected ? <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle" size={18} /> : null}
                               </Pressable>
                               {!isProtectedProviderModel(selectedCard, model.modelId) ? (
                                 <Pressable
@@ -836,7 +836,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                                   onPress={() => confirmDeleteModel(model, 'embedding')}
                                   style={({ pressed }) => [styles.dropdownDeleteAction, pressed && styles.pressed]}
                                 >
-                                  <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                                  <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
                                   <Text style={styles.dropdownDeleteText}>删除</Text>
                                 </Pressable>
                               ) : null}
@@ -858,7 +858,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                       onChangeText={setEmbeddingBaseUrlDraft}
                       placeholder="默认复用上方服务地址"
                       placeholderTextColor={aiLightColors.mutedSoft}
-                      selectionColor={aiLightColors.coral}
+                      selectionColor={aiLightColors.primary}
                       style={styles.input}
                       value={embeddingBaseUrlDraft}
                     />
@@ -876,7 +876,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                         onChangeText={setManualModelDraft}
                         placeholder="gpt-4o-mini"
                         placeholderTextColor={aiLightColors.mutedSoft}
-                        selectionColor={aiLightColors.coral}
+                        selectionColor={aiLightColors.primary}
                         style={styles.input}
                         value={manualModelDraft}
                       />
@@ -896,7 +896,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                         onChangeText={setManualEmbeddingModelDraft}
                         placeholder="text-embedding-3-small"
                         placeholderTextColor={aiLightColors.mutedSoft}
-                        selectionColor={aiLightColors.coral}
+                        selectionColor={aiLightColors.primary}
                         style={styles.input}
                         value={manualEmbeddingModelDraft}
                       />
@@ -923,7 +923,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
               maintenanceTone === 'info' && styles.maintenanceResultInfo,
             ]}>
               <Ionicons
-                color={maintenanceTone === 'success' ? aiLightColors.coral : maintenanceTone === 'info' ? aiLightColors.muted : aiLightColors.coralActive}
+                color={maintenanceTone === 'success' ? aiLightColors.primary : maintenanceTone === 'info' ? aiLightColors.muted : aiLightColors.primaryActive}
                 name={maintenanceTone === 'success' ? 'checkmark-circle' : maintenanceTone === 'error' ? 'close-circle' : maintenanceTone === 'warning' ? 'alert-circle' : 'information-circle'}
                 size={18}
               />
@@ -989,7 +989,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 onChangeText={setMemoryMaintenanceModelDraft}
                 placeholder="deepseek-v4-flash"
                 placeholderTextColor={aiLightColors.mutedSoft}
-                selectionColor={aiLightColors.coral}
+                selectionColor={aiLightColors.primary}
                 style={styles.input}
                 value={memoryMaintenanceModelDraft}
               />
@@ -1019,7 +1019,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   activeSelectBox: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   selectText: {
     ...typography.textStyles.body,
@@ -1062,7 +1062,7 @@ const styles = StyleSheet.create({
   },
   dropdownDeleteText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   batchActionRow: {
@@ -1097,7 +1097,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   selectedDropdownText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   fieldGroup: {
@@ -1166,15 +1166,15 @@ const styles = StyleSheet.create({
   },
   maintenanceResultSuccess: {
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   maintenanceResultWarning: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coralActive,
+    borderColor: aiLightColors.primaryActive,
   },
   maintenanceResultError: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coralActive,
+    borderColor: aiLightColors.primaryActive,
   },
   maintenanceResultInfo: {
     backgroundColor: aiLightColors.surface,
@@ -1208,7 +1208,7 @@ const styles = StyleSheet.create({
   },
   selectedModeOption: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   modeOptionText: {
     ...typography.textStyles.caption,
@@ -1216,7 +1216,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   selectedModeOptionText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   inputRow: {
     alignItems: 'center',

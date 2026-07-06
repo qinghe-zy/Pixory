@@ -63,7 +63,7 @@ export function AiMaterialSourceSheet({ visible, onClose, onSelectSource }: AiMa
                 style={({ pressed }) => [styles.optionRow, pressed && styles.pressed]}
               >
                 <View style={styles.optionIcon}>
-                  <Ionicons color={aiLightColors.coralActive} name={option.icon} size={20} />
+                  <Ionicons color={aiLightColors.primaryActive} name={option.icon} size={20} />
                 </View>
                 <View style={styles.optionCopy}>
                   <Text style={styles.optionTitle}>{option.title}</Text>

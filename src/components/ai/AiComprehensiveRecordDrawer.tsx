@@ -166,7 +166,7 @@ export function AiComprehensiveRecordDrawer({
                           </Pressable>
                           <View style={styles.recentActionDivider} />
                           <Pressable accessibilityLabel="移入回收站最近会话" accessibilityRole="button" onPress={() => startDeleteThread(thread)} style={({ pressed }) => [styles.recentActionButton, pressed && styles.pressed]}>
-                            <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={16} />
+                            <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={16} />
                             <Text style={[styles.recentActionText, styles.recentActionDangerText]}>回收站</Text>
                           </Pressable>
                         </View>
@@ -210,11 +210,11 @@ export function AiComprehensiveRecordDrawer({
       >
         <TextInput
           autoFocus
-          cursorColor={aiLightColors.coralActive}
+          cursorColor={aiLightColors.primaryActive}
           onChangeText={setRenameValue}
           placeholder="输入新的会话标题"
           placeholderTextColor={aiLightColors.muted}
-          selectionColor={aiLightColors.coralActive}
+          selectionColor={aiLightColors.primaryActive}
           style={styles.renameInput}
           value={renameValue}
         />
@@ -234,7 +234,7 @@ function DrawerAction({
   onPress: () => void;
   tone?: 'default' | 'accent';
 }) {
-  const color = tone === 'accent' ? aiLightColors.coralActive : aiLightColors.ink;
+  const color = tone === 'accent' ? aiLightColors.primaryActive : aiLightColors.ink;
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}>
       <Ionicons color={color} name={icon} size={metrics.iconSizeMd} />
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
   },
   actionLabelAccent: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   divider: {
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   currentThreadBadge: {
     ...typography.textStyles.caption,
     alignSelf: 'center',
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     flexShrink: 0,
     fontWeight: '700',
   },
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   recentActionPopover: {
     alignSelf: 'flex-start',
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   recentActionDangerText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   recentActionDivider: {
     backgroundColor: aiLightColors.hairline,
@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
   },
   recentDeleteButton: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coralActive,
+    backgroundColor: aiLightColors.primaryActive,
     borderRadius: radius.pill,
     flex: 1,
     minHeight: 36,

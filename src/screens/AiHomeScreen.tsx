@@ -126,7 +126,7 @@ export function AiHomeScreen({
             <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
           </View>
           <View style={styles.primaryArrow}>
-            <Ionicons color={aiLightColors.coralActive} name="chevron-forward" size={22} />
+            <Ionicons color={aiLightColors.primaryActive} name="chevron-forward" size={22} />
           </View>
         </Pressable>
 
@@ -147,13 +147,13 @@ export function AiHomeScreen({
               ))
             ) : (
               <View style={styles.emptyRoleHint}>
-                <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconSizeMd} />
+                <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconSizeMd} />
                 <Text style={styles.emptyRoleText}>有头像的角色会显示在这里</Text>
               </View>
             )}
           </ScrollView>
           <Pressable accessibilityLabel="打开角色库" accessibilityRole="button" onPress={onOpenRoleLibrary} style={({ pressed }) => [styles.roleLibraryButton, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.coralActive} name="people-outline" size={metrics.iconSizeSm} />
+            <Ionicons color={aiLightColors.primaryActive} name="people-outline" size={metrics.iconSizeSm} />
             <Text style={styles.roleLibraryText}>角色库</Text>
           </Pressable>
         </View>
@@ -192,7 +192,7 @@ export function AiHomeScreen({
             ) : (
               <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.emptyRecentRow, pressed && styles.pressed]}>
                 <View style={styles.threadIcon}>
-                  <Ionicons color={aiLightColors.coralActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
+                  <Ionicons color={aiLightColors.primaryActive} name="chatbubble-ellipses-outline" size={metrics.iconSizeMd} />
                 </View>
                 <View style={styles.threadCopy}>
                   <Text style={styles.threadTitle}>还没有最近聊天</Text>
@@ -205,7 +205,7 @@ export function AiHomeScreen({
       </View>
 
       <View style={styles.quickGrid}>
-        <QuickEntry icon="albums-outline" label="选择 IP 开聊" meta="从角色或 IP 开始对话" onPress={onOpenIpChatPicker} tone="coral" />
+        <QuickEntry icon="albums-outline" label="选择 IP 开聊" meta="从角色或 IP 开始对话" onPress={onOpenIpChatPicker} tone="primary" />
         <QuickEntry icon="document-text-outline" label="资料库" meta="管理你的资料与文件" onPress={onOpenKnowledgeBase} tone="green" />
         <QuickEntry icon="layers-outline" label="总资料库" meta="查看全部资料集合" onPress={onOpenGlobalMaterials} tone="warm" />
         <QuickEntry icon="time-outline" label="会话历史" meta="查看与管理历史记录" onPress={onOpenHistory} tone="gold" />
@@ -245,7 +245,7 @@ function ThreadAvatar({ thread, space }: { thread: AiHomeThreadItem; space: Pixo
   const iconName = thread.contextType === 'ip' ? 'albums-outline' : thread.contextType === 'knowledge_base' ? 'library-outline' : 'chatbubble-ellipses-outline';
   return (
     <View style={styles.threadIcon}>
-      <Ionicons color={aiLightColors.coralActive} name={iconName} size={metrics.iconSizeMd} />
+      <Ionicons color={aiLightColors.primaryActive} name={iconName} size={metrics.iconSizeMd} />
     </View>
   );
 }
@@ -273,7 +273,7 @@ function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
   );
 }
 
-type QuickEntryTone = 'coral' | 'green' | 'gold' | 'warm';
+type QuickEntryTone = 'primary' | 'green' | 'gold' | 'warm';
 
 function QuickEntry({
   icon,
@@ -303,15 +303,15 @@ function QuickEntry({
 }
 
 const quickToneColor: Record<QuickEntryTone, string> = {
-  coral: aiLightColors.coralActive,
+  primary: aiLightColors.primaryActive,
   gold: colors.text.gold,
   green: colors.primary.default,
   warm: colors.semantic.warning,
 };
 
 const quickIconToneStyles = StyleSheet.create({
-  coral: {
-    borderColor: aiLightColors.coral,
+  primary: {
+    borderColor: aiLightColors.primary,
   },
   gold: {
     borderColor: colors.semantic.warning,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   },
   primaryChatCard: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.xl,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   },
   roleLibraryText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   section: {
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   sectionUnderline: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.pill,
     height: 3,
     width: 24,

@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   },
   errorLabel: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   errorText: {

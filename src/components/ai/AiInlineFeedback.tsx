@@ -13,7 +13,7 @@ export function AiInlineFeedback({ message, tone = 'info' }: AiInlineFeedbackPro
   const icon = tone === 'success' ? 'checkmark-circle-outline' : tone === 'error' ? 'alert-circle-outline' : 'information-circle-outline';
   return (
     <View style={[styles.wrap, tone === 'error' && styles.errorWrap]}>
-      <Ionicons color={tone === 'error' ? aiLightColors.coralActive : aiLightColors.muted} name={icon} size={13} />
+      <Ionicons color={tone === 'error' ? aiLightColors.primaryActive : aiLightColors.muted} name={icon} size={13} />
       <Text style={[styles.text, tone === 'error' && styles.errorText]}>{message}</Text>
     </View>
   );
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[2],
   },
   errorWrap: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   text: {
     ...typography.textStyles.micro,
@@ -41,6 +41,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   errorText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
 });

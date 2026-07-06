@@ -2814,7 +2814,7 @@ export function AiChatScreen({
       </View>
       {newChatFeedbackVisible ? (
         <View accessibilityLiveRegion="polite" style={styles.newChatFeedback}>
-          <Ionicons color={aiLightColors.coralActive} name="checkmark-circle-outline" size={14} />
+          <Ionicons color={aiLightColors.primaryActive} name="checkmark-circle-outline" size={14} />
           <Text style={styles.newChatFeedbackText}>已在新的空白聊天</Text>
         </View>
       ) : null}
@@ -2873,7 +2873,7 @@ export function AiChatScreen({
                 style={({ pressed }) => [styles.continuityInlineNoticeMain, pressed && styles.pressed]}
               >
                 <Ionicons
-                  color={activeContinuityMilestone.rollbackState === 'available' ? aiLightColors.coralActive : aiLightColors.muted}
+                  color={activeContinuityMilestone.rollbackState === 'available' ? aiLightColors.primaryActive : aiLightColors.muted}
                   name={activeContinuityMilestone.rollbackState === 'available' ? 'git-branch-outline' : 'lock-closed-outline'}
                   size={14}
                 />
@@ -3102,18 +3102,18 @@ const styles = StyleSheet.create({
   },
   continuityInlineNoticeDetailText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   liveDot: {
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.pill,
     height: spacing[1.5],
     width: spacing[1.5],
   },
   error: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     textAlign: 'center',
   },
   messageScroller: {
@@ -3198,8 +3198,8 @@ const styles = StyleSheet.create({
     maxWidth: '88%',
   },
   searchHighlightWrap: {
-    backgroundColor: aiLightColors.coralSoft,
-    borderColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primarySoft,
+    borderColor: aiLightColors.primary,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: spacing[1],

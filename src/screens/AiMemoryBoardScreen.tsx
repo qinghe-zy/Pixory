@@ -432,7 +432,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                 <Text style={styles.memoryContent}>{segment.summaryText}</Text>
                 <View style={styles.rowActions}>
                   <Pressable accessibilityRole="button" onPress={() => setPendingDeleteSummary(segment)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
-                    <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
+                    <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={15} />
                     <Text style={styles.actionLabel}>删除摘要</Text>
                   </Pressable>
                 </View>
@@ -523,7 +523,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                       onChangeText={setEditingText}
                       placeholder="编辑记忆内容"
                       placeholderTextColor={aiLightColors.mutedSoft}
-                      selectionColor={aiLightColors.coral}
+                      selectionColor={aiLightColors.primary}
                       style={styles.editInput}
                       textAlignVertical="top"
                       value={editingText}
@@ -542,7 +542,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                     {editingId === memory.id ? (
                       <>
                         <Pressable accessibilityRole="button" onPress={() => void handleSaveEdit(memory.id)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
-                          <Ionicons color={aiLightColors.coralActive} name="checkmark-outline" size={16} />
+                          <Ionicons color={aiLightColors.primaryActive} name="checkmark-outline" size={16} />
                           <Text style={styles.actionLabel}>保存</Text>
                         </Pressable>
                         <Pressable accessibilityRole="button" onPress={() => setEditingId(null)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
@@ -561,12 +561,12 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
                             }}
                             style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}
                           >
-                            <Ionicons color={aiLightColors.coralActive} name="create-outline" size={15} />
+                            <Ionicons color={aiLightColors.primaryActive} name="create-outline" size={15} />
                             <Text style={styles.actionLabel}>编辑</Text>
                           </Pressable>
                         ) : null}
                         <Pressable accessibilityRole="button" onPress={() => setPendingDeleteMemory(memory)} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
-                          <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={15} />
+                          <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={15} />
                           <Text style={styles.actionLabel}>删除</Text>
                         </Pressable>
                       </>
@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
   },
   scopeCount: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   caption: {
@@ -668,14 +668,14 @@ const styles = StyleSheet.create({
   },
   filterChipActive: {
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   filterText: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
   },
   filterTextActive: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   memoryItem: {
@@ -707,7 +707,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   editInput: {
@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   pressed: {
     opacity: 0.78,

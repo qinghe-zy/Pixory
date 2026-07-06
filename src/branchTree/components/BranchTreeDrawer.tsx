@@ -79,7 +79,7 @@ export function BranchTreeDrawer({
       </View>
       {loading ? (
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={aiLightColors.coral} size="small" />
+          <ActivityIndicator color={aiLightColors.primary} size="small" />
           <Text style={styles.emptyText}>正在读取附近消息</Text>
         </View>
       ) : snapshot ? (

@@ -75,7 +75,7 @@ export function AiDocumentReaderScreen({ space, documentId, locator, title, onBa
       <View style={[styles.readerHost, { paddingTop: statusBarHeight + metrics.minTouchSize + spacing[4] }]}>
         {loading ? (
           <View style={styles.stateBlock}>
-            <ActivityIndicator color={aiLightColors.coral} />
+            <ActivityIndicator color={aiLightColors.primary} />
             <Text style={styles.stateText}>正在打开文档...</Text>
           </View>
         ) : errorMessage ? (
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.textStyles.body,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     textAlign: 'center',
   },
 });

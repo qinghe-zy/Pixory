@@ -54,11 +54,11 @@ test('bottom tabs expose text-only accessibility labels and selected state', () 
   assert.match(source, /accessibilityState=\{\{\s*selected:\s*isActive\s*\}\}/);
 });
 
-test('AI bottom tab uses the AI coral active color instead of the global green', () => {
+test('AI bottom tab uses the AI primary active color instead of the global green', () => {
   const source = readProjectFile('src/components/BottomTabBar.tsx');
 
   assert.match(source, /import \{ aiLightColors \} from '\.\/ai\/aiLightTheme';/);
-  assert.match(source, /tab === 'ai' \? aiLightColors\.coralActive : colors\.primary\.default/);
+  assert.match(source, /tab === 'ai' \? aiLightColors\.primaryActive : colors\.primary\.default/);
   assert.match(source, /color=\{isActive \? activeTintColor : colors\.text\.secondary\}/);
   assert.match(source, /\{ color: activeTintColor \}/);
 });

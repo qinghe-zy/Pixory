@@ -31,7 +31,7 @@ export const japaneseFreshTokens = {
     gold: {
       500: '#B8945A',
     },
-    coral: {
+    primary: {
       500: '#C96F5F',
       100: '#FFF1ED',
     },

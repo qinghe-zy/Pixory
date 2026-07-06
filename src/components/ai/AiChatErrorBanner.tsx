@@ -12,7 +12,7 @@ interface AiChatErrorBannerProps {
 export function AiChatErrorBanner({ message, onRetry }: AiChatErrorBannerProps) {
   return (
     <View style={styles.wrap}>
-      <Ionicons color={aiLightColors.coralActive} name="alert-circle-outline" size={16} />
+      <Ionicons color={aiLightColors.primaryActive} name="alert-circle-outline" size={16} />
       <Text style={styles.text}>{message}</Text>
       {onRetry ? (
         <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'stretch',
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     flex: 1,
   },
   retry: {
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   },
   retryText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   pressed: {

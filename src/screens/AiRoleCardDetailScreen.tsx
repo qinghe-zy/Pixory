@@ -141,7 +141,7 @@ export function AiRoleCardDetailScreen({
           ) : (
             <View style={styles.heroFallback}>
               <View style={styles.heroFallbackMoon} />
-              <Ionicons color={aiLightColors.coralActive} name="person-circle-outline" size={metrics.iconButtonSize * 1.4} />
+              <Ionicons color={aiLightColors.primaryActive} name="person-circle-outline" size={metrics.iconButtonSize * 1.4} />
             </View>
           )}
 
@@ -182,7 +182,7 @@ export function AiRoleCardDetailScreen({
           <View style={styles.tagSection}>
             <View style={styles.tagHeader}>
               <View style={styles.tagIconBubble}>
-                <Ionicons color={aiLightColors.coralActive} name="pricetag-outline" size={16} />
+                <Ionicons color={aiLightColors.primaryActive} name="pricetag-outline" size={16} />
               </View>
               <Text style={styles.tagTitle}>标签</Text>
             </View>
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     backgroundColor: aiLightColors.card,
     borderRadius: radius.pill,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     overflow: 'hidden',
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   sectionFooterText: {
     ...typography.textStyles.caption,
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   },
   tagIconBubble: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coralSoft,
+    backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.pill,
     height: 36,
     justifyContent: 'center',

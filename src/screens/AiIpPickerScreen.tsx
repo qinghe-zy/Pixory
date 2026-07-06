@@ -109,7 +109,7 @@ export function AiIpPickerScreen({ space, onBack, onSelectIp }: AiIpPickerScreen
                   style={({ pressed }) => [styles.ipRow, selected && styles.selectedIpRow, pressed && styles.pressed]}
                 >
                   <View style={styles.ipIcon}>
-                    <Ionicons color={aiLightColors.coralActive} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
+                    <Ionicons color={aiLightColors.primaryActive} name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} />
                   </View>
                   <View style={styles.ipCopy}>
                     <Text style={styles.ipName}>{item.name}</Text>
@@ -156,7 +156,7 @@ function OptionRow({ label, value, fixed = false, onValueChange }: OptionRowProp
         <Switch
           onValueChange={onValueChange}
           thumbColor={aiLightColors.canvas}
-          trackColor={{ false: aiLightColors.hairline, true: aiLightColors.coral }}
+          trackColor={{ false: aiLightColors.hairline, true: aiLightColors.primary }}
           value={value}
         />
       )}
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     backgroundColor: aiLightColors.canvas,
     borderRadius: radius.pill,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
   },
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedIpRow: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   pressed: {
     opacity: 0.78,

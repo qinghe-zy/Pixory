@@ -26,7 +26,7 @@ export function AiVoiceInputStatus({ state, error, onCancel }: AiVoiceInputStatu
           : error || '语音输入失败';
   return (
     <View style={[styles.wrap, state === 'error' && styles.errorWrap]}>
-      <Ionicons color={state === 'error' ? aiLightColors.coralActive : aiLightColors.muted} name={state === 'error' ? 'alert-circle-outline' : 'mic-outline'} size={14} />
+      <Ionicons color={state === 'error' ? aiLightColors.primaryActive : aiLightColors.muted} name={state === 'error' ? 'alert-circle-outline' : 'mic-outline'} size={14} />
       <Text style={[styles.text, state === 'error' && styles.errorText]}>{text}</Text>
       {state === 'listening' || state === 'recognizing' ? (
         <Pressable accessibilityRole="button" onPress={onCancel} style={({ pressed }) => [styles.cancel, pressed && styles.pressed]}>
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
   },
   errorWrap: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   text: {
     ...typography.textStyles.caption,
@@ -59,14 +59,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   errorText: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   cancel: {
     paddingHorizontal: spacing[1],
   },
   cancelText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   pressed: {

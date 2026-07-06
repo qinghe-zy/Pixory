@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   footer: {
     backgroundColor: aiLightColors.canvas,

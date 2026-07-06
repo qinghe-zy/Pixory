@@ -454,7 +454,7 @@ export function AiRoleCardEditorScreen({
             {avatarUri ? (
               <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={avatarUri} />
             ) : (
-              <Ionicons color={aiLightColors.coralActive} name="sparkles-outline" size={metrics.iconSizeMd} />
+              <Ionicons color={aiLightColors.primaryActive} name="sparkles-outline" size={metrics.iconSizeMd} />
             )}
           </View>
           <View style={styles.avatarCopy}>
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   avatarPanel: {
     backgroundColor: aiLightColors.surface,
@@ -617,14 +617,14 @@ const styles = StyleSheet.create({
   },
   ipChipActive: {
     backgroundColor: aiLightColors.card,
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   ipChipText: {
     ...typography.textStyles.caption,
     color: aiLightColors.muted,
   },
   ipChipTextActive: {
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '700',
   },
   avatarGrid: {
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
     width: metrics.minTouchSize,
   },
   avatarChoiceActive: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
     borderWidth: 2,
   },
   avatarChoiceImage: {

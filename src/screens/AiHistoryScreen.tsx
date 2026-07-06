@@ -79,17 +79,17 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       <View style={styles.selectionActions}>
         {filter === 'archived' ? (
           <Pressable accessibilityRole="button" onPress={() => void confirmRestoreSelected()} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.coralActive} name="arrow-undo-outline" size={18} />
+            <Ionicons color={aiLightColors.primaryActive} name="arrow-undo-outline" size={18} />
             <Text style={styles.selectionButtonText}>移出回收站</Text>
           </Pressable>
         ) : (
           <Pressable accessibilityRole="button" onPress={() => setPendingAction('move')} style={({ pressed }) => [styles.selectionButton, pressed && styles.pressed]}>
-            <Ionicons color={aiLightColors.coralActive} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
+            <Ionicons color={aiLightColors.primaryActive} name={space === 'normal' ? 'lock-closed-outline' : 'lock-open-outline'} size={18} />
             <Text style={styles.selectionButtonText}>{space === 'normal' ? '移入隐私空间' : '移出隐私空间'}</Text>
           </Pressable>
         )}
         <Pressable accessibilityRole="button" onPress={() => setPendingAction('delete')} style={({ pressed }) => [styles.selectionButton, styles.dangerButton, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.coralActive} name="trash-outline" size={18} />
+          <Ionicons color={aiLightColors.primaryActive} name="trash-outline" size={18} />
           <Text style={styles.dangerText}>{filter === 'archived' ? '永久删除' : '删除到回收站'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setSelectedIds([])} style={({ pressed }) => [styles.iconAction, pressed && styles.pressed]}>
@@ -328,7 +328,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             onChangeText={setSearchText}
             placeholder="搜索标题或最近消息"
             placeholderTextColor={aiLightColors.mutedSoft}
-            selectionColor={aiLightColors.coral}
+            selectionColor={aiLightColors.primary}
             style={styles.searchInput}
             value={searchText}
           />
@@ -384,7 +384,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
                           style={({ pressed }) => [styles.rowMain, pressed && styles.pressed]}
                         >
                           <View style={styles.iconWrap}>
-                            <Ionicons color={aiLightColors.coralActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
+                            <Ionicons color={aiLightColors.primaryActive} name={selected ? 'checkmark-circle' : iconForContext(thread.contextType)} size={20} />
                           </View>
                           <View style={styles.copy}>
                             <Text numberOfLines={1} style={styles.title}>{thread.title}</Text>
@@ -457,7 +457,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
             placeholder="隐私密码"
             placeholderTextColor={aiLightColors.mutedSoft}
             secureTextEntry
-            selectionColor={aiLightColors.coral}
+            selectionColor={aiLightColors.primary}
             style={styles.passwordInput}
             value={personalPassword}
           />
@@ -490,7 +490,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
           onChangeText={setRenameValue}
           placeholder="聊天名称"
           placeholderTextColor={aiLightColors.mutedSoft}
-          selectionColor={aiLightColors.coral}
+          selectionColor={aiLightColors.primary}
           style={styles.passwordInput}
           value={renameValue}
         />
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
   },
   status: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   list: {
     gap: rhythm.listCardGap,
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
   },
   swipeActionSurface: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.coral,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.lg,
     bottom: 0,
     gap: 2,
@@ -596,7 +596,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   selectedRow: {
-    borderColor: aiLightColors.coral,
+    borderColor: aiLightColors.primary,
   },
   rowContent: {
     alignItems: 'center',
@@ -673,7 +673,7 @@ const styles = StyleSheet.create({
   },
   selectionButtonText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   dangerButton: {
@@ -681,7 +681,7 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
     fontWeight: '600',
   },
   iconAction: {

@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[1],
   },
   typingDot: {
-    backgroundColor: aiLightColors.coralActive,
+    backgroundColor: aiLightColors.primaryActive,
     borderRadius: radius.pill,
     height: 5,
     width: 5,

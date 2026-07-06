@@ -65,8 +65,8 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt,
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" disabled={!hasReasoningText && !thinking} onPress={toggleExpanded} style={styles.header}>
-        {thinking ? <ActivityIndicator color={aiLightColors.coralActive} size="small" /> : null}
-        <Ionicons color={aiLightColors.coralActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+        {thinking ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" /> : null}
+        <Ionicons color={aiLightColors.primaryActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
         <Text style={styles.label}>{label}</Text>
       </Pressable>
       <Animated.View
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.textStyles.caption,
-    color: aiLightColors.coralActive,
+    color: aiLightColors.primaryActive,
   },
   text: {
     ...typography.textStyles.caption,

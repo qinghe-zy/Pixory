@@ -87,13 +87,13 @@ test('AI chat uses the design.md light mode surface', () => {
 
   assert.match(content, /backgroundColor=\{aiLightColors\.canvas\}/);
   assert.match(content, /aiLightDisplayFont/);
-  assert.match(theme, /canvas:\s*'#FAF9F5'/);
-  assert.match(theme, /surface:\s*'#F5F0E8'/);
-  assert.match(theme, /card:\s*'#EFE9DE'/);
-  assert.match(theme, /coral:\s*'#CC785C'/);
-  assert.match(theme, /coralActive:\s*'#A9583E'/);
-  assert.match(theme, /dark:\s*'#181715'/);
-  assert.match(theme, /hairline:\s*'#E6DFD8'/);
+  assert.match(theme, /canvas:\s*'#F2F2F7'/);
+  assert.match(theme, /surface:\s*'#FFFFFF'/);
+  assert.match(theme, /card:\s*'#FFFFFF'/);
+  assert.match(theme, /primary:\s*'#34C759'/);
+  assert.match(theme, /primaryActive:\s*'#28A745'/);
+  assert.match(theme, /dark:\s*'#1C1C1E'/);
+  assert.match(theme, /hairline:\s*'#E5E5EA'/);
   assert.doesNotMatch(content, /backgroundVariant="aiChat"/);
 });
 
