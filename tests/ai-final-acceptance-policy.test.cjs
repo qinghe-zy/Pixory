@@ -103,7 +103,7 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(sessionConfig, /跟随全局默认/);
   assert.match(sessionConfig, /资料范围/);
   assert.match(sessionConfig, /回复倾向/);
-  assert.match(sessionConfig, /关闭思考过程/);
+  assert.match(sessionConfig, /思考过程/);
   assert.match(sessionConfig, /thinkingDisabled/);
   assert.match(sessionConfig, /REPLY_PREFERENCES/);
   assert.match(sessionConfig, /模型自适应/);

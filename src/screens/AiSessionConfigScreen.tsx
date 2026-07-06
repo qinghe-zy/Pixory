@@ -52,7 +52,7 @@ interface AiSessionConfigScreenProps {
   contextType?: AiContextType;
   onBack: () => void;
   onOpenProviderSettings: () => void;
-  onOpenRoleCardEditor: () => void;
+  onOpenRoleLibrary: () => void;
   onOpenThreadMaterials?: () => void;
   onOpenMemoryBoard?: () => void;
   onStartChat: () => void;
@@ -141,7 +141,7 @@ export function AiSessionConfigScreen({
   contextType = 'normal',
   onBack,
   onOpenProviderSettings,
-  onOpenRoleCardEditor,
+  onOpenRoleLibrary,
   onOpenThreadMaterials,
   onOpenMemoryBoard,
   onStartChat,
@@ -867,14 +867,14 @@ export function AiSessionConfigScreen({
             <AiLightListItem
               icon="person-circle-outline"
               title="角色身份"
-              subtitle="导入角色卡或编辑当前角色"
+              subtitle="从角色库中选择或新建角色"
               value={roleCardSummary}
-              onPress={onOpenRoleCardEditor}
+              onPress={onOpenRoleLibrary}
             />
             <AiLightListItem
               accessibilityRole="switch"
               icon="image-outline"
-              title="显示角色头像"
+              title="角色头像"
               subtitle={avatarSummary}
               value={avatarEnabled ? '头像开启' : '头像关闭'}
               onPress={() => setAvatarEnabled((current) => !current)}
@@ -890,7 +890,7 @@ export function AiSessionConfigScreen({
               accessibilityRole="switch"
               accessibilityState={{ checked: thinkingDisabled }}
               icon="flash-outline"
-              title="关闭思考过程"
+              title="思考过程"
               value={thinkingDisabled ? '已关闭' : '允许输出'}
               showChevron={false}
               isLast

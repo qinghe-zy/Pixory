@@ -147,7 +147,7 @@ test('session config exposes continuity import and feature matrix records the ca
   const matrix = read('docs/feature-matrix.md');
 
   assert.match(session, /导入外部记忆/);
-  assert.match(session, /导入角色卡/);
+  assert.match(session, /选择或新建角色/);
   assert.match(session, /DocumentPicker\.getDocumentAsync/);
   assert.match(session, /importThreadContinuity/);
   assert.match(session, /buildExternalContinuityPrompt/);
@@ -174,14 +174,13 @@ test('session config exposes continuity import and feature matrix records the ca
   assert.match(matrix, /连续性导入|外部对话接回|原生连续性导入/);
 });
 
-test('session settings role-card import is a direct import-and-apply flow for the current thread instead of a library detour', () => {
+test('session settings role-card selection is routed through the role library', () => {
   const app = read('App.tsx');
   const session = read('src/screens/AiSessionConfigScreen.tsx');
   const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
 
-  assert.match(session, /导入角色卡/);
-  assert.match(app, /onOpenRoleCardEditor=\{\(\) => pushRoute\(\{ name: 'ai-role-card-editor'/);
-  assert.doesNotMatch(app, /onOpenRoleCardEditor=\{\(\) => pushRoute\(\{ name: 'ai-role-library'.*mode: 'apply_to_thread'/);
+  assert.match(session, /选择或新建角色/);
+  assert.match(app, /onOpenRoleLibrary.*ai-role-library.*apply_to_thread/);
   assert.match(editor, /threadId/);
   assert.match(editor, /await applyRoleCard\(card\.id\)/);
 });
