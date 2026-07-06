@@ -86,7 +86,7 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {toast ? (
-        <View pointerEvents="box-none" style={[styles.host, { bottom: insets.bottom + layout.stickyFooterBottomOffset + spacing[4] }]}>
+        <View pointerEvents="box-none" style={[styles.host, { bottom: insets.bottom + layout.screenBottomInset }]}>
           <View style={[styles.toast, toneStyleForToast(toast.tone), toast.kind === 'undo' ? styles.undoToast : null]}>
             <View style={[styles.iconWrap, iconStyleForToast(toast.tone)]}>
               <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={metrics.iconSizeSm} />
