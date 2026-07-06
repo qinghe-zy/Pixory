@@ -880,7 +880,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                         style={styles.input}
                         value={manualModelDraft}
                       />
-                      <AiLightButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} variant="outline" />
+                      <AiLightButton disabled={!manualModelDraft.trim()} label="保存" onPress={() => void saveManualModel()} style={{ width: undefined }} variant="outline" />
                     </View>
                     <Text style={styles.caption}>中转站无法读取模型列表时手动配置。</Text>
                   </View>
@@ -900,7 +900,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                         style={styles.input}
                         value={manualEmbeddingModelDraft}
                       />
-                      <AiLightButton disabled={!manualEmbeddingModelDraft.trim()} label="保存" onPress={() => void saveManualEmbeddingModelDraft()} variant="outline" />
+                      <AiLightButton disabled={!manualEmbeddingModelDraft.trim()} label="保存" onPress={() => void saveManualEmbeddingModelDraft()} style={{ width: undefined }} variant="outline" />
                     </View>
                   </View>
                 ) : null}
@@ -993,7 +993,7 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
                 style={styles.input}
                 value={memoryMaintenanceModelDraft}
               />
-              <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存" onPress={() => void saveCustomMemoryMaintenanceModel()} variant="outline" />
+              <AiLightButton disabled={!selectedCard || !memoryMaintenanceModelDraft.trim()} label="保存" onPress={() => void saveCustomMemoryMaintenanceModel()} style={{ width: undefined }} variant="outline" />
             </View>
             <Text style={styles.caption}>自定义模式复用当前选中的模型商和上方 API Key，不会保存第二份 Key。</Text>
           </View>
