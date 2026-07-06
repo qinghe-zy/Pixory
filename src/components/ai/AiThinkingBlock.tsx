@@ -65,9 +65,9 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt,
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" disabled={!hasReasoningText && !thinking} onPress={toggleExpanded} style={styles.header}>
-        {thinking ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" /> : null}
-        <Ionicons color={aiLightColors.primaryActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+        {thinking ? <ActivityIndicator color={aiLightColors.ink} size="small" /> : <Ionicons color={aiLightColors.ink} name="bulb-outline" size={16} />}
         <Text style={styles.label}>{label}</Text>
+        {hasReasoningText ? <Ionicons color={aiLightColors.muted} name={expanded ? 'chevron-up' : 'chevron-down'} size={16} /> : null}
       </Pressable>
       <Animated.View
         style={[
@@ -85,8 +85,12 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt,
 
 const styles = StyleSheet.create({
   wrap: {
+    backgroundColor: aiLightColors.chatBubbleUser,
+    borderRadius: radius.lg,
+    padding: spacing[3],
     gap: rhythm.microGap,
-    paddingVertical: spacing[1],
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   header: {
     alignItems: 'center',
@@ -94,12 +98,14 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
   },
   label: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.primaryActive,
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    flex: 1,
   },
   text: {
-    ...typography.textStyles.caption,
-    color: aiLightColors.muted,
+    ...typography.textStyles.body,
+    color: aiLightColors.ink,
+    marginTop: spacing[2],
   },
   thinkingAnimatedBody: {
     overflow: 'hidden',

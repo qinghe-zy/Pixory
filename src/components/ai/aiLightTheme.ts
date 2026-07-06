@@ -5,6 +5,7 @@ export const aiLightColors = {
   surface: '#FFFFFF',
   card: '#FFFFFF',
   cardWash: 'rgba(255, 255, 255, 0.72)',
+  chatBubbleUser: '#F4EFF7',
   primary: '#34C759',
   primaryActive: '#28A745',
   primarySoft: '#E8F8EE',
