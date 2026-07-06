@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { radius, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
@@ -11,9 +11,10 @@ interface AiLightButtonProps {
   loading?: boolean;
   disabled?: boolean;
   variant?: AiLightButtonVariant;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function AiLightButton({ label, onPress, loading = false, disabled = false, variant = 'solid' }: AiLightButtonProps) {
+export function AiLightButton({ label, onPress, loading = false, disabled = false, variant = 'solid', style }: AiLightButtonProps) {
   const isDisabled = disabled || loading;
 
   return (
@@ -27,6 +28,7 @@ export function AiLightButton({ label, onPress, loading = false, disabled = fals
         variant === 'solid' ? styles.solid : variant === 'outline' ? styles.outline : styles.ghost,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
+        style,
       ]}
     >
       <View style={styles.content}>
