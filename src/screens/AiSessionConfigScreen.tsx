@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -13,8 +13,9 @@ import { AiLightFeedbackBanner, type FeedbackTone } from '../components/ai/AiLig
 import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiSwitch } from '../components/ai/AiSwitch';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
-import { aiLightColors } from '../components/ai/aiLightTheme';
+import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import {
   applyRoleCardToThread,
   addThreadSessionManualModel,
@@ -879,10 +880,9 @@ export function AiSessionConfigScreen({
               onPress={() => setAvatarEnabled((current) => !current)}
               showChevron={false}
               action={
-                <Switch
+                <AiSwitch
                   value={avatarEnabled}
                   onValueChange={setAvatarEnabled}
-                  trackColor={{ true: aiLightColors.primary }}
                 />
               }
             />
@@ -896,10 +896,9 @@ export function AiSessionConfigScreen({
               isLast
               onPress={() => setThinkingDisabled((current) => !current)}
               action={
-                <Switch
+                <AiSwitch
                   value={!thinkingDisabled}
                   onValueChange={(val) => setThinkingDisabled(!val)}
-                  trackColor={{ true: aiLightColors.primary }}
                 />
               }
             />
@@ -939,9 +938,8 @@ export function AiSessionConfigScreen({
             <AiLightListItem
               accessibilityRole="switch"
               action={
-                <Switch
+                <AiSwitch
                   onValueChange={setDeepMemoryEnabled}
-                  trackColor={{ true: aiLightColors.primary }}
                   value={deepMemoryEnabled}
                 />
               }

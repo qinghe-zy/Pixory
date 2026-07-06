@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightCard } from '../components/ai/AiLightCard';
 import { AiLightSearchBar } from '../components/ai/AiLightField';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiSwitch } from '../components/ai/AiSwitch';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ipRepository, runWithDatabaseSpace, type IpListItem, type PixorySpace } from '../database';
@@ -153,10 +154,8 @@ function OptionRow({ label, value, fixed = false, onValueChange }: OptionRowProp
       {fixed ? (
         <Text style={styles.fixedBadge}>固定</Text>
       ) : (
-        <Switch
+        <AiSwitch
           onValueChange={onValueChange}
-          thumbColor={aiLightColors.canvas}
-          trackColor={{ false: aiLightColors.hairline, true: aiLightColors.primary }}
           value={value}
         />
       )}

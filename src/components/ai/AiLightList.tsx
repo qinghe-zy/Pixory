@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type AccessibilityRole, type StyleProp, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 import { aiLightColors } from './aiLightTheme';
@@ -32,6 +32,9 @@ export function AiLightListItem({
   destructive,
   multilineValue = false,
   disabled = false,
+  accessibilityRole,
+  accessibilityState,
+  accessibilityLabel,
 }: {
   title: string;
   subtitle?: string;
@@ -46,6 +49,9 @@ export function AiLightListItem({
   destructive?: boolean;
   multilineValue?: boolean;
   disabled?: boolean;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityState?: { checked?: boolean };
+  accessibilityLabel?: string;
 }) {
   const handlePress = useCallback(() => {
     if (onPress && !disabled) {
@@ -80,7 +86,9 @@ export function AiLightListItem({
   if (onPress) {
     return (
       <Pressable
-        accessibilityRole="button"
+        accessibilityRole={accessibilityRole ?? 'button'}
+        accessibilityState={accessibilityState}
+        accessibilityLabel={accessibilityLabel}
         disabled={disabled}
         onPress={handlePress}
         style={({ pressed }) => [
