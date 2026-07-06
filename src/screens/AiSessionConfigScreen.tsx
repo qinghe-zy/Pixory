@@ -882,7 +882,7 @@ export function AiSessionConfigScreen({
                 <Switch
                   value={avatarEnabled}
                   onValueChange={setAvatarEnabled}
-                  trackColor={{ true: aiLightColors.ink }}
+                  trackColor={{ true: aiLightColors.primary }}
                 />
               }
             />
@@ -899,7 +899,7 @@ export function AiSessionConfigScreen({
                 <Switch
                   value={!thinkingDisabled}
                   onValueChange={(val) => setThinkingDisabled(!val)}
-                  trackColor={{ true: aiLightColors.ink }}
+                  trackColor={{ true: aiLightColors.primary }}
                 />
               }
             />
@@ -941,7 +941,7 @@ export function AiSessionConfigScreen({
               action={
                 <Switch
                   onValueChange={setDeepMemoryEnabled}
-                  trackColor={{ true: aiLightColors.ink }}
+                  trackColor={{ true: aiLightColors.primary }}
                   value={deepMemoryEnabled}
                 />
               }

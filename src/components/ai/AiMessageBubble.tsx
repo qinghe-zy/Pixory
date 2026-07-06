@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     padding: spacing[3],
   },
   userBubble: {
-    backgroundColor: aiLightColors.chatBubbleUser,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.lg,
     borderTopRightRadius: radius.sm,
   },
@@ -438,7 +438,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   userText: {
-    color: aiLightColors.ink,
+    color: aiLightColors.onDark,
   },
   assistantText: {
     color: aiLightColors.ink,

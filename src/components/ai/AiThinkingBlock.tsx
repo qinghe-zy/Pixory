@@ -65,11 +65,9 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt,
   return (
     <View style={styles.wrap}>
       <Pressable accessibilityRole="button" disabled={!hasReasoningText && !thinking} onPress={toggleExpanded} style={styles.header}>
-        <View style={styles.titleWrap}>
-          {thinking ? <ActivityIndicator color={aiLightColors.ink} size="small" /> : <Ionicons color={aiLightColors.ink} name="bulb-outline" size={16} />}
-          <Text style={styles.label}>{label}</Text>
-        </View>
-        {hasReasoningText ? <Ionicons color={aiLightColors.muted} name={expanded ? 'chevron-up' : 'chevron-down'} size={16} /> : null}
+        {thinking ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" /> : null}
+        <Ionicons color={aiLightColors.primaryActive} name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} />
+        <Text style={styles.label}>{label}</Text>
       </Pressable>
       <Animated.View
         style={[
@@ -87,30 +85,21 @@ export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt,
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: aiLightColors.chatBubbleUser,
-    borderRadius: radius.lg,
-    padding: spacing[3],
     gap: rhythm.microGap,
-    width: '100%',
+    paddingVertical: spacing[1],
   },
   header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  titleWrap: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.microGap,
   },
   label: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
+    ...typography.textStyles.caption,
+    color: aiLightColors.primaryActive,
   },
   text: {
-    ...typography.textStyles.body,
-    color: aiLightColors.ink,
-    marginTop: spacing[2],
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   thinkingAnimatedBody: {
     overflow: 'hidden',
