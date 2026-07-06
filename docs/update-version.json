@@ -1,18 +1,14 @@
 {
   "enabled": true,
-  "version": "2.5.3",
-  "versionCode": 253,
+  "version": "2.5.4",
+  "versionCode": 254,
   "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.5.3 发布。全面重构多处设置页面与聊天气泡，引入高级玻璃铭牌风设计与跨平台 iOS 风格组件；优化了热更新策略，修复了部分遮挡和展示问题，体验更流畅。",
+  "message": "Pixory 2.5.4 发布。修复 2.5.3 中的依赖版本冲突导致 Android 部分机型闪退 (TypeDescriptor) 的紧急问题。",
   "releaseNotes": [
-    "全新画廊铭牌风关于页面，支持手动触发热更新",
-    "全新设计的 AI 配置和会话设置界面",
-    "新增跨平台 iOS 风格全局开关控件",
-    "更新更清新的对话气泡与思考区样式",
-    "普通热更新不再自动强制重启应用",
-    "修复 Toast 提示遮挡底部栏等 UI 异常"
+    "紧急修复 Android 安装包因 expo-linear-gradient 版本导致白屏/闪退的兼容性问题",
+    "更新底层 expo 依赖以提升稳定性"
   ],
   "downloadUrl": "https://mist01.com/#download",
-  "latestVersion": "2.5.3",
-  "latestVersionCode": 253
+  "latestVersion": "2.5.4",
+  "latestVersionCode": 254
 }
