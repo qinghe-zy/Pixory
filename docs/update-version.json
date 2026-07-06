@@ -1,14 +1,15 @@
 {
   "enabled": true,
-  "version": "2.5.2",
-  "versionCode": 252,
+  "version": "2.5.3",
+  "versionCode": 253,
   "title": "发现 Pixory 新版本",
   "message": "Pixory 2.5.2 发布。支持原生图片附件画廊渲染，内置全新 Markdown 渲染器，显著优化聊天界面展示与安全性，安卓新装请到官网下载区安装最新版。",
   "releaseNotes": [
-    "全新 Markdown 渲染引擎：支持复杂的语法解析，全面杜绝恶意标签注入风险。",
-    "原生图片画廊：发送的图片会在聊天流中以真实缩略图画廊的形式展示，而不是原先的纯文本附件提示，界面更清晰更美观。",
-    "信任用户意图：无论本地记录的模型是否支持视觉，当用户主动附带图片时，均会强行发送给大模型进行验证。",
-    "全面修复编辑、重写分支下的附件状态遗失和变量极限崩溃问题。"
+    "全新画廊铭牌风关于页面",
+    "支持在关于页手动检查并安装热更新",
+    "修复部分UI异常"
   ],
-  "downloadUrl": "https://mist01.com/#download"
+  "downloadUrl": "https://mist01.com/#download",
+  "latestVersion": "2.5.3",
+  "latestVersionCode": 253
 }
