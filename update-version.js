@@ -10,10 +10,10 @@ const files = [
   'docs/sitemap.xml',
   'android/app/build.gradle'
 ];
-const oldVer = '2.5.3';
-const newVer = '2.5.4';
-const oldCode = '253';
-const newCode = '254';
+const oldVer = '2.5.4';
+const newVer = '2.5.5';
+const oldCode = '254';
+const newCode = '255';
 
 files.forEach(file => {
   if (fs.existsSync(file)) {
