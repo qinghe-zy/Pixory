@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 
@@ -86,10 +87,14 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {toast ? (
-        <View pointerEvents="box-none" style={[styles.host, { bottom: insets.bottom + layout.screenBottomInset }]}>
-          <View style={[styles.toast, toneStyleForToast(toast.tone), toast.kind === 'undo' ? styles.undoToast : null]}>
-            <View style={[styles.iconWrap, iconStyleForToast(toast.tone)]}>
-              <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={metrics.iconSizeSm} />
+        <View pointerEvents="box-none" style={[styles.host, { top: insets.top + spacing[4] }]}>
+          <Animated.View
+            entering={FadeInUp.duration(300).springify()}
+            exiting={FadeOutUp.duration(200)}
+            style={[styles.toast, toast.kind === 'undo' ? styles.undoToast : null]}
+          >
+            <View style={[styles.iconWrap]}>
+              <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={18} />
             </View>
             <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
             {toast.actionLabel && toast.onAction ? (
@@ -105,7 +110,7 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
                 <Text style={styles.actionText}>{toast.actionLabel}</Text>
               </Pressable>
             ) : null}
-          </View>
+          </Animated.View>
         </View>
       ) : null}
     </ToastContext.Provider>
@@ -143,24 +148,8 @@ function iconColorForToast(tone?: ToastTone): string {
   if (tone === 'success') return colors.semantic.success;
   if (tone === 'warning') return colors.semantic.warning;
   if (tone === 'error') return colors.semantic.danger;
-  if (tone === 'info') return colors.primary.active;
-  return colors.text.secondary;
-}
-
-function toneStyleForToast(tone?: ToastTone) {
-  if (tone === 'success') return styles.successToast;
-  if (tone === 'warning') return styles.warningToast;
-  if (tone === 'error') return styles.errorToast;
-  if (tone === 'info') return styles.infoToast;
-  return null;
-}
-
-function iconStyleForToast(tone?: ToastTone) {
-  if (tone === 'success') return styles.successIcon;
-  if (tone === 'warning') return styles.warningIcon;
-  if (tone === 'error') return styles.errorIcon;
-  if (tone === 'info') return styles.infoIcon;
-  return styles.neutralIcon;
+  if (tone === 'info') return colors.primary.light;
+  return '#ffffff';
 }
 
 export function useToast() {
@@ -178,70 +167,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
     position: 'absolute',
     right: 0,
-    zIndex: 50,
+    zIndex: 999,
   },
   toast: {
     ...shadows.floating,
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.lg,
+    backgroundColor: 'rgba(28,28,30,0.92)',
+    borderRadius: radius.pill,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     maxWidth: 420,
     minHeight: metrics.bottomActionHeight,
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-    width: '100%',
+    paddingVertical: spacing[3],
+    width: 'auto',
+    borderWidth: 0,
   },
   undoToast: {
     minHeight: metrics.bottomActionHeight,
   },
-  successToast: {
-    backgroundColor: colors.semantic.successBackground,
-    borderColor: colors.semantic.success,
-  },
-  warningToast: {
-    backgroundColor: colors.semantic.warningBackground,
-    borderColor: colors.semantic.warning,
-  },
-  errorToast: {
-    backgroundColor: colors.semantic.dangerBackground,
-    borderColor: colors.semantic.danger,
-  },
-  infoToast: {
-    backgroundColor: colors.primary.background,
-    borderColor: colors.primary.light,
-  },
   iconWrap: {
     alignItems: 'center',
-    borderRadius: radius.pill,
-    height: metrics.chipHeight,
     justifyContent: 'center',
-    width: metrics.chipHeight,
-  },
-  successIcon: {
-    backgroundColor: colors.semantic.successBackground,
-  },
-  warningIcon: {
-    backgroundColor: colors.semantic.warningBackground,
-  },
-  errorIcon: {
-    backgroundColor: colors.semantic.dangerBackground,
-  },
-  infoIcon: {
-    backgroundColor: colors.primary.background,
-  },
-  neutralIcon: {
-    backgroundColor: colors.background.secondary,
   },
   message: {
     ...typography.textStyles.caption,
-    color: colors.text.title,
-    flex: 1,
-    minWidth: 0,
+    color: '#ffffff',
+    fontWeight: '500',
+    flexShrink: 1,
   },
   action: {
     borderRadius: radius.pill,
@@ -250,7 +204,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.textStyles.caption,
-    color: colors.primary.active,
+    color: colors.primary.light,
     fontWeight: '700',
   },
   pressed: {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/readers/readerTypes';
 import { getAiMarkdownReaderHtml } from './aiMarkdownReaderTemplate';
@@ -8,6 +8,7 @@ import { getAiMarkdownReaderHtml } from './aiMarkdownReaderTemplate';
 interface AiMarkdownReaderProps {
   readable: AiReadableDocument;
   locator?: AiDocumentReaderLocator;
+  onLinkPress?: (url: string) => void;
 }
 
 /**
@@ -33,13 +34,24 @@ function applyLocator(text: string, locator?: AiDocumentReaderLocator): string {
   return lines.join('\n');
 }
 
-export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
+export function AiMarkdownReader({ readable, locator, onLinkPress }: AiMarkdownReaderProps) {
   const rawText = readable.text || '暂无可阅读文本。';
 
   const htmlContent = useMemo(() => {
     const marked = applyLocator(rawText, locator);
     return getAiMarkdownReaderHtml(marked);
   }, [rawText, locator]);
+
+  const handleMessage = (event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'linkPress' && data.url) {
+        onLinkPress?.(data.url);
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  };
 
   return (
     <View style={styles.wrap}>
@@ -51,6 +63,7 @@ export function AiMarkdownReader({ readable, locator }: AiMarkdownReaderProps) {
         showsVerticalScrollIndicator={false}
         source={{ html: htmlContent }}
         style={styles.webview}
+        onMessage={handleMessage}
       />
     </View>
   );

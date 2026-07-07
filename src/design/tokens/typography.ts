@@ -26,11 +26,10 @@ const statFontFamily = Platform.select({
   default: 'System',
 });
 
-const monoFontFamily = Platform.select({
-  ios: 'Menlo',
-  android: 'monospace',
-  default: 'monospace',
-});
+const monoFontFamily = 'JetBrainsMono_400Regular';
+
+const serifFontFamily = 'PlayfairDisplay_400Regular';
+const serifItalicFontFamily = 'PlayfairDisplay_400Regular_Italic';
 
 type TextStyles = Record<
   | 'brandLogo'
@@ -60,6 +59,8 @@ export const typography = {
     brand: brandFontFamily,
     stat: statFontFamily,
     mono: monoFontFamily,
+    serif: serifFontFamily,
+    serifItalic: serifItalicFontFamily,
   },
   weight: {
     regular: '400',

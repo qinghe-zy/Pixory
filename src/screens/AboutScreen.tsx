@@ -1,80 +1,63 @@
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
-import { Linking, Pressable, StyleSheet, Text, View, Image } from 'react-native';
-import Animated, {
-  FadeIn,
-  FadeInUp,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withRepeat,
-  withTiming,
-  withSequence,
-  Easing,
-} from 'react-native-reanimated';
+import { LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { useEffect } from 'react';
-
+import { useEffect, useState } from 'react';
 import * as Updates from 'expo-updates';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { useToast } from '../components/AppToast';
 import { checkForAppUpdate } from '../services/updateCheckService';
+import { getAppMilestones, type AppMilestones } from '../services/milestoneService';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AboutScreenProps {
   onBack: () => void;
+  onPushRoute: (route: any) => void;
   space?: PixorySpace;
 }
 
-export function AboutScreen({ onBack, space = 'normal' }: AboutScreenProps) {
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
   const version = Constants.expoConfig?.version ?? '2.5.2';
+  const [milestones, setMilestones] = useState<AppMilestones | null>(null);
 
-  // Logo Interaction
-  const logoScale = useSharedValue(1);
-  const handleLogoPressIn = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    logoScale.value = 0.95;
-  };
-  const handleLogoPressOut = () => {
-    logoScale.value = 1;
-  };
-  const animatedLogoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(logoScale.value, { damping: 14, stiffness: 200 }) }],
-  }));
-
-  // Ethereal Breathing Animation for the Botanical Watermark
-  const floatY = useSharedValue(0);
-  const rotateZ = useSharedValue(0);
+  const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
+  const [detailMd, setDetailMd] = useState<string | null>(null);
 
   useEffect(() => {
-    floatY.value = withRepeat(
-      withSequence(
-        withTiming(-12, { duration: 4000, easing: Easing.inOut(Easing.sin) }),
-        withTiming(12, { duration: 4000, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-    rotateZ.value = withRepeat(
-      withSequence(
-        withTiming(2, { duration: 6000, easing: Easing.inOut(Easing.sin) }),
-        withTiming(-2, { duration: 6000, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-  }, []);
+    let isMounted = true;
+    void getAppMilestones().then((data) => {
+      if (isMounted) {
+        setMilestones(data);
+        // Expand the first node by default for a nice opening
+        setExpandedNodes({ storyBegins: true });
+      }
+    });
 
-  const animatedWatermarkStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: floatY.value },
-      { rotate: `${rotateZ.value}deg` },
-    ],
-  }));
+    // Background prefetch of the detailed markdown so the reader opens instantly
+    import('../services/milestoneService').then(({ generateMilestonesDetailMarkdown }) => {
+      generateMilestonesDetailMarkdown(space).then((md) => {
+        if (isMounted) {
+          setDetailMd(md);
+        }
+      }).catch(() => {});
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const openUrl = (url: string) => {
     Linking.openURL(url).catch(() => {});
@@ -87,10 +70,7 @@ export function AboutScreen({ onBack, space = 'normal' }: AboutScreenProps) {
       if (update.isAvailable) {
         showToast('发现新热更新，正在下载...');
         await Updates.fetchUpdateAsync();
-        showToast({
-          message: '热更新下载完毕，即将重启应用',
-          durationMs: 2000,
-        });
+        showToast({ message: '热更新下载完毕，即将重启应用', durationMs: 2000 });
         setTimeout(() => Updates.reloadAsync(), 2000);
       } else {
         showToast('当前已是最新代码');
@@ -115,143 +95,175 @@ export function AboutScreen({ onBack, space = 'normal' }: AboutScreenProps) {
     }
   };
 
-  const Crosshair = ({ position }: { position: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' }) => (
-    <View style={[styles.crosshair, styles[position]]}>
-      <View style={styles.crosshairH} />
-      <View style={styles.crosshairV} />
-    </View>
-  );
+  const toggleNode = (nodeKey: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedNodes(prev => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
+  };
+
+  const formatDate = (timestamp: number) => {
+    const d = new Date(timestamp);
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  };
+
+  const renderStatsGrid = () => {
+    if (!milestones) return null;
+    const stats = [
+      { label: '光影瞬间', value: milestones.totalImages },
+      { label: '思维交汇', value: milestones.totalAiMessages },
+      { label: '专属世界', value: milestones.totalIps },
+      { label: '记忆结晶', value: milestones.totalMemories },
+      { label: '特别珍藏', value: milestones.totalFavoriteImages },
+      { label: '存储占用', value: formatBytes(milestones.totalStorageBytes) },
+    ];
+
+    return (
+      <View style={styles.gridContainer}>
+        {stats.map((stat, idx) => (
+          <View key={idx} style={styles.gridItem}>
+            <Text style={styles.gridValue}>{stat.value}</Text>
+            <Text style={styles.gridLabel}>{stat.label}</Text>
+          </View>
+        ))}
+        <Pressable
+          onPress={() => onPushRoute({ name: 'milestones-detail', space, preloadedMarkdown: detailMd })}
+          style={styles.detailLinkBtn}
+          hitSlop={12}
+        >
+          <Text style={styles.detailLinkText}>查看详细信息 ↗</Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <ScreenScaffold
       backgroundVariant="profile"
-      decorativeTitle={space === 'personal' ? 'About Private' : 'About'}
+      decorativeTitle={space === 'personal' ? 'Journal' : 'Journal'}
       onBack={onBack}
       scrollable
-      title="关于"
+      title=""
     >
       <View style={styles.container}>
-        {/* The Ethereal Botanical Specimen */}
-        <Animated.View
-          entering={FadeIn.duration(2000).delay(200)}
-          pointerEvents="none"
-          style={[styles.watermarkContainer, animatedWatermarkStyle]}
-        >
-          <Image
-            source={require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png')}
-            style={styles.botanicalImage}
-          />
-        </Animated.View>
 
-        <View style={styles.content}>
-          {/* Gallery Placard (Glass Panel) */}
-          <Animated.View
-            entering={FadeInUp.delay(100).duration(800).springify()}
-            style={styles.placard}
-          >
-            <Crosshair position="topLeft" />
-            <Crosshair position="topRight" />
-            <Crosshair position="bottomLeft" />
-            <Crosshair position="bottomRight" />
-
-            <View style={styles.placardInner}>
-              <Text style={styles.eyebrowText}>
-                STORIES THAT STAY. COMPANIONS THAT GROW.
-              </Text>
-
-              <Pressable
-                onPressIn={handleLogoPressIn}
-                onPressOut={handleLogoPressOut}
-                style={styles.brandPressable}
-              >
-                <Animated.View style={animatedLogoStyle}>
-                  <Text style={styles.brandName}>Pixory</Text>
-                </Animated.View>
-                <View style={styles.versionBadge}>
-                  <Text style={styles.versionText}>v{version}</Text>
-                </View>
-              </Pressable>
-
-              <View style={styles.editorialContainer}>
-                <View style={styles.quoteBorder} />
-                <View style={styles.editorialContent}>
-                  <Text style={styles.chineseSlogan}>
-                    故事不会走散，{'\n'}陪伴与日生长。
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </Animated.View>
-
-          {/* Spacer to push links down */}
-          <View style={styles.spacer} />
-
-          {/* Interactive Links Container */}
-          <Animated.View
-            entering={FadeInUp.delay(350).duration(800).springify()}
-            style={styles.linksContainer}
-          >
-            <Pressable
-              onPress={() => openUrl('https://mist01.com')}
-              style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            >
-              <View style={styles.linkIconWrapper}>
-                <Feather color={colors.primary.dark} name="globe" size={18} />
-              </View>
-              <Text style={styles.linkText}>访问官方网站</Text>
-              <Feather color={colors.text.placeholder} name="arrow-up-right" size={16} style={styles.linkIconTrailing} />
-            </Pressable>
-
-            <View style={styles.linkSeparator} />
-
-            <Pressable
-              onPress={() => openUrl('https://github.com/qinghe-zy/Pixory')}
-              style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            >
-              <View style={styles.linkIconWrapper}>
-                <Feather color={colors.primary.dark} name="github" size={18} />
-              </View>
-              <Text style={styles.linkText}>GitHub 源码仓库</Text>
-              <Feather color={colors.text.placeholder} name="arrow-up-right" size={16} style={styles.linkIconTrailing} />
-            </Pressable>
-
-            <View style={styles.linkSeparator} />
-
-            <Pressable
-              onPress={handleCheckOta}
-              style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            >
-              <View style={styles.linkIconWrapper}>
-                <Feather color={colors.primary.dark} name="refresh-cw" size={18} />
-              </View>
-              <Text style={styles.linkText}>检查热更新</Text>
-              <Feather color={colors.text.placeholder} name="arrow-right" size={16} style={styles.linkIconTrailing} />
-            </Pressable>
-
-            <View style={styles.linkSeparator} />
-
-            <Pressable
-              onPress={handleCheckVersion}
-              style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            >
-              <View style={styles.linkIconWrapper}>
-                <Feather color={colors.primary.dark} name="download-cloud" size={18} />
-              </View>
-              <Text style={styles.linkText}>检查版本更新</Text>
-              <Feather color={colors.text.placeholder} name="arrow-right" size={16} style={styles.linkIconTrailing} />
-            </Pressable>
+        {/* HERO AREA */}
+        <View style={styles.heroArea}>
+          <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
+            已陪伴你
+          </Animated.Text>
+          <Animated.View entering={FadeInUp.delay(150).duration(1000).springify()} style={styles.heroNumberContainer}>
+            <Text style={styles.heroNumber}>
+              {milestones ? milestones.daysTogether : '...'}
+            </Text>
+            <Text style={styles.heroUnit}>天</Text>
           </Animated.View>
         </View>
 
-        {/* Footer */}
-        <Animated.View
-          entering={FadeInDown.delay(500).duration(800).springify()}
-          style={styles.footer}
-        >
-          <Text style={styles.copyrightText}>
-            © {new Date().getFullYear()} Pixory. All Rights Reserved.
-          </Text>
+        {/* TIMELINE AREA */}
+        <View style={styles.timelineArea}>
+          <View style={styles.timelineHairline} />
+
+          {milestones ? (
+            <Animated.View entering={FadeInUp.delay(300).duration(800).springify()}>
+
+              {/* NODE 1: 故事开始 */}
+              <View style={styles.timelineNode}>
+                <Pressable onPress={() => toggleNode('storyBegins')} style={styles.nodeHeader} hitSlop={12}>
+                  <View style={[styles.pearl, expandedNodes.storyBegins && styles.pearlActive]} />
+                  <Text style={styles.nodeTitle}>故事开始</Text>
+                </Pressable>
+                {expandedNodes.storyBegins && (
+                  <View style={styles.nodeContent}>
+                    <Text style={styles.poetryText}>
+                      {formatDate(milestones.firstUseDate)}，你初次翻开这里。{'\n'}
+                      彼时的空白，如今已被时光填满。
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* NODE 2: 最初的印记 */}
+              <View style={styles.timelineNode}>
+                <Pressable onPress={() => toggleNode('firstFootprints')} style={styles.nodeHeader} hitSlop={12}>
+                  <View style={[styles.pearl, expandedNodes.firstFootprints && styles.pearlActive]} />
+                  <Text style={styles.nodeTitle}>最初的印记</Text>
+                </Pressable>
+                {expandedNodes.firstFootprints && (
+                  <View style={styles.nodeContent}>
+                    {(!milestones.firstImageDate && !milestones.firstThreadDate) ? (
+                      <Text style={styles.poetryText}>时光静候，等待你落笔的第一份记忆...</Text>
+                    ) : (
+                      <View style={styles.footprintsContainer}>
+                        {milestones.firstImageDate && (
+                          <Pressable
+                            style={styles.footprintRow}
+                            onPress={() => onPushRoute({ name: 'image-detail', imageId: milestones.firstImageId, space })}
+                          >
+                            <Text style={styles.footprintIcon}>🖼️</Text>
+                            <Text style={styles.footprintText}>第一份光影：{formatDate(milestones.firstImageDate)}</Text>
+                            <Feather name="arrow-right" size={14} color={colors.text.tertiary} style={styles.footprintArrow} />
+                          </Pressable>
+                        )}
+                        {milestones.firstThreadDate && (
+                          <Pressable
+                            style={styles.footprintRow}
+                            onPress={() => onPushRoute({ name: 'ai-chat', threadId: milestones.firstThreadId, space })}
+                          >
+                            <Text style={styles.footprintIcon}>💬</Text>
+                            <Text style={styles.footprintText}>第一次对话：{formatDate(milestones.firstThreadDate)}</Text>
+                            <Feather name="arrow-right" size={14} color={colors.text.tertiary} style={styles.footprintArrow} />
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* NODE 3: 至今 */}
+              <View style={styles.timelineNode}>
+                <Pressable onPress={() => toggleNode('now')} style={styles.nodeHeader} hitSlop={12}>
+                  <View style={[styles.pearl, expandedNodes.now && styles.pearlActive]} />
+                  <Text style={styles.nodeTitle}>至今</Text>
+                </Pressable>
+                {expandedNodes.now && (
+                  <View style={styles.nodeContent}>
+                    {renderStatsGrid()}
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+          ) : (
+            <View style={{ height: 200 }} />
+          )}
+        </View>
+
+        <View style={styles.spacer} />
+
+        {/* ACTION AREA */}
+        <Animated.View entering={FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
+          <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+            <Text style={styles.linkText}>访问官方网站</Text>
+            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+          </Pressable>
+          <View style={styles.linkSeparator} />
+          <Pressable onPress={handleCheckOta} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+            <Text style={styles.linkText}>检查热更新</Text>
+            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+          </Pressable>
+          <View style={styles.linkSeparator} />
+          <Pressable onPress={handleCheckVersion} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+            <Text style={styles.linkText}>检查版本更新</Text>
+            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+          </Pressable>
         </Animated.View>
+
+        {/* COLOPHON */}
+        <Animated.View entering={FadeInDown.delay(900).duration(800).springify()} style={styles.colophon}>
+          <Text style={styles.brandLogoText}>Pixory</Text>
+          <Text style={styles.colophonVersion}>v{version}</Text>
+          <Text style={styles.colophonCopyright}>© {new Date().getFullYear()} Pixory.</Text>
+        </Animated.View>
+
       </View>
     </ScreenScaffold>
   );
@@ -261,194 +273,205 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacing[6],
-    paddingTop: spacing[8],
+    paddingTop: spacing[4],
     paddingBottom: spacing[12],
-    position: 'relative',
-    overflow: 'hidden',
-    minHeight: 700, // Ensure it stretches nicely on short screens
+    minHeight: 700,
   },
-  watermarkContainer: {
-    position: 'absolute',
-    top: -80,
-    right: -120,
-    zIndex: -1,
-  },
-  botanicalImage: {
-    width: 600,
-    height: 600,
-    resizeMode: 'contain',
-    tintColor: colors.primary.default,
-    opacity: 0.05,
-    transform: [{ rotate: '-15deg' }],
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center', // Center the placard itself
-  },
-  /* --- Gallery Placard Styles --- */
-  placard: {
-    width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 2, // Sharp editorial edge
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.95)',
-    padding: spacing[8],
-    position: 'relative',
-    shadowColor: colors.primary.dark,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.03,
-    shadowRadius: 32,
-    elevation: 0,
-  },
-  placardInner: {
-    alignItems: 'flex-start',
-  },
-  crosshair: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
+
+  /* --- Hero Area --- */
+  heroArea: {
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crosshairH: {
-    position: 'absolute',
-    width: 12,
-    height: 1,
-    backgroundColor: colors.text.placeholder,
-    opacity: 0.4,
-  },
-  crosshairV: {
-    position: 'absolute',
-    width: 1,
-    height: 12,
-    backgroundColor: colors.text.placeholder,
-    opacity: 0.4,
-  },
-  topLeft: { top: 8, left: 8 },
-  topRight: { top: 8, right: 8 },
-  bottomLeft: { bottom: 8, left: 8 },
-  bottomRight: { bottom: 8, right: 8 },
-  /* ------------------------------- */
-  eyebrowText: {
-    ...typography.textStyles.micro,
-    fontFamily: undefined,
-    fontWeight: '700',
-    color: colors.text.tertiary,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    marginTop: spacing[4],
     marginBottom: spacing[12],
-    opacity: 0.7,
   },
-  brandPressable: {
+  heroLabel: {
+    ...typography.textStyles.caption,
+    letterSpacing: 2,
+    color: colors.text.secondary,
+    marginBottom: spacing[2],
+  },
+  heroNumberContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: spacing[12],
-    gap: spacing[4],
   },
-  brandName: {
-    ...typography.textStyles.brandLogo,
-    fontSize: 56,
+  heroNumber: {
+    fontFamily: typography.family.serif,
+    fontSize: 96,
+    lineHeight: 110,
     color: colors.text.title,
-    letterSpacing: -1,
+    includeFontPadding: false,
   },
-  versionBadge: {
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    paddingHorizontal: spacing[2],
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 0.5,
-    borderColor: 'rgba(0,0,0,0.04)',
-  },
-  versionText: {
-    ...typography.textStyles.micro,
-    fontFamily: undefined,
-    color: colors.text.secondary,
-    letterSpacing: 0.5,
-  },
-  editorialContainer: {
-    flexDirection: 'row',
-    marginTop: spacing[4],
+  heroUnit: {
+    ...typography.textStyles.body,
+    color: colors.text.tertiary,
+    marginLeft: spacing[2],
     marginBottom: spacing[4],
   },
-  quoteBorder: {
-    width: 2,
-    backgroundColor: colors.primary.light,
-    borderRadius: 2,
-    marginRight: spacing[5],
-    opacity: 0.7,
+
+  /* --- Pearl Timeline Area --- */
+  timelineArea: {
+    paddingHorizontal: spacing[4],
+    position: 'relative',
+    marginBottom: spacing[6],
   },
-  editorialContent: {
-    flex: 1,
-    justifyContent: 'center',
+  timelineHairline: {
+    position: 'absolute',
+    left: spacing[4] + 3, // 4 to center the 8px pearl
+    top: 16,
+    bottom: 24,
+    width: 1,
+    backgroundColor: colors.border.default,
   },
-  chineseSlogan: {
-    ...typography.textStyles.cardTitle,
-    fontSize: 20,
-    lineHeight: 34,
+  timelineNode: {
+    marginBottom: spacing[8],
+  },
+  nodeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing[2],
+  },
+  pearl: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.text.placeholder,
+    marginRight: spacing[4],
+  },
+  pearlActive: {
+    backgroundColor: colors.text.title,
+    transform: [{ scale: 1.2 }],
+  },
+  nodeTitle: {
+    fontFamily: typography.family.serif,
+    fontSize: 22,
+    color: colors.text.title,
+    letterSpacing: 1,
+  },
+  nodeContent: {
+    marginLeft: spacing[4] + 7,
+    paddingTop: spacing[3],
+    paddingBottom: spacing[2],
+    overflow: 'hidden',
+  },
+  poetryText: {
+    ...typography.textStyles.body,
+    color: colors.text.secondary,
+    lineHeight: 24,
+    fontFamily: typography.family.mono,
+  },
+
+  /* Footprints */
+  footprintsContainer: {
+    gap: spacing[4],
+  },
+  footprintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  footprintIcon: {
+    fontSize: 16,
+    marginRight: spacing[3],
+  },
+  footprintText: {
+    ...typography.textStyles.body,
     color: colors.text.primary,
-    textAlign: 'left',
-    letterSpacing: 2.5,
+    fontFamily: typography.family.mono,
   },
+  footprintArrow: {
+    marginLeft: spacing[2],
+  },
+
+  /* 6-Grid Stats */
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing[2],
+  },
+  gridItem: {
+    width: '50%',
+    marginBottom: spacing[6],
+  },
+  gridValue: {
+    fontFamily: typography.family.mono, // Precision feel
+    fontSize: 20,
+    color: colors.text.title,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  gridLabel: {
+    ...typography.textStyles.caption,
+    color: colors.text.tertiary,
+    fontFamily: typography.family.base,
+  },
+  detailLinkBtn: {
+    width: '100%',
+    alignItems: 'flex-end',
+    marginTop: spacing[2],
+  },
+  detailLinkText: {
+    ...typography.textStyles.caption,
+    color: colors.text.placeholder,
+    letterSpacing: 0.5,
+  },
+
   spacer: {
     flex: 1,
     minHeight: spacing[8],
   },
-  /* --- Links Container --- */
+
+  /* --- Action Area --- */
   linksContainer: {
-    width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
-    borderRadius: radius.xxl,
-    paddingVertical: spacing[2],
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: radius.xl,
+    paddingVertical: spacing[1],
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
-    shadowColor: colors.primary.dark,
-    shadowOffset: { width: 0, height: 8 },
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.02,
-    shadowRadius: 24,
+    shadowRadius: 12,
+    elevation: 0,
+    marginBottom: spacing[10],
   },
   linkButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: spacing[4],
     paddingHorizontal: spacing[5],
   },
   linkButtonPressed: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
-  },
-  linkIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#FFF',
-    marginRight: spacing[4],
+    backgroundColor: 'rgba(0,0,0,0.02)',
   },
   linkText: {
     ...typography.textStyles.bodyStrong,
-    color: colors.text.primary,
-    flex: 1,
+    color: colors.text.title,
     letterSpacing: 0.5,
-  },
-  linkIconTrailing: {
-    opacity: 0.4,
   },
   linkSeparator: {
     height: 1,
-    backgroundColor: 'rgba(0,0,0,0.03)',
+    backgroundColor: 'rgba(0,0,0,0.04)',
     marginHorizontal: spacing[5],
   },
-  /* --- Footer --- */
-  footer: {
-    width: '100%',
+
+  /* --- Colophon --- */
+  colophon: {
     alignItems: 'center',
-    paddingTop: spacing[12],
   },
-  copyrightText: {
+  brandLogoText: {
+    fontFamily: typography.family.serif,
+    fontSize: 24,
+    color: colors.text.primary,
+    marginBottom: spacing[1],
+  },
+  colophonVersion: {
+    fontFamily: typography.family.mono,
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginBottom: spacing[1],
+  },
+  colophonCopyright: {
     ...typography.textStyles.micro,
-    fontFamily: undefined,
     color: colors.text.placeholder,
     letterSpacing: 0.5,
   },

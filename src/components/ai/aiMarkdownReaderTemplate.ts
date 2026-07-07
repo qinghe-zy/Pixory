@@ -612,6 +612,21 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
       }
       window.addEventListener('scroll', scrollSpy);
       scrollSpy();
+      // ── Intercept links ──
+      contentDiv.addEventListener('click', function(e) {
+        var a = e.target.closest('a');
+        if (a && a.href) {
+          // Ignore anchor links
+          if (a.getAttribute('href').startsWith('#')) return;
+          e.preventDefault();
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'linkPress', url: a.href }));
+          } else {
+            window.location.href = a.href;
+          }
+        }
+      });
+
     });
   <\/script>
 </body>

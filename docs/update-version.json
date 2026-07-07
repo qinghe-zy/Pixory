@@ -1,14 +1,14 @@
-{
+﻿{
+  "version": "2.5.5",
   "enabled": true,
-  "version": "2.5.4",
-  "versionCode": 254,
-  "title": "发现 Pixory 新版本",
-  "message": "Pixory 2.5.4 发布。修复 2.5.3 中的依赖版本冲突导致 Android 部分机型闪退 (TypeDescriptor) 的紧急问题。",
-  "releaseNotes": [
-    "紧急修复 Android 安装包因 expo-linear-gradient 版本导致白屏/闪退的兼容性问题",
-    "更新底层 expo 依赖以提升稳定性"
+  "forceUpdate": false,
+  "message": "Pixory 2.5.5 发布。本次重构了全新的数字生命账单与陪伴手帐（About 页面），引入丝滑的时间线展开动画，支持极速预取、深链无缝跳转与多维数据统计；同时带来了去边框设计的全局极简 Toast 悬浮通知，并修复了若干体验细节。",
+  "detailLines": [
+    "✨ 全新陪伴手帐：更直观优雅的六宫格数字生命账单，支持零延迟的详单渲染",
+    "✨ 极致体验交互：珍珠手风琴展开动画与深层原生栈（Deep Link）跳转拦截，阅读后返回不迷路",
+    "✨ 沉浸式全局通知：移除 Toast 边框，改为悬浮胶囊形态并置于屏幕顶端",
+    "⚡ 性能优化：底层 SQLite C++ 聚合重构，大幅降低长记录的查询耗电"
   ],
-  "downloadUrl": "https://mist01.com/#download",
-  "latestVersion": "2.5.4",
-  "latestVersionCode": 254
+  "latestVersion": "2.5.5",
+  "downloadUrl": "https://mist01.com/#download"
 }

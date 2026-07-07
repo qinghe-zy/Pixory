@@ -1,6 +1,6 @@
 {
   "name": "pixory",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -13,6 +13,8 @@
     "acceptance:android": "expo start --android -c"
   },
   "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
     "@lobehub/icons-rn": "^2.8.1",
     "@noble/hashes": "^2.2.0",
     "expo": "~54.0.35",

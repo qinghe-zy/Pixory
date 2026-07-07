@@ -1,5 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
+import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
+import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -107,6 +109,7 @@ import {
 } from './src/native/pixoryMediaModule';
 import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
 import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
+import { MilestonesDetailScreen } from './src/screens/MilestonesDetailScreen';
 import type { AiDocumentReaderLocator } from './src/ai/readers/readerTypes';
 
 type AppRoute =
@@ -157,7 +160,9 @@ type AppRoute =
   | { name: 'trash'; space: PixorySpace; storageMode?: boolean }
   | { name: 'backup'; space: PixorySpace }
   | { name: 'storage-usage'; space: PixorySpace }
+  | { name: 'milestones-detail'; space?: PixorySpace; preloadedMarkdown?: string | null }
   | { name: 'original-storage'; space: PixorySpace }
+  | { name: 'about'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
   | { name: 'backup-export-manager'; space: PixorySpace }
   | {
@@ -433,6 +438,11 @@ function getUpdateVersionKey(update: AppUpdateInfo): string {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_400Regular_Italic,
+    JetBrainsMono_400Regular,
+  });
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
   const [routeStack, setRouteStack] = useState<AppRoute[]>([INITIAL_ROUTE]);
@@ -1093,7 +1103,7 @@ export default function App() {
     });
   }
 
-  if (!isReady) {
+  if (!isReady || !fontsLoaded) {
     return (
       <SafeAreaProvider>
         <AppScreen contentStyle={styles.stateScreen}>
@@ -1611,7 +1621,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'about') {
-    content = <AboutScreen onBack={popRoute} space={currentRoute.space} />;
+    content = <AboutScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'original-storage') {
     content = (
       <OriginalStorageScreen
@@ -1776,6 +1786,8 @@ export default function App() {
     );
   } else if (currentRoute.name === 'ai-memory-board') {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
+  } else if (currentRoute.name === 'milestones-detail') {
+    content = <MilestonesDetailScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-library') {

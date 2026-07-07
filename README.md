@@ -6,13 +6,13 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 本地素材库仍然是 Pixory 的地基。图片、视频、IP 设定、文档、记忆和角色资产都优先落在本地 SQLite 与应用私有文件目录中，方便备份、迁移、回溯和继续喂给 AI 使用。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.4.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.4`
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.5.5.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.5.5`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.5.4
+### Pixory 2.5.5
 
 这一版针对聊天体验与安全性进行了打磨，主要是为 Markdown 与多模态引入了更现代、稳健的基础渲染链路：
 
@@ -37,7 +37,7 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 下载地址：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.4.apk](https://mist01.com/downloads/Pixory-v2.5.4.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.5.apk](https://mist01.com/downloads/Pixory-v2.5.5.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 ## 产品定位
@@ -209,7 +209,7 @@ AppData/
 
 最新版 Android APK：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.4.apk](https://mist01.com/downloads/Pixory-v2.5.4.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.5.apk](https://mist01.com/downloads/Pixory-v2.5.5.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 安装流程：
@@ -307,7 +307,7 @@ pnpm run doctor
 
 Android APK 的默认下载从 `mist01.com` 服务器直下最新版，服务器只保留当前最新 APK；GitHub Releases 保留备用下载和历史版本：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.4.apk](https://mist01.com/downloads/Pixory-v2.5.4.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.5.5.apk](https://mist01.com/downloads/Pixory-v2.5.5.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
 
 应用内更新读取：
@@ -322,7 +322,7 @@ docs/update-version.json
 docs/announcement.json
 ```
 
-维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.5.4.apk -Version 2.5.4` 上传最新版 APK，并清理服务器旧 APK。
+维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.5.5.apk -Version 2.5.5` 上传最新版 APK，并清理服务器旧 APK。
 
 ## 产品原则
 

@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-05（含 2.5.2 OTA 与新版 Markdown 渲染更新）
-适用版本：Pixory 2.5.2
+最后更新：2026-07-07（2.5.5 陪伴手帐与全局交互大重构）
+适用版本：Pixory 2.5.5
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -24,6 +24,7 @@
 | 功能域 | 当前状态 | 主要用户价值 | 关键入口 |
 | --- | --- | --- | --- |
 | AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复 | `AiHomeScreen`, `AiChatScreen`, `src/ai/` |
+| 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |
 | IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面 | `HomeLibraryScreen`, `IpDetailScreen` |
 | 图片/视频导入 | 已实现 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次 | `ImportImagesScreen`, `imageImportService`, `videoImportService` |
 | 图片浏览与整理 | 已实现 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理 | `AllImagesScreen`, `ImageViewerScreen`, `QuickOrganizeScreen` |
@@ -219,3 +220,15 @@
 - 新模块：新增功能域小节，并补充主要入口、文件和测试。
 - 功能下线：标记为“移除”或删除条目，并说明替代路径。
 - 发布前：检查本文档是否与 release notes、README、测试文件和源码入口一致。
+
+## 14. 留给未来的数据拓展接口
+
+2.5.5 版本重构了 \milestoneService.ts\ 与 Markdown 生成引擎，已经预留了极强的横向扩展性：
+
+1. **更多数据聚合接口**
+   目前底层已经通过 \
+unWithDatabaseSpace\ 支持了跨空间的 SQLite 聚合。未来如果要增加“最长连续聊天天数”、“总使用时长”等维度的统计，只需在 \getAppMilestones\ 中新增一条轻量级查询。
+2. **多模态图表/年度报告接口**
+   在 \generateMilestonesDetailMarkdown\ 方法中，我们可以注入基于 Mermaid 或者 Chart.js 的图表语法。现有的 \AiMarkdownReader\ 已具备拦截拓展标签的能力，未来可以通过极小改动在阅读器中直接渲染“活跃度热力图”、“情感倾向饼图”。
+3. **沉浸式深链分发机制 (Deep Link Interception)**
+   目前的 WebView \onLinkPress\ 已支持了 \pixory://ip/...\ 和 \pixory://thread/...\。未来若要打通从手帐直接跳入“某个回忆节点 (Memory)”、“某张指定的图片 (Image)”，只需在 URL Schema 里新增对应的前缀，在 \MilestonesDetailScreen\ 中增加一行业务路由推送即可。
