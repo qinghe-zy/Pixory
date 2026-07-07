@@ -438,7 +438,7 @@ function getUpdateVersionKey(update: AppUpdateInfo): string {
 }
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     PlayfairDisplay_400Regular,
     PlayfairDisplay_400Regular_Italic,
     JetBrainsMono_400Regular,
@@ -1103,7 +1103,7 @@ export default function App() {
     });
   }
 
-  if (!isReady || !fontsLoaded) {
+  if (!isReady || (!fontsLoaded && !fontError)) {
     return (
       <SafeAreaProvider>
         <AppScreen contentStyle={styles.stateScreen}>
