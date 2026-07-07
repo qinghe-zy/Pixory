@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import * as Haptics from 'expo-haptics';
-import { LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
@@ -43,7 +43,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         // Expand the first node by default for a nice opening
         setExpandedNodes({ storyBegins: true });
       }
-    });
+    }).catch(console.warn);
 
     // Background prefetch of the detailed markdown so the reader opens instantly
     import('../services/milestoneService').then(({ generateMilestonesDetailMarkdown }) => {
@@ -63,35 +63,34 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
     Linking.openURL(url).catch(() => {});
   };
 
-  const handleCheckOta = async () => {
+  const handleCheckAllUpdates = async () => {
     try {
-      showToast('正在检查热更新...');
-      const update = await Updates.checkForUpdateAsync();
-      if (update.isAvailable) {
+      showToast('正在检查更新...');
+      const [versionInfo, otaUpdate] = await Promise.all([
+        checkForAppUpdate().catch(() => null),
+        Updates.checkForUpdateAsync().catch(() => null)
+      ]);
+
+      if (versionInfo) {
+        Alert.alert('发现新版本', `新版本 v${versionInfo.version} 已发布，是否前往下载？`, [
+          { text: '稍后', style: 'cancel' },
+          { text: '前往', onPress: () => openUrl(versionInfo.downloadUrl) }
+        ]);
+        return;
+      }
+
+      if (otaUpdate?.isAvailable) {
         showToast('发现新热更新，正在下载...');
         await Updates.fetchUpdateAsync();
-        showToast({ message: '热更新下载完毕，即将重启应用', durationMs: 2000 });
-        setTimeout(() => Updates.reloadAsync(), 2000);
-      } else {
-        showToast('当前已是最新代码');
-      }
-    } catch (error) {
-      showToast('热更新检查失败或未配置');
-    }
-  };
-
-  const handleCheckVersion = async () => {
-    try {
-      showToast('正在检查版本更新...');
-      const info = await checkForAppUpdate();
-      if (info) {
-        showToast(`发现新版本 v${info.version}，正在前往下载`);
-        setTimeout(() => openUrl(info.downloadUrl), 1000);
+        Alert.alert('热更新完成', '是否立即重启应用以应用更新？', [
+          { text: '稍后', style: 'cancel' },
+          { text: '重启', onPress: () => Updates.reloadAsync() }
+        ]);
       } else {
         showToast('当前已是最新版本');
       }
     } catch (error) {
-      showToast('版本更新检查失败');
+      showToast('更新检查失败');
     }
   };
 
@@ -142,10 +141,7 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       onBack={onBack}
       scrollable
       title=""
-    >
-      <View style={styles.container}>
-
-        {/* HERO AREA */}
+      titleSlot={
         <View style={styles.heroArea}>
           <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
             已陪伴你
@@ -157,6 +153,9 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <Text style={styles.heroUnit}>天</Text>
           </Animated.View>
         </View>
+      }
+    >
+      <View style={styles.container}>
 
         {/* TIMELINE AREA */}
         <View style={styles.timelineArea}>
@@ -246,13 +245,8 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
           </Pressable>
           <View style={styles.linkSeparator} />
-          <Pressable onPress={handleCheckOta} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
-            <Text style={styles.linkText}>检查热更新</Text>
-            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
-          </Pressable>
-          <View style={styles.linkSeparator} />
-          <Pressable onPress={handleCheckVersion} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
-            <Text style={styles.linkText}>检查版本更新</Text>
+          <Pressable onPress={handleCheckAllUpdates} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+            <Text style={styles.linkText}>检查更新</Text>
             <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
           </Pressable>
         </Animated.View>
@@ -273,22 +267,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacing[6],
-    paddingTop: spacing[4],
+    paddingTop: spacing[2],
     paddingBottom: spacing[12],
     minHeight: 700,
   },
 
   /* --- Hero Area --- */
   heroArea: {
-    alignItems: 'center',
-    marginTop: spacing[4],
-    marginBottom: spacing[12],
+    alignItems: 'flex-start',
+    marginTop: spacing[2],
+    marginBottom: spacing[4],
   },
   heroLabel: {
     ...typography.textStyles.caption,
     letterSpacing: 2,
     color: colors.text.secondary,
-    marginBottom: spacing[2],
+    marginBottom: 0,
   },
   heroNumberContainer: {
     flexDirection: 'row',
@@ -296,16 +290,16 @@ const styles = StyleSheet.create({
   },
   heroNumber: {
     fontFamily: typography.family.serif,
-    fontSize: 96,
-    lineHeight: 110,
+    fontSize: 52,
+    lineHeight: 60,
     color: colors.text.title,
     includeFontPadding: false,
   },
   heroUnit: {
     ...typography.textStyles.body,
     color: colors.text.tertiary,
-    marginLeft: spacing[2],
-    marginBottom: spacing[4],
+    marginLeft: spacing[1],
+    marginBottom: spacing[1],
   },
 
   /* --- Pearl Timeline Area --- */

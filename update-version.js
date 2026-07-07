@@ -8,7 +8,8 @@ const files = [
   'docs/download.html',
   'docs/updates.html',
   'docs/sitemap.xml',
-  'android/app/build.gradle'
+  'android/app/build.gradle',
+  'android/app/src/main/res/values/strings.xml'
 ];
 const oldVer = '2.5.5';
 const newVer = '2.5.6';

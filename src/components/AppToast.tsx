@@ -148,8 +148,8 @@ function iconColorForToast(tone?: ToastTone): string {
   if (tone === 'success') return colors.semantic.success;
   if (tone === 'warning') return colors.semantic.warning;
   if (tone === 'error') return colors.semantic.danger;
-  if (tone === 'info') return colors.primary.light;
-  return '#ffffff';
+  if (tone === 'info') return colors.primary.default;
+  return colors.text.secondary;
 }
 
 export function useToast() {
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     ...shadows.floating,
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: 'rgba(28,28,30,0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: radius.pill,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
@@ -182,7 +182,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
     width: 'auto',
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   undoToast: {
     minHeight: metrics.bottomActionHeight,
@@ -193,7 +194,7 @@ const styles = StyleSheet.create({
   },
   message: {
     ...typography.textStyles.caption,
-    color: '#ffffff',
+    color: '#000000',
     fontWeight: '500',
     flexShrink: 1,
   },
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.textStyles.caption,
-    color: colors.primary.light,
+    color: '#000000',
     fontWeight: '700',
   },
   pressed: {

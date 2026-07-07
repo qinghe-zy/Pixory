@@ -54,7 +54,7 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     `);
 
     const firstThreadResult = await db.getFirstAsync<{ id: string; createdAt: number }>(`
-      SELECT id, createdAt FROM ai_threads WHERE deletedAt IS NULL ORDER BY createdAt ASC LIMIT 1
+      SELECT id, createdAt FROM ai_threads WHERE archivedAt IS NULL ORDER BY createdAt ASC LIMIT 1
     `);
 
     const totalImagesResult = await db.getFirstAsync<{ count: number; sumSize: number }>(`
@@ -62,7 +62,7 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     `);
 
     const totalThreadsResult = await db.getFirstAsync<{ count: number }>(`
-      SELECT COUNT(*) as count FROM ai_threads WHERE deletedAt IS NULL
+      SELECT COUNT(*) as count FROM ai_threads WHERE archivedAt IS NULL
     `);
 
     const totalAiMessagesResult = await db.getFirstAsync<{ count: number }>(`
@@ -159,7 +159,7 @@ export async function generateMilestonesDetailMarkdown(space: PixorySpace = 'nor
         COUNT(m.id) as messageCount
       FROM ai_threads t
       LEFT JOIN ai_messages m ON t.id = m.threadId
-      WHERE t.deletedAt IS NULL
+      WHERE t.archivedAt IS NULL
       GROUP BY t.id
       ORDER BY messageCount DESC
     `);
