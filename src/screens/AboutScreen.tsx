@@ -107,21 +107,25 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
   const renderStatsGrid = () => {
     if (!milestones) return null;
     const stats = [
-      { label: '光影瞬间', value: milestones.totalImages },
-      { label: '思维交汇', value: milestones.totalAiMessages },
-      { label: '专属世界', value: milestones.totalIps },
-      { label: '记忆结晶', value: milestones.totalMemories },
-      { label: '特别珍藏', value: milestones.totalFavoriteImages },
-      { label: '存储占用', value: formatBytes(milestones.totalStorageBytes) },
+      { label: '光影瞬间', value: milestones.totalImages, explanation: `累计保存了 ${milestones.totalImages} 份图片与视频素材` },
+      { label: '思维交汇', value: milestones.totalAiMessages, explanation: `累计产生了 ${milestones.totalAiMessages} 条对话消息` },
+      { label: '专属世界', value: milestones.totalIps, explanation: `共建立了 ${milestones.totalIps} 个 IP 设定` },
+      { label: '记忆结晶', value: milestones.totalMemories, explanation: `已沉淀 ${milestones.totalMemories} 个核心记忆切片` },
+      { label: '特别珍藏', value: milestones.totalFavoriteImages, explanation: `共收藏了 ${milestones.totalFavoriteImages} 份重要素材` },
+      { label: '存储占用', value: formatBytes(milestones.totalStorageBytes), explanation: `当前本地数据共占用 ${formatBytes(milestones.totalStorageBytes)} 存储空间` },
     ];
 
     return (
       <View style={styles.gridContainer}>
         {stats.map((stat, idx) => (
-          <View key={idx} style={styles.gridItem}>
+          <Pressable 
+            key={idx} 
+            style={styles.gridItem} 
+            onPress={() => showToast(stat.explanation)}
+          >
             <Text style={styles.gridValue}>{stat.value}</Text>
             <Text style={styles.gridLabel}>{stat.label}</Text>
-          </View>
+          </Pressable>
         ))}
         <Pressable
           onPress={() => onPushRoute({ name: 'milestones-detail', space, preloadedMarkdown: detailMd })}
@@ -205,7 +209,12 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
                         {milestones.firstThreadDate && (
                           <Pressable
                             style={styles.footprintRow}
-                            onPress={() => onPushRoute({ name: 'ai-chat', threadId: milestones.firstThreadId, space })}
+                            onPress={() => onPushRoute({ 
+                              name: 'ai-chat', 
+                              threadId: milestones.firstThreadId, 
+                              searchTargetMessageId: milestones.firstMessageId ?? undefined,
+                              space 
+                            })}
                           >
                             <Text style={styles.footprintIcon}>💬</Text>
                             <Text style={styles.footprintText}>第一次对话：{formatDate(milestones.firstThreadDate)}</Text>
@@ -409,8 +418,7 @@ const styles = StyleSheet.create({
   },
 
   spacer: {
-    flex: 1,
-    minHeight: spacing[8],
+    height: spacing[4],
   },
 
   /* --- Action Area --- */

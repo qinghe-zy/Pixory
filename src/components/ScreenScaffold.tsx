@@ -74,7 +74,7 @@ export function ScreenScaffold({
         titleVariant={titleVariant}
       />
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      <View pointerEvents={loading ? 'none' : 'auto'} style={loading ? styles.loadingContent : undefined}>
+      <View pointerEvents={loading ? 'none' : 'auto'} style={[loading && styles.loadingContent, { flex: 1 }]}>
         {children}
       </View>
     </AppScreen>

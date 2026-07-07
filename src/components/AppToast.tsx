@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,25 +92,29 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
           <Animated.View
             entering={FadeInUp.duration(300).springify()}
             exiting={FadeOutUp.duration(200)}
-            style={[styles.toast, toast.kind === 'undo' ? styles.undoToast : null]}
+            style={[styles.toastShadow, toast.kind === 'undo' ? styles.undoToast : null]}
           >
-            <View style={[styles.iconWrap]}>
-              <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={18} />
+            <View style={styles.toastMask}>
+              <BlurView intensity={50} tint="light" style={styles.toastBlur}>
+                <View style={[styles.iconWrap]}>
+                  <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={18} />
+                </View>
+                <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
+                {toast.actionLabel && toast.onAction ? (
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => {
+                      clearTimer();
+                      setToast(null);
+                      toast.onAction?.();
+                    }}
+                    style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.actionText}>{toast.actionLabel}</Text>
+                  </Pressable>
+                ) : null}
+              </BlurView>
             </View>
-            <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
-            {toast.actionLabel && toast.onAction ? (
-              <Pressable
-                hitSlop={8}
-                onPress={() => {
-                  clearTimer();
-                  setToast(null);
-                  toast.onAction?.();
-                }}
-                style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-              >
-                <Text style={styles.actionText}>{toast.actionLabel}</Text>
-              </Pressable>
-            ) : null}
           </Animated.View>
         </View>
       ) : null}
@@ -169,21 +174,27 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 999,
   },
-  toast: {
+  toastShadow: {
     ...shadows.floating,
-    alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: radius.pill,
+    maxWidth: 420,
+    width: 'auto',
+  },
+  toastMask: {
+    borderRadius: radius.pill,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  toastBlur: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.inlineGap,
-    maxWidth: 420,
     minHeight: metrics.bottomActionHeight,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
-    width: 'auto',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.45)', // Slight white tint for frosted look
   },
   undoToast: {
     minHeight: metrics.bottomActionHeight,

@@ -8,8 +8,9 @@ export interface AppMilestones {
   firstUseDate: number;
   firstImageDate: number | null;
   firstImageId: number | null;
-  firstThreadDate: number | null;
   firstThreadId: string | null;
+  firstThreadDate: number | null;
+  firstMessageId: string | null;
   totalImages: number;
   totalAiThreads: number;
   totalAiMessages: number;
@@ -27,6 +28,9 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     const installDateStr = await settingsRepository.getValue(db, 'app_install_date');
     if (installDateStr) {
       firstUseDate = parseInt(installDateStr, 10);
+      if (isNaN(firstUseDate)) {
+        firstUseDate = now;
+      }
     } else {
       const earliestImageResult = await db.getFirstAsync<{ minDate: number }>(`
         SELECT MIN(createdAt) as minDate FROM image_assets
@@ -35,14 +39,14 @@ export async function getAppMilestones(): Promise<AppMilestones> {
         SELECT MIN(createdAt) as minDate FROM ai_threads
       `);
 
-      const minImage = earliestImageResult?.minDate;
-      const minThread = earliestThreadResult?.minDate;
+      const minImage = earliestImageResult?.minDate ?? null;
+      const minThread = earliestThreadResult?.minDate ?? null;
 
-      if (minImage && minThread) {
+      if (minImage !== null && minThread !== null) {
         firstUseDate = Math.min(minImage, minThread);
-      } else if (minImage) {
+      } else if (minImage !== null) {
         firstUseDate = minImage;
-      } else if (minThread) {
+      } else if (minThread !== null) {
         firstUseDate = minThread;
       }
       
@@ -56,6 +60,14 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     const firstThreadResult = await db.getFirstAsync<{ id: string; createdAt: number }>(`
       SELECT id, createdAt FROM ai_threads WHERE archivedAt IS NULL ORDER BY createdAt ASC LIMIT 1
     `);
+
+    let firstMessageId: string | null = null;
+    if (firstThreadResult?.id) {
+      const msgResult = await db.getFirstAsync<{ id: string }>(`
+        SELECT id FROM ai_messages WHERE threadId = ? ORDER BY createdAt ASC LIMIT 1
+      `, [firstThreadResult.id]);
+      firstMessageId = msgResult?.id ?? null;
+    }
 
     const totalImagesResult = await db.getFirstAsync<{ count: number; sumSize: number }>(`
       SELECT COUNT(*) as count, SUM(fileSize) as sumSize FROM image_assets WHERE deletedAt IS NULL
@@ -90,6 +102,7 @@ export async function getAppMilestones(): Promise<AppMilestones> {
       firstImageId: firstImageResult?.id ?? null,
       firstThreadDate: firstThreadResult?.createdAt ?? null,
       firstThreadId: firstThreadResult?.id ?? null,
+      firstMessageId,
       totalImages: totalImagesResult?.count ?? 0,
       totalStorageBytes: totalImagesResult?.sumSize ?? 0,
       totalAiThreads: totalThreadsResult?.count ?? 0,

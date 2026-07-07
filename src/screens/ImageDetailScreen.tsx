@@ -324,18 +324,6 @@ export function ImageDetailScreen({
               {groups.length > 0 ? groups.map((group) => <TagChip key={`group-${group.id}`} label={group.name} />) : <TagChip label="未分组" />}
               {tags.length > 0 ? tags.map((tag) => <TagChip key={tag.id} label={tag.name} />) : <Text style={styles.infoValue}>暂无标签</Text>}
             </View>
-            <View style={styles.safetyPanel}>
-              <Ionicons
-                color={fileAvailability?.originalExists === false ? colors.semantic.danger : colors.semantic.success}
-                name={fileAvailability?.originalExists === false ? 'warning-outline' : 'shield-checkmark-outline'}
-                size={16}
-              />
-              <Text style={styles.safetyText}>
-                {fileAvailability?.originalExists === false
-                  ? '原图文件当前不可用，请检查本机存储或备份状态。'
-                  : '原图已保存到 Pixory 本地私有存储；缩略图是独立预览文件，不压缩、不重编码。'}
-              </Text>
-            </View>
             <View style={styles.noteBlock}>
               <Text style={styles.infoLabel}>备注</Text>
               <Text numberOfLines={6} style={[styles.infoValue, styles.noteValue]}>{image.note || '暂无备注'}</Text>
@@ -373,7 +361,7 @@ export function ImageDetailScreen({
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>格式</Text>
-              <Text style={[styles.infoValue, styles.infoValueLong]}>{image.mimeType}</Text>
+              <Text style={styles.infoValue}>{image.mimeType}</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>上传时间</Text>
@@ -384,20 +372,6 @@ export function ImageDetailScreen({
               <Text numberOfLines={1} style={styles.infoValue}>{image.isFavorite ? '已收藏' : '未收藏'}</Text>
             </View>
           </ContentCard>
-
-          <View style={styles.actions}>
-            <PrimaryAction
-              icon={image.isFavorite ? 'star' : 'star-outline'}
-              label={image.isFavorite ? '取消收藏' : '收藏'}
-              onPress={handleToggleFavorite}
-            />
-            <PrimaryAction
-              icon="swap-horizontal-outline"
-              label="整理"
-              onPress={() => onMoveGroup(image.id)}
-            />
-            <PrimaryAction icon="ellipsis-horizontal" label="更多" onPress={() => setIsMoreSheetVisible(true)} />
-          </View>
 
           {contextImages.length > 1 ? (
             <View style={styles.navActions}>
