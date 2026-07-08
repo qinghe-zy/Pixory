@@ -42,8 +42,10 @@ import { exportRoleContinuityPackage, getExportableRoleCardIdForThread } from '.
 import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
-import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
+import { PET_MODELS } from '../config/petModels';
+import { Live2DPetManagerModal } from '../components/ai/Live2DPetManagerModal';
 
 interface AiSessionConfigScreenProps {
   space: PixorySpace;
@@ -166,6 +168,9 @@ export function AiSessionConfigScreen({
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
   const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
+  const [isSystemThinking, setIsSystemThinking] = useState(false);
+  const [currentPetModelId, setCurrentPetModelId] = useState<string | null>(null);
+  const [petManagerVisible, setPetManagerVisible] = useState(false);
   const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
   const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
   const [selectedSessionModelKeys, setSelectedSessionModelKeys] = useState<string[]>([]);
@@ -262,6 +267,19 @@ export function AiSessionConfigScreen({
   }, [boundaryMode, deepMemoryEnabled, replyPreference, space, thinkingDisabled, threadId]);
 
   useEffect(() => {
+    let isMounted = true;
+    void runWithDatabaseSpace('normal', async (db) => {
+      const loadedPetModelId = await settingsRepository.getValue(db, 'GLOBAL_PET_MODEL_ID');
+      if (isMounted) {
+        setCurrentPetModelId(loadedPetModelId === '' ? null : (loadedPetModelId ?? PET_MODELS[0].id));
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     void reloadConfig();
   }, [reloadConfig]);
 
@@ -299,6 +317,9 @@ export function AiSessionConfigScreen({
     setSaving(true);
     setStatus({ message: '正在保存会话设置...', tone: 'info', title: '保存中' });
     try {
+      if (!threadId) {
+        return false;
+      }
       const updated = await updateAiThreadSessionConfig({
         boundaryMode,
         avatarEnabled,
@@ -306,7 +327,7 @@ export function AiSessionConfigScreen({
         replyPreference,
         roleInstructionWeight,
         space,
-        systemPrompt,
+        systemPrompt: systemPrompt.trim(),
         thinkingDisabled,
         threadId,
       });
@@ -825,6 +846,23 @@ export function AiSessionConfigScreen({
     return normalized ? `最近一次远程维护失败，已使用本地轻量整理：${normalized}` : '最近一次远程维护失败，已使用本地轻量整理。';
   }
 
+  const handleSelectPetModel = async (id: string | null) => {
+    const isChanging = id !== currentPetModelId;
+    setCurrentPetModelId(id);
+    await runWithDatabaseSpace('normal', async (db) => {
+      await settingsRepository.setValue(db, 'GLOBAL_PET_MODEL_ID', id ?? '');
+      if (isChanging && id) {
+        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_X', '0');
+        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_Y', '0');
+        await settingsRepository.setValue(db, 'GLOBAL_PET_SCALE', '1');
+      }
+    });
+    
+    import('react-native').then(({ DeviceEventEmitter }) => {
+      DeviceEventEmitter.emit('LIVE2D_MODEL_CHANGED');
+    });
+  };
+
   return (
     <>
       <AiLightScaffold
@@ -1028,6 +1066,21 @@ export function AiSessionConfigScreen({
                 <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
               </View>
             ) : null}
+          </AiLightListGroup>
+
+          <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
+            <AiLightListItem
+              icon="eye-off-outline"
+              title="关闭桌宠"
+              onPress={() => void handleSelectPetModel(null)}
+              value={currentPetModelId === null ? '✔️' : undefined}
+            />
+            <AiLightListItem
+              icon="shirt-outline"
+              title="桌宠管理"
+              onPress={() => setPetManagerVisible(true)}
+              value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
+            />
           </AiLightListGroup>
 
           <AiLightListGroup title="角色与数据迁移">
@@ -1297,6 +1350,15 @@ export function AiSessionConfigScreen({
         primaryLabel={saving ? '正在移入' : '移入回收站'}
         title="删除当前会话"
         visible={deleteDialogVisible}
+      />
+      <Live2DPetManagerModal
+        visible={petManagerVisible}
+        currentModelId={currentPetModelId}
+        onClose={() => setPetManagerVisible(false)}
+        onSelect={(id) => {
+          void handleSelectPetModel(id);
+          setPetManagerVisible(false);
+        }}
       />
     </>
   );

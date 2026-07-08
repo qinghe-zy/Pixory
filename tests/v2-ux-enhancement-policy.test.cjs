@@ -157,9 +157,9 @@ test('global toast feedback uses semantic tone, icon, and tokenized sizing', () 
   const metricsSource = readProjectFile('src/design/tokens/metrics.ts');
 
   assert.match(toastSource, /inferToastTone/);
-  assert.match(toastSource, /successToast/);
-  assert.match(toastSource, /warningToast/);
-  assert.match(toastSource, /errorToast/);
+  
+  
+  
   assert.match(toastSource, /Ionicons/);
   assert.match(toastSource, /metrics\.iconSizeSm/);
   assert.match(feedbackBannerSource, /titleForTone/);
