@@ -240,10 +240,10 @@ function AiMessageBubbleComponent({
             </View>
           ) : (
             <>
-              {waitingForFirstToken ? (
-                <AiTypingIndicator />
-              ) : streaming && streamingIdentity ? (
+              {streaming && streamingIdentity ? (
                 <AiStreamingMessageText identity={streamingIdentity} initialContent={message.content} />
+              ) : waitingForFirstToken ? (
+                <AiTypingIndicator />
               ) : (
                 renderAssistantContentWithCursor(content, streaming)
               )}

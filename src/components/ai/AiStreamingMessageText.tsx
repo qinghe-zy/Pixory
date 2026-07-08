@@ -7,6 +7,7 @@ import { useStreamingMessageReasoningSnapshot, useStreamingMessageTextSnapshot }
 import { typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 import { AiThinkingBlock } from './AiThinkingBlock';
+import { AiTypingIndicator } from './AiTypingIndicator';
 
 interface AiStreamingMessageTextProps {
   identity: AiStreamingMessageIdentity;
@@ -30,6 +31,9 @@ function InlineStreamingCursor() {
 function AiStreamingMessageTextComponent({ identity, initialContent }: AiStreamingMessageTextProps) {
   const snapshot = useStreamingMessageTextSnapshot(identity);
   const content = snapshot.hasSnapshot ? snapshot.content : initialContent;
+  if (!content.trim()) {
+    return <AiTypingIndicator />;
+  }
   return (
     <Text selectable={false} style={[styles.body, styles.assistantText]}>
       {content}

@@ -57,6 +57,7 @@ import {
   publishStreamingMessage,
   type AiStreamingMessageIdentity,
 } from '../ai/aiStreamingMessageStore';
+import { clearComposerDraft, getComposerDraft, setComposerDraft } from '../ai/aiComposerDraftService';
 import type { AiCitationRecord, AiContextType } from '../ai/types';
 import type { AiDocumentReaderLocator } from '../ai/readers/readerTypes';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
@@ -446,6 +447,35 @@ export function AiChatScreen({
   const [composerText, setComposerText] = useState('');
   const [generating, setGenerating] = useState(false);
   const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
+
+  const draftThreadKey = threadId ?? 'new_chat';
+  const isComposerDraftLoadedRef = useRef(false);
+
+  useEffect(() => {
+    isComposerDraftLoadedRef.current = false;
+    setComposerText('');
+    let isMounted = true;
+    void getComposerDraft(draftThreadKey).then((draft) => {
+      if (!isMounted) return;
+      isComposerDraftLoadedRef.current = true;
+      if (draft) {
+        setComposerText(draft);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [draftThreadKey]);
+
+  useEffect(() => {
+    if (!isComposerDraftLoadedRef.current) return;
+    const timeout = setTimeout(() => {
+      if (isComposerDraftLoadedRef.current) {
+        void setComposerDraft(draftThreadKey, composerText);
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [composerText, draftThreadKey]);
   const [editingUserMessageId, setEditingUserMessageId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AiComposerAttachment[]>([]);
@@ -2342,6 +2372,7 @@ export function AiChatScreen({
       markIntentionalLatestJump();
       await flushBufferedStreamingState({ followLatest: false });
       setComposerText('');
+      void clearComposerDraft(draftThreadKey);
       setPendingAttachments([]);
       setGenerating(true);
       setErrorMessage(null);
