@@ -11,7 +11,7 @@ interface Live2DPetViewProps extends ViewProps {
   /**
    * 模型成功加载后的回调
    */
-  onLoadSuccess?: () => void;
+  onLoadSuccess?: (motions?: string[]) => void;
   /**
    * 模型加载失败的回调
    */
@@ -230,10 +230,26 @@ export const Live2DPetView = forwardRef<Live2DPetViewRef, Live2DPetViewProps>(({
           }
         });
 
+        
+        // 提取支持的 motions
+        let extractedMotions = [];
+        try {
+          if (model.internalModel.motionManager) {
+            if (model.internalModel.motionManager.motionGroups) {
+              extractedMotions = Object.keys(model.internalModel.motionManager.motionGroups);
+            } else if (model.internalModel.motionManager.groups) {
+              extractedMotions = Object.keys(model.internalModel.motionManager.groups);
+            }
+          }
+          if (extractedMotions.length === 0 && model.internalModel.settings && model.internalModel.settings.motions) {
+            extractedMotions = Object.keys(model.internalModel.settings.motions);
+          }
+        } catch(e) {}
+
         // 通知 RN 加载成功
         window.ReactNativeWebView?.postMessage(JSON.stringify({
           type: 'MODEL_LOADED',
-          payload: { status: 'success' }
+          payload: { status: 'success', motions: extractedMotions }
         }));
       } catch (e) {
         console.error(e);

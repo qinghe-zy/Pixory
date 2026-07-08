@@ -379,6 +379,8 @@ export function AiChatScreen({
   
   const petRef = useRef<Live2DPetViewRef>(null);
   const [currentPetModelId, setCurrentPetModelId] = useState<string | null>(null);
+    const [loadedMotions, setLoadedMotions] = useState<string[]>([]);
+    const [petVisible, setPetVisible] = useState(true);
   const petPan = useRef(new Animated.ValueXY()).current;
   const petScale = useRef(new Animated.Value(1)).current;
   const petScaleRef = useRef(1);
@@ -461,7 +463,7 @@ export function AiChatScreen({
     }
     idleTimerRef.current = setTimeout(() => {
       if (!currentPetModel) return;
-      const motions = currentPetModel.motions || [];
+      const motions = loadedMotions.length > 0 ? loadedMotions : (currentPetModel?.motions || []);
       const walkMotion = motions.find(m => {
         const l = m.toLowerCase();
         return l.includes('walk') || l.includes('run') || l.includes('move');
@@ -613,7 +615,7 @@ export function AiChatScreen({
     resetIdleTimer();
     if (!currentPetModel) return;
     const lowerArea = area.toLowerCase();
-    const motions = currentPetModel.motions || [];
+    const motions = loadedMotions.length > 0 ? loadedMotions : (currentPetModel?.motions || []);
     
     // 1. Precise Match (exact area name)
     const exactMatch = motions.find(m => m.toLowerCase().includes(lowerArea) || m.toLowerCase() === `tap${lowerArea}`);
@@ -728,7 +730,7 @@ export function AiChatScreen({
       resetIdleTimer();
     }
     if (generating && currentPetModel) {
-      const motions = currentPetModel.motions || [];
+      const motions = loadedMotions.length > 0 ? loadedMotions : (currentPetModel?.motions || []);
       const safeMotions = motions.filter(m => {
         const l = m.toLowerCase();
         return !l.includes('die') && !l.includes('sleep') && !l.includes('destroy') && !l.includes('damage') && !l.includes('idle');
@@ -3119,6 +3121,7 @@ export function AiChatScreen({
           ) : null}
         </View>
         <View style={styles.headerActions}>
+
           <Pressable
             accessibilityLabel="搜索当前聊天"
             accessibilityRole="button"
@@ -3326,10 +3329,11 @@ export function AiChatScreen({
             }
           ]}
         >
-          <View {...petPanResponder.panHandlers} style={{ flex: 1, position: 'relative' }}>
+          {petVisible && <View {...petPanResponder.panHandlers} style={{ flex: 1, position: 'relative' }}>
             <Live2DPetView
               ref={petRef}
               modelUrl={currentPetModel.url}
+                onLoadSuccess={(motions) => { if (motions) setLoadedMotions(motions); }}
               style={{ width: '100%', height: '100%' }}
               onHitAreaClicked={handlePetHitArea}
             />
@@ -3355,7 +3359,7 @@ export function AiChatScreen({
               >
                 <Ionicons name="resize" size={24} color="#666" style={{ transform: [{ rotate: '90deg' }] }} />
               </Animated.View>
-          </View>
+          </View>}
         </Animated.View>
       ) : null}
     </AppScreen>

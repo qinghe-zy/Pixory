@@ -942,6 +942,22 @@ export function AiSessionConfigScreen({
             />
           </AiLightListGroup>
 
+
+          <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
+            <AiLightListItem
+              icon="eye-off-outline"
+              title="关闭桌宠"
+              onPress={() => void handleSelectPetModel(null)}
+              value={currentPetModelId === null ? '✔️' : undefined}
+            />
+            <AiLightListItem
+              icon="shirt-outline"
+              title="桌宠管理"
+              onPress={() => setPetManagerVisible(true)}
+              value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
+            />
+          </AiLightListGroup>
+
           <AiLightListGroup title="上下文与偏好">
             <View style={styles.inlineConfigPadding}>
               <Text style={styles.caption}>资料范围</Text>
@@ -1066,21 +1082,6 @@ export function AiSessionConfigScreen({
                 <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
               </View>
             ) : null}
-          </AiLightListGroup>
-
-          <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
-            <AiLightListItem
-              icon="eye-off-outline"
-              title="关闭桌宠"
-              onPress={() => void handleSelectPetModel(null)}
-              value={currentPetModelId === null ? '✔️' : undefined}
-            />
-            <AiLightListItem
-              icon="shirt-outline"
-              title="桌宠管理"
-              onPress={() => setPetManagerVisible(true)}
-              value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
-            />
           </AiLightListGroup>
 
           <AiLightListGroup title="角色与数据迁移">

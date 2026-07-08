@@ -371,7 +371,7 @@ Default release workflow:
    - `docs/updates.html`
    - `docs/sitemap.xml`
    - local Android Gradle release fields/output name when present
-   - Expo `runtimeVersion` and Android `expo_runtime_version`
+   - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
 5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
 6. Before verification and APK build, clean release-interfering temporary artifacts:
    - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
@@ -390,7 +390,8 @@ Default release workflow:
    - `pnpm test`
    - `git diff --check`
 11. Build the Android release APK from `android` with the existing Gradle config:
-   - `.\gradlew.bat assembleRelease`
+   - CRITICAL: MUST run `.\gradlew.bat clean` first to avoid old JS bundles and cached `app.json` being bundled into the new APK, which causes OTA downgrade loops.
+     - `.\gradlew.bat assembleRelease`
 12. Copy the generated release APK to `output/release/` with the matching versioned filename.
 13. Publish the generated release APK to the official website server as the default direct download:
     - Use the existing server deployment path/script when available, currently `scripts/deploy-docs-mist01.ps1 -ApkPath <apk> -Version <version>`.
