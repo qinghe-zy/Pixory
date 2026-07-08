@@ -274,8 +274,8 @@ export function MeScreen({
           <View style={styles.profileCopy}>
             <View style={styles.nameRow}>
               <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
-              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.nameEditButton, pressed && styles.pressed]}>
-                <Ionicons name="pencil" size={12} color={colors.primary.active} />
+              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={16} style={({ pressed }) => [styles.nameEditButton, pressed && styles.pressed]}>
+                <Ionicons name="pencil" size={12} color={colors.text.placeholder} />
               </Pressable>
             </View>
           </View>
@@ -515,9 +515,9 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   nameRow: {
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flexDirection: 'row',
-    gap: spacing[2],
+    gap: 4,
   },
   heroTitle: {
     ...typography.textStyles.pageTitle,
@@ -525,13 +525,9 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   nameEditButton: {
-    ...shadows.floating,
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderRadius: 12,
-    height: 24,
-    justifyContent: 'center',
-    width: 24,
+    marginBottom: 6,
+    opacity: 0.8,
+    padding: 2,
   },
 
   storageBlock: {
