@@ -344,6 +344,14 @@ When adding, removing, renaming, or materially changing any user-visible feature
 
 Before packaging or writing release notes, review `docs/feature-matrix.md` against the changed files and tests. If the matrix is intentionally not updated, explain why in the final report.
 
+## Hot Update (EAS Update) Workflow
+
+When the user requests a hot update or OTA update (e.g., `推热更新`), follow these rules:
+
+1. Always use `eas update` instead of `expo export`.
+2. Ensure you push the update to the `production` branch on EAS, as the app is configured to listen to the `production` channel (`app.json` has `"expo-channel-name": "production"`).
+3. The correct command is: `npx eas-cli update --branch production --message "<Your Message>" --non-interactive`. Do not use `--auto` unless you are certain the current git branch is `production`.
+
 ## Release And Packaging Workflow
 
 When the user says `打包`, `发布`, `上线`, `推送更新`, or asks to package the current Pixory build without adding more qualifiers, treat it as permission to complete the full Android release workflow automatically.
