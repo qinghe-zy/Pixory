@@ -18,7 +18,7 @@ const TAB_ITEMS: Array<{
 }> = [
   { key: 'home', label: '首页', icon: 'home-outline' },
   { key: 'organize', label: '整理', icon: 'albums-outline' },
-  { key: 'ai', label: 'AI', icon: 'chatbubble-ellipses-outline' },
+  { key: 'ai', label: '聊天', icon: 'chatbubble-ellipses-outline' },
   { key: 'me', label: '我的', icon: 'person-outline' },
 ];
 

@@ -11,6 +11,7 @@ import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { copyProfileAvatarToAppStorage } from '../services/fileStorageService';
 import { formatFileSize } from '../utils/formatters';
+import { ProfileRenameDialog } from '../components/ProfileRenameDialog';
 
 interface MeScreenProps {
   refreshToken: number;
@@ -37,6 +38,7 @@ interface MeStats {
   favoriteImageCount: number;
   deletedImageCount: number;
   profileAvatarUri: string | null;
+  profileNickname: string | null;
   imageOriginalBytes: number;
   videoOriginalBytes: number;
 }
@@ -60,6 +62,7 @@ export function MeScreen({
 }: MeScreenProps) {
   const { showToast } = useToast();
   const [avatarOverrideUri, setAvatarOverrideUri] = useState<string | null>(null);
+  const [isRenameDialogVisible, setIsRenameDialogVisible] = useState(false);
   const isPersonalMode = space === 'personal';
   const isPersonalSwitchBusy = personalSessionState === 'unlocking' || personalSessionState === 'locking';
   const lockTransition = useRef(new Animated.Value(isPersonalMode ? 1 : 0)).current;
@@ -75,6 +78,7 @@ export function MeScreen({
         imageOriginalBytes,
         videoOriginalBytes,
         profileAvatarUri,
+        profileNickname,
       ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.count(db),
         imageRepository.count(db, { mediaType: 'all' }),
@@ -84,6 +88,7 @@ export function MeScreen({
         imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'image' }),
         imageRepository.sumFileSize(db, { includeDeleted: true, mediaType: 'video' }),
         settingsRepository.getProfileAvatarUri(db),
+        settingsRepository.getProfileNickname(db),
       ]));
 
       return {
@@ -93,6 +98,7 @@ export function MeScreen({
         favoriteImageCount,
         deletedImageCount,
         profileAvatarUri,
+        profileNickname,
         imageOriginalBytes,
         videoOriginalBytes,
       };
@@ -267,7 +273,10 @@ export function MeScreen({
           </Pressable>
           <View style={styles.profileCopy}>
             <View style={styles.nameRow}>
-              <Text style={styles.heroTitle}>本地空间</Text>
+              <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
+              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.nameEditButton, pressed && styles.pressed]}>
+                <Ionicons name="pencil-outline" size={16} color={colors.text.tertiary} />
+              </Pressable>
             </View>
           </View>
         </View>
@@ -393,6 +402,17 @@ export function MeScreen({
           重新加载
         </Text>
       ) : null}
+
+      <ProfileRenameDialog
+        currentNickname={data?.profileNickname || null}
+        onClose={() => setIsRenameDialogVisible(false)}
+        onRenamed={() => {
+          setIsRenameDialogVisible(false);
+          reload();
+        }}
+        space={space}
+        visible={isRenameDialogVisible}
+      />
     </ScreenScaffold>
   );
 }
@@ -503,6 +523,9 @@ const styles = StyleSheet.create({
     ...typography.textStyles.pageTitle,
     fontSize: 20,
     lineHeight: 28,
+  },
+  nameEditButton: {
+    padding: spacing[1],
   },
 
   storageBlock: {

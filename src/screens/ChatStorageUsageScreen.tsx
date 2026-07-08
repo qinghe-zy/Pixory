@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PageStateBlock } from '../components/PageStateBlock';
@@ -55,7 +56,11 @@ export function ChatStorageUsageScreen({ space = 'normal', refreshToken, onBack,
               style={({ pressed }) => [styles.ipRow, pressed && styles.pressed]}
             >
               <View style={styles.cover}>
-                <Ionicons color={colors.text.secondary} name="chatbubble-ellipses-outline" size={22} />
+                {item.avatarUri ? (
+                  <Image source={{ uri: item.avatarUri }} style={StyleSheet.absoluteFillObject} />
+                ) : (
+                  <Ionicons color={colors.text.secondary} name="chatbubble-ellipses-outline" size={22} />
+                )}
               </View>
               <View style={styles.ipCopy}>
                 <View style={styles.ipMainLine}>

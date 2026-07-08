@@ -3,6 +3,7 @@ import type { AppSettingRecord, ImageSortOrder } from '../types';
 import { createTimestamp } from '../utils';
 
 const PROFILE_AVATAR_KEY = 'profileAvatarUri';
+const PROFILE_NICKNAME_KEY = 'profileNickname';
 const RECENT_IMPORT_GROUP_IDS_KEY = 'recentImportGroupIds';
 const LAST_BACKUP_AT_KEY = 'lastBackupAt';
 const BACKUP_EXPORT_DIRECTORY_URI_KEY = 'backupExportDirectoryUri';
@@ -144,6 +145,14 @@ export const settingsRepository = {
 
   async setProfileAvatarUri(db: SQLiteDatabase, uri: string | null): Promise<void> {
     await this.setValue(db, PROFILE_AVATAR_KEY, uri);
+  },
+
+  async getProfileNickname(db: SQLiteDatabase): Promise<string | null> {
+    return this.getValue(db, PROFILE_NICKNAME_KEY);
+  },
+
+  async setProfileNickname(db: SQLiteDatabase, nickname: string | null): Promise<void> {
+    await this.setValue(db, PROFILE_NICKNAME_KEY, nickname);
   },
 
   async getRecentImportGroupIds(db: SQLiteDatabase): Promise<number[]> {

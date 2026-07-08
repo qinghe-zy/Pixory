@@ -308,6 +308,7 @@ export interface ChatStorageUsageItem {
   updatedAt: string;
   bytes: number;
   messageCount: number;
+  avatarUri?: string | null;
 }
 
 export async function listChatStorageUsage(space: PixorySpace = 'normal'): Promise<ChatStorageUsageItem[]> {
@@ -318,11 +319,13 @@ export async function listChatStorageUsage(space: PixorySpace = 'normal'): Promi
       updatedAt: string;
       sizeBytes: number;
       messageCount: number;
+      roleSnapshotJson: string;
     }>(
       `SELECT 
          t.id as threadId, 
          t.title, 
          t.updatedAt, 
+         t.roleSnapshotJson,
          COALESCE(SUM(LENGTH(CAST(m.content AS BLOB))), 0) as sizeBytes,
          COUNT(m.id) as messageCount
        FROM ai_threads t
@@ -333,10 +336,25 @@ export async function listChatStorageUsage(space: PixorySpace = 'normal'): Promi
        ORDER BY sizeBytes DESC`,
       [space]
     );
-    return rows.map(r => ({
-      ...r,
-      bytes: r.sizeBytes,
-    }));
+    return rows.map(r => {
+      let avatarUri = null;
+      try {
+        if (r.roleSnapshotJson) {
+          const snapshot = JSON.parse(r.roleSnapshotJson);
+          avatarUri = snapshot.avatarUri || null;
+        }
+      } catch (e) {
+        // ignore JSON parse errors
+      }
+      return {
+        threadId: r.threadId,
+        title: r.title,
+        updatedAt: r.updatedAt,
+        bytes: r.sizeBytes,
+        messageCount: r.messageCount,
+        avatarUri,
+      };
+    });
   });
 }
 
