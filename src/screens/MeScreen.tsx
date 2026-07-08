@@ -275,7 +275,7 @@ export function MeScreen({
             <View style={styles.nameRow}>
               <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.nameEditButton, pressed && styles.pressed]}>
-                <Ionicons name="pencil-outline" size={16} color={colors.text.tertiary} />
+                <Ionicons name="pencil" size={12} color={colors.primary.active} />
               </Pressable>
             </View>
           </View>
@@ -525,7 +525,13 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   nameEditButton: {
-    padding: spacing[1],
+    ...shadows.floating,
+    alignItems: 'center',
+    backgroundColor: colors.background.surface,
+    borderRadius: 12,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
   },
 
   storageBlock: {
