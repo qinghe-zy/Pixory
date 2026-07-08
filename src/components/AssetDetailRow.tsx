@@ -12,6 +12,7 @@ interface AssetDetailRowProps {
   onPress?: (imageId: number) => void;
   onLongPress?: (imageId: number) => void;
   selected?: boolean;
+  isSelectionMode?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
@@ -21,11 +22,11 @@ export function AssetDetailRow({
   onPress,
   onLongPress,
   selected = false,
+  isSelectionMode = false,
   onLayout,
 }: AssetDetailRowProps) {
   const isVideo = image.mediaType === 'video';
   const metaParts = [
-    formatDateTime(image.createdAt),
     formatFileSize(image.fileSize),
     isVideo ? formatDuration(image.durationMs) : formatImageDimensions(image.width, image.height),
   ];
@@ -53,15 +54,20 @@ export function AssetDetailRow({
       </View>
       <View style={styles.content}>
         <View style={styles.titleRow}>
-          <Text numberOfLines={1} style={styles.title}>{image.originalFilename}</Text>
+          <Text numberOfLines={1} style={styles.dateTitle}>{formatDateTime(image.createdAt)}</Text>
           {image.isFavorite ? <Ionicons color={colors.semantic.favorite} name="star" size={14} /> : null}
         </View>
-        <Text numberOfLines={1} style={styles.meta}>{metaParts.join(' · ')}</Text>
+        <Text numberOfLines={1} style={styles.meta}>
+          <Text style={styles.filenameText}>{image.originalFilename}</Text>
+          <Text> · {metaParts.join(' · ')}</Text>
+        </Text>
         <Text numberOfLines={1} style={styles.relation}>{relationParts.length > 0 ? relationParts.join(' · ') : '未分组 · 无标签'}</Text>
       </View>
-      <View style={[styles.selectionCircle, selected ? styles.selectionCircleActive : null]}>
-        {selected ? <Ionicons color={colors.text.inverse} name="checkmark" size={12} /> : null}
-      </View>
+      {isSelectionMode || selected ? (
+        <View style={[styles.selectionCircle, selected ? styles.selectionCircleActive : null]}>
+          {selected ? <Ionicons color={colors.text.inverse} name="checkmark" size={12} /> : null}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -147,17 +153,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing[1],
     minWidth: 0,
+    marginBottom: 2,
   },
-  title: {
-    ...typography.textStyles.caption,
+  dateTitle: {
+    fontFamily: typography.family.stat,
+    fontSize: 16,
     color: colors.text.title,
     flex: 1,
-    fontWeight: '700',
+    fontWeight: '600',
     minWidth: 0,
   },
   meta: {
-    ...typography.textStyles.micro,
+    fontFamily: typography.family.stat,
+    fontSize: 11,
     color: colors.text.secondary,
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  filenameText: {
+    color: colors.text.placeholder,
   },
   relation: {
     ...typography.textStyles.micro,

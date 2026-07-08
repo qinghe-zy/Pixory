@@ -41,48 +41,7 @@ interface MeStats {
   videoOriginalBytes: number;
 }
 
-const ENTRY_ITEMS = [
-  {
-    key: 'favorites',
-    label: '收藏图片',
-    icon: 'star-outline',
-  },
-  {
-    key: 'recent',
-    label: '最近查看',
-    icon: 'time-outline',
-  },
-  {
-    key: 'trash',
-    label: '回收站',
-    icon: 'trash-outline',
-  },
-  {
-    key: 'backup',
-    label: '备份导出',
-    icon: 'archive-outline',
-  },
-  {
-    key: 'duplicate-review',
-    label: '重复检测',
-    icon: 'copy-outline',
-  },
-  {
-    key: 'storage-usage',
-    label: '存储占用',
-    icon: 'pie-chart-outline',
-  },
-  {
-    key: 'about',
-    label: '关于',
-    icon: 'information-circle-outline',
-  },
-  {
-    key: 'settings',
-    label: '设置',
-    icon: 'settings-outline',
-  },
-] as const;
+// ENTRY_ITEMS removed for dashboard layout
 
 export function MeScreen({
   refreshToken,
@@ -147,7 +106,7 @@ export function MeScreen({
     }
   );
 
-  function handleEntryPress(key: (typeof ENTRY_ITEMS)[number]['key']) {
+  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'settings') {
     if (key === 'favorites') {
       onOpenFavorites();
       return;
@@ -286,10 +245,10 @@ export function MeScreen({
         >
           <Animated.View style={[styles.personalLockIconStage, { transform: [{ scale: lockPulse }, { rotate: lockRotate }] }]}>
             <Animated.View style={[styles.personalLockIconLayer, { opacity: lockOpenOpacity }]}>
-              <Ionicons color={colors.primary.active} name="lock-open-outline" size={19} />
+              <Ionicons color={colors.border.strong} name="lock-open-outline" size={19} />
             </Animated.View>
             <Animated.View style={[styles.personalLockIconLayer, { opacity: lockClosedOpacity }]}>
-              <Ionicons color={colors.text.inverse} name="lock-closed-outline" size={19} />
+              <Ionicons color={colors.text.primary} name="lock-closed-outline" size={19} />
             </Animated.View>
           </Animated.View>
         </Pressable>
@@ -313,85 +272,119 @@ export function MeScreen({
           </View>
         </View>
         <View style={styles.storageBlock}>
-          <View style={styles.storageHeader}>
-            <View style={styles.storageInlineRow}>
-              <Text numberOfLines={1} style={styles.storageLabel}>图片原图</Text>
-              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(imageBytes)}</Text>
+          <View style={styles.storageVisualContainer}>
+            <View style={styles.storageVisualHeader}>
+               <Text style={styles.storageTotalLabel}>存储总计</Text>
+               <Text style={styles.storageTotalValue}>{formatFileSize(imageBytes + videoBytes)}</Text>
             </View>
-            <View style={styles.storageInlineRow}>
-              <Text numberOfLines={1} style={styles.storageLabel}>视频存储</Text>
-              <Text numberOfLines={1} style={styles.storageValue}>{formatFileSize(videoBytes)}</Text>
+            <View style={styles.storageProgressBar}>
+              <View style={[styles.storageProgressSegment, { backgroundColor: colors.semantic.success, width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
+              <View style={[styles.storageProgressSegment, { backgroundColor: colors.primary.weak, width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
+            </View>
+            <View style={styles.storageLegendRow}>
+              <View style={styles.storageLegendItem}>
+                <View style={[styles.storageLegendDot, { backgroundColor: colors.semantic.success }]} />
+                <Text style={styles.storageLegendText}>图片 {formatFileSize(imageBytes)}</Text>
+              </View>
+              <View style={styles.storageLegendItem}>
+                <View style={[styles.storageLegendDot, { backgroundColor: colors.primary.weak }]} />
+                <Text style={styles.storageLegendText}>视频 {formatFileSize(videoBytes)}</Text>
+              </View>
             </View>
           </View>
-          <View style={styles.libraryStatsRow}>
-            <StatBlock label="IP数量" value={String(data?.ipCount ?? 0)} />
-            <StatBlock label="素材总数" value={String(data?.activeAssetCount ?? 0)} />
-            <StatBlock label="收藏数" value={String(data?.favoriteImageCount ?? 0)} />
-            <StatBlock label="回收站" value={String(data?.deletedImageCount ?? 0)} />
-          </View>
+
         </View>
       </ContentCard>
 
-      <View style={styles.entryList}>
-        {ENTRY_ITEMS.map((item) => {
-          const isSettings = item.key === 'settings';
-          const entryTitle = item.label;
-          const entryAccessibilityLabel = isSettings ? '设置，未开放' : entryTitle;
-          const entryContent = (
-            <>
-              <View style={[styles.entryIconWrap, item.key === 'trash' && styles.trashIconWrap]}>
-                {item.key === 'storage-usage' ? (
-                  <StorageUsageGlyph />
-                ) : (
-                  <Ionicons
-                    color={item.key === 'trash' ? colors.semantic.danger : colors.primary.active}
-                    name={item.icon}
-                    size={21}
-                  />
-                )}
-              </View>
-              <View style={styles.entryCopy}>
-                <Text style={styles.entryTitle}>{entryTitle}</Text>
-              </View>
-              {isSettings ? (
-                <Text style={styles.unavailableBadge}>未开放</Text>
-              ) : (
-                <Text style={styles.entryCount}>
-                  {item.key === 'favorites'
-                    ? data?.favoriteImageCount ?? 0
-                    : item.key === 'recent'
-                      ? data?.recentViewedCount ?? 0
-                      : item.key === 'trash'
-                        ? data?.deletedImageCount ?? 0
-                        : item.key === 'duplicate-review'
-                          ? '扫描'
-                        : item.key === 'storage-usage'
-                          ? '查看'
-                        : item.key === 'about'
-                          ? ''
-                          : data?.ipCount ?? 0}
-                </Text>
-              )}
-              {isSettings ? null : <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />}
-            </>
-          );
-
-          return isSettings ? (
-            <View accessibilityLabel={entryAccessibilityLabel} accessible key={item.key} style={[styles.entryCard, styles.disabledEntry]}>
-              {entryContent}
+      <View style={styles.dashboardContainer}>
+        {/* BLOCK 1: Core Assets (Side-by-side squares) */}
+        <View style={styles.coreAssetsRow}>
+          <Pressable
+            accessibilityLabel="收藏图片"
+            accessibilityRole="button"
+            onPress={() => handleEntryPress('favorites')}
+            style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
+          >
+            <View style={styles.coreAssetHeader}>
+              <Ionicons color="#22C55E" name="star" size={28} />
+              <Ionicons color={colors.text.tertiary} name="arrow-forward" size={18} style={{ transform: [{ rotate: '-45deg' }] }} />
             </View>
-          ) : (
-            <Pressable
-              accessibilityLabel={entryAccessibilityLabel}
-              accessibilityRole="button"
-              key={item.key}
-              onPress={() => handleEntryPress(item.key)}
-              style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}
-            >
-              {entryContent}
+            <View style={styles.coreAssetBody}>
+              <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
+              <Text style={styles.coreAssetTitle}>收藏图片</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityLabel="最近查看"
+            accessibilityRole="button"
+            onPress={() => handleEntryPress('recent')}
+            style={({ pressed }) => [styles.coreAssetCard, pressed && styles.pressed]}
+          >
+            <View style={styles.coreAssetHeader}>
+              <Ionicons color={colors.text.secondary} name="time-outline" size={28} />
+              <Ionicons color={colors.text.tertiary} name="arrow-forward" size={18} style={{ transform: [{ rotate: '-45deg' }] }} />
+            </View>
+            <View style={styles.coreAssetBody}>
+              <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
+              <Text style={styles.coreAssetTitle}>最近查看</Text>
+            </View>
+          </Pressable>
+        </View>
+
+        {/* BLOCK 2: Tools Grid (4 columns) */}
+        <ContentCard style={styles.toolsGroup}>
+          <View style={styles.toolsGrid}>
+            <Pressable onPress={() => handleEntryPress('trash')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
+              <View style={[styles.toolIconWrap, styles.trashIconWrap]}>
+                <Ionicons color={colors.semantic.danger} name="trash-outline" size={22} />
+              </View>
+              <Text style={styles.toolTitle}>回收站</Text>
             </Pressable>
-          );
-        })}
+
+            <Pressable onPress={() => handleEntryPress('backup')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
+              <View style={styles.toolIconWrap}>
+                <Ionicons color={colors.primary.active} name="archive-outline" size={22} />
+              </View>
+              <Text style={styles.toolTitle}>备份导出</Text>
+            </Pressable>
+
+            <Pressable onPress={() => handleEntryPress('duplicate-review')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
+              <View style={styles.toolIconWrap}>
+                <Ionicons color={colors.primary.active} name="copy-outline" size={22} />
+              </View>
+              <Text style={styles.toolTitle}>重复检测</Text>
+            </Pressable>
+
+            <Pressable onPress={() => handleEntryPress('storage-usage')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
+              <View style={styles.toolIconWrap}>
+                <View style={{ transform: [{ scale: 0.85 }] }}>
+                  <StorageUsageGlyph />
+                </View>
+              </View>
+              <Text style={styles.toolTitle}>存储占用</Text>
+            </Pressable>
+          </View>
+        </ContentCard>
+
+        {/* BLOCK 3: System List */}
+        <ContentCard style={styles.systemGroup}>
+          <Pressable onPress={() => handleEntryPress('about')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
+            <View style={styles.systemListIcon}>
+              <Ionicons color={colors.primary.active} name="information-circle-outline" size={20} />
+            </View>
+            <Text style={styles.systemListTitle}>关于</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+          </Pressable>
+          <View style={styles.systemListDivider} />
+          <View accessibilityLabel="设置，未开放" accessible style={[styles.systemListItem, styles.disabledEntry]}>
+            <View style={styles.systemListIcon}>
+              <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
+            </View>
+            <Text style={styles.systemListTitle}>设置</Text>
+            <Text style={styles.unavailableBadge}>未开放</Text>
+          </View>
+        </ContentCard>
       </View>
 
       {isLoading ? <Text style={styles.loadingText}>正在刷新本地统计…</Text> : null}
@@ -404,16 +397,7 @@ export function MeScreen({
   );
 }
 
-function StatBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statItem}>
-      <Text numberOfLines={1} style={styles.statValue}>
-        {value}
-      </Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
+
 
 function StorageUsageGlyph() {
   return (
@@ -450,10 +434,8 @@ const styles = StyleSheet.create({
   },
   personalLockButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderColor: colors.border.subtle,
+    backgroundColor: colors.background.surface,
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
     height: 42,
     justifyContent: 'center',
     position: 'absolute',
@@ -463,8 +445,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   personalLockButtonActive: {
-    backgroundColor: colors.primary.active,
-    borderColor: colors.primary.dark,
+    backgroundColor: colors.background.surface,
   },
   personalLockButtonBusy: {
     opacity: 0.7,
@@ -523,68 +504,151 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 28,
   },
-  libraryStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  storageBlock: {
+    gap: spacing[4],
     paddingTop: spacing[2],
   },
-  statItem: {
+  storageVisualContainer: {
+    gap: spacing[2],
+  },
+  storageVisualHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: spacing[1],
+  },
+  storageTotalLabel: {
+    fontFamily: typography.family.base,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text.title,
+  },
+  storageTotalValue: {
+    fontFamily: typography.family.stat,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary.active,
+  },
+  storageProgressBar: {
+    flexDirection: 'row',
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.background.empty,
+    overflow: 'hidden',
+  },
+  storageProgressSegment: {
+    height: '100%',
+  },
+  storageLegendRow: {
+    flexDirection: 'row',
+    gap: spacing[4],
+    marginTop: spacing[1],
+  },
+  storageLegendItem: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[1],
-    width: '25%',
   },
-  statValue: {
-    ...typography.textStyles.statNumber,
+  storageLegendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  statLabel: {
-    ...typography.textStyles.statLabel,
+  storageLegendText: {
+    fontFamily: typography.family.base,
+    fontSize: 11,
+    color: colors.text.secondary,
   },
-  storageBlock: {
-    gap: spacing[2],
-  },
-  storageHeader: {
-    alignItems: 'stretch',
-    flexDirection: 'column',
-    gap: spacing[2],
-  },
-  storageLabel: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-    fontWeight: '700',
-  },
-  storageInlineRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing[2],
-    justifyContent: 'flex-start',
-    minHeight: 28,
-  },
-  storageValue: {
-    ...typography.textStyles.caption,
-    color: colors.text.title,
-    fontWeight: '700',
-  },
-  entryList: {
+  dashboardContainer: {
     gap: rhythm.entryCardGap,
   },
-  entryCard: {
-    alignItems: 'center',
+  coreAssetsRow: {
+    flexDirection: 'row',
+    gap: spacing[4],
+  },
+  coreAssetCard: {
+    ...shadows.xs,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing[3],
+    flex: 1,
     padding: spacing[4],
+    aspectRatio: 1.15,
+    justifyContent: 'space-between',
   },
-  entryIconWrap: {
-    ...shadows.xs,
+  coreAssetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  coreAssetBody: {
+    gap: spacing[1],
+  },
+  coreAssetCount: {
+    fontFamily: typography.family.stat,
+    fontSize: 42,
+    fontWeight: '700',
+    color: colors.text.title,
+    lineHeight: 48,
+  },
+  coreAssetTitle: {
+    fontFamily: typography.family.stat,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text.secondary,
+  },
+  toolsGroup: {
+    paddingVertical: spacing[5],
+    paddingHorizontal: spacing[2],
+  },
+  toolsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+  },
+  toolGridItem: {
+    alignItems: 'center',
+    gap: spacing[3],
+    flex: 1,
+  },
+  toolIconWrap: {
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
-    borderRadius: radius.md,
-    height: 42,
+    borderRadius: 24,
+    height: 48,
     justifyContent: 'center',
-    width: 42,
+    width: 48,
+  },
+  toolTitle: {
+    ...typography.textStyles.micro,
+    color: colors.text.title,
+    fontWeight: '500',
+  },
+  systemGroup: {
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+  },
+  systemListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing[4],
+    gap: spacing[3],
+  },
+  systemListDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border.subtle,
+    marginLeft: 36,
+  },
+  systemListIcon: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  systemListTitle: {
+    ...typography.textStyles.body,
+    flex: 1,
   },
   trashIconWrap: {
     backgroundColor: colors.semantic.dangerBackground,

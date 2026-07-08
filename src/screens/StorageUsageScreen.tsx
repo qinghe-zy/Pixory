@@ -21,9 +21,10 @@ interface StorageUsageScreenProps {
   onOpenOriginals: () => void;
   onOpenBackups: () => void;
   onOpenTrash: () => void;
+  onOpenChatStorage: () => void;
 }
 
-const DASHBOARD_CATEGORY_LABELS = ['原始素材', '预览缓存', '临时缓存', '备份导出', '回收站'] as const;
+const DASHBOARD_CATEGORY_LABELS = ['原始素材', '预览缓存', '临时缓存', '备份导出', '回收站', '聊天记录'] as const;
 const sheetPatternImage = require('../../docs/black.png');
 
 export function StorageUsageScreen({
@@ -33,6 +34,7 @@ export function StorageUsageScreen({
   onOpenOriginals,
   onOpenBackups,
   onOpenTrash,
+  onOpenChatStorage,
 }: StorageUsageScreenProps) {
   const { showToast } = useToast();
   const [previewPanelVisible, setPreviewPanelVisible] = useState(false);
@@ -67,6 +69,10 @@ export function StorageUsageScreen({
     }
     if (item.key === 'trash') {
       onOpenTrash();
+      return;
+    }
+    if (item.key === 'chat-history') {
+      onOpenChatStorage();
     }
   }
 
@@ -188,6 +194,19 @@ export function StorageUsageScreen({
                   </Pressable>
                 ))}
               </View>
+
+              <View style={styles.actionSection}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isCleaningTemporary}
+                  onPress={handleCleanTemporaryCache}
+                  style={({ pressed }) => [styles.smartCleanButton, pressed && styles.pressed, isCleaningTemporary && styles.disabled]}
+                >
+                  <Ionicons color="#FFFFFF" name="sparkles" size={20} />
+                  <Text style={styles.smartCleanText}>一键智能清理</Text>
+                </Pressable>
+                <Text style={styles.smartCleanHint}>安全清理临时缓存与系统日志，不影响任何内容</Text>
+              </View>
             </View>
           ) : null}
         </PageStateBlock>
@@ -235,6 +254,9 @@ function getItemSubtitle(summary: StorageUsageSummary, item: StorageUsageSummary
   if (item.key === 'backup-export') {
     return `${summary.backupExportCount} 个备份包`;
   }
+  if (item.key === 'chat-history') {
+    return `${summary.chatHistoryCount} 个对话`;
+  }
   return `${summary.trashCount} 项`;
 }
 
@@ -250,6 +272,7 @@ function SegmentBar({ summary }: { summary: StorageUsageSummary }) {
     { key: 'original', bytes: summary.originalBytes, color: colors.primary.default },
     { key: 'backup', bytes: summary.backupExportBytes, color: colors.semantic.warning },
     { key: 'preview', bytes: summary.previewBytes, color: colors.semantic.success },
+    { key: 'chat', bytes: summary.chatHistoryBytes, color: '#9c27b0' },
     { key: 'temporary', bytes: summary.temporaryBytes, color: colors.text.tertiary },
   ];
   const total = Math.max(1, summary.totalBytes);
@@ -618,5 +641,30 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  actionSection: {
+    marginTop: rhythm.screenSectionGap,
+    alignItems: 'center',
+  },
+  smartCleanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary.default,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
+    gap: spacing[2],
+    minWidth: 200,
+  },
+  smartCleanText: {
+    ...typography.textStyles.bodyStrong,
+    color: '#FFFFFF',
+  },
+  smartCleanHint: {
+    ...typography.textStyles.caption,
+    color: colors.text.placeholder,
+    marginTop: spacing[3],
+    textAlign: 'center',
   },
 });

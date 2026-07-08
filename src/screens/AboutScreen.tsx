@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { Alert, LayoutAnimation, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import * as Updates from 'expo-updates';
 
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -34,6 +34,17 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
 
   const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
   const [detailMd, setDetailMd] = useState<string | null>(null);
+  const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    if (activeStatIndex !== null) {
+      timeout = setTimeout(() => {
+        setActiveStatIndex(null);
+      }, 5000);
+    }
+    return () => clearTimeout(timeout);
+  }, [activeStatIndex]);
 
   useEffect(() => {
     let isMounted = true;
@@ -121,9 +132,16 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
           <Pressable 
             key={idx} 
             style={styles.gridItem} 
-            onPress={() => showToast(stat.explanation)}
+            onPress={() => setActiveStatIndex(activeStatIndex === idx ? null : idx)}
           >
-            <Text style={styles.gridValue}>{stat.value}</Text>
+            <View style={{ position: 'relative' }}>
+              {activeStatIndex === idx && (
+                <Animated.Text entering={FadeInDown.duration(200)} style={styles.statTooltipText}>
+                  {stat.explanation}
+                </Animated.Text>
+              )}
+              <Text style={styles.gridValue}>{stat.value}</Text>
+            </View>
             <Text style={styles.gridLabel}>{stat.label}</Text>
           </Pressable>
         ))}
@@ -145,7 +163,8 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       onBack={onBack}
       scrollable
       title=""
-      titleSlot={
+    >
+      <View style={styles.container}>
         <View style={styles.heroArea}>
           <Animated.Text entering={FadeIn.duration(1000)} style={styles.heroLabel}>
             已陪伴你
@@ -157,9 +176,6 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
             <Text style={styles.heroUnit}>天</Text>
           </Animated.View>
         </View>
-      }
-    >
-      <View style={styles.container}>
 
         {/* TIMELINE AREA */}
         <View style={styles.timelineArea}>
@@ -284,7 +300,7 @@ const styles = StyleSheet.create({
   /* --- Hero Area --- */
   heroArea: {
     alignItems: 'flex-start',
-    marginTop: spacing[2],
+    marginTop: 0,
     marginBottom: spacing[4],
   },
   heroLabel: {
@@ -415,6 +431,15 @@ const styles = StyleSheet.create({
     ...typography.textStyles.caption,
     color: colors.text.placeholder,
     letterSpacing: 0.5,
+  },
+  statTooltipText: {
+    position: 'absolute',
+    bottom: '100%',
+    left: 0,
+    marginBottom: 4,
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+    width: 150,
   },
 
   spacer: {

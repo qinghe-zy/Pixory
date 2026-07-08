@@ -13,6 +13,7 @@ interface ThumbnailTileProps {
   onLongPress?: (imageId: number) => void;
   aspectRatio?: number;
   selected?: boolean;
+  isSelectionMode?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
 }
 
@@ -23,6 +24,7 @@ export function ThumbnailTile({
   onLongPress,
   aspectRatio = componentTokens.thumbnail.aspectRatio,
   selected = false,
+  isSelectionMode = false,
   onLayout,
 }: ThumbnailTileProps) {
   const isVideo = image.mediaType === 'video';
@@ -56,11 +58,11 @@ export function ThumbnailTile({
           <Ionicons color={colors.semantic.favorite} name="star" size={12} />
         </View>
       ) : null}
-      {selected ? (
+      {isSelectionMode || selected ? (
         <>
-          <View style={styles.selectionOverlay} />
-          <View style={styles.selectionBadge}>
-            <Ionicons color={colors.text.inverse} name="checkmark" size={10} />
+          <View style={[styles.selectionOverlay, !selected && { opacity: 0 }]} />
+          <View style={[styles.selectionBadge, !selected && styles.selectionBadgeInactive]}>
+            {selected ? <Ionicons color={colors.text.inverse} name="checkmark" size={10} /> : null}
           </View>
         </>
       ) : null}
@@ -169,5 +171,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing[2],
     width: 18,
+  },
+  selectionBadgeInactive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderColor: colors.border.default,
   },
 });

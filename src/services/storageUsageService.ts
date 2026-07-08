@@ -10,6 +10,7 @@ export type StorageUsageCategoryKey =
   | 'preview-cache'
   | 'temporary-cache'
   | 'backup-export'
+  | 'chat-history'
   | 'trash';
 
 export interface StorageUsageSummaryItem {
@@ -32,6 +33,8 @@ export interface StorageUsageSummary {
   trashBytes: number;
   trashCount: number;
   backupExportCount: number;
+  chatHistoryBytes: number;
+  chatHistoryCount: number;
   imageCount: number;
   videoCount: number;
   previousTotalBytes: number | null;
@@ -187,9 +190,25 @@ async function getAssetStats(space: PixorySpace): Promise<{ imageCount: number; 
   });
 }
 
+export async function getChatHistoryStats(space: PixorySpace): Promise<{ bytes: number; count: number }> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const rows = await db.getAllAsync<{ sizeBytes: number }>(
+      `SELECT SUM(LENGTH(CAST(m.content AS BLOB))) as sizeBytes
+       FROM ai_threads t
+       JOIN ai_messages m ON m.threadId = t.id
+       WHERE t.space = ?
+       GROUP BY t.id
+       HAVING COUNT(m.id) > 0`,
+      [space]
+    );
+    const bytes = rows.reduce((sum, r) => sum + (r.sizeBytes || 0), 0);
+    return { bytes, count: rows.length };
+  });
+}
+
 export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Promise<StorageUsageSummary> {
   const previous = await readPreviousSummary(space);
-  const [original, preview, temp, backup, previewBreakdown, trash, assetStats, backupEntries] = await Promise.all([
+  const [original, preview, temp, backup, previewBreakdown, trash, assetStats, backupEntries, chatStats] = await Promise.all([
     safeGetLocalEntrySize(getOriginalsDir(space)),
     safeGetLocalEntrySize(getThumbnailsDir(space)),
     safeGetLocalEntrySize(getTempDir(space)),
@@ -198,6 +217,7 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
     getTrashStats(space),
     getAssetStats(space),
     listBackupExportEntries(space),
+    getChatHistoryStats(space),
   ]);
   const expoCache = await safeGetLocalEntrySize(FileSystem.cacheDirectory);
 
@@ -206,7 +226,8 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
   const temporaryBytes = temp.bytes + expoCache.bytes;
   const backupExportBytes = backup.bytes;
   const trashBytes = trash.bytes;
-  const totalBytes = originalBytes + previewBytes + temporaryBytes + backupExportBytes;
+  const chatHistoryBytes = chatStats.bytes;
+  const totalBytes = originalBytes + previewBytes + temporaryBytes + backupExportBytes + chatHistoryBytes;
   const scannedAt = new Date().toISOString();
 
   const summary: StorageUsageSummary = {
@@ -220,6 +241,8 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
     trashBytes,
     trashCount: trash.count,
     backupExportCount: backupEntries.length,
+    chatHistoryBytes,
+    chatHistoryCount: chatStats.count,
     imageCount: assetStats.imageCount,
     videoCount: assetStats.videoCount,
     previousTotalBytes: previous?.totalBytes ?? null,
@@ -265,11 +288,56 @@ export async function getStorageUsageSummary(space: PixorySpace = 'normal'): Pro
         actionLabel: '查看',
         subtitle: `${trash.count} 项`,
       },
+      {
+        key: 'chat-history',
+        label: '聊天记录',
+        bytes: chatHistoryBytes,
+        actionLabel: '查看',
+        subtitle: `${chatStats.count} 个对话`,
+      },
     ],
   };
 
   await writePreviousSummary(space, { totalBytes, scannedAt });
   return summary;
+}
+
+export interface ChatStorageUsageItem {
+  threadId: string;
+  title: string;
+  updatedAt: string;
+  bytes: number;
+  messageCount: number;
+}
+
+export async function listChatStorageUsage(space: PixorySpace = 'normal'): Promise<ChatStorageUsageItem[]> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const rows = await db.getAllAsync<{
+      threadId: string;
+      title: string;
+      updatedAt: string;
+      sizeBytes: number;
+      messageCount: number;
+    }>(
+      `SELECT 
+         t.id as threadId, 
+         t.title, 
+         t.updatedAt, 
+         COALESCE(SUM(LENGTH(CAST(m.content AS BLOB))), 0) as sizeBytes,
+         COUNT(m.id) as messageCount
+       FROM ai_threads t
+       JOIN ai_messages m ON m.threadId = t.id
+       WHERE t.space = ?
+       GROUP BY t.id
+       HAVING messageCount > 0
+       ORDER BY sizeBytes DESC`,
+      [space]
+    );
+    return rows.map(r => ({
+      ...r,
+      bytes: r.sizeBytes,
+    }));
+  });
 }
 
 export async function listIpStorageUsage(space: PixorySpace = 'normal'): Promise<IpStorageUsageItem[]> {

@@ -59,6 +59,7 @@ export function MilestonesDetailScreen({ onBack, onPushRoute, space = 'normal', 
       backgroundVariant="detail"
       onBack={onBack}
       title="详细信息"
+      contentContainerStyle={{ paddingHorizontal: 0, gap: 0 }}
     >
       <View style={styles.container}>
         {markdown ? (

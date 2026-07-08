@@ -25,39 +25,42 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     const now = Date.now();
     let firstUseDate = now;
 
+    const earliestImageResult = await db.getFirstAsync<{ minDate: string }>(`
+      SELECT MIN(createdAt) as minDate FROM image_assets
+    `);
+    const earliestThreadResult = await db.getFirstAsync<{ minDate: string }>(`
+      SELECT MIN(createdAt) as minDate FROM ai_threads
+    `);
+
+    const minImage = earliestImageResult?.minDate ? new Date(earliestImageResult.minDate).getTime() : null;
+    const minThread = earliestThreadResult?.minDate ? new Date(earliestThreadResult.minDate).getTime() : null;
+
+    let calculatedMinDate = now;
+    if (minImage !== null && minThread !== null) {
+      calculatedMinDate = Math.min(minImage, minThread);
+    } else if (minImage !== null) {
+      calculatedMinDate = minImage;
+    } else if (minThread !== null) {
+      calculatedMinDate = minThread;
+    }
+
     const installDateStr = await settingsRepository.getValue(db, 'app_install_date');
     if (installDateStr) {
       firstUseDate = parseInt(installDateStr, 10);
-      if (isNaN(firstUseDate)) {
-        firstUseDate = now;
+      if (isNaN(firstUseDate) || firstUseDate > calculatedMinDate) {
+        firstUseDate = calculatedMinDate;
+        await settingsRepository.setValue(db, 'app_install_date', firstUseDate.toString());
       }
     } else {
-      const earliestImageResult = await db.getFirstAsync<{ minDate: number }>(`
-        SELECT MIN(createdAt) as minDate FROM image_assets
-      `);
-      const earliestThreadResult = await db.getFirstAsync<{ minDate: number }>(`
-        SELECT MIN(createdAt) as minDate FROM ai_threads
-      `);
-
-      const minImage = earliestImageResult?.minDate ?? null;
-      const minThread = earliestThreadResult?.minDate ?? null;
-
-      if (minImage !== null && minThread !== null) {
-        firstUseDate = Math.min(minImage, minThread);
-      } else if (minImage !== null) {
-        firstUseDate = minImage;
-      } else if (minThread !== null) {
-        firstUseDate = minThread;
-      }
-      
+      firstUseDate = calculatedMinDate;
       await settingsRepository.setValue(db, 'app_install_date', firstUseDate.toString());
     }
 
-    const firstImageResult = await db.getFirstAsync<{ id: number; createdAt: number }>(`
+    const firstImageResult = await db.getFirstAsync<{ id: number; createdAt: string }>(`
       SELECT id, createdAt FROM image_assets WHERE deletedAt IS NULL ORDER BY createdAt ASC LIMIT 1
     `);
 
-    const firstThreadResult = await db.getFirstAsync<{ id: string; createdAt: number }>(`
+    const firstThreadResult = await db.getFirstAsync<{ id: string; createdAt: string }>(`
       SELECT id, createdAt FROM ai_threads WHERE archivedAt IS NULL ORDER BY createdAt ASC LIMIT 1
     `);
 
@@ -98,9 +101,9 @@ export async function getAppMilestones(): Promise<AppMilestones> {
     return {
       daysTogether,
       firstUseDate,
-      firstImageDate: firstImageResult?.createdAt ?? null,
+      firstImageDate: firstImageResult?.createdAt ? new Date(firstImageResult.createdAt).getTime() : null,
       firstImageId: firstImageResult?.id ?? null,
-      firstThreadDate: firstThreadResult?.createdAt ?? null,
+      firstThreadDate: firstThreadResult?.createdAt ? new Date(firstThreadResult.createdAt).getTime() : null,
       firstThreadId: firstThreadResult?.id ?? null,
       firstMessageId,
       totalImages: totalImagesResult?.count ?? 0,
@@ -181,10 +184,11 @@ export async function generateMilestonesDetailMarkdown(space: PixorySpace = 'nor
       md += '> 暂无对话记录。\n\n';
     } else {
       for (const th of threadRows) {
+        if (th.messageCount === 0) continue;
         const title = th.title || '未命名对话';
         md += `### ${title}\n`;
         md += `- 互动记录: **${th.messageCount}** 条\n`;
-        md += `- [回溯对话 ->](pixory://thread/${th.id})\n\n`;
+        md += `- [进入对话 ->](pixory://thread/${th.id})\n\n`;
       }
     }
 

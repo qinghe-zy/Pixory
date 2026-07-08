@@ -313,9 +313,11 @@ export function AllImagesScreen({
             </Pressable>
           ) : null}
         </ScrollView>
-        <Text numberOfLines={1} style={styles.filterStatus}>
-          {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${activeFilterLabel}` : '未设置筛选'}
-        </Text>
+        {hasActiveFilters ? (
+          <Text numberOfLines={1} style={styles.filterStatus}>
+            已选 {activeFilterLabels.length} 个条件：{activeFilterLabel}
+          </Text>
+        ) : null}
         {activeFilterDropdown ? (
           <FilterDrawer
             mode={getAllImagesFilterMode(activeFilterDropdown)}
@@ -394,9 +396,10 @@ export function AllImagesScreen({
         onRetry={reload}
       >
         <View style={styles.galleryHeading}>
-          <Text style={styles.galleryTitle}>素材</Text>
           <View style={styles.galleryActions}>
-            <Text style={styles.galleryCount}>{activeFilterLabel} · {images.length}</Text>
+            {hasActiveFilters ? (
+              <Text style={styles.galleryCount}>{activeFilterLabel}</Text>
+            ) : null}
             <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
             <Pressable
               accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
@@ -410,7 +413,7 @@ export function AllImagesScreen({
               onPress={multiSelect.toggleSelectAll}
               style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
             >
-              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '多选'}</Text>
             </Pressable>
           </View>
         </View>
@@ -424,6 +427,7 @@ export function AllImagesScreen({
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
             ))}
@@ -439,6 +443,7 @@ export function AllImagesScreen({
                 onLongPress={handleImageLongPress}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
             ))}
@@ -756,9 +761,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   galleryHeading: {
-    alignItems: 'flex-end',
+    alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     marginBottom: rhythm.microGap,
   },
   galleryTitle: {

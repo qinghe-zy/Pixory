@@ -109,6 +109,7 @@ import {
 } from './src/native/pixoryMediaModule';
 import { ShareCollectScreen } from './src/screens/ShareCollectScreen';
 import { StorageUsageScreen } from './src/screens/StorageUsageScreen';
+import { ChatStorageUsageScreen } from './src/screens/ChatStorageUsageScreen';
 import { MilestonesDetailScreen } from './src/screens/MilestonesDetailScreen';
 import type { AiDocumentReaderLocator } from './src/ai/readers/readerTypes';
 
@@ -160,6 +161,7 @@ type AppRoute =
   | { name: 'trash'; space: PixorySpace; storageMode?: boolean }
   | { name: 'backup'; space: PixorySpace }
   | { name: 'storage-usage'; space: PixorySpace }
+  | { name: 'chat-storage-usage'; space: PixorySpace }
   | { name: 'milestones-detail'; space?: PixorySpace; preloadedMarkdown?: string | null }
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'about'; space: PixorySpace }
@@ -1616,6 +1618,16 @@ export default function App() {
         onOpenBackups={() => pushRoute({ name: 'backup-export-manager', space: currentRoute.space })}
         onOpenOriginals={() => pushRoute({ name: 'original-storage', space: currentRoute.space })}
         onOpenTrash={() => pushRoute({ name: 'trash', space: currentRoute.space, storageMode: true })}
+        onOpenChatStorage={() => pushRoute({ name: 'chat-storage-usage', space: currentRoute.space })}
+        refreshToken={libraryRefreshToken}
+        space={currentRoute.space}
+      />
+    );
+  } else if (currentRoute.name === 'chat-storage-usage') {
+    content = (
+      <ChatStorageUsageScreen
+        onBack={popRoute}
+        onOpenChat={(threadId) => pushRoute({ name: 'ai-chat', threadId, space: currentRoute.space })}
         refreshToken={libraryRefreshToken}
         space={currentRoute.space}
       />
