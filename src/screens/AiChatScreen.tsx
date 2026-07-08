@@ -2150,8 +2150,8 @@ export function AiChatScreen({
     if (!screenMountedRef.current) {
       return null;
     }
-    if (activeThreadId) {
-      return activeThreadId;
+    if (activeThreadId || activeThreadIdRef.current) {
+      return activeThreadId || activeThreadIdRef.current;
     }
     const thread = await createThreadFromContext({
       boundIpId: boundIpId ?? null,
@@ -2164,6 +2164,12 @@ export function AiChatScreen({
     if (!screenMountedRef.current) {
       return null;
     }
+
+    if (composerText) {
+      void setComposerDraft(thread.id, composerText);
+      void clearComposerDraft(draftThreadKey);
+    }
+
     activeThreadIdRef.current = thread.id;
     setActiveThreadId(thread.id);
     onThreadReady?.(thread.id);
