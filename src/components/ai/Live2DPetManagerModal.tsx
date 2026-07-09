@@ -6,6 +6,7 @@ import { PET_MODELS, type PetModel } from '../../config/petModels';
 import { radius, spacing, typography } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 import { live2dManagerService } from '../../services/live2dManagerService';
+import { Live2DPetView } from './Live2DPetView';
 
 interface Live2DPetManagerModalProps {
   visible: boolean;
@@ -22,8 +23,15 @@ export function Live2DPetManagerModal({
 }: Live2DPetManagerModalProps) {
   const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>({});
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewModelId, setPreviewModelId] = useState<string | null>(currentModelId);
   const [progress, setProgress] = useState(0);
   const [activeCategory, setActiveCategory] = useState<string>('全部');
+
+    useEffect(() => {
+    if (visible && currentModelId) {
+      setPreviewModelId(currentModelId);
+    }
+  }, [visible, currentModelId]);
 
   const refreshStatus = async () => {
     const map: Record<string, boolean> = {};
@@ -86,6 +94,16 @@ export function Live2DPetManagerModal({
     return Array.from(cats);
   }, []);
 
+  
+  const getAvatarColor = (name: string) => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const colors = ['#FFCDD2', '#F8BBD0', '#E1BEE7', '#D1C4E9', '#C5CAE9', '#BBDEFB', '#B3E5FC', '#B2EBF2', '#B2DFDB', '#C8E6C9', '#DCEDC8', '#F0F4C3', '#FFF9C4', '#FFECB3', '#FFE082', '#FFCC80', '#FFAB91', '#BCAAA4', '#EEEEEE', '#CFD8DC'];
+    return colors[Math.abs(hash) % colors.length];
+  };
+
   const filteredModels = useMemo(() => {
     if (activeCategory === '全部') return PET_MODELS;
     return PET_MODELS.filter(m => m.category === activeCategory);
@@ -102,7 +120,24 @@ export function Live2DPetManagerModal({
             </Pressable>
           </View>
 
-          <View style={styles.categoryTabsContainer}>
+          
+            <View style={{ height: 200, width: '100%', backgroundColor: aiLightColors.canvas, borderRadius: 12, marginBottom: 16, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' }}>
+              {previewModelId && downloadedMap[previewModelId] ? (
+                <Live2DPetView 
+                  modelUrl={PET_MODELS.find(m => m.id === previewModelId)?.url || ''} 
+                  onLoadSuccess={() => {}}
+                />
+              ) : (
+                <View style={{ alignItems: 'center' }}>
+                  <Ionicons name="paw-outline" size={48} color={aiLightColors.muted} />
+                  <Text style={{ marginTop: 8, color: aiLightColors.muted, fontSize: 12 }}>
+                    {previewModelId && !downloadedMap[previewModelId] ? '该模型未下载，请先下载后预览' : '点击列表模型可在此处预览 (Live2D引擎渲染)'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.categoryTabsContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
               {categories.map((cat) => {
                 const isActive = activeCategory === cat;

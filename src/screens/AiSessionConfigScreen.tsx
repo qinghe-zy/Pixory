@@ -945,10 +945,16 @@ export function AiSessionConfigScreen({
 
           <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
             <AiLightListItem
-              icon="eye-off-outline"
-              title="关闭桌宠"
-              onPress={() => void handleSelectPetModel(null)}
-              value={currentPetModelId === null ? '✔️' : undefined}
+              accessibilityRole="switch"
+              icon="eye-outline"
+              title="显示桌宠"
+              onPress={() => void handleSelectPetModel(currentPetModelId === null ? PET_MODELS[0].id : null)}
+              action={
+                <AiSwitch
+                  value={currentPetModelId !== null}
+                  onValueChange={(val) => void handleSelectPetModel(val ? PET_MODELS[0].id : null)}
+                />
+              }
             />
             <AiLightListItem
               icon="shirt-outline"

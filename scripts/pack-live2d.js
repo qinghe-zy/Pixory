@@ -46,7 +46,7 @@ function downloadFile(url, dest) {
 
 async function extractModels() {
   const content = fs.readFileSync(TS_FILE, 'utf8');
-  const regex = /id:\s*'([^']+)',\s*\n\s*name:\s*'[^']+',\s*\n\s*url:\s*'([^']+)'/g;
+  const regex = /id:\s*'([^']+)',[\s\S]*?url:\s*'([^']+)'/g;
   let match;
   const models = [];
   while ((match = regex.exec(content)) !== null) {
@@ -56,6 +56,10 @@ async function extractModels() {
 }
 
 async function processModel(model) {
+  const zipPath = path.join(OUTPUT_DIR, `${model.id}.zip`);
+  if (fs.existsSync(zipPath) && fs.statSync(zipPath).size > 100) {
+    return;
+  }
   console.log(`\nProcessing ${model.id}...`);
   const modelDir = path.join(OUTPUT_DIR, model.id);
   if (!fs.existsSync(modelDir)) fs.mkdirSync(modelDir, { recursive: true });
@@ -67,9 +71,11 @@ async function processModel(model) {
   const model3JsonPath = path.join(modelDir, model3JsonName);
   await downloadFile(model.url, model3JsonPath);
   
+  let jsonText = fs.readFileSync(model3JsonPath, 'utf8');
+  jsonText = jsonText.replace(/^\uFEFF/, '');
   let model3Json;
   try {
-    model3Json = JSON.parse(fs.readFileSync(model3JsonPath, 'utf8'));
+    model3Json = JSON.parse(jsonText);
   } catch(e) {
     console.error(`Failed to parse model3.json for ${model.id}`);
     return;
@@ -78,7 +84,7 @@ async function processModel(model) {
   // Collect all files to download
   const filesToDownload = [];
   
-  // FileReferences
+  // Cubism 3/4
   const refs = model3Json.FileReferences || {};
   if (refs.Moc) filesToDownload.push(refs.Moc);
   if (refs.Textures) filesToDownload.push(...refs.Textures);
@@ -101,6 +107,27 @@ async function processModel(model) {
     });
   }
 
+  // Cubism 2
+  if (model3Json.model) filesToDownload.push(model3Json.model);
+  if (model3Json.pose) filesToDownload.push(model3Json.pose);
+  if (model3Json.physics) filesToDownload.push(model3Json.physics);
+  if (model3Json.textures) filesToDownload.push(...model3Json.textures);
+  
+  if (model3Json.motions) {
+    for (const group in model3Json.motions) {
+      model3Json.motions[group].forEach(m => {
+        if (m.file) filesToDownload.push(m.file);
+        if (m.sound) filesToDownload.push(m.sound);
+      });
+    }
+  }
+  
+  if (model3Json.expressions) {
+    model3Json.expressions.forEach(e => {
+      if (e.file) filesToDownload.push(e.file);
+    });
+  }
+
   // 2. Download all files
   for (const file of filesToDownload) {
     const fileUrl = `${baseUrl}/${file}`;
@@ -118,9 +145,9 @@ async function processModel(model) {
 
   // 3. Zip it
   console.log(`Zipping ${model.id}...`);
-  const zipPath = path.join(OUTPUT_DIR, `${model.id}.zip`);
+  // zipPath already declared above
   const output = fs.createWriteStream(zipPath);
-  const archive = archiver('zip', { zlib: { level: 9 } });
+  const archive = new archiver.ZipArchive({ zlib: { level: 9 } });
 
   return new Promise((resolve, reject) => {
     output.on('close', () => {
