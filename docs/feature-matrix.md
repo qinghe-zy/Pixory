@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-09（AI 聊天流式输出现代化）
-适用版本：Pixory 2.6.1
+最后更新：2026-07-09（视频播放器竖滑切换与进度恢复修复）
+适用版本：Pixory 2.6.2
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -125,7 +125,7 @@
 | --- | --- | --- |
 | 图片查看器 | 翻页、沉浸 reader、filmstrip、设置、zoom 手势、反向顺序 | `ImageViewerScreen`, `mediaExperiencePreferences` |
 | 系统相册保存 | 保存单张/多张图片到系统相册 | `mediaLibraryService`, `AlbumSaveDialog` |
-| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
+| 视频播放器 | 自动播放、顺序/随机播放模式、循环、播放/暂停、进度拖动、队列、横竖屏、锁定、末尾恢复保护、竖滑切换封面时序优化 | `VideoPlayerScreen`, `mediaExperiencePreferences` |
 | 视频手势 | 双击播放/暂停、左右区域切换、长按快进、scrub | `VideoPlayerScreen` |
 | 视频偏好 | 播放器偏好持久化、图片 viewer 偏好持久化 | `mediaExperiencePreferences` |
 | 外部视频 | open-with 外部视频进入播放器 | `App.tsx`, native media module |

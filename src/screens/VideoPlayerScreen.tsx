@@ -34,6 +34,7 @@ const CENTER_VIDEO_SWITCH_DOMINANCE_RATIO = 1.25;
 const VIDEO_SWITCH_EXIT_DURATION_MS = 170;
 const VIDEO_SWITCH_ENTER_DURATION_MS = 210;
 const VIDEO_SWITCH_CANCEL_DURATION_MS = 140;
+const COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS = 1500;
 const COMMITTED_SEEK_SETTLE_TIMEOUT_MS = 1400;
 const COMMITTED_SEEK_TOLERANCE_SECONDS = 0.35;
 const SURFACE_SEEK_SHORT_SECONDS = 30;
@@ -93,6 +94,16 @@ function pickRandomQueueIndex(queueLength: number, currentIndex: number): number
   }
   const randomIndex = Math.floor(Math.random() * (queueLength - 1));
   return randomIndex >= currentIndex ? randomIndex + 1 : randomIndex;
+}
+
+function resolveInitialPlaybackTimeSeconds(lastPlaybackPositionMs?: number | null, durationMs?: number | null): number {
+  if (!lastPlaybackPositionMs || lastPlaybackPositionMs <= 1000) {
+    return 0;
+  }
+  if (durationMs && durationMs > 0 && lastPlaybackPositionMs >= Math.max(1000, durationMs - COMPLETED_PLAYBACK_RESTART_THRESHOLD_MS)) {
+    return 0;
+  }
+  return lastPlaybackPositionMs / 1000;
 }
 
 export function VideoPlayerScreen({
@@ -302,7 +313,7 @@ export function VideoPlayerScreen({
       setVideo(detail);
       currentPlaybackVideoIdRef.current = detail.id;
       setSwitchPreviewVideo((current) => (current?.id === detail.id ? null : current));
-      const savedTime = (detail.lastPlaybackPositionMs ?? 0) / 1000;
+      const savedTime = resolveInitialPlaybackTimeSeconds(detail.lastPlaybackPositionMs, detail.durationMs);
       currentTimeRef.current = savedTime;
       setCurrentTime(savedTime);
       const queueItems = await runWithDatabaseSpace(space, (db) => assetRepository.findQueueVideosByIpId(db, detail.ipId));
@@ -327,8 +338,8 @@ export function VideoPlayerScreen({
     const loadVersion = sourceLoadVersionRef.current + 1;
     sourceLoadVersionRef.current = loadVersion;
     safePausePlayer();
-    const initialDisplayTime = !externalSource && activeVideoSource?.lastPlaybackPositionMs && activeVideoSource.lastPlaybackPositionMs > 1000
-      ? activeVideoSource.lastPlaybackPositionMs / 1000
+    const initialDisplayTime = !externalSource
+      ? resolveInitialPlaybackTimeSeconds(activeVideoSource?.lastPlaybackPositionMs, activeVideoSource?.durationMs)
       : 0;
     currentTimeRef.current = initialDisplayTime;
     setCurrentTime(initialDisplayTime);
@@ -773,6 +784,10 @@ export function VideoPlayerScreen({
     }
   }
 
+  function persistPlaybackPosition(videoId: number, positionMs: number) {
+    return runWithDatabaseSpace(spaceRef.current, (db) => assetRepository.updatePlaybackPosition(db, videoId, positionMs));
+  }
+
   function startHoldFastForward() {
     clearLongPressTimer();
     isHoldingFastForwardRef.current = true;
@@ -976,8 +991,6 @@ export function VideoPlayerScreen({
       return;
     }
     setIsVideoSwitchTransitioning(true);
-    setSwitchPreviewVideo(nextVideo);
-    setLoadingCoverVideo(nextVideo);
     clearHideTimer();
     clearLongPressTimer();
     setSpeedMenuVisible(false);
@@ -995,6 +1008,7 @@ export function VideoPlayerScreen({
         resetHideTimer();
         return;
       }
+      setLoadingCoverVideo(nextVideo);
       switchVideo(nextVideo.id, nextVideo, { historyMode, pauseBeforeSwitch: false, showControls: false });
       videoSwitchTranslateY.setValue(direction * transitionHeight);
       requestAnimationFrame(() => {
@@ -1273,7 +1287,7 @@ export function VideoPlayerScreen({
 
   function switchVideo(nextVideoId: number, nextVideo?: ImageListItem, options?: { historyMode?: VideoSwitchHistoryMode; pauseBeforeSwitch?: boolean; showControls?: boolean }) {
     if (!externalSource && video) {
-      void runWithDatabaseSpace(space, (db) => assetRepository.updatePlaybackPosition(db, video.id, Math.round(currentTimeRef.current * 1000)));
+      void persistPlaybackPosition(video.id, Math.round(currentTimeRef.current * 1000));
     }
     if (options?.pauseBeforeSwitch !== false) {
       safePausePlayer();
@@ -1351,6 +1365,11 @@ export function VideoPlayerScreen({
   function handlePlayToEnd() {
     if (externalSource || queue.length <= 1) {
       return;
+    }
+    if (currentPlaybackVideoIdRef.current) {
+      currentTimeRef.current = 0;
+      setCurrentTime(0);
+      void persistPlaybackPosition(currentPlaybackVideoIdRef.current, 0);
     }
     const nextVideo = playbackOrder === 'shuffle' ? getRandomQueueVideo() : getSequenceVideoByOffset(1);
     if (nextVideo) {

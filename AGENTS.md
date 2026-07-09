@@ -365,6 +365,7 @@ Default release workflow:
    - `package.json`
    - `app.json`
    - `src/services/updateCheckService.ts`
+   - `src/screens/AboutScreen.tsx`
    - `docs/update-version.json`
    - `README.md`
    - `docs/download.html`
@@ -372,7 +373,7 @@ Default release workflow:
    - `docs/sitemap.xml`
    - local Android Gradle release fields/output name when present
    - Expo `runtimeVersion` and Android `expo_runtime_version` (CRITICAL: Update `<string name="expo_runtime_version">` in `android/app/src/main/res/values/strings.xml`)
-5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
+5. Automatically update every release-required file that must stay consistent with the chosen version, including version numbers, Android `versionCode`, Expo `runtimeVersion`, Android `expo_runtime_version`, the About screen fallback/current version text, remote update metadata, release notes, APK output filename references, README current-version text, website download/update pages, sitemap `lastmod`, and any release-facing documentation or JSON that the app reads at runtime. Do not rely on memory; inspect the current files and update all matching version sources together.
 6. Before verification and APK build, clean release-interfering temporary artifacts:
    - Remove transient build/debug logs, stale local screenshots, temp exports, copied APK leftovers, cache snapshots, and one-off generated files that are not intended to be committed.
    - Review completed requirement documents, temporary implementation plans, acceptance drafts, or handoff notes that were created only to guide finished work. If they may confuse future release work, either delete them when they are disposable or move them into an explicit archive/completed location.
