@@ -47,7 +47,7 @@ test('streaming output modernization acceptance contract is implemented', () => 
   assert.match(screen, /bottomLocked.*auto-scroll/i);
   assert.match(screen, /publishStreamingMessage/);
   assert.match(screen, /pendingFinalReloadRef/);
-  assert.match(screen, /streaming=\{generating && hasBufferedStreamingUpdateRef\.current\}/);
   assert.match(store, /useSyncExternalStore/);
-  assert.match(button, /AI 正在回复/);
+  assert.doesNotMatch(button, /AI 正在回复/);
+  assert.match(button, />回到最新</);
 });

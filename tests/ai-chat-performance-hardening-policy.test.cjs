@@ -51,7 +51,9 @@ test('AI chat streaming patches update by indexed message id before falling back
   assert.equal(mergeMatches.length, 1);
   assert.match(bufferBody, /shouldPublishLiveStreamingPatch/);
   assert.match(bufferBody, /publishStreamingMessage/);
-  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  assert.match(bufferBody, /const canAttachLiveLayout = bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)/);
+  assert.match(bufferBody, /if \(canAttachLiveLayout && canPublishLive && streamingIdentity\) \{[\s\S]*publishStreamingMessage/);
+  assert.doesNotMatch(bufferBody, /else \{[\s\S]*publishStreamingMessage/);
   assert.doesNotMatch(bufferBody, /scrollToOffset/);
 });
 
@@ -183,14 +185,15 @@ test('streaming output keeps live rendering separate from detached history layou
 
   assert.match(chat, /shouldPublishLiveStreamingPatch/);
   assert.match(bufferBody, /const canPublishLive/);
+  assert.match(bufferBody, /const canAttachLiveLayout = bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)/);
   assert.match(bufferBody, /publishStreamingMessage/);
+  assert.match(bufferBody, /canAttachLiveLayout && canPublishLive && streamingIdentity/);
   assert.match(detachedBody, /freezeVisibleStreamingMessage\(patch\.id\)/);
   assert.match(detachedBody, /mergeBufferedStreamingPatch\(patch\)/);
   assert.doesNotMatch(detachedBody, /scrollToOffset/);
   assert.doesNotMatch(detachedBody, /followLatestMessage/);
-  assert.match(chat, /streaming=\{generating && hasBufferedStreamingUpdateRef\.current\}/);
-  assert.match(button, /streaming\?: boolean/);
-  assert.match(button, /AI 正在回复/);
+  assert.doesNotMatch(button, /streaming\?: boolean/);
+  assert.doesNotMatch(button, /AI 正在回复/);
 });
 
 test('reply-completed memory maintenance is deferred so chat completion does not compete with the foreground path', () => {

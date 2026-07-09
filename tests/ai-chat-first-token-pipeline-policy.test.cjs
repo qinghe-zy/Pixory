@@ -127,8 +127,10 @@ test('first visible streaming patch is not gated by scroll attachment', () => {
   assert.match(screen, /isCurrentStreamingPatch/);
   assert.match(screen, /bottomLocked.*auto-scroll/i);
   assert.match(bufferBody, /const canPublishLive/);
+  assert.match(bufferBody, /const canAttachLiveLayout = bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)/);
   assert.match(bufferBody, /publishStreamingMessage/);
+  assert.match(bufferBody, /if \(canAttachLiveLayout && canPublishLive && streamingIdentity\) \{/);
   assert.match(bufferBody, /if \(canPublishLive\) \{/);
-  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  assert.doesNotMatch(bufferBody, /else \{[\s\S]*publishStreamingMessage/);
   assert.match(screen, /function beginStreamingRequest[\s\S]*resetStreamingReadBufferState\(\);[\s\S]*clearActiveStreamingIdentity\(\);[\s\S]*activeStreamGenerationRef\.current \+= 1/);
 });

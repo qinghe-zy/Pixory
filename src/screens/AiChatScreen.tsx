@@ -145,6 +145,24 @@ function createStreamingAssistantMessage(threadId: string, assistantMessageId: s
   };
 }
 
+function applyStreamingPatchToMessage(message: AiMessageWithCitations, patch: AiStreamingMessagePatch): AiMessageWithCitations {
+  return {
+    ...message,
+    status: patch.status ?? message.status,
+    content: patch.content ?? message.content,
+    reasoningText: patch.reasoningText === undefined ? message.reasoningText : patch.reasoningText,
+    errorMessage: patch.errorMessage === undefined ? message.errorMessage : patch.errorMessage,
+    providerId: patch.providerId === undefined ? message.providerId : patch.providerId,
+    modelId: patch.modelId === undefined ? message.modelId : patch.modelId,
+    modelSnapshotJson: patch.modelSnapshotJson ?? message.modelSnapshotJson,
+    promptSnapshotJson: patch.promptSnapshotJson ?? message.promptSnapshotJson,
+    createdAt: patch.createdAt ?? message.createdAt,
+    completedAt: patch.completedAt === undefined ? message.completedAt : patch.completedAt,
+    citations: patch.citations ?? message.citations,
+    updatedAt: patch.completedAt ?? new Date().toISOString(),
+  };
+}
+
 function formatDateSeparator(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -658,6 +676,8 @@ export function AiChatScreen({
   const messageScrollOffsetRef = useRef(0);
   const streamingReadBufferActiveRef = useRef(false);
   const bufferedStreamingPatchRef = useRef<AiStreamingMessagePatch | null>(null);
+  const revealedStreamingPatchRef = useRef<AiStreamingMessagePatch | null>(null);
+  const revealedStreamingRatioRef = useRef(0);
   const pendingFinalReloadRef = useRef(false);
   const pendingFinalStreamingIdentityRef = useRef<ActiveStreamingIdentity | null>(null);
   const hasBufferedStreamingUpdateRef = useRef(false);
@@ -1231,8 +1251,7 @@ export function AiChatScreen({
   }
 
   function syncScrollToLatestVisibility(offsetY = messageScrollOffsetRef.current) {
-    const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = hasUnseenStreamingUpdate || offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const nextShowScrollToLatest = offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }
 
@@ -1250,6 +1269,8 @@ export function AiChatScreen({
     const current = bufferedStreamingPatchRef.current;
     if (!current || current.id !== patch.id) {
       bufferedStreamingPatchRef.current = patch;
+      revealedStreamingPatchRef.current = null;
+      revealedStreamingRatioRef.current = 0;
       return;
     }
     bufferedStreamingPatchRef.current = {
@@ -1267,6 +1288,84 @@ export function AiChatScreen({
       completedAt: patch.completedAt === undefined ? current.completedAt : patch.completedAt,
       citations: patch.citations ?? current.citations,
     };
+  }
+
+  function revealTextByRatio(baseText: string | null | undefined, targetText: string | null | undefined, ratio: number): string | null | undefined {
+    if (targetText == null) {
+      return targetText;
+    }
+    const normalizedRatio = Math.max(0, Math.min(1, ratio));
+    const safeBaseText = baseText ?? '';
+    if (!targetText.startsWith(safeBaseText)) {
+      return targetText.slice(0, Math.ceil(targetText.length * normalizedRatio));
+    }
+    const hiddenText = targetText.slice(safeBaseText.length);
+    return safeBaseText + hiddenText.slice(0, Math.ceil(hiddenText.length * normalizedRatio));
+  }
+
+  function buildScrollRevealedStreamingPatch(patch: AiStreamingMessagePatch, offsetY: number): AiStreamingMessagePatch | null {
+    const frozenMessage = frozenStreamingMessageByIdRef.current.get(patch.id);
+    if (!frozenMessage) {
+      return null;
+    }
+    const scrollRevealRatio = 1 - Math.max(0, Math.min(MESSAGE_SCROLL_BUTTON_THRESHOLD, offsetY)) / MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const revealRatio = Math.max(revealedStreamingRatioRef.current, scrollRevealRatio);
+    const content = patch.content === undefined ? undefined : revealTextByRatio(frozenMessage.content, patch.content, revealRatio) ?? '';
+    const reasoningText = revealTextByRatio(frozenMessage.reasoningText, patch.reasoningText, revealRatio);
+    const revealedPatch: AiStreamingMessagePatch = {
+      ...patch,
+      content,
+      reasoningText: reasoningText === undefined ? undefined : reasoningText,
+      status: revealRatio >= 1 ? patch.status : 'generating',
+      completedAt: revealRatio >= 1 ? patch.completedAt : undefined,
+    };
+    return revealedPatch;
+  }
+
+  function revealBufferedStreamingStateForScroll(offsetY: number) {
+    const bufferedPatch = bufferedStreamingPatchRef.current;
+    if (!hasPendingStreamingReadBuffer() || !bufferedPatch) {
+      return;
+    }
+    const revealedPatch = buildScrollRevealedStreamingPatch(bufferedPatch, offsetY);
+    if (!revealedPatch) {
+      return;
+    }
+    const previousPatch = revealedStreamingPatchRef.current;
+    if (
+      previousPatch?.id === revealedPatch.id &&
+      previousPatch.generationId === revealedPatch.generationId &&
+      previousPatch.content === revealedPatch.content &&
+      previousPatch.reasoningText === revealedPatch.reasoningText &&
+      previousPatch.status === revealedPatch.status
+    ) {
+      return;
+    }
+    revealedStreamingRatioRef.current = Math.max(revealedStreamingRatioRef.current, 1 - Math.max(0, Math.min(MESSAGE_SCROLL_BUTTON_THRESHOLD, offsetY)) / MESSAGE_SCROLL_BUTTON_THRESHOLD);
+    revealedStreamingPatchRef.current = revealedPatch;
+    const streamingIdentity = activeStreamingIdentityRef.current;
+    if (streamingIdentity && revealedPatch.id === streamingIdentity.messageId && revealedPatch.generationId === streamingIdentity.generationId) {
+      publishStreamingMessage(streamingIdentity, {
+        content: revealedPatch.content,
+        reasoningText: revealedPatch.reasoningText,
+        status: revealedPatch.status === 'completed' || revealedPatch.status === 'failed' || revealedPatch.status === 'generating' || revealedPatch.status === 'stopped'
+          ? revealedPatch.status
+          : undefined,
+      });
+    }
+    setMessages((current) => {
+      const messageIndex = messageIndexByIdRef.current.get(revealedPatch.id);
+      if (messageIndex != null && current[messageIndex]?.id === revealedPatch.id) {
+        const nextMessages = current.slice();
+        nextMessages[messageIndex] = applyStreamingPatchToMessage(current[messageIndex], revealedPatch);
+        messagesRef.current = nextMessages;
+        return nextMessages;
+      }
+      const nextMessages = current.map((message) => (message.id === revealedPatch.id ? applyStreamingPatchToMessage(message, revealedPatch) : message));
+      messagesRef.current = nextMessages;
+      rebuildMessageIndex(nextMessages);
+      return nextMessages;
+    });
   }
 
   function preserveReadModeFrozenMessages(nextMessages: AiMessageWithCitations[]): AiMessageWithCitations[] {
@@ -1304,6 +1403,8 @@ export function AiChatScreen({
   function resetStreamingReadBufferState() {
     streamingReadBufferActiveRef.current = false;
     bufferedStreamingPatchRef.current = null;
+    revealedStreamingPatchRef.current = null;
+    revealedStreamingRatioRef.current = 0;
     pendingFinalReloadRef.current = false;
     pendingFinalStreamingIdentityRef.current = null;
     hasBufferedStreamingUpdateRef.current = false;
@@ -1334,13 +1435,13 @@ export function AiChatScreen({
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset } = event.nativeEvent;
     messageScrollOffsetRef.current = contentOffset.y;
+    revealBufferedStreamingStateForScroll(contentOffset.y);
     const nextBottomLocked = contentOffset.y <= MESSAGE_STREAM_FOLLOW_THRESHOLD;
     if (!hasPendingStreamingReadBuffer()) {
       bottomLockedRef.current = nextBottomLocked;
     }
     userScrolledAwayFromBottomRef.current = !nextBottomLocked;
-    const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = hasUnseenStreamingUpdate || contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const nextShowScrollToLatest = contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }, []);
 
@@ -1412,6 +1513,9 @@ export function AiChatScreen({
       return;
     }
     if (pendingSearchScrollMessageIdRef.current) {
+      return;
+    }
+    if (hasPendingStreamingReadBuffer() || userScrolledAwayFromBottomRef.current || !bottomLockedRef.current) {
       return;
     }
     scrollToLatestMessage(false);
@@ -1820,29 +1924,14 @@ export function AiChatScreen({
 
   const applyStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
     setMessages((current) => {
-      const buildPatchedMessage = (message: AiMessageWithCitations): AiMessageWithCitations => ({
-        ...message,
-        status: patch.status ?? message.status,
-        content: patch.content ?? message.content,
-        reasoningText: patch.reasoningText === undefined ? message.reasoningText : patch.reasoningText,
-        errorMessage: patch.errorMessage === undefined ? message.errorMessage : patch.errorMessage,
-        providerId: patch.providerId === undefined ? message.providerId : patch.providerId,
-        modelId: patch.modelId === undefined ? message.modelId : patch.modelId,
-        modelSnapshotJson: patch.modelSnapshotJson ?? message.modelSnapshotJson,
-        promptSnapshotJson: patch.promptSnapshotJson ?? message.promptSnapshotJson,
-        createdAt: patch.createdAt ?? message.createdAt,
-        completedAt: patch.completedAt === undefined ? message.completedAt : patch.completedAt,
-        citations: patch.citations ?? message.citations,
-        updatedAt: patch.completedAt ?? new Date().toISOString(),
-      });
       const messageIndex = messageIndexByIdRef.current.get(patch.id);
       if (messageIndex != null && current[messageIndex]?.id === patch.id) {
         const nextMessages = current.slice();
-        nextMessages[messageIndex] = buildPatchedMessage(current[messageIndex]);
+        nextMessages[messageIndex] = applyStreamingPatchToMessage(current[messageIndex], patch);
         messagesRef.current = nextMessages;
         return nextMessages;
       }
-      const nextMessages = current.map((message) => (message.id === patch.id ? buildPatchedMessage(message) : message));
+      const nextMessages = current.map((message) => (message.id === patch.id ? applyStreamingPatchToMessage(message, patch) : message));
       messagesRef.current = nextMessages;
       rebuildMessageIndex(nextMessages);
       return nextMessages;
@@ -1859,7 +1948,9 @@ export function AiChatScreen({
       shouldPublishLiveStreamingPatch(targetThreadId, generation, patch)
     );
 
-    if (canPublishLive && streamingIdentity) {
+    const canAttachLiveLayout = bottomLockedRef.current && !hasPendingStreamingReadBuffer();
+
+    if (canAttachLiveLayout && canPublishLive && streamingIdentity) {
       publishStreamingMessage(streamingIdentity, {
         content: patch.content,
         reasoningText: patch.reasoningText,
@@ -1867,7 +1958,7 @@ export function AiChatScreen({
       });
     }
 
-    if (bottomLockedRef.current && !hasPendingStreamingReadBuffer()) {
+    if (canAttachLiveLayout) {
       if (canPublishLive) {
         return;
       }
@@ -1969,6 +2060,8 @@ export function AiChatScreen({
 
       streamingReadBufferActiveRef.current = false;
       bufferedStreamingPatchRef.current = null;
+      revealedStreamingPatchRef.current = null;
+      revealedStreamingRatioRef.current = 0;
       pendingFinalReloadRef.current = false;
       pendingFinalStreamingIdentityRef.current = null;
       hasBufferedStreamingUpdateRef.current = false;
@@ -3022,10 +3115,10 @@ export function AiChatScreen({
       const { message } = item;
       const inlineMemoryCaptures = memoryCapturesBySourceMessageId.get(message.id) ?? [];
       const favoriteIdentity = message.role === 'assistant' ? favoriteIdentityByMessageId.get(message.id) ?? null : null;
-      const streamingIdentity =
-        generating && message.id === activeAssistantId && activeStreamingIdentityRef.current?.messageId === message.id
-          ? activeStreamingIdentityRef.current
-          : null;
+      const activeStreamingIdentity = activeStreamingIdentityRef.current;
+      const streamingIdentity = activeStreamingIdentity?.messageId === message.id ? activeStreamingIdentity : null;
+      const streamingReadModeActive = hasPendingStreamingReadBuffer() && message.status === 'generating';
+      const streamingRendererActive = Boolean(streamingIdentity) && ((generating && message.id === activeAssistantId) || streamingReadModeActive);
       return (
         <>
           {item.showDateSeparator ? <Text style={styles.dateSeparator}>{formatDateSeparator(message.createdAt)}</Text> : null}
@@ -3048,7 +3141,7 @@ export function AiChatScreen({
               pendingActionMessageId={pendingMessageActionId}
               showAvatar={item.showAvatar}
               space={space}
-              streaming={generating && message.id === activeAssistantId && Boolean(streamingIdentity)}
+              streaming={streamingRendererActive}
               streamingIdentity={streamingIdentity}
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
               onCopy={(targetMessage) => {
@@ -3214,7 +3307,7 @@ export function AiChatScreen({
             <AiChatStarterHints onPickSuggestion={setComposerText} />
           </View>
         ) : null}
-        <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} streaming={generating && hasBufferedStreamingUpdateRef.current} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
+        <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
       </View>
 
       {inlineEditingActive ? null : (

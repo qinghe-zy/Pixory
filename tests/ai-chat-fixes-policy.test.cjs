@@ -205,12 +205,16 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /const MESSAGE_LIST_ANCHOR_CONFIG = \{ minIndexForVisible: 0 \}/);
   assert.match(chat, /const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
   assert.match(chat, /const nextBottomLocked = contentOffset\.y <= MESSAGE_STREAM_FOLLOW_THRESHOLD/);
-  assert.match(chat, /const nextShowScrollToLatest = hasUnseenStreamingUpdate \|\| contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(chat, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.doesNotMatch(chat, /const nextShowScrollToLatest = hasUnseenStreamingUpdate \|\|/);
+  const latestVisibilityBody = /function syncScrollToLatestVisibility\(offsetY = messageScrollOffsetRef\.current\) \{[\s\S]*?\n  \}/.exec(chat)?.[0] ?? '';
+  assert.match(latestVisibilityBody, /offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.doesNotMatch(latestVisibilityBody, /hasBufferedStreamingUpdateRef|pendingFinalReloadRef|hasPendingStreamingReadBuffer/);
   assert.match(chat, /userScrolledAwayFromBottomRef\.current = !nextBottomLocked/);
   assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
   assert.match(chat, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
-  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} streaming=\{generating && hasBufferedStreamingUpdateRef\.current\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
+  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
@@ -219,6 +223,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.doesNotMatch(chat, /onContentSizeChange=/);
   assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
   assert.match(chat, /const handleComposerHeightChange = useCallback/);
+  assert.match(chat, /hasPendingStreamingReadBuffer\(\) \|\| userScrolledAwayFromBottomRef\.current \|\| !bottomLockedRef\.current/);
   assert.match(chat, /handleComposerHeightChange[\s\S]*scrollToLatestMessage\(false\)/);
   assert.doesNotMatch(chat, /handleComposerHeightChange[\s\S]*followLatestMessage\(false\)/);
   assert.match(chat, /onComposerHeightChange=\{handleComposerHeightChange\}/);
@@ -305,6 +310,8 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /messagesRef/);
   assert.match(chat, /function mergeBufferedStreamingPatch/);
   assert.match(chat, /function freezeVisibleStreamingMessage/);
+  assert.match(chat, /function buildScrollRevealedStreamingPatch/);
+  assert.match(chat, /function revealBufferedStreamingStateForScroll/);
   assert.match(chat, /function preserveReadModeFrozenMessages/);
   assert.match(chat, /const flushBufferedStreamingState = useCallback/);
   assert.match(chat, /const applyOrBufferStreamingMessagePatch = useCallback/);
@@ -334,6 +341,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef\.current \|\| pendingFinalReloadRef\.current/);
   assert.match(chat, /if \(!hasPendingBufferedFlush\) \{\s*syncScrollToLatestVisibility\(offsetY\);\s*return;\s*\}/);
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
+  assert.match(scrollHandler, /revealBufferedStreamingStateForScroll\(contentOffset\.y\)/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*flushBufferedStreamingState/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*scrollToOffset/);
@@ -1130,8 +1138,11 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
 
   assert.match(chat, /setMessages\(\(current\) => \{/);
   assert.match(chat, /publishStreamingMessage\(streamingIdentity, \{ content: '', reasoningText: null, status: 'generating' \}\)/);
-  assert.match(chat, /activeStreamingIdentityRef\.current\?\.messageId === message\.id/);
-  assert.match(chat, /streaming=\{generating && message\.id === activeAssistantId && Boolean\(streamingIdentity\)\}/);
+  assert.match(chat, /const activeStreamingIdentity = activeStreamingIdentityRef\.current/);
+  assert.match(chat, /const streamingIdentity = activeStreamingIdentity\?\.messageId === message\.id \? activeStreamingIdentity : null/);
+  assert.match(chat, /const streamingReadModeActive = hasPendingStreamingReadBuffer\(\) && message\.status === 'generating'/);
+  assert.match(chat, /const streamingRendererActive = Boolean\(streamingIdentity\) && \(\(generating && message\.id === activeAssistantId\) \|\| streamingReadModeActive\)/);
+  assert.match(chat, /streaming=\{streamingRendererActive\}/);
   assert.match(bubble, /const waitingForFirstToken = generating && !message\.content\.trim\(\)/);
   assert.match(bubble, /streaming && streamingIdentity \?/);
 });
@@ -1356,7 +1367,8 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   const latestButton = read('src/components/ai/AiScrollToLatestButton.tsx');
 
   assert.match(chat, /showScrollToLatestRef/);
-  assert.match(chat, /const nextShowScrollToLatest = hasUnseenStreamingUpdate \|\| contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(chat, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.doesNotMatch(chat, /hasUnseenStreamingUpdate \|\| contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
   assert.match(chat, /if \(showScrollToLatestRef\.current === nextValue\)/);
   assert.match(chat, /showScrollToLatestRef\.current = nextValue/);
   assert.doesNotMatch(chat, /latestVisibleRef/);

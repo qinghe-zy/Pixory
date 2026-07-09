@@ -174,8 +174,10 @@ test('streaming patches decouple live text publication from bottom attachment', 
   assert.match(screen, /bottomLocked.*auto-scroll/i);
   assert.match(bufferBody, /publishStreamingMessage/);
   assert.match(bufferBody, /const canPublishLive/);
+  assert.match(bufferBody, /const canAttachLiveLayout = bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)/);
+  assert.match(bufferBody, /canAttachLiveLayout && canPublishLive && streamingIdentity/);
   assert.doesNotMatch(bufferBody, /if \(bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)\) \{\s*const streamingIdentity/);
-  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  assert.doesNotMatch(bufferBody, /else \{[\s\S]*publishStreamingMessage/);
   const detachedBody = /bottomLockedRef\.current = false;[\s\S]*?syncScrollToLatestVisibility\(\);/.exec(bufferBody)?.[0] ?? '';
   assert.doesNotMatch(detachedBody, /scrollToOffset/);
   assert.doesNotMatch(detachedBody, /followLatestMessage/);
