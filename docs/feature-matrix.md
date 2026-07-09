@@ -61,7 +61,7 @@
 | 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句 | `sillyTavernRoleCardParser`, `aiRoleCardRepository` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
 | 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
-| 深度记忆 | 自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板 | `aiMemory*`, `AiMemoryBoardScreen` |
+| 深度记忆 | 默认开启；更早维护本会话画像、自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板；全局用户画像在 AI 全局设置中维护；未配置远程记忆模型时使用本地轻量整理降级 | `aiMemory*`, `AiMemoryBoardScreen`, `AiProviderSettingsScreen` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
 | 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen` |

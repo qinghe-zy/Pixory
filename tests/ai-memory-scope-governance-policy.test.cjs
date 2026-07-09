@@ -64,17 +64,22 @@ test('AI thread moves include thread scoped user profiles', () => {
 
 test('AI memory board visibly separates global session and IP profile governance', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
+  const providerSettings = read('src/screens/AiProviderSettingsScreen.tsx');
 
-  assert.match(board, /globalProfile/);
+  assert.doesNotMatch(board, /globalProfile/);
+  assert.match(providerSettings, /globalProfile/);
   assert.match(board, /sessionProfile/);
   assert.match(board, /projectProfile/);
-  assert.match(board, /globalProfileDraft/);
+  assert.doesNotMatch(board, /globalProfileDraft/);
+  assert.match(providerSettings, /globalProfileDraft/);
   assert.match(board, /sessionProfileDraft/);
   assert.match(board, /projectProfileDraft/);
-  assert.match(board, /getUserProfile\(space,\s*null\)/);
+  assert.doesNotMatch(board, /getUserProfile\(space,\s*null\)/);
+  assert.match(providerSettings, /getUserProfile\(space,\s*null,\s*null\)/);
   assert.match(board, /getUserProfile\(space,\s*null,\s*threadId\)/);
   assert.match(board, /getUserProfile\(space,\s*nextThread\.boundIpId,\s*null\)/);
-  assert.match(board, /全局画像/);
+  assert.doesNotMatch(board, /label="全局画像内容"/);
+  assert.match(providerSettings, /全局用户画像/);
   assert.match(board, /本会话画像/);
   assert.match(board, /当前 IP 画像/);
   assert.match(board, /profileGovernanceCaption/);
@@ -91,14 +96,15 @@ test('AI memory board visibly separates global session and IP profile governance
   assert.match(board, /resolveManualMemoryScope\(thread,\s*resolvedManualMemoryScope\)/);
   assert.match(board, /resolvedManualMemoryScope === scope && styles\.filterChipActive/);
   assert.match(board, /resolvedManualMemoryScope === scope && styles\.filterTextActive/);
-  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
+  assert.match(board, /primaryLabel=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
 });
 
 test('AI memory board labels every memory item with its governance scope', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
 
   assert.match(board, /SCOPE_DESCRIPTIONS/);
-  assert.match(board, /作用域：\{SCOPE_LABELS\[memory\.scope\]\}/);
+  assert.match(board, /SCOPE_LABELS\[memory\.scope\]/);
+  assert.match(board, /SCOPE_LABELS\[selectedMemory\.scope\]/);
   assert.match(board, /全局记忆/);
   assert.match(board, /当前 IP 记忆/);
   assert.match(board, /本会话记忆/);
@@ -112,7 +118,7 @@ test('AI memory board lets manual additions choose global project or thread scop
   assert.match(board, /resolveManualMemoryScope/);
   assert.match(board, /scope:\s*manualScope\.scope/);
   assert.match(board, /scopeId:\s*manualScope\.scopeId/);
-  assert.match(board, /label=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
+  assert.match(board, /primaryLabel=\{`添加到\$\{SCOPE_LABELS\[resolvedManualMemoryScope\]\}`\}/);
 });
 
 test('AI memory retrieval gives local project scopes a hard priority over global memory', () => {

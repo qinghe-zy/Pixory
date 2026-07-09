@@ -33,6 +33,7 @@ import {
   testMemoryMaintenanceModel,
   type ResolvedMemoryMaintenanceModel,
 } from '../ai/aiMemoryMaintenanceModelService';
+import { getUserProfile, updateUserProfile } from '../ai/aiMemoryProfileService';
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiProviderModelRecord } from '../ai/types';
@@ -137,6 +138,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const [memoryMaintenanceModelDraft, setMemoryMaintenanceModelDraft] = useState('');
   const [maintenanceStatus, setMaintenanceStatus] = useState<ResolvedMemoryMaintenanceModel | null>(null);
   const [maintenanceInfoExpanded, setMaintenanceInfoExpanded] = useState(false);
+  const [globalProfileDraft, setGlobalProfileDraft] = useState('');
+  const [globalProfileText, setGlobalProfileText] = useState('');
   const [visibleKey, setVisibleKey] = useState(false);
   const [advancedVisible, setAdvancedVisible] = useState(false);
   const [selectedModelKeys, setSelectedModelKeys] = useState<string[]>([]);
@@ -157,6 +160,12 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   const maintenanceTone = maintenanceBannerTone(maintenanceStatus);
   const maintenanceTestTime = formatMaintenanceTestTime(maintenanceStatus?.lastTestAt);
   const maintenanceStatusMessage = maintenanceStatus?.lastTestMessage || maintenanceStatus?.statusText || '未配置远程维护模型，摘要压缩和画像维护不会调用远程模型';
+
+  const loadGlobalProfile = useCallback(async () => {
+    const globalProfile = await getUserProfile(space, null, null);
+    setGlobalProfileDraft(globalProfile?.profileText ?? '');
+    setGlobalProfileText(globalProfile?.profileText ?? '');
+  }, [space]);
 
   const loadMaintenanceSettings = useCallback(async () => {
     const [settings, resolved] = await Promise.all([
@@ -197,6 +206,10 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
+
+  useEffect(() => {
+    void loadGlobalProfile();
+  }, [loadGlobalProfile]);
 
   useEffect(() => {
     if (!selectedProviderId) {
@@ -549,6 +562,21 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       memoryMaintenanceProviderId: selectedCard.provider.id,
     });
     setStatus({ message: '记忆维护模型已保存。', tone: 'success', title: '设置已更新' });
+  }
+
+  async function handleSaveGlobalProfile() {
+    setLoading(true);
+    setStatus({ message: '正在保存全局用户画像...', tone: 'info' });
+    try {
+      const next = await updateUserProfile(space, globalProfileDraft.trim(), null, null);
+      setGlobalProfileDraft(next.profileText);
+      setGlobalProfileText(next.profileText);
+      setStatus({ message: '全局用户画像已保存。', tone: 'success', title: '画像已更新' });
+    } catch (error) {
+      setStatus({ message: error instanceof Error ? error.message : '保存全局用户画像失败', tone: 'error', title: '保存失败' });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function testSelectedMemoryMaintenanceModel() {
@@ -914,6 +942,24 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
 
       <AiLightListGroup title="后台智能与记忆模型">
         <View style={styles.inlineConfigPadding}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.sectionTitle}>全局用户画像</Text>
+            <Text style={styles.caption}>跨会话生效，只适合放稳定、明确、全局都适用的用户偏好。会话内画像和当前 IP 画像仍在记忆看板里管理。</Text>
+            <TextInput
+              multiline
+              onChangeText={setGlobalProfileDraft}
+              placeholder="例如：我希望默认回答简洁直接；我更喜欢中文交流。"
+              placeholderTextColor={aiLightColors.mutedSoft}
+              selectionColor={aiLightColors.primary}
+              style={[styles.input, styles.profileInput]}
+              textAlignVertical="top"
+              value={globalProfileDraft}
+            />
+            <View style={styles.inlineActions}>
+              <AiLightButton disabled={loading || globalProfileDraft === globalProfileText} label="保存全局画像" onPress={() => void handleSaveGlobalProfile()} variant="outline" />
+            </View>
+          </View>
+          <View style={styles.sectionDivider} />
           <View style={styles.statusPanel}>
             <View style={[
               styles.maintenanceResultBanner,
@@ -1238,6 +1284,9 @@ const styles = StyleSheet.create({
   importInput: {
     minHeight: 88,
     textAlignVertical: 'top',
+  },
+  profileInput: {
+    minHeight: 112,
   },
   iconButton: {
     alignItems: 'center',

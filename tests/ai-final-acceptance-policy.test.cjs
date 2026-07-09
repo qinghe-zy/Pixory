@@ -94,7 +94,8 @@ test('AI session settings persist role cards system prompt and boundary mode to 
 
   assert.match(sessionConfig, /loadThreadSessionConfig/);
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);
-  assert.match(sessionConfig, /applyRoleCardToThread/);
+  assert.doesNotMatch(sessionConfig, /applyRoleCardToThread/);
+  assert.doesNotMatch(sessionConfig, /恢复默认角色/);
   assert.match(sessionConfig, /avatarEnabled/);
   assert.match(sessionConfig, /头像开启|头像关闭/);
   assert.match(sessionConfig, /高级角色指令/);
@@ -235,15 +236,18 @@ test('AI session settings clearly distinguish autosaved options from role instru
   assert.match(session, /dangerSection/);
 });
 
-test('AI memory board uses confirmation or undo and human memory quality labels', () => {
+test('AI memory board uses confirmation and compact governance labels', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
 
   assert.match(board, /pendingDeleteMemory/);
   assert.match(board, /AppDialog/);
   assert.match(board, /删除这条记忆/);
   assert.match(board, /删除这段摘要/);
-  assert.match(board, /formatMemoryImportanceLabel/);
-  assert.match(board, /formatMemoryConfidenceLabel/);
+  assert.match(board, /microTag/);
+  assert.match(board, /SCOPE_LABELS\[memory\.scope\]/);
+  assert.match(board, /TYPE_LABELS\[memory\.type\]/);
+  assert.doesNotMatch(board, /formatMemoryImportanceLabel/);
+  assert.doesNotMatch(board, /formatMemoryConfidenceLabel/);
   assert.doesNotMatch(board, /重要度 \{memory\.importance\} · 可信度 \{Math\.round\(memory\.confidence \* 100\)\}%/);
 });
 
@@ -301,16 +305,19 @@ test('AI companion memory repository supports profiles and summary segments', ()
   assert.match(settings, /updateMemoryMaintenanceSettings/);
 });
 
-test('AI companion memory profile service supports initialization and low-frequency updates', () => {
+test('AI companion memory profile service updates session profiles early enough for long chats', () => {
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const prompts = read('src/ai/aiMemoryPrompts.ts');
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
+  const providerSettings = read('src/screens/AiProviderSettingsScreen.tsx');
 
-  assert.match(profile, /PROFILE_INITIAL_MESSAGE_COUNT = 20/);
-  assert.match(profile, /PROFILE_UPDATE_MESSAGE_INTERVAL = 50/);
-  assert.match(profile, /PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN = 10/);
-  assert.match(profile, /PROFILE_STRONG_SIGNAL_TIME_COOLDOWN_MS/);
+  assert.match(profile, /PROFILE_INITIAL_MESSAGE_COUNT = 8/);
+  assert.match(profile, /PROFILE_UPDATE_MESSAGE_INTERVAL = 16/);
+  assert.match(profile, /PROFILE_PASSIVE_UPDATE_MESSAGE_INTERVAL = 10/);
+  assert.match(profile, /PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN = 4/);
+  assert.match(profile, /PROFILE_STRONG_SIGNAL_TIME_COOLDOWN_MS = 5 \* 60 \* 1000/);
   assert.match(profile, /PROFILE_SIGNAL_PATTERNS/);
+  assert.match(profile, /我希望|我需要|叫我|我叫|你可以记住/);
   assert.match(profile, /maybeInitializeUserProfile/);
   assert.match(profile, /maybeUpdateUserProfile/);
   assert.match(profile, /buildProfileInitializationPrompt/);
@@ -319,8 +326,9 @@ test('AI companion memory profile service supports initialization and low-freque
   assert.match(profile, /用户手动画像/);
   assert.match(profile, /prepared\.currentProfile\.profileText/);
   assert.match(prompts, /手动画像优先/);
-  assert.match(board, /用户画像/);
-  assert.match(board, /updateUserProfile/);
+  assert.match(board, /人设画像/);
+  assert.match(providerSettings, /全局用户画像/);
+  assert.match(providerSettings, /updateUserProfile\(space,\s*globalProfileDraft\.trim\(\),\s*null,\s*null\)/);
 });
 
 test('AI memory board is reachable from session settings and supports user control', () => {
@@ -340,15 +348,19 @@ test('AI memory board is reachable from session settings and supports user contr
 
 test('AI memory board supports visible profile management', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
+  const providerSettings = read('src/screens/AiProviderSettingsScreen.tsx');
 
-  assert.match(board, /用户画像/);
+  assert.match(board, /人设画像/);
   assert.match(board, /画像用于长期理解你，不会覆盖当前要求/);
-  assert.match(board, /globalProfileDraft/);
+  assert.doesNotMatch(board, /globalProfileDraft/);
+  assert.doesNotMatch(board, /handleSaveGlobalProfile/);
   assert.match(board, /projectProfileDraft/);
-  assert.match(board, /handleSaveGlobalProfile/);
   assert.match(board, /handleSaveProjectProfile/);
   assert.match(board, /本会话画像优先于当前 IP 画像和全局画像/);
   assert.match(board, /lastUpdatedAt/);
+  assert.match(providerSettings, /全局用户画像/);
+  assert.match(providerSettings, /globalProfileDraft/);
+  assert.match(providerSettings, /handleSaveGlobalProfile/);
 });
 
 test('AI chat title is finalized from the first exchange and refreshed in the chat header', () => {

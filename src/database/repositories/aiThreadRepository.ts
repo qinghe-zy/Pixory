@@ -3648,7 +3648,7 @@ export const aiThreadRepository = {
 
   async getThreadMemorySettings(db: SQLiteDatabase, threadId: string): Promise<AiThreadMemorySettingsRecord> {
     const row = await db.getFirstAsync<AiThreadMemorySettingsRow>('SELECT * FROM ai_thread_memory_settings WHERE threadId = ?', threadId);
-    return row ? mapMemorySettingsRow(row) : { threadId, deepMemoryEnabled: false, updatedAt: createTimestamp() };
+    return row ? mapMemorySettingsRow(row) : { threadId, deepMemoryEnabled: true, updatedAt: createTimestamp() };
   },
 
   async updateThreadMemorySettings(db: SQLiteDatabase, threadId: string, deepMemoryEnabled: boolean): Promise<AiThreadMemorySettingsRecord> {

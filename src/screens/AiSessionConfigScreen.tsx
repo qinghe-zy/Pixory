@@ -17,7 +17,6 @@ import { AiSwitch } from '../components/ai/AiSwitch';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import {
-  applyRoleCardToThread,
   addThreadSessionManualModel,
   clearThreadSessionModelOverride,
   deleteProviderModel,
@@ -157,13 +156,13 @@ export function AiSessionConfigScreen({
   const [systemPrompt, setSystemPrompt] = useState(getDefaultSystemPrompt(contextType));
   const [currentRoleCardId, setCurrentRoleCardId] = useState<string | null>(null);
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
-  const [avatarEnabled, setAvatarEnabled] = useState(false);
+  const [avatarEnabled, setAvatarEnabled] = useState(true);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [thinkingDisabled, setThinkingDisabled] = useState(false);
-  const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(false);
+  const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(true);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
@@ -183,6 +182,7 @@ export function AiSessionConfigScreen({
   const [savingModel, setSavingModel] = useState(false);
   const [exportingRolePackage, setExportingRolePackage] = useState(false);
   const [importingContinuity, setImportingContinuity] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const systemPromptFieldRef = useRef<View | null>(null);
   const settingsLoadedRef = useRef(false);
@@ -244,6 +244,7 @@ export function AiSessionConfigScreen({
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
     settingsLoadedRef.current = true;
+    setConfigLoaded(true);
   }, [contextType, fallbackThreadTitle, space, threadId]);
 
   useEffect(() => {
@@ -581,20 +582,6 @@ export function AiSessionConfigScreen({
     }
   }
 
-  async function clearRoleCard() {
-    if (!threadId) {
-      setRoleCardSummary('默认角色');
-      return;
-    }
-    await applyRoleCardToThread({ roleCardId: null, space, threadId });
-    setCurrentRoleCardId(null);
-    setRoleCardSummary('默认角色');
-    setAvatarEnabled(false);
-    setAvatarUri(null);
-    setStatus({ message: '当前会话已恢复为 Pixory 默认角色。', tone: 'success', title: '角色已重置' });
-    await reloadConfig();
-  }
-
   async function exportCurrentRolePackage() {
     if (!threadId || exportingRolePackage) {
       return;
@@ -918,10 +905,12 @@ export function AiSessionConfigScreen({
               onPress={() => setAvatarEnabled((current) => !current)}
               showChevron={false}
               action={
-                <AiSwitch
-                  value={avatarEnabled}
-                  onValueChange={setAvatarEnabled}
-                />
+                configLoaded ? (
+                  <AiSwitch
+                    value={avatarEnabled}
+                    onValueChange={setAvatarEnabled}
+                  />
+                ) : null
               }
             />
             <AiLightListItem
@@ -934,10 +923,12 @@ export function AiSessionConfigScreen({
               isLast
               onPress={() => setThinkingDisabled((current) => !current)}
               action={
-                <AiSwitch
-                  value={!thinkingDisabled}
-                  onValueChange={(val) => setThinkingDisabled(!val)}
-                />
+                configLoaded ? (
+                  <AiSwitch
+                    value={!thinkingDisabled}
+                    onValueChange={(val) => setThinkingDisabled(!val)}
+                  />
+                ) : null
               }
             />
           </AiLightListGroup>
@@ -1000,10 +991,12 @@ export function AiSessionConfigScreen({
             <AiLightListItem
               accessibilityRole="switch"
               action={
-                <AiSwitch
-                  onValueChange={setDeepMemoryEnabled}
-                  value={deepMemoryEnabled}
-                />
+                configLoaded ? (
+                  <AiSwitch
+                    onValueChange={setDeepMemoryEnabled}
+                    value={deepMemoryEnabled}
+                  />
+                ) : null
               }
               onPress={() => setDeepMemoryEnabled((current) => !current)}
               icon="albums-outline"
@@ -1093,12 +1086,6 @@ export function AiSessionConfigScreen({
           </AiLightListGroup>
 
           <AiLightListGroup title="角色与数据迁移">
-            <AiLightListItem
-              icon="refresh-outline"
-              title="恢复默认角色"
-              onPress={() => void clearRoleCard()}
-              showChevron={false}
-            />
             <AiLightListItem
               icon="push-outline"
               title={exportingRolePackage ? '导出中' : '导出当前角色包'}

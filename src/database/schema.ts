@@ -600,7 +600,7 @@ ALTER TABLE ai_threads ADD COLUMN roleInstructionWeight TEXT NOT NULL DEFAULT 'd
 export const MIGRATION_STATEMENTS_V22 = `
 CREATE TABLE IF NOT EXISTS ai_thread_memory_settings (
   threadId TEXT PRIMARY KEY NOT NULL,
-  deepMemoryEnabled INTEGER NOT NULL DEFAULT 0,
+  deepMemoryEnabled INTEGER NOT NULL DEFAULT 1,
   updatedAt TEXT NOT NULL,
   FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
 );

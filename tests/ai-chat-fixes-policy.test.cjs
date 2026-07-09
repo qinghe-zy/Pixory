@@ -600,20 +600,22 @@ test('video long-press fast-forward does not reveal playback controls', () => {
   assert.doesNotMatch(startHold, /resetHideTimer\(\)/);
 });
 
-test('AI deep memory is opt-in and stores local summaries memories and settings', () => {
+test('AI deep memory defaults on and stores local summaries memories and settings', () => {
   const schema = read('src/database/schema.ts');
   const db = read('src/database/db.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const service = read('src/ai/aiChatService.ts');
   const captureService = read('src/ai/aiMemoryCaptureService.ts');
+  const maintenanceModel = read('src/ai/aiMemoryMaintenanceModelService.ts');
   const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
 
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_thread_memory_settings/);
-  assert.match(schema, /deepMemoryEnabled INTEGER NOT NULL DEFAULT 0/);
+  assert.match(schema, /deepMemoryEnabled INTEGER NOT NULL DEFAULT 1/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_thread_summaries/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_memories/);
   assert.match(db, /MIGRATION_STATEMENTS_V22/);
   assert.match(repository, /getThreadMemorySettings/);
+  assert.match(repository, /deepMemoryEnabled:\s*true/);
   assert.match(repository, /updateThreadMemorySettings/);
   assert.match(repository, /upsertThreadSummary/);
   assert.match(repository, /listActiveMemories/);
@@ -626,6 +628,8 @@ test('AI deep memory is opt-in and stores local summaries memories and settings'
   assert.match(captureService, /只输出 JSON/);
   assert.match(captureService, /modelUpdate \? modelUpdate\.memories : prepared\.localCandidates/);
   assert.match(captureService, /parseMemoryReconciliationOperations/);
+  assert.match(maintenanceModel, /status:\s*'local_fallback'/);
+  assert.match(maintenanceModel, /未配置远程维护模型，摘要压缩和画像维护不会调用远程模型/);
   assert.match(service, /lastMaintenanceError/);
   assert.match(sessionConfig, /深度记忆/);
   assert.match(sessionConfig, /不会继续注入记忆背景/);

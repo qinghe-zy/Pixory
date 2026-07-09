@@ -317,7 +317,8 @@ test('AI provider and model screens keep preset providers simple and custom addr
   assert.doesNotMatch(app, /ai-model-picker/);
   assert.match(sessionConfig, /updateAiThreadSessionConfig/);
   assert.match(sessionConfig, /loadThreadSessionConfig/);
-  assert.match(sessionConfig, /applyRoleCardToThread/);
+  assert.match(sessionConfig, /onOpenRoleLibrary/);
+  assert.doesNotMatch(sessionConfig, /applyRoleCardToThread/);
   assert.match(constants, /displayName: '其他模型'/);
 });
 

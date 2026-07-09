@@ -4,17 +4,18 @@ import { EMPTY_USER_PROFILE_JSON, buildProfileInitializationPrompt, buildProfile
 import { callMemoryMaintenanceModel, localMemoryMaintenanceResult, type MemoryMaintenanceModelCallResult } from './aiMemoryMaintenanceModelService';
 import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
 
-export const PROFILE_INITIAL_MESSAGE_COUNT = 20;
-export const PROFILE_UPDATE_MESSAGE_INTERVAL = 50;
-export const PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN = 10;
-export const PROFILE_STRONG_SIGNAL_TIME_COOLDOWN_MS = 15 * 60 * 1000;
+export const PROFILE_INITIAL_MESSAGE_COUNT = 8;
+export const PROFILE_UPDATE_MESSAGE_INTERVAL = 16;
+export const PROFILE_PASSIVE_UPDATE_MESSAGE_INTERVAL = 10;
+export const PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN = 4;
+export const PROFILE_STRONG_SIGNAL_TIME_COOLDOWN_MS = 5 * 60 * 1000;
 
 export const PROFILE_SIGNAL_PATTERNS = [
-  /记住我/,
-  /我喜欢|我不喜欢|我习惯|我更偏好/,
-  /我是|我现在在做|我的项目是/,
-  /不是这样|你记错了|我其实是/,
-  /以后都|默认|每次都|不要再/,
+  /记住我|你可以记住|帮我记住/,
+  /我喜欢|我不喜欢|我习惯|我更偏好|我希望|我需要/,
+  /我是|我叫|叫我|我现在|我最近|我目前|我现在在做|我的项目是/,
+  /不是这样|你记错了|我其实是|应该是/,
+  /以后都|默认|每次都|不要再|以后不要|以后请/,
 ];
 
 export type ProfileUpdateReason = 'message_interval' | 'strong_signal' | 'leave_chat' | 'app_background' | 'summary_merge';
@@ -298,7 +299,7 @@ function reasonIsEligible(input: {
     return input.completedSinceLastUpdate >= PROFILE_UPDATE_MESSAGE_INTERVAL;
   }
   if (input.reason === 'leave_chat' || input.reason === 'app_background') {
-    return input.completedSinceLastUpdate >= 30;
+    return input.completedSinceLastUpdate >= PROFILE_PASSIVE_UPDATE_MESSAGE_INTERVAL;
   }
   const cooldownByMessage = input.completedSinceLastUpdate >= PROFILE_STRONG_SIGNAL_MESSAGE_COOLDOWN;
   const cooldownUntilMs = input.jobCooldownUntil ? Date.parse(input.jobCooldownUntil) : 0;
