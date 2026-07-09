@@ -943,6 +943,7 @@ export function AiSessionConfigScreen({
           </AiLightListGroup>
 
 
+          {/*
           <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
             <AiLightListItem
               accessibilityRole="switch"
@@ -963,6 +964,7 @@ export function AiSessionConfigScreen({
               value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
             />
           </AiLightListGroup>
+          */}
 
           <AiLightListGroup title="上下文与偏好">
             <View style={styles.inlineConfigPadding}>
