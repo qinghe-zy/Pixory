@@ -980,6 +980,13 @@ export function AiChatScreen({
     return patch.id === activeStreamingIdentityRef.current.messageId;
   }
 
+  function shouldPublishLiveStreamingPatch(targetThreadId: string, generation: number, patch: AiStreamingMessagePatch): boolean {
+    if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
+      return false;
+    }
+    return screenMountedRef.current && appActiveRef.current;
+  }
+
   function promptRollbackContinuityImport(milestone: ActiveContinuityMilestone) {
     if (milestone.rollbackState !== 'available') {
       return;
@@ -1081,7 +1088,8 @@ export function AiChatScreen({
     const routeFocused = screenMountedRef.current && appActiveRef.current && isCurrentStream(targetThreadId, generation);
     return {
       appActive: screenMountedRef.current && appActiveRef.current,
-      bottomLocked: routeFocused && bottomLockedRef.current && !hasPendingStreamingReadBuffer(),
+      // bottomLocked is an auto-scroll attachment signal; route/app focus controls live streaming publication.
+      bottomLocked: bottomLockedRef.current,
       routeFocused,
     };
   }
@@ -1132,7 +1140,7 @@ export function AiChatScreen({
         if (!isCurrentStreamingPatch(targetThreadId, generation, patch)) {
           return;
         }
-        applyOrBufferStreamingMessagePatch(patch);
+        applyOrBufferStreamingMessagePatch(targetThreadId, generation, patch);
       },
       onSettled: () => {
         if (!isCurrentStream(targetThreadId, generation) || !screenMountedRef.current) {
@@ -1224,7 +1232,7 @@ export function AiChatScreen({
 
   function syncScrollToLatestVisibility(offsetY = messageScrollOffsetRef.current) {
     const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = !hasUnseenStreamingUpdate && offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const nextShowScrollToLatest = hasUnseenStreamingUpdate || offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }
 
@@ -1332,7 +1340,7 @@ export function AiChatScreen({
     }
     userScrolledAwayFromBottomRef.current = !nextBottomLocked;
     const hasUnseenStreamingUpdate = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
-    const nextShowScrollToLatest = !hasUnseenStreamingUpdate && contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const nextShowScrollToLatest = hasUnseenStreamingUpdate || contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
   }, []);
 
@@ -1841,15 +1849,26 @@ export function AiChatScreen({
     });
   }, []);
 
-  const applyOrBufferStreamingMessagePatch = useCallback((patch: AiStreamingMessagePatch) => {
+  const applyOrBufferStreamingMessagePatch = useCallback((targetThreadId: string, generation: number, patch: AiStreamingMessagePatch) => {
+    const streamingIdentity = activeStreamingIdentityRef.current;
+    const canPublishLive = Boolean(
+      streamingIdentity &&
+      patch.id === streamingIdentity.messageId &&
+      patch.generationId === streamingIdentity.generationId &&
+      shouldUseLiveStreamingPatch(patch) &&
+      shouldPublishLiveStreamingPatch(targetThreadId, generation, patch)
+    );
+
+    if (canPublishLive && streamingIdentity) {
+      publishStreamingMessage(streamingIdentity, {
+        content: patch.content,
+        reasoningText: patch.reasoningText,
+        status: patch.status === 'generating' ? patch.status : undefined,
+      });
+    }
+
     if (bottomLockedRef.current && !hasPendingStreamingReadBuffer()) {
-      const streamingIdentity = activeStreamingIdentityRef.current;
-      if (streamingIdentity && shouldUseLiveStreamingPatch(patch)) {
-        publishStreamingMessage(streamingIdentity, {
-          content: patch.content,
-          reasoningText: patch.reasoningText,
-          status: patch.status === 'generating' ? patch.status : undefined,
-        });
+      if (canPublishLive) {
         return;
       }
       applyStreamingMessagePatch(patch);
@@ -3195,7 +3214,7 @@ export function AiChatScreen({
             <AiChatStarterHints onPickSuggestion={setComposerText} />
           </View>
         ) : null}
-        <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
+        <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} streaming={generating && hasBufferedStreamingUpdateRef.current} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
       </View>
 
       {inlineEditingActive ? null : (

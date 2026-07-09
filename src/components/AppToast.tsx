@@ -97,7 +97,7 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
             <View style={styles.toastMask}>
               <BlurView intensity={50} tint="light" style={styles.toastBlur}>
                 <View style={[styles.iconWrap]}>
-                  <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={18} />
+                  <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={metrics.iconSizeSm} />
                 </View>
                 <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
                 {toast.actionLabel && toast.onAction ? (

@@ -25,7 +25,7 @@ test('branch lineage uses one recursive SQLite query with invalid lineage guards
 test('AI chat streaming patches update by indexed message id before falling back', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const patchBody = /const applyStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[\]\);/.exec(chat)?.[0] ?? '';
-  const bufferBody = /const applyOrBufferStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[applyStreamingMessagePatch\]\);/.exec(chat)?.[0] ?? '';
+  const bufferBody = /const applyOrBufferStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
   const preserveLiveBody = /function preserveLiveStreamingMessages\(nextMessages: AiMessageWithCitations\[\]\): AiMessageWithCitations\[\] \{[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /messageIndexByIdRef/);
@@ -49,6 +49,10 @@ test('AI chat streaming patches update by indexed message id before falling back
   assert.match(chat, /preserveLiveStreamingMessages\(forceToLatest \? nextMessages : preserveReadModeFrozenMessages\(nextMessages\)\)/);
   const mergeMatches = bufferBody.match(/mergeBufferedStreamingPatch\(patch\)/g) ?? [];
   assert.equal(mergeMatches.length, 1);
+  assert.match(bufferBody, /shouldPublishLiveStreamingPatch/);
+  assert.match(bufferBody, /publishStreamingMessage/);
+  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  assert.doesNotMatch(bufferBody, /scrollToOffset/);
 });
 
 test('AI chat streaming assistant creation avoids an immediate full message reload', () => {
@@ -169,6 +173,24 @@ test('streaming assistant content uses lightweight rendering until the reply is 
   assert.match(content, /if \(streaming\) \{/);
   assert.match(content, /return <Text selectable style=\{\[styles\.body, styles\.assistantText\]\}>/);
   assert.doesNotMatch(content, /const parsedMarkdown = useMemo\(.*\[content, streaming\]\)/);
+});
+
+test('streaming output keeps live rendering separate from detached history layout', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const button = read('src/components/ai/AiScrollToLatestButton.tsx');
+  const bufferBody = /const applyOrBufferStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  const detachedBody = /bottomLockedRef\.current = false;[\s\S]*?syncScrollToLatestVisibility\(\);/.exec(bufferBody)?.[0] ?? '';
+
+  assert.match(chat, /shouldPublishLiveStreamingPatch/);
+  assert.match(bufferBody, /const canPublishLive/);
+  assert.match(bufferBody, /publishStreamingMessage/);
+  assert.match(detachedBody, /freezeVisibleStreamingMessage\(patch\.id\)/);
+  assert.match(detachedBody, /mergeBufferedStreamingPatch\(patch\)/);
+  assert.doesNotMatch(detachedBody, /scrollToOffset/);
+  assert.doesNotMatch(detachedBody, /followLatestMessage/);
+  assert.match(chat, /streaming=\{generating && hasBufferedStreamingUpdateRef\.current\}/);
+  assert.match(button, /streaming\?: boolean/);
+  assert.match(button, /AI 正在回复/);
 });
 
 test('reply-completed memory maintenance is deferred so chat completion does not compete with the foreground path', () => {

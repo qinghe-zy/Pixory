@@ -162,7 +162,7 @@ type AppRoute =
   | { name: 'backup'; space: PixorySpace }
   | { name: 'storage-usage'; space: PixorySpace }
   | { name: 'chat-storage-usage'; space: PixorySpace }
-  | { name: 'milestones-detail'; space?: PixorySpace; preloadedMarkdown?: string | null }
+  | { name: 'milestones-detail'; space: PixorySpace; preloadedMarkdown?: string | null }
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'about'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
@@ -217,7 +217,6 @@ type AppRoute =
   | { name: 'ai-thread-material-list'; space: PixorySpace; threadId: string; title?: string }
   | { name: 'ai-document-reader'; space: PixorySpace; documentId?: string; title?: string; locator?: AiDocumentReaderLocator }
   | { name: 'ai-history'; space: PixorySpace }
-  | { name: 'about'; space?: PixorySpace }
   | { name: 'placeholder'; title: string; description: string }
   | { name: 'import-development' };
 
@@ -1983,6 +1982,7 @@ export default function App() {
     content = (
       <MeScreen
         footer={rootFooter}
+        space={activeSpace}
         onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
         onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
         onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
@@ -1996,7 +1996,6 @@ export default function App() {
         onOpenTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
         personalSessionState={personalSessionState}
         refreshToken={libraryRefreshToken}
-        space={activeSpace}
       />
     );
   } else {

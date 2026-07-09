@@ -12,22 +12,48 @@ export const STREAMING_PRESSURE_DELAY_MS = 250;
 export const STREAMING_PRESSURE_RECOVERY_MS = 120;
 export const STREAMING_PRESSURE_WINDOWS_REQUIRED = 2;
 
+export function canPublishStreamingPatch(input: StreamingVisibilityState): boolean {
+  return input.appActive !== false && input.routeFocused !== false;
+}
+
 export function targetStreamingFps(input: StreamingVisibilityState & { visibleChars: number }): number {
-  if (!input.bottomLocked || input.appActive === false || input.routeFocused === false) {
+  if (!canPublishStreamingPatch(input)) {
     return 0;
   }
   if (input.visibleChars <= 1000) {
-    return input.devicePressure ? 12 : 20;
+    return input.devicePressure ? 18 : 36;
   }
   if (input.visibleChars <= 4000) {
-    return input.devicePressure ? 10 : 15;
+    return input.devicePressure ? 15 : 30;
   }
-  return input.devicePressure ? 8 : 10;
+  return input.devicePressure ? 12 : 24;
 }
 
 export function targetStreamingPatchIntervalMs(input: StreamingVisibilityState & { visibleChars: number }): number | null {
   const fps = targetStreamingFps(input);
   return fps > 0 ? Math.ceil(1000 / fps) : null;
+}
+
+export function targetStreamingDisplayStep(input: {
+  backlogChars: number;
+  devicePressure?: boolean;
+  visibleChars: number;
+}): number {
+  if (input.backlogChars <= 0) {
+    return 0;
+  }
+  const pressureScale = input.devicePressure ? 0.72 : 1;
+  const longTextScale = input.visibleChars > 4000 ? 1.35 : input.visibleChars > 1000 ? 1.15 : 1;
+  if (input.backlogChars <= 24) {
+    return Math.max(1, Math.ceil(6 * pressureScale));
+  }
+  if (input.backlogChars <= 120) {
+    return Math.ceil(18 * pressureScale * longTextScale);
+  }
+  if (input.backlogChars <= 600) {
+    return Math.ceil(48 * pressureScale * longTextScale);
+  }
+  return Math.ceil(120 * pressureScale * longTextScale);
 }
 
 export function targetPersistIntervalMs(): number {

@@ -113,3 +113,22 @@ test('chat history trimming uses resolved model context window and preserves pro
   assert.match(promptBuilder, /contextBudgetTrimmed: true/);
   assert.match(promptBuilder, /buildPromptCacheMetadata/);
 });
+
+test('first visible streaming patch is not gated by scroll attachment', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+  const runtime = read('src/ai/aiStreamingRuntime.ts');
+  const bufferBody = /const applyOrBufferStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(screen)?.[0] ?? '';
+
+  assert.match(runtime, /canPublishStreamingPatch/);
+  assert.doesNotMatch(runtime, /!input\.bottomLocked[\s\S]{0,80}return 0/);
+  assert.match(screen, /function shouldPublishLiveStreamingPatch/);
+  assert.match(screen, /routeFocused/);
+  assert.match(screen, /appActive/);
+  assert.match(screen, /isCurrentStreamingPatch/);
+  assert.match(screen, /bottomLocked.*auto-scroll/i);
+  assert.match(bufferBody, /const canPublishLive/);
+  assert.match(bufferBody, /publishStreamingMessage/);
+  assert.match(bufferBody, /if \(canPublishLive\) \{/);
+  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  assert.match(screen, /function beginStreamingRequest[\s\S]*resetStreamingReadBufferState\(\);[\s\S]*clearActiveStreamingIdentity\(\);[\s\S]*activeStreamGenerationRef\.current \+= 1/);
+});

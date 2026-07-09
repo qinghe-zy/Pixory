@@ -279,24 +279,30 @@ export function MeScreen({
             </View>
           </View>
         </View>
+        <View style={styles.libraryStatsRow}>
+          <StatBlock label="素材总数" value={data?.activeAssetCount ?? 0} />
+          <StatBlock label="IP 数量" value={data?.ipCount ?? 0} />
+        </View>
         <View style={styles.storageBlock}>
           <View style={styles.storageVisualContainer}>
-            <View style={styles.storageVisualHeader}>
-               <Text style={styles.storageTotalLabel}>存储总计</Text>
-               <Text style={styles.storageTotalValue}>{formatFileSize(imageBytes + videoBytes)}</Text>
+            <View style={styles.storageHeader}>
+              <Text style={styles.storageTotalLabel}>存储总计</Text>
+              <Text style={styles.storageTotalValue}>{formatFileSize(imageBytes + videoBytes)}</Text>
             </View>
             <View style={styles.storageProgressBar}>
               <View style={[styles.storageProgressSegment, { backgroundColor: colors.semantic.success, width: `${(imageBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
               <View style={[styles.storageProgressSegment, { backgroundColor: colors.primary.weak, width: `${(videoBytes / (imageBytes + videoBytes || 1)) * 100}%` }]} />
             </View>
             <View style={styles.storageLegendRow}>
-              <View style={styles.storageLegendItem}>
+              <View style={styles.storageInlineRow}>
                 <View style={[styles.storageLegendDot, { backgroundColor: colors.semantic.success }]} />
-                <Text style={styles.storageLegendText}>图片 {formatFileSize(imageBytes)}</Text>
+                <Text style={styles.storageLegendText}>图片原图</Text>
+                <Text style={styles.storageValue}>{formatFileSize(imageBytes)}</Text>
               </View>
-              <View style={styles.storageLegendItem}>
+              <View style={styles.storageInlineRow}>
                 <View style={[styles.storageLegendDot, { backgroundColor: colors.primary.weak }]} />
-                <Text style={styles.storageLegendText}>视频 {formatFileSize(videoBytes)}</Text>
+                <Text style={styles.storageLegendText}>视频存储</Text>
+                <Text style={styles.storageValue}>{formatFileSize(videoBytes)}</Text>
               </View>
             </View>
           </View>
@@ -304,7 +310,7 @@ export function MeScreen({
         </View>
       </ContentCard>
 
-      <View style={styles.dashboardContainer}>
+      <View style={styles.entryList}>
         {/* BLOCK 1: Core Assets (Side-by-side squares) */}
         <View style={styles.coreAssetsRow}>
           <Pressable
@@ -417,6 +423,14 @@ export function MeScreen({
 }
 
 
+function StatBlock({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.statBlock}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
 
 function StorageUsageGlyph() {
   return (
@@ -531,10 +545,10 @@ const styles = StyleSheet.create({
   storageVisualContainer: {
     gap: spacing[2],
   },
-  storageVisualHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+  storageHeader: {
+    flexDirection: 'column',
+    gap: rhythm.microGap,
+    alignItems: 'flex-start',
     marginBottom: spacing[1],
   },
   storageTotalLabel: {
@@ -564,10 +578,11 @@ const styles = StyleSheet.create({
     gap: spacing[4],
     marginTop: spacing[1],
   },
-  storageLegendItem: {
+  storageInlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[1],
+    justifyContent: 'flex-start',
   },
   storageLegendDot: {
     width: 6,
@@ -579,7 +594,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.text.secondary,
   },
-  dashboardContainer: {
+  storageValue: {
+    ...typography.textStyles.caption,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  libraryStatsRow: {
+    flexDirection: 'row',
+    gap: rhythm.inlineGap,
+  },
+  statBlock: {
+    backgroundColor: colors.background.soft,
+    borderRadius: radius.md,
+    flex: 1,
+    gap: rhythm.microGap,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  statValue: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+  },
+  statLabel: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
+  },
+  entryList: {
     gap: rhythm.entryCardGap,
   },
   coreAssetsRow: {

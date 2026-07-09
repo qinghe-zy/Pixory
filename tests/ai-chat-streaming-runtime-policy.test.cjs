@@ -15,13 +15,20 @@ test('streaming runtime defines adaptive UI and persist throttling tiers', () =>
   assert.match(runtime, /export const STREAMING_PRESSURE_RECOVERY_MS = 120/);
   assert.match(runtime, /export const STREAMING_PRESSURE_WINDOWS_REQUIRED = 2/);
   assert.match(runtime, /export function targetStreamingFps/);
+  assert.match(runtime, /export function canPublishStreamingPatch/);
+  assert.match(runtime, /export function targetStreamingDisplayStep/);
   assert.match(runtime, /devicePressure\?: boolean/);
   assert.match(runtime, /visibleChars <= 1000/);
-  assert.match(runtime, /devicePressure \? 12 : 20/);
+  assert.match(runtime, /devicePressure \? 18 : 36/);
   assert.match(runtime, /visibleChars <= 4000/);
-  assert.match(runtime, /devicePressure \? 10 : 15/);
-  assert.match(runtime, /devicePressure \? 8 : 10/);
+  assert.match(runtime, /devicePressure \? 15 : 30/);
+  assert.match(runtime, /devicePressure \? 12 : 24/);
+  assert.match(runtime, /backlogChars <= 24/);
+  assert.match(runtime, /backlogChars <= 120/);
+  assert.match(runtime, /backlogChars <= 600/);
+  assert.match(runtime, /visibleChars > 4000/);
   assert.match(runtime, /return 0/);
+  assert.doesNotMatch(runtime, /if \(!input\.bottomLocked \|\| input\.appActive === false \|\| input\.routeFocused === false\) \{\s*return 0;\s*\}/);
   assert.match(runtime, /export function targetPersistIntervalMs/);
   assert.match(runtime, /export function shouldForceStreamingFlush/);
   assert.match(runtime, /export function updateStreamingDevicePressure/);
@@ -126,7 +133,10 @@ test('service no longer uses fixed high-frequency streaming persistence', () => 
   assert.doesNotMatch(service, /const STREAMING_PERSIST_INTERVAL_MS = 120/);
   assert.doesNotMatch(service, /const STREAMING_UI_PATCH_INTERVAL_MS = 80/);
   assert.match(service, /targetStreamingFps/);
+  assert.match(service, /targetStreamingDisplayStep/);
   assert.match(service, /targetPersistIntervalMs/);
+  assert.match(service, /schedulePersistStreamingSnapshot/);
+  assert.doesNotMatch(service, /await persistStreamingSnapshot\(\);\s*\n/);
   assert.match(service, /STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS/);
   assert.match(service, /STREAMING_PRESSURE_RECOVERY_MS/);
   assert.match(service, /updateStreamingDevicePressure/);
@@ -150,9 +160,25 @@ test('service no longer uses fixed high-frequency streaming persistence', () => 
   assert.match(screen, /getStreamingVisibility: \(\) => getActiveStreamingVisibility\(targetThreadId, generation\)/);
   assert.match(screen, /function getActiveStreamingVisibility/);
   assert.match(screen, /routeFocused = screenMountedRef\.current && appActiveRef\.current && isCurrentStream\(targetThreadId, generation\)/);
-  assert.match(screen, /bottomLocked: routeFocused && bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)/);
+  assert.match(screen, /bottomLocked: bottomLockedRef\.current/);
   assert.match(screen, /AppState\.addEventListener\('change'/);
   assert.doesNotMatch(service, /targetStreamingPatchIntervalMs\(\{\s*bottomLocked: true/);
+});
+
+test('streaming patches decouple live text publication from bottom attachment', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+  const bufferBody = /const applyOrBufferStreamingMessagePatch = useCallback[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(screen)?.[0] ?? '';
+
+  assert.match(screen, /function shouldPublishLiveStreamingPatch/);
+  assert.match(screen, /shouldPublishLiveStreamingPatch\(targetThreadId, generation, patch\)/);
+  assert.match(screen, /bottomLocked.*auto-scroll/i);
+  assert.match(bufferBody, /publishStreamingMessage/);
+  assert.match(bufferBody, /const canPublishLive/);
+  assert.doesNotMatch(bufferBody, /if \(bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)\) \{\s*const streamingIdentity/);
+  assert.doesNotMatch(bufferBody, /bottomLockedRef\.current && !hasPendingStreamingReadBuffer\(\)[\s\S]{0,220}publishStreamingMessage/);
+  const detachedBody = /bottomLockedRef\.current = false;[\s\S]*?syncScrollToLatestVisibility\(\);/.exec(bufferBody)?.[0] ?? '';
+  assert.doesNotMatch(detachedBody, /scrollToOffset/);
+  assert.doesNotMatch(detachedBody, /followLatestMessage/);
 });
 
 test('service guards durable streaming writes by generationId', () => {

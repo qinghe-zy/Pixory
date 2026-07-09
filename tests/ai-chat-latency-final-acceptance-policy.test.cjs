@@ -28,3 +28,26 @@ test('implementation keeps forbidden scope out of the codebase', () => {
   assert.doesNotMatch(files, /semanticAnswerCache|semanticReplyCache|answerCache/i);
   assert.doesNotMatch(files, /redis|qdrant|milvus|serverGateway/i);
 });
+
+test('streaming output modernization acceptance contract is implemented', () => {
+  const runtime = read('src/ai/aiStreamingRuntime.ts');
+  const service = read('src/ai/aiChatService.ts');
+  const screen = read('src/screens/AiChatScreen.tsx');
+  const store = read('src/ai/aiStreamingMessageStore.ts');
+  const button = read('src/components/ai/AiScrollToLatestButton.tsx');
+
+  assert.match(runtime, /canPublishStreamingPatch/);
+  assert.match(runtime, /targetStreamingDisplayStep/);
+  assert.doesNotMatch(runtime, /!input\.bottomLocked[\s\S]{0,120}return 0/);
+  assert.match(service, /schedulePersistStreamingSnapshot/);
+  assert.match(service, /waitForScheduledPersistStreamingSnapshot/);
+  assert.match(service, /await waitForScheduledPersistStreamingSnapshot\(\);\s*await persistStreamingSnapshot\(true\)/);
+  assert.doesNotMatch(service, /await persistStreamingSnapshot\(\);\s*\n/);
+  assert.match(screen, /shouldPublishLiveStreamingPatch/);
+  assert.match(screen, /bottomLocked.*auto-scroll/i);
+  assert.match(screen, /publishStreamingMessage/);
+  assert.match(screen, /pendingFinalReloadRef/);
+  assert.match(screen, /streaming=\{generating && hasBufferedStreamingUpdateRef\.current\}/);
+  assert.match(store, /useSyncExternalStore/);
+  assert.match(button, /AI 正在回复/);
+});

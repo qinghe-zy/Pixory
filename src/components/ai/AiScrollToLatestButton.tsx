@@ -6,18 +6,19 @@ import { aiLightColors } from './aiLightTheme';
 
 interface AiScrollToLatestButtonProps {
   bottomOffset: number;
+  streaming?: boolean;
   visible: boolean;
   onPress: () => void;
 }
 
-export function AiScrollToLatestButton({ bottomOffset, visible, onPress }: AiScrollToLatestButtonProps) {
+export function AiScrollToLatestButton({ bottomOffset, streaming = false, visible, onPress }: AiScrollToLatestButtonProps) {
   if (!visible) {
     return null;
   }
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.button, { bottom: bottomOffset }, pressed && styles.pressed]}>
+    <Pressable accessibilityLabel={streaming ? 'AI 正在回复，回到最新' : '回到最新'} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.button, { bottom: bottomOffset }, pressed && styles.pressed]}>
       <Ionicons color={aiLightColors.onDark} name="arrow-down" size={14} />
-      <Text style={styles.text}>回到最新</Text>
+      <Text style={styles.text}>{streaming ? 'AI 正在回复' : '回到最新'}</Text>
     </Pressable>
   );
 }

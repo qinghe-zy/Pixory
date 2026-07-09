@@ -27,7 +27,7 @@ test('EAS Update is configured for production OTA bundles', () => {
   const androidStrings = readProjectFile('android/app/src/main/res/values/strings.xml');
   const nativeRuntimeVersion = androidStrings.match(/<string name="expo_runtime_version" translatable="false">([^<]+)<\/string>/)?.[1];
 
-  assert.equal(packageJson.dependencies['expo-updates'], '~29.0.17');
+  assert.equal(packageJson.dependencies['expo-updates'], '~29.0.18');
   assert.equal(appConfig.expo.runtimeVersion, packageJson.version);
   assert.equal(appConfig.expo.runtimeVersion, nativeRuntimeVersion);
   assert.equal(appConfig.expo.updates.enabled, true);

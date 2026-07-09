@@ -63,6 +63,7 @@ import {
   STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS,
   type StreamingVisibilityState,
   targetPersistIntervalMs,
+  targetStreamingDisplayStep,
   targetStreamingFps,
   targetStreamingPatchIntervalMs,
   updateStreamingDevicePressure,
@@ -2875,7 +2876,19 @@ async function streamAssistantReply(input: {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
     }
-    if (!force && now - lastUiPatchAt < patchIntervalMs) {
+    const backlogChars = Math.max(
+      0,
+      answerChars + reasoningChars - lastUiPatchAnswerChars - lastUiPatchReasoningChars
+    );
+    const displayStep = targetStreamingDisplayStep({
+      backlogChars,
+      devicePressure: generationMetrics.context.devicePressureThrottled,
+      visibleChars: answerText.length + reasoningText.length,
+    });
+    const effectivePatchIntervalMs = backlogChars >= displayStep && displayStep > 0
+      ? Math.max(16, Math.floor(patchIntervalMs / 2))
+      : patchIntervalMs;
+    if (!force && now - lastUiPatchAt < effectivePatchIntervalMs) {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
     }
@@ -2919,6 +2932,39 @@ async function streamAssistantReply(input: {
         reasoningText: reasoningText || null,
       }, { syncFts: false })
     );
+  };
+  let persistInFlight = false;
+  let persistPending = false;
+  let persistTask: Promise<void> | null = null;
+  const schedulePersistStreamingSnapshot = () => {
+    if (input.signal?.aborted) {
+      return;
+    }
+    persistPending = true;
+    if (persistInFlight) {
+      return;
+    }
+    persistInFlight = true;
+    persistTask = (async () => {
+      try {
+        while (persistPending && !input.signal?.aborted) {
+          persistPending = false;
+          await persistStreamingSnapshot(false);
+        }
+      } catch (error) {
+        console.warn('Pixory AI streaming snapshot persistence failed.', error);
+      } finally {
+        persistInFlight = false;
+        if (persistPending && !input.signal?.aborted) {
+          schedulePersistStreamingSnapshot();
+        }
+      }
+    })();
+  };
+  const waitForScheduledPersistStreamingSnapshot = async () => {
+    while (persistInFlight && persistTask) {
+      await persistTask;
+    }
   };
 
   try {
@@ -2978,7 +3024,7 @@ async function streamAssistantReply(input: {
             0,
             generationMetrics.counters.providerDeltaCount - generationMetrics.counters.streamUiPatchCount
           );
-          await persistStreamingSnapshot();
+          schedulePersistStreamingSnapshot();
         }
         if (event.type === 'error') {
           streamFailed = true;
@@ -3013,6 +3059,7 @@ async function streamAssistantReply(input: {
     return;
   }
 
+  await waitForScheduledPersistStreamingSnapshot();
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 
