@@ -190,6 +190,9 @@ test('streaming output keeps live rendering separate from detached history layou
   assert.match(bufferBody, /canAttachLiveLayout && canPublishLive && streamingIdentity/);
   assert.match(detachedBody, /freezeVisibleStreamingMessage\(patch\.id\)/);
   assert.match(detachedBody, /mergeBufferedStreamingPatch\(patch\)/);
+  assert.match(detachedBody, /mergeStreamingTailPatch/);
+  assert.doesNotMatch(detachedBody, /publishStreamingMessage/);
+  assert.doesNotMatch(detachedBody, /applyStreamingMessagePatch\(patch\)/);
   assert.doesNotMatch(detachedBody, /scrollToOffset/);
   assert.doesNotMatch(detachedBody, /followLatestMessage/);
   assert.doesNotMatch(button, /streaming\?: boolean/);

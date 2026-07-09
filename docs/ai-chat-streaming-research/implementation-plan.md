@@ -765,6 +765,21 @@ pnpm typecheck
 
 Expected: pass.
 
+## 6.5. Task 4.5: Hook Up Height Cache
+
+- [ ] **Step 1: Use cache in Splitter**
+
+In `src/ai/aiStreamingBlockSplitter.ts`, import `createStreamBlockHeightCacheKey` and `createStreamingHeightCache`.
+Create a global or module-level cache instance:
+```ts
+export const streamBlockHeightCache = createStreamingHeightCache();
+```
+In `splitStreamingTextIntoBlocks`, check the cache before estimating. (You'll need to pass the bubble width to the cache key).
+
+- [ ] **Step 2: Write to cache in Component**
+
+In `src/components/ai/AiMeasuredStreamBlock.tsx`, when handling `onLayout`, write the layout height into the cache for this block.
+
 ## 7. Task 5: Connect Tail Items To AiChatScreen
 
 **Files:**
@@ -772,6 +787,10 @@ Expected: pass.
 - Modify: `src/screens/AiChatScreen.tsx`
 - Modify: `tests/ai-chat-streaming-tail-policy.test.cjs`
 - Modify existing tests that mention `revealBufferedStreamingStateForScroll`
+
+- [ ] **Step 0: Fix Types**
+
+Find `onOpenThread` in `AiChatScreen.tsx` near `AiComprehensiveRecordDrawer` that uses `: any` and remove the `: any` type degradation. (Around line 3429).
 
 - [ ] **Step 1: Add screen policy test**
 
@@ -917,10 +936,14 @@ resetStreamingTailState();
 In `flushBufferedStreamingState`, remove the same revealed refs and add:
 
 ```ts
-resetStreamingTailState();
+if (streamingTailStateRef.current.status !== 'idle') {
+  if (bottomLockedRef.current || currentRoute?.name !== 'ai-chat') {
+    resetStreamingTailState();
+  }
+}
 ```
 
-Only call `resetStreamingTailState()` after applying the full buffered patch or when intentionally returning latest.
+Only call `resetStreamingTailState()` after applying the full buffered patch if the user is safely at the bottom (`bottomLockedRef.current`) or leaving the chat. Otherwise leave it 'completed' so it can be naturally consumed.
 
 - [ ] **Step 8: Change scroll handler**
 
@@ -934,7 +957,8 @@ Replace with:
 
 ```ts
 if (hasPendingStreamingReadBuffer()) {
-  const visibleTailHeight = Math.max(0, MESSAGE_SCROLL_BUTTON_THRESHOLD - contentOffset.y);
+  const tailState = streamingTailStateRef.current;
+  const visibleTailHeight = Math.max(0, tailState.totalReservedHeight - contentOffset.y);
   updateStreamingTailState((current) =>
     promoteStreamingTailBlocks({
       previous: current,
@@ -944,7 +968,7 @@ if (hasPendingStreamingReadBuffer()) {
 }
 ```
 
-This is intentionally conservative. It promotes only by reserved block height and never by character ratio.
+This promotes blocks by subtracting the offset from the `totalReservedHeight` so that promotion happens safely as the user scrolls downwards toward the latest.
 
 - [ ] **Step 9: Update `nextVisibleMessageItems` construction**
 
@@ -967,7 +991,7 @@ const promotedTailItems = tailState.blocks
   .filter((block) => tailState.promotedBlockIds.has(block.blockId))
   .map((block): VisibleMessageItem => ({ block, type: 'streamTailBlock' }));
 const hiddenTailHeight = tailState.totalReservedHeight;
-if (tailState.status !== 'idle' && tailState.generationId) {
+if ((tailState.status === 'detached' || tailState.status === 'completed') && tailState.generationId) {
   if (hiddenTailHeight > 0) {
     nextInvertedMessageItems.unshift({
       generationId: tailState.generationId,
@@ -985,7 +1009,14 @@ Important: if the visual placement is wrong in code review, adjust only item ins
 
 - [ ] **Step 10: Update `visibleMessageState` memo dependencies**
 
-Add `streamingTailVersion` to the `useMemo` dependency array that builds `visibleMessageState`:
+Add `streamingTailVersion` to the `useMemo` dependency array that builds `visibleMessageState`.
+Also, inside the memo, check if the current message matches the detached tail state and override its content:
+
+```ts
+  if (message.id === tailState.messageId && tailState.status !== 'idle') {
+    message = { ...message, content: tailState.frozenContent };
+  }
+```
 
 ```ts
 }, [messages, selectedVersionByMessageId, streamingTailVersion]);
@@ -1260,7 +1291,7 @@ export function targetStreamingFps(input: StreamingVisibilityState & { visibleCh
     return 0;
   }
   if (!input.bottomLocked) {
-    return input.devicePressure ? 8 : 12;
+    return input.devicePressure ? 8 : 12; // Low-frequency tail occupancy updates while detached
   }
   if (input.visibleChars <= 1000) {
     return input.devicePressure ? 30 : 60;

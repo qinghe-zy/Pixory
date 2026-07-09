@@ -172,7 +172,9 @@ test('AI inline edit keeps the edited user message visible above the keyboard', 
   assert.match(chat, /editingUserMessageIdRef\.current !== messageId/);
   assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current = new Set/);
   assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current\.has\(messageId\)/);
-  assert.match(chat, /const failedMessageId = invertedMessageItems\[info\.index\]\?\.message\.id/);
+  assert.match(chat, /function getMessageItemIdAtIndex/);
+  assert.match(chat, /const failedMessageId = getMessageItemIdAtIndex\(info\.index\)/);
+  assert.doesNotMatch(chat, /const failedMessageId = invertedMessageItems\[info\.index\]\?\.message\.id/);
   assert.match(chat, /editingUserMessageIdRef\.current !== failedMessageId/);
   assert.match(chat, /inlineEditSafeVisibleMessageIdsRef\.current\.has\(failedMessageId\)/);
   assert.match(chat, /inlineEditVisibilityTimeoutsRef\.current\.push\(\s*setTimeout/);
@@ -310,8 +312,8 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /messagesRef/);
   assert.match(chat, /function mergeBufferedStreamingPatch/);
   assert.match(chat, /function freezeVisibleStreamingMessage/);
-  assert.match(chat, /function buildScrollRevealedStreamingPatch/);
-  assert.match(chat, /function revealBufferedStreamingStateForScroll/);
+  assert.doesNotMatch(chat, /function buildScrollRevealedStreamingPatch/);
+  assert.doesNotMatch(chat, /function revealBufferedStreamingStateForScroll/);
   assert.match(chat, /function preserveReadModeFrozenMessages/);
   assert.match(chat, /const flushBufferedStreamingState = useCallback/);
   assert.match(chat, /const applyOrBufferStreamingMessagePatch = useCallback/);
@@ -341,7 +343,8 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef\.current \|\| pendingFinalReloadRef\.current/);
   assert.match(chat, /if \(!hasPendingBufferedFlush\) \{\s*syncScrollToLatestVisibility\(offsetY\);\s*return;\s*\}/);
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
-  assert.match(scrollHandler, /revealBufferedStreamingStateForScroll\(contentOffset\.y\)/);
+  assert.match(scrollHandler, /recomputeVisibleStreamingTailForCurrentScroll\(\)/);
+  assert.doesNotMatch(scrollHandler, /revealBufferedStreamingStateForScroll/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*flushBufferedStreamingState/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*scrollToOffset/);
@@ -1141,7 +1144,7 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
   assert.match(chat, /const activeStreamingIdentity = activeStreamingIdentityRef\.current/);
   assert.match(chat, /const streamingIdentity = activeStreamingIdentity\?\.messageId === message\.id \? activeStreamingIdentity : null/);
   assert.match(chat, /const streamingReadModeActive = hasPendingStreamingReadBuffer\(\) && message\.status === 'generating'/);
-  assert.match(chat, /const streamingRendererActive = Boolean\(streamingIdentity\) && \(\(generating && message\.id === activeAssistantId\) \|\| streamingReadModeActive\)/);
+  assert.match(chat, /const streamingRendererActive = Boolean\(streamingIdentity\) && generating && message\.id === activeAssistantId && !streamingReadModeActive/);
   assert.match(chat, /streaming=\{streamingRendererActive\}/);
   assert.match(bubble, /const waitingForFirstToken = generating && !message\.content\.trim\(\)/);
   assert.match(bubble, /streaming && streamingIdentity \?/);

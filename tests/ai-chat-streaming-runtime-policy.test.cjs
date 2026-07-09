@@ -18,11 +18,12 @@ test('streaming runtime defines adaptive UI and persist throttling tiers', () =>
   assert.match(runtime, /export function canPublishStreamingPatch/);
   assert.match(runtime, /export function targetStreamingDisplayStep/);
   assert.match(runtime, /devicePressure\?: boolean/);
+  assert.match(runtime, /if \(!input\.bottomLocked\) \{\s*return input\.devicePressure \? 8 : 12;\s*\}/);
   assert.match(runtime, /visibleChars <= 1000/);
-  assert.match(runtime, /devicePressure \? 18 : 36/);
+  assert.match(runtime, /devicePressure \? 30 : 60/);
   assert.match(runtime, /visibleChars <= 4000/);
-  assert.match(runtime, /devicePressure \? 15 : 30/);
-  assert.match(runtime, /devicePressure \? 12 : 24/);
+  assert.match(runtime, /devicePressure \? 24 : 45/);
+  assert.match(runtime, /devicePressure \? 18 : 30/);
   assert.match(runtime, /backlogChars <= 24/);
   assert.match(runtime, /backlogChars <= 120/);
   assert.match(runtime, /backlogChars <= 600/);

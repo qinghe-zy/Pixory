@@ -107,9 +107,9 @@ test('AI chat search target scroll is not overwritten by latest-message jumps', 
   assert.match(viewableHandler, /pendingSearchScrollMessageIdRef\.current/);
   assert.match(viewableHandler, /clearSearchScrollTimeouts\(\)/);
   assert.doesNotMatch(chat, pendingClearByTimeout);
-  assert.match(searchRetryHandler, /const failedMessageId = invertedMessageItems\[info\.index\]\?\.message\.id/);
+  assert.match(searchRetryHandler, /const failedMessageId = getMessageItemIdAtIndex\(info\.index\)/);
   assert.match(searchRetryHandler, /failedMessageId !== targetMessageId/);
   assert.match(searchRetryHandler, /scrollToOffset/);
-  assert.match(branchTreeRetryHandler, /const failedMessageId = invertedMessageItems\[info\.index\]\?\.message\.id/);
+  assert.match(branchTreeRetryHandler, /const failedMessageId = getMessageItemIdAtIndex\(info\.index\)/);
   assert.match(branchTreeRetryHandler, /failedMessageId !== targetMessageId/);
 });

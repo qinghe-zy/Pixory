@@ -20,13 +20,16 @@ export function targetStreamingFps(input: StreamingVisibilityState & { visibleCh
   if (!canPublishStreamingPatch(input)) {
     return 0;
   }
+  if (!input.bottomLocked) {
+    return input.devicePressure ? 8 : 12;
+  }
   if (input.visibleChars <= 1000) {
-    return input.devicePressure ? 18 : 36;
+    return input.devicePressure ? 30 : 60;
   }
   if (input.visibleChars <= 4000) {
-    return input.devicePressure ? 15 : 30;
+    return input.devicePressure ? 24 : 45;
   }
-  return input.devicePressure ? 12 : 24;
+  return input.devicePressure ? 18 : 30;
 }
 
 export function targetStreamingPatchIntervalMs(input: StreamingVisibilityState & { visibleChars: number }): number | null {
