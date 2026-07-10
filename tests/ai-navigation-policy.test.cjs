@@ -114,7 +114,7 @@ test('AI chat relies on inverted native list positioning and scoped Android keyb
 
 test('AI chat streaming does not force bottom after the user scrolls upward', () => {
   const content = chat();
-  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[\]\);/.exec(content)?.[0] ?? '';
+  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(content)?.[0] ?? '';
   assert.match(content, /userScrolledAwayFromBottomRef/);
   assert.match(content, /MESSAGE_STREAM_FOLLOW_THRESHOLD = 48/);
   assert.match(content, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800/);
@@ -124,12 +124,14 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   assert.match(content, /showScrollToLatest/);
   assert.match(content, /handleMessageScroll/);
   assert.match(content, /onScroll=\{handleMessageScroll\}/);
+  assert.match(content, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
   assert.match(content, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
   assert.match(content, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
   assert.match(content, /scrollEventThrottle=\{16\}/);
   assert.match(content, /if \(!force && userScrolledAwayFromBottomRef\.current\)/);
   assert.match(content, /function scheduleIntentionalLatestJump\(animated = false\)/);
   assert.match(content, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(content, /scheduleStreamingTailReconcile\("scroll"/);
   assert.doesNotMatch(content, /hasUnseenStreamingUpdate \|\| contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.doesNotMatch(content, /onContentSizeChange=/);

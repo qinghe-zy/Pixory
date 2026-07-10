@@ -242,7 +242,7 @@ test('streaming timeout reuses stop recoverability with timeout reason', () => {
   assert.match(manager, /reason: 'timeout'/);
   assert.match(manager, /stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}/);
   const streamAssistantCalls = service.match(/await streamAssistantReply\(\{[\s\S]*?\n  \}\);/g) ?? [];
-  assert.equal(streamAssistantCalls.length, 3);
+  assert.equal(streamAssistantCalls.length, 4);
   for (const call of streamAssistantCalls) {
     assert.match(call, /onTimeout: input\.onTimeout/);
   }

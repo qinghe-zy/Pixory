@@ -51,8 +51,8 @@
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
 | Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
-| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、retry、regenerate、rewrite；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
-| 流式性能 | generationId 防旧流污染、首 token live 显示、外部 streaming store、自适应合批追赶；查看历史时使用 measured tail occupancy、真实 FlatList spacer、block 级高度预留/测量/cache、reasoning/content lane 隔离；无感回到底部、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `aiStreamingTailModel`, `aiStreamingBlockSplitter`, `aiStreamingHeightCache`, `AiChatScreen`, `AiStreamingMessageText`, `AiStreamingTailSpacer`, `AiMeasuredStreamBlock` |
+| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
+| 流式性能 | generationId 防旧流污染、首 token live 显示、外部 streaming store、自适应合批追赶；查看历史时使用 measured tail occupancy、真实 FlatList spacer、block 级高度预留/测量/cache、reasoning/content lane 隔离；tail replay 将 promoted blocks 合并为同一 assistant continuation bubble，避免一条回复碎成多条气泡；无感回到底部、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `aiStreamingTailModel`, `aiStreamingTailContinuation`, `aiStreamingBlockSplitter`, `aiStreamingHeightCache`, `AiChatScreen`, `AiStreamingMessageText`, `AiStreamingTailSpacer`, `AiMeasuredStreamBlock`, `AiStreamingTailContinuationBubble` |
 | 生成指标 | prompt/memory/retrieval/provider/first delta/UI patch/final persist 等 content-free metrics | `aiGenerationMetrics` |
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request | `promptBuilder` |
 | Prompt/cache | stable prefix hash、retrieval hash、cache key、Anthropic breakpoint、禁止 diagnostics 污染 prompt/cache | `aiPromptCache` |
@@ -64,12 +64,12 @@
 | 深度记忆 | 默认开启；更早维护本会话画像、自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板；全局用户画像在 AI 全局设置中维护；未配置远程记忆模型时使用本地轻量整理降级 | `aiMemory*`, `AiMemoryBoardScreen`, `AiProviderSettingsScreen` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
-| 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen` |
+| 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线；创作路线树入口位于会话设置的当前会话模块；Android 路线树避免全画布 SVG/bitmap，长路线用局部连线、限量网格与可见区渲染降低卡顿和闪退风险 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen`, `BranchTreeCanvas`, `AiSessionConfigScreen` |
 | 聊天搜索 | 当前路线 local exact/fuzzy 搜索，定位回聊天 | `AiChatSearchScreen`, `aiThreadRepository` |
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
 | Usage | provider usage 归一化、cached token ratio、线程/总览用量 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary` |
 | 消息渲染 | Markdown (全新标记解析器防注入)、代码块、表格、原生图片附件画廊展示、HTML/CSS WebView、数学块、citation、thinking block、render cache | `AiMessageContent`, `AiMessageBubble`, `AiMarkdownReader` |
-| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史 | `src/screens/Ai*.tsx`, `src/components/ai/` |
+| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
 
 ---
 

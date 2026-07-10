@@ -135,22 +135,57 @@ test('Pixory branch tree adapter isolates AI service records from canvas graph r
   assert.doesNotMatch(adapter, /aiMemory/);
 });
 
-test('branch tree visual layers use SVG grid links and compact view nodes', () => {
+test('branch tree visual layers avoid full-world SVG bitmaps and keep compact view nodes', () => {
   const grid = read('src/branchTree/components/BranchTreeGrid.tsx');
   const links = read('src/branchTree/components/BranchTreeLinks.tsx');
   const node = read('src/branchTree/components/BranchTreeNodeCard.tsx');
 
-  assert.match(grid, /import Svg, \{ Circle, Line \} from 'react-native-svg'/);
-  assert.match(grid, /opacity=\{0\.08\}/);
+  assert.doesNotMatch(grid, /from 'react-native-svg'/);
+  assert.match(grid, /BRANCH_TREE_GRID_MAX_LINES/);
+  assert.match(grid, /opacity:\s*0\.08/);
   assert.match(grid, /smallStep = 20/);
   assert.match(grid, /largeStep = 100/);
   assert.match(links, /import Svg, \{ Path \} from 'react-native-svg'/);
+  assert.match(links, /EDGE_BOUNDS_PADDING/);
+  assert.match(links, /localizeEdgePath/);
+  assert.doesNotMatch(links, /<Svg height=\{height\} pointerEvents="none" width=\{width\}>/);
   assert.match(links, /strokeWidth=\{edge\.kind === 'active' \? 3\.5 : 1\.8\}/);
   assert.match(links, /strokeDasharray=\{edge\.kind === 'active' \? undefined : '3,3'\}/);
   assert.match(node, /width: 120/);
   assert.match(node, /borderRadius: 16/);
   assert.match(node, /numberOfLines=\{2\}/);
   assert.match(node, /fontSize: 10\.5/);
+});
+
+test('branch tree canvas virtualizes heavy layers around the visible viewport', () => {
+  const canvas = read('src/branchTree/components/BranchTreeCanvas.tsx');
+  const virtualization = read('src/branchTree/engine/branchTreeViewportVirtualization.ts');
+
+  assert.match(virtualization, /BRANCH_TREE_VIEWPORT_OVERSCAN/);
+  assert.match(virtualization, /export function buildBranchTreeVisibleWindow/);
+  assert.match(virtualization, /export function filterBranchTreeVisibleLayout/);
+  assert.match(virtualization, /selectedNodeId/);
+  assert.match(virtualization, /isHead/);
+  assert.match(virtualization, /visibleNodeIds/);
+  assert.match(canvas, /buildBranchTreeVisibleWindow/);
+  assert.match(canvas, /filterBranchTreeVisibleLayout/);
+  assert.match(canvas, /visibleLayout\.nodes\.map/);
+  assert.match(canvas, /visibleWindow=\{visibleWindow\}/);
+  assert.match(canvas, /<BranchTreeLinks edges=\{visibleLayout\.edges\}/);
+  assert.doesNotMatch(canvas, /layout\.nodes\.map/);
+  assert.doesNotMatch(canvas, /<BranchTreeLinks edges=\{layout\.edges\}/);
+});
+
+test('branch tree pan keeps JS state updates off the per-frame gesture path', () => {
+  const canvas = read('src/branchTree/components/BranchTreeCanvas.tsx');
+
+  const panUpdateMatch = canvas.match(/const panGesture = Gesture\.Pan\(\)([\s\S]*?)const pinchGesture =/);
+  assert.ok(panUpdateMatch);
+  const panFrameUpdateMatch = panUpdateMatch[1].match(/\.onUpdate\(\(event\) => \{([\s\S]*?)\}\)\s*\.onFinalize/);
+  assert.ok(panFrameUpdateMatch);
+  assert.doesNotMatch(panFrameUpdateMatch[1], /runOnJS/);
+  assert.doesNotMatch(panFrameUpdateMatch[1], /setTransformState/);
+  assert.match(panUpdateMatch[1], /\.onFinalize\(\(\) => \{\s*runOnJS\(syncTransform\)/);
 });
 
 test('branch tree drawer renders parent selected and child chat bubbles with safe actions', () => {
@@ -189,6 +224,8 @@ test('branch tree canvas owns pan pinch tap checkout and head recenter gestures'
   assert.match(canvas, /scale\.value = Math\.min\(BRANCH_TREE_MAX_SCALE, Math\.max\(BRANCH_TREE_MIN_SCALE, nextScale\)\)/);
   assert.doesNotMatch(canvas, /clampBranchTreeScale/);
   assert.match(canvas, /useAnimatedReaction/);
+  assert.doesNotMatch(canvas, /renderToHardwareTextureAndroid/);
+  assert.doesNotMatch(canvas, /shouldRasterizeIOS/);
   assert.match(canvas, /const screenX = headCenterPoint\.x \* scale\.value \+ translateX\.value/);
   assert.match(canvas, /最新节点已偏离 · 一键回正/);
   assert.match(canvas, /BranchTreeGrid/);

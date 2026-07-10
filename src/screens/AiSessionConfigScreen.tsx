@@ -23,6 +23,7 @@ import {
   deleteProviderModels,
   deleteProviderModelsByProvider,
   deleteAiThreads,
+  DEFAULT_AI_USER_AVATAR_ENABLED,
   loadThreadAiUsageOverview,
   loadThreadSessionConfig,
   loadThreadSessionModelConfig,
@@ -55,6 +56,7 @@ interface AiSessionConfigScreenProps {
   onOpenProviderSettings: () => void;
   onOpenRoleLibrary: () => void;
   onOpenThreadMaterials?: () => void;
+  onOpenBranchTree?: () => void;
   onOpenMemoryBoard?: () => void;
   onStartChat: () => void;
   onCurrentThreadDeleted?: () => void;
@@ -144,6 +146,7 @@ export function AiSessionConfigScreen({
   onOpenProviderSettings,
   onOpenRoleLibrary,
   onOpenThreadMaterials,
+  onOpenBranchTree,
   onOpenMemoryBoard,
   onStartChat,
   onCurrentThreadDeleted,
@@ -158,6 +161,9 @@ export function AiSessionConfigScreen({
   const [roleCardSummary, setRoleCardSummary] = useState('默认角色');
   const [avatarEnabled, setAvatarEnabled] = useState(true);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [userAvatarEnabled, setUserAvatarEnabled] = useState(DEFAULT_AI_USER_AVATAR_ENABLED);
+  const [profileAvatarUri, setProfileAvatarUri] = useState<string | null>(null);
+  const [profileNickname, setProfileNickname] = useState<string | null>(null);
   const [boundaryMode, setBoundaryMode] = useState<AiBoundaryMode>(contextType === 'normal' ? 'free' : 'prefer_material');
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
@@ -190,6 +196,9 @@ export function AiSessionConfigScreen({
   const promptConfigured = systemPrompt.trim().length > 0;
   const promptSummary = promptConfigured ? `已配置 ${systemPrompt.trim().length} 字` : '未配置';
   const avatarSummary = avatarEnabled ? (avatarUri ? '头像已启用' : '头像已启用，使用默认标记') : '无头像';
+  const selfAvatarSummary = userAvatarEnabled
+    ? `使用“我的”页资料${profileNickname?.trim() ? ` · ${profileNickname.trim()}` : ''}${profileAvatarUri ? '' : ' · 当前无头像'}`
+    : '无头像';
   const sessionModelSelectionMode = selectedSessionModelKeys.length > 0;
   const selectedSessionModelProviderId = selectedSessionModelKeys[0]?.split(':')[0] ?? null;
 
@@ -199,6 +208,7 @@ export function AiSessionConfigScreen({
       setRenameValue(fallbackThreadTitle);
       setSystemPrompt(getDefaultSystemPrompt(contextType));
       setCurrentRoleCardId(null);
+      setUserAvatarEnabled(DEFAULT_AI_USER_AVATAR_ENABLED);
       setRoleInstructionWeight('default');
       setReplyPreference('auto');
       setThinkingDisabled(false);
@@ -213,7 +223,11 @@ export function AiSessionConfigScreen({
       setAdvancedPromptVisible(contextType !== 'normal');
       return;
     }
-    const config = await loadThreadSessionConfig(space, threadId);
+    const [config, nextProfileAvatarUri, nextProfileNickname] = await Promise.all([
+      loadThreadSessionConfig(space, threadId),
+      runWithDatabaseSpace(space, (db) => settingsRepository.getProfileAvatarUri(db)),
+      runWithDatabaseSpace(space, (db) => settingsRepository.getProfileNickname(db)),
+    ]);
     if (!config) {
       setStatus({ message: '没有找到当前会话。', tone: 'error' });
       return;
@@ -243,6 +257,9 @@ export function AiSessionConfigScreen({
     setRoleCardSummary(config.roleCardName ?? '默认角色');
     setAvatarEnabled(config.avatar.avatarEnabled);
     setAvatarUri(config.avatar.avatarUri);
+    setUserAvatarEnabled(config.userAvatarEnabled);
+    setProfileAvatarUri(nextProfileAvatarUri);
+    setProfileNickname(nextProfileNickname);
     settingsLoadedRef.current = true;
     setConfigLoaded(true);
   }, [contextType, fallbackThreadTitle, space, threadId]);
@@ -262,10 +279,22 @@ export function AiSessionConfigScreen({
         systemPrompt,
         thinkingDisabled,
         threadId,
+        userAvatarEnabled,
       }).catch(() => undefined);
     }, 450);
     return () => clearTimeout(timer);
-  }, [boundaryMode, deepMemoryEnabled, replyPreference, space, thinkingDisabled, threadId]);
+  }, [
+    avatarEnabled,
+    boundaryMode,
+    deepMemoryEnabled,
+    replyPreference,
+    roleInstructionWeight,
+    space,
+    systemPrompt,
+    thinkingDisabled,
+    threadId,
+    userAvatarEnabled,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -331,6 +360,7 @@ export function AiSessionConfigScreen({
         systemPrompt: systemPrompt.trim(),
         thinkingDisabled,
         threadId,
+        userAvatarEnabled,
       });
       if (!updated) {
         throw new Error('没有找到当前会话，设置未保存。');
@@ -886,6 +916,14 @@ export function AiSessionConfigScreen({
                 onPress={onOpenThreadMaterials}
               />
             ) : null}
+            <AiLightListItem
+              disabled={!threadId || !onOpenBranchTree}
+              icon="git-branch-outline"
+              title="创作路线树"
+              subtitle="查看改写、重生成形成的路线"
+              onPress={onOpenBranchTree}
+              isLast
+            />
           </AiLightListGroup>
 
           <AiLightListGroup title="角色与表现">
@@ -909,6 +947,23 @@ export function AiSessionConfigScreen({
                   <AiSwitch
                     value={avatarEnabled}
                     onValueChange={setAvatarEnabled}
+                  />
+                ) : null
+              }
+            />
+            <AiLightListItem
+              accessibilityRole="switch"
+              icon="person-outline"
+              title="我的头像"
+              subtitle={selfAvatarSummary}
+              value={userAvatarEnabled ? '头像开启' : '头像关闭'}
+              onPress={() => setUserAvatarEnabled((current) => !current)}
+              showChevron={false}
+              action={
+                configLoaded ? (
+                  <AiSwitch
+                    value={userAvatarEnabled}
+                    onValueChange={setUserAvatarEnabled}
                   />
                 ) : null
               }

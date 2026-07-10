@@ -1684,16 +1684,6 @@ export default function App() {
             threadId,
           })
         }
-        onOpenBranchTree={(threadId, currentBranchScopes) =>
-          pushRoute({
-            name: 'ai-branch-tree',
-            contextTitle: currentRoute.contextTitle,
-            contextType: currentRoute.contextType,
-            currentBranchScopes,
-            space: currentRoute.space,
-            threadId,
-          })
-        }
         onOpenChatSearch={(threadId, branchScopes) =>
           pushRoute({
             name: 'ai-chat-search',
@@ -1780,6 +1770,19 @@ export default function App() {
         onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
         onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space, threadId: currentRoute.threadId, mode: 'apply_to_thread' })}
+        onOpenBranchTree={
+          currentRoute.threadId
+            ? () =>
+                pushRoute({
+                  name: 'ai-branch-tree',
+                  contextTitle: currentRoute.contextTitle,
+                  contextType: currentRoute.contextType,
+                  currentBranchScopes: [],
+                  space: currentRoute.space,
+                  threadId: currentRoute.threadId as string,
+                })
+            : undefined
+        }
         onOpenThreadMaterials={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })

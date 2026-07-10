@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { setLatestAssistantBubbleContentWidth } from '../../ai/aiStreamingBubbleWidthRegistry';
 import { SecureImage } from '../SecureImage';
 import type { AiMessageWithCitations } from '../../ai/aiChatService';
 import type { AiCitationRecord } from '../../ai/types';
@@ -14,7 +15,7 @@ import { AiMessageContent } from './AiMessageContent';
 import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
-import { formatAiMessageMinute } from '../../utils/aiTimeFormatters';
+import { formatAiFullMinute, formatAiMessageMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
 
@@ -24,7 +25,14 @@ interface AiMessageBubbleProps {
     avatarEnabled: boolean;
     avatarUri: string | null;
   };
+  assistantDisplayName?: string | null;
   showAvatar?: boolean;
+  showUserAvatar?: boolean;
+  userProfile?: {
+    avatarEnabled: boolean;
+    avatarUri: string | null;
+    nickname: string | null;
+  };
   space: PixorySpace;
   streaming?: boolean;
   streamingIdentity?: AiStreamingMessageIdentity | null;
@@ -40,6 +48,7 @@ interface AiMessageBubbleProps {
   onChangeEditDraft?: (content: string) => void;
   onSubmitEdit: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
+  onContinue: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
@@ -61,12 +70,15 @@ function renderAssistantContentWithCursor(content: string, streaming: boolean) {
 
 function AiMessageBubbleComponent({
   assistantAvatar,
+  assistantDisplayName = null,
   generating = false,
   message,
   showAvatar = true,
+  showUserAvatar = false,
   space,
   streaming = false,
   streamingIdentity = null,
+  userProfile,
   editingMessageId = null,
   favorited = false,
   favoriteDisabledByGeneration = false,
@@ -77,6 +89,7 @@ function AiMessageBubbleComponent({
   onCancelEdit,
   onChangeEditDraft,
   onEditUser,
+  onContinue,
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
@@ -90,13 +103,26 @@ function AiMessageBubbleComponent({
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
   const waitingForFirstToken = generating && !message.content.trim();
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const showUserAvatarHeader = isUser && showUserAvatar && userProfile?.avatarEnabled;
+  const assistantHeaderVisible = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
+  const userHeaderVisible = isUser && showUserAvatar && userProfile?.avatarEnabled;
+  const headerVisible = assistantHeaderVisible || userHeaderVisible;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const editing = editingMessageId === message.id;
   const actionPending = pendingActionMessageId === message.id;
   const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
+  const canContinue = !isUser && !generating && !actionPending && Boolean(message.content.trim()) && (message.status === 'failed' || message.status === 'stopped');
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
-  const messageTime = formatAiMessageMinute(message.completedAt ?? message.updatedAt);
+  const messageTimestamp = message.completedAt ?? message.updatedAt ?? message.createdAt;
+  const headerTime = formatAiFullMinute(messageTimestamp);
+  const footerTime = headerVisible
+    ? ''
+    : isUser
+      ? formatAiMessageMinute(message.completedAt ?? message.updatedAt)
+      : formatAiFullMinute(messageTimestamp);
+  const assistantName = assistantDisplayName?.trim() || 'AI';
+  const userName = userProfile?.nickname?.trim() || '我';
   const [editDraft, setEditDraft] = useState('');
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
   const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -153,16 +179,41 @@ function AiMessageBubbleComponent({
 
   return (
     <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-      {showAssistantAvatar ? (
-        <View style={styles.avatar}>
-          {assistantAvatar.avatarUri ? (
-            <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
-          ) : (
-            <Ionicons color={aiLightColors.primary} name="sparkles-outline" size={metrics.iconSizeSm} />
-          )}
-        </View>
-      ) : null}
       <View style={[styles.messageStack, isUser ? styles.userStack : styles.assistantStack]}>
+        {assistantHeaderVisible ? (
+          <View style={[styles.headerRow, styles.assistantHeaderRow]}>
+            {showAssistantAvatar ? (
+              <View style={styles.avatar}>
+                {assistantAvatar?.avatarUri ? (
+                  <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={assistantAvatar.avatarUri} />
+                ) : (
+                  <Ionicons color={aiLightColors.primary} name="sparkles-outline" size={metrics.iconSizeSm} />
+                )}
+              </View>
+            ) : null}
+            <View style={[styles.headerMeta, styles.assistantHeaderMeta]}>
+              <Text numberOfLines={1} style={styles.headerName}>{assistantName}</Text>
+              {headerTime ? <Text numberOfLines={1} style={styles.headerTime}>{headerTime}</Text> : null}
+            </View>
+          </View>
+        ) : null}
+        {userHeaderVisible ? (
+          <View style={[styles.headerRow, styles.userHeaderRow]}>
+            <View style={[styles.headerMeta, styles.userHeaderMeta]}>
+              <Text numberOfLines={1} style={styles.headerName}>{userName}</Text>
+              {headerTime ? <Text numberOfLines={1} style={styles.headerTime}>{headerTime}</Text> : null}
+            </View>
+            {showUserAvatarHeader ? (
+              <View style={styles.avatar}>
+                {userProfile?.avatarUri ? (
+                  <SecureImage contentFit="cover" space={space} style={styles.avatarImage} uri={userProfile.avatarUri} />
+                ) : (
+                  <Ionicons color={aiLightColors.muted} name="person-outline" size={metrics.iconSizeSm} />
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {message.attachments && message.attachments.length > 0 ? (
           <View style={[styles.attachmentGalleryOuter, !isUser && styles.attachmentGalleryOuterAssistant]}>
             {message.attachments.filter((a) => a.kind === 'image').map((attachment) => (
@@ -239,7 +290,16 @@ function AiMessageBubbleComponent({
               {displayContent ? <Text selectable style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
             </View>
           ) : (
-            <>
+            <View
+              onLayout={(event) => {
+                if (!isUser) {
+                  setLatestAssistantBubbleContentWidth(
+                    event.nativeEvent.layout.width,
+                  );
+                }
+              }}
+              style={styles.assistantContentMeasure}
+            >
               {streaming && streamingIdentity ? (
                 <AiStreamingMessageText identity={streamingIdentity} initialContent={message.content} />
               ) : waitingForFirstToken ? (
@@ -254,7 +314,7 @@ function AiMessageBubbleComponent({
                   <Text style={styles.inlineRetryText}>重试</Text>
                 </Pressable>
               ) : null}
-            </>
+            </View>
           )}
           {!isUser ? <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} /> : null}
         </View>
@@ -290,6 +350,18 @@ function AiMessageBubbleComponent({
               style={({ pressed }) => [styles.messageActionButton, favorited ? styles.favoriteActionButtonActive : null, !canFavorite && styles.disabledAction, pressed && canFavorite && styles.pressed]}
             >
               <Ionicons color={favorited ? aiLightColors.primaryActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
+            </Pressable>
+          ) : null}
+          {!isUser ? (
+            <Pressable
+              accessibilityLabel="继续生成回复"
+              accessibilityRole="button"
+              disabled={!canContinue}
+              hitSlop={8}
+              onPress={() => onContinue(message.id)}
+              style={({ pressed }) => [styles.messageActionButton, !canContinue && styles.disabledAction, pressed && canContinue && styles.pressed]}
+            >
+              <Ionicons color={aiLightColors.muted} name="play-forward-outline" size={15} />
             </Pressable>
           ) : null}
           {isUser ? (
@@ -340,7 +412,7 @@ function AiMessageBubbleComponent({
               </Pressable>
             </View>
           ) : null}
-          {messageTime ? <Text style={styles.messageTime}>{messageTime}</Text> : null}
+          {footerTime ? <Text style={styles.messageTime}>{footerTime}</Text> : null}
         </View>
       </View>
     </View>
@@ -361,9 +433,14 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.favoritePending === next.favoritePending &&
     previous.pendingActionMessageId === next.pendingActionMessageId &&
     previous.showAvatar === next.showAvatar &&
+    previous.showUserAvatar === next.showUserAvatar &&
     previous.editingMessageId === next.editingMessageId &&
+    previous.assistantDisplayName === next.assistantDisplayName &&
     previous.assistantAvatar?.avatarEnabled === next.assistantAvatar?.avatarEnabled &&
-    previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri
+    previous.assistantAvatar?.avatarUri === next.assistantAvatar?.avatarUri &&
+    previous.userProfile?.avatarEnabled === next.userProfile?.avatarEnabled &&
+    previous.userProfile?.avatarUri === next.userProfile?.avatarUri &&
+    previous.userProfile?.nickname === next.userProfile?.nickname
   );
 }
 
@@ -371,20 +448,17 @@ export const AiMessageBubble = memo(AiMessageBubbleComponent, areAiMessageBubble
 
 const styles = StyleSheet.create({
   messageRow: {
-    flexDirection: 'row',
     maxWidth: '100%',
   },
   userRow: {
-    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
   },
   assistantRow: {
     alignItems: 'flex-start',
-    gap: rhythm.inlineGap,
-    justifyContent: 'flex-start',
   },
   messageStack: {
     gap: rhythm.microGap,
-    maxWidth: '88%',
+    maxWidth: '94%',
   },
   userStack: {
     alignSelf: 'flex-end',
@@ -408,6 +482,40 @@ const styles = StyleSheet.create({
   avatarImage: {
     height: '100%',
     width: '100%',
+  },
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: metrics.minTouchSize,
+  },
+  assistantHeaderRow: {
+    alignSelf: 'stretch',
+    justifyContent: 'flex-start',
+  },
+  userHeaderRow: {
+    alignSelf: 'flex-end',
+    justifyContent: 'flex-end',
+  },
+  headerMeta: {
+    gap: spacing[1],
+    minWidth: 0,
+  },
+  assistantHeaderMeta: {
+    alignItems: 'flex-start',
+    flex: 1,
+  },
+  userHeaderMeta: {
+    alignItems: 'flex-end',
+    maxWidth: '78%',
+  },
+  headerName: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  headerTime: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
   },
   bubble: {
     gap: rhythm.cardContentGap,
@@ -442,6 +550,9 @@ const styles = StyleSheet.create({
   },
   assistantText: {
     color: aiLightColors.ink,
+  },
+  assistantContentMeasure: {
+    alignSelf: 'stretch',
   },
   errorText: {
     ...typography.textStyles.caption,

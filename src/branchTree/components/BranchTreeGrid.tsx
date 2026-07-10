@@ -1,58 +1,103 @@
-import Svg, { Circle, Line } from 'react-native-svg';
+import { StyleSheet, View } from 'react-native';
 
 import { aiLightColors } from '../../components/ai/aiLightTheme';
+import type { BranchTreeVisibleWindow } from '../engine/branchTreeViewportVirtualization';
 
 interface BranchTreeGridProps {
   width: number;
   height: number;
   smallStep?: number;
   largeStep?: number;
+  visibleWindow?: BranchTreeVisibleWindow | null;
 }
 
-export function BranchTreeGrid({ height, largeStep = 100, smallStep = 20, width }: BranchTreeGridProps) {
-  const dots = [];
-  const lines = [];
+const BRANCH_TREE_GRID_MAX_LINES = 32;
 
-  for (let x = 0; x <= width; x += smallStep) {
-    for (let y = 0; y <= height; y += smallStep) {
-      dots.push(<Circle cx={x} cy={y} fill={aiLightColors.muted} key={`dot:${x}:${y}`} opacity={0.08} r={1} />);
-    }
-  }
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
-  for (let x = 0; x <= width; x += largeStep) {
-    lines.push(
-      <Line
-        key={`vx:${x}`}
-        opacity={0.08}
-        stroke={aiLightColors.hairline}
-        strokeWidth={1}
-        x1={x}
-        x2={x}
-        y1={0}
-        y2={height}
-      />
-    );
+function buildGridPositions(size: number, step: number, windowStart = 0, windowEnd = size): number[] {
+  if (!Number.isFinite(size) || size <= 0) {
+    return [];
   }
+  const safeStep = Math.max(1, step);
+  const adaptiveStep =
+    Math.ceil(size / BRANCH_TREE_GRID_MAX_LINES / safeStep) * safeStep;
+  const actualStep = Math.max(safeStep, adaptiveStep);
+  const start = clamp(Math.floor(windowStart / actualStep) * actualStep, 0, size);
+  const end = clamp(Math.ceil(windowEnd / actualStep) * actualStep, 0, size);
+  const positions: number[] = [];
+  for (let position = start; position <= end; position += actualStep) {
+    positions.push(position);
+  }
+  return positions;
+}
 
-  for (let y = 0; y <= height; y += largeStep) {
-    lines.push(
-      <Line
-        key={`hy:${y}`}
-        opacity={0.08}
-        stroke={aiLightColors.hairline}
-        strokeWidth={1}
-        x1={0}
-        x2={width}
-        y1={y}
-        y2={y}
-      />
-    );
-  }
+export function BranchTreeGrid({ height, largeStep = 100, smallStep = 20, visibleWindow, width }: BranchTreeGridProps) {
+  const left = clamp(visibleWindow?.left ?? 0, 0, width);
+  const right = clamp(visibleWindow?.right ?? width, 0, width);
+  const top = clamp(visibleWindow?.top ?? 0, 0, height);
+  const bottom = clamp(visibleWindow?.bottom ?? height, 0, height);
+  const dotXs = buildGridPositions(width, smallStep, left, right);
+  const dotYs = buildGridPositions(height, smallStep, top, bottom);
+  const lineXs = buildGridPositions(width, largeStep, left, right);
+  const lineYs = buildGridPositions(height, largeStep, top, bottom);
+  const lineHeight = Math.max(0, bottom - top);
+  const lineWidth = Math.max(0, right - left);
 
   return (
-    <Svg height={height} pointerEvents="none" width={width}>
-      {dots}
-      {lines}
-    </Svg>
+    <View pointerEvents="none" style={styles.root}>
+      {dotXs.map((x) =>
+        dotYs.map((y) => (
+          <View
+            key={`dot:${x}:${y}`}
+            style={[styles.dot, { left: x, top: y }]}
+          />
+        )),
+      )}
+      {lineXs.map((x) => (
+        <View
+          key={`vx:${x}`}
+          style={[styles.verticalLine, { height: lineHeight, left: x, top }]}
+        />
+      ))}
+      {lineYs.map((y) => (
+        <View
+          key={`hy:${y}`}
+          style={[styles.horizontalLine, { left, top: y, width: lineWidth }]}
+        />
+      ))}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  dot: {
+    backgroundColor: aiLightColors.muted,
+    borderRadius: 1,
+    height: 2,
+    opacity: 0.08,
+    position: 'absolute',
+    width: 2,
+  },
+  horizontalLine: {
+    backgroundColor: aiLightColors.hairline,
+    height: StyleSheet.hairlineWidth,
+    opacity: 0.08,
+    position: 'absolute',
+  },
+  root: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  verticalLine: {
+    backgroundColor: aiLightColors.hairline,
+    opacity: 0.08,
+    position: 'absolute',
+    width: StyleSheet.hairlineWidth,
+  },
+});

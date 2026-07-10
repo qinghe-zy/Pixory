@@ -1,10 +1,12 @@
 import type { PixorySpace } from '../database';
 import {
+  continueAssistantMessage,
   regenerateAssistantMessage,
   rewriteUserMessage,
   sendUserMessage,
   stopStreamingMessage,
   type AiStreamingMessagePatch,
+  type ContinueAssistantMessageInput,
   type RetryAssistantMessageInput,
   type RewriteUserMessageInput,
   type SendUserMessageInput,
@@ -47,6 +49,10 @@ type StartSendUserMessageInput = Omit<SendUserMessageInput, 'signal' | 'onCreate
 } & GenerationStartTimingInput;
 
 type StartRegenerateAssistantMessageInput = Omit<RetryAssistantMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
+  subscriber?: AiGenerationSubscriber;
+} & GenerationStartTimingInput;
+
+type StartContinueAssistantMessageInput = Omit<ContinueAssistantMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
 
@@ -209,6 +215,25 @@ function startRegenerateAssistantMessage(input: StartRegenerateAssistantMessageI
   return { promise: task.promise as Promise<void>, unsubscribe };
 }
 
+function startContinueAssistantMessage(input: StartContinueAssistantMessageInput): ManagedTaskStart<void> {
+  const task = createTask(input.space, input.threadId);
+  rememberAssistantMessage(task, input.assistantMessageId);
+  const unsubscribe = addSubscriber(task, input.subscriber);
+  const { subscriber: _subscriber, ...request } = input;
+  task.promise = continueAssistantMessage({
+    ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onCreated: (ids) => emitCreated(task, ids),
+    onMessagePatch: (patch) => emitMessagePatch(task, patch),
+    onTimeout: () => {
+      void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId });
+    },
+    onUpdated: () => emitUpdated(task),
+    signal: task.controller.signal,
+  }).finally(() => finishTask(task));
+  return { promise: task.promise as Promise<void>, unsubscribe };
+}
+
 function startRewriteUserMessage(input: StartRewriteUserMessageInput): ManagedTaskStart<{ userMessageId: string; assistantMessageId: string }> {
   const task = createTask(input.space, input.threadId);
   const unsubscribe = addSubscriber(task, input.subscriber);
@@ -277,6 +302,7 @@ async function stopGeneration({ assistantMessageId, reason = 'user', space, thre
 export const aiGenerationManager = {
   getActiveTaskForThread,
   hasActiveTask,
+  startContinueAssistantMessage,
   startRegenerateAssistantMessage,
   startRewriteUserMessage,
   startSendUserMessage,

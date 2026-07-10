@@ -18,43 +18,46 @@ function AiMeasuredStreamBlockComponent({ block, bubbleWidth, onMeasured }: AiMe
   const lastMeasuredHeightRef = useRef<number | null>(null);
 
   return (
-    <View
-      onLayout={(event) => {
-        const height = event.nativeEvent.layout.height;
-        if (lastMeasuredHeightRef.current === height) {
-          return;
-        }
-        lastMeasuredHeightRef.current = height;
-        onMeasured(block.blockId, height);
+    <View style={[styles.reservedBlock, { minHeight: block.reservedHeight }]}>
+      <View
+        onLayout={(event) => {
+          const height = event.nativeEvent.layout.height;
+          if (lastMeasuredHeightRef.current === height) {
+            return;
+          }
+          lastMeasuredHeightRef.current = height;
+          onMeasured(block.blockId, height);
 
-        const cacheKey = createStreamBlockHeightCacheKey({
-          blockType: block.type,
-          contentHash: fastStringHash(block.raw),
-          fontScale: PixelRatio.getFontScale(),
-          lane: block.lane,
-          lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
-          rawLength: block.raw.length,
-          width: bubbleWidth,
-        });
-        streamBlockHeightCache.set({
-          blockType: block.type,
-          fontScaleBucket: bucketFontScale(PixelRatio.getFontScale()),
-          key: cacheKey,
-          lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
-          measuredHeight: height,
-          rawLength: block.raw.length,
-          rendererVersion: AI_STREAMING_HEIGHT_RENDERER_VERSION,
-          updatedAt: Date.now(),
-          widthBucket: bucketStreamWidth(bubbleWidth),
-        });
-      }}
-      style={styles.block}
-    >
-      {block.lane === 'reasoning' ? (
-        <Text style={styles.thinkingText}>{block.raw}</Text>
-      ) : (
-        <AiMessageContent content={block.raw} streaming={true} />
-      )}
+          const cacheKey = createStreamBlockHeightCacheKey({
+            blockType: block.type,
+            contentHash: fastStringHash(block.raw),
+            fontScale: PixelRatio.getFontScale(),
+            lane: block.lane,
+            lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
+            rawLength: block.raw.length,
+            width: bubbleWidth,
+          });
+          streamBlockHeightCache.set({
+            blockType: block.type,
+            fontScaleBucket: bucketFontScale(PixelRatio.getFontScale()),
+            key: cacheKey,
+            lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
+            measuredHeight: height,
+            rawLength: block.raw.length,
+            rendererVersion: AI_STREAMING_HEIGHT_RENDERER_VERSION,
+            updatedAt: Date.now(),
+            widthBucket: bucketStreamWidth(bubbleWidth),
+          });
+        }}
+        style={styles.block}
+      >
+        {block.lane === 'reasoning' ? (
+          <Text style={styles.thinkingText}>{block.raw}</Text>
+        ) : (
+          // Detached replay intentionally keeps the lightweight streaming renderer path.
+          <AiMessageContent content={block.raw} streaming={true} />
+        )}
+      </View>
     </View>
   );
 }
@@ -65,6 +68,9 @@ const styles = StyleSheet.create({
   block: {
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[1],
+  },
+  reservedBlock: {
+    width: '100%',
   },
   thinkingText: {
     ...typography.textStyles.caption,

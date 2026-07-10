@@ -22,7 +22,7 @@ test('AI thinking block shows timed thinking state instead of the old summary la
 test('AI regenerated and rewritten replies reset the thinking timer for the new generation', () => {
   const service = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
-  const resetBlock = /const resetMessage = await updateAssistantMessageForGeneration\(db, input\.assistantMessageId, generationId, \{([\s\S]*?)\n    \}\);/.exec(service)?.[1] ?? '';
+  const resetBlock = /const resetPatch = mode === 'continue'[\s\S]*?: \{([\s\S]*?)\n        \};/.exec(service)?.[1] ?? '';
   const regenerateResetBlock = /await aiThreadRepository\.updateMessage\(db, input\.assistantMessageId, \{([\s\S]*?)\n      \}\);/.exec(service)?.[1] ?? '';
 
   assert.match(service, /const startedAt = new Date\(\)\.toISOString\(\)/);
@@ -204,19 +204,21 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800/);
   assert.doesNotMatch(chat, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
   assert.match(chat, /const MESSAGE_SAFE_FLUSH_OFFSET = 1/);
+  assert.match(chat, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
   assert.match(chat, /const MESSAGE_LIST_ANCHOR_CONFIG = \{ minIndexForVisible: 0 \}/);
   assert.match(chat, /const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
-  assert.match(chat, /const nextBottomLocked = contentOffset\.y <= MESSAGE_STREAM_FOLLOW_THRESHOLD/);
+  assert.match(chat, /updateStreamingLockStateSnapshot/);
   assert.match(chat, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
   assert.doesNotMatch(chat, /const nextShowScrollToLatest = hasUnseenStreamingUpdate \|\|/);
   const latestVisibilityBody = /function syncScrollToLatestVisibility\(offsetY = messageScrollOffsetRef\.current\) \{[\s\S]*?\n  \}/.exec(chat)?.[0] ?? '';
   assert.match(latestVisibilityBody, /offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
   assert.doesNotMatch(latestVisibilityBody, /hasBufferedStreamingUpdateRef|pendingFinalReloadRef|hasPendingStreamingReadBuffer/);
-  assert.match(chat, /userScrolledAwayFromBottomRef\.current = !nextBottomLocked/);
+  assert.match(chat, /userScrolledAwayFromBottomRef\.current = !isNearBottomRef\.current/);
   assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
+  assert.match(chat, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
   assert.match(chat, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
-  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[4\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
+  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[2\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
@@ -225,9 +227,8 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.doesNotMatch(chat, /onContentSizeChange=/);
   assert.doesNotMatch(chat, /onLayout=\{\(\) => \{/);
   assert.match(chat, /const handleComposerHeightChange = useCallback/);
-  assert.match(chat, /hasPendingStreamingReadBuffer\(\) \|\| userScrolledAwayFromBottomRef\.current \|\| !bottomLockedRef\.current/);
-  assert.match(chat, /handleComposerHeightChange[\s\S]*scrollToLatestMessage\(false\)/);
-  assert.doesNotMatch(chat, /handleComposerHeightChange[\s\S]*followLatestMessage\(false\)/);
+  assert.match(chat, /hasPendingStreamingReadBuffer\(\)[\s\S]{0,80}userScrolledAwayFromBottomRef\.current[\s\S]{0,80}!bottomLockedRef\.current/);
+  assert.match(chat, /handleComposerHeightChange[\s\S]*scheduleStreamingTailReconcile\("composer-height"/);
   assert.match(chat, /onComposerHeightChange=\{handleComposerHeightChange\}/);
   assert.match(composer, /onComposerHeightChange\?: \(\) => void/);
   assert.match(composer, /attachmentCountRef/);
@@ -299,7 +300,7 @@ test('AI chat attachment pipeline is replayable and budget-safe', () => {
 
 test('AI chat buffers streaming patches while reading history and only flushes at safe points', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[\]\);/.exec(chat)?.[0] ?? '';
+  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /bottomLockedRef/);
   assert.match(chat, /showScrollToLatestRef/);
@@ -325,9 +326,13 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /applyOrBufferStreamingMessagePatch\(targetThreadId, generation, patch\)/);
   assert.match(chat, /preserveReadModeFrozenMessages\(nextMessages\)/);
   assert.match(chat, /resetStreamingReadBufferState\(\)/);
-  assert.match(chat, /function markIntentionalLatestJump\(\)[\s\S]{0,260}bottomLockedRef\.current = true[\s\S]{0,260}setScrollToLatestVisible\(false\)/);
+  assert.match(chat, /function markIntentionalLatestJump\(\)[\s\S]{0,420}bottomLockedRef\.current = true[\s\S]{0,420}setScrollToLatestVisible\(false\)/);
+  assert.match(chat, /previousMessageScrollOffsetRef/);
+  assert.match(chat, /scrollingTowardLatestRef/);
   assert.match(chat, /flushBufferedStreamingState\(\{ followLatest: true \}\)/);
   assert.match(chat, /flushBufferedStreamingState\(\{ followLatest: false \}\)/);
+  assert.match(chat, /scheduleStreamingTailReconcile\("detached-patch"/);
+  assert.match(chat, /scheduleStreamingTailReconcile\("final-completion"/);
   assert.match(chat, /bottomLockedRef\.current = bottomLockedRef\.current \|\| followLatest \|\| messageScrollOffsetRef\.current <= MESSAGE_SAFE_FLUSH_OFFSET/);
   assert.match(chat, /streamingReadBufferActiveRef\.current = true;\s*pendingFinalReloadRef\.current = true;\s*hasBufferedStreamingUpdateRef\.current = true/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
@@ -341,9 +346,9 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef\.current \|\| pendingFinalReloadRef\.current/);
-  assert.match(chat, /if \(!hasPendingBufferedFlush\) \{\s*syncScrollToLatestVisibility\(offsetY\);\s*return;\s*\}/);
+  assert.match(chat, /if \(!hasPendingBufferedFlush\) \{[\s\S]{0,120}syncScrollToLatestVisibility\(offsetY\);[\s\S]{0,120}markScrollGestureSettled\(\);[\s\S]{0,80}return;/);
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
-  assert.match(scrollHandler, /recomputeVisibleStreamingTailForCurrentScroll\(\)/);
+  assert.match(scrollHandler, /scheduleStreamingTailReconcile\("scroll"\)/);
   assert.doesNotMatch(scrollHandler, /revealBufferedStreamingStateForScroll/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*flushBufferedStreamingState/);
@@ -361,12 +366,12 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
   assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
-  assert.match(chat, /reloadAvatarConfig\(threadId \?\? null/);
+  assert.match(chat, /reloadParticipantAppearance\(threadId \?\? null/);
   assert.match(chat, /reloadThreadTitle\(threadId \?\? null/);
   assert.match(chat, /reloadMemoryCaptures\(threadId \?\? null/);
   assert.match(chat, /latestRequestRef/);
   assert.match(chat, /screenMountedRef/);
-  assert.match(chat, /async function ensureThread\(\): Promise<string \| null>/);
+  assert.match(chat, /async function ensureThread\(\s*options\?: \{\s*preserveComposerDraft\?: boolean;\s*\},\s*\): Promise<string \| null>/);
   assert.match(chat, /if \(!screenMountedRef\.current\) \{\s*return null;\s*\}/);
   assert.match(chat, /if \(!nextThreadId \|\| !screenMountedRef\.current\) \{\s*return;\s*\}/);
   assert.match(chat, /screenMountedRef\.current = false/);
@@ -376,6 +381,21 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.match(chat, /const actionToken = beginGenerationAction\(\)/);
   assert.match(chat, /finishGenerationAction\(actionToken\)/);
   assert.match(chat, /cancelGenerationAction\(\)/);
+});
+
+test('AI chat send-created threads do not restore the sent text into the composer draft', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const ensureThreadBody =
+    /async function ensureThread\([\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
+  const sendBody =
+    /async function handleSend\(\) \{[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
+
+  assert.match(ensureThreadBody, /const preserveComposerDraft = options\?\.preserveComposerDraft !== false/);
+  assert.match(ensureThreadBody, /if \(preserveComposerDraft && composerText\) \{/);
+  assert.match(ensureThreadBody, /else if \(!preserveComposerDraft\) \{[\s\S]*clearComposerDraft\(thread\.id\)/);
+  assert.match(sendBody, /nextThreadId = await ensureThread\(\{ preserveComposerDraft: false \}\)/);
+  assert.match(sendBody, /setComposerText\(""\)/);
+  assert.match(sendBody, /clearComposerDraft\(draftThreadKey\)/);
 });
 
 test('AI chat keeps first-message streaming alive when a new thread is written back to the route', () => {
@@ -402,9 +422,9 @@ test('AI regenerate switches back to the newest generated message version', () =
   assert.match(regenerateBlock, /showLatestMessageVersion\(targetMessageId\)/);
 });
 
-test('AI message action row puts version controls after edit regenerate and shows assistant reply time', () => {
+test('AI message header shows participant identity and keeps action ordering intact', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
-  const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?\{messageTime \? <Text style=\{styles\.messageTime\}>\{messageTime\}<\/Text> : null\}[\s\S]*?<\/View>/m.exec(bubble)?.[0] ?? '';
+  const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?<\/View>/m.exec(bubble)?.[0] ?? '';
   const copyIndex = actionRow.indexOf('accessibilityLabel="复制消息"');
   const editIndex = actionRow.indexOf('accessibilityLabel="重写消息"');
   const regenerateIndex = actionRow.indexOf('accessibilityLabel="重新生成回复"');
@@ -415,8 +435,18 @@ test('AI message action row puts version controls after edit regenerate and show
   assert.ok(regenerateIndex >= 0);
   assert.ok(versionIndex > editIndex);
   assert.ok(versionIndex > regenerateIndex);
+  assert.match(bubble, /assistantDisplayName\?: string \| null/);
+  assert.match(bubble, /showUserAvatar\?: boolean/);
+  assert.match(bubble, /formatAiFullMinute/);
+  assert.match(bubble, /const headerTime = formatAiFullMinute/);
+  assert.match(bubble, /const messageTimestamp = message\.completedAt \?\? message\.updatedAt \?\? message\.createdAt/);
+  assert.match(bubble, /const footerTime = headerVisible/);
+  assert.match(bubble, /isUser[\s\S]{0,80}formatAiMessageMinute\(message\.completedAt \?\? message\.updatedAt\)[\s\S]{0,80}formatAiFullMinute\(messageTimestamp\)/);
+  assert.match(bubble, /styles\.headerRow/);
+  assert.match(bubble, /styles\.headerName/);
+  assert.match(bubble, /styles\.headerTime/);
   assert.match(bubble, /formatAiMessageMinute/);
-  assert.match(bubble, /message\.completedAt \?\? message\.updatedAt/);
+  assert.match(bubble, /messageTimestamp/);
   assert.match(bubble, /styles\.messageTime/);
 });
 
@@ -1358,9 +1388,14 @@ test('AI chat long histories keep FlatList resident rows bounded', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(chat, /initialNumToRender=\{10\}/);
-  assert.match(chat, /maxToRenderPerBatch=\{8\}/);
-  assert.match(chat, /windowSize=\{11\}/);
-  assert.match(chat, /removeClippedSubviews=\{Platform\.OS === 'android'\}/);
+  assert.match(chat, /const tailListMaxToRenderPerBatch = shouldExpandRenderWindow \? 16 : 8/);
+  assert.match(chat, /const tailListWindowSize = shouldExpandRenderWindow \? 15 : 11/);
+  assert.match(chat, /const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow \? 16 : 50/);
+  assert.match(chat, /const tailListRemoveClippedSubviews =\s*Platform\.OS === "android" \? !shouldRelaxClipping : undefined/);
+  assert.match(chat, /maxToRenderPerBatch=\{tailListMaxToRenderPerBatch\}/);
+  assert.match(chat, /windowSize=\{tailListWindowSize\}/);
+  assert.match(chat, /updateCellsBatchingPeriod=\{tailListUpdateCellsBatchingPeriod\}/);
+  assert.match(chat, /removeClippedSubviews=\{tailListRemoveClippedSubviews\}/);
 });
 
 test('AI chat polish avoids redundant scroll state updates and clears transient timers', () => {
@@ -1380,10 +1415,12 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   assert.doesNotMatch(chat, /\[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
   assert.match(chat, /composerPanelHeight/);
   assert.match(chat, /onLayout=\{\(event\) => setComposerPanelHeight\(event\.nativeEvent\.layout\.height\)\}/);
-  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[4\]\}/);
+  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[2\]\}/);
   assert.match(latestButton, /bottomOffset: number/);
   assert.match(latestButton, /bottom:\s*bottomOffset/);
   assert.doesNotMatch(latestButton, /bottom:\s*spacing\[12\] \+ spacing\[10\]/);
+  assert.match(latestButton, /BlurView/);
+  assert.match(latestButton, /color=\{aiLightColors\.primaryActive\}/);
 
   assert.match(chat, /voiceResetTimeoutRef/);
   assert.match(chat, /clearVoiceResetTimeout/);
@@ -1518,8 +1555,8 @@ test('AI streaming timeout only stops when the provider stays silent for 60 seco
   assert.match(service, /scheduleProviderTimeout\(FIRST_PROVIDER_BYTE_TIMEOUT_MS\)/);
   assert.match(service, /async \(event: AiStreamEvent\) => \{[\s\S]*scheduleProviderTimeout\(PROVIDER_IDLE_TIMEOUT_MS\)/);
   assert.match(service, /if \(event\.type === 'provider_usage'\) \{[\s\S]*return;/);
-  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*answerText \+= event\.text;/);
-  assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled\) \{[\s\S]*reasoningText \+= event\.text;/);
+  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*appendContinuationAnswerDelta\(answerText, event\.text, initialAnswerText\)/);
+  assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled && !ignoreReasoningDeltas\) \{[\s\S]*reasoningText \+= event\.text;/);
   assert.match(manager, /reason: 'timeout'/);
 });
 
@@ -1576,7 +1613,7 @@ test('AI edit and regenerate actions expose pending guards and call service path
 
 test('AI chat keeps no-jitter scroll policy during streaming keyboard and return flows', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[\]\);/.exec(chat)?.[0] ?? '';
+  const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /userScrolledAwayFromBottomRef/);
   assert.match(chat, /followLatestMessage/);
@@ -1585,6 +1622,8 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
   assert.match(chat, /pendingFinalReloadRef\.current = true/);
   assert.match(chat, /handleComposerFocus\(\)[\s\S]{0,220}hasPendingStreamingReadBuffer\(\)/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
+  assert.match(chat, /scheduleStreamingTailReconcile\("composer-height"/);
+  assert.match(chat, /scheduleStreamingTailReconcile\("scroll-settled"/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*followLatestMessage/);

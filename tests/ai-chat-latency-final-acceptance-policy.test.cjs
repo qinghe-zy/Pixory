@@ -49,5 +49,9 @@ test('streaming output modernization acceptance contract is implemented', () => 
   assert.match(screen, /pendingFinalReloadRef/);
   assert.match(store, /useSyncExternalStore/);
   assert.doesNotMatch(button, /AI 正在回复/);
-  assert.match(button, />回到最新</);
+  assert.match(button, /accessibilityLabel="回到最新"/);
+  assert.match(button, /BlurView/);
+  assert.match(button, /name="arrow-down"/);
+  assert.match(button, /color=\{aiLightColors\.primaryActive\}/);
+  assert.doesNotMatch(button, />回到最新</);
 });

@@ -21,6 +21,10 @@ import {
   BRANCH_TREE_NODE_WIDTH,
   layoutBranchTreeGraph,
 } from '../engine/layoutBranchTreeGraph';
+import {
+  buildBranchTreeVisibleWindow,
+  filterBranchTreeVisibleLayout,
+} from '../engine/branchTreeViewportVirtualization';
 import type { BranchTreeGraph, BranchTreeSnapshot, BranchTreeViewportSize, BranchTreeViewportTransform } from '../engine/types';
 import { BranchTreeDrawer } from './BranchTreeDrawer';
 import { BranchTreeGrid } from './BranchTreeGrid';
@@ -63,6 +67,14 @@ export function BranchTreeCanvas({
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
   const pinchStartScale = useSharedValue(1);
+  const visibleWindow = useMemo(
+    () => buildBranchTreeVisibleWindow(viewport, transformState),
+    [transformState.scale, transformState.translateX, transformState.translateY, viewport.height, viewport.width]
+  );
+  const visibleLayout = useMemo(
+    () => filterBranchTreeVisibleLayout(layout, visibleWindow, selectedNodeId),
+    [layout, selectedNodeId, visibleWindow]
+  );
 
   function syncTransform(nextTranslateX: number, nextTranslateY: number, nextScale: number) {
     setTransformState({
@@ -183,17 +195,15 @@ export function BranchTreeCanvas({
     <View onLayout={handleLayout} style={styles.root}>
       <GestureDetector gesture={composedGesture}>
         <Animated.View
-          renderToHardwareTextureAndroid
-          shouldRasterizeIOS
           style={[styles.canvas, { height: layout.height, width: layout.width }, graphStyle]}
         >
           <View pointerEvents="none" style={styles.layer}>
-            <BranchTreeGrid height={layout.height} width={layout.width} />
+            <BranchTreeGrid height={layout.height} visibleWindow={visibleWindow} width={layout.width} />
           </View>
           <View pointerEvents="none" style={styles.layer}>
-            <BranchTreeLinks edges={layout.edges} height={layout.height} width={layout.width} />
+            <BranchTreeLinks edges={visibleLayout.edges} />
           </View>
-          {layout.nodes.map((node) => (
+          {visibleLayout.nodes.map((node) => (
             <View key={node.id} style={[styles.nodePosition, { left: node.x, top: node.y }]}>
               <GestureDetector
                 gesture={Gesture.Exclusive(

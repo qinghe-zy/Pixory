@@ -199,6 +199,27 @@ test('streaming output keeps live rendering separate from detached history layou
   assert.doesNotMatch(button, /AI 正在回复/);
 });
 
+test('streaming hardening keeps detached reconcile drag-aware and never force-scrolls while reading history', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const reconcileBody =
+    /const scheduleStreamingTailReconcile = useCallback\([\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(
+      chat,
+    )?.[0] ?? '';
+
+  assert.match(chat, /isUserDraggingRef/);
+  assert.match(chat, /isNearBottomRef/);
+  assert.match(chat, /escapedFromLockRef/);
+  assert.match(chat, /lastUserScrollAtRef/);
+  assert.match(chat, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
+  assert.match(chat, /const USER_SCROLL_IDLE_TIMEOUT_MS = 150/);
+  assert.match(chat, /const RETAIN_RECONCILE_WINDOW_MS = 350/);
+  assert.match(reconcileBody, /requestAnimationFrame/);
+  assert.match(reconcileBody, /isUserDraggingRef\.current/);
+  assert.match(reconcileBody, /bottomLockedRef\.current \|\| isNearBottomRef\.current/);
+  assert.match(reconcileBody, /recomputeVisibleStreamingTailForCurrentScroll/);
+  assert.doesNotMatch(reconcileBody, /scrollToOffset\(\{ animated: .*offset: 0 \}\)/);
+});
+
 test('reply-completed memory maintenance is deferred so chat completion does not compete with the foreground path', () => {
   const chat = read('src/ai/aiChatService.ts');
   const maintenance = read('src/ai/aiMemoryMaintenanceService.ts');

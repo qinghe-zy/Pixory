@@ -105,6 +105,14 @@ export interface AiThreadAvatarConfig {
   avatarUri: string | null;
 }
 
+export interface AiThreadMessageAppearanceConfig {
+  assistantAvatar: AiThreadAvatarConfig;
+  assistantName: string | null;
+  userAvatarEnabled: boolean;
+}
+
+export const DEFAULT_AI_USER_AVATAR_ENABLED = true;
+
 export interface CreateThreadFromContextInput {
   space: PixorySpace;
   contextType: AiContextType;
@@ -160,6 +168,19 @@ export interface RetryAssistantMessageInput {
   onUpdated?: () => void;
 }
 
+export interface ContinueAssistantMessageInput {
+  space: PixorySpace;
+  threadId: string;
+  assistantMessageId: string;
+  sendPressedAt?: string;
+  signal?: AbortSignal;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
+  onUpdated?: () => void;
+}
+
 export interface RewriteUserMessageInput {
   space: PixorySpace;
   threadId: string;
@@ -199,6 +220,7 @@ export interface AiThreadSessionConfig {
   thread: AiThreadRecord;
   roleCardName: string | null;
   avatar: AiThreadAvatarConfig;
+  userAvatarEnabled: boolean;
   deepMemoryEnabled: boolean;
   lastMaintenanceError: string | null;
 }
@@ -242,6 +264,7 @@ export interface UpdateAiThreadSessionConfigInput {
   providerId?: string | null;
   modelId?: string | null;
   avatarEnabled?: boolean;
+  userAvatarEnabled?: boolean;
   deepMemoryEnabled?: boolean;
 }
 
@@ -266,6 +289,12 @@ type ThreadRetrievalResult = {
   snippets: RetrievedSnippet[];
   timedOut: boolean;
 };
+
+const CONTINUE_ASSISTANT_REPLY_INSTRUCTION = [
+  '继续上一条 assistant 回复。',
+  '只输出紧接在已显示正文后面的后续正文，不要重写、总结或重复已显示内容。',
+  '不要提及中断、续写、内部思考或系统上下文。',
+].join('\n');
 
 function snippetTextNeedle(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -487,26 +516,50 @@ const RELATED_HISTORY_LIMIT = 4;
 const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
 
-function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
+function parseThreadRoleSnapshot(roleSnapshotJson: string): Record<string, unknown> {
   try {
-    const snapshot = JSON.parse(roleSnapshotJson);
-    return {
-      avatarEnabled: snapshot?.avatarEnabled === true,
-      avatarUri: typeof snapshot?.avatarUri === 'string' && snapshot.avatarUri.trim() ? snapshot.avatarUri : null,
-    };
+    const parsed = JSON.parse(roleSnapshotJson);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
   } catch {
-    return { avatarEnabled: false, avatarUri: null };
+    return {};
   }
 }
 
-function patchThreadRoleSnapshot(roleSnapshotJson: string, patch: Partial<AiThreadAvatarConfig>): string {
-  let snapshot: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(roleSnapshotJson);
-    snapshot = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    snapshot = {};
-  }
+function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
+  const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
+  return {
+    avatarEnabled: snapshot.avatarEnabled === true,
+    avatarUri:
+      typeof snapshot.avatarUri === 'string' && snapshot.avatarUri.trim()
+        ? snapshot.avatarUri
+        : null,
+  };
+}
+
+function parseThreadMessageAppearanceConfig(
+  roleSnapshotJson: string,
+): AiThreadMessageAppearanceConfig {
+  const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
+  return {
+    assistantAvatar: parseThreadAvatarConfig(roleSnapshotJson),
+    assistantName:
+      typeof snapshot.name === 'string' && snapshot.name.trim()
+        ? snapshot.name.trim()
+        : null,
+    userAvatarEnabled:
+      snapshot.userAvatarEnabled === false
+        ? false
+        : DEFAULT_AI_USER_AVATAR_ENABLED,
+  };
+}
+
+function patchThreadRoleSnapshot(
+  roleSnapshotJson: string,
+  patch: Partial<AiThreadAvatarConfig & { userAvatarEnabled: boolean }>,
+): string {
+  const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
   return JSON.stringify({ ...snapshot, ...patch });
 }
 
@@ -1872,6 +1925,23 @@ export async function loadThreadAvatarConfig(space: PixorySpace, threadId: strin
   });
 }
 
+export async function loadThreadMessageAppearanceConfig(
+  space: PixorySpace,
+  threadId: string,
+): Promise<AiThreadMessageAppearanceConfig> {
+  return runWithDatabaseSpace(space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, threadId);
+    if (!thread || thread.space !== space) {
+      return {
+        assistantAvatar: { avatarEnabled: false, avatarUri: null },
+        assistantName: null,
+        userAvatarEnabled: DEFAULT_AI_USER_AVATAR_ENABLED,
+      };
+    }
+    return parseThreadMessageAppearanceConfig(thread.roleSnapshotJson);
+  });
+}
+
 export async function listAiHistoryThreads(input: {
   space: PixorySpace;
   filter?: AiThreadHistoryFilter;
@@ -1919,6 +1989,9 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
       thread,
       roleCardName: roleCard?.name ?? null,
       avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+      userAvatarEnabled:
+        parseThreadMessageAppearanceConfig(thread.roleSnapshotJson)
+          .userAvatarEnabled,
       deepMemoryEnabled: memorySettings.deepMemoryEnabled,
       lastMaintenanceError: memoryJob.lastMaintenanceError,
     };
@@ -2142,15 +2215,24 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
     if (!thread || thread.space !== input.space) {
       return null;
     }
+    const roleSnapshotPatch: Partial<
+      AiThreadAvatarConfig & { userAvatarEnabled: boolean }
+    > = {};
+    if (input.avatarEnabled != null) {
+      roleSnapshotPatch.avatarEnabled = input.avatarEnabled;
+    }
+    if (input.userAvatarEnabled != null) {
+      roleSnapshotPatch.userAvatarEnabled = input.userAvatarEnabled;
+    }
     const updated = await aiThreadRepository.updateThread(db, input.threadId, {
       boundaryMode: input.boundaryMode,
       materialRulesSnapshot: thread.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode),
       modelId: input.modelId,
       providerId: input.providerId,
       roleSnapshotJson:
-        input.avatarEnabled == null
+        Object.keys(roleSnapshotPatch).length === 0
           ? thread.roleSnapshotJson
-          : patchThreadRoleSnapshot(thread.roleSnapshotJson, { avatarEnabled: input.avatarEnabled }),
+          : patchThreadRoleSnapshot(thread.roleSnapshotJson, roleSnapshotPatch),
       roleInstructionWeight: input.roleInstructionWeight,
       replyPreference: input.replyPreference,
       thinkingDisabled: input.thinkingDisabled,
@@ -2414,6 +2496,53 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   };
 }
 
+function buildAssistantContinuationContext(input: {
+  initialAnswerText: string;
+  initialReasoningText?: string | null;
+}): string {
+  const visibleAnswer = input.initialAnswerText.trim();
+  const hiddenReasoning = input.initialReasoningText?.trim();
+  return [
+    visibleAnswer,
+    hiddenReasoning
+      ? [
+          '',
+          '---',
+          'Continuation-only hidden context. Do not reveal, mention, quote, or summarize this section in the user-visible answer.',
+          hiddenReasoning,
+        ].join('\n')
+      : '',
+  ].filter(Boolean).join('\n');
+}
+
+function appendVisibleAssistantPartialToHistory(
+  history: Array<{ role: 'assistant' | 'user'; content: string }>,
+  input: {
+    assistantPartial: string;
+    originalUserPrompt: string;
+  }
+): Array<{ role: 'assistant' | 'user'; content: string }> {
+  return [
+    ...history,
+    { role: 'user', content: input.originalUserPrompt },
+    { role: 'assistant', content: input.assistantPartial },
+  ];
+}
+
+function appendContinuationAnswerDelta(currentText: string, delta: string, initialAnswerText: string): string {
+  if (!delta || currentText !== initialAnswerText || !initialAnswerText) {
+    return currentText + delta;
+  }
+  const tail = initialAnswerText.slice(-240);
+  const maxOverlap = Math.min(tail.length, delta.length);
+  for (let overlap = maxOverlap; overlap >= 8; overlap -= 1) {
+    if (tail.endsWith(delta.slice(0, overlap))) {
+      return currentText + delta.slice(overlap);
+    }
+  }
+  return currentText + delta;
+}
+
 async function finalizeThreadTitleAfterReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -2505,15 +2634,23 @@ async function streamAssistantReply(input: {
   attachments?: AiOutgoingAttachment[];
   assistantMessageId: string;
   generationMetrics: AiGenerationMetricsDraft;
+  ignoreReasoningDeltas?: boolean;
+  initialAnswerText?: string;
+  initialReasoningText?: string | null;
+  mode?: 'replace' | 'continue';
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
 }): Promise<void> {
-  let answerText = '';
-  let reasoningText = '';
-  let assistantReset = false;
+  const mode = input.mode ?? 'replace';
+  const initialAnswerText = mode === 'continue' ? input.initialAnswerText ?? '' : '';
+  const initialReasoningText = mode === 'continue' ? input.initialReasoningText ?? null : null;
+  const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas);
+  let answerText = initialAnswerText;
+  let reasoningText = initialReasoningText ?? '';
+  let assistantReset = mode === 'continue';
   const generationMetrics = input.generationMetrics;
   const generationId = generationMetrics.context.generationId;
   const emitMessagePatch = (patch: Omit<AiStreamingMessagePatch, 'generationId'>) => {
@@ -2563,18 +2700,31 @@ async function streamAssistantReply(input: {
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
   }
   await runWithDatabaseSpace(input.space, async (db) => {
-    const resetMessage = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
-      status: 'generating',
-      content: '',
-      reasoningText: null,
-      errorMessage: null,
-      providerId: null,
-      modelId: null,
-      modelSnapshotJson: '{}',
-      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
-      createdAt: startedAt,
-      completedAt: null,
-    });
+    const resetPatch = mode === 'continue'
+      ? {
+          status: 'generating' as const,
+          content: initialAnswerText,
+          reasoningText: initialReasoningText,
+          errorMessage: null,
+          providerId: null,
+          modelId: null,
+          modelSnapshotJson: '{}',
+          promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+          completedAt: null,
+        }
+      : {
+          status: 'generating' as const,
+          content: '',
+          reasoningText: null,
+          errorMessage: null,
+          providerId: null,
+          modelId: null,
+          modelSnapshotJson: '{}',
+          promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+          createdAt: startedAt,
+          completedAt: null,
+        };
+    const resetMessage = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, resetPatch);
     if (!resetMessage) {
       return;
     }
@@ -2590,14 +2740,14 @@ async function streamAssistantReply(input: {
   emitMessagePatch({
     id: input.assistantMessageId,
     status: 'generating',
-    content: '',
-    reasoningText: null,
+    content: initialAnswerText,
+    reasoningText: initialReasoningText,
     errorMessage: null,
     providerId: null,
     modelId: null,
     modelSnapshotJson: '{}',
     promptSnapshotJson: '{}',
-    createdAt: startedAt,
+    createdAt: mode === 'continue' ? undefined : startedAt,
     completedAt: null,
     citations: [],
   });
@@ -2622,6 +2772,7 @@ async function streamAssistantReply(input: {
   let provider: AiProviderRecord;
   let providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
   let snippets: Awaited<ReturnType<typeof buildPromptForThread>>['snippets'] = [];
+  let userPrompt = '';
   const requestedAt = startedAt;
 
   try {
@@ -2638,11 +2789,11 @@ async function streamAssistantReply(input: {
         input.assistantMessageId,
         generationId,
         resolvedModel.message,
-        '',
-        null,
+        answerText,
+        reasoningText || null,
         buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
       );
-      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
+      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
       input.onUpdated?.();
       return;
     }
@@ -2658,11 +2809,11 @@ async function streamAssistantReply(input: {
         input.assistantMessageId,
         generationId,
         apiKeyMessage,
-        '',
-        null,
+        answerText,
+        reasoningText || null,
         buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
       );
-      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: '', reasoningText: null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
+      emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
       input.onUpdated?.();
       return;
     }
@@ -2720,14 +2871,29 @@ async function streamAssistantReply(input: {
     }
     contextTrimmedByCount = historySource.length > CHAT_HISTORY_MESSAGE_LIMIT;
     const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
+    const protectedPrompt = [
+      prompt.system,
+      prompt.user,
+      input.userMessage.content,
+      mode === 'continue' ? initialAnswerText : '',
+      mode === 'continue' ? CONTINUE_ASSISTANT_REPLY_INSTRUCTION : '',
+    ].filter(Boolean).join('\n\n');
     ({ contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
       modelContextWindowTokens,
-      protectedPrompt: [
-        prompt.system,
-        prompt.user,
-        input.userMessage.content,
-      ].filter(Boolean).join('\n\n'),
+      protectedPrompt,
     }));
+    if (mode === 'continue') {
+      history = appendVisibleAssistantPartialToHistory(history, {
+        assistantPartial: buildAssistantContinuationContext({
+          initialAnswerText,
+          initialReasoningText,
+        }),
+        originalUserPrompt: prompt.user,
+      });
+      userPrompt = CONTINUE_ASSISTANT_REPLY_INSTRUCTION;
+    } else {
+      userPrompt = prompt.user;
+    }
     generationMetrics.context.loadedMessageCountAtSend = historySource.length;
     generationMetrics.context.historyMessageCount = history.length;
     contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget || Boolean(prompt.contextBudgetTrimmed);
@@ -2810,11 +2976,11 @@ async function streamAssistantReply(input: {
   let streamFailed = false;
   let consecutivePressureWindows = 0;
   let lastPersistAt = 0;
-  let lastPersistedAnswerChars = 0;
-  let lastPersistedReasoningChars = 0;
+  let lastPersistedAnswerChars = initialAnswerText.length;
+  let lastPersistedReasoningChars = reasoningText.length;
   let lastUiPatchAt = 0;
-  let lastUiPatchAnswerChars = 0;
-  let lastUiPatchReasoningChars = 0;
+  let lastUiPatchAnswerChars = initialAnswerText.length;
+  let lastUiPatchReasoningChars = reasoningText.length;
   let pressureProbeExpectedAt = Date.now();
   let pressureProbeActive = true;
   const sampleStreamingDevicePressure = () => {
@@ -2976,11 +3142,11 @@ async function streamAssistantReply(input: {
         baseUrl: provider.baseUrl ?? '',
         modelId,
         systemPrompt: prompt.system,
-        userPrompt: prompt.user,
+        userPrompt,
         attachments: outgoingAttachments,
         history,
         providerCachePolicy,
-        thinkingDisabled: input.thread.thinkingDisabled,
+        thinkingDisabled: input.thread.thinkingDisabled || ignoreReasoningDeltas,
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
@@ -3003,9 +3169,11 @@ async function streamAssistantReply(input: {
             markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
-          answerText += event.text;
+          answerText = mode === 'continue'
+            ? appendContinuationAnswerDelta(answerText, event.text, initialAnswerText)
+            : answerText + event.text;
         }
-        if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled) {
+        if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
           generationMetrics.counters.providerDeltaCount += 1;
           generationMetrics.counters.reasoningDeltaCount += 1;
           if (!generationMetrics.timestamps.firstProviderDeltaAt) {
@@ -3018,7 +3186,7 @@ async function streamAssistantReply(input: {
           generationMetrics.counters.maxBufferedChars,
           answerText.length + reasoningText.length
         );
-        if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled)) {
+        if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas)) {
           emitStreamingPatch();
           generationMetrics.counters.streamMergedDeltaCount = Math.max(
             0,
@@ -3102,7 +3270,7 @@ async function streamAssistantReply(input: {
       completedAt,
     });
     finalMessagePersisted = Boolean(current);
-    if (current?.status === 'completed' && snippets.length > 0) {
+    if (current?.status === 'completed') {
       const citations = snippets.map((snippet) => ({
         id: createAiId('aicite'),
         sourceType: snippet.sourceType ?? 'document_chunk',
@@ -3386,6 +3554,96 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
 
 export async function retryAssistantMessage(input: RetryAssistantMessageInput): Promise<void> {
   await regenerateAssistantMessage(input);
+}
+
+export async function continueAssistantMessage(input: ContinueAssistantMessageInput): Promise<void> {
+  const thread = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.findThreadById(db, input.threadId));
+  if (!thread || thread.space !== input.space) {
+    throw new Error('AI thread was not found.');
+  }
+
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId('aigen'),
+    messageId: input.assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
+  const continuation = await runWithDatabaseSpace(input.space, async (db) => {
+    const assistantMessage = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
+    if (!assistantMessage || assistantMessage.threadId !== thread.id || assistantMessage.role !== 'assistant') {
+      throw new Error('AI assistant message was not found.');
+    }
+    if (assistantMessage.status !== 'stopped' && assistantMessage.status !== 'failed') {
+      throw new Error('只有已停止或失败的回复可以继续生成。');
+    }
+    if (!assistantMessage.content.trim()) {
+      throw new Error('这条回复还没有可继续的正文。');
+    }
+    const assistantBranchScopes = await aiThreadRepository.resolveBranchLineage(
+      db,
+      assistantMessage.branchRootMessageId,
+      assistantMessage.branchVersionIndex
+    );
+    const previousUserMessage = await aiThreadRepository.findPreviousMessageByRole(db, thread.id, input.assistantMessageId, 'user', assistantBranchScopes);
+    if (!previousUserMessage) {
+      throw new Error('没有可用于继续生成的用户消息。');
+    }
+    await aiThreadRepository.updateMessage(db, input.assistantMessageId, {
+      status: 'generating',
+      content: assistantMessage.content,
+      reasoningText: assistantMessage.reasoningText,
+      errorMessage: null,
+      providerId: null,
+      modelId: null,
+      modelSnapshotJson: '{}',
+      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+      completedAt: null,
+    });
+    await aiThreadRepository.updateThread(db, thread.id, {
+      lastMessagePreview: previousUserMessage.content.slice(0, 80),
+    });
+    await aiThreadRepository.setThreadCurrentBranch(db, {
+      branchRootMessageId: assistantMessage.branchRootMessageId,
+      branchVersionIndex: assistantMessage.branchVersionIndex,
+      threadId: thread.id,
+    });
+    return {
+      initialAnswerText: assistantMessage.content,
+      initialReasoningText: assistantMessage.reasoningText,
+      userMessage: previousUserMessage,
+    };
+  });
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  const replayAttachments = await loadOutgoingAttachmentsForMessage({
+    messageId: continuation.userMessage.id,
+    space: input.space,
+  });
+  input.onCreated?.({
+    userMessageId: continuation.userMessage.id,
+    assistantMessageId: input.assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+  });
+  input.onUpdated?.();
+
+  await streamAssistantReply({
+    attachments: replayAttachments,
+    assistantMessageId: input.assistantMessageId,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
+    ignoreReasoningDeltas: true,
+    initialAnswerText: continuation.initialAnswerText,
+    initialReasoningText: continuation.initialReasoningText,
+    mode: 'continue',
+    onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
+    onUpdated: input.onUpdated,
+    signal: input.signal,
+    space: input.space,
+    thread: latestThread,
+    userMessage: continuation.userMessage,
+  });
 }
 
 export async function rewriteUserMessage(input: RewriteUserMessageInput): Promise<{ userMessageId: string; assistantMessageId: string }> {

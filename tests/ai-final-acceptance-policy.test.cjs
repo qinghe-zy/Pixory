@@ -97,6 +97,7 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.doesNotMatch(sessionConfig, /applyRoleCardToThread/);
   assert.doesNotMatch(sessionConfig, /恢复默认角色/);
   assert.match(sessionConfig, /avatarEnabled/);
+  assert.match(sessionConfig, /DEFAULT_AI_USER_AVATAR_ENABLED/);
   assert.match(sessionConfig, /头像开启|头像关闭/);
   assert.match(sessionConfig, /高级角色指令/);
   assert.match(sessionConfig, /回复设置/);
@@ -125,9 +126,12 @@ test('AI session settings persist role cards system prompt and boundary mode to 
   assert.match(roleLibrary, /onLongPress=\{toggleSelected\}/);
   assert.match(app, /onThreadReady/);
   assert.match(chatScreen, /handleOpenSessionConfig/);
-  assert.match(chatScreen, /loadThreadAvatarConfig/);
+  assert.match(chatScreen, /loadThreadMessageAppearanceConfig/);
+  assert.match(chatScreen, /DEFAULT_AI_USER_AVATAR_ENABLED/);
   assert.match(chatService, /updateAiThreadSessionConfig/);
   assert.match(chatService, /parseThreadAvatarConfig/);
+  assert.match(chatService, /DEFAULT_AI_USER_AVATAR_ENABLED = true/);
+  assert.match(chatService, /snapshot\.userAvatarEnabled === false[\s\S]{0,120}DEFAULT_AI_USER_AVATAR_ENABLED/);
   assert.match(chatService, /patchThreadRoleSnapshot/);
   assert.match(chatService, /systemPrompt: roleCard\?\.prompt \?\? getDefaultThreadSystemPrompt\(thread\.contextType\)/);
   assert.match(chatService, /roleInstructionWeight: input\.roleInstructionWeight/);

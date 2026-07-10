@@ -39,7 +39,7 @@ test('AI chat search is a full-page current-route local fuzzy search flow', () =
 
 test('AI chat search uses bounded SQLite candidates instead of materializing full long threads', () => {
   const service = read('src/ai/aiChatService.ts');
-  const searchBody = /export async function searchThreadMessages[\s\S]*?\r?\n}\r?\n\r?\nexport async function loadThreadAvatarConfig/.exec(service)?.[0] ?? '';
+  const searchBody = /export async function searchThreadMessages[\s\S]*?\r?\n}\r?\n\r?\nexport async function loadThreadMessageAppearanceConfig/.exec(service)?.[0] ?? '';
 
   assert.match(searchBody, /const candidateLimit = offset \+ limit \+ 1/);
   assert.match(searchBody, /runWithDatabaseSpace\(input\.space, async \(db\) => \{/);
@@ -87,7 +87,7 @@ test('AI chat search result selection returns to chat and scrolls to target', ()
 test('AI chat search target scroll is not overwritten by latest-message jumps', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
-  const composerHeightHandler = /  const handleComposerHeightChange = useCallback\(\(\) => \{\r?\n[\s\S]*?\r?\n  \}, \[scrollToLatestMessage\]\);/.exec(chat)?.[0] ?? '';
+  const composerHeightHandler = /  const handleComposerHeightChange = useCallback\(\(\) => \{\r?\n[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
   const viewableHandler = /const handleInlineEditViewableItemsChangedRef = useRef\(\([\s\S]*?\n  \}\);/.exec(chat)?.[0] ?? '';
   const searchRetryHandler = /  function retrySearchScrollToIndex\(info: \{ averageItemLength: number; index: number \}\) \{\r?\n[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
   const branchTreeRetryHandler = /  function retryBranchTreeScrollToIndex\(info: \{ averageItemLength: number; index: number \}\) \{\r?\n[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
@@ -104,6 +104,7 @@ test('AI chat search target scroll is not overwritten by latest-message jumps', 
   assert.match(composerHeightHandler, /pendingSearchScrollMessageIdRef\.current/);
   assert.match(pendingSearchGuard, /return/);
   assert.doesNotMatch(pendingSearchGuard, /scrollToLatestMessage\(false\)/);
+  assert.doesNotMatch(pendingSearchGuard, /scheduleStreamingTailReconcile\("composer-height"/);
   assert.match(viewableHandler, /pendingSearchScrollMessageIdRef\.current/);
   assert.match(viewableHandler, /clearSearchScrollTimeouts\(\)/);
   assert.doesNotMatch(chat, pendingClearByTimeout);

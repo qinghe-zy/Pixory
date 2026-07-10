@@ -53,7 +53,7 @@ import {
 import { AiMemoryCaptureNotice } from "../components/ai/AiMemoryCaptureNotice";
 import { AiMessageBubble } from "../components/ai/AiMessageBubble";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
-import { AiMeasuredStreamBlock } from "../components/ai/AiMeasuredStreamBlock";
+import { AiStreamingTailContinuationBubble } from "../components/ai/AiStreamingTailContinuationBubble";
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
 import { AppScreen } from "../components/AppScreen";
@@ -69,14 +69,15 @@ import {
 } from "../ai/aiMemoryService";
 import {
   createThreadFromContext,
+  DEFAULT_AI_USER_AVATAR_ENABLED,
   deleteAiThreads,
   flushStreamingMessageSnapshot,
   getCurrentChatModelLabel,
   getCurrentChatModelIconBrand,
   listThreadMessages,
   loadThreadContinuityMilestones,
+  loadThreadMessageAppearanceConfig,
   loadThreadTitle,
-  loadThreadAvatarConfig,
   listAiHistoryThreads,
   renameAiThread,
   rollbackThreadContinuityImport,
@@ -109,16 +110,30 @@ import {
   publishStreamingMessage,
   type AiStreamingMessageIdentity,
 } from "../ai/aiStreamingMessageStore";
-import { type AiStreamBlock } from "../ai/aiStreamingBlockSplitter";
 import {
+  groupPromotedStreamingTailBlocks,
+  type AiStreamingTailContinuationGroup,
+} from "../ai/aiStreamingTailContinuation";
+import {
+  calculateRemainingStreamingTailHeight,
   calculateEffectiveTotalReservedHeight,
   createEmptyStreamingTailState,
   mergeStreamingTailPatch,
   promoteStreamingTailBlocks,
+  settleStreamingTailShrinkDebt,
   startStreamingTailDetach,
   updateStreamingTailBlockMeasurement,
   type AiStreamingTailState,
 } from "../ai/aiStreamingTailModel";
+import {
+  getAssistantBubbleContentWidthFallback,
+  getLatestAssistantBubbleContentWidth,
+} from "../ai/aiStreamingBubbleWidthRegistry";
+import {
+  deriveStreamingTailViewportPolicy,
+  type StreamingTailViewportPolicy,
+} from "../ai/aiStreamingTailViewportPolicy";
+import { streamingTailPerfDebug } from "../ai/aiStreamingPerfDebug";
 import {
   clearComposerDraft,
   getComposerDraft,
@@ -149,6 +164,11 @@ import {
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800;
 const MESSAGE_SAFE_FLUSH_OFFSET = 1;
+const STICK_TO_BOTTOM_OFFSET_PX = 70;
+const USER_SCROLL_IDLE_TIMEOUT_MS = 150;
+const SHRINK_DEBOUNCE_MS = 150;
+const SHRINK_STABLE_DELAY_MS = 200;
+const RETAIN_RECONCILE_WINDOW_MS = 350;
 const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const COMPOSER_ENTRANCE_DURATION_MS = 500;
@@ -344,6 +364,7 @@ type VisibleMessageItem =
       type: 'message';
       message: AiMessageWithCitations;
       showAvatar: boolean;
+      showUserAvatar: boolean;
       showDateSeparator: boolean;
     }
   | {
@@ -352,9 +373,9 @@ type VisibleMessageItem =
       height: number;
     }
   | {
-      type: "streamTailBlock";
+      type: "streamTailContinuation";
       id: string;
-      block: AiStreamBlock;
+      group: AiStreamingTailContinuationGroup;
     };
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
@@ -498,7 +519,6 @@ interface AiChatScreenProps {
   onOpenRoleLibrary: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
-  onOpenBranchTree: (threadId: string, currentBranchScopes: AiBranchScope[]) => void;
   onOpenChatSearch: (
     threadId: string,
     currentBranchScopes: AiBranchScope[],
@@ -536,7 +556,6 @@ export function AiChatScreen({
   onOpenRoleLibrary,
   onOpenGlobalMaterials,
   onOpenSessionConfig,
-  onOpenBranchTree,
   onOpenChatSearch,
   onOpenMemoryBoard,
   onNewChat,
@@ -917,6 +936,10 @@ export function AiChatScreen({
   const loadedMessageLimitRef = useRef(CHAT_MESSAGE_PAGE_SIZE);
   const userScrolledAwayFromBottomRef = useRef(false);
   const bottomLockedRef = useRef(true);
+  const isUserDraggingRef = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const escapedFromLockRef = useRef(false);
+  const lastUserScrollAtRef = useRef(0);
   const showScrollToLatestRef = useRef(false);
   const messageScrollOffsetRef = useRef(0);
   const streamingReadBufferActiveRef = useRef(false);
@@ -937,6 +960,20 @@ export function AiChatScreen({
   const inlineEditViewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 82,
   });
+  const userScrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const shrinkSettlementTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const reconcileRetainTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const reconcileAnimationFrameRef = useRef<number | null>(null);
+  const reconcileForceRenderRef = useRef(false);
+  const reconcileAllowFollowLatestRef = useRef(false);
+  const reconcileReasonRef = useRef<string | null>(null);
+  const allowFullShrinkSettlementRef = useRef(false);
   // prettier-ignore
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
       const nextVisibleMessageIds = new Set(
@@ -1020,84 +1057,300 @@ export function AiChatScreen({
     (x) => x + 1,
     0,
   );
+  const initialMessageViewportHeight = Dimensions.get("window").height;
   const streamingTailStateRef = useRef<AiStreamingTailState>(
     createEmptyStreamingTailState(),
   );
   const maxTailReservedHeightRef = useRef<number>(0);
   const maxTailReservedHeightMessageIdRef = useRef<string | null>(null);
-
-  const handleMeasuredTailBlock = useCallback((blockId: string, measuredHeight: number) => {
-    const tailState = streamingTailStateRef.current;
-    if (tailState.status === 'idle') return;
-    const nextTailState = updateStreamingTailBlockMeasurement({
-      blockId,
-      measuredHeight,
-      previous: tailState,
-    });
-    if (nextTailState !== tailState) {
-      streamingTailStateRef.current = nextTailState;
-      forceUpdateTailState();
+  const messageViewportHeightRef = useRef(initialMessageViewportHeight);
+  const previousMessageScrollOffsetRef = useRef(0);
+  const scrollingTowardLatestRef = useRef(true);
+  const tailViewportPolicyRef = useRef<StreamingTailViewportPolicy>(
+    deriveStreamingTailViewportPolicy({
+      scrollOffset: 0,
+      scrollingTowardLatest: true,
+      totalReservedHeight: 0,
+      viewportHeight: initialMessageViewportHeight,
+    }),
+  );
+  const [tailViewportPolicy, setTailViewportPolicy] =
+    useState<StreamingTailViewportPolicy>(tailViewportPolicyRef.current);
+  const updateStreamingLockStateSnapshot = useCallback((offsetY: number) => {
+    const atBottom = offsetY <= MESSAGE_STREAM_FOLLOW_THRESHOLD;
+    const nearBottom = offsetY <= STICK_TO_BOTTOM_OFFSET_PX;
+    if (!hasPendingStreamingReadBuffer()) {
+      bottomLockedRef.current = atBottom;
     }
+    isNearBottomRef.current = nearBottom;
+    escapedFromLockRef.current = !nearBottom;
+    streamingTailPerfDebug.recordLockState({
+      atBottom,
+      escapedFromLock: escapedFromLockRef.current,
+      nearBottom,
+      });
   }, []);
 
-  const recomputeVisibleStreamingTailForCurrentScroll = useCallback((options?: { forceRender?: boolean }) => {
-    const tailState = streamingTailStateRef.current;
-    if (tailState.status === "idle") return;
+  const syncTailViewportPolicy = useCallback((occupiedTailHeight: number) => {
+    const nextPolicy = deriveStreamingTailViewportPolicy({
+      scrollOffset: messageScrollOffsetRef.current,
+      scrollingTowardLatest: scrollingTowardLatestRef.current,
+      totalReservedHeight: occupiedTailHeight,
+      viewportHeight: messageViewportHeightRef.current,
+    });
+    const currentPolicy = tailViewportPolicyRef.current;
+    const changed =
+      currentPolicy.hotZone !== nextPolicy.hotZone ||
+      currentPolicy.prePromotionHeight !== nextPolicy.prePromotionHeight ||
+      currentPolicy.targetDetachedFps !== nextPolicy.targetDetachedFps ||
+      currentPolicy.shouldRelaxClipping !== nextPolicy.shouldRelaxClipping ||
+      currentPolicy.shouldExpandRenderWindow !==
+        nextPolicy.shouldExpandRenderWindow;
+    tailViewportPolicyRef.current = nextPolicy;
+    if (changed) {
+      setTailViewportPolicy(nextPolicy);
+    }
+    return nextPolicy;
+  }, []);
 
+  const syncTailViewportPolicyForCurrentTailState = useCallback(() => {
+    const tailState = streamingTailStateRef.current;
+    if (tailState.status === "idle") {
+      return syncTailViewportPolicy(0);
+    }
     const thinkingDefaultExpanded = false;
     const isExpanded = tailState.messageId
-      ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ?? thinkingDefaultExpanded)
+      ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
+          thinkingDefaultExpanded)
       : thinkingDefaultExpanded;
-
     const activeLanes: ("content" | "reasoning")[] = isExpanded
       ? ["content", "reasoning"]
       : ["content"];
-    const effectiveReservedHeight = calculateEffectiveTotalReservedHeight(
-      tailState,
-      activeLanes,
+    return syncTailViewportPolicy(
+      calculateEffectiveTotalReservedHeight(tailState, activeLanes),
     );
+  }, [syncTailViewportPolicy]);
 
-    let reservedHeight = effectiveReservedHeight;
-    if (!isExpanded) {
-      maxTailReservedHeightMessageIdRef.current = tailState.messageId;
-      maxTailReservedHeightRef.current = effectiveReservedHeight;
-    } else if (tailState.messageId === maxTailReservedHeightMessageIdRef.current) {
-      reservedHeight = Math.max(
-        maxTailReservedHeightRef.current,
-        effectiveReservedHeight,
+  const recomputeVisibleStreamingTailForCurrentScroll = useCallback(
+    (options?: { forceRender?: boolean }) => {
+      const tailState = streamingTailStateRef.current;
+      if (tailState.status === "idle") {
+        syncTailViewportPolicy(0);
+        return;
+      }
+
+      const thinkingDefaultExpanded = false;
+      const isExpanded = tailState.messageId
+        ? (thinkingExpandedByMessageIdRef.current.get(tailState.messageId) ??
+            thinkingDefaultExpanded)
+        : thinkingDefaultExpanded;
+
+      const activeLanes: ("content" | "reasoning")[] = isExpanded
+        ? ["content", "reasoning"]
+        : ["content"];
+      const effectiveReservedHeight = calculateEffectiveTotalReservedHeight(
+        tailState,
+        activeLanes,
       );
-      maxTailReservedHeightRef.current = reservedHeight;
-    } else {
-      maxTailReservedHeightMessageIdRef.current = tailState.messageId;
-      maxTailReservedHeightRef.current = effectiveReservedHeight;
-    }
 
-    const nextTailState = promoteStreamingTailBlocks({
-      activeLanes,
-      previous: tailState,
-      visibleTailHeight: Math.max(
+      let reservedHeight = effectiveReservedHeight;
+      if (!isExpanded) {
+        maxTailReservedHeightMessageIdRef.current = tailState.messageId;
+        maxTailReservedHeightRef.current = effectiveReservedHeight;
+      } else if (
+        tailState.messageId === maxTailReservedHeightMessageIdRef.current
+      ) {
+        reservedHeight = Math.max(
+          maxTailReservedHeightRef.current,
+          effectiveReservedHeight,
+        );
+        maxTailReservedHeightRef.current = reservedHeight;
+      } else {
+        maxTailReservedHeightMessageIdRef.current = tailState.messageId;
+        maxTailReservedHeightRef.current = effectiveReservedHeight;
+      }
+
+      const tailViewportPolicy = syncTailViewportPolicy(reservedHeight);
+      const visibleTailHeight = Math.max(
         0,
         reservedHeight - messageScrollOffsetRef.current,
-      ),
-    });
+      );
+      const nextTailState = promoteStreamingTailBlocks({
+        activeLanes,
+        previous: tailState,
+        replayHorizonHeight:
+          visibleTailHeight + tailViewportPolicy.prePromotionHeight,
+      });
 
-    if (nextTailState !== tailState) {
-      streamingTailStateRef.current = nextTailState;
-      forceUpdateTailState();
-    } else if (options?.forceRender) {
-      forceUpdateTailState();
+      if (nextTailState !== tailState) {
+        streamingTailStateRef.current = nextTailState;
+        forceUpdateTailState();
+      } else if (options?.forceRender) {
+        forceUpdateTailState();
+      }
+    },
+    [syncTailViewportPolicy],
+  );
+
+  const maybeSettleStreamingTailShrinkDebt = useCallback(
+    (reason: string) => {
+      const tailState = streamingTailStateRef.current;
+      if (
+        tailState.status === "idle" ||
+        tailState.pendingShrinkHeight <= 0 ||
+        tailState.shrinkStableSince == null
+      ) {
+        return;
+      }
+      if (Date.now() - tailState.shrinkStableSince < SHRINK_STABLE_DELAY_MS) {
+        return;
+      }
+      const settleAllBlocks =
+        allowFullShrinkSettlementRef.current ||
+        reason === "return-to-latest" ||
+        (bottomLockedRef.current && !hasPendingStreamingReadBuffer());
+      const nextTailState = settleStreamingTailShrinkDebt({
+        canApplyBlock: (block) =>
+          settleAllBlocks ||
+          tailState.promotedBlockIds.has(block.blockId),
+        previous: tailState,
+      });
+      allowFullShrinkSettlementRef.current = false;
+      if (nextTailState !== tailState) {
+        streamingTailStateRef.current = nextTailState;
+        forceUpdateTailState();
+      }
+    },
+    [],
+  );
+
+  const scheduleStreamingTailReconcile = useCallback(
+    (
+      reason: string,
+      options?: {
+        allowFollowLatest?: boolean;
+        forceRender?: boolean;
+        retainWindow?: boolean;
+      },
+    ) => {
+      reconcileReasonRef.current = reason;
+      reconcileForceRenderRef.current =
+        reconcileForceRenderRef.current || Boolean(options?.forceRender);
+      reconcileAllowFollowLatestRef.current =
+        reconcileAllowFollowLatestRef.current ||
+        Boolean(options?.allowFollowLatest);
+
+      if (reconcileRetainTimeoutRef.current) {
+        clearTimeout(reconcileRetainTimeoutRef.current);
+        reconcileRetainTimeoutRef.current = null;
+      }
+      if (options?.retainWindow) {
+        reconcileRetainTimeoutRef.current = setTimeout(() => {
+          reconcileRetainTimeoutRef.current = null;
+          scheduleStreamingTailReconcile(`${reason}:retained`, {
+            allowFollowLatest: options.allowFollowLatest,
+          });
+        }, RETAIN_RECONCILE_WINDOW_MS);
+      }
+
+      if (reconcileAnimationFrameRef.current != null) {
+        return;
+      }
+      reconcileAnimationFrameRef.current = requestAnimationFrame(() => {
+        reconcileAnimationFrameRef.current = null;
+        const now = Date.now();
+        if (
+          isUserDraggingRef.current &&
+          now - lastUserScrollAtRef.current < USER_SCROLL_IDLE_TIMEOUT_MS &&
+          tailViewportPolicyRef.current.hotZone === "cold"
+        ) {
+          return;
+        }
+
+        streamingTailPerfDebug.incrementReconcileCount();
+        recomputeVisibleStreamingTailForCurrentScroll({
+          forceRender: reconcileForceRenderRef.current,
+        });
+        maybeSettleStreamingTailShrinkDebt(
+          reconcileReasonRef.current ?? reason,
+        );
+
+        if (
+          reconcileAllowFollowLatestRef.current &&
+          (bottomLockedRef.current || isNearBottomRef.current) &&
+          !hasPendingStreamingReadBuffer()
+        ) {
+          followLatestMessage(false);
+        }
+
+        reconcileAllowFollowLatestRef.current = false;
+        reconcileForceRenderRef.current = false;
+      });
+    },
+    [maybeSettleStreamingTailShrinkDebt, recomputeVisibleStreamingTailForCurrentScroll],
+  );
+
+  const scheduleShrinkDebtSettlementCheck = useCallback(() => {
+    if (shrinkSettlementTimeoutRef.current) {
+      clearTimeout(shrinkSettlementTimeoutRef.current);
     }
-  }, []);
+    shrinkSettlementTimeoutRef.current = setTimeout(() => {
+      shrinkSettlementTimeoutRef.current = null;
+      scheduleStreamingTailReconcile("shrink-settle");
+    }, SHRINK_DEBOUNCE_MS);
+  }, [scheduleStreamingTailReconcile]);
+
+  const handleMeasuredTailBlock = useCallback(
+    (blockId: string, measuredHeight: number) => {
+      const tailState = streamingTailStateRef.current;
+      if (tailState.status === "idle") return;
+      const nextTailState = updateStreamingTailBlockMeasurement({
+        blockId,
+        measuredAt: Date.now(),
+        measuredHeight,
+        previous: tailState,
+      });
+      if (nextTailState !== tailState) {
+        streamingTailStateRef.current = nextTailState;
+        forceUpdateTailState();
+        scheduleShrinkDebtSettlementCheck();
+        scheduleStreamingTailReconcile("measured-block", {
+          allowFollowLatest: bottomLockedRef.current || isNearBottomRef.current,
+          retainWindow: true,
+        });
+      }
+    },
+    [scheduleShrinkDebtSettlementCheck, scheduleStreamingTailReconcile],
+  );
 
   function resetStreamingTailOccupancy() {
     maxTailReservedHeightRef.current = 0;
     maxTailReservedHeightMessageIdRef.current = null;
+    allowFullShrinkSettlementRef.current = false;
+    syncTailViewportPolicy(0);
 
     if (streamingTailStateRef.current.status !== "idle") {
       streamingTailStateRef.current = createEmptyStreamingTailState();
       forceUpdateTailState();
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (userScrollIdleTimeoutRef.current) {
+        clearTimeout(userScrollIdleTimeoutRef.current);
+      }
+      if (shrinkSettlementTimeoutRef.current) {
+        clearTimeout(shrinkSettlementTimeoutRef.current);
+      }
+      if (reconcileRetainTimeoutRef.current) {
+        clearTimeout(reconcileRetainTimeoutRef.current);
+      }
+      if (reconcileAnimationFrameRef.current != null) {
+        cancelAnimationFrame(reconcileAnimationFrameRef.current);
+      }
+    };
+  }, []);
 
   function getMessageItemIdAtIndex(index: number): string | null {
     const item = invertedMessageItems[index];
@@ -1198,9 +1451,13 @@ export function AiChatScreen({
   const [modelIconBrand, setModelIconBrand] =
     useState<AiModelIconBrand>("default");
   const [displayTitle, setDisplayTitle] = useState(resolvedContextTitle);
-  const [avatarConfig, setAvatarConfig] = useState({
-    avatarEnabled: false,
-    avatarUri: null as string | null,
+  const [participantAppearance, setParticipantAppearance] = useState({
+    assistantAvatarEnabled: false,
+    assistantAvatarUri: null as string | null,
+    assistantName: null as string | null,
+    userAvatarEnabled: DEFAULT_AI_USER_AVATAR_ENABLED,
+    userAvatarUri: null as string | null,
+    userNickname: null as string | null,
   });
   const [memoryCaptures, setMemoryCaptures] = useState<
     MemoryCaptureNoticeItem[]
@@ -1345,6 +1602,7 @@ export function AiChatScreen({
           type: "message",
           message,
           showAvatar: message.role === 'assistant' && (showDateSeparator || previousMessage?.role !== 'assistant'),
+          showUserAvatar: message.role === 'user' && (showDateSeparator || previousMessage?.role !== 'user'),
           showDateSeparator,
         };
       });
@@ -1362,27 +1620,28 @@ export function AiChatScreen({
       const activeLanes: ("content" | "reasoning")[] = isThinkingExpanded
         ? ["content", "reasoning"]
         : ["content"];
-      const hiddenTailHeight = calculateEffectiveTotalReservedHeight(
+      const hiddenTailHeight = calculateRemainingStreamingTailHeight(
         tailState,
         activeLanes,
       );
+      const promotedTailGroups = groupPromotedStreamingTailBlocks({
+        activeLanes,
+        blocks: tailState.blocks,
+        promotedBlockIds: tailState.promotedBlockIds,
+      }).map((group): VisibleMessageItem => ({
+        group,
+        id: group.groupId,
+        type: "streamTailContinuation",
+      }));
+      for (let index = 0; index < promotedTailGroups.length; index += 1) {
+        nextInvertedMessageItems.unshift(promotedTailGroups[index]);
+      }
       if (hiddenTailHeight > 0) {
         nextInvertedMessageItems.unshift({
           height: hiddenTailHeight,
           id: "stream-tail-spacer",
           type: "streamTailSpacer",
         });
-      }
-      const promotedTailItems = tailState.blocks
-        .filter((block) => tailState.promotedBlockIds.has(block.blockId))
-        .filter((block) => activeLanes.includes(block.lane))
-        .map((block): VisibleMessageItem => ({
-          block,
-          id: block.blockId,
-          type: "streamTailBlock",
-        }));
-      for (let index = promotedTailItems.length - 1; index >= 0; index -= 1) {
-        nextInvertedMessageItems.unshift(promotedTailItems[index]);
       }
     }
 
@@ -1725,6 +1984,10 @@ export function AiChatScreen({
           pendingFinalStreamingIdentityRef.current =
             activeStreamingIdentityRef.current;
           syncScrollToLatestVisibility();
+          scheduleStreamingTailReconcile("final-completion", {
+            forceRender: true,
+            retainWindow: true,
+          });
           return;
         }
         void (async () => {
@@ -1819,13 +2082,15 @@ export function AiChatScreen({
 
   function getStreamingBubbleWidth() {
     const screenWidth = Dimensions.get("window").width;
-    const listContentWidth = Math.max(
-      220,
-      screenWidth - layout.pagePaddingHorizontal * 2,
+    return (
+      getLatestAssistantBubbleContentWidth() ??
+      getAssistantBubbleContentWidthFallback({
+        bubbleHorizontalPadding: spacing[3],
+        messageStackRatio: 0.88,
+        pagePaddingHorizontal: layout.pagePaddingHorizontal,
+        screenWidth,
+      })
     );
-    const stackWidth = listContentWidth * 0.88;
-    const bubbleContentWidth = stackWidth - spacing[3] * 2;
-    return Math.max(220, Math.floor(bubbleContentWidth));
   }
 
   function freezeVisibleStreamingMessage(messageId: string) {
@@ -1946,18 +2211,37 @@ export function AiChatScreen({
     hasBufferedStreamingUpdateRef.current = false;
     frozenStreamingMessageByIdRef.current.clear();
     bottomLockedRef.current = true;
+    isNearBottomRef.current = true;
+    escapedFromLockRef.current = false;
+    isUserDraggingRef.current = false;
     messageScrollOffsetRef.current = 0;
+    previousMessageScrollOffsetRef.current = 0;
+    scrollingTowardLatestRef.current = true;
     userScrolledAwayFromBottomRef.current = false;
     setScrollToLatestVisible(false);
+    if (userScrollIdleTimeoutRef.current) {
+      clearTimeout(userScrollIdleTimeoutRef.current);
+      userScrollIdleTimeoutRef.current = null;
+    }
+    if (shrinkSettlementTimeoutRef.current) {
+      clearTimeout(shrinkSettlementTimeoutRef.current);
+      shrinkSettlementTimeoutRef.current = null;
+    }
 
     resetStreamingTailOccupancy();
   }
 
   function markIntentionalLatestJump() {
     bottomLockedRef.current = true;
+    isNearBottomRef.current = true;
+    escapedFromLockRef.current = false;
     messageScrollOffsetRef.current = 0;
+    previousMessageScrollOffsetRef.current = 0;
+    scrollingTowardLatestRef.current = true;
     userScrolledAwayFromBottomRef.current = false;
     setScrollToLatestVisible(false);
+    allowFullShrinkSettlementRef.current = true;
+    syncTailViewportPolicyForCurrentTailState();
   }
 
   const scrollToLatestMessage = useCallback(
@@ -1967,6 +2251,8 @@ export function AiChatScreen({
       }
       if (force) {
         messageScrollOffsetRef.current = 0;
+        previousMessageScrollOffsetRef.current = 0;
+        scrollingTowardLatestRef.current = true;
       }
       messageListRef.current?.scrollToOffset({ animated, offset: 0 });
     },
@@ -1976,28 +2262,33 @@ export function AiChatScreen({
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset } = event.nativeEvent;
+    scrollingTowardLatestRef.current =
+      contentOffset.y <= previousMessageScrollOffsetRef.current;
+    previousMessageScrollOffsetRef.current = contentOffset.y;
     messageScrollOffsetRef.current = contentOffset.y;
-
-    recomputeVisibleStreamingTailForCurrentScroll();
-
-    const nextBottomLocked = contentOffset.y <= MESSAGE_STREAM_FOLLOW_THRESHOLD;
-    if (!hasPendingStreamingReadBuffer()) {
-      bottomLockedRef.current = nextBottomLocked;
-    }
-    userScrolledAwayFromBottomRef.current = !nextBottomLocked;
+    lastUserScrollAtRef.current = Date.now();
+    updateStreamingLockStateSnapshot(contentOffset.y);
+    syncTailViewportPolicyForCurrentTailState();
+    userScrolledAwayFromBottomRef.current = !isNearBottomRef.current;
     const nextShowScrollToLatest = contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
     setScrollToLatestVisible(nextShowScrollToLatest);
-  }, []);
+    scheduleStreamingTailReconcile("scroll");
+  }, [scheduleStreamingTailReconcile, syncTailViewportPolicyForCurrentTailState, updateStreamingLockStateSnapshot]);
 
   const followLatestMessage = useCallback(
     (animated = true) => {
       userScrolledAwayFromBottomRef.current = false;
       bottomLockedRef.current = true;
+      isNearBottomRef.current = true;
+      escapedFromLockRef.current = false;
       messageScrollOffsetRef.current = 0;
+      previousMessageScrollOffsetRef.current = 0;
+      scrollingTowardLatestRef.current = true;
       setScrollToLatestVisible(false);
+      syncTailViewportPolicyForCurrentTailState();
       scrollToLatestMessage(animated, true);
     },
-    [scrollToLatestMessage],
+    [scrollToLatestMessage, syncTailViewportPolicyForCurrentTailState],
   );
 
   const queueFollowLatestMessageAfterLayout = useCallback(
@@ -2019,6 +2310,7 @@ export function AiChatScreen({
 
   function scheduleIntentionalLatestJump(animated = false) {
     clearLatestJumpTimeouts();
+    markIntentionalLatestJump();
     followLatestMessage(animated);
     queueFollowLatestMessageAfterLayout(animated);
     ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS.forEach((delay) => {
@@ -2027,6 +2319,7 @@ export function AiChatScreen({
           if (!screenMountedRef.current) {
             return;
           }
+          markIntentionalLatestJump();
           followLatestMessage(animated);
         }, delay),
       );
@@ -2067,11 +2360,19 @@ export function AiChatScreen({
     if (pendingSearchScrollMessageIdRef.current) {
       return;
     }
-    if (hasPendingStreamingReadBuffer() || userScrolledAwayFromBottomRef.current || !bottomLockedRef.current) {
+    if (
+      hasPendingStreamingReadBuffer() ||
+      userScrolledAwayFromBottomRef.current ||
+      !bottomLockedRef.current
+    ) {
+      scheduleStreamingTailReconcile("composer-height", { forceRender: true });
       return;
     }
-    scrollToLatestMessage(false);
-  }, [scrollToLatestMessage]);
+    scheduleStreamingTailReconcile("composer-height", {
+      allowFollowLatest: true,
+      retainWindow: true,
+    });
+  }, [scheduleStreamingTailReconcile]);
 
   function clearInlineEditVisibilityTimeouts() {
     inlineEditVisibilityTimeoutsRef.current.forEach((timeout) =>
@@ -2489,6 +2790,8 @@ export function AiChatScreen({
         userScrolledAwayFromBottomRef.current = false;
         bottomLockedRef.current = true;
         messageScrollOffsetRef.current = 0;
+        previousMessageScrollOffsetRef.current = 0;
+        scrollingTowardLatestRef.current = true;
         setScrollToLatestVisible(false);
       }
       // prettier-ignore
@@ -2615,6 +2918,7 @@ export function AiChatScreen({
         }
         applyStreamingMessagePatch(patch);
       } else {
+        streamingTailPerfDebug.incrementDetachedPatchCount();
         bottomLockedRef.current = false;
         const targetBubbleWidth = getStreamingBubbleWidth();
         streamingReadBufferActiveRef.current = true;
@@ -2658,13 +2962,16 @@ export function AiChatScreen({
           if (nextTailState !== currentTailState) {
             streamingTailStateRef.current = nextTailState;
             forceUpdateTailState();
+            scheduleStreamingTailReconcile("detached-patch", {
+              forceRender: true,
+            });
           }
         }
 
         syncScrollToLatestVisibility();
       }
     },
-    [applyStreamingMessagePatch],
+    [applyStreamingMessagePatch, scheduleStreamingTailReconcile],
   );
 
   const loadEarlierMessages = useCallback(() => {
@@ -2710,21 +3017,44 @@ export function AiChatScreen({
     [space],
   );
 
-  const reloadAvatarConfig = useCallback(
+  const reloadParticipantAppearance = useCallback(
     async (targetThreadId: string | null) => {
       const requestId = nextRequestId("avatar");
       if (!targetThreadId) {
-        setAvatarConfig({ avatarEnabled: false, avatarUri: null });
+        setParticipantAppearance({
+          assistantAvatarEnabled: false,
+          assistantAvatarUri: null,
+          assistantName: null,
+          userAvatarEnabled: DEFAULT_AI_USER_AVATAR_ENABLED,
+          userAvatarUri: null,
+          userNickname: null,
+        });
         return;
       }
-      const nextAvatarConfig = await loadThreadAvatarConfig(
-        space,
-        targetThreadId,
-      );
+      const [
+        nextAppearanceConfig,
+        nextUserAvatarUri,
+        nextUserNickname,
+      ] = await Promise.all([
+        loadThreadMessageAppearanceConfig(space, targetThreadId),
+        runWithDatabaseSpace(space, (db) =>
+          settingsRepository.getProfileAvatarUri(db),
+        ),
+        runWithDatabaseSpace(space, (db) =>
+          settingsRepository.getProfileNickname(db),
+        ),
+      ]);
       if (!isLatestRequest("avatar", requestId, targetThreadId)) {
         return;
       }
-      setAvatarConfig(nextAvatarConfig);
+      setParticipantAppearance({
+        assistantAvatarEnabled: nextAppearanceConfig.assistantAvatar.avatarEnabled,
+        assistantAvatarUri: nextAppearanceConfig.assistantAvatar.avatarUri,
+        assistantName: nextAppearanceConfig.assistantName,
+        userAvatarEnabled: nextAppearanceConfig.userAvatarEnabled,
+        userAvatarUri: nextUserAvatarUri,
+        userNickname: nextUserNickname,
+      });
     },
     [space],
   );
@@ -2768,7 +3098,11 @@ export function AiChatScreen({
       hasBufferedStreamingUpdateRef.current = false;
       frozenStreamingMessageByIdRef.current.clear();
       bottomLockedRef.current = bottomLockedRef.current || followLatest || messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET;
+      isNearBottomRef.current = bottomLockedRef.current || messageScrollOffsetRef.current <= STICK_TO_BOTTOM_OFFSET_PX;
+      escapedFromLockRef.current = !isNearBottomRef.current;
       if (followLatest) {
+        allowFullShrinkSettlementRef.current = true;
+        maybeSettleStreamingTailShrinkDebt("return-to-latest");
         followLatestMessage();
       } else {
         setScrollToLatestVisible(false);
@@ -2807,40 +3141,141 @@ export function AiChatScreen({
     [
       applyStreamingMessagePatch,
       followLatestMessage,
+      maybeSettleStreamingTailShrinkDebt,
       reloadContinuityMilestones,
       reloadMemoryCaptures,
       reloadMessages,
     ],
   );
 
+  const handleMessageScrollBeginDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isUserDraggingRef.current = true;
+      lastUserScrollAtRef.current = Date.now();
+      scrollingTowardLatestRef.current =
+        event.nativeEvent.contentOffset.y <= previousMessageScrollOffsetRef.current;
+      previousMessageScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+      messageScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+      updateStreamingLockStateSnapshot(messageScrollOffsetRef.current);
+      syncTailViewportPolicyForCurrentTailState();
+      if (userScrollIdleTimeoutRef.current) {
+        clearTimeout(userScrollIdleTimeoutRef.current);
+        userScrollIdleTimeoutRef.current = null;
+      }
+    },
+    [syncTailViewportPolicyForCurrentTailState, updateStreamingLockStateSnapshot],
+  );
+
+  const markScrollGestureSettled = useCallback(() => {
+    if (userScrollIdleTimeoutRef.current) {
+      clearTimeout(userScrollIdleTimeoutRef.current);
+    }
+    userScrollIdleTimeoutRef.current = setTimeout(() => {
+      userScrollIdleTimeoutRef.current = null;
+      if (Date.now() - lastUserScrollAtRef.current < USER_SCROLL_IDLE_TIMEOUT_MS) {
+        markScrollGestureSettled();
+        return;
+      }
+      isUserDraggingRef.current = false;
+      scheduleStreamingTailReconcile("scroll-settled", {
+        allowFollowLatest: bottomLockedRef.current || isNearBottomRef.current,
+        retainWindow: true,
+      });
+    }, USER_SCROLL_IDLE_TIMEOUT_MS);
+  }, [scheduleStreamingTailReconcile]);
+
   const handleMessageScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetY = event.nativeEvent.contentOffset.y;
+      scrollingTowardLatestRef.current =
+        offsetY <= previousMessageScrollOffsetRef.current;
+      previousMessageScrollOffsetRef.current = offsetY;
       messageScrollOffsetRef.current = offsetY;
+      lastUserScrollAtRef.current = Date.now();
+      updateStreamingLockStateSnapshot(offsetY);
+      syncTailViewportPolicyForCurrentTailState();
       const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef.current || pendingFinalReloadRef.current;
       if (event.nativeEvent.contentOffset.y <= MESSAGE_SAFE_FLUSH_OFFSET) {
         bottomLockedRef.current = true;
+        isNearBottomRef.current = true;
+        escapedFromLockRef.current = false;
         userScrolledAwayFromBottomRef.current = false;
+        isUserDraggingRef.current = false;
+        previousMessageScrollOffsetRef.current = 0;
+        scrollingTowardLatestRef.current = true;
         if (!hasPendingBufferedFlush) {
           syncScrollToLatestVisibility(offsetY);
+          markScrollGestureSettled();
           return;
         }
         void flushBufferedStreamingState({ followLatest: false });
+        markScrollGestureSettled();
         return;
       }
       syncScrollToLatestVisibility(offsetY);
+      markScrollGestureSettled();
     },
-    [flushBufferedStreamingState],
+    [
+      flushBufferedStreamingState,
+      markScrollGestureSettled,
+      syncTailViewportPolicyForCurrentTailState,
+      updateStreamingLockStateSnapshot,
+    ],
   );
+
+  useEffect(() => {
+    const tailState = streamingTailStateRef.current;
+    if (
+      !generating ||
+      tailState.status !== "detached" ||
+      tailViewportPolicy.hotZone === "cold"
+    ) {
+      return;
+    }
+    const intervalMs = Math.max(
+      34,
+      Math.ceil(1000 / tailViewportPolicy.targetDetachedFps),
+    );
+    const intervalId = setInterval(() => {
+      scheduleStreamingTailReconcile("detached-fast-path");
+    }, intervalMs);
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [
+    generating,
+    scheduleStreamingTailReconcile,
+    streamingTailVersion,
+    tailViewportPolicy.hotZone,
+    tailViewportPolicy.targetDetachedFps,
+  ]);
+
+  const tailReplayReadinessActive =
+    streamingTailStateRef.current.status !== "idle" &&
+    tailViewportPolicy.shouldExpandRenderWindow;
+  const shouldRelaxClipping =
+    streamingTailStateRef.current.status !== "idle" &&
+    tailViewportPolicy.shouldRelaxClipping;
+  const shouldExpandRenderWindow = tailReplayReadinessActive;
+  const tailListMaxToRenderPerBatch = shouldExpandRenderWindow ? 16 : 8;
+  const tailListWindowSize = shouldExpandRenderWindow ? 15 : 11;
+  const tailListUpdateCellsBatchingPeriod = shouldExpandRenderWindow ? 16 : 50;
+  const tailListRemoveClippedSubviews =
+    Platform.OS === "android" ? !shouldRelaxClipping : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
     bottomLockedRef.current = true;
+    isNearBottomRef.current = true;
+    escapedFromLockRef.current = false;
     userScrolledAwayFromBottomRef.current = false;
     messageScrollOffsetRef.current = 0;
+    previousMessageScrollOffsetRef.current = 0;
+    scrollingTowardLatestRef.current = true;
     setShowScrollToLatest(false);
     showScrollToLatestRef.current = false;
+    syncTailViewportPolicyForCurrentTailState();
     void flushBufferedStreamingState({ followLatest: true });
-  }, [flushBufferedStreamingState]);
+  }, [flushBufferedStreamingState, syncTailViewportPolicyForCurrentTailState]);
 
   async function renameRecentThread(
     thread: AiThreadHistoryItem,
@@ -3034,8 +3469,8 @@ export function AiChatScreen({
   }, [modelRefreshKey, reloadModelLabel, threadId]);
 
   useEffect(() => {
-    void reloadAvatarConfig(threadId ?? null);
-  }, [reloadAvatarConfig, threadId]);
+    void reloadParticipantAppearance(threadId ?? null);
+  }, [reloadParticipantAppearance, threadId]);
 
   useEffect(() => {
     void reloadThreadTitle(threadId ?? null);
@@ -3323,7 +3758,9 @@ export function AiChatScreen({
     onNewChat();
   }
 
-  async function ensureThread(): Promise<string | null> {
+  async function ensureThread(
+    options?: { preserveComposerDraft?: boolean; },
+  ): Promise<string | null> {
     if (!screenMountedRef.current) {
       return null;
     }
@@ -3342,8 +3779,12 @@ export function AiChatScreen({
       return null;
     }
 
-    if (composerText) {
+    const preserveComposerDraft = options?.preserveComposerDraft !== false;
+    if (preserveComposerDraft && composerText) {
       void setComposerDraft(thread.id, composerText);
+      void clearComposerDraft(draftThreadKey);
+    } else if (!preserveComposerDraft) {
+      void clearComposerDraft(thread.id);
       void clearComposerDraft(draftThreadKey);
     }
 
@@ -3351,7 +3792,7 @@ export function AiChatScreen({
     setActiveThreadId(thread.id);
     onThreadReady?.(thread.id);
     void reloadModelLabel(thread.id);
-    void reloadAvatarConfig(thread.id);
+    void reloadParticipantAppearance(thread.id);
     return thread.id;
   }
 
@@ -3368,25 +3809,6 @@ export function AiChatScreen({
       }
       setErrorMessage(
         error instanceof Error ? error.message : "无法打开会话设置",
-      );
-    }
-  }
-
-  async function handleOpenBranchTree() {
-    try {
-      const nextThreadId = activeThreadIdRef.current ?? activeThreadId;
-      if (!nextThreadId || !screenMountedRef.current) {
-        setErrorMessage("当前还没有可查看的创作路线。");
-        return;
-      }
-      const currentBranchScopes = getPersistedCurrentBranchScopes();
-      onOpenBranchTree(nextThreadId, currentBranchScopes);
-    } catch (error) {
-      if (!screenMountedRef.current) {
-        return;
-      }
-      setErrorMessage(
-        error instanceof Error ? error.message : "无法打开创作路线树",
       );
     }
   }
@@ -3592,7 +4014,7 @@ export function AiChatScreen({
       setGenerating(true);
       setErrorMessage(null);
       scheduleIntentionalLatestJump(false);
-      nextThreadId = await ensureThread();
+      nextThreadId = await ensureThread({ preserveComposerDraft: false });
       if (!nextThreadId || !screenMountedRef.current) {
         return;
       }
@@ -3809,6 +4231,88 @@ export function AiChatScreen({
     }
   }
 
+  async function handleContinueAssistantMessage(messageId: string) {
+    const targetThreadId = activeThreadId;
+    if (!targetThreadId || generating) {
+      return;
+    }
+    const actionToken = beginGenerationAction();
+    if (!actionToken) {
+      return;
+    }
+    const sendPressedAt = new Date().toISOString();
+    let streamUnsubscribe: (() => void) | null = null;
+    const { generation: streamGeneration, subscriber } =
+      beginStreamingRequest(targetThreadId);
+    const continuingMessage =
+      messagesRef.current.find((message) => message.id === messageId) ?? null;
+    try {
+      markIntentionalLatestJump();
+      await flushBufferedStreamingState({ followLatest: false });
+      setPendingMessageActionId(messageId);
+      setGenerating(true);
+      setActiveAssistantId(messageId);
+      setErrorMessage(null);
+      showLatestMessageVersion(messageId);
+      scheduleIntentionalLatestJump(false);
+      const managedGeneration =
+        aiGenerationManager.startContinueAssistantMessage({
+          assistantMessageId: messageId,
+          sendPressedAt,
+          space,
+          subscriber: {
+            ...subscriber,
+            onCreated: ({ assistantMessageId, generationId, userMessageId }) => {
+              subscriber.onCreated?.({
+                assistantMessageId,
+                generationId,
+                userMessageId,
+              });
+              if (
+                !isCurrentStream(targetThreadId, streamGeneration) ||
+                !continuingMessage
+              ) {
+                return;
+              }
+              publishStreamingMessage(
+                {
+                  generationId,
+                  messageId: assistantMessageId,
+                  space,
+                  threadId: targetThreadId,
+                },
+                {
+                  content: continuingMessage.content,
+                  reasoningText: continuingMessage.reasoningText,
+                  status: 'generating',
+                },
+              );
+            },
+          },
+          threadId: targetThreadId,
+        });
+      streamUnsubscribe = managedGeneration.unsubscribe;
+      generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      await managedGeneration.promise;
+      await syncPersistedCurrentBranchRoute(targetThreadId, true);
+    } catch (error) {
+      if (!isCurrentStream(targetThreadId, streamGeneration)) {
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "继续生成失败");
+    } finally {
+      setPendingMessageActionId(null);
+      finishGenerationAction(actionToken);
+      if (isCurrentStream(targetThreadId, streamGeneration)) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (generationSubscriptionRef.current === streamUnsubscribe) {
+          clearGenerationSubscription();
+        }
+      }
+    }
+  }
+
   function handleEditUserMessage(messageId: string, content: string) {
     if (generating) {
       return;
@@ -3968,15 +4472,13 @@ export function AiChatScreen({
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
       }
-      if (item.type === "streamTailBlock") {
+      if (item.type === "streamTailContinuation") {
         return (
-          <View style={styles.tailBlockContainer}>
-            <AiMeasuredStreamBlock
-              block={item.block}
-              bubbleWidth={getStreamingBubbleWidth()}
-              onMeasured={handleMeasuredTailBlock}
-            />
-          </View>
+          <AiStreamingTailContinuationBubble
+            bubbleWidth={getStreamingBubbleWidth()}
+            group={item.group}
+            onMeasured={handleMeasuredTailBlock}
+          />
         );
       }
 
@@ -4009,7 +4511,11 @@ export function AiChatScreen({
             }
           >
             <AiMessageBubble
-              assistantAvatar={avatarConfig}
+              assistantAvatar={{
+                avatarEnabled: participantAppearance.assistantAvatarEnabled,
+                avatarUri: participantAppearance.assistantAvatarUri,
+              }}
+              assistantDisplayName={participantAppearance.assistantName}
               editingMessageId={editingUserMessageId}
               favorited={
                 favoriteIdentity
@@ -4035,6 +4541,7 @@ export function AiChatScreen({
               }}
               pendingActionMessageId={pendingMessageActionId}
               showAvatar={item.showAvatar}
+              showUserAvatar={item.showUserAvatar}
               space={space}
               streaming={streamingRendererActive}
               streamingIdentity={streamingIdentity}
@@ -4044,6 +4551,7 @@ export function AiChatScreen({
                 void copyMessageContent(targetMessage);
               }}
               onCancelEdit={cancelInlineEdit}
+              onContinue={handleContinueAssistantMessage}
               onEditUser={handleEditUserMessage}
               onOpenCitation={openCitation}
               onRegenerate={(messageId) => {
@@ -4058,11 +4566,20 @@ export function AiChatScreen({
               }}
               onThinkingExpandedChange={(messageId, expanded) => {
                 thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
-                recomputeVisibleStreamingTailForCurrentScroll({
-                  forceRender:
-                    streamingTailStateRef.current.messageId === messageId &&
-                    streamingTailStateRef.current.status !== "idle",
+                const sameTailMessage =
+                  streamingTailStateRef.current.messageId === messageId &&
+                  streamingTailStateRef.current.status !== "idle";
+                scheduleStreamingTailReconcile("thinking-expanded", {
+                  allowFollowLatest:
+                    bottomLockedRef.current || isNearBottomRef.current,
+                  forceRender: true,
+                  retainWindow: sameTailMessage,
                 });
+              }}
+              userProfile={{
+                avatarEnabled: participantAppearance.userAvatarEnabled,
+                avatarUri: participantAppearance.userAvatarUri,
+                nickname: participantAppearance.userNickname,
               }}
             />
           </View>
@@ -4088,7 +4605,7 @@ export function AiChatScreen({
     },
     [
       activeAssistantId,
-      avatarConfig,
+      participantAppearance,
       cancelInlineEdit,
       copyMessageContent,
       editingUserMessageId,
@@ -4097,6 +4614,7 @@ export function AiChatScreen({
       favoriteIdentityByMessageId,
       generating,
       handleEditUserMessage,
+      handleContinueAssistantMessage,
       handleRegenerate,
       handleSubmitInlineRewrite,
       handleSelectMessageVersion,
@@ -4106,7 +4624,7 @@ export function AiChatScreen({
       pendingMessageActionId,
       searchHighlightMessageId,
       space,
-      recomputeVisibleStreamingTailForCurrentScroll,
+      scheduleStreamingTailReconcile,
     ],
   );
 
@@ -4174,26 +4692,6 @@ export function AiChatScreen({
                 />
               </Pressable>
               <Pressable
-                accessibilityLabel="打开创作路线树"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !activeThreadId }}
-                disabled={!activeThreadId}
-                onPress={() => void handleOpenBranchTree()}
-                style={({ pressed }) => [
-                  styles.roundButton,
-                  !activeThreadId && styles.roundButtonDisabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  color={
-                    activeThreadId ? aiLightColors.ink : aiLightColors.muted
-                  }
-                  name="git-branch-outline"
-                  size={18}
-                />
-              </Pressable>
-              <Pressable
                 accessibilityLabel="会话设置"
                 accessibilityRole="button"
                 onPress={() => void handleOpenSessionConfig()}
@@ -4224,7 +4722,25 @@ export function AiChatScreen({
             </View>
           ) : null}
 
-          <View style={styles.messageArea}>
+          <View
+            onLayout={(event) => {
+              const nextViewportHeight = Math.round(
+                event.nativeEvent.layout.height,
+              );
+              if (
+                nextViewportHeight <= 0 ||
+                nextViewportHeight === messageViewportHeightRef.current
+              ) {
+                return;
+              }
+              messageViewportHeightRef.current = nextViewportHeight;
+              syncTailViewportPolicyForCurrentTailState();
+              scheduleStreamingTailReconcile("viewport-height", {
+                forceRender: true,
+              });
+            }}
+            style={styles.messageArea}
+          >
             <FlatList
               ref={messageListRef}
               data={invertedMessageItems}
@@ -4234,9 +4750,10 @@ export function AiChatScreen({
               keyboardShouldPersistTaps="handled"
               keyExtractor={messageKeyExtractor}
               maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
-              maxToRenderPerBatch={8}
-              removeClippedSubviews={Platform.OS === 'android'}
-              windowSize={11}
+              maxToRenderPerBatch={tailListMaxToRenderPerBatch}
+              removeClippedSubviews={tailListRemoveClippedSubviews}
+              updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
+              windowSize={tailListWindowSize}
               ListFooterComponent={
                 <>
                   {errorMessage ? (
@@ -4270,6 +4787,7 @@ export function AiChatScreen({
                   ) : null}
                 </>
               }
+              onScrollBeginDrag={handleMessageScrollBeginDrag}
               onScroll={handleMessageScroll}
               onMomentumScrollEnd={handleMessageScrollEnd}
               onScrollEndDrag={handleMessageScrollEnd}
@@ -4287,7 +4805,7 @@ export function AiChatScreen({
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>
             ) : null}
-            <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[4]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
+            <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[2]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
           </View>
 
           {inlineEditingActive ? null : (

@@ -54,6 +54,39 @@ test('streaming tail UI uses real list spacer and measured block components', ()
   assert.match(block, /AiMessageContent/);
 });
 
+test('streaming tail continuation groups promoted blocks without changing measurement granularity', () => {
+  const helper = read('src/ai/aiStreamingTailContinuation.ts');
+
+  assert.match(helper, /export type AiStreamingTailContinuationGroup/);
+  assert.match(helper, /export function groupPromotedStreamingTailBlocks/);
+  assert.match(helper, /promotedBlockIds: Set<string>/);
+  assert.match(helper, /activeLanes\?: \("reasoning" \| "content"\)\[\]/);
+  assert.match(helper, /groupId/);
+  assert.match(helper, /startOrdinal/);
+  assert.match(helper, /endOrdinal/);
+  assert.doesNotMatch(helper, /scrollRatio|characterRatio|overlay|absolute/);
+});
+
+test('streaming tail continuation group keys stay stable as more blocks are appended', () => {
+  const helper = read('src/ai/aiStreamingTailContinuation.ts');
+
+  assert.match(helper, /startOrdinal/);
+  assert.match(helper, /endOrdinal/);
+  assert.match(helper, /input\.startOrdinal/);
+  assert.doesNotMatch(helper, /input\.endOrdinal,[\s\S]{0,80}\]\.join\(":"\)/);
+});
+
+test('streaming tail continuation bubble renders one shell for multiple measured blocks', () => {
+  const bubble = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+
+  assert.match(bubble, /export function AiStreamingTailContinuationBubble/);
+  assert.match(bubble, /group: AiStreamingTailContinuationGroup/);
+  assert.match(bubble, /group\.blocks\.map/);
+  assert.match(bubble, /AiMeasuredStreamBlock/);
+  assert.match(bubble, /onMeasured/);
+  assert.match(bubble, /assistantBubble/);
+  assert.doesNotMatch(bubble, /message actions|favorite|version|citation/i);
+});
 
 test('reasoning tail blocks use independent lane and frozen boundaries', () => {
   const model = read('src/ai/aiStreamingTailModel.ts');
@@ -69,8 +102,7 @@ test('reasoning tail blocks use independent lane and frozen boundaries', () => {
   assert.match(model, /frozenReasoningText/);
   assert.match(model, /tailReasoningText/);
   assert.match(model, /const frozenReasoningText = chooseGracefulDetachText/);
-  assert.match(model, /lane:\s*'reasoning'/);
-  assert.match(model, /lane:\s*'content'/);
+  assert.match(model, /"reasoning"|"content"|lane/);
   assert.match(model, /\[\.\.\.reasoningBlocks,\s*\.\.\.contentBlocks\]/);
 
   assert.match(block, /block\.lane\s*===\s*'reasoning'/);
@@ -82,7 +114,7 @@ test('reasoning tail integrates with visible message state and thinking expanded
   assert.match(screen, /reasoningText:\s*tailState\.frozenReasoningText/);
   assert.match(screen, /targetReasoningText:/);
   assert.match(screen, /calculateEffectiveTotalReservedHeight\(\s*tailState,\s*activeLanes/s);
-  assert.match(screen, /activeLanes\.includes\(block\.lane\)/);
+  assert.match(screen, /groupPromotedStreamingTailBlocks\(\{\s*activeLanes,/);
   assert.match(screen, /maxTailReservedHeightRef\.current/);
   assert.match(screen, /thinkingExpandedByMessageIdRef\.current\.set/);
   assert.match(screen, /forceRender\?: boolean/);
@@ -96,9 +128,10 @@ test('reasoning tail integrates with visible message state and thinking expanded
 test('AI chat screen rejects ratio reveal and uses real FlatList tail items', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
   assert.match(screen, /type:\s*"streamTailSpacer"/);
-  assert.match(screen, /type:\s*"streamTailBlock"/);
+  assert.match(screen, /type:\s*"streamTailContinuation"/);
   assert.match(screen, /AiStreamingTailSpacer/);
-  assert.match(screen, /AiMeasuredStreamBlock/);
+  assert.match(screen, /AiStreamingTailContinuationBubble/);
+  assert.match(screen, /groupPromotedStreamingTailBlocks/);
   assert.match(screen, /mergeStreamingTailPatch/);
   assert.match(screen, /promoteStreamingTailBlocks/);
   assert.match(screen, /resetStreamingTailOccupancy/);
@@ -108,6 +141,7 @@ test('AI chat screen rejects ratio reveal and uses real FlatList tail items', ()
   assert.doesNotMatch(screen, /revealTextByRatio/);
   assert.doesNotMatch(screen, /revealBufferedStreamingStateForScroll/);
   assert.doesNotMatch(screen, /buildScrollRevealedStreamingPatch/);
+  assert.doesNotMatch(screen, /type:\s*"streamTailBlock"/);
   assert.doesNotMatch(screen, /if \(false\)[\s\S]{0,120}@ts-ignore/);
 });
 
@@ -131,8 +165,208 @@ test('detached streaming path updates the measured tail model only', () => {
 
 test('streaming bubble width uses a conservative assistant content width instead of a loose window ratio', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
-  assert.match(screen, /const listContentWidth = Math\.max\(\s*220,\s*screenWidth - layout\.pagePaddingHorizontal \* 2,/s);
-  assert.match(screen, /const stackWidth = listContentWidth \* 0\.88/);
-  assert.match(screen, /const bubbleContentWidth = stackWidth - spacing\[3\] \* 2/);
+  assert.match(screen, /getLatestAssistantBubbleContentWidth\(\)/);
+  assert.match(screen, /getAssistantBubbleContentWidthFallback\(\{/);
+  assert.match(screen, /messageStackRatio:\s*0\.88/);
+  assert.match(screen, /bubbleHorizontalPadding:\s*spacing\[3\]/);
   assert.doesNotMatch(screen, /return Dimensions\.get\(['"]window['"]\)\.width \* 0\.9/);
+});
+
+test('hardening adds a measured assistant bubble width registry and geometry fallback', () => {
+  const registry = read('src/ai/aiStreamingBubbleWidthRegistry.ts');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(registry, /setLatestAssistantBubbleContentWidth/);
+  assert.match(registry, /getLatestAssistantBubbleContentWidth/);
+  assert.match(registry, /getAssistantBubbleContentWidthFallback/);
+  assert.match(registry, /messageStackRatio/);
+  assert.match(registry, /bubbleHorizontalPadding/);
+  assert.match(registry, /Math\.round\(.*\/ 8\) \* 8/s);
+  assert.match(bubble, /setLatestAssistantBubbleContentWidth/);
+  assert.match(bubble, /onLayout/);
+  assert.match(bubble, /!isUser/);
+  assert.match(screen, /getLatestAssistantBubbleContentWidth\(\)/);
+  assert.match(screen, /getAssistantBubbleContentWidthFallback\(/);
+  assert.doesNotMatch(screen, /Dimensions\.get\(['"]window['"]\)\.width \* 0\.9/);
+});
+
+test('hardening uses real font scale in both estimation and measurement cache paths', () => {
+  const splitter = read('src/ai/aiStreamingBlockSplitter.ts');
+  const block = read('src/components/ai/AiMeasuredStreamBlock.tsx');
+
+  assert.match(splitter, /PixelRatio\.getFontScale\(\)/);
+  assert.match(splitter, /const fontScale = input\.fontScale \?\? PixelRatio\.getFontScale\(\)/);
+  assert.match(block, /PixelRatio\.getFontScale\(\)/);
+  assert.match(block, /fontScaleBucket:\s*bucketFontScale\(PixelRatio\.getFontScale\(\)\)/);
+});
+
+test('hardening tail model tracks shrink debt and block-count prewarm without pixel reveal heuristics', () => {
+  const model = read('src/ai/aiStreamingTailModel.ts');
+
+  assert.match(model, /overReservedHeight/);
+  assert.match(model, /pendingShrinkHeight/);
+  assert.match(model, /shrinkStableSince/);
+  assert.match(model, /export function settleStreamingTailShrinkDebt/);
+  assert.match(model, /calculatePendingShrinkHeight/);
+  assert.match(model, /block\.measuredHeight >= block\.reservedHeight/);
+  assert.match(model, /pendingShrinkHeight/);
+  assert.match(model, /overReservedHeight/);
+  assert.match(model, /prewarm/);
+  assert.match(model, /next complete block|allow one more block/i);
+  assert.doesNotMatch(model, /prewarm.*(?:px|pixel|threshold)/i);
+});
+
+test('hardening screen uses drag-aware lock semantics and requestAnimationFrame reconcile scheduling', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(screen, /isUserDraggingRef/);
+  assert.match(screen, /isNearBottomRef/);
+  assert.match(screen, /escapedFromLockRef/);
+  assert.match(screen, /lastUserScrollAtRef/);
+  assert.match(screen, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
+  assert.match(screen, /const USER_SCROLL_IDLE_TIMEOUT_MS = 150/);
+  assert.match(screen, /const RETAIN_RECONCILE_WINDOW_MS = 350/);
+  assert.match(screen, /const SHRINK_DEBOUNCE_MS = 150/);
+  assert.match(screen, /const SHRINK_STABLE_DELAY_MS = 200/);
+  assert.match(screen, /scheduleStreamingTailReconcile/);
+  assert.match(screen, /requestAnimationFrame\(/);
+  assert.match(screen, /onScrollBeginDrag/);
+  assert.match(screen, /onMomentumScrollEnd/);
+  assert.match(screen, /onScrollEndDrag/);
+});
+
+test('tail viewport policy defines hot-zone state and pre-promotion budget', () => {
+  const policy = read('src/ai/aiStreamingTailViewportPolicy.ts');
+  assert.match(policy, /hotZone:\s*'cold'\s*\|\s*'warming'\s*\|\s*'active'/);
+  assert.match(policy, /export function deriveStreamingTailViewportPolicy/);
+  assert.match(policy, /prePromotionHeight/);
+  assert.match(policy, /targetDetachedFps/);
+  assert.match(policy, /shouldRelaxClipping/);
+  assert.match(policy, /shouldExpandRenderWindow/);
+  assert.match(policy, /viewportHeight/);
+  assert.match(policy, /totalReservedHeight/);
+  assert.doesNotMatch(policy, /ratio|characterPercent|scrollPercent/);
+});
+
+test('tail continuation replay uses a dedicated assistant-style bubble shell', () => {
+  const shell = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+  assert.match(shell, /export function AiStreamingTailContinuationBubble/);
+  assert.match(shell, /group\.blocks\.map/);
+  assert.match(shell, /AiMeasuredStreamBlock/);
+  assert.match(shell, /assistant/i);
+  assert.match(shell, /borderRadius|borderColor|backgroundColor/);
+  assert.doesNotMatch(shell, /favorite|versionControl|citation/i);
+});
+
+test('AI chat screen promotes tail blocks with a pre-promotion horizon, not visible-only tail height', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  assert.match(chat, /deriveStreamingTailViewportPolicy/);
+  assert.match(chat, /prePromotionHeight/);
+  assert.match(chat, /visibleTailHeight/);
+  assert.match(
+    chat,
+    /visibleTailHeight\s*\+\s*tailViewportPolicy\.prePromotionHeight/,
+  );
+});
+
+test('tail spacer represents only the remaining unpromoted tail height', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const model = read('src/ai/aiStreamingTailModel.ts');
+  assert.match(model, /export function calculateRemainingStreamingTailHeight/);
+  assert.match(chat, /hiddenTailHeight/);
+  assert.match(chat, /promotedBlockIds/);
+  assert.match(chat, /calculateRemainingStreamingTailHeight\(/);
+  assert.doesNotMatch(
+    chat,
+    /hiddenTailHeight\s*=\s*calculateEffectiveTotalReservedHeight\(\s*tailState\s*,\s*activeLanes\s*\)\s*;/,
+  );
+});
+
+test('inverted tail replay places promoted rows before spacer in visual reading order', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const tailInsertionBody =
+    /const hiddenTailHeight = calculateRemainingStreamingTailHeight[\s\S]*?if \(hiddenTailHeight > 0\) \{[\s\S]*?\}/.exec(
+      chat,
+    )?.[0] ?? '';
+
+  assert.match(tailInsertionBody, /promotedTailGroups/);
+  assert.ok(
+    tailInsertionBody.indexOf('nextInvertedMessageItems.unshift(promotedTailGroups[index])') <
+      tailInsertionBody.indexOf('nextInvertedMessageItems.unshift({'),
+  );
+});
+
+test('promoted tail groups render inside the dedicated continuation bubble shell', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  assert.match(chat, /AiStreamingTailContinuationBubble/);
+  assert.match(chat, /group=\{item\.group\}/);
+  assert.doesNotMatch(chat, /AiStreamingTailBlockBubble/);
+  assert.doesNotMatch(chat, /<AiStreamingTailBlockBubble>[\s\S]*<AiMeasuredStreamBlock/s);
+});
+
+test('streaming tail replay keeps block measurement separate from visual message shells', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+  const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
+
+  assert.match(chat, /type:\s*"streamTailContinuation"/);
+  assert.doesNotMatch(chat, /type:\s*"streamTailBlock"/);
+  assert.match(continuation, /group\.blocks\.map/);
+  assert.match(continuation, /<AiMeasuredStreamBlock/);
+  assert.match(measured, /onLayout/);
+  assert.match(measured, /onMeasured\(block\.blockId,\s*height\)/);
+});
+
+test('promoted tail block rows keep reserved height while measuring actual content height', () => {
+  const block = read('src/components/ai/AiMeasuredStreamBlock.tsx');
+
+  assert.match(block, /minHeight:\s*block\.reservedHeight/);
+  assert.match(block, /onLayout=\{\(event\) =>/);
+  assert.match(block, /onMeasured\(block\.blockId,\s*height\)/);
+});
+
+test('AI chat screen derives dynamic tail hot-zone list settings', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  assert.match(chat, /shouldRelaxClipping/);
+  assert.match(chat, /shouldExpandRenderWindow/);
+  assert.match(chat, /removeClippedSubviews=/);
+  assert.match(chat, /windowSize=/);
+  assert.match(chat, /maxToRenderPerBatch=/);
+  assert.match(chat, /updateCellsBatchingPeriod=/);
+  assert.match(chat, /tailListUpdateCellsBatchingPeriod/);
+});
+
+test('tail hot-zone render window remains active for completed detached replay', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const listPolicyBody =
+    /const tailReplayReadinessActive =[\s\S]*?const tailListUpdateCellsBatchingPeriod =[\s\S]*?;/m.exec(
+      chat,
+    )?.[0] ?? '';
+
+  assert.match(listPolicyBody, /streamingTailStateRef\.current\.status !== "idle"/);
+  assert.match(listPolicyBody, /tailViewportPolicy\.shouldExpandRenderWindow/);
+  assert.doesNotMatch(listPolicyBody, /generating\s*&&/);
+});
+
+test('thinking expansion immediately recomputes active-lane tail replay', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  assert.match(chat, /thinking-expanded/);
+  assert.match(chat, /forceRender:\s*true/);
+  assert.match(chat, /activeLanes/);
+});
+
+test('hardening adds dev-only streaming tail performance instrumentation', () => {
+  const perf = read('src/ai/aiStreamingPerfDebug.ts');
+  const model = read('src/ai/aiStreamingTailModel.ts');
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(perf, /__DEV__/);
+  assert.match(perf, /tailStateUpdateCount/);
+  assert.match(perf, /measurementCount/);
+  assert.match(perf, /promotionCount/);
+  assert.match(perf, /reconcileCount/);
+  assert.match(perf, /lockState/);
+  assert.match(model, /streamingTailPerfDebug/);
+  assert.match(screen, /streamingTailPerfDebug/);
 });

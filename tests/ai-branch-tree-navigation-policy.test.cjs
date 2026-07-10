@@ -157,14 +157,14 @@ test('AI branch tree screen delegates folded route density to the canvas layout'
   assert.doesNotMatch(screen, /Modal/);
 });
 
-test('AI chat opens branch tree with persisted route and adopts selected route before returning', () => {
+test('AI branch tree opens with persisted route and adopts selected route before returning', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
 
   assert.match(chat, /thread\?\.currentBranchRootMessageId/);
   assert.match(chat, /setSelectedVersionByMessageId\(buildBranchSelectionMap/);
   assert.match(chat, /getPersistedCurrentBranchScopes/);
-  assert.match(chat, /currentBranchScopes = getPersistedCurrentBranchScopes/);
+  assert.match(app, /currentBranchScopes: \[\]/);
   assert.match(app, /adoptBranchSelection/);
   assert.match(app, /await adoptBranchSelection/);
   assert.match(app, /onCheckoutBranch=\{async \(selection\) => \{/);
@@ -350,30 +350,34 @@ test('AI branch tree status updates preserve the selected node after reload', ()
   assert.doesNotMatch(screen, /updateBranchRouteStatus/);
 });
 
-test('AI chat opens branch tree from header and accepts selected branch return', () => {
+test('AI session settings opens branch tree from the current-session module and chat accepts selected branch return', () => {
   const app = read('App.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
 
   assert.match(app, /AiBranchTreeScreen/);
   assert.match(app, /name: 'ai-branch-tree'/);
   assert.match(app, /branchTreeSelection/);
-  assert.match(app, /onOpenBranchTree/);
   assert.match(chat, /branchTreeSelection\?:/);
-  assert.match(chat, /onOpenBranchTree: \(threadId: string, currentBranchScopes: AiBranchScope\[\]\) => void/);
-  assert.match(chat, /accessibilityLabel="打开创作路线树"/);
-  assert.match(chat, /name="git-branch-outline"/);
+  assert.doesNotMatch(chat, /onOpenBranchTree: \(threadId: string, currentBranchScopes: AiBranchScope\[\]\) => void/);
+  assert.doesNotMatch(chat, /accessibilityLabel="打开创作路线树"/);
+  assert.match(sessionConfig, /onOpenBranchTree\?: \(\) => void/);
+  assert.match(sessionConfig, /title="创作路线树"/);
+  assert.match(sessionConfig, /icon="git-branch-outline"/);
+  assert.match(sessionConfig, /disabled=\{!threadId \|\| !onOpenBranchTree\}/);
+  assert.match(app, /onOpenBranchTree=\{[\s\S]{0,220}name: 'ai-branch-tree'/);
+  assert.match(app, /currentBranchScopes: \[\]/);
   assert.match(chat, /setSelectedVersionByMessageId\(branchTreeSelection\.selectionMap\)/);
   assert.match(chat, /pendingBranchTreeScrollMessageIdRef/);
 });
 
-test('AI chat branch tree entry never creates an empty thread and handles unloaded targets', () => {
+test('AI session settings branch tree entry never creates an empty thread and requires an existing thread', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const openBranchTreeBody = chat.match(/async function handleOpenBranchTree\(\) \{([\s\S]*?)\n  \}/)?.[1] ?? '';
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
 
-  assert.doesNotMatch(openBranchTreeBody, /ensureThread\(/);
-  assert.match(openBranchTreeBody, /activeThreadIdRef\.current \?\? activeThreadId/);
-  assert.match(chat, /disabled=\{!activeThreadId\}/);
-  assert.match(chat, /accessibilityState=\{\{ disabled: !activeThreadId \}\}/);
+  assert.doesNotMatch(chat, /async function handleOpenBranchTree\(\)/);
+  assert.doesNotMatch(sessionConfig, /ensureThread\(/);
+  assert.match(sessionConfig, /disabled=\{!threadId \|\| !onOpenBranchTree\}/);
 
   assert.match(chat, /const targetMessageId = pendingBranchTreeScrollMessageIdRef\.current;[\s\S]*const index = invertedMessageIndexById\.get\(targetMessageId\);[\s\S]*if \(index == null\) \{[\s\S]*messagesRef\.current\.length === 0[\s\S]*return;[\s\S]*hasEarlierMessages[\s\S]*loadEarlierMessages\(\)[\s\S]*setErrorMessage/);
 });

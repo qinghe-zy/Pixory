@@ -20,7 +20,8 @@ test('chat service keeps diagnostics outside provider prompt and cache policy in
   const chat = read('src/ai/aiChatService.ts');
 
   assert.match(chat, /systemPrompt: prompt\.system/);
-  assert.match(chat, /userPrompt: prompt\.user/);
+  assert.match(chat, /userPrompt,/);
+  assert.match(chat, /userPrompt = prompt\.user/);
   assert.match(chat, /metadata: prompt\.cacheMetadata/);
   assert.match(chat, /stableSystemBlocks: prompt\.stableSystemBlocks/);
   assert.match(chat, /generationMetrics:\s*input\.generationMetrics/);
