@@ -111,7 +111,8 @@ test('reasoning tail blocks use independent lane and frozen boundaries', () => {
 
 test('reasoning tail integrates with visible message state and thinking expanded toggle', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
-  assert.match(screen, /reasoningText:\s*tailState\.frozenReasoningText/);
+  assert.match(screen, /selectVisibleMessage\(\{\s*message,\s*tailOverride,/s);
+  assert.match(screen, /frozenReasoningText:\s*tailState\.frozenReasoningText/);
   assert.match(screen, /targetReasoningText:/);
   assert.match(screen, /calculateEffectiveTotalReservedHeight\(\s*tailState,\s*activeLanes/s);
   assert.match(screen, /groupPromotedStreamingTailBlocks\(\{\s*activeLanes,/);
@@ -127,6 +128,10 @@ test('reasoning tail integrates with visible message state and thinking expanded
 
 test('AI chat screen rejects ratio reveal and uses real FlatList tail items', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
+  assert.match(screen, /type AiTailDebtSpacerItem/);
+  assert.match(screen, /type AiTailMessageSegment/);
+  assert.match(screen, /createTailDebtSpacer/);
+  assert.match(screen, /buildTailMessageSegments/);
   assert.match(screen, /type:\s*"streamTailSpacer"/);
   assert.match(screen, /type:\s*"streamTailContinuation"/);
   assert.match(screen, /AiStreamingTailSpacer/);
@@ -136,13 +141,69 @@ test('AI chat screen rejects ratio reveal and uses real FlatList tail items', ()
   assert.match(screen, /promoteStreamingTailBlocks/);
   assert.match(screen, /resetStreamingTailOccupancy/);
   assert.match(screen, /getMessageItemIdAtIndex/);
-  assert.match(screen, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800/);
+  assert.match(screen, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(screen, /revealedStreamingRatioRef/);
   assert.doesNotMatch(screen, /revealTextByRatio/);
   assert.doesNotMatch(screen, /revealBufferedStreamingStateForScroll/);
   assert.doesNotMatch(screen, /buildScrollRevealedStreamingPatch/);
   assert.doesNotMatch(screen, /type:\s*"streamTailBlock"/);
   assert.doesNotMatch(screen, /if \(false\)[\s\S]{0,120}@ts-ignore/);
+});
+
+test('tail replay single-bubble path is guarded by a fail-safe remote JS flag', () => {
+  const flags = read('src/ai/aiStreamingTailFeatureFlags.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(flags, /singleBubbleTailReplayDefaultEnabled = true/);
+  assert.match(flags, /aiTailReplaySingleBubbleEnabled/);
+  assert.match(flags, /feature-flags\.json/);
+  assert.match(flags, /Promise\.race/);
+  assert.match(flags, /catch/);
+  assert.match(flags, /return singleBubbleTailReplayDefaultEnabled/);
+  assert.match(chat, /getAiTailReplaySingleBubbleEnabled/);
+  assert.match(chat, /refreshAiTailReplaySingleBubbleEnabled/);
+  assert.doesNotMatch(chat, /setSingleBubbleTailReplayEnabled/);
+});
+
+test('single-bubble tail replay uses message segments and keeps legacy continuation as a kill-switch fallback', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const contract = read('src/ai/aiStreamingTailRenderContract.ts');
+
+  assert.match(chat, /singleBubbleTailReplayEnabled/);
+  assert.match(chat, /buildTailMessageSegments/);
+  assert.match(chat, /createTailDebtSpacer/);
+  assert.match(chat, /getTailReplayItemKey/);
+  assert.match(chat, /selectVisibleMessage/);
+  assert.match(chat, /stitchTailSegmentEdgeAfterFrozenPrefix/);
+  assert.match(chat, /tailDebtSpacer/);
+  assert.match(chat, /messageSegment/);
+  assert.match(chat, /AiStreamingTailMessageSegment/);
+  assert.match(chat, /footer=\{/);
+  assert.match(chat, /assistantBubbleEdge=\{/);
+  assert.match(chat, /baseTailFooterVisible/);
+  assert.doesNotMatch(chat, /hideFooterActions=\{\s*singleBubbleTailReplayEnabled[\s\S]{0,180}streamingTailStateRef\.current\.status !== "idle"\s*\}/);
+  assert.match(bubble, /assistantBubbleEdge\?: AiTailSegmentEdge/);
+  assert.match(bubble, /assistantBubbleOpenBottom/);
+  assert.match(bubble, /assistantBubbleOpenTop/);
+  assert.match(bubble, /const assistantTerminal =/);
+  assert.match(bubble, /message\.status === 'completed'/);
+  assert.match(bubble, /message\.status === 'failed'/);
+  assert.match(bubble, /message\.status === 'stopped'/);
+  assert.match(bubble, /const footerActionsVisible =\s*!hideFooterActions && \(isUser \|\| assistantTerminal\)/);
+  assert.doesNotMatch(bubble, /position:\s*['"]absolute['"]/);
+  assert.match(bubble, /hideCitations\?: boolean/);
+  assert.match(bubble, /!isUser && !hideCitations/);
+  assert.match(bubble, /<AiCitationList citations=\{message\.citations\}/);
+  const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
+  assert.match(segment, /aiLightColors\.card/);
+  assert.match(segment, /marginTop:\s*-rhythm\.listCardGap/);
+  assert.match(chat, /citations=\{/);
+  assert.match(segment, /chrome\.drawsCitations/);
+  assert.match(chat, /AiStreamingTailContinuationBubble/);
+  assert.match(contract, /export function selectVisibleMessage/);
+  assert.match(contract, /drawsCitations/);
+  assert.doesNotMatch(chat, /const message = messagesById\.get\(item\.messageId\) \?\? null;/);
 });
 
 test('detached streaming path updates the measured tail model only', () => {
@@ -203,7 +264,9 @@ test('hardening uses real font scale in both estimation and measurement cache pa
 
 test('hardening tail model tracks shrink debt and block-count prewarm without pixel reveal heuristics', () => {
   const model = read('src/ai/aiStreamingTailModel.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
 
+  assert.match(model, /debtPayoffEligible/);
   assert.match(model, /overReservedHeight/);
   assert.match(model, /pendingShrinkHeight/);
   assert.match(model, /shrinkStableSince/);
@@ -214,6 +277,8 @@ test('hardening tail model tracks shrink debt and block-count prewarm without pi
   assert.match(model, /overReservedHeight/);
   assert.match(model, /prewarm/);
   assert.match(model, /next complete block|allow one more block/i);
+  assert.match(chat, /shouldPayoffDebt/);
+  assert.match(chat, /debtPayoffEligible/);
   assert.doesNotMatch(model, /prewarm.*(?:px|pixel|threshold)/i);
 });
 
@@ -311,6 +376,8 @@ test('streaming tail replay keeps block measurement separate from visual message
   const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
 
   assert.match(chat, /type:\s*"streamTailContinuation"/);
+  assert.match(chat, /type AiTailMessageSegment/);
+  assert.match(chat, /block\.lane === item\.blockRange\.lane/);
   assert.doesNotMatch(chat, /type:\s*"streamTailBlock"/);
   assert.match(continuation, /group\.blocks\.map/);
   assert.match(continuation, /<AiMeasuredStreamBlock/);
@@ -318,12 +385,13 @@ test('streaming tail replay keeps block measurement separate from visual message
   assert.match(measured, /onMeasured\(block\.blockId,\s*height\)/);
 });
 
-test('promoted tail block rows keep reserved height while measuring actual content height', () => {
+test('promoted tail block rows measure actual content without visible reserved height', () => {
   const block = read('src/components/ai/AiMeasuredStreamBlock.tsx');
 
-  assert.match(block, /minHeight:\s*block\.reservedHeight/);
+  assert.doesNotMatch(block, /minHeight:\s*block\.reservedHeight/);
   assert.match(block, /onLayout=\{\(event\) =>/);
   assert.match(block, /onMeasured\(block\.blockId,\s*height\)/);
+  assert.match(block, /SUPPRESSED_MEASUREMENT_RECONCILE_DP/);
 });
 
 test('AI chat screen derives dynamic tail hot-zone list settings', () => {
@@ -360,6 +428,7 @@ test('hardening adds dev-only streaming tail performance instrumentation', () =>
   const perf = read('src/ai/aiStreamingPerfDebug.ts');
   const model = read('src/ai/aiStreamingTailModel.ts');
   const screen = read('src/screens/AiChatScreen.tsx');
+  const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
 
   assert.match(perf, /__DEV__/);
   assert.match(perf, /tailStateUpdateCount/);
@@ -367,6 +436,24 @@ test('hardening adds dev-only streaming tail performance instrumentation', () =>
   assert.match(perf, /promotionCount/);
   assert.match(perf, /reconcileCount/);
   assert.match(perf, /lockState/);
+  assert.match(perf, /recordTailReplayBlockMounted/);
+  assert.match(perf, /mountCount/);
+  assert.match(perf, /throw new Error/);
+  assert.match(perf, /recordTailReplayBlockPromoted/);
+  assert.match(perf, /recordTailReplayBlockMeasured/);
+  assert.match(perf, /recordTailReplayFirstTextVisible/);
+  assert.match(perf, /recordTailReplayMeasurementDiff/);
+  assert.match(perf, /promotedAt/);
+  assert.match(perf, /mountedAt/);
+  assert.match(perf, /measuredAt/);
+  assert.match(perf, /firstTextVisibleAt/);
+  assert.match(perf, /recordTailReplayNegativeDebt/);
+  assert.match(perf, /recordTailReplayUnsafePayoff/);
   assert.match(model, /streamingTailPerfDebug/);
+  assert.match(model, /recordTailReplayBlockPromoted/);
   assert.match(screen, /streamingTailPerfDebug/);
+  assert.match(measured, /recordTailReplayBlockMounted/);
+  assert.match(measured, /recordTailReplayFirstTextVisible/);
+  assert.match(measured, /recordTailReplayBlockMeasured/);
+  assert.match(measured, /recordTailReplayMeasurementDiff/);
 });

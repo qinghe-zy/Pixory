@@ -1,12 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Dimensions,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { AppDialog } from '../AppDialog';
 import type { AiThreadHistoryItem } from '../../database/repositories/aiThreadRepository';
 import { metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { formatAiHistoryMinute } from '../../utils/aiTimeFormatters';
 import { aiLightColors } from './aiLightTheme';
+
+const DRAWER_WIDTH_RATIO = 0.86;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
+const SWIPE_CLOSE_THRESHOLD = DRAWER_WIDTH * 0.35;
 
 interface AiComprehensiveRecordDrawerProps {
   visible: boolean;
@@ -35,6 +50,7 @@ export function AiComprehensiveRecordDrawer({
   onRenameThread,
   onDeleteThread,
 }: AiComprehensiveRecordDrawerProps) {
+  const [mounted, setMounted] = useState(false);
   const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -42,7 +58,130 @@ export function AiComprehensiveRecordDrawer({
   const [busy, setBusy] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
 
-  if (!visible) {
+  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const scrimOpacity = useRef(new Animated.Value(0)).current;
+  const drawerTranslateX = useRef(new Animated.Value(0)).current;
+  const drawerAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  function startDrawerAnimation(
+    animation: Animated.CompositeAnimation,
+    onFinished?: () => void,
+  ) {
+    drawerAnimationRef.current?.stop();
+    drawerAnimationRef.current = animation;
+    animation.start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+      drawerAnimationRef.current = null;
+      onFinished?.();
+    });
+  }
+
+  // Mount / unmount with animation
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      drawerTranslateX.setValue(0);
+      startDrawerAnimation(Animated.parallel([
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          damping: 28,
+          stiffness: 260,
+          mass: 0.9,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]));
+    } else {
+      drawerTranslateX.setValue(0);
+      startDrawerAnimation(Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -DRAWER_WIDTH,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scrimOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]), () => {
+        setMounted(false);
+      });
+    }
+  }, [visible]);
+
+  // Swipe-left-to-close pan responder on the drawer panel
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gs) =>
+        Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx < 0,
+      onPanResponderMove: (_evt, gs) => {
+        const clampedDx = Math.min(0, gs.dx);
+        drawerTranslateX.setValue(clampedDx);
+        // Fade scrim proportionally
+        const progress = 1 + clampedDx / DRAWER_WIDTH;
+        scrimOpacity.setValue(Math.max(0, progress));
+      },
+      onPanResponderRelease: (_evt, gs) => {
+        if (gs.dx < -SWIPE_CLOSE_THRESHOLD || gs.vx < -0.5) {
+          // Close from the dragged position without double-counting translate values.
+          slideAnim.setValue(Math.max(-DRAWER_WIDTH, Math.min(0, gs.dx)));
+          drawerTranslateX.setValue(0);
+          startDrawerAnimation(Animated.parallel([
+            Animated.timing(slideAnim, {
+              toValue: -DRAWER_WIDTH,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(scrimOpacity, {
+              toValue: 0,
+              duration: 160,
+              useNativeDriver: true,
+            }),
+          ]), () => {
+            setMounted(false);
+            onClose();
+          });
+        } else {
+          // Snap back open
+          Animated.parallel([
+            Animated.spring(drawerTranslateX, {
+              toValue: 0,
+              damping: 24,
+              stiffness: 280,
+              useNativeDriver: true,
+            }),
+            Animated.timing(scrimOpacity, {
+              toValue: 1,
+              duration: 100,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(drawerTranslateX, {
+          toValue: 0,
+          damping: 24,
+          stiffness: 280,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(scrimOpacity, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }).start();
+      },
+    }),
+  ).current;
+
+  if (!mounted && !visible) {
     return null;
   }
 
@@ -106,8 +245,31 @@ export function AiComprehensiveRecordDrawer({
   return (
     <>
       <View pointerEvents="box-none" style={styles.overlay}>
-        <Pressable accessibilityLabel="关闭综合记录" accessibilityRole="button" onPress={onClose} style={styles.scrim} />
-        <View style={styles.drawer}>
+        {/* Animated scrim */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.scrimBase, { opacity: scrimOpacity }]}
+        />
+        <Pressable
+          accessibilityLabel="关闭综合记录"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={styles.scrimTouchable}
+        />
+        {/* Animated sliding drawer */}
+        <Animated.View
+          style={[
+            styles.drawer,
+            {
+              transform: [
+                {
+                  translateX: Animated.add(slideAnim, drawerTranslateX),
+                },
+              ],
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
           <Text style={styles.brand}>Pixory AI</Text>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
@@ -194,7 +356,7 @@ export function AiComprehensiveRecordDrawer({
               <Text style={styles.emptyText}>暂无最近会话</Text>
             )}
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
       <AppDialog
         compactActions
@@ -249,9 +411,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     zIndex: 20,
   },
-  scrim: {
+  scrimBase: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(24, 23, 21, 0.28)',
+  },
+  scrimTouchable: {
+    ...StyleSheet.absoluteFillObject,
   },
   drawer: {
     backgroundColor: aiLightColors.canvas,
@@ -264,7 +429,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[5],
     paddingHorizontal: spacing[5],
     paddingTop: spacing[10],
-    width: '86%',
+    width: DRAWER_WIDTH,
     ...shadows.floating,
   },
   brand: {

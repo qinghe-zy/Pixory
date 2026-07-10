@@ -102,7 +102,8 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
   assert.match(chat, /enabled=\{Platform\.OS === 'android'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
-  assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
+  assert.match(chat, /<View\s+style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}[\s\S]{0,140}\{\.\.\.swipeDrawerPanResponder\.panHandlers\}/);
+  assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
@@ -201,7 +202,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
   assert.match(chat, /const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48/);
-  assert.match(chat, /const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800/);
+  assert.match(chat, /const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(chat, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
   assert.match(chat, /const MESSAGE_SAFE_FLUSH_OFFSET = 1/);
   assert.match(chat, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
@@ -218,7 +219,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
   assert.match(chat, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
-  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[2\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
+  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[1\.5\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
@@ -1415,11 +1416,15 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   assert.doesNotMatch(chat, /\[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
   assert.match(chat, /composerPanelHeight/);
   assert.match(chat, /onLayout=\{\(event\) => setComposerPanelHeight\(event\.nativeEvent\.layout\.height\)\}/);
-  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[2\]\}/);
+  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[1\.5\]\}/);
   assert.match(latestButton, /bottomOffset: number/);
   assert.match(latestButton, /bottom:\s*bottomOffset/);
   assert.doesNotMatch(latestButton, /bottom:\s*spacing\[12\] \+ spacing\[10\]/);
+  assert.match(latestButton, /Animated/);
+  assert.match(latestButton, /Animated\.timing/);
+  assert.match(latestButton, /useNativeDriver:\s*true/);
   assert.match(latestButton, /BlurView/);
+  assert.match(latestButton, /rgba\(248,\s*248,\s*250,\s*0\.8[0-9]\)/);
   assert.match(latestButton, /color=\{aiLightColors\.primaryActive\}/);
 
   assert.match(chat, /voiceResetTimeoutRef/);

@@ -18,6 +18,7 @@ export type AiStreamBlockType =
   | 'plain';
 
 export type AiStreamBlock = {
+  blockIndex: number;
   blockId: string;
   estimatedHeight: number;
   finalized: boolean;
@@ -30,6 +31,7 @@ export type AiStreamBlock = {
   reservedHeight: number;
   startOffset: number;
   type: AiStreamBlockType;
+  versionIndex: number;
 };
 
 export type StreamBlockEstimateInput = {
@@ -101,14 +103,12 @@ function isFenceOpen(text: string): boolean {
 }
 
 function nextBlockId(input: {
-  generationId: string;
   lane: 'reasoning' | 'content';
   messageId: string;
   ordinal: number;
-  startOffset: number;
-  type: AiStreamBlockType;
+  versionIndex: number;
 }): string {
-  return `${input.messageId}:${input.generationId}:${input.ordinal}:${input.type}:${input.lane}:${input.startOffset}`;
+  return `${input.messageId}:${input.versionIndex}:${input.lane}:${input.ordinal}`;
 }
 
 function canSoftSegmentBlock(type: AiStreamBlockType): boolean {
@@ -171,11 +171,13 @@ function splitSoftStreamSegments(input: {
 export function splitStreamingTextIntoBlocks(input: {
   bubbleWidth: number;
   content: string;
+  finalizeOpenBlocks?: boolean;
   fontScale?: number;
   generationId: string;
   lane: 'reasoning' | 'content';
   lineHeight?: number;
   messageId: string;
+  versionIndex?: number;
 }): AiStreamBlock[] {
   const content = input.content ?? '';
   if (!content) return [];
@@ -192,14 +194,13 @@ export function splitStreamingTextIntoBlocks(input: {
     const segments = splitSoftStreamSegments({ finalized, raw, startOffset: start, type });
     segments.forEach((segment) => {
       const ordinal = blocks.length;
+      const blockIndex = ordinal;
       const lineCount = Math.max(1, segment.raw.split(/\r?\n/).length);
       const blockId = nextBlockId({
-        generationId: input.generationId,
         lane: input.lane,
         messageId: input.messageId,
-        ordinal,
-        startOffset: segment.startOffset,
-        type,
+        ordinal: blockIndex,
+        versionIndex: input.versionIndex ?? 0,
       });
       const cacheKey = createStreamBlockHeightCacheKey({
         blockType: type,
@@ -216,6 +217,7 @@ export function splitStreamingTextIntoBlocks(input: {
         { bubbleWidth: input.bubbleWidth, fontScale, lineHeight: input.lineHeight }
       );
       blocks.push({
+        blockIndex,
         blockId,
         estimatedHeight,
         finalized: segment.finalized,
@@ -227,6 +229,7 @@ export function splitStreamingTextIntoBlocks(input: {
         reservedHeight: estimatedHeight,
         startOffset: segment.startOffset,
         type,
+        versionIndex: input.versionIndex ?? 0,
       });
     });
   };
@@ -238,7 +241,11 @@ export function splitStreamingTextIntoBlocks(input: {
   }
 
   const tail = content.slice(startOffset);
-  pushBlock(tail, startOffset, !tail || (!isFenceOpen(tail) && /\n$/.test(content)));
+  pushBlock(
+    tail,
+    startOffset,
+    input.finalizeOpenBlocks || !tail || (!isFenceOpen(tail) && /\n$/.test(content)),
+  );
   return blocks;
 }
 

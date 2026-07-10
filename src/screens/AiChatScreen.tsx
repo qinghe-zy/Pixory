@@ -51,9 +51,14 @@ import {
   aiLightDisplayFont,
 } from "../components/ai/aiLightTheme";
 import { AiMemoryCaptureNotice } from "../components/ai/AiMemoryCaptureNotice";
-import { AiMessageBubble } from "../components/ai/AiMessageBubble";
+import { AiCitationList } from "../components/ai/AiCitationList";
+import {
+  AiMessageBubble,
+  AiMessageFooterActions,
+} from "../components/ai/AiMessageBubble";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
 import { AiStreamingTailContinuationBubble } from "../components/ai/AiStreamingTailContinuationBubble";
+import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailMessageSegment";
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
 import { AppScreen } from "../components/AppScreen";
@@ -135,6 +140,22 @@ import {
 } from "../ai/aiStreamingTailViewportPolicy";
 import { streamingTailPerfDebug } from "../ai/aiStreamingPerfDebug";
 import {
+  getAiTailReplaySingleBubbleEnabled,
+  refreshAiTailReplaySingleBubbleEnabled,
+} from "../ai/aiStreamingTailFeatureFlags";
+import {
+  buildTailMessageSegments,
+  createTailDebtSpacer,
+  footerVisible,
+  getTailReplayItemKey,
+  selectVisibleMessage,
+  shouldPayoffDebt,
+  stitchTailSegmentEdgeAfterFrozenPrefix,
+  type AiTailDebtSpacerItem,
+  type AiTailMessageSegment,
+  type AiTailSegmentEdge,
+} from "../ai/aiStreamingTailRenderContract";
+import {
   clearComposerDraft,
   getComposerDraft,
   setComposerDraft,
@@ -162,7 +183,7 @@ import {
 } from "../design/tokens";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
-const MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800;
+const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400;
 const MESSAGE_SAFE_FLUSH_OFFSET = 1;
 const STICK_TO_BOTTOM_OFFSET_PX = 70;
 const USER_SCROLL_IDLE_TIMEOUT_MS = 150;
@@ -179,6 +200,11 @@ const SEARCH_SCROLL_RETRY_DELAYS_MS = [80, 260, 520, 900, 1400, 2200, 3400];
 const SEARCH_HIGHLIGHT_DURATION_MS = 1800;
 const INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS = [80, 320];
 const INLINE_EDIT_SCROLL_RETRY_DELAY_MS = 120;
+const DRAWER_SWIPE_ACTIVATION_DISTANCE = 6;
+const DRAWER_SWIPE_RELEASE_DISTANCE = 10;
+const DRAWER_SWIPE_HORIZONTAL_RATIO = 1.2;
+// Pixel-level badge alignment; spacing tokens are too coarse for this small overlay.
+const NEW_CHAT_BADGE_OFFSET = 1;
 // Scroll affordance copy: 回到最新.
 
 const CHAT_DOCUMENT_TYPES = [
@@ -372,6 +398,8 @@ type VisibleMessageItem =
       id: string;
       height: number;
     }
+  | AiTailMessageSegment
+  | AiTailDebtSpacerItem
   | {
       type: "streamTailContinuation";
       id: string;
@@ -870,6 +898,23 @@ export function AiChatScreen({
     }),
   ).current;
 
+  // Right-swipe anywhere on the chat surface opens the record drawer.
+  const swipeDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gs) =>
+        gs.dx > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
+        Math.abs(gs.dx) > Math.abs(gs.dy) * DRAWER_SWIPE_HORIZONTAL_RATIO,
+      onPanResponderRelease: (_evt, gs) => {
+        if (
+          gs.dx > DRAWER_SWIPE_RELEASE_DISTANCE ||
+          (gs.dx > DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18)
+        ) {
+          setRecordDrawerVisible(true);
+        }
+      },
+    }),
+  ).current;
+
   const handlePetHitArea = useCallback(
     (area: string) => {
       petPan.stopAnimation();
@@ -1197,6 +1242,7 @@ export function AiChatScreen({
       const tailState = streamingTailStateRef.current;
       if (
         tailState.status === "idle" ||
+        !tailState.debtPayoffEligible ||
         tailState.pendingShrinkHeight <= 0 ||
         tailState.shrinkStableSince == null
       ) {
@@ -1209,6 +1255,18 @@ export function AiChatScreen({
         allowFullShrinkSettlementRef.current ||
         reason === "return-to-latest" ||
         (bottomLockedRef.current && !hasPendingStreamingReadBuffer());
+      const payoffSafe = shouldPayoffDebt({
+        debtHeight: tailState.pendingShrinkHeight,
+        isAtBottom: bottomLockedRef.current,
+        isListIdle: !isUserDraggingRef.current,
+        isMvcpCompensatedSide: false,
+        isSpacerOffscreen:
+          allowFullShrinkSettlementRef.current ||
+          reason === "return-to-latest",
+      });
+      if (!payoffSafe) {
+        return;
+      }
       const nextTailState = settleStreamingTailShrinkDebt({
         canApplyBlock: (block) =>
           settleAllBlocks ||
@@ -1363,6 +1421,13 @@ export function AiChatScreen({
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [singleBubbleTailReplayEnabled] = useState(
+    getAiTailReplaySingleBubbleEnabled,
+  );
+
+  useEffect(() => {
+    void refreshAiTailReplaySingleBubbleEnabled();
+  }, []);
 
   useEffect(() => {
     if (generating) {
@@ -1582,16 +1647,21 @@ export function AiChatScreen({
     }
 
     const tailState = streamingTailStateRef.current;
+    const tailOverride =
+      tailState.status !== "idle" && tailState.messageId
+        ? {
+            frozenContent: tailState.frozenContent,
+            frozenReasoningText: tailState.frozenReasoningText,
+            messageId: tailState.messageId,
+            status: tailState.status,
+          }
+        : undefined;
     // prettier-ignore
     const nextVisibleMessageItems = nextVisibleMessages.map((message, index): VisibleMessageItem => {
-        if (message.id === tailState.messageId && tailState.status !== "idle") {
-          message = {
-            ...message,
-            content: tailState.frozenContent,
-            reasoningText:
-              tailState.frozenReasoningText ?? message.reasoningText,
-          };
-        }
+        message = selectVisibleMessage({
+          message,
+          tailOverride,
+        });
         const previousMessage = nextVisibleMessages[index - 1];
         const showDateSeparator = shouldShowDateSeparator(
           nextVisibleMessages,
@@ -1606,6 +1676,12 @@ export function AiChatScreen({
           showDateSeparator,
         };
       });
+    const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
+    nextVisibleMessageItems.forEach((item) => {
+      if (item.type === "message") {
+        nextVisibleMessagesById.set(item.message.id, item.message);
+      }
+    });
 
     const nextInvertedMessageItems = nextVisibleMessageItems.slice().reverse();
     if (
@@ -1624,24 +1700,46 @@ export function AiChatScreen({
         tailState,
         activeLanes,
       );
-      const promotedTailGroups = groupPromotedStreamingTailBlocks({
-        activeLanes,
-        blocks: tailState.blocks,
-        promotedBlockIds: tailState.promotedBlockIds,
-      }).map((group): VisibleMessageItem => ({
-        group,
-        id: group.groupId,
-        type: "streamTailContinuation",
-      }));
-      for (let index = 0; index < promotedTailGroups.length; index += 1) {
-        nextInvertedMessageItems.unshift(promotedTailGroups[index]);
-      }
-      if (hiddenTailHeight > 0) {
-        nextInvertedMessageItems.unshift({
-          height: hiddenTailHeight,
-          id: "stream-tail-spacer",
-          type: "streamTailSpacer",
-        });
+      if (singleBubbleTailReplayEnabled && tailState.messageId) {
+        const promotedBlocks = tailState.blocks.filter(
+          (block) =>
+            activeLanes.includes(block.lane) &&
+            tailState.promotedBlockIds.has(block.blockId),
+        );
+        const promotedTailSegments = buildTailMessageSegments({
+          blocks: promotedBlocks,
+        }).map(
+          (segment): VisibleMessageItem => ({
+            ...segment,
+            edge: stitchTailSegmentEdgeAfterFrozenPrefix(segment.edge),
+          }),
+        );
+        for (let index = 0; index < promotedTailSegments.length; index += 1) {
+          nextInvertedMessageItems.unshift(promotedTailSegments[index]);
+        }
+        nextInvertedMessageItems.unshift(
+          createTailDebtSpacer(tailState.messageId, hiddenTailHeight),
+        );
+      } else {
+        const promotedTailGroups = groupPromotedStreamingTailBlocks({
+          activeLanes,
+          blocks: tailState.blocks,
+          promotedBlockIds: tailState.promotedBlockIds,
+        }).map((group): VisibleMessageItem => ({
+          group,
+          id: group.groupId,
+          type: "streamTailContinuation",
+        }));
+        for (let index = 0; index < promotedTailGroups.length; index += 1) {
+          nextInvertedMessageItems.unshift(promotedTailGroups[index]);
+        }
+        if (hiddenTailHeight > 0) {
+          nextInvertedMessageItems.unshift({
+            height: hiddenTailHeight,
+            id: "stream-tail-spacer",
+            type: "streamTailSpacer",
+          });
+        }
       }
     }
 
@@ -1658,14 +1756,21 @@ export function AiChatScreen({
       invertedMessageIndexById: nextInvertedMessageIndexById,
       invertedMessageItems: nextInvertedMessageItems,
       messagesById: nextMessagesById,
+      visibleMessagesById: nextVisibleMessagesById,
       visibleMessageItems: nextVisibleMessageItems,
       visibleMessages: nextVisibleMessages,
     };
-  }, [messages, selectedVersionByMessageId, streamingTailVersion]);
+  }, [
+    messages,
+    selectedVersionByMessageId,
+    singleBubbleTailReplayEnabled,
+    streamingTailVersion,
+  ]);
   const {
     invertedMessageIndexById,
     invertedMessageItems,
     messagesById,
+    visibleMessagesById,
     visibleMessageItems,
     visibleMessages,
   } = visibleMessageState;
@@ -4463,7 +4568,10 @@ export function AiChatScreen({
   }
 
   const messageKeyExtractor = useCallback(
-    (item: VisibleMessageItem) => item.id,
+    (item: VisibleMessageItem) =>
+      item.type === "messageSegment" || item.type === "tailDebtSpacer"
+        ? getTailReplayItemKey(item)
+        : item.id,
     [],
   );
 
@@ -4472,11 +4580,101 @@ export function AiChatScreen({
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
       }
+      if (item.type === "tailDebtSpacer") {
+        return <AiStreamingTailSpacer height={item.height} />;
+      }
       if (item.type === "streamTailContinuation") {
         return (
           <AiStreamingTailContinuationBubble
             bubbleWidth={getStreamingBubbleWidth()}
             group={item.group}
+            onMeasured={handleMeasuredTailBlock}
+          />
+        );
+      }
+      if (item.type === "messageSegment") {
+        const tailState = streamingTailStateRef.current;
+        const blocks = tailState.blocks.filter(
+          (block) =>
+            block.messageId === item.messageId &&
+            block.lane === item.blockRange.lane &&
+            block.blockIndex >= item.blockRange.startBlockIndex &&
+            block.blockIndex <= item.blockRange.endBlockIndex,
+        );
+        if (blocks.length === 0) {
+          return null;
+        }
+        const message = visibleMessagesById.get(item.messageId) ?? null;
+        const isThinkingExpanded = Boolean(
+          thinkingExpandedByMessageIdRef.current.get(item.messageId),
+        );
+        const activeLanes: ("content" | "reasoning")[] = isThinkingExpanded
+          ? ["content", "reasoning"]
+          : ["content"];
+        const hasPendingTail =
+          calculateRemainingStreamingTailHeight(tailState, activeLanes) > 0;
+        const terminalState =
+          tailState.messageId === item.messageId && tailState.status === "completed"
+            ? "completed"
+            : message?.status === "completed" ||
+                message?.status === "failed" ||
+                message?.status === "stopped"
+              ? message.status
+            : "streaming";
+        const segmentFavoriteIdentity =
+          message?.role === "assistant"
+            ? (favoriteIdentityByMessageId.get(message.id) ?? null)
+            : null;
+        const shouldShowFooter =
+          Boolean(message) &&
+          footerVisible({ hasPendingTail, terminalState }, item.edge);
+        return (
+          <AiStreamingTailMessageSegment
+            blocks={blocks}
+            bubbleWidth={getStreamingBubbleWidth()}
+            citations={
+              message ? (
+                <AiCitationList
+                  citations={message.citations}
+                  onOpenCitation={openCitation}
+                />
+              ) : null
+            }
+            edge={item.edge}
+            footer={
+              shouldShowFooter && message ? (
+                <AiMessageFooterActions
+                  favoriteDisabledByGeneration={
+                    generating && message.id === activeAssistantId
+                  }
+                  favorited={
+                    segmentFavoriteIdentity
+                      ? Boolean(favoriteStateByKey[segmentFavoriteIdentity.key])
+                      : false
+                  }
+                  favoritePending={
+                    segmentFavoriteIdentity
+                      ? Boolean(favoritePendingByKey[segmentFavoriteIdentity.key])
+                      : false
+                  }
+                  generating={generating}
+                  message={message}
+                  pendingActionMessageId={pendingMessageActionId}
+                  onCopy={(targetMessage) => {
+                    void copyMessageContent(targetMessage);
+                  }}
+                  onContinue={handleContinueAssistantMessage}
+                  onEditUser={handleEditUserMessage}
+                  onRegenerate={(messageId) => {
+                    void handleRegenerate(messageId);
+                  }}
+                  onSelectVersion={handleSelectMessageVersion}
+                  onToggleFavorite={(targetMessage) => {
+                    void handleToggleMessageFavorite(targetMessage);
+                  }}
+                />
+              ) : null
+            }
             onMeasured={handleMeasuredTailBlock}
           />
         );
@@ -4496,6 +4694,51 @@ export function AiChatScreen({
       const streamingReadModeActive = hasPendingStreamingReadBuffer() && message.status === 'generating';
       // prettier-ignore
       const streamingRendererActive = Boolean(streamingIdentity) && generating && message.id === activeAssistantId && !streamingReadModeActive;
+      const activeTailState = streamingTailStateRef.current;
+      const singleBubbleTailMessage =
+        singleBubbleTailReplayEnabled &&
+        activeTailState.messageId === message.id &&
+        activeTailState.status !== "idle";
+      const isThinkingExpanded = Boolean(
+        thinkingExpandedByMessageIdRef.current.get(message.id),
+      );
+      const activeTailLanes: ("content" | "reasoning")[] = isThinkingExpanded
+        ? ["content", "reasoning"]
+        : ["content"];
+      const activeTailPromotedBlockCount = singleBubbleTailMessage
+        ? activeTailState.blocks.filter(
+            (block) =>
+              activeTailLanes.includes(block.lane) &&
+              activeTailState.promotedBlockIds.has(block.blockId),
+          ).length
+        : 0;
+      const baseTailEdge: AiTailSegmentEdge =
+        singleBubbleTailMessage && activeTailPromotedBlockCount > 0
+          ? "first"
+          : "single";
+      const baseTailHasPendingTail = singleBubbleTailMessage
+        ? calculateRemainingStreamingTailHeight(activeTailState, activeTailLanes) > 0
+        : false;
+      const baseTailTerminalState =
+        message.status === "completed" ||
+        message.status === "failed" ||
+        message.status === "stopped"
+          ? message.status
+          : "streaming";
+      const baseTailFooterVisible = singleBubbleTailMessage
+        ? footerVisible(
+            {
+              hasPendingTail: baseTailHasPendingTail,
+              terminalState:
+                activeTailState.status === "completed"
+                  ? "completed"
+                  : baseTailTerminalState,
+            },
+            baseTailEdge,
+          )
+        : true;
+      const baseTailHideCitations =
+        singleBubbleTailMessage && baseTailEdge !== "single";
       return (
         <>
           {item.showDateSeparator ? (
@@ -4531,6 +4774,11 @@ export function AiChatScreen({
                   : false
               }
               generating={generating}
+              assistantBubbleEdge={singleBubbleTailMessage ? baseTailEdge : undefined}
+              hideCitations={baseTailHideCitations}
+              hideFooterActions={
+                singleBubbleTailMessage ? !baseTailFooterVisible : false
+              }
               message={message}
               onAttachmentPress={(attachment) => {
                 if (attachment.kind === "document" && attachment.documentId) {
@@ -4623,6 +4871,7 @@ export function AiChatScreen({
       openCitation,
       pendingMessageActionId,
       searchHighlightMessageId,
+      singleBubbleTailReplayEnabled,
       space,
       scheduleStreamingTailReconcile,
     ],
@@ -4640,23 +4889,44 @@ export function AiChatScreen({
         style={styles.keyboardAvoidingHost}
       >
         {/* prettier-ignore */}
-        <View style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+        <View
+          style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
+          {...swipeDrawerPanResponder.panHandlers}
+        >
           <View style={styles.header}>
-            <Pressable
-              accessibilityLabel="打开综合记录"
-              accessibilityRole="button"
-              onPress={() => setRecordDrawerVisible(true)}
-              style={({ pressed }) => [
-                styles.roundButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                color={aiLightColors.ink}
-                name="menu-outline"
-                size={22}
-              />
-            </Pressable>
+            {/* Left: drawer + search */}
+            <View style={styles.headerSide}>
+              <Pressable
+                accessibilityLabel="打开综合记录"
+                accessibilityRole="button"
+                onPress={() => setRecordDrawerVisible(true)}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="搜索当前聊天"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !activeThreadId }}
+                disabled={!activeThreadId}
+                onPress={() => void handleOpenChatSearch()}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  !activeThreadId && styles.iconBtnDisabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons
+                  color={activeThreadId ? aiLightColors.ink : aiLightColors.muted}
+                  name="search-outline"
+                  size={20}
+                />
+              </Pressable>
+            </View>
+            {/* Center: title */}
             <View style={styles.titleBlock}>
               <View style={styles.titleLine}>
                 <Text numberOfLines={1} style={styles.title}>
@@ -4670,41 +4940,38 @@ export function AiChatScreen({
                 </Text>
               ) : null}
             </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                accessibilityLabel="搜索当前聊天"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !activeThreadId }}
-                disabled={!activeThreadId}
-                onPress={() => void handleOpenChatSearch()}
-                style={({ pressed }) => [
-                  styles.roundButton,
-                  !activeThreadId && styles.roundButtonDisabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  color={
-                    activeThreadId ? aiLightColors.ink : aiLightColors.muted
-                  }
-                  name="search-outline"
-                  size={18}
-                />
-              </Pressable>
+            {/* Right: session settings + new chat */}
+            <View style={styles.headerSide}>
               <Pressable
                 accessibilityLabel="会话设置"
                 accessibilityRole="button"
                 onPress={() => void handleOpenSessionConfig()}
                 style={({ pressed }) => [
-                  styles.roundButton,
+                  styles.iconBtn,
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons
-                  color={aiLightColors.ink}
-                  name="options-outline"
-                  size={18}
-                />
+                <Ionicons color={aiLightColors.ink} name="settings-outline" size={20} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="开启新会话"
+                accessibilityRole="button"
+                onPress={() => void handleNewChatPress()}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View pointerEvents="none" style={styles.newChatIconWrap}>
+                  <Ionicons
+                    color={aiLightColors.ink}
+                    name="chatbubble-ellipses-outline"
+                    size={23}
+                  />
+                  <View style={styles.newChatIconBadge}>
+                    <Ionicons color={aiLightColors.canvas} name="add" size={10} />
+                  </View>
+                </View>
               </Pressable>
             </View>
           </View>
@@ -4805,7 +5072,7 @@ export function AiChatScreen({
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>
             ) : null}
-            <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[2]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
+            <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[1.5]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
           </View>
 
           {inlineEditingActive ? null : (
@@ -5064,29 +5331,42 @@ const styles = StyleSheet.create({
     borderBottomColor: aiLightColors.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    gap: rhythm.inlineGap,
     minHeight: spacing[12],
   },
-  pressed: {
-    opacity: 0.78,
-  },
-  roundButton: {
+  headerSide: {
     alignItems: "center",
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  iconBtn: {
+    alignItems: "center",
     height: spacing[10],
     justifyContent: "center",
     width: spacing[10],
   },
-  roundButtonDisabled: {
-    opacity: 0.44,
+  iconBtnDisabled: {
+    opacity: 0.3,
   },
-  headerActions: {
+  newChatIconWrap: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: rhythm.inlineGap,
+    height: spacing[7],
+    justifyContent: "center",
+    width: spacing[7],
+  },
+  newChatIconBadge: {
+    alignItems: "center",
+    backgroundColor: aiLightColors.primaryActive,
+    borderColor: aiLightColors.canvas,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: spacing[3],
+    justifyContent: "center",
+    minWidth: spacing[3],
+    position: "absolute",
+    right: NEW_CHAT_BADGE_OFFSET,
+    top: NEW_CHAT_BADGE_OFFSET,
   },
   titleBlock: {
     alignItems: "center",

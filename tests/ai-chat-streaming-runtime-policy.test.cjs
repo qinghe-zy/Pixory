@@ -229,15 +229,14 @@ test('user stop records user_stopped before abort fallback can settle metrics', 
   assert.match(stopGenerationBody, /await stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}\);[\s\S]*task\?\.controller\.abort\(\)/);
 });
 
-test('streaming timeout reuses stop recoverability with timeout reason', () => {
+test('streaming idle timeout finalizes as failure instead of user stopped', () => {
   const service = read('src/ai/aiChatService.ts');
   const manager = read('src/ai/aiGenerationManager.ts');
 
-  assert.match(service, /timeout_stopped/);
+  assert.match(service, /timeout_failed/);
   assert.match(service, /stoppedTimeoutGenerationIds/);
-  assert.match(service, /currentStopReason[\s\S]*timeout_stopped/);
-  assert.match(service, /createPromptSnapshotJson\(\{ stopReason: 'timeout_stopped' \}\)/);
-  assert.match(service, /if \(answerText\) \{\s*await recordSuccessfulProviderModel\(input\.space, provider\.id, modelId\);\s*\}/);
+  assert.match(service, /markAssistantFailed\([\s\S]*timeout_failed/);
+  assert.match(service, /生成已中断/);
   assert.match(manager, /stopGeneration\(\{ assistantMessageId, reason = 'user', space, threadId \}/);
   assert.match(manager, /reason: 'timeout'/);
   assert.match(manager, /stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}/);

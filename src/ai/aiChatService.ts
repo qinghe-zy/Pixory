@@ -2398,7 +2398,8 @@ async function markAssistantFailed(
   partialContent = '',
   partialReasoningText: string | null = null,
   promptSnapshotJson?: string
-): Promise<void> {
+): Promise<string> {
+  const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(space, (db) =>
     updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
       status: 'failed',
@@ -2406,9 +2407,12 @@ async function markAssistantFailed(
       reasoningText: partialReasoningText,
       errorMessage: message,
       ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
-      completedAt: new Date().toISOString(),
+      completedAt,
     })
   );
+  stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
+  stoppedTimeoutGenerationIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
+  return completedAt;
 }
 
 async function markAssistantStopped(
@@ -2659,7 +2663,7 @@ async function streamAssistantReply(input: {
   markGenerationMetric(generationMetrics, 'generationStartAt');
   const currentStopReason = () =>
     stoppedTimeoutGenerationIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))
-      ? 'timeout_stopped'
+      ? 'timeout_failed'
       : stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))
         ? 'user_stopped'
         : 'aborted';
@@ -2669,6 +2673,31 @@ async function streamAssistantReply(input: {
     }
     const stopReason = currentStopReason();
     generationMetrics.context.stopReason = stopReason;
+    if (stopReason === 'timeout_failed') {
+      const errorMessage = '生成已中断';
+      const completedAt = await markAssistantFailed(
+        input.space,
+        input.assistantMessageId,
+        generationId,
+        errorMessage,
+        assistantReset ? answerText : '',
+        assistantReset ? reasoningText || null : null,
+        options?.buildPromptSnapshotJson?.() ?? buildMetricsOnlyPromptSnapshotJson({
+          generationMetrics,
+          stopReason,
+        }),
+      );
+      emitMessagePatch({
+        id: input.assistantMessageId,
+        status: 'failed',
+        content: assistantReset ? answerText : '',
+        reasoningText: assistantReset ? reasoningText || null : null,
+        errorMessage,
+        completedAt,
+      });
+      input.onUpdated?.();
+      return true;
+    }
     const completedAt = await markAssistantStopped(
       input.space,
       input.assistantMessageId,
@@ -3289,9 +3318,10 @@ async function streamAssistantReply(input: {
   }
 
   if (stoppedTimeoutGenerationIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
-    generationMetrics.context.stopReason = 'timeout_stopped';
-    const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, generationId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'timeout_stopped' }));
-    emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
+    generationMetrics.context.stopReason = 'timeout_failed';
+    const errorMessage = '生成已中断';
+    const completedAt = await markAssistantFailed(input.space, input.assistantMessageId, generationId, errorMessage, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'timeout_failed' }));
+    emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage, completedAt });
     input.onUpdated?.();
     if (answerText) {
       await recordSuccessfulProviderModel(input.space, provider.id, modelId);

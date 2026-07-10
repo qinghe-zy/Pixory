@@ -15,6 +15,7 @@ export type StreamingTailPatch = {
 
 export type AiStreamingTailState = {
   blocks: AiStreamBlock[];
+  debtPayoffEligible: boolean;
   frozenContent: string;
   frozenReasoningText: string | null;
   generationId: string | null;
@@ -86,6 +87,10 @@ function withRecomputedDerivedState(
     overReservedHeight: nextState.overReservedHeight,
     totalReservedHeight: nextState.totalReservedHeight,
   });
+  streamingTailPerfDebug.recordTailReplayNegativeDebt({
+    debtHeight: nextState.pendingShrinkHeight,
+    reason: "recompute",
+  });
   return nextState;
 }
 
@@ -100,6 +105,7 @@ function isSingleLineBlock(block: AiStreamBlock): boolean {
 export function createEmptyStreamingTailState(): AiStreamingTailState {
   return {
     blocks: [],
+    debtPayoffEligible: false,
     frozenContent: "",
     frozenReasoningText: null,
     generationId: null,
@@ -161,6 +167,7 @@ export function startStreamingTailDetach(input: {
     {
       ...createEmptyStreamingTailState(),
       blocks,
+      debtPayoffEligible: false,
       frozenContent,
       frozenReasoningText: frozenReasoningText || null,
       generationId: input.generationId,
@@ -190,6 +197,13 @@ export function mergeStreamingTailPatch(input: {
   if (!input.patch.generationId || !input.patch.id) {
     return previous;
   }
+  const status =
+    input.patch.status === "completed" ||
+    input.patch.status === "failed" ||
+    input.patch.status === "stopped"
+      ? "completed"
+      : "detached";
+  const finalizeOpenBlocks = status === "completed";
   const frozenContent = previous.frozenContent;
   const nextFullContent =
     input.patch.content ?? frozenContent + previous.tailContent;
@@ -209,6 +223,7 @@ export function mergeStreamingTailPatch(input: {
   const reasoningBlocks = splitStreamingTextIntoBlocks({
     bubbleWidth: input.bubbleWidth,
     content: tailReasoningText,
+    finalizeOpenBlocks,
     generationId: input.patch.generationId,
     lane: "reasoning",
     messageId: input.patch.id,
@@ -216,6 +231,7 @@ export function mergeStreamingTailPatch(input: {
   const contentBlocks = splitStreamingTextIntoBlocks({
     bubbleWidth: input.bubbleWidth,
     content: tailContent,
+    finalizeOpenBlocks,
     generationId: input.patch.generationId,
     lane: "content",
     messageId: input.patch.id,
@@ -243,18 +259,13 @@ export function mergeStreamingTailPatch(input: {
       nextBlocks.some((block) => block.blockId === blockId),
     ),
   );
-  const status =
-    input.patch.status === "completed" ||
-    input.patch.status === "failed" ||
-    input.patch.status === "stopped"
-      ? "completed"
-      : "detached";
-
   streamingTailPerfDebug.incrementTailStateUpdateCount();
   return withRecomputedDerivedState(
     {
       ...previous,
       blocks: nextBlocks,
+      debtPayoffEligible:
+        status === "completed" ? true : previous.debtPayoffEligible,
       generationId: input.patch.generationId,
       messageId: input.patch.id,
       promotedBlockIds,
@@ -326,6 +337,13 @@ export function settleStreamingTailShrinkDebt(input: {
   canApplyBlock: (block: AiStreamBlock) => boolean;
   previous: AiStreamingTailState;
 }): AiStreamingTailState {
+  if (!input.previous.debtPayoffEligible) {
+    streamingTailPerfDebug.recordTailReplayUnsafePayoff({
+      debtHeight: input.previous.pendingShrinkHeight,
+      reason: "not_eligible",
+    });
+    return input.previous;
+  }
   if (input.previous.pendingShrinkHeight <= 0) {
     return input.previous;
   }
@@ -354,12 +372,17 @@ export function settleStreamingTailShrinkDebt(input: {
 
   const pendingShrinkHeight = calculatePendingShrinkHeight(blocks);
   streamingTailPerfDebug.incrementTailStateUpdateCount();
-  return withRecomputedDerivedState(input.previous, {
+  const nextState = withRecomputedDerivedState(input.previous, {
     blocks,
     overReservedHeight: pendingShrinkHeight,
     pendingShrinkHeight,
     shrinkStableSince: pendingShrinkHeight > 0 ? Date.now() : null,
   });
+  return {
+    ...nextState,
+    debtPayoffEligible:
+      pendingShrinkHeight > 0 ? input.previous.debtPayoffEligible : false,
+  };
 }
 
 export function promoteStreamingTailBlocks(input: {
@@ -420,6 +443,17 @@ export function promoteStreamingTailBlocks(input: {
     return input.previous;
   }
 
+  for (const block of input.previous.blocks) {
+    if (
+      promotedBlockIds.has(block.blockId) &&
+      !input.previous.promotedBlockIds.has(block.blockId)
+    ) {
+      streamingTailPerfDebug.recordTailReplayBlockPromoted({
+        blockId: block.blockId,
+        finalized: block.finalized,
+      });
+    }
+  }
   streamingTailPerfDebug.incrementPromotionCount();
   streamingTailPerfDebug.incrementTailStateUpdateCount();
   return withRecomputedDerivedState(input.previous, {

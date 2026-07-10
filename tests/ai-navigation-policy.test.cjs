@@ -78,7 +78,7 @@ test('AI chat keeps the top bar fixed while only messages scroll', () => {
   assert.doesNotMatch(content, /开始对话/);
   assert.doesNotMatch(content, /styles\.emptyState/);
   assert.doesNotMatch(content, /scrollable\s*\n\s*>/);
-  assert.doesNotMatch(content, /footer=\{/);
+  assert.doesNotMatch(content, /ListFooterComponent=\{\s*footer/);
 });
 
 test('AI chat uses the design.md light mode surface', () => {
@@ -117,7 +117,7 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(content)?.[0] ?? '';
   assert.match(content, /userScrolledAwayFromBottomRef/);
   assert.match(content, /MESSAGE_STREAM_FOLLOW_THRESHOLD = 48/);
-  assert.match(content, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 4800/);
+  assert.match(content, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(content, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
   assert.match(content, /ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
   assert.match(content, /bottomLockedRef/);
@@ -255,11 +255,15 @@ test('Shared dialogs and action sheets use the botanical pattern surface', () =>
 test('AI message thinking and per-message actions stay outside the chat bubble', () => {
   const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
   const renderPart = bubble.split('const styles = StyleSheet.create')[0];
-  const thinkingIndex = renderPart.indexOf('styles.thinkingWrap');
-  const bubbleIndex = renderPart.indexOf('styles.bubble');
-  const actionIndex = renderPart.indexOf('styles.actionRow');
+  const bubbleComponentPart =
+    /function AiMessageBubbleComponent[\s\S]*?function areAiMessageBubblePropsEqual/.exec(bubble)?.[0] ?? renderPart;
+  const thinkingIndex = bubbleComponentPart.indexOf('styles.thinkingWrap');
+  const bubbleIndex = bubbleComponentPart.indexOf('styles.bubble');
+  const actionIndex = bubbleComponentPart.indexOf('<AiMessageFooterActions');
   assert.ok(thinkingIndex >= 0 && thinkingIndex < bubbleIndex);
   assert.ok(actionIndex > bubbleIndex);
+  assert.match(bubble, /export function AiMessageFooterActions/);
+  assert.match(bubble, /styles\.actionRow/);
   assert.match(bubble, /userActionRow/);
   assert.match(bubble, /assistantActionRow/);
   assert.match(bubble, /messageActionButton/);
@@ -671,19 +675,35 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
   assert.match(chat, /KeyboardAvoidingView/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
-  assert.match(chat, /<View style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}>/);
+  assert.match(chat, /<View\s+style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}[\s\S]{0,140}\{\.\.\.swipeDrawerPanResponder\.panHandlers\}/);
   assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
+  assert.match(chat, /accessibilityLabel="搜索当前聊天"/);
+  assert.match(chat, /name="search-outline"/);
   assert.match(chat, /accessibilityLabel="会话设置"/);
-  assert.match(chat, /name="options-outline"/);
-  assert.doesNotMatch(chat, /accessibilityLabel="新聊天"[\s\S]{0,220}name="add-outline"/);
+  assert.match(chat, /name="settings-outline"/);
+  assert.match(chat, /accessibilityLabel="开启新会话"/);
+  assert.match(chat, /name="chatbubble-ellipses-outline"/);
+  assert.match(chat, /name="add"/);
+  assert.match(chat, /newChatIconBadge/);
+  assert.match(chat, /swipeDrawerPanResponder/);
+  assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
+  assert.match(chat, /DRAWER_SWIPE_RELEASE_DISTANCE = 10/);
+  assert.match(chat, /DRAWER_SWIPE_HORIZONTAL_RATIO = 1\.2/);
+  assert.doesNotMatch(chat, /startX < DRAWER_EDGE_SWIPE_WIDTH/);
+  assert.match(chat, /Math\.abs\(gs\.dx\) > Math\.abs\(gs\.dy\) \* DRAWER_SWIPE_HORIZONTAL_RATIO/);
   assert.match(chat, /listAiHistoryThreads\(\{ limit: 15, space \}\)/);
   assert.match(chat, /onNewChat=\{\(\) => \{[\s\S]*handleNewChatPress\(\)/);
   assert.doesNotMatch(chat, /onStartNormalChat/);
   assert.doesNotMatch(chat, /accessibilityLabel="返回"[\s\S]{0,160}chevron-back/);
   assert.match(app, /onOpenHistory=\{\(\) => pushRoute\(\{ name: 'ai-history'/);
   assert.match(drawer, /export function AiComprehensiveRecordDrawer/);
+  assert.match(drawer, /Animated\.View/);
+  assert.match(drawer, /PanResponder\.create/);
+  assert.match(drawer, /SWIPE_CLOSE_THRESHOLD/);
+  assert.match(drawer, /drawerAnimationRef/);
+  assert.match(drawer, /Animated\.add\(slideAnim, drawerTranslateX\)/);
   assert.match(drawer, /新聊天/);
   assert.match(drawer, /历史记录/);
   assert.match(drawer, /最近/);
