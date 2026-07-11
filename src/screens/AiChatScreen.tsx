@@ -2384,6 +2384,7 @@ export function AiChatScreen({
         ) {
           streamingReadBufferActiveRef.current = true;
           pendingFinalReloadRef.current = true;
+          pendingStreamingTailCommitRef.current = true;
           hasBufferedStreamingUpdateRef.current = true;
           pendingFinalStreamingIdentityRef.current =
             activeStreamingIdentityRef.current;
@@ -3556,7 +3557,13 @@ export function AiChatScreen({
   }, [space]);
 
   const flushBufferedStreamingState = useCallback(
-    async ({ followLatest }: { followLatest: boolean }) => {
+    async ({
+      followLatest,
+      resetTail = false,
+    }: {
+      followLatest: boolean;
+      resetTail?: boolean;
+    }) => {
       pendingStreamingTailCommitRef.current = false;
       const bufferedPatch = bufferedStreamingPatchRef.current;
       const shouldReloadFinal = pendingFinalReloadRef.current;
@@ -3564,6 +3571,7 @@ export function AiChatScreen({
         pendingFinalStreamingIdentityRef.current;
       const targetThreadId = activeThreadIdRef.current;
       const shouldResetTailAfterFlush =
+        resetTail ||
         followLatest ||
         bottomLockedRef.current ||
         messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET;
@@ -3662,7 +3670,10 @@ export function AiChatScreen({
       return false;
     }
     pendingStreamingTailCommitRef.current = false;
-    void flushBufferedStreamingState({ followLatest: false });
+    void flushBufferedStreamingState({
+      followLatest: false,
+      resetTail: true,
+    });
     return true;
   }, [flushBufferedStreamingState]);
   commitStreamingTailIfStableRef.current = commitStreamingTailIfStable;

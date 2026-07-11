@@ -501,3 +501,24 @@ test('content replay uses a stable full-width continuation surface', () => {
   assert.match(measured, /verticalInset\?:\s*AiMeasuredStreamBlockVerticalInset/);
   assert.match(segment, /verticalInset=\{resolveBlockVerticalInset\(edge, index, blocks\.length\)\}/);
 });
+
+test('terminal replay schedules cleanup independently from visible terminal state', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(
+    screen,
+    /onSettled:\s*\(\)\s*=>\s*\{[\s\S]{0,1200}pendingStreamingTailCommitRef\.current\s*=\s*true/,
+  );
+  assert.match(
+    screen,
+    /const shouldResetTailAfterFlush\s*=\s*resetTail\s*\|\|/,
+  );
+  assert.match(
+    screen,
+    /flushBufferedStreamingState\(\{\s*followLatest:\s*false,\s*resetTail:\s*true,?\s*\}\)/,
+  );
+  assert.match(
+    screen,
+    /replayVisible:\s*Boolean\([\s\S]{0,180}visibleStreamingTailMessageIdsRef\.current\.has/,
+  );
+});

@@ -345,7 +345,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /scheduleStreamingTailReconcile\("detached-patch"/);
   assert.match(chat, /scheduleStreamingTailReconcile\("final-completion"/);
   assert.match(chat, /bottomLockedRef\.current = bottomLockedRef\.current \|\| followLatest \|\| messageScrollOffsetRef\.current <= MESSAGE_SAFE_FLUSH_OFFSET/);
-  assert.match(chat, /streamingReadBufferActiveRef\.current = true;\s*pendingFinalReloadRef\.current = true;\s*hasBufferedStreamingUpdateRef\.current = true/);
+  assert.match(chat, /streamingReadBufferActiveRef\.current = true;\s*pendingFinalReloadRef\.current = true;\s*pendingStreamingTailCommitRef\.current = true;\s*hasBufferedStreamingUpdateRef\.current = true/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
