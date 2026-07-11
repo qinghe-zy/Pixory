@@ -362,13 +362,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.88)', // Clean white frosted glass
     borderRadius: 36, // Matches parent for perfect corners
-    
+
     // Top highlight rim
     borderTopWidth: 1.5,
     borderTopColor: 'rgba(255, 255, 255, 1)',
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(255, 255, 255, 0.8)',
-    
+
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: 104,
