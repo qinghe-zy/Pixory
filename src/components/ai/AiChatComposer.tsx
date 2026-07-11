@@ -38,7 +38,10 @@ interface AiChatComposerProps {
   onRemoveAttachment?: (id: string) => void;
   onFocus?: () => void;
   onComposerHeightChange?: () => void;
+  onComposerShellHeightChange?: (height: number) => void;
   onModelIconPress?: () => void;
+  onReplyAssist: () => void;
+  replyAssistDisabled?: boolean;
   onVoiceInput: () => void;
   onCancelVoiceInput?: () => void;
   onSend: () => void;
@@ -99,8 +102,11 @@ export function AiChatComposer({
   onChangeText,
   onFocus,
   onComposerHeightChange,
+  onComposerShellHeightChange,
   onRemoveAttachment,
   onModelIconPress,
+  onReplyAssist,
+  replyAssistDisabled = false,
   onVoiceInput,
   onCancelVoiceInput,
   onSend,
@@ -129,7 +135,12 @@ export function AiChatComposer({
   return (
     <View style={styles.container}>
       <AiVoiceInputStatus error={voiceError} onCancel={onCancelVoiceInput} state={voiceState} />
-      <View style={styles.composerShell}>
+      <View
+        onLayout={(event) =>
+          onComposerShellHeightChange?.(event.nativeEvent.layout.height)
+        }
+        style={styles.composerShell}
+      >
         {/* --- Attachment rail (inside the big card) --- */}
         {attachments.length ? (
           <View style={styles.attachmentRail}>
@@ -191,16 +202,31 @@ export function AiChatComposer({
 
         {/* --- Bottom toolbar: [model icon]  ...space...  [+ attach] [send/stop] --- */}
         <View style={styles.toolbar}>
-          {/* Left: model icon */}
-          <Pressable
-            accessibilityLabel="当前模型"
-            accessibilityRole="button"
-            hitSlop={spacing[2]}
-            onPress={onModelIconPress}
-            style={({ pressed }) => [styles.modelIconButton, pressed && styles.pressed]}
-          >
-            <AiModelIcon brand={modelIconBrand} size={22} />
-          </Pressable>
+          <View style={styles.leftActions}>
+            <Pressable
+              accessibilityLabel="当前模型"
+              accessibilityRole="button"
+              hitSlop={spacing[2]}
+              onPress={onModelIconPress}
+              style={({ pressed }) => [styles.modelIconButton, pressed && styles.pressed]}
+            >
+              <AiModelIcon brand={modelIconBrand} size={22} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="AI 帮答"
+              accessibilityRole="button"
+              disabled={replyAssistDisabled}
+              hitSlop={spacing[2]}
+              onPress={onReplyAssist}
+              style={({ pressed }) => [
+                styles.replyAssistButton,
+                replyAssistDisabled && styles.disabled,
+                pressed && !replyAssistDisabled && styles.pressed,
+              ]}
+            >
+              <Ionicons color={aiLightColors.ink} name="bulb-outline" size={spacing[5]} />
+            </Pressable>
+          </View>
 
           {/* Spacer */}
           <View style={styles.toolbarSpacer} />
@@ -344,8 +370,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: spacing[2],
   },
+  leftActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[1],
+  },
   modelIconButton: {
     alignItems: 'center',
+    height: spacing[8],
+    justifyContent: 'center',
+    width: spacing[8],
+  },
+  replyAssistButton: {
+    alignItems: 'center',
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
     height: spacing[8],
     justifyContent: 'center',
     width: spacing[8],

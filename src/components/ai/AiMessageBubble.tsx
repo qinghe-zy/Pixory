@@ -53,6 +53,7 @@ interface AiMessageBubbleProps {
   onSubmitEdit: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
   onContinue: (messageId: string) => void;
+  onContinueReply: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
@@ -82,6 +83,7 @@ type AiMessageFooterActionsProps = {
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
   onContinue: (messageId: string) => void;
+  onContinueReply: (messageId: string) => void;
   onEditUser: (messageId: string, content: string) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
@@ -98,6 +100,7 @@ export function AiMessageFooterActions({
   pendingActionMessageId = null,
   onCopy,
   onContinue,
+  onContinueReply,
   onEditUser,
   onRegenerate,
   onSelectVersion,
@@ -108,6 +111,7 @@ export function AiMessageFooterActions({
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
   const canContinue = !isUser && !generating && !actionPending && Boolean(message.content.trim()) && (message.status === 'failed' || message.status === 'stopped');
+  const canContinueReply = !isUser && !generating && !actionPending && Boolean(message.content.trim()) && message.status === 'completed';
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
   const messageTimestamp = message.completedAt ?? message.updatedAt ?? message.createdAt;
@@ -159,6 +163,18 @@ export function AiMessageFooterActions({
           style={({ pressed }) => [styles.messageActionButton, !canContinue && styles.disabledAction, pressed && canContinue && styles.pressed]}
         >
           <Ionicons color={aiLightColors.muted} name="play-forward-outline" size={15} />
+        </Pressable>
+      ) : null}
+      {!isUser ? (
+        <Pressable
+          accessibilityLabel="续答"
+          accessibilityRole="button"
+          disabled={!canContinueReply}
+          hitSlop={8}
+          onPress={() => onContinueReply(message.id)}
+          style={({ pressed }) => [styles.continueReplyActionButton, !canContinueReply && styles.disabledAction, pressed && canContinueReply && styles.pressed]}
+        >
+          <Text style={styles.continueReplyActionText}>续答</Text>
         </Pressable>
       ) : null}
       {isUser ? (
@@ -239,6 +255,7 @@ function AiMessageBubbleComponent({
   onChangeEditDraft,
   onEditUser,
   onContinue,
+  onContinueReply,
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
@@ -506,6 +523,7 @@ function AiMessageBubbleComponent({
               }, 1400);
             }}
             onContinue={onContinue}
+            onContinueReply={onContinueReply}
             onEditUser={onEditUser}
             onRegenerate={onRegenerate}
             onSelectVersion={onSelectVersion}
@@ -710,6 +728,23 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: 'center',
     width: 28,
+  },
+  continueReplyActionButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.canvas,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 28,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[2],
+  },
+  continueReplyActionText: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.muted,
+    fontStyle: 'italic',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   favoriteActionButtonActive: {
     backgroundColor: aiLightColors.primarySoft,

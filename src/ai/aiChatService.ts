@@ -51,6 +51,7 @@ import { scheduleDeferredCompanionMemoryMaintenance } from './aiMemoryMaintenanc
 import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import {
+  buildPromptCacheMetadata,
   buildProviderCachePolicy,
   deriveAiChatMode,
   hashPromptCacheText,
@@ -181,6 +182,19 @@ export interface ContinueAssistantMessageInput {
   onUpdated?: () => void;
 }
 
+export interface ContinueAssistantReplyInput {
+  space: PixorySpace;
+  threadId: string;
+  assistantMessageId: string;
+  sendPressedAt?: string;
+  signal?: AbortSignal;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
+  onUpdated?: () => void;
+}
+
 export interface RewriteUserMessageInput {
   space: PixorySpace;
   threadId: string;
@@ -294,6 +308,12 @@ const CONTINUE_ASSISTANT_REPLY_INSTRUCTION = [
   '继续上一条 assistant 回复。',
   '只输出紧接在已显示正文后面的后续正文，不要重写、总结或重复已显示内容。',
   '不要提及中断、续写、内部思考或系统上下文。',
+].join('\n');
+
+const CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION = [
+  '基于刚才最后一条 assistant 回复继续往下说，并作为下一条新的 assistant 消息输出。',
+  '延续原来的语气、情绪、叙述方向和上下文，不要重复上一条回复已经说过的开头或整段内容。',
+  '直接输出新的后续正文，不要提及系统提示、续答指令、内部思考或“这是下一条消息”。',
 ].join('\n');
 
 function snippetTextNeedle(text: string): string {
@@ -515,6 +535,27 @@ const DEEP_MEMORY_LIMIT = 5;
 const RELATED_HISTORY_LIMIT = 4;
 const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
+const REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT = 12;
+const REPLY_ASSIST_CONTEXT_MAX_CHARS = 4200;
+const REPLY_ASSIST_MAX_ATTEMPTS = 3;
+const REPLY_ASSIST_SHORT_COUNT = 3;
+const REPLY_ASSIST_SHORT_MIN_CHARS = 4;
+const REPLY_ASSIST_SHORT_MAX_CHARS = 25;
+const REPLY_ASSIST_LONG_COUNT = 1;
+const REPLY_ASSIST_LONG_MIN_CHARS = 35;
+const REPLY_ASSIST_LONG_MAX_CHARS = 120;
+const REPLY_ASSIST_LONG_MIN_SENTENCES = 3;
+
+export type AiReplyAssistMode = 'short' | 'long';
+
+export interface GenerateReplyAssistSuggestionsInput {
+  space: PixorySpace;
+  threadId: string;
+  mode: AiReplyAssistMode;
+  transcript: Array<{ role: 'user' | 'assistant'; content: string }>;
+  branchScopes?: AiBranchScope[];
+  signal?: AbortSignal;
+}
 
 function parseThreadRoleSnapshot(roleSnapshotJson: string): Record<string, unknown> {
   try {
@@ -525,6 +566,184 @@ function parseThreadRoleSnapshot(roleSnapshotJson: string): Record<string, unkno
   } catch {
     return {};
   }
+}
+
+function normalizeReplyAssistText(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'“”‘’\-*•\d.、]+/, '')
+    .trim();
+}
+
+function replyAssistCharCount(value: string): number {
+  return [...value].length;
+}
+
+function replyAssistSentenceCount(value: string): number {
+  return value
+    .split(/[。！？!?]+/)
+    .map((part) => part.trim())
+    .filter(Boolean).length;
+}
+
+function formatReplyAssistTranscript(
+  transcript: Array<{ role: 'user' | 'assistant'; content: string }>
+): string {
+  const normalizedMessages = transcript
+    .map((message) => ({
+      content: normalizeReplyAssistText(message.content),
+      role: message.role,
+    }))
+    .filter((message) => message.content.length > 0);
+  if (normalizedMessages.length <= REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT) {
+    return normalizedMessages
+      .map((message) => `[${message.role}] ${message.content}`)
+      .join('\n');
+  }
+  const selected = normalizedMessages.slice(-REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT);
+  return selected
+    .map((message) => `[${message.role}] ${message.content}`)
+    .join('\n');
+}
+
+function trimReplyAssistTranscript(
+  transcript: Array<{ role: 'user' | 'assistant'; content: string }>
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const selected = transcript
+    .map((message) => ({
+      content: normalizeReplyAssistText(message.content),
+      role: message.role,
+    }))
+    .filter((message) => message.content.length > 0)
+    .slice(-REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT);
+  let totalChars = selected.reduce((sum, message) => sum + replyAssistCharCount(message.content), 0);
+  if (totalChars <= REPLY_ASSIST_CONTEXT_MAX_CHARS) {
+    return selected;
+  }
+  const trimmed = [...selected];
+  for (let index = 0; index < trimmed.length && totalChars > REPLY_ASSIST_CONTEXT_MAX_CHARS; index += 1) {
+    const overflow = totalChars - REPLY_ASSIST_CONTEXT_MAX_CHARS;
+    const content = trimmed[index]?.content ?? '';
+    if (replyAssistCharCount(content) <= 80) {
+      continue;
+    }
+    const keepChars = Math.max(80, replyAssistCharCount(content) - overflow);
+    const nextContent = [...content].slice(-keepChars).join('').trim();
+    totalChars -= Math.max(0, replyAssistCharCount(content) - replyAssistCharCount(nextContent));
+    trimmed[index] = { ...trimmed[index], content: nextContent };
+  }
+  return trimmed.filter((message) => message.content.length > 0);
+}
+
+function buildReplyAssistRoleContext(thread: AiThreadRecord): string {
+  const roleContext = buildRolePromptContextFromThread(thread);
+  const sections = [
+    thread.contextType !== 'normal' ? `会话标题：${thread.title}` : '',
+    roleContext?.name ? `角色名：${roleContext.name}` : '',
+    roleContext?.description ? `角色描述：${roleContext.description}` : '',
+    thread.systemPrompt?.trim() ? `主会话提示词：\n${thread.systemPrompt.trim()}` : '',
+  ].filter(Boolean);
+  return sections.join('\n\n');
+}
+
+function buildReplyAssistOutputContract(mode: AiReplyAssistMode): string {
+  if (mode === 'short') {
+    return [
+      '当前模式：短句帮答。',
+      `必须返回 ${REPLY_ASSIST_SHORT_COUNT} 条 suggestions。`,
+      `每条必须是自然口语，至少 ${REPLY_ASSIST_SHORT_MIN_CHARS} 个字，不超过 ${REPLY_ASSIST_SHORT_MAX_CHARS} 个字。`,
+      '避免模板化、避免重复句式、不要过度热情。',
+      '输出 JSON：{"suggestions":["...", "...", "..."]}',
+    ].join('\n');
+  }
+  return [
+    '当前模式：长句帮答。',
+    `只返回 ${REPLY_ASSIST_LONG_COUNT} 条 suggestion。`,
+    `该句至少 ${REPLY_ASSIST_LONG_MIN_SENTENCES} 句话，至少 ${REPLY_ASSIST_LONG_MIN_CHARS} 个字，不超过 ${REPLY_ASSIST_LONG_MAX_CHARS} 个字。`,
+    '语气延续当前对话，内容完整可直接发送。',
+    '输出 JSON：{"suggestions":["..."]}',
+  ].join('\n');
+}
+
+function buildReplyAssistUserPrompt(input: {
+  companionMemoryPrefix: string;
+  mode: AiReplyAssistMode;
+  stableMemoryPrefix: string;
+  thread: AiThreadRecord;
+  transcript: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): string {
+  const transcript = formatReplyAssistTranscript(input.transcript);
+  const stableSections = [
+    buildReplyAssistRoleContext(input.thread),
+    input.companionMemoryPrefix,
+    input.stableMemoryPrefix,
+  ].filter(Boolean);
+  return [
+    stableSections.length > 0 ? `稳定上下文：\n${stableSections.join('\n\n')}` : '',
+    transcript ? `当前可见分支对话：\n${transcript}` : '',
+    buildReplyAssistOutputContract(input.mode),
+  ].filter(Boolean).join('\n\n');
+}
+
+function extractReplyAssistJson(text: string): string {
+  const trimmed = text.trim();
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+  return trimmed;
+}
+
+function parseReplyAssistSuggestions(text: string): string[] {
+  const jsonText = extractReplyAssistJson(text);
+  const parsed = JSON.parse(jsonText) as { suggestions?: unknown };
+  if (!Array.isArray(parsed.suggestions)) {
+    throw new Error('AI 帮答返回格式无效。');
+  }
+  return parsed.suggestions
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => normalizeReplyAssistText(value))
+    .filter(Boolean);
+}
+
+function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: string[]): string[] {
+  const expectedCount = mode === 'short' ? REPLY_ASSIST_SHORT_COUNT : REPLY_ASSIST_LONG_COUNT;
+  if (suggestions.length !== expectedCount) {
+    throw new Error('AI 帮答候选数量不符合要求。');
+  }
+  const uniqueSuggestions = new Set<string>();
+  for (const suggestion of suggestions) {
+    const dedupeKey = suggestion.replace(/\s+/g, '');
+    if (uniqueSuggestions.has(dedupeKey)) {
+      throw new Error('AI 帮答候选存在重复内容。');
+    }
+    uniqueSuggestions.add(dedupeKey);
+  }
+  if (mode === 'short') {
+    return suggestions.map((suggestion) => {
+      const charCount = replyAssistCharCount(suggestion);
+      if (charCount < REPLY_ASSIST_SHORT_MIN_CHARS || charCount > REPLY_ASSIST_SHORT_MAX_CHARS) {
+        throw new Error('AI 帮答短句长度不符合要求。');
+      }
+      return suggestion;
+    });
+  }
+  return suggestions.map((suggestion) => {
+    const charCount = replyAssistCharCount(suggestion);
+    if (charCount < REPLY_ASSIST_LONG_MIN_CHARS || charCount > REPLY_ASSIST_LONG_MAX_CHARS) {
+      throw new Error('AI 帮答长句长度不符合要求。');
+    }
+    if (replyAssistSentenceCount(suggestion) < REPLY_ASSIST_LONG_MIN_SENTENCES) {
+      throw new Error('AI 帮答长句句数不符合要求。');
+    }
+    return suggestion;
+  });
 }
 
 function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig {
@@ -2523,12 +2742,14 @@ function appendVisibleAssistantPartialToHistory(
   history: Array<{ role: 'assistant' | 'user'; content: string }>,
   input: {
     assistantPartial: string;
-    originalUserPrompt: string;
+    originalUserPrompt?: string;
+    userHistoryContent?: string;
   }
 ): Array<{ role: 'assistant' | 'user'; content: string }> {
+  const userHistoryContent = input.userHistoryContent ?? input.originalUserPrompt ?? '';
   return [
     ...history,
-    { role: 'user', content: input.originalUserPrompt },
+    { role: 'user', content: userHistoryContent },
     { role: 'assistant', content: input.assistantPartial },
   ];
 }
@@ -2641,7 +2862,14 @@ async function streamAssistantReply(input: {
   ignoreReasoningDeltas?: boolean;
   initialAnswerText?: string;
   initialReasoningText?: string | null;
-  mode?: 'replace' | 'continue';
+  mode?: 'replace' | 'continue' | 'followup';
+  requestContentOverride?: string;
+  historyAnchorMessageId?: string;
+  continuationContext?: {
+    answerText: string;
+    reasoningText?: string | null;
+  };
+  continuationInstruction?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
@@ -2651,6 +2879,7 @@ async function streamAssistantReply(input: {
   const mode = input.mode ?? 'replace';
   const initialAnswerText = mode === 'continue' ? input.initialAnswerText ?? '' : '';
   const initialReasoningText = mode === 'continue' ? input.initialReasoningText ?? null : null;
+  const requestContent = input.requestContentOverride ?? input.userMessage.content;
   const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas);
   let answerText = initialAnswerText;
   let reasoningText = initialReasoningText ?? '';
@@ -2870,7 +3099,7 @@ async function streamAssistantReply(input: {
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
-    ({ prompt, snippets } = await buildPromptForThread(input.thread, input.userMessage.content, branchScopes, {
+    ({ prompt, snippets } = await buildPromptForThread(input.thread, requestContent, branchScopes, {
       attachmentPromptContext,
       generationMetrics,
     }));
@@ -2889,7 +3118,7 @@ async function streamAssistantReply(input: {
       aiThreadRepository.listRecentCompletedMessagesBefore(
         db,
         input.thread.id,
-        input.userMessage.id,
+        input.historyAnchorMessageId ?? input.userMessage.id,
         CHAT_HISTORY_MESSAGE_LIMIT + 1,
         branchScopes
       )
@@ -2903,9 +3132,11 @@ async function streamAssistantReply(input: {
     const protectedPrompt = [
       prompt.system,
       prompt.user,
-      input.userMessage.content,
+      requestContent,
       mode === 'continue' ? initialAnswerText : '',
       mode === 'continue' ? CONTINUE_ASSISTANT_REPLY_INSTRUCTION : '',
+      mode === 'followup' ? input.continuationContext?.answerText ?? '' : '',
+      mode === 'followup' ? input.continuationInstruction ?? '' : '',
     ].filter(Boolean).join('\n\n');
     ({ contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
       modelContextWindowTokens,
@@ -2920,6 +3151,15 @@ async function streamAssistantReply(input: {
         originalUserPrompt: prompt.user,
       });
       userPrompt = CONTINUE_ASSISTANT_REPLY_INSTRUCTION;
+    } else if (mode === 'followup' && input.continuationContext) {
+      history = appendVisibleAssistantPartialToHistory(history, {
+        assistantPartial: buildAssistantContinuationContext({
+          initialAnswerText: input.continuationContext.answerText,
+          initialReasoningText: input.continuationContext.reasoningText,
+        }),
+        userHistoryContent: input.userMessage.content,
+      });
+      userPrompt = input.continuationInstruction ?? CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION;
     } else {
       userPrompt = prompt.user;
     }
@@ -3393,6 +3633,163 @@ async function loadThreadForGeneration(space: PixorySpace, threadId: string): Pr
   return thread;
 }
 
+export async function generateReplyAssistSuggestions(
+  input: GenerateReplyAssistSuggestionsInput
+): Promise<string[]> {
+  const thread = await loadThreadForGeneration(input.space, input.threadId);
+  const resolvedThreadModel = await resolveThreadChatModel(input.space, thread);
+  if (resolvedThreadModel.status !== 'ready') {
+    throw new Error(resolvedThreadModel.message);
+  }
+  if (!resolvedThreadModel.apiKey) {
+    throw new Error('当前会话模型还没有可用的 API Key。');
+  }
+
+  const transcript = trimReplyAssistTranscript(input.transcript);
+  if (transcript.length === 0) {
+    throw new Error('当前没有足够的上下文可用于生成帮答。');
+  }
+
+  const [cacheSettings, memorySnapshot] = await Promise.all([
+    resolvePromptCacheSettings(input.space),
+    runWithDatabaseSpace(input.space, async (db) => {
+      const [companionMemoryPrefix, stableMemoryPrefix] = await Promise.all([
+        buildCompanionMemoryPrefix(db, thread, { branchScopes: input.branchScopes }),
+        buildStableMemoryPrefix(db, thread, { branchScopes: input.branchScopes }),
+      ]);
+      return { companionMemoryPrefix, stableMemoryPrefix };
+    }),
+  ]);
+
+  const memoryEpoch = [
+    'reply_assist',
+    thread.id,
+    input.mode,
+    hashPromptCacheText(
+      [memorySnapshot.companionMemoryPrefix, memorySnapshot.stableMemoryPrefix]
+        .filter(Boolean)
+        .join('\n\n')
+    ).slice(0, 16),
+  ].join(':');
+  const requestedAt = nowIso();
+  const systemPromptSections = [
+    [
+      '你是 Pixory 的聊天帮答生成器。',
+      '你只负责基于当前会话上下文，替用户生成下一条可直接发送的回复候选。',
+      '不要解释，不要分析，不要加标题，不要输出编号，不要输出 markdown。',
+      '输出必须是 JSON，且字段名只能是 suggestions。',
+      '候选必须像用户下一条要发的话，不能像 AI 旁白、总结或说明。',
+    ].join('\n'),
+    buildReplyAssistRoleContext(thread),
+    memorySnapshot.companionMemoryPrefix,
+    memorySnapshot.stableMemoryPrefix,
+  ].filter(Boolean);
+  const stableBlocks = [
+    { name: 'stable_app_policy' as const, stable: true, text: systemPromptSections[0] ?? '', version: 1 },
+    { name: 'stable_role' as const, stable: true, text: systemPromptSections[1] ?? '', version: 3 },
+    { name: 'stable_material_rules' as const, stable: true, text: '', version: 1 },
+    { name: 'stable_tool_definitions' as const, stable: true, text: '', version: 1 },
+    {
+      name: 'memory_snapshot' as const,
+      stable: true,
+      text: [memorySnapshot.companionMemoryPrefix, memorySnapshot.stableMemoryPrefix].filter(Boolean).join('\n\n'),
+      version: 1,
+    },
+    { name: 'history_window' as const, stable: false, text: '', version: 1 },
+    { name: 'dynamic_memory' as const, stable: false, text: '', version: 1 },
+    { name: 'retrieval_context' as const, stable: false, text: '', version: 1 },
+    {
+      name: 'current_user_message' as const,
+      stable: false,
+      text: buildReplyAssistUserPrompt({
+        companionMemoryPrefix: memorySnapshot.companionMemoryPrefix,
+        mode: input.mode,
+        stableMemoryPrefix: memorySnapshot.stableMemoryPrefix,
+        thread,
+        transcript,
+      }),
+      version: 1,
+    },
+  ];
+  const promptCacheMetadata = buildPromptCacheMetadata({
+    blocks: stableBlocks,
+    chatMode: deriveAiChatMode(thread, input.space),
+    memoryEpoch,
+    retrievalText: '',
+  });
+  const providerCachePolicy = buildProviderCachePolicy({
+    branchRouteHash: hashPromptCacheText(JSON.stringify(input.branchScopes ?? [])).slice(0, 16),
+    generationParamsHash: hashPromptCacheText(
+      JSON.stringify({
+        mode: input.mode,
+        thinkingDisabled: true,
+      })
+    ).slice(0, 16),
+    metadata: promptCacheMetadata,
+    modelId: resolvedThreadModel.modelId,
+    previousRequestAt: null,
+    provider: {
+      ...resolvedThreadModel.provider,
+      openAiUsageObservationEnabled: openAiUsageObservationEnabled(
+        resolvedThreadModel.provider,
+      ),
+    },
+    requestedAt,
+    scopeKey: `reply_assist:${thread.space}:${thread.id}:${input.mode}`,
+    settings: cacheSettings,
+    stableSystemBlocks: stableBlocks
+      .filter((block) => block.stable)
+      .map((block) => ({ name: block.name, text: block.text })),
+  });
+
+  const systemPrompt = systemPromptSections.join('\n\n');
+  const userPrompt = buildReplyAssistUserPrompt({
+    companionMemoryPrefix: '',
+    mode: input.mode,
+    stableMemoryPrefix: '',
+    thread,
+    transcript,
+  });
+  const adapter = getAdapterForProvider(resolvedThreadModel.provider);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < REPLY_ASSIST_MAX_ATTEMPTS; attempt += 1) {
+    let text = '';
+    let streamError: string | null = null;
+    await adapter.streamChat(
+      {
+        apiKey: resolvedThreadModel.apiKey,
+        baseUrl: resolvedThreadModel.provider.baseUrl ?? '',
+        history: [],
+        modelId: resolvedThreadModel.modelId,
+        providerCachePolicy,
+        signal: input.signal,
+        systemPrompt,
+        thinkingDisabled: true,
+        userPrompt,
+      },
+      (event) => {
+        if (event.type === 'answer_delta') {
+          text += event.text;
+        }
+        if (event.type === 'error') {
+          streamError = event.message;
+        }
+      }
+    );
+    if (streamError) {
+      throw new Error(streamError);
+    }
+    try {
+      return validateReplyAssistSuggestions(input.mode, parseReplyAssistSuggestions(text));
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('AI 帮答解析失败。');
+    }
+  }
+
+  throw lastError ?? new Error('AI 帮答生成失败。');
+}
+
 export async function sendUserMessage(
   input: SendUserMessageInput
 ): Promise<{ userMessageId: string; assistantMessageId: string }> {
@@ -3673,6 +4070,104 @@ export async function continueAssistantMessage(input: ContinueAssistantMessageIn
     space: input.space,
     thread: latestThread,
     userMessage: continuation.userMessage,
+  });
+}
+
+export async function continueAssistantReply(input: ContinueAssistantReplyInput): Promise<void> {
+  const thread = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.findThreadById(db, input.threadId));
+  if (!thread || thread.space !== input.space) {
+    throw new Error('AI thread was not found.');
+  }
+
+  const assistantMessageId = createAiId('aimsg');
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId('aigen'),
+    messageId: assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
+  const continuation = await runWithDatabaseSpace(input.space, async (db) => {
+    const assistantMessage = await aiThreadRepository.findMessageById(db, input.assistantMessageId);
+    if (!assistantMessage || assistantMessage.threadId !== thread.id || assistantMessage.role !== 'assistant') {
+      throw new Error('AI assistant message was not found.');
+    }
+    if (assistantMessage.status !== 'completed') {
+      throw new Error('只有已完成的回复可以续答。');
+    }
+    if (!assistantMessage.content.trim()) {
+      throw new Error('这条回复还没有可续答的正文。');
+    }
+    const assistantBranchScopes = await aiThreadRepository.resolveBranchLineage(
+      db,
+      assistantMessage.branchRootMessageId,
+      assistantMessage.branchVersionIndex
+    );
+    const previousUserMessage = await aiThreadRepository.findPreviousMessageByRole(
+      db,
+      thread.id,
+      input.assistantMessageId,
+      'user',
+      assistantBranchScopes
+    );
+    if (!previousUserMessage) {
+      throw new Error('没有可用于续答的用户消息。');
+    }
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
+    await aiThreadRepository.createMessage(db, {
+      id: assistantMessageId,
+      threadId: thread.id,
+      branchRootMessageId: assistantMessage.branchRootMessageId,
+      branchVersionIndex: assistantMessage.branchVersionIndex,
+      role: 'assistant',
+      status: 'generating',
+      content: '',
+      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+    });
+    markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');
+    await aiThreadRepository.setThreadCurrentBranch(db, {
+      branchRootMessageId: assistantMessage.branchRootMessageId,
+      branchVersionIndex: assistantMessage.branchVersionIndex,
+      threadId: thread.id,
+    });
+    return {
+      assistantMessage,
+      previousUserMessage,
+    };
+  });
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  const replayAttachments = await loadOutgoingAttachmentsForMessage({
+    messageId: continuation.previousUserMessage.id,
+    space: input.space,
+  });
+  input.onCreated?.({
+    userMessageId: continuation.previousUserMessage.id,
+    assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+  });
+  input.onUpdated?.();
+
+  await streamAssistantReply({
+    attachments: replayAttachments,
+    assistantMessageId,
+    continuationContext: {
+      answerText: continuation.assistantMessage.content,
+      reasoningText: continuation.assistantMessage.reasoningText,
+    },
+    continuationInstruction: CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
+    historyAnchorMessageId: input.assistantMessageId,
+    ignoreReasoningDeltas: true,
+    mode: 'followup',
+    onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
+    onUpdated: input.onUpdated,
+    signal: input.signal,
+    space: input.space,
+    thread: latestThread,
+    userMessage: continuation.previousUserMessage,
   });
 }
 

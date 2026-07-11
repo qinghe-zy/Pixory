@@ -52,6 +52,7 @@ import {
 } from "../components/ai/aiLightTheme";
 import { AiMemoryCaptureNotice } from "../components/ai/AiMemoryCaptureNotice";
 import { AiCitationList } from "../components/ai/AiCitationList";
+import { AiReplyAssistModal } from "../components/ai/AiReplyAssistModal";
 import {
   AiMessageBubble,
   AiMessageFooterActions,
@@ -79,6 +80,7 @@ import {
   flushStreamingMessageSnapshot,
   getCurrentChatModelLabel,
   getCurrentChatModelIconBrand,
+  generateReplyAssistSuggestions,
   listThreadMessages,
   loadThreadContinuityMilestones,
   loadThreadMessageAppearanceConfig,
@@ -88,6 +90,7 @@ import {
   rollbackThreadContinuityImport,
   listFavoriteAssistantMessageKeys,
   toggleAssistantMessageFavorite,
+  type AiReplyAssistMode,
   type AiMessageWithCitations,
   type AiStreamingMessagePatch,
 } from "../ai/aiChatService";
@@ -352,6 +355,74 @@ const STARTER_SUGGESTIONS = [
   "帮我发散想法",
   "总结当前设定",
 ] as const;
+
+function buildReplyAssistTranscript(
+  messages: AiMessageWithCitations[],
+): Array<{ role: "user" | "assistant"; content: string }> {
+  return messages
+    .filter(
+      (
+        message,
+      ): message is AiMessageWithCitations & {
+        role: "user" | "assistant";
+      } =>
+        (message.role === "user" || message.role === "assistant") &&
+        message.status !== "generating" &&
+        message.content.trim().length > 0,
+    )
+    .slice(-12)
+    .map((message) => ({
+      content: message.content.trim(),
+      role: message.role,
+    }));
+}
+
+function canOpenReplyAssist(messages: AiMessageWithCitations[]): boolean {
+  const transcript = buildReplyAssistTranscript(messages);
+  if (transcript.length === 0) {
+    return false;
+  }
+  return transcript[transcript.length - 1]?.role === "assistant";
+}
+
+function buildReplyAssistContextSignature(input: {
+  threadId: string | null;
+  branchScopes: AiBranchScope[];
+  visibleMessages: AiMessageWithCitations[];
+}): string {
+  const branchScopeKey = [...input.branchScopes]
+    .sort((left, right) =>
+      left.branchRootMessageId.localeCompare(right.branchRootMessageId) ||
+      left.branchVersionIndex - right.branchVersionIndex,
+    )
+    .map(
+      (scope) => `${scope.branchRootMessageId}:${scope.branchVersionIndex}`,
+    )
+    .join("|");
+  const transcriptKey = input.visibleMessages
+    .filter(
+      (message) =>
+        (message.role === "user" || message.role === "assistant") &&
+        message.status !== "generating" &&
+        message.content.trim().length > 0,
+    )
+    .slice(-12)
+    .map(
+      (message) =>
+        `${message.id}:${message.versionIndex}:${message.role}:${message.content.trim()}`,
+    )
+    .join("|");
+  return [input.threadId ?? "no-thread", branchScopeKey, transcriptKey].join(
+    "::",
+  );
+}
+
+function isReplyAssistAbortError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || /aborted?/i.test(error.message))
+  );
+}
 
 function shouldShowDateSeparator(
   messages: AiMessageWithCitations[],
@@ -1001,6 +1072,9 @@ export function AiChatScreen({
   const messagesRef = useRef<AiMessageWithCitations[]>([]);
   const messageIndexByIdRef = useRef(new Map<string, number>());
   const visibleMessagesRef = useRef<AiMessageWithCitations[]>([]);
+  const replyAssistAbortControllerRef = useRef<AbortController | null>(null);
+  const replyAssistContextSignatureRef = useRef<string | null>(null);
+  const replyAssistSessionIdRef = useRef(0);
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 82,
@@ -1121,6 +1195,23 @@ export function AiChatScreen({
   );
   const [tailViewportPolicy, setTailViewportPolicy] =
     useState<StreamingTailViewportPolicy>(tailViewportPolicyRef.current);
+  const [replyAssistVisible, setReplyAssistVisible] = useState(false);
+  const [replyAssistMode, setReplyAssistMode] =
+    useState<AiReplyAssistMode>("short");
+  const [replyAssistPagesByMode, setReplyAssistPagesByMode] = useState<
+    Record<AiReplyAssistMode, string[][]>
+  >({
+    long: [],
+    short: [],
+  });
+  const [replyAssistPageIndexByMode, setReplyAssistPageIndexByMode] = useState<
+    Record<AiReplyAssistMode, number>
+  >({
+    long: 0,
+    short: 0,
+  });
+  const [replyAssistLoading, setReplyAssistLoading] = useState(false);
+  const [replyAssistError, setReplyAssistError] = useState<string | null>(null);
   const updateStreamingLockStateSnapshot = useCallback((offsetY: number) => {
     const atBottom = offsetY <= MESSAGE_STREAM_FOLLOW_THRESHOLD;
     const nearBottom = offsetY <= STICK_TO_BOTTOM_OFFSET_PX;
@@ -1395,6 +1486,7 @@ export function AiChatScreen({
 
   useEffect(() => {
     return () => {
+      abortReplyAssistRequest();
       if (userScrollIdleTimeoutRef.current) {
         clearTimeout(userScrollIdleTimeoutRef.current);
       }
@@ -1531,6 +1623,7 @@ export function AiChatScreen({
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [composerPanelHeight, setComposerPanelHeight] = useState(0);
+  const [composerShellHeight, setComposerShellHeight] = useState(0);
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
@@ -1778,6 +1871,41 @@ export function AiChatScreen({
     () => findLatestVisibleBranchRootMessageId(visibleMessages),
     [visibleMessages],
   );
+  const replyAssistContextSignature = useMemo(
+    () =>
+      buildReplyAssistContextSignature({
+        branchScopes:
+          persistedCurrentBranchScopes.length > 0
+            ? persistedCurrentBranchScopes
+            : Object.entries(selectedVersionByMessageId).map(
+                ([branchRootMessageId, branchVersionIndex]) => ({
+                  branchRootMessageId,
+                  branchVersionIndex,
+                }),
+              ),
+        threadId: activeThreadId,
+        visibleMessages,
+      }),
+    [
+      activeThreadId,
+      persistedCurrentBranchScopes,
+      selectedVersionByMessageId,
+      visibleMessages,
+    ],
+  );
+  useEffect(() => {
+    if (
+      replyAssistVisible &&
+      replyAssistContextSignatureRef.current &&
+      replyAssistContextSignatureRef.current !== replyAssistContextSignature
+    ) {
+      closeReplyAssistModal();
+      return;
+    }
+    if (!replyAssistVisible) {
+      replyAssistContextSignatureRef.current = replyAssistContextSignature;
+    }
+  }, [replyAssistContextSignature, replyAssistVisible]);
   // prettier-ignore
   const activeContinuityMilestone = useMemo<ActiveContinuityMilestone | null>(() => {
       if (continuityMilestones.length === 0) {
@@ -4095,6 +4223,176 @@ export function AiChatScreen({
     setErrorMessage(null);
   }
 
+  function abortReplyAssistRequest() {
+    replyAssistAbortControllerRef.current?.abort();
+    replyAssistAbortControllerRef.current = null;
+  }
+
+  function closeReplyAssistModal() {
+    abortReplyAssistRequest();
+    replyAssistSessionIdRef.current += 1;
+    replyAssistContextSignatureRef.current = replyAssistContextSignature;
+    setReplyAssistVisible(false);
+    setReplyAssistMode("short");
+    setReplyAssistPagesByMode({
+      long: [],
+      short: [],
+    });
+    setReplyAssistPageIndexByMode({
+      long: 0,
+      short: 0,
+    });
+    setReplyAssistError(null);
+    setReplyAssistLoading(false);
+  }
+
+  async function generateReplyAssistPage(mode: AiReplyAssistMode) {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId) {
+      throw new Error("当前还没有可用会话。");
+    }
+    const transcript = buildReplyAssistTranscript(visibleMessagesRef.current);
+    if (transcript.length === 0 || transcript[transcript.length - 1]?.role !== "assistant") {
+      throw new Error("当前还没有可供帮答的 AI 回复。");
+    }
+    abortReplyAssistRequest();
+    const controller = new AbortController();
+    replyAssistAbortControllerRef.current = controller;
+    try {
+      return await generateReplyAssistSuggestions({
+        branchScopes: getPersistedCurrentBranchScopes(),
+        mode,
+        signal: controller.signal,
+        space,
+        threadId: targetThreadId,
+        transcript,
+      });
+    } finally {
+      if (replyAssistAbortControllerRef.current === controller) {
+        replyAssistAbortControllerRef.current = null;
+      }
+    }
+  }
+
+  async function ensureReplyAssistPage(
+    mode: AiReplyAssistMode,
+    sessionId = replyAssistSessionIdRef.current,
+  ) {
+    const existingPages = replyAssistPagesByMode[mode];
+    if (existingPages.length > 0) {
+      return;
+    }
+    setReplyAssistLoading(true);
+    setReplyAssistError(null);
+    try {
+      const suggestions = await generateReplyAssistPage(mode);
+      if (
+        !screenMountedRef.current ||
+        replyAssistSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      setReplyAssistPagesByMode((current) => ({
+        ...current,
+        [mode]: [suggestions],
+      }));
+      setReplyAssistPageIndexByMode((current) => ({
+        ...current,
+        [mode]: 0,
+      }));
+    } catch (error) {
+      if (isReplyAssistAbortError(error)) {
+        return;
+      }
+      if (
+        !screenMountedRef.current ||
+        replyAssistSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      setReplyAssistError(error instanceof Error ? error.message : "AI 帮答生成失败");
+    } finally {
+      if (
+        screenMountedRef.current &&
+        replyAssistSessionIdRef.current === sessionId
+      ) {
+        setReplyAssistLoading(false);
+      }
+    }
+  }
+
+  async function handleOpenReplyAssist() {
+    if (generating || !canOpenReplyAssist(visibleMessagesRef.current)) {
+      return;
+    }
+    replyAssistSessionIdRef.current += 1;
+    const sessionId = replyAssistSessionIdRef.current;
+    replyAssistContextSignatureRef.current = replyAssistContextSignature;
+    setReplyAssistVisible(true);
+    setReplyAssistError(null);
+    await ensureReplyAssistPage(replyAssistMode, sessionId);
+  }
+
+  async function handleRefreshReplyAssistPage(
+    mode = replyAssistMode,
+    sessionId = replyAssistSessionIdRef.current,
+  ) {
+    setReplyAssistLoading(true);
+    setReplyAssistError(null);
+    try {
+      const suggestions = await generateReplyAssistPage(mode);
+      if (
+        !screenMountedRef.current ||
+        replyAssistSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      let nextPageIndex = 0;
+      setReplyAssistPagesByMode((current) => {
+        const nextPages = [...current[mode], suggestions];
+        nextPageIndex = Math.max(nextPages.length - 1, 0);
+        return {
+          ...current,
+          [mode]: nextPages,
+        };
+      });
+      setReplyAssistPageIndexByMode((current) => ({
+        ...current,
+        [mode]: nextPageIndex,
+      }));
+    } catch (error) {
+      if (isReplyAssistAbortError(error)) {
+        return;
+      }
+      if (
+        !screenMountedRef.current ||
+        replyAssistSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      setReplyAssistError(error instanceof Error ? error.message : "AI 帮答生成失败");
+    } finally {
+      if (
+        screenMountedRef.current &&
+        replyAssistSessionIdRef.current === sessionId
+      ) {
+        setReplyAssistLoading(false);
+      }
+    }
+  }
+
+  async function handleChangeReplyAssistMode(mode: AiReplyAssistMode) {
+    if (mode === replyAssistMode) {
+      return;
+    }
+    setReplyAssistMode(mode);
+    setReplyAssistError(null);
+    if (replyAssistPagesByMode[mode].length > 0) {
+      return;
+    }
+    await ensureReplyAssistPage(mode, replyAssistSessionIdRef.current);
+  }
+
   async function handleSend() {
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
@@ -4418,6 +4716,69 @@ export function AiChatScreen({
     }
   }
 
+  async function handleContinueAssistantReply(messageId: string) {
+    const targetThreadId = activeThreadId;
+    if (!targetThreadId || generating) {
+      return;
+    }
+    const actionToken = beginGenerationAction();
+    if (!actionToken) {
+      return;
+    }
+    const sendPressedAt = new Date().toISOString();
+    let streamUnsubscribe: (() => void) | null = null;
+    const { generation: streamGeneration, subscriber } =
+      beginStreamingRequest(targetThreadId);
+    try {
+      markIntentionalLatestJump();
+      await flushBufferedStreamingState({ followLatest: false });
+      setPendingMessageActionId(messageId);
+      setGenerating(true);
+      setErrorMessage(null);
+      scheduleIntentionalLatestJump(false);
+      const managedGeneration =
+        aiGenerationManager.startContinueAssistantReply({
+          assistantMessageId: messageId,
+          sendPressedAt,
+          space,
+          subscriber: {
+            ...subscriber,
+            onCreated: ({ assistantMessageId, generationId, userMessageId }) => {
+              if (!isCurrentStream(targetThreadId, streamGeneration)) {
+                return;
+              }
+              subscriber.onCreated?.({
+                assistantMessageId,
+                generationId,
+                userMessageId,
+              });
+              showLatestMessageVersion(assistantMessageId);
+            },
+          },
+          threadId: targetThreadId,
+        });
+      streamUnsubscribe = managedGeneration.unsubscribe;
+      generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      await managedGeneration.promise;
+      await syncPersistedCurrentBranchRoute(targetThreadId, true);
+    } catch (error) {
+      if (!isCurrentStream(targetThreadId, streamGeneration)) {
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "续答失败");
+    } finally {
+      setPendingMessageActionId(null);
+      finishGenerationAction(actionToken);
+      if (isCurrentStream(targetThreadId, streamGeneration)) {
+        setGenerating(false);
+        setActiveAssistantId(null);
+        if (generationSubscriptionRef.current === streamUnsubscribe) {
+          clearGenerationSubscription();
+        }
+      }
+    }
+  }
+
   function handleEditUserMessage(messageId: string, content: string) {
     if (generating) {
       return;
@@ -4664,6 +5025,7 @@ export function AiChatScreen({
                     void copyMessageContent(targetMessage);
                   }}
                   onContinue={handleContinueAssistantMessage}
+                  onContinueReply={handleContinueAssistantReply}
                   onEditUser={handleEditUserMessage}
                   onRegenerate={(messageId) => {
                     void handleRegenerate(messageId);
@@ -4800,6 +5162,7 @@ export function AiChatScreen({
               }}
               onCancelEdit={cancelInlineEdit}
               onContinue={handleContinueAssistantMessage}
+              onContinueReply={handleContinueAssistantReply}
               onEditUser={handleEditUserMessage}
               onOpenCitation={openCitation}
               onRegenerate={(messageId) => {
@@ -4863,6 +5226,7 @@ export function AiChatScreen({
       generating,
       handleEditUserMessage,
       handleContinueAssistantMessage,
+      handleContinueAssistantReply,
       handleRegenerate,
       handleSubmitInlineRewrite,
       handleSelectMessageVersion,
@@ -5072,7 +5436,6 @@ export function AiChatScreen({
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>
             ) : null}
-            <AiScrollToLatestButton bottomOffset={composerPanelHeight + spacing[1.5]} visible={showScrollToLatest && !inlineEditingActive} onPress={handleReturnToLatestPress} />
           </View>
 
           {inlineEditingActive ? null : (
@@ -5150,14 +5513,21 @@ export function AiChatScreen({
                 onAddImageAttachment={() => void pickChatImages()}
                 onChangeText={setComposerText}
                 onComposerHeightChange={handleComposerHeightChange}
+                onComposerShellHeightChange={setComposerShellHeight}
                 onFocus={handleComposerFocus}
                 onModelIconPress={() => void handleOpenSessionConfig()}
+                onReplyAssist={() => {
+                  void handleOpenReplyAssist();
+                }}
                 onRemoveAttachment={(id) =>
                   setPendingAttachments((current) =>
                     current.filter((attachment) => attachment.id !== id),
                   )
                 }
                 placeholder=""
+                replyAssistDisabled={
+                  generating || !canOpenReplyAssist(visibleMessages)
+                }
                 onSend={() => {
                   void handleSend();
                 }}
@@ -5174,6 +5544,11 @@ export function AiChatScreen({
               />
             </Animated.View>
           )}
+          <AiScrollToLatestButton
+            bottomOffset={composerShellHeight + spacing[3] + spacing[1.5]}
+            visible={showScrollToLatest && !inlineEditingActive}
+            onPress={handleReturnToLatestPress}
+          />
         </View>
       </KeyboardAvoidingView>
       <AiComprehensiveRecordDrawer
@@ -5203,6 +5578,41 @@ export function AiChatScreen({
         }}
         onRenameThread={(thread, title) => renameRecentThread(thread, title)}
         onDeleteThread={(thread) => deleteRecentThread(thread)}
+      />
+      <AiReplyAssistModal
+        bottomInset={insets.bottom}
+        errorMessage={replyAssistError}
+        loading={replyAssistLoading}
+        mode={replyAssistMode}
+        onClose={closeReplyAssistModal}
+        onNextPage={() =>
+          setReplyAssistPageIndexByMode((current) => ({
+            ...current,
+            [replyAssistMode]: Math.min(
+              current[replyAssistMode] + 1,
+              Math.max(replyAssistPagesByMode[replyAssistMode].length - 1, 0),
+            ),
+          }))
+        }
+        onPreviousPage={() =>
+          setReplyAssistPageIndexByMode((current) => ({
+            ...current,
+            [replyAssistMode]: Math.max(current[replyAssistMode] - 1, 0),
+          }))
+        }
+        onRefresh={() => {
+          void handleRefreshReplyAssistPage();
+        }}
+        onSelectSuggestion={(suggestion) => {
+          setComposerText(suggestion);
+          closeReplyAssistModal();
+        }}
+        onSetMode={(mode) => {
+          void handleChangeReplyAssistMode(mode);
+        }}
+        pageIndex={replyAssistPageIndexByMode[replyAssistMode]}
+        pages={replyAssistPagesByMode[replyAssistMode]}
+        visible={replyAssistVisible}
       />
       <Modal
         animationType="fade"

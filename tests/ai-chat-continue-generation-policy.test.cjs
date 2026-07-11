@@ -35,3 +35,34 @@ test('AI stopped or failed assistant replies can continue without replacing exis
   assert.match(chat, /aiGenerationManager\.startContinueAssistantMessage/);
   assert.match(chat, /onContinue=\{handleContinueAssistantMessage\}/);
 });
+
+test('AI completed assistant replies can spawn a new follow-up assistant message from a styled续答 action', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const manager = read('src/ai/aiGenerationManager.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(service, /export interface ContinueAssistantReplyInput/);
+  assert.match(service, /export async function continueAssistantReply/);
+  assert.match(service, /CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION/);
+  assert.match(service, /createAiId\('aimsg'\)/);
+  assert.match(service, /role: 'assistant'/);
+  assert.match(service, /status: 'generating'/);
+  assert.match(service, /userHistoryContent:\s*input\.userMessage\.content/);
+  assert.doesNotMatch(service, /requestContentOverride:\s*CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION/);
+
+  assert.match(manager, /continueAssistantReply/);
+  assert.match(manager, /startContinueAssistantReply/);
+  assert.doesNotMatch(manager, /startContinueAssistantReply[\s\S]*rememberAssistantMessage/);
+
+  assert.match(bubble, /const canContinueReply = !isUser && !generating && !actionPending && Boolean\(message\.content\.trim\(\)\) && message\.status === 'completed'/);
+  assert.match(bubble, /accessibilityLabel="续答"/);
+  assert.match(bubble, /styles\.continueReplyActionButton/);
+  assert.match(bubble, /styles\.continueReplyActionText/);
+  assert.match(bubble, /fontStyle:\s*'italic'/);
+  assert.match(bubble, /onPress=\{\(\) => onContinueReply\(message\.id\)\}/);
+
+  assert.match(chat, /async function handleContinueAssistantReply/);
+  assert.match(chat, /aiGenerationManager\.startContinueAssistantReply/);
+  assert.match(chat, /onContinueReply=\{handleContinueAssistantReply\}/);
+});
