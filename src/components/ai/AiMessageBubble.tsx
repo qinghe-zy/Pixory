@@ -290,7 +290,6 @@ function AiMessageBubbleComponent({
   const isUser = message.role === 'user';
   const isFailed = message.status === 'failed';
   const content = message.content || (streaming ? '正在生成...' : isFailed ? message.errorMessage ?? '生成失败' : message.status === 'stopped' ? '已停止' : '');
-  const waitingForFirstToken = generating && !message.content.trim();
   const showAssistantAvatar = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const showUserAvatarHeader = isUser && showUserAvatar && userProfile?.avatarEnabled;
   const assistantHeaderVisible = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
@@ -311,6 +310,8 @@ function AiMessageBubbleComponent({
   const thinkingActive = Boolean(
     thinkingExpected && (message.status === 'generating' || message.status === 'queued'),
   );
+  const waitingForFirstToken =
+    generating && !message.content.trim() && !thinkingActive;
   const shouldRenderThinking =
     !isUser &&
     (thinkingActive ||

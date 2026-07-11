@@ -324,6 +324,33 @@ test('tail continuation replay uses a dedicated assistant-style bubble shell', (
   assert.doesNotMatch(shell, /favorite|versionControl|citation/i);
 });
 
+test('replayed reasoning stays on the thinking surface instead of assistant body chrome', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
+  const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+  const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
+  const bubble = read('src/components/ai/AiMessageBubble.tsx');
+
+  assert.match(segment, /const lane = blocks\[0\]\?\.lane \?\? ["']content["']/);
+  assert.match(segment, /if \(lane === ["']reasoning["']\)/);
+  assert.match(segment, /styles\.reasoningRow/);
+  assert.match(segment, /insetMode=["']thinking["']/);
+  assert.match(continuation, /group\.lane === ["']reasoning["']/);
+  assert.match(continuation, /insetMode=["']thinking["']/);
+  assert.match(measured, /insetMode\?: ["']bubble["'] \| ["']thinking["']/);
+  assert.match(measured, /measurementSignatureRef/);
+  assert.match(measured, /block\.raw/);
+  assert.match(measured, /block\.finalized/);
+  assert.match(
+    chat,
+    /segment\.blockRange\.lane === ["']content["'] &&\s*Boolean\(tailState\.frozenContent\.trim\(\)\)/,
+  );
+  assert.match(
+    bubble,
+    /const waitingForFirstToken =\s*generating && !message\.content\.trim\(\) && !thinkingActive/,
+  );
+});
+
 test('AI chat screen promotes tail blocks with a pre-promotion horizon, not visible-only tail height', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   assert.match(chat, /deriveStreamingTailViewportPolicy/);

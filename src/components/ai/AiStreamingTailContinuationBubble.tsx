@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import type { AiStreamingTailContinuationGroup } from '../../ai/aiStreamingTailContinuation';
-import { colors, radius } from '../../design/tokens';
+import { colors, radius, rhythm, spacing } from '../../design/tokens';
 import { AiMeasuredStreamBlock } from './AiMeasuredStreamBlock';
 
 type AiStreamingTailContinuationBubbleProps = {
@@ -15,10 +15,26 @@ export function AiStreamingTailContinuationBubble({
   group,
   onMeasured,
 }: AiStreamingTailContinuationBubbleProps) {
+  if (group.lane === 'reasoning') {
+    return (
+      <View style={styles.reasoningRow}>
+        {group.blocks.map((block) => (
+          <AiMeasuredStreamBlock
+            block={block}
+            bubbleWidth={bubbleWidth}
+            insetMode="thinking"
+            key={block.blockId}
+            onMeasured={onMeasured}
+          />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantStack}>
-        <View style={[styles.assistantBubble, group.lane === 'reasoning' && styles.reasoningBubble]}>
+        <View style={styles.assistantBubble}>
           {group.blocks.map((block) => (
             <AiMeasuredStreamBlock
               block={block}
@@ -52,7 +68,10 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     maxWidth: '94%',
   },
-  reasoningBubble: {
-    backgroundColor: colors.background.soft,
+  reasoningRow: {
+    alignSelf: 'flex-start',
+    marginTop: -rhythm.listCardGap,
+    paddingHorizontal: spacing[1],
+    width: '94%',
   },
 });

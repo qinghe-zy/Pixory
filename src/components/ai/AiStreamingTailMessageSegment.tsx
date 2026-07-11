@@ -6,7 +6,7 @@ import {
   getSegmentChrome,
   type AiTailSegmentEdge,
 } from "../../ai/aiStreamingTailRenderContract";
-import { radius, rhythm } from "../../design/tokens";
+import { radius, rhythm, spacing } from "../../design/tokens";
 import { aiLightColors } from "./aiLightTheme";
 import { AiMeasuredStreamBlock } from "./AiMeasuredStreamBlock";
 
@@ -27,6 +27,23 @@ export function AiStreamingTailMessageSegment({
   footer,
   onMeasured,
 }: AiStreamingTailMessageSegmentProps) {
+  const lane = blocks[0]?.lane ?? "content";
+  if (lane === "reasoning") {
+    return (
+      <View style={styles.reasoningRow}>
+        {blocks.map((block) => (
+          <AiMeasuredStreamBlock
+            block={block}
+            bubbleWidth={bubbleWidth}
+            insetMode="thinking"
+            key={block.blockId}
+            onMeasured={onMeasured}
+          />
+        ))}
+      </View>
+    );
+  }
+
   const chrome = getSegmentChrome(edge, "android");
   return (
     <View style={styles.assistantRow}>
@@ -83,5 +100,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     borderTopWidth: 0,
+  },
+  reasoningRow: {
+    alignSelf: "flex-start",
+    marginTop: -rhythm.listCardGap,
+    paddingHorizontal: spacing[1],
+    width: "94%",
   },
 });

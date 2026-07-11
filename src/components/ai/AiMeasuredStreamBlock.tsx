@@ -15,12 +15,15 @@ const SUPPRESSED_MEASUREMENT_RECONCILE_DP = 4;
 type AiMeasuredStreamBlockProps = {
   block: AiStreamBlock;
   bubbleWidth: number;
+  insetMode?: 'bubble' | 'thinking';
   onMeasured: (blockId: string, height: number) => void;
 };
 
-function AiMeasuredStreamBlockComponent({ block, bubbleWidth, onMeasured }: AiMeasuredStreamBlockProps) {
+function AiMeasuredStreamBlockComponent({ block, bubbleWidth, insetMode = 'bubble', onMeasured }: AiMeasuredStreamBlockProps) {
   const lastMeasuredHeightRef = useRef<number | null>(null);
+  const measurementSignatureRef = useRef<string | null>(null);
   const suppressedMeasurementDeltaRef = useRef(0);
+  const measurementSignature = `${block.blockId}:${block.finalized}:${block.raw}:${insetMode}`;
 
   useEffect(() => {
     streamingTailPerfDebug.recordTailReplayBlockMounted({
@@ -37,7 +40,15 @@ function AiMeasuredStreamBlockComponent({ block, bubbleWidth, onMeasured }: AiMe
       <View
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
-          const previousHeight = lastMeasuredHeightRef.current;
+          const signatureChanged =
+            measurementSignatureRef.current !== measurementSignature;
+          const previousHeight = signatureChanged
+            ? null
+            : lastMeasuredHeightRef.current;
+          if (signatureChanged) {
+            measurementSignatureRef.current = measurementSignature;
+            suppressedMeasurementDeltaRef.current = 0;
+          }
           if (previousHeight !== null) {
             const delta = height - previousHeight;
             if (Math.abs(delta) <= MEASUREMENT_EPSILON_DP) {
@@ -86,7 +97,7 @@ function AiMeasuredStreamBlockComponent({ block, bubbleWidth, onMeasured }: AiMe
             widthBucket: bucketStreamWidth(bubbleWidth),
           });
         }}
-        style={styles.block}
+        style={[styles.block, insetMode === 'thinking' && styles.thinkingBlock]}
       >
         {block.lane === 'reasoning' ? (
           <Text style={styles.thinkingText}>{block.raw}</Text>
@@ -108,6 +119,9 @@ const styles = StyleSheet.create({
   },
   reservedBlock: {
     width: '100%',
+  },
+  thinkingBlock: {
+    paddingHorizontal: 0,
   },
   thinkingText: {
     ...typography.textStyles.caption,

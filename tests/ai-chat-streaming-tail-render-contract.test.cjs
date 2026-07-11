@@ -87,6 +87,39 @@ test('buildTailMessageSegments returns stable block ranges without raw snapshots
   }
 });
 
+test('detached tail commits only after replay is visually settled', () => {
+  const { canCommitStreamingTailToMessage } = loadContracts();
+  const settled = {
+    atLatest: true,
+    dragging: false,
+    pendingShrinkHeight: 0,
+    remainingTailHeight: 0,
+    unmeasuredBlockCount: 0,
+  };
+
+  assert.equal(canCommitStreamingTailToMessage(settled), true);
+  assert.equal(
+    canCommitStreamingTailToMessage({ ...settled, atLatest: false }),
+    false,
+  );
+  assert.equal(
+    canCommitStreamingTailToMessage({ ...settled, dragging: true }),
+    false,
+  );
+  assert.equal(
+    canCommitStreamingTailToMessage({ ...settled, remainingTailHeight: 24 }),
+    false,
+  );
+  assert.equal(
+    canCommitStreamingTailToMessage({ ...settled, pendingShrinkHeight: 12 }),
+    false,
+  );
+  assert.equal(
+    canCommitStreamingTailToMessage({ ...settled, unmeasuredBlockCount: 1 }),
+    false,
+  );
+});
+
 test('footerVisible only allows terminal single or last segment footer', () => {
   const { footerVisible } = loadContracts();
   const terminal = { hasPendingTail: false, terminalState: 'done' };
@@ -133,7 +166,7 @@ test('message segments keep reasoning and content lane ranges separate', () => {
       { endBlockIndex: 1, lane: 'content', startBlockIndex: 0 },
     ],
   );
-  assert.deepEqual(segments.map((segment) => segment.edge), ['first', 'last']);
+  assert.deepEqual(segments.map((segment) => segment.edge), ['single', 'single']);
   assert.deepEqual(segments.map((segment) => segment.id), [
     'assistant_lanes:0',
     'assistant_lanes:1',

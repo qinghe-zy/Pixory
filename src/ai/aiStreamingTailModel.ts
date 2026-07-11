@@ -245,9 +245,14 @@ export function mergeStreamingTailPatch(input: {
     if (!previousBlock) {
       return nextBlock;
     }
+    const measurementStillMatches =
+      previousBlock.raw === nextBlock.raw &&
+      previousBlock.finalized === nextBlock.finalized;
     return {
       ...nextBlock,
-      measuredHeight: previousBlock.measuredHeight,
+      measuredHeight: measurementStillMatches
+        ? previousBlock.measuredHeight
+        : undefined,
       reservedHeight: Math.max(
         previousBlock.reservedHeight,
         nextBlock.reservedHeight,

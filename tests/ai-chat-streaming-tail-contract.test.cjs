@@ -190,3 +190,34 @@ test('terminal tail patches finalize the open frontier block in-place', () => {
   assert.equal(failed.debtPayoffEligible, true);
   assert.ok(failed.blocks.every((block) => block.finalized));
 });
+
+test('growing tail blocks invalidate stale measurements before safe commit', () => {
+  const { createEmptyStreamingTailState, mergeStreamingTailPatch } = loadTailModel();
+  const [openBlock] = split('仍在增长的尾部', {
+    generationId: 'gen_measure',
+    messageId: 'assistant_measure',
+  });
+  const previous = {
+    ...createEmptyStreamingTailState(),
+    blocks: [{ ...openBlock, measuredHeight: 40 }],
+    generationId: 'gen_measure',
+    messageId: 'assistant_measure',
+    status: 'detached',
+    tailContent: '仍在增长的尾部',
+    totalReservedHeight: openBlock.reservedHeight,
+  };
+
+  const grown = mergeStreamingTailPatch({
+    bubbleWidth: 320,
+    patch: {
+      content: '仍在增长的尾部，追加了尚未布局的新文字',
+      generationId: 'gen_measure',
+      id: 'assistant_measure',
+      status: 'generating',
+    },
+    previous,
+  });
+
+  assert.equal(grown.blocks[0].blockId, openBlock.blockId);
+  assert.equal(grown.blocks[0].measuredHeight, undefined);
+});

@@ -148,6 +148,7 @@ import {
 } from "../ai/aiStreamingTailFeatureFlags";
 import {
   buildTailMessageSegments,
+  canCommitStreamingTailToMessage,
   createTailDebtSpacer,
   footerVisible,
   getTailReplayItemKey,
@@ -1147,6 +1148,8 @@ export function AiChatScreen({
   const reconcileAllowFollowLatestRef = useRef(false);
   const reconcileReasonRef = useRef<string | null>(null);
   const allowFullShrinkSettlementRef = useRef(false);
+  const pendingStreamingTailCommitRef = useRef(false);
+  const commitStreamingTailIfStableRef = useRef<() => boolean>(() => false);
   // prettier-ignore
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
       const nextVisibleMessageIds = new Set(
@@ -1484,6 +1487,7 @@ export function AiChatScreen({
         maybeSettleStreamingTailShrinkDebt(
           reconcileReasonRef.current ?? reason,
         );
+        commitStreamingTailIfStableRef.current();
 
         if (
           reconcileAllowFollowLatestRef.current &&
@@ -1879,7 +1883,11 @@ export function AiChatScreen({
         }).map(
           (segment): VisibleMessageItem => ({
             ...segment,
-            edge: stitchTailSegmentEdgeAfterFrozenPrefix(segment.edge),
+            edge:
+              segment.blockRange.lane === "content" &&
+              Boolean(tailState.frozenContent.trim())
+                ? stitchTailSegmentEdgeAfterFrozenPrefix(segment.edge)
+                : segment.edge,
           }),
         );
         for (let index = 0; index < promotedTailSegments.length; index += 1) {
@@ -2551,6 +2559,7 @@ export function AiChatScreen({
   }
 
   function resetStreamingReadBufferState() {
+    pendingStreamingTailCommitRef.current = false;
     streamingReadBufferActiveRef.current = false;
     bufferedStreamingPatchRef.current = null;
     pendingFinalReloadRef.current = false;
@@ -3495,6 +3504,7 @@ export function AiChatScreen({
 
   const flushBufferedStreamingState = useCallback(
     async ({ followLatest }: { followLatest: boolean }) => {
+      pendingStreamingTailCommitRef.current = false;
       const bufferedPatch = bufferedStreamingPatchRef.current;
       const shouldReloadFinal = pendingFinalReloadRef.current;
       const pendingFinalStreamingIdentity =
@@ -3562,6 +3572,60 @@ export function AiChatScreen({
     ],
   );
 
+  const commitStreamingTailIfStable = useCallback(() => {
+    if (!pendingStreamingTailCommitRef.current) {
+      return false;
+    }
+    const tailState = streamingTailStateRef.current;
+    const isThinkingExpanded = tailState.messageId
+      ? Boolean(
+          thinkingExpandedByMessageIdRef.current.get(tailState.messageId),
+        )
+      : false;
+    const activeLanes: ("reasoning" | "content")[] = isThinkingExpanded
+      ? ["reasoning", "content"]
+      : ["content"];
+    const activeBlocks = tailState.blocks.filter((block) =>
+      activeLanes.includes(block.lane),
+    );
+    const safeToCommit = canCommitStreamingTailToMessage({
+      atLatest:
+        messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET,
+      dragging: isUserDraggingRef.current,
+      pendingShrinkHeight: tailState.pendingShrinkHeight,
+      remainingTailHeight: calculateRemainingStreamingTailHeight(
+        tailState,
+        activeLanes,
+      ),
+      unmeasuredBlockCount: activeBlocks.filter(
+        (block) =>
+          tailState.promotedBlockIds.has(block.blockId) &&
+          typeof block.measuredHeight !== "number",
+      ).length,
+    });
+    if (!safeToCommit) {
+      return false;
+    }
+    pendingStreamingTailCommitRef.current = false;
+    void flushBufferedStreamingState({ followLatest: false });
+    return true;
+  }, [flushBufferedStreamingState]);
+  commitStreamingTailIfStableRef.current = commitStreamingTailIfStable;
+
+  const requestStreamingTailCommit = useCallback(() => {
+    if (!hasPendingStreamingReadBuffer()) {
+      pendingStreamingTailCommitRef.current = false;
+      return;
+    }
+    pendingStreamingTailCommitRef.current = true;
+    allowFullShrinkSettlementRef.current = true;
+    scheduleStreamingTailReconcile("latest-commit-request", {
+      forceRender: true,
+      retainWindow: true,
+    });
+    commitStreamingTailIfStableRef.current();
+  }, [scheduleStreamingTailReconcile]);
+
   const handleMessageScrollBeginDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       isUserDraggingRef.current = true;
@@ -3622,7 +3686,7 @@ export function AiChatScreen({
           markScrollGestureSettled();
           return;
         }
-        void flushBufferedStreamingState({ followLatest: false });
+        requestStreamingTailCommit();
         markScrollGestureSettled();
         return;
       }
@@ -3630,8 +3694,8 @@ export function AiChatScreen({
       markScrollGestureSettled();
     },
     [
-      flushBufferedStreamingState,
       markScrollGestureSettled,
+      requestStreamingTailCommit,
       syncTailViewportPolicyForCurrentTailState,
       updateStreamingLockStateSnapshot,
     ],
@@ -3678,18 +3742,8 @@ export function AiChatScreen({
     Platform.OS === "android" ? !shouldRelaxClipping : undefined;
 
   const handleReturnToLatestPress = useCallback(() => {
-    bottomLockedRef.current = true;
-    isNearBottomRef.current = true;
-    escapedFromLockRef.current = false;
-    userScrolledAwayFromBottomRef.current = false;
-    messageScrollOffsetRef.current = 0;
-    previousMessageScrollOffsetRef.current = 0;
-    scrollingTowardLatestRef.current = true;
-    setShowScrollToLatest(false);
-    showScrollToLatestRef.current = false;
-    syncTailViewportPolicyForCurrentTailState();
-    void flushBufferedStreamingState({ followLatest: true });
-  }, [flushBufferedStreamingState, syncTailViewportPolicyForCurrentTailState]);
+    followLatestMessage();
+  }, [followLatestMessage]);
 
   async function renameRecentThread(
     thread: AiThreadHistoryItem,

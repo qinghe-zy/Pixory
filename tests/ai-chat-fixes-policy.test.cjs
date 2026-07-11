@@ -308,6 +308,7 @@ test('AI chat attachment pipeline is replayable and budget-safe', () => {
 test('AI chat buffers streaming patches while reading history and only flushes at safe points', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  const scrollEndHandler = /const handleMessageScrollEnd = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /bottomLockedRef/);
   assert.match(chat, /showScrollToLatestRef/);
@@ -336,7 +337,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /function markIntentionalLatestJump\(\)[\s\S]{0,420}bottomLockedRef\.current = true[\s\S]{0,420}setScrollToLatestVisible\(false\)/);
   assert.match(chat, /previousMessageScrollOffsetRef/);
   assert.match(chat, /scrollingTowardLatestRef/);
-  assert.match(chat, /flushBufferedStreamingState\(\{ followLatest: true \}\)/);
+  assert.match(chat, /requestStreamingTailCommit\(\)/);
   assert.match(chat, /flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /scheduleStreamingTailReconcile\("detached-patch"/);
   assert.match(chat, /scheduleStreamingTailReconcile\("final-completion"/);
@@ -359,6 +360,13 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef\.current \|\| pendingFinalReloadRef\.current/);
   assert.match(chat, /if \(!hasPendingBufferedFlush\) \{[\s\S]{0,120}syncScrollToLatestVisibility\(offsetY\);[\s\S]{0,120}markScrollGestureSettled\(\);[\s\S]{0,80}return;/);
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
+  assert.match(chat, /pendingStreamingTailCommitRef/);
+  assert.match(chat, /canCommitStreamingTailToMessage/);
+  assert.match(scrollEndHandler, /requestStreamingTailCommit/);
+  assert.doesNotMatch(
+    scrollEndHandler,
+    /void flushBufferedStreamingState\(\{ followLatest: false \}\)/,
+  );
   assert.match(scrollHandler, /scheduleStreamingTailReconcile\("scroll"\)/);
   assert.doesNotMatch(scrollHandler, /revealBufferedStreamingStateForScroll/);
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
@@ -1188,7 +1196,10 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
   assert.match(chat, /const streamingReadModeActive = hasPendingStreamingReadBuffer\(\) && message\.status === 'generating'/);
   assert.match(chat, /const streamingRendererActive = Boolean\(streamingIdentity\) && generating && message\.id === activeAssistantId && !streamingReadModeActive/);
   assert.match(chat, /streaming=\{streamingRendererActive\}/);
-  assert.match(bubble, /const waitingForFirstToken = generating && !message\.content\.trim\(\)/);
+  assert.match(
+    bubble,
+    /const waitingForFirstToken =\s*generating && !message\.content\.trim\(\) && !thinkingActive/,
+  );
   assert.match(bubble, /streaming && streamingIdentity \?/);
 });
 
@@ -1630,6 +1641,7 @@ test('AI edit and regenerate actions expose pending guards and call service path
 test('AI chat keeps no-jitter scroll policy during streaming keyboard and return flows', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  const returnToLatestHandler = /const handleReturnToLatestPress = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /userScrolledAwayFromBottomRef/);
   assert.match(chat, /followLatestMessage/);
@@ -1640,6 +1652,8 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.match(chat, /scheduleStreamingTailReconcile\("composer-height"/);
   assert.match(chat, /scheduleStreamingTailReconcile\("scroll-settled"/);
+  assert.match(returnToLatestHandler, /followLatestMessage\(\)/);
+  assert.doesNotMatch(returnToLatestHandler, /requestStreamingTailCommit\(\)/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*followLatestMessage/);

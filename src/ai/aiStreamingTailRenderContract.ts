@@ -108,18 +108,20 @@ export function buildTailMessageSegments(input: {
     cursor = end + 1;
   }
 
-  const segmentCountByMessage = new Map<string, number>();
+  const segmentCountByLane = new Map<string, number>();
   for (const segment of segments) {
-    segmentCountByMessage.set(
-      segment.messageId,
-      (segmentCountByMessage.get(segment.messageId) ?? 0) + 1,
+    const laneKey = `${segment.messageId}:${segment.blockRange.lane}`;
+    segmentCountByLane.set(
+      laneKey,
+      (segmentCountByLane.get(laneKey) ?? 0) + 1,
     );
   }
-  const seenByMessage = new Map<string, number>();
+  const seenByLane = new Map<string, number>();
   return segments.map((segment) => {
-    const count = segmentCountByMessage.get(segment.messageId) ?? 1;
-    const seen = seenByMessage.get(segment.messageId) ?? 0;
-    seenByMessage.set(segment.messageId, seen + 1);
+    const laneKey = `${segment.messageId}:${segment.blockRange.lane}`;
+    const count = segmentCountByLane.get(laneKey) ?? 1;
+    const seen = seenByLane.get(laneKey) ?? 0;
+    seenByLane.set(laneKey, seen + 1);
     const edge: AiTailSegmentEdge =
       count === 1
         ? "single"
@@ -130,6 +132,22 @@ export function buildTailMessageSegments(input: {
             : "middle";
     return { ...segment, edge };
   });
+}
+
+export function canCommitStreamingTailToMessage(input: {
+  atLatest: boolean;
+  dragging: boolean;
+  pendingShrinkHeight: number;
+  remainingTailHeight: number;
+  unmeasuredBlockCount: number;
+}): boolean {
+  return (
+    input.atLatest &&
+    !input.dragging &&
+    input.pendingShrinkHeight <= 0 &&
+    input.remainingTailHeight <= 0 &&
+    input.unmeasuredBlockCount <= 0
+  );
 }
 
 export function footerVisible(
