@@ -187,8 +187,11 @@ test('AI inline edit keeps the edited user message visible above the keyboard', 
   assert.match(chat, /inlineEditVisibilityTimeoutsRef\.current\.push\(\s*setTimeout/);
   assert.match(chat, /const index = invertedMessageIndexById\.get\(messageId\)/);
   assert.match(chat, /messageListRef\.current\?\.scrollToIndex\(\{\s*animated:\s*true,\s*index,[\s\S]{0,80}viewPosition:\s*0\.42/);
-  assert.match(chat, /viewabilityConfig=\{inlineEditViewabilityConfigRef\.current\}/);
-  assert.match(chat, /onViewableItemsChanged=\{handleInlineEditViewableItemsChangedRef\.current\}/);
+  assert.match(chat, /viewabilityConfigCallbackPairs=\{viewabilityConfigCallbackPairsRef\.current\}/);
+  assert.match(
+    chat,
+    /onViewableItemsChanged: handleInlineEditViewableItemsChangedRef\.current,[\s\S]{0,120}viewabilityConfig: inlineEditViewabilityConfigRef\.current/,
+  );
   assert.match(chat, /function handleMessageScrollToIndexFailed/);
   assert.match(chat, /handleMessageScrollToIndexFailed[\s\S]{0,160}retryInlineEditScrollToIndex\(info\)/);
   assert.match(chat, /onScrollToIndexFailed=\{handleMessageScrollToIndexFailed\}/);
@@ -362,6 +365,13 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
   assert.match(chat, /pendingStreamingTailCommitRef/);
   assert.match(chat, /canCommitStreamingTailToMessage/);
+  assert.match(chat, /visibleStreamingTailMessageIdsRef/);
+  assert.match(
+    chat,
+    /if \(shouldStartDetachedTail\)[\s\S]{0,180}visibleStreamingTailMessageIdsRef\.current\.add\(patch\.id\)/,
+  );
+  assert.match(chat, /replayVisible:[\s\S]{0,140}visibleStreamingTailMessageIdsRef\.current\.has/);
+  assert.match(chat, /viewabilityConfigCallbackPairs/);
   assert.match(scrollEndHandler, /requestStreamingTailCommit/);
   assert.doesNotMatch(
     scrollEndHandler,
@@ -1641,6 +1651,7 @@ test('AI edit and regenerate actions expose pending guards and call service path
 test('AI chat keeps no-jitter scroll policy during streaming keyboard and return flows', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const scrollHandler = /const handleMessageScroll = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
+  const followLatestHandler = /const followLatestMessage = useCallback\([\s\S]*?\n  \},\n    \[[^\]]*\],\n  \);/.exec(chat)?.[0] ?? '';
   const returnToLatestHandler = /const handleReturnToLatestPress = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(chat, /userScrolledAwayFromBottomRef/);
@@ -1652,6 +1663,11 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
   assert.doesNotMatch(scrollHandler, /flushBufferedStreamingState/);
   assert.match(chat, /scheduleStreamingTailReconcile\("composer-height"/);
   assert.match(chat, /scheduleStreamingTailReconcile\("scroll-settled"/);
+  assert.match(chat, /nativeMessageScrollOffsetRef/);
+  assert.doesNotMatch(
+    followLatestHandler,
+    /nativeMessageScrollOffsetRef\.current\s*=\s*0/,
+  );
   assert.match(returnToLatestHandler, /followLatestMessage\(\)/);
   assert.doesNotMatch(returnToLatestHandler, /requestStreamingTailCommit\(\)/);
   assert.doesNotMatch(chat, /keyboardBottomInset/);

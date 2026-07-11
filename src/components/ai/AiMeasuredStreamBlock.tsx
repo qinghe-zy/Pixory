@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 
 import type { AiStreamBlock } from '../../ai/aiStreamingBlockSplitter';
@@ -21,9 +21,69 @@ type AiMeasuredStreamBlockProps = {
 
 function AiMeasuredStreamBlockComponent({ block, bubbleWidth, insetMode = 'bubble', onMeasured }: AiMeasuredStreamBlockProps) {
   const lastMeasuredHeightRef = useRef<number | null>(null);
+  const measuredViewRef = useRef<View>(null);
   const measurementSignatureRef = useRef<string | null>(null);
   const suppressedMeasurementDeltaRef = useRef(0);
   const measurementSignature = `${block.blockId}:${block.finalized}:${block.raw}:${insetMode}`;
+
+  const reportMeasuredHeight = useCallback((height: number) => {
+    const signatureChanged =
+      measurementSignatureRef.current !== measurementSignature;
+    const previousHeight = signatureChanged
+      ? null
+      : lastMeasuredHeightRef.current;
+    if (signatureChanged) {
+      measurementSignatureRef.current = measurementSignature;
+      suppressedMeasurementDeltaRef.current = 0;
+    }
+    if (previousHeight !== null) {
+      const delta = height - previousHeight;
+      if (Math.abs(delta) <= MEASUREMENT_EPSILON_DP) {
+        suppressedMeasurementDeltaRef.current += delta;
+        if (
+          Math.abs(suppressedMeasurementDeltaRef.current) <
+          SUPPRESSED_MEASUREMENT_RECONCILE_DP
+        ) {
+          return;
+        }
+      }
+    }
+    if (previousHeight === height) {
+      return;
+    }
+    suppressedMeasurementDeltaRef.current = 0;
+    lastMeasuredHeightRef.current = height;
+    onMeasured(block.blockId, height);
+    streamingTailPerfDebug.recordTailReplayBlockMeasured({
+      blockId: block.blockId,
+      height,
+    });
+    streamingTailPerfDebug.recordTailReplayMeasurementDiff({
+      blockId: block.blockId,
+      diff: height - block.reservedHeight,
+    });
+
+    const cacheKey = createStreamBlockHeightCacheKey({
+      blockType: block.type,
+      contentHash: fastStringHash(block.raw),
+      fontScale: PixelRatio.getFontScale(),
+      lane: block.lane,
+      lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
+      rawLength: block.raw.length,
+      width: bubbleWidth,
+    });
+    streamBlockHeightCache.set({
+      blockType: block.type,
+      fontScaleBucket: bucketFontScale(PixelRatio.getFontScale()),
+      key: cacheKey,
+      lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
+      measuredHeight: height,
+      rawLength: block.raw.length,
+      rendererVersion: AI_STREAMING_HEIGHT_RENDERER_VERSION,
+      updatedAt: Date.now(),
+      widthBucket: bucketStreamWidth(bubbleWidth),
+    });
+  }, [block, bubbleWidth, measurementSignature, onMeasured]);
 
   useEffect(() => {
     streamingTailPerfDebug.recordTailReplayBlockMounted({
@@ -35,68 +95,20 @@ function AiMeasuredStreamBlockComponent({ block, bubbleWidth, insetMode = 'bubbl
     });
   }, [block.blockId]);
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      measuredViewRef.current?.measure((_x, _y, _width, height) => {
+        reportMeasuredHeight(height);
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [measurementSignature, reportMeasuredHeight]);
+
   return (
     <View style={styles.reservedBlock}>
       <View
-        onLayout={(event) => {
-          const height = event.nativeEvent.layout.height;
-          const signatureChanged =
-            measurementSignatureRef.current !== measurementSignature;
-          const previousHeight = signatureChanged
-            ? null
-            : lastMeasuredHeightRef.current;
-          if (signatureChanged) {
-            measurementSignatureRef.current = measurementSignature;
-            suppressedMeasurementDeltaRef.current = 0;
-          }
-          if (previousHeight !== null) {
-            const delta = height - previousHeight;
-            if (Math.abs(delta) <= MEASUREMENT_EPSILON_DP) {
-              suppressedMeasurementDeltaRef.current += delta;
-              if (
-                Math.abs(suppressedMeasurementDeltaRef.current) <
-                SUPPRESSED_MEASUREMENT_RECONCILE_DP
-              ) {
-                return;
-              }
-            }
-          }
-          if (previousHeight === height) {
-            return;
-          }
-          suppressedMeasurementDeltaRef.current = 0;
-          lastMeasuredHeightRef.current = height;
-          onMeasured(block.blockId, height);
-          streamingTailPerfDebug.recordTailReplayBlockMeasured({
-            blockId: block.blockId,
-            height,
-          });
-          streamingTailPerfDebug.recordTailReplayMeasurementDiff({
-            blockId: block.blockId,
-            diff: height - block.reservedHeight,
-          });
-
-          const cacheKey = createStreamBlockHeightCacheKey({
-            blockType: block.type,
-            contentHash: fastStringHash(block.raw),
-            fontScale: PixelRatio.getFontScale(),
-            lane: block.lane,
-            lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
-            rawLength: block.raw.length,
-            width: bubbleWidth,
-          });
-          streamBlockHeightCache.set({
-            blockType: block.type,
-            fontScaleBucket: bucketFontScale(PixelRatio.getFontScale()),
-            key: cacheKey,
-            lineCount: Math.max(1, block.raw.split(/\r?\n/).length),
-            measuredHeight: height,
-            rawLength: block.raw.length,
-            rendererVersion: AI_STREAMING_HEIGHT_RENDERER_VERSION,
-            updatedAt: Date.now(),
-            widthBucket: bucketStreamWidth(bubbleWidth),
-          });
-        }}
+        onLayout={(event) => reportMeasuredHeight(event.nativeEvent.layout.height)}
+        ref={measuredViewRef}
         style={[styles.block, insetMode === 'thinking' && styles.thinkingBlock]}
       >
         {block.lane === 'reasoning' ? (

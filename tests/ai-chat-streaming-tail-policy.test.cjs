@@ -341,6 +341,9 @@ test('replayed reasoning stays on the thinking surface instead of assistant body
   assert.match(measured, /measurementSignatureRef/);
   assert.match(measured, /block\.raw/);
   assert.match(measured, /block\.finalized/);
+  assert.match(measured, /measuredViewRef/);
+  assert.match(measured, /\.measure\(/);
+  assert.match(measured, /\[measurementSignature/);
   assert.match(
     chat,
     /segment\.blockRange\.lane === ["']content["'] &&\s*Boolean\(tailState\.frozenContent\.trim\(\)\)/,

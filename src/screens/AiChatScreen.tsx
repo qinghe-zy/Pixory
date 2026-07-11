@@ -514,6 +514,7 @@ type VisibleMessageItem =
       type: "streamTailSpacer";
       id: string;
       height: number;
+      messageId: string;
     }
   | AiTailMessageSegment
   | AiTailDebtSpacerItem
@@ -1134,6 +1135,9 @@ export function AiChatScreen({
   const inlineEditViewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 82,
   });
+  const streamingTailViewabilityConfigRef = useRef({
+    viewAreaCoveragePercentThreshold: 0.1,
+  });
   const userScrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1150,6 +1154,7 @@ export function AiChatScreen({
   const allowFullShrinkSettlementRef = useRef(false);
   const pendingStreamingTailCommitRef = useRef(false);
   const commitStreamingTailIfStableRef = useRef<() => boolean>(() => false);
+  const visibleStreamingTailMessageIdsRef = useRef(new Set<string>());
   // prettier-ignore
   const handleInlineEditViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
       const nextVisibleMessageIds = new Set(
@@ -1177,6 +1182,38 @@ export function AiChatScreen({
       }
     },
   );
+  // Keep replay visibility independent from the stricter inline-edit threshold.
+  const handleStreamingTailViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken<VisibleMessageItem>[] }) => {
+      const nextVisibleMessageIds = new Set<string>();
+      viewableItems.forEach((token) => {
+        if (!token.isViewable) {
+          return;
+        }
+        const item = token.item;
+        if (item.type === "message") {
+          nextVisibleMessageIds.add(item.message.id);
+        } else if (item.type === "messageSegment" || item.type === "tailDebtSpacer") {
+          nextVisibleMessageIds.add(item.messageId);
+        } else if (item.type === "streamTailContinuation") {
+          nextVisibleMessageIds.add(item.group.messageId);
+        } else if (item.type === "streamTailSpacer" && item.messageId) {
+          nextVisibleMessageIds.add(item.messageId);
+        }
+      });
+      visibleStreamingTailMessageIdsRef.current = nextVisibleMessageIds;
+      commitStreamingTailIfStableRef.current();
+    },
+  );
+  const viewabilityConfigCallbackPairsRef = useRef([
+    {
+      onViewableItemsChanged: handleInlineEditViewableItemsChangedRef.current,
+      viewabilityConfig: inlineEditViewabilityConfigRef.current,
+    },
+    {
+      onViewableItemsChanged: handleStreamingTailViewableItemsChangedRef.current,
+      viewabilityConfig: streamingTailViewabilityConfigRef.current,
+    },
+  ]);
   const isLoadingEarlierRef = useRef(false);
   const displayTitleRef = useRef(resolvedContextTitle);
   const activeThreadIdRef = useRef<string | null>(threadId ?? null);
@@ -1253,6 +1290,7 @@ export function AiChatScreen({
   const maxTailReservedHeightRef = useRef<number>(0);
   const maxTailReservedHeightMessageIdRef = useRef<string | null>(null);
   const messageViewportHeightRef = useRef(initialMessageViewportHeight);
+  const nativeMessageScrollOffsetRef = useRef(0);
   const previousMessageScrollOffsetRef = useRef(0);
   const scrollingTowardLatestRef = useRef(true);
   const tailViewportPolicyRef = useRef<StreamingTailViewportPolicy>(
@@ -1913,6 +1951,7 @@ export function AiChatScreen({
           nextInvertedMessageItems.unshift({
             height: hiddenTailHeight,
             id: "stream-tail-spacer",
+            messageId: tailState.messageId ?? "",
             type: "streamTailSpacer",
           });
         }
@@ -2560,6 +2599,7 @@ export function AiChatScreen({
 
   function resetStreamingReadBufferState() {
     pendingStreamingTailCommitRef.current = false;
+    visibleStreamingTailMessageIdsRef.current.clear();
     streamingReadBufferActiveRef.current = false;
     bufferedStreamingPatchRef.current = null;
     pendingFinalReloadRef.current = false;
@@ -2618,6 +2658,7 @@ export function AiChatScreen({
   // prettier-ignore
   const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset } = event.nativeEvent;
+    nativeMessageScrollOffsetRef.current = contentOffset.y;
     scrollingTowardLatestRef.current =
       contentOffset.y <= previousMessageScrollOffsetRef.current;
     previousMessageScrollOffsetRef.current = contentOffset.y;
@@ -3374,6 +3415,8 @@ export function AiChatScreen({
                 })
               : currentTailState;
           if (shouldStartDetachedTail) {
+            // Treat a new replay as visible until FlatList reports the first viewport snapshot.
+            visibleStreamingTailMessageIdsRef.current.add(patch.id);
             maxTailReservedHeightRef.current = 0;
             maxTailReservedHeightMessageIdRef.current = null;
           }
@@ -3589,10 +3632,12 @@ export function AiChatScreen({
       activeLanes.includes(block.lane),
     );
     const safeToCommit = canCommitStreamingTailToMessage({
-      atLatest:
-        messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET,
       dragging: isUserDraggingRef.current,
       pendingShrinkHeight: tailState.pendingShrinkHeight,
+      replayVisible: Boolean(
+        tailState.messageId &&
+          visibleStreamingTailMessageIdsRef.current.has(tailState.messageId),
+      ),
       remainingTailHeight: calculateRemainingStreamingTailHeight(
         tailState,
         activeLanes,
@@ -3617,6 +3662,9 @@ export function AiChatScreen({
       pendingStreamingTailCommitRef.current = false;
       return;
     }
+    if (nativeMessageScrollOffsetRef.current > MESSAGE_SAFE_FLUSH_OFFSET) {
+      return;
+    }
     pendingStreamingTailCommitRef.current = true;
     allowFullShrinkSettlementRef.current = true;
     scheduleStreamingTailReconcile("latest-commit-request", {
@@ -3628,6 +3676,7 @@ export function AiChatScreen({
 
   const handleMessageScrollBeginDrag = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      nativeMessageScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
       isUserDraggingRef.current = true;
       lastUserScrollAtRef.current = Date.now();
       scrollingTowardLatestRef.current =
@@ -3665,6 +3714,7 @@ export function AiChatScreen({
   const handleMessageScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetY = event.nativeEvent.contentOffset.y;
+      nativeMessageScrollOffsetRef.current = offsetY;
       scrollingTowardLatestRef.current =
         offsetY <= previousMessageScrollOffsetRef.current;
       previousMessageScrollOffsetRef.current = offsetY;
@@ -6017,14 +6067,13 @@ export function AiChatScreen({
               onScroll={handleMessageScroll}
               onMomentumScrollEnd={handleMessageScrollEnd}
               onScrollEndDrag={handleMessageScrollEnd}
-              onViewableItemsChanged={handleInlineEditViewableItemsChangedRef.current}
               onScrollToIndexFailed={handleMessageScrollToIndexFailed}
               renderItem={renderMessageItem}
               scrollEventThrottle={16}
               showsVerticalScrollIndicator={false}
               style={styles.messageScroller}
               contentContainerStyle={styles.messageScrollContent}
-              viewabilityConfig={inlineEditViewabilityConfigRef.current}
+              viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
             />
             {invertedMessageItems.length === 0 && !errorMessage ? (
               <View style={styles.starterOverlay}>

@@ -90,20 +90,20 @@ test('buildTailMessageSegments returns stable block ranges without raw snapshots
 test('detached tail commits only after replay is visually settled', () => {
   const { canCommitStreamingTailToMessage } = loadContracts();
   const settled = {
-    atLatest: true,
     dragging: false,
     pendingShrinkHeight: 0,
+    replayVisible: false,
     remainingTailHeight: 0,
     unmeasuredBlockCount: 0,
   };
 
   assert.equal(canCommitStreamingTailToMessage(settled), true);
   assert.equal(
-    canCommitStreamingTailToMessage({ ...settled, atLatest: false }),
+    canCommitStreamingTailToMessage({ ...settled, dragging: true }),
     false,
   );
   assert.equal(
-    canCommitStreamingTailToMessage({ ...settled, dragging: true }),
+    canCommitStreamingTailToMessage({ ...settled, replayVisible: true }),
     false,
   );
   assert.equal(

@@ -135,15 +135,15 @@ export function buildTailMessageSegments(input: {
 }
 
 export function canCommitStreamingTailToMessage(input: {
-  atLatest: boolean;
   dragging: boolean;
   pendingShrinkHeight: number;
+  replayVisible: boolean;
   remainingTailHeight: number;
   unmeasuredBlockCount: number;
 }): boolean {
   return (
-    input.atLatest &&
     !input.dragging &&
+    !input.replayVisible &&
     input.pendingShrinkHeight <= 0 &&
     input.remainingTailHeight <= 0 &&
     input.unmeasuredBlockCount <= 0
