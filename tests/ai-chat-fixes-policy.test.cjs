@@ -1213,6 +1213,15 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
   assert.match(bubble, /streaming && streamingIdentity \?/);
 });
 
+test('AI composer collapses back to its minimum height when sent text is cleared', () => {
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+
+  assert.match(
+    composer,
+    /useEffect\(\(\) => \{[\s\S]{0,360}value\.length !== 0[\s\S]{0,360}setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\)[\s\S]{0,360}onComposerHeightChange\?\.\(\)/,
+  );
+});
+
 
 
 test('AI user text supports selection while assistant markdown stays Android layout safe', () => {

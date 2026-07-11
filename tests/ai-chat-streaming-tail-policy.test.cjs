@@ -522,3 +522,18 @@ test('terminal replay schedules cleanup independently from visible terminal stat
     /replayVisible:\s*Boolean\([\s\S]{0,180}visibleStreamingTailMessageIdsRef\.current\.has/,
   );
 });
+
+test('terminal replay reload stays bound to the completed streaming identity', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+  const flushBody =
+    /const flushBufferedStreamingState = useCallback\([\s\S]*?\n  \);/m.exec(screen)?.[0] ?? '';
+
+  assert.match(
+    flushBody,
+    /const targetThreadId = pendingFinalStreamingIdentity\s*\? pendingFinalStreamingIdentity\.threadId\s*:\s*activeThreadIdRef\.current/,
+  );
+  assert.doesNotMatch(
+    flushBody,
+    /const pendingFinalStreamingIdentity =[\s\S]{0,180}const targetThreadId = activeThreadIdRef\.current/,
+  );
+});

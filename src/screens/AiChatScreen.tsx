@@ -3569,7 +3569,9 @@ export function AiChatScreen({
       const shouldReloadFinal = pendingFinalReloadRef.current;
       const pendingFinalStreamingIdentity =
         pendingFinalStreamingIdentityRef.current;
-      const targetThreadId = activeThreadIdRef.current;
+      const targetThreadId = pendingFinalStreamingIdentity
+        ? pendingFinalStreamingIdentity.threadId
+        : activeThreadIdRef.current;
       const shouldResetTailAfterFlush =
         resetTail ||
         followLatest ||
