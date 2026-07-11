@@ -491,9 +491,13 @@ test('hardening adds dev-only streaming tail performance instrumentation', () =>
 test('content replay uses a stable full-width continuation surface', () => {
   const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
   const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+  const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
 
   assert.match(segment, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
   assert.match(segment, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
   assert.match(continuation, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
   assert.match(continuation, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
+  assert.match(measured, /paddingHorizontal:\s*spacing\[3\]/);
+  assert.match(measured, /verticalInset\?:\s*AiMeasuredStreamBlockVerticalInset/);
+  assert.match(segment, /verticalInset=\{resolveBlockVerticalInset\(edge, index, blocks\.length\)\}/);
 });
