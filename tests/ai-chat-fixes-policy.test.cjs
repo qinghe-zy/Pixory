@@ -1675,3 +1675,14 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*followLatestMessage/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*scrollToOffset/);
 });
+
+test('AI chat renders one standalone date item per day outside message rows', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const messageRenderBranch = /const \{ message \} = item;[\s\S]*?<AiMessageBubble/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /type:\s*["']dateSeparator["']/);
+  assert.match(chat, /dateKey:\s*string/);
+  assert.match(chat, /if \(item\.type === ["']dateSeparator["']\)/);
+  assert.doesNotMatch(messageRenderBranch, /item\.showDateSeparator/);
+  assert.doesNotMatch(messageRenderBranch, /formatDateSeparator\(message\.createdAt\)/);
+});

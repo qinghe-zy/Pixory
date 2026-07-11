@@ -487,3 +487,13 @@ test('hardening adds dev-only streaming tail performance instrumentation', () =>
   assert.match(measured, /recordTailReplayBlockMeasured/);
   assert.match(measured, /recordTailReplayMeasurementDiff/);
 });
+
+test('content replay uses a stable full-width continuation surface', () => {
+  const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
+  const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+
+  assert.match(segment, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(segment, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
+  assert.match(continuation, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(continuation, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
+});
