@@ -4,22 +4,34 @@ import {
   splitStreamingTextIntoBlocks,
 } from "./aiStreamingBlockSplitter";
 import { streamingTailPerfDebug } from "./aiStreamingPerfDebug";
+import type { AiMessageStatus } from "./types";
+
+type StreamingTailMessageStatus = Extract<
+  AiMessageStatus,
+  "generating" | "completed" | "failed" | "stopped"
+>;
 
 export type StreamingTailPatch = {
+  completedAt?: string | null;
   content?: string;
+  errorMessage?: string | null;
   generationId?: string;
   id?: string;
   reasoningText?: string | null;
-  status?: string;
+  status?: AiMessageStatus;
+  updatedAt?: string | null;
 };
 
 export type AiStreamingTailState = {
   blocks: AiStreamBlock[];
+  completedAt: string | null;
   debtPayoffEligible: boolean;
+  errorMessage: string | null;
   frozenContent: string;
   frozenReasoningText: string | null;
   generationId: string | null;
   messageId: string | null;
+  messageStatus: StreamingTailMessageStatus;
   overReservedHeight: number;
   pendingShrinkHeight: number;
   promotedBlockIds: Set<string>;
@@ -28,7 +40,14 @@ export type AiStreamingTailState = {
   tailContent: string;
   tailReasoningText: string | null;
   totalReservedHeight: number;
+  updatedAt: string | null;
 };
+
+function isTerminalMessageStatus(
+  status: AiMessageStatus | undefined,
+): status is Extract<AiMessageStatus, "completed" | "failed" | "stopped"> {
+  return status === "completed" || status === "failed" || status === "stopped";
+}
 
 function sumReservedHeight(
   blocks: AiStreamBlock[],
@@ -105,11 +124,14 @@ function isSingleLineBlock(block: AiStreamBlock): boolean {
 export function createEmptyStreamingTailState(): AiStreamingTailState {
   return {
     blocks: [],
+    completedAt: null,
     debtPayoffEligible: false,
+    errorMessage: null,
     frozenContent: "",
     frozenReasoningText: null,
     generationId: null,
     messageId: null,
+    messageStatus: "generating",
     overReservedHeight: 0,
     pendingShrinkHeight: 0,
     promotedBlockIds: new Set<string>(),
@@ -118,6 +140,7 @@ export function createEmptyStreamingTailState(): AiStreamingTailState {
     tailContent: "",
     tailReasoningText: null,
     totalReservedHeight: 0,
+    updatedAt: null,
   };
 }
 
@@ -197,12 +220,20 @@ export function mergeStreamingTailPatch(input: {
   if (!input.patch.generationId || !input.patch.id) {
     return previous;
   }
+  const patchMessageStatus = isTerminalMessageStatus(input.patch.status)
+    ? input.patch.status
+    : null;
+  const terminalPatch = patchMessageStatus !== null;
   const status =
-    input.patch.status === "completed" ||
-    input.patch.status === "failed" ||
-    input.patch.status === "stopped"
-      ? "completed"
-      : "detached";
+    previous.status === "completed" || terminalPatch ? "completed" : "detached";
+  const previousMessageTerminal = isTerminalMessageStatus(
+    previous.messageStatus,
+  );
+  const messageStatus: StreamingTailMessageStatus = previousMessageTerminal
+    ? previous.messageStatus
+    : patchMessageStatus ?? "generating";
+  const terminalAt =
+    input.patch.completedAt ?? input.patch.updatedAt ?? new Date().toISOString();
   const finalizeOpenBlocks = status === "completed";
   const frozenContent = previous.frozenContent;
   const nextFullContent =
@@ -269,14 +300,27 @@ export function mergeStreamingTailPatch(input: {
     {
       ...previous,
       blocks: nextBlocks,
+      completedAt:
+        isTerminalMessageStatus(messageStatus)
+          ? previous.completedAt ?? terminalAt
+          : null,
       debtPayoffEligible:
         status === "completed" ? true : previous.debtPayoffEligible,
+      errorMessage:
+        input.patch.errorMessage === undefined
+          ? previous.errorMessage
+          : input.patch.errorMessage,
       generationId: input.patch.generationId,
       messageId: input.patch.id,
+      messageStatus,
       promotedBlockIds,
       status,
       tailContent,
       tailReasoningText,
+      updatedAt:
+        input.patch.updatedAt ??
+        input.patch.completedAt ??
+        previous.updatedAt,
     },
     {
       blocks: nextBlocks,

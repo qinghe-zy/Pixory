@@ -1,5 +1,6 @@
 import type { AiStreamBlock } from "./aiStreamingBlockSplitter";
 import type { AiMessageWithCitations } from "./aiChatService";
+import type { AiMessageStatus } from "./types";
 
 export type AiTailSegmentEdge = "single" | "first" | "middle" | "last";
 
@@ -46,14 +47,27 @@ export type AiTailSegmentChrome = {
 };
 
 export function selectVisibleMessage<
-  T extends Pick<AiMessageWithCitations, "content" | "id" | "reasoningText">
+  T extends Pick<
+    AiMessageWithCitations,
+    | "completedAt"
+    | "content"
+    | "errorMessage"
+    | "id"
+    | "reasoningText"
+    | "status"
+    | "updatedAt"
+  >
 >(input: {
   message: T;
   tailOverride?: {
     frozenContent: string;
     frozenReasoningText?: string | null;
     messageId: string;
+    messageStatus?: AiMessageStatus;
     status: "idle" | "detached" | "completed";
+    completedAt?: string | null;
+    errorMessage?: string | null;
+    updatedAt?: string | null;
   };
 }): T {
   const tailOverride = input.tailOverride;
@@ -66,9 +80,19 @@ export function selectVisibleMessage<
   }
   return {
     ...input.message,
+    completedAt:
+      tailOverride.completedAt === undefined
+        ? input.message.completedAt
+        : tailOverride.completedAt,
     content: tailOverride.frozenContent,
+    errorMessage:
+      tailOverride.errorMessage === undefined
+        ? input.message.errorMessage
+        : tailOverride.errorMessage,
     reasoningText:
       tailOverride.frozenReasoningText ?? input.message.reasoningText,
+    status: tailOverride.messageStatus ?? input.message.status,
+    updatedAt: tailOverride.updatedAt ?? input.message.updatedAt,
   };
 }
 

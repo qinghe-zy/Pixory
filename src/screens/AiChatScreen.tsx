@@ -1856,10 +1856,14 @@ export function AiChatScreen({
     const tailOverride =
       tailState.status !== "idle" && tailState.messageId
         ? {
+            completedAt: tailState.completedAt,
+            errorMessage: tailState.errorMessage,
             frozenContent: tailState.frozenContent,
             frozenReasoningText: tailState.frozenReasoningText,
             messageId: tailState.messageId,
+            messageStatus: tailState.messageStatus,
             status: tailState.status,
+            updatedAt: tailState.updatedAt,
           }
         : undefined;
     // prettier-ignore
