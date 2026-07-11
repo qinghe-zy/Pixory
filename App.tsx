@@ -71,6 +71,7 @@ import { MoveImageGroupScreen } from './src/screens/MoveImageGroupScreen';
 import { OriginalStorageScreen } from './src/screens/OriginalStorageScreen';
 import { OrganizeScreen } from './src/screens/OrganizeScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
+import { ProductDocumentationScreen } from './src/screens/ProductDocumentationScreen';
 import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
@@ -163,6 +164,7 @@ type AppRoute =
   | { name: 'storage-usage'; space: PixorySpace }
   | { name: 'chat-storage-usage'; space: PixorySpace }
   | { name: 'milestones-detail'; space: PixorySpace; preloadedMarkdown?: string | null }
+  | { name: 'product-doc'; space: PixorySpace; preloadedMarkdown?: string | null }
   | { name: 'original-storage'; space: PixorySpace }
   | { name: 'about'; space: PixorySpace }
   | { name: 'ip-storage-detail'; ipId: number; space: PixorySpace }
@@ -1802,6 +1804,8 @@ export default function App() {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'milestones-detail') {
     content = <MilestonesDetailScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
+  } else if (currentRoute.name === 'product-doc') {
+    content = <ProductDocumentationScreen onBack={popRoute} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'ai-provider-settings') {
     content = <AiProviderSettingsScreen onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-role-library') {

@@ -12,10 +12,16 @@ test('AI thinking block shows timed thinking state instead of the old summary la
 
   assert.match(thinking, /正在思考中/);
   assert.match(thinking, /思考完成/);
+  assert.match(thinking, /thinkingActive\?: boolean/);
+  assert.match(thinking, /const thinking = thinkingActive \?\? \(status === 'generating' \|\| status === 'queued'\);/);
   assert.match(thinking, /toFixed\(1\)/);
   assert.match(thinking, /setInterval\(/);
   assert.match(bubble, /createdAt/);
   assert.match(bubble, /completedAt/);
+  assert.match(bubble, /thinkingExpected\?: boolean/);
+  assert.match(bubble, /const hasReasoningText = Boolean\(message\.reasoningText\?\.trim\(\)\);/);
+  assert.match(bubble, /const thinkingActive = Boolean\(\s*thinkingExpected && \(message\.status === 'generating' \|\| message\.status === 'queued'\),?\s*\)/);
+  assert.match(bubble, /const shouldRenderThinking =[\s\S]*thinkingActive \|\|[\s\S]*hasReasoningText/);
   assert.doesNotMatch(bubble, /label=\{message\.modelSnapshotJson\.includes\('reasoning'\) \? '思路' : '摘要'\}/);
 });
 
@@ -219,7 +225,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
   assert.match(chat, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
-  assert.match(chat, /<AiScrollToLatestButton bottomOffset=\{composerPanelHeight \+ spacing\[1\.5\]\} visible=\{showScrollToLatest && !inlineEditingActive\} onPress=\{handleReturnToLatestPress\}/);
+  assert.match(chat, /<AiScrollToLatestButton\s+bottomOffset=\{composerShellHeight \+ spacing\[3\] \+ spacing\[1\.5\]\}\s+visible=\{showScrollToLatest && !inlineEditingActive\}\s+onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
@@ -295,7 +301,7 @@ test('AI chat attachment pipeline is replayable and budget-safe', () => {
 
   assert.match(service, /attachmentPromptContext/);
   assert.match(service, /buildDocumentAttachmentContext/);
-  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{[\s\S]*attachmentPromptContext/);
+  assert.match(service, /buildPromptForThread\(input\.thread, requestContent, branchScopes, \{[\s\S]*attachmentPromptContext/);
   assert.doesNotMatch(service, /const userPromptWithAttachments = \[/);
 });
 
@@ -339,12 +345,16 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
-  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId \}\) => \{[\s\S]*publishStreamingMessage\(streamingIdentity[\s\S]*scheduleIntentionalLatestJump\(false\)/);
+  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected \}\) => \{[\s\S]*thinkingExpectedByMessageIdRef\.current\.set\([\s\S]*publishStreamingMessage\(streamingIdentity[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
+  assert.match(chat, /startReplyToAssistantMessage\([\s\S]*onCreated: \(\{[\s\S]*thinkingExpected,[\s\S]*streamRequest\.subscriber\.onCreated\?\.\(\{[\s\S]*thinkingExpected,/);
+  assert.match(chat, /startRewriteUserMessage\([\s\S]*onCreated: \(\{[\s\S]*thinkingExpected,[\s\S]*subscriber\.onCreated\?\.\(\{[\s\S]*thinkingExpected,/);
+  assert.match(chat, /startContinueAssistantMessage\([\s\S]*onCreated: \(\{[\s\S]*thinkingExpected,[\s\S]*subscriber\.onCreated\?\.\(\{[\s\S]*thinkingExpected,/);
+  assert.match(chat, /startContinueAssistantReply\([\s\S]*onCreated: \(\{[\s\S]*thinkingExpected,[\s\S]*subscriber\.onCreated\?\.\(\{[\s\S]*thinkingExpected,/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*try \{\s*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /const hasPendingBufferedFlush = hasBufferedStreamingUpdateRef\.current \|\| pendingFinalReloadRef\.current/);
   assert.match(chat, /if \(!hasPendingBufferedFlush\) \{[\s\S]{0,120}syncScrollToLatestVisibility\(offsetY\);[\s\S]{0,120}markScrollGestureSettled\(\);[\s\S]{0,80}return;/);
@@ -927,7 +937,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(repository, /listRecentCompletedMessagesBefore\([\s\S]*branchScopes\?: AiBranchScope\[\]/);
   assert.match(service, /resolveStreamingBranchScopes/);
   assert.match(service, /const attachmentPromptContext = preparedAttachments\.promptContext/);
-  assert.match(service, /buildPromptForThread\(input\.thread, input\.userMessage\.content, branchScopes, \{[\s\S]*attachmentPromptContext[\s\S]*generationMetrics/);
+  assert.match(service, /buildPromptForThread\(input\.thread, requestContent, branchScopes, \{[\s\S]*attachmentPromptContext[\s\S]*generationMetrics/);
   assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
@@ -1126,8 +1136,9 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
   assert.match(chat, /const \{\s*invertedMessageIndexById,\s*invertedMessageItems,\s*messagesById,/);
-  assert.match(chat, /showAvatar: message\.role === 'assistant'/);
+  assert.match(chat, /showAvatar:\s*message\.role === 'assistant'/);
   assert.match(chat, /previousMessage\?\.role !== 'assistant'/);
+  assert.match(chat, /messageUsesStandaloneAssistantDisplay\(message\)/);
   assert.match(chat, /messageKeyExtractor = useCallback/);
   assert.match(chat, /renderMessageItem = useCallback/);
   assert.match(chat, /data=\{invertedMessageItems\}/);
@@ -1416,7 +1427,7 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   assert.doesNotMatch(chat, /\[\.\.\.visibleMessages\]\.reverse\(\)\.find/);
   assert.match(chat, /composerPanelHeight/);
   assert.match(chat, /onLayout=\{\(event\) => setComposerPanelHeight\(event\.nativeEvent\.layout\.height\)\}/);
-  assert.match(chat, /bottomOffset=\{composerPanelHeight \+ spacing\[1\.5\]\}/);
+  assert.match(chat, /bottomOffset=\{composerShellHeight \+ spacing\[3\] \+ spacing\[1\.5\]\}/);
   assert.match(latestButton, /bottomOffset: number/);
   assert.match(latestButton, /bottom:\s*bottomOffset/);
   assert.doesNotMatch(latestButton, /bottom:\s*spacing\[12\] \+ spacing\[10\]/);

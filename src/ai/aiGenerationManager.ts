@@ -1,14 +1,17 @@
 import type { PixorySpace } from '../database';
 import {
+  type AiGenerationCreatedInfo,
   continueAssistantReply,
   continueAssistantMessage,
   regenerateAssistantMessage,
+  replyToAssistantMessage,
   rewriteUserMessage,
   sendUserMessage,
   stopStreamingMessage,
   type AiStreamingMessagePatch,
   type ContinueAssistantReplyInput,
   type ContinueAssistantMessageInput,
+  type ReplyToAssistantMessageInput,
   type RetryAssistantMessageInput,
   type RewriteUserMessageInput,
   type SendUserMessageInput,
@@ -17,7 +20,7 @@ import type { StreamingVisibilityState } from './aiStreamingRuntime';
 
 export type AiGenerationSubscriber = {
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onUpdated?: () => void;
   onSettled?: () => void;
@@ -31,6 +34,7 @@ type ActiveGenerationTask = {
   promise: Promise<unknown>;
   space: PixorySpace;
   subscribers: Set<AiGenerationSubscriber>;
+  thinkingExpected: boolean | null;
   threadId: string;
   userMessageId: string | null;
 };
@@ -59,6 +63,10 @@ type StartContinueAssistantMessageInput = Omit<ContinueAssistantMessageInput, 's
 } & GenerationStartTimingInput;
 
 type StartContinueAssistantReplyInput = Omit<ContinueAssistantReplyInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
+  subscriber?: AiGenerationSubscriber;
+} & GenerationStartTimingInput;
+
+type StartReplyToAssistantMessageInput = Omit<ReplyToAssistantMessageInput, 'signal' | 'onCreated' | 'onMessagePatch' | 'onUpdated'> & {
   subscriber?: AiGenerationSubscriber;
 } & GenerationStartTimingInput;
 
@@ -102,12 +110,13 @@ function addSubscriber(task: ActiveGenerationTask | undefined, subscriber?: AiGe
   };
 }
 
-function emitCreated(task: ActiveGenerationTask, ids: { userMessageId: string; assistantMessageId: string; generationId: string }) {
+function emitCreated(task: ActiveGenerationTask, ids: AiGenerationCreatedInfo) {
   if (task.finished) {
     return;
   }
   rememberAssistantMessage(task, ids.assistantMessageId);
   task.generationId = ids.generationId;
+  task.thinkingExpected = ids.thinkingExpected ?? null;
   task.userMessageId = ids.userMessageId;
   task.subscribers.forEach((subscriber) => subscriber.onCreated?.(ids));
 }
@@ -157,6 +166,7 @@ function createTask(space: PixorySpace, threadId: string): ActiveGenerationTask 
     promise: Promise.resolve(),
     space,
     subscribers: new Set(),
+    thinkingExpected: null,
     threadId,
     userMessageId: null,
   };
@@ -258,6 +268,24 @@ function startContinueAssistantReply(input: StartContinueAssistantReplyInput): M
   return { promise: task.promise as Promise<void>, unsubscribe };
 }
 
+function startReplyToAssistantMessage(input: StartReplyToAssistantMessageInput): ManagedTaskStart<{ userMessageId: string; assistantMessageId: string }> {
+  const task = createTask(input.space, input.threadId);
+  const unsubscribe = addSubscriber(task, input.subscriber);
+  const { subscriber: _subscriber, ...request } = input;
+  task.promise = replyToAssistantMessage({
+    ...request,
+    getStreamingVisibility: () => getTaskStreamingVisibility(task),
+    onCreated: (ids) => emitCreated(task, ids),
+    onMessagePatch: (patch) => emitMessagePatch(task, patch),
+    onTimeout: () => {
+      void stopGeneration({ assistantMessageId: task.assistantMessageId, reason: 'timeout', space: task.space, threadId: task.threadId });
+    },
+    onUpdated: () => emitUpdated(task),
+    signal: task.controller.signal,
+  }).finally(() => finishTask(task));
+  return { promise: task.promise as Promise<{ userMessageId: string; assistantMessageId: string }>, unsubscribe };
+}
+
 function startRewriteUserMessage(input: StartRewriteUserMessageInput): ManagedTaskStart<{ userMessageId: string; assistantMessageId: string }> {
   const task = createTask(input.space, input.threadId);
   const unsubscribe = addSubscriber(task, input.subscriber);
@@ -288,6 +316,7 @@ function subscribeToThread(space: PixorySpace, threadId: string, subscriber: AiG
         subscriber.onCreated?.({
           assistantMessageId: task.assistantMessageId,
           generationId: task.generationId,
+          thinkingExpected: task.thinkingExpected ?? undefined,
           userMessageId: task.userMessageId ?? '',
         });
       }
@@ -333,6 +362,7 @@ export const aiGenerationManager = {
   getActiveTaskForThread,
   hasActiveTask,
   startContinueAssistantMessage,
+  startReplyToAssistantMessage,
   startRegenerateAssistantMessage,
   startRewriteUserMessage,
   startSendUserMessage,

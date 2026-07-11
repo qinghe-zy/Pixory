@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-11（AI completed 续答入口、AI 帮答弹窗、聊天侧边抽屉、顶部入口与流式 tail replay 契约）
-适用版本：Pixory 2.6.3
+最后更新：2026-07-11（AI completed 续答/回复分流、AI 帮答弹窗、聊天侧边抽屉、顶部入口与流式 tail replay 契约、关于页内置产品文档阅读、产品文档图片本地缓存）
+适用版本：Pixory 2.6.4
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -39,7 +39,7 @@
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理 | `StorageUsageScreen`, `storageUsageService` |
 | 更新与公告 | 已实现 | 远程版本检查、公告、官网下载、GitHub fallback | `updateCheckService`, `announcementService` |
-| 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow | `docs/`, `AGENTS.md` |
+| 官网与发布 | 已实现 | 官网下载页、更新 JSON、release notes、Android release workflow、关于页内置产品文档入口与应用内 Markdown 阅读；进入关于页会后台预取官网产品文档图片并持久缓存到应用内，后续阅读优先复用本地缓存 | `docs/`, `AGENTS.md`, `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService` |
 | 设计系统/基础组件 | 已实现 | 统一移动端 UI、空状态、按钮、表单、toast、action sheet | `src/components/`, `src/design/tokens/` |
 
 ---
@@ -51,7 +51,7 @@
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
 | Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
-| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；已完成的 assistant 回复新增“续答”动作，会在下方生成一条新的 assistant 消息继续往下说且不写入伪造的 user/system 历史；聊天输入区新增 `AI 帮答`，基于当前可见分支、当前线程模型、人设提示词、摘要/画像/稳定记忆生成可直接发送的用户候选，短句固定三条、长句固定一条，刷新会追加新页但不写入消息历史；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
+| 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；已完成的 assistant 回复在当前末尾保持“续答”，会在下方生成一条新的 assistant 消息继续往下说且不写入伪造的 user/system 历史；当该 assistant 下方已经有后续消息时，同一入口改为“回复”，允许用户从这条历史 AI 消息重新接话并切出新的分支路线；聊天输入区新增 `AI 帮答`，基于当前可见分支、当前线程模型、人设提示词、摘要/画像/稳定记忆生成可直接发送的用户候选，短句固定三条、长句固定一条，刷新会追加新页但不写入消息历史；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `providers/*` |
 | 流式性能 | generationId 防旧流污染、首 token live 显示、外部 streaming store、自适应合批追赶；查看历史时使用 measured tail occupancy、真实 FlatList spacer、block 级高度预留/测量/cache、reasoning/content lane 隔离；tail replay block key 与 generationId/startOffset/blockType 解耦并使用 `blockIndex`/`ordinal` 恒等契约，终态 stopped/failed/completed 会 finalize 开放尾块；tail replay 支持 feature flag/kill-switch，开启时用 message segment + tail debt spacer 维持“单气泡渲染契约”，footer/action 只挂在 single/last segment，关闭时保留旧 continuation fallback；idle timeout 会走 failed 终态并和用户 stopped UX 区分；dev 环境记录 promoted/mounted/measured/firstTextVisible 与 mountCount 红线；无感回到底部、低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingMessageStore`, `aiStreamingTailModel`, `aiStreamingTailRenderContract`, `aiStreamingTailFeatureFlags`, `aiStreamingTailContinuation`, `aiStreamingBlockSplitter`, `aiStreamingHeightCache`, `AiChatScreen`, `AiStreamingMessageText`, `AiStreamingTailSpacer`, `AiMeasuredStreamBlock`, `AiStreamingTailMessageSegment`, `AiStreamingTailContinuationBubble` |
 | 生成指标 | prompt/memory/retrieval/provider/first delta/UI patch/final persist 等 content-free metrics | `aiGenerationMetrics` |
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request | `promptBuilder` |

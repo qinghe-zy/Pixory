@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { LinearGradient } from 'expo-linear-gradient';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
@@ -116,19 +117,23 @@ export function AiHomeScreen({
       title="AI 工作台"
     >
       <View style={styles.mainStack}>
-        <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}>
-          <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
-          <View style={styles.primaryIcon}>
-            <Ionicons color={aiLightColors.onDark} name="chatbubble-ellipses-outline" size={26} />
-          </View>
-          <View style={styles.primaryCopy}>
-            <Text style={styles.primaryTitle}>开始聊天</Text>
-            <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
-          </View>
-          <View style={styles.primaryArrow}>
-            <Ionicons color={aiLightColors.primaryActive} name="chevron-forward" size={22} />
-          </View>
-        </Pressable>
+        {/* Layer 1: The 3D Footprint Extrusion */}
+        <View style={styles.primaryChatCardExtrusion}>
+          {/* Layer 2: The Glass Body */}
+          <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}>
+            <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
+            <View style={styles.primaryIcon}>
+              <Ionicons color={aiLightColors.primary} name="chatbubble-ellipses-outline" size={26} />
+            </View>
+            <View style={styles.primaryCopy}>
+              <Text style={styles.primaryTitle}>开始聊天</Text>
+              <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
+            </View>
+            <View style={styles.primaryArrow}>
+              <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
+            </View>
+          </Pressable>
+        </View>
 
         <View style={styles.roleRailWrap}>
           <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.roleRailScroll} contentContainerStyle={styles.roleRailContent}>
@@ -348,21 +353,33 @@ const styles = StyleSheet.create({
   mainStack: {
     gap: rhythm.cardContentGap,
   },
+  primaryChatCardExtrusion: {
+    backgroundColor: 'rgba(0, 0, 0, 0.07)', // The dark 3D bevel color
+    borderRadius: 36,
+    paddingBottom: 4, // This creates the physical 3D thickness flawlessly!
+  },
   primaryChatCard: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.primary,
-    borderRadius: radius.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)', // Clean white frosted glass
+    borderRadius: 36, // Matches parent for perfect corners
+    
+    // Top highlight rim
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(255, 255, 255, 1)',
+    borderLeftWidth: 1,
+    borderLeftColor: 'rgba(255, 255, 255, 0.8)',
+    
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: 104,
-    overflow: 'hidden',
+    overflow: 'hidden', // Safely clips the pattern image
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[4],
     position: 'relative',
   },
   primaryCardPattern: {
     height: 124,
-    opacity: 0.1,
+    opacity: 0.15,
     position: 'absolute',
     right: -spacing[4],
     top: -spacing[2],
@@ -370,7 +387,7 @@ const styles = StyleSheet.create({
   },
   primaryIcon: {
     alignItems: 'center',
-    backgroundColor: 'rgba(250, 249, 245, 0.24)',
+    backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.pill,
     height: spacing[12],
     justifyContent: 'center',
@@ -382,18 +399,18 @@ const styles = StyleSheet.create({
   },
   primaryTitle: {
     ...typography.textStyles.cardTitle,
-    color: aiLightColors.onDark,
+    color: aiLightColors.ink,
     fontSize: 21,
     fontWeight: '700',
     lineHeight: 27,
   },
   primaryDescription: {
     ...typography.textStyles.caption,
-    color: 'rgba(250, 249, 245, 0.82)',
+    color: aiLightColors.muted,
   },
   primaryArrow: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.canvas,
+    backgroundColor: aiLightColors.primary,
     borderRadius: radius.pill,
     height: spacing[10],
     justifyContent: 'center',

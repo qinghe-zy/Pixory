@@ -9,6 +9,7 @@ import type { AiMessageStatus } from '../../ai/types';
 interface AiThinkingBlockProps {
   reasoningText?: string | null;
   status: AiMessageStatus;
+  thinkingActive?: boolean;
   createdAt: string;
   completedAt?: string | null;
   defaultExpanded?: boolean;
@@ -27,12 +28,21 @@ function elapsedSeconds(createdAt: string, completedAt: string | null | undefine
   return Math.max(0, (endedAt - startedAt) / 1000);
 }
 
-export function AiThinkingBlock({ reasoningText, status, createdAt, completedAt, defaultExpanded = false, onExpandedChange }: AiThinkingBlockProps) {
+export function AiThinkingBlock({
+  reasoningText,
+  status,
+  thinkingActive,
+  createdAt,
+  completedAt,
+  defaultExpanded = false,
+  onExpandedChange,
+}: AiThinkingBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [now, setNow] = useState(Date.now());
-  const thinking = status === 'generating' || status === 'queued';
+  const thinking = thinkingActive ?? (status === 'generating' || status === 'queued');
   const expandedProgress = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-  const duration = useMemo(() => elapsedSeconds(createdAt, thinking ? null : completedAt, now), [completedAt, createdAt, now, thinking]);
+  const durationCompletedAt = thinking ? null : completedAt ?? createdAt;
+  const duration = useMemo(() => elapsedSeconds(createdAt, durationCompletedAt, now), [createdAt, durationCompletedAt, now]);
   const label = `${thinking ? '正在思考中…' : '思考完成'} ${duration.toFixed(1)}秒`;
   const hasReasoningText = Boolean(reasoningText?.trim());
   const waitingForReasoningText = thinking && expanded && !hasReasoningText;

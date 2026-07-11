@@ -6,7 +6,7 @@ import type { AiReadableDocument, AiDocumentReaderLocator } from '../../ai/reade
 import { getAiMarkdownReaderHtml } from './aiMarkdownReaderTemplate';
 
 interface AiMarkdownReaderProps {
-  readable: AiReadableDocument;
+  readable: Pick<AiReadableDocument, 'text'>;
   locator?: AiDocumentReaderLocator;
   onLinkPress?: (url: string) => void;
 }

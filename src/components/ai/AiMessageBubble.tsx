@@ -22,6 +22,7 @@ import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
 
 interface AiMessageBubbleProps {
   message: AiMessageWithCitations;
+  replyActionMode?: 'continue' | 'reply';
   assistantAvatar?: {
     avatarEnabled: boolean;
     avatarUri: string | null;
@@ -39,6 +40,7 @@ interface AiMessageBubbleProps {
   streaming?: boolean;
   streamingIdentity?: AiStreamingMessageIdentity | null;
   generating?: boolean;
+  thinkingExpected?: boolean;
   thinkingDefaultExpanded?: boolean;
   editingMessageId?: string | null;
   favorited?: boolean;
@@ -54,6 +56,7 @@ interface AiMessageBubbleProps {
   onCancelEdit: () => void;
   onContinue: (messageId: string) => void;
   onContinueReply: (messageId: string) => void;
+  onReplyToAssistant: (messageId: string) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
@@ -75,6 +78,7 @@ function renderAssistantContentWithCursor(content: string, streaming: boolean) {
 
 type AiMessageFooterActionsProps = {
   message: AiMessageWithCitations;
+  replyActionMode?: 'continue' | 'reply';
   favorited?: boolean;
   favoriteDisabledByGeneration?: boolean;
   favoritePending?: boolean;
@@ -84,6 +88,7 @@ type AiMessageFooterActionsProps = {
   onCopy: (message: AiMessageWithCitations) => void;
   onContinue: (messageId: string) => void;
   onContinueReply: (messageId: string) => void;
+  onReplyToAssistant: (messageId: string) => void;
   onEditUser: (messageId: string, content: string) => void;
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
@@ -97,10 +102,12 @@ export function AiMessageFooterActions({
   generating = false,
   headerVisible = false,
   message,
+  replyActionMode = 'continue',
   pendingActionMessageId = null,
   onCopy,
   onContinue,
   onContinueReply,
+  onReplyToAssistant,
   onEditUser,
   onRegenerate,
   onSelectVersion,
@@ -108,13 +115,16 @@ export function AiMessageFooterActions({
 }: AiMessageFooterActionsProps) {
   const isUser = message.role === 'user';
   const actionPending = pendingActionMessageId === message.id;
+  const assistantActionTargetsLatestVersion = message.versionIndex === message.versionTotal;
   const canCopy = Boolean((message.content || message.errorMessage || '').trim());
   const canEdit = isUser && !generating && !actionPending && message.versionIndex === message.versionTotal;
-  const canContinue = !isUser && !generating && !actionPending && Boolean(message.content.trim()) && (message.status === 'failed' || message.status === 'stopped');
-  const canContinueReply = !isUser && !generating && !actionPending && Boolean(message.content.trim()) && message.status === 'completed';
+  const canContinue = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && Boolean(message.content.trim()) && (message.status === 'failed' || message.status === 'stopped');
+  const canContinueReply = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'continue' && Boolean(message.content.trim()) && message.status === 'completed';
+  const canReplyToAssistant = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'reply' && Boolean(message.content.trim()) && message.status === 'completed';
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
   const messageTimestamp = message.completedAt ?? message.updatedAt ?? message.createdAt;
+  const textReplyActionLabel = replyActionMode === 'reply' ? '回复' : '续答';
   const footerTime = headerVisible
     ? ''
     : isUser
@@ -167,14 +177,24 @@ export function AiMessageFooterActions({
       ) : null}
       {!isUser ? (
         <Pressable
-          accessibilityLabel="续答"
+          accessibilityLabel={textReplyActionLabel}
           accessibilityRole="button"
-          disabled={!canContinueReply}
+          disabled={!canContinueReply && !canReplyToAssistant}
           hitSlop={8}
-          onPress={() => onContinueReply(message.id)}
-          style={({ pressed }) => [styles.continueReplyActionButton, !canContinueReply && styles.disabledAction, pressed && canContinueReply && styles.pressed]}
+          onPress={() => {
+            if (canReplyToAssistant) {
+              onReplyToAssistant(message.id);
+              return;
+            }
+            onContinueReply(message.id);
+          }}
+          style={({ pressed }) => [
+            styles.continueReplyActionButton,
+            !canContinueReply && !canReplyToAssistant && styles.disabledAction,
+            pressed && (canContinueReply || canReplyToAssistant) && styles.pressed,
+          ]}
         >
-          <Text style={styles.continueReplyActionText}>续答</Text>
+          <Text style={styles.continueReplyActionText}>{textReplyActionLabel}</Text>
         </Pressable>
       ) : null}
       {isUser ? (
@@ -236,6 +256,7 @@ function AiMessageBubbleComponent({
   assistantDisplayName = null,
   generating = false,
   message,
+  replyActionMode = 'continue',
   showAvatar = true,
   showUserAvatar = false,
   space,
@@ -249,6 +270,7 @@ function AiMessageBubbleComponent({
   hideCitations = false,
   hideFooterActions = false,
   pendingActionMessageId = null,
+  thinkingExpected = false,
   thinkingDefaultExpanded = false,
   onCopy,
   onCancelEdit,
@@ -256,6 +278,7 @@ function AiMessageBubbleComponent({
   onEditUser,
   onContinue,
   onContinueReply,
+  onReplyToAssistant,
   onOpenCitation,
   onRegenerate,
   onSelectVersion,
@@ -284,6 +307,16 @@ function AiMessageBubbleComponent({
     message.status === 'completed' ||
     message.status === 'failed' ||
     message.status === 'stopped';
+  const hasReasoningText = Boolean(message.reasoningText?.trim());
+  const thinkingActive = Boolean(
+    thinkingExpected && (message.status === 'generating' || message.status === 'queued'),
+  );
+  const shouldRenderThinking =
+    !isUser &&
+    (thinkingActive ||
+      (hasReasoningText &&
+        (thinkingExpected ||
+          (message.status !== 'generating' && message.status !== 'queued'))));
   const footerActionsVisible =
     !hideFooterActions && (isUser || assistantTerminal);
   const assistantHasBody =
@@ -400,7 +433,7 @@ function AiMessageBubbleComponent({
             ))}
           </View>
         ) : null}
-        {!isUser ? (
+        {shouldRenderThinking ? (
           <View style={styles.thinkingWrap}>
             {streaming && streamingIdentity ? (
               <AiStreamingReasoningText
@@ -411,6 +444,7 @@ function AiMessageBubbleComponent({
                 initialReasoningText={message.reasoningText}
                 onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
                 status={message.status}
+                thinkingActive={thinkingActive}
               />
             ) : (
               <AiThinkingBlock
@@ -420,6 +454,7 @@ function AiMessageBubbleComponent({
                 onExpandedChange={(expanded) => onThinkingExpandedChange?.(message.id, expanded)}
                 reasoningText={message.reasoningText}
                 status={message.status}
+                thinkingActive={thinkingActive}
               />
             )}
           </View>
@@ -524,8 +559,10 @@ function AiMessageBubbleComponent({
             }}
             onContinue={onContinue}
             onContinueReply={onContinueReply}
+            onReplyToAssistant={onReplyToAssistant}
             onEditUser={onEditUser}
             onRegenerate={onRegenerate}
+            replyActionMode={replyActionMode}
             onSelectVersion={onSelectVersion}
             onToggleFavorite={onToggleFavorite}
           />
@@ -538,12 +575,14 @@ function AiMessageBubbleComponent({
 function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMessageBubbleProps): boolean {
   return (
     previous.message === next.message &&
+    previous.replyActionMode === next.replyActionMode &&
     previous.assistantBubbleEdge === next.assistantBubbleEdge &&
     previous.space === next.space &&
     previous.streaming === next.streaming &&
     previous.streamingIdentity?.generationId === next.streamingIdentity?.generationId &&
     previous.streamingIdentity?.messageId === next.streamingIdentity?.messageId &&
     previous.generating === next.generating &&
+    previous.thinkingExpected === next.thinkingExpected &&
     previous.thinkingDefaultExpanded === next.thinkingDefaultExpanded &&
     previous.favorited === next.favorited &&
     previous.favoriteDisabledByGeneration === next.favoriteDisabledByGeneration &&

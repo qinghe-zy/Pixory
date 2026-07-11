@@ -76,13 +76,13 @@ test('streaming patches and created callbacks carry generationId for stale patch
   const manager = read('src/ai/aiGenerationManager.ts');
   const screen = read('src/screens/AiChatScreen.tsx');
 
-  assert.match(service, /onCreated\?: \(ids: \{ userMessageId: string; assistantMessageId: string; generationId: string \}\) => void/);
+  assert.match(service, /onCreated\?: \(ids: AiGenerationCreatedInfo\) => void/);
   assert.match(service, /export interface AiStreamingMessagePatch \{[\s\S]*generationId: string/);
   assert.match(service, /const generationId = generationMetrics\.context\.generationId/);
   assert.match(service, /generationId,/);
   assert.match(manager, /generationId: string/);
   assert.match(manager, /onCreated: \(ids\) => emitCreated\(task, ids\)/);
-  assert.match(manager, /subscriber\.onCreated\?\.\(\{\s*assistantMessageId: task\.assistantMessageId,\s*generationId: task\.generationId,/);
+  assert.match(manager, /subscriber\.onCreated\?\.\(\{\s*assistantMessageId: task\.assistantMessageId,\s*generationId: task\.generationId,[\s\S]*thinkingExpected: task\.thinkingExpected \?\? undefined,[\s\S]*userMessageId: task\.userMessageId \?\? '',/);
   assert.match(screen, /type ActiveStreamingIdentity/);
   assert.match(screen, /activeStreamingIdentityRef/);
   assert.match(screen, /function isCurrentStreamingPatch/);
@@ -224,7 +224,7 @@ test('user stop records user_stopped before abort fallback can settle metrics', 
   assert.match(stopForAbortBody, /generationMetrics\.context\.stopReason = stopReason/);
   assert.match(stopForAbortBody, /options\?\.buildPromptSnapshotJson\?\.\(\)/);
   assert.match(service, /buildPromptSnapshotJson: \(\) => createPromptSnapshotJson\(\{ stopReason: currentStopReason\(\) \}\)/);
-  assert.match(service, /buildPromptSnapshotJson: \(\) => buildMetricsOnlyPromptSnapshotJson\(\{ generationMetrics, stopReason: currentStopReason\(\) \}\)/);
+  assert.match(service, /buildPromptSnapshotJson: \(\) => buildMetricsOnlyPromptSnapshotJson\(\{ generationMetrics, messageDisplayKind, stopReason: currentStopReason\(\) \}\)/);
   assert.doesNotMatch(service, /stopForAbort\(\{ promptSnapshotJson:/);
   assert.match(stopGenerationBody, /await stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}\);[\s\S]*task\?\.controller\.abort\(\)/);
 });
@@ -241,7 +241,7 @@ test('streaming idle timeout finalizes as failure instead of user stopped', () =
   assert.match(manager, /reason: 'timeout'/);
   assert.match(manager, /stopStreamingMessage\(\{ assistantMessageId: stoppedAssistantId, reason, space \}/);
   const streamAssistantCalls = service.match(/await streamAssistantReply\(\{[\s\S]*?\n  \}\);/g) ?? [];
-  assert.equal(streamAssistantCalls.length, 4);
+  assert.equal(streamAssistantCalls.length, 6);
   for (const call of streamAssistantCalls) {
     assert.match(call, /onTimeout: input\.onTimeout/);
   }

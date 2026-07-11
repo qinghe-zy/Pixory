@@ -224,7 +224,7 @@ export function AiChatComposer({
                 pressed && !replyAssistDisabled && styles.pressed,
               ]}
             >
-              <Ionicons color={aiLightColors.ink} name="bulb-outline" size={spacing[5]} />
+              <Ionicons color={aiLightColors.primary} name="bulb-outline" size={spacing[5]} />
             </Pressable>
           </View>
 
@@ -383,9 +383,9 @@ const styles = StyleSheet.create({
   },
   replyAssistButton: {
     alignItems: 'center',
-    borderColor: aiLightColors.hairline,
+    /* primarySoft fill — matches the modal accent; no border needed */
+    backgroundColor: aiLightColors.primarySoft,
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
     height: spacing[8],
     justifyContent: 'center',
     width: spacing[8],

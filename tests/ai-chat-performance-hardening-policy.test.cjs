@@ -60,7 +60,7 @@ test('AI chat streaming patches update by indexed message id before falling back
 test('AI chat streaming assistant creation avoids an immediate full message reload', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const subscriberBody = /function createGenerationSubscriber[\s\S]*?\r?\n  }\r?\n\r?\n  function beginStreamingRequest/.exec(chat)?.[0] ?? '';
-  const onCreatedBody = /onCreated: \(\{ assistantMessageId, generationId \}\) => \{[\s\S]*?\r?\n      \},\r?\n      onMessagePatch/.exec(subscriberBody)?.[0] ?? '';
+  const onCreatedBody = /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected \}\) => \{[\s\S]*?\r?\n      \},\r?\n      onMessagePatch/.exec(subscriberBody)?.[0] ?? '';
 
   assert.match(onCreatedBody, /publishStreamingMessage\(streamingIdentity/);
   assert.match(onCreatedBody, /createStreamingAssistantMessage\(targetThreadId, assistantMessageId\)/);

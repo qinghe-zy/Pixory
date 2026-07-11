@@ -21,9 +21,30 @@ test('AI routes are registered for workbench, chat, settings, history, materials
     'ai-material-list',
     'ai-document-reader',
     'ai-history',
+    'product-doc',
   ]) {
     assert.match(app, new RegExp(route));
   }
+});
+
+test('About screen exposes the in-app product documentation entry and route stack target', () => {
+  const about = read('src/screens/AboutScreen.tsx');
+  const productDoc = read('src/screens/ProductDocumentationScreen.tsx');
+  const readerTemplate = read('src/components/ai/aiMarkdownReaderTemplate.ts');
+  const service = read('src/services/productDocumentationService.ts');
+
+  assert.match(about, /产品文档/);
+  assert.match(about, /onPushRoute\(\{ name: 'product-doc', space, preloadedMarkdown: productDocMd }\)/);
+  assert.match(about, /getPreloadedProductDocumentationMarkdown/);
+  assert.match(productDoc, /<Text style=\{styles\.brandText\}>Pixory<\/Text>/);
+  assert.match(productDoc, /<Text style=\{styles\.backText\}>返回<\/Text>/);
+  assert.match(productDoc, /<AppScreen backgroundColor=\{DOC_CANVAS\} contentStyle=\{styles\.screen\}>/);
+  assert.match(productDoc, /AiMarkdownReader/);
+  assert.match(service, /PRODUCT_MANUAL_MARKDOWN/);
+  assert.match(service, /https:\/\/mist01\.com\//);
+  assert.match(readerTemplate, /height: 75vh/);
+  assert.match(readerTemplate, /background: rgba\(24, 23, 21, 0\.85\)/);
+  assert.match(readerTemplate, /font-size: 30px/);
 });
 
 test('AI workbench exposes chat and role library without old knowledge starts', () => {

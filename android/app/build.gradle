@@ -98,8 +98,8 @@ android {
         applicationId 'com.pixory.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 265
-        versionName "2.6.3"
+        versionCode 266
+        versionName "2.6.4"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -145,7 +145,7 @@ android {
 android.applicationVariants.all { variant ->
     if (variant.name == "release") {
         variant.outputs.all {
-            outputFileName = "Pixory-v2.6.3-local-release.apk"
+            outputFileName = "Pixory-v2.6.4-local-release.apk"
         }
     }
 }

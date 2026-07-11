@@ -385,6 +385,40 @@ function canOpenReplyAssist(messages: AiMessageWithCitations[]): boolean {
   return transcript[transcript.length - 1]?.role === "assistant";
 }
 
+type ReplyAssistPagesByMode = Record<AiReplyAssistMode, string[][]>;
+
+type ReplyAssistPageIndexByMode = Record<AiReplyAssistMode, number>;
+
+type ReplyAssistRequestSnapshot = {
+  branchScopes: AiBranchScope[];
+  contextSignature: string;
+  threadId: string;
+  transcript: Array<{ role: "user" | "assistant"; content: string }>;
+};
+
+function createEmptyReplyAssistPagesByMode(): ReplyAssistPagesByMode {
+  return {
+    long: [],
+    short: [],
+  };
+}
+
+function createEmptyReplyAssistPageIndexByMode(): ReplyAssistPageIndexByMode {
+  return {
+    long: 0,
+    short: 0,
+  };
+}
+
+function cloneReplyAssistPagesByMode(
+  pagesByMode: ReplyAssistPagesByMode,
+): ReplyAssistPagesByMode {
+  return {
+    long: pagesByMode.long.map((page) => [...page]),
+    short: pagesByMode.short.map((page) => [...page]),
+  };
+}
+
 function buildReplyAssistContextSignature(input: {
   threadId: string | null;
   branchScopes: AiBranchScope[];
@@ -450,6 +484,17 @@ function messageHasContextTrim(message: AiMessageWithCitations): boolean {
       snapshot?.contextTrimmedByCount ||
       snapshot?.contextTrimmed,
     );
+  } catch {
+    return false;
+  }
+}
+
+function messageUsesStandaloneAssistantDisplay(message: AiMessageWithCitations): boolean {
+  try {
+    const snapshot = message.promptSnapshotJson
+      ? JSON.parse(message.promptSnapshotJson)
+      : null;
+    return snapshot?.messageDisplayKind === "standalone_assistant";
   } catch {
     return false;
   }
@@ -680,6 +725,7 @@ export function AiChatScreen({
   const messageListRef = useRef<FlatList<VisibleMessageItem> | null>(null);
   const pendingBranchTreeScrollMessageIdRef = useRef<string | null>(null);
   const pendingSearchScrollMessageIdRef = useRef<string | null>(null);
+  const pendingReplyTargetScrollMessageIdRef = useRef<string | null>(null);
   const appliedBranchTreeSelectionKeyRef = useRef<string | null>(null);
   const appliedSearchTargetKeyRef = useRef<string | null>(null);
   const activeMessageBranchScopesRef = useRef<AiBranchScope[] | undefined>(
@@ -1072,9 +1118,17 @@ export function AiChatScreen({
   const messagesRef = useRef<AiMessageWithCitations[]>([]);
   const messageIndexByIdRef = useRef(new Map<string, number>());
   const visibleMessagesRef = useRef<AiMessageWithCitations[]>([]);
-  const replyAssistAbortControllerRef = useRef<AbortController | null>(null);
+  const replyAssistAbortControllersRef = useRef(new Set<AbortController>());
+  const replyAssistCacheRef = useRef(new Map<string, ReplyAssistPagesByMode>());
   const replyAssistContextSignatureRef = useRef<string | null>(null);
+  const replyAssistInFlightRef = useRef(new Map<string, Promise<string[]>>());
   const replyAssistSessionIdRef = useRef(0);
+  const replyAssistWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const replyAssistBackgroundPrefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const inlineEditSafeVisibleMessageIdsRef = useRef(new Set<string>());
   const inlineEditViewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: 82,
@@ -1109,6 +1163,15 @@ export function AiChatScreen({
         pendingSearchScrollMessageIdRef.current = null;
         clearSearchScrollTimeouts();
       }
+      const pendingReplyTargetMessageId =
+        pendingReplyTargetScrollMessageIdRef.current;
+      if (
+        pendingReplyTargetMessageId &&
+        nextVisibleMessageIds.has(pendingReplyTargetMessageId)
+      ) {
+        pendingReplyTargetScrollMessageIdRef.current = null;
+        clearReplyTargetVisibilityTimeouts();
+      }
     },
   );
   const isLoadingEarlierRef = useRef(false);
@@ -1129,6 +1192,7 @@ export function AiChatScreen({
   const activeStreamingIdentityRef = useRef<ActiveStreamingIdentity | null>(
     null,
   );
+  const thinkingExpectedByMessageIdRef = useRef(new Map<string, boolean>());
   const generationBusyRef = useRef(false);
   const generationActionTokenRef = useRef(0);
   const newChatFeedbackTimeoutRef = useRef<ReturnType<
@@ -1150,6 +1214,9 @@ export function AiChatScreen({
     typeof setTimeout
   > | null>(null);
   const inlineEditVisibilityTimeoutsRef = useRef<
+    Array<ReturnType<typeof setTimeout>>
+  >([]);
+  const replyTargetVisibilityTimeoutsRef = useRef<
     Array<ReturnType<typeof setTimeout>>
   >([]);
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1199,17 +1266,11 @@ export function AiChatScreen({
   const [replyAssistMode, setReplyAssistMode] =
     useState<AiReplyAssistMode>("short");
   const [replyAssistPagesByMode, setReplyAssistPagesByMode] = useState<
-    Record<AiReplyAssistMode, string[][]>
-  >({
-    long: [],
-    short: [],
-  });
+    ReplyAssistPagesByMode
+  >(createEmptyReplyAssistPagesByMode);
   const [replyAssistPageIndexByMode, setReplyAssistPageIndexByMode] = useState<
-    Record<AiReplyAssistMode, number>
-  >({
-    long: 0,
-    short: 0,
-  });
+    ReplyAssistPageIndexByMode
+  >(createEmptyReplyAssistPageIndexByMode);
   const [replyAssistLoading, setReplyAssistLoading] = useState(false);
   const [replyAssistError, setReplyAssistError] = useState<string | null>(null);
   const updateStreamingLockStateSnapshot = useCallback((offsetY: number) => {
@@ -1487,6 +1548,12 @@ export function AiChatScreen({
   useEffect(() => {
     return () => {
       abortReplyAssistRequest();
+      if (replyAssistWarmupTimeoutRef.current) {
+        clearTimeout(replyAssistWarmupTimeoutRef.current);
+      }
+      if (replyAssistBackgroundPrefetchTimeoutRef.current) {
+        clearTimeout(replyAssistBackgroundPrefetchTimeoutRef.current);
+      }
       if (userScrollIdleTimeoutRef.current) {
         clearTimeout(userScrollIdleTimeoutRef.current);
       }
@@ -1560,6 +1627,7 @@ export function AiChatScreen({
   useEffect(() => {
     isComposerDraftLoadedRef.current = false;
     setComposerText("");
+    setAssistantReplyTarget(null);
     let isMounted = true;
     void getComposerDraft(draftThreadKey).then((draft) => {
       if (!isMounted) return;
@@ -1589,6 +1657,9 @@ export function AiChatScreen({
   const [pendingAttachments, setPendingAttachments] = useState<
     AiComposerAttachment[]
   >([]);
+  const [assistantReplyTarget, setAssistantReplyTarget] = useState<{
+    messageId: string;
+  } | null>(null);
   const [pendingMessageActionId, setPendingMessageActionId] = useState<
     string | null
   >(null);
@@ -1764,7 +1835,11 @@ export function AiChatScreen({
           id: message.id,
           type: "message",
           message,
-          showAvatar: message.role === 'assistant' && (showDateSeparator || previousMessage?.role !== 'assistant'),
+          showAvatar:
+            message.role === 'assistant' &&
+            (showDateSeparator ||
+              previousMessage?.role !== 'assistant' ||
+              messageUsesStandaloneAssistantDisplay(message)),
           showUserAvatar: message.role === 'user' && (showDateSeparator || previousMessage?.role !== 'user'),
           showDateSeparator,
         };
@@ -1871,6 +1946,41 @@ export function AiChatScreen({
     () => findLatestVisibleBranchRootMessageId(visibleMessages),
     [visibleMessages],
   );
+  const replyActionModeByMessageId = useMemo(() => {
+    const next = new Map<string, "continue" | "reply">();
+    visibleMessages.forEach((message, index) => {
+      if (message.role !== "assistant" || message.status !== "completed") {
+        return;
+      }
+      next.set(
+        message.id,
+        index < visibleMessages.length - 1 ? "reply" : "continue",
+      );
+    });
+    return next;
+  }, [visibleMessages]);
+  useEffect(() => {
+    if (!assistantReplyTarget) {
+      return;
+    }
+    const targetMessage = visibleMessagesById.get(assistantReplyTarget.messageId);
+    if (
+      !targetMessage ||
+      targetMessage.role !== "assistant" ||
+      targetMessage.status !== "completed" ||
+      targetMessage.versionIndex !== targetMessage.versionTotal ||
+      replyActionModeByMessageId.get(assistantReplyTarget.messageId) !== "reply"
+    ) {
+      setAssistantReplyTarget(null);
+    }
+  }, [assistantReplyTarget, replyActionModeByMessageId, visibleMessagesById]);
+  useEffect(() => {
+    if (assistantReplyTarget) {
+      return;
+    }
+    pendingReplyTargetScrollMessageIdRef.current = null;
+    clearReplyTargetVisibilityTimeouts();
+  }, [assistantReplyTarget]);
   const replyAssistContextSignature = useMemo(
     () =>
       buildReplyAssistContextSignature({
@@ -2159,7 +2269,7 @@ export function AiChatScreen({
     return {
       // prettier-ignore
       getStreamingVisibility: () => getActiveStreamingVisibility(targetThreadId, generation),
-      onCreated: ({ assistantMessageId, generationId }) => {
+      onCreated: ({ assistantMessageId, generationId, thinkingExpected }) => {
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
@@ -2170,6 +2280,10 @@ export function AiChatScreen({
           threadId: targetThreadId,
         };
         activeStreamingIdentityRef.current = streamingIdentity;
+        thinkingExpectedByMessageIdRef.current.set(
+          assistantMessageId,
+          Boolean(thinkingExpected),
+        );
         // prettier-ignore
         publishStreamingMessage(streamingIdentity, { content: '', reasoningText: null, status: 'generating' });
         // prettier-ignore
@@ -2583,6 +2697,10 @@ export function AiChatScreen({
     if (hasPendingStreamingReadBuffer()) {
       return;
     }
+    if (assistantReplyTarget?.messageId) {
+      scheduleReplyTargetVisibility(assistantReplyTarget.messageId);
+      return;
+    }
     scheduleComposerFocusVisibility();
   }
 
@@ -2591,6 +2709,10 @@ export function AiChatScreen({
       return;
     }
     if (pendingSearchScrollMessageIdRef.current) {
+      return;
+    }
+    if (assistantReplyTarget?.messageId) {
+      scheduleReplyTargetVisibility(assistantReplyTarget.messageId);
       return;
     }
     if (
@@ -2605,13 +2727,20 @@ export function AiChatScreen({
       allowFollowLatest: true,
       retainWindow: true,
     });
-  }, [scheduleStreamingTailReconcile]);
+  }, [assistantReplyTarget, scheduleStreamingTailReconcile]);
 
   function clearInlineEditVisibilityTimeouts() {
     inlineEditVisibilityTimeoutsRef.current.forEach((timeout) =>
       clearTimeout(timeout),
     );
     inlineEditVisibilityTimeoutsRef.current = [];
+  }
+
+  function clearReplyTargetVisibilityTimeouts() {
+    replyTargetVisibilityTimeoutsRef.current.forEach((timeout) =>
+      clearTimeout(timeout),
+    );
+    replyTargetVisibilityTimeoutsRef.current = [];
   }
 
   function clearBranchTreeScrollTimeouts() {
@@ -2790,11 +2919,63 @@ export function AiChatScreen({
       );
   }
 
+  function scrollReplyTargetMessageIntoView(messageId: string) {
+    if (pendingReplyTargetScrollMessageIdRef.current !== messageId) {
+      return;
+    }
+    if (inlineEditSafeVisibleMessageIdsRef.current.has(messageId)) {
+      return;
+    }
+    const index = invertedMessageIndexById.get(messageId);
+    if (index == null) {
+      return;
+    }
+    messageListRef.current?.scrollToIndex({
+      animated: true,
+      index,
+      viewPosition: 0.42,
+    });
+  }
+
+  function retryReplyTargetScrollToIndex(info: {
+    averageItemLength: number;
+    index: number;
+  }) {
+    const failedMessageId = getMessageItemIdAtIndex(info.index);
+    if (
+      !failedMessageId ||
+      pendingReplyTargetScrollMessageIdRef.current !== failedMessageId ||
+      inlineEditSafeVisibleMessageIdsRef.current.has(failedMessageId)
+    ) {
+      return;
+    }
+    messageListRef.current?.scrollToOffset({
+      animated: true,
+      offset: Math.max(0, info.averageItemLength * info.index),
+    });
+    replyTargetVisibilityTimeoutsRef.current.push(
+      setTimeout(
+        () => scrollReplyTargetMessageIntoView(failedMessageId),
+        INLINE_EDIT_SCROLL_RETRY_DELAY_MS,
+      ),
+    );
+  }
+
+  function scheduleReplyTargetVisibility(messageId: string) {
+    clearReplyTargetVisibilityTimeouts();
+    pendingReplyTargetScrollMessageIdRef.current = messageId;
+    replyTargetVisibilityTimeoutsRef.current =
+      INLINE_EDIT_VISIBILITY_SCROLL_DELAYS_MS.map((delay) =>
+        setTimeout(() => scrollReplyTargetMessageIntoView(messageId), delay),
+      );
+  }
+
   function handleMessageScrollToIndexFailed(info: {
     averageItemLength: number;
     index: number;
   }) {
     retryInlineEditScrollToIndex(info);
+    retryReplyTargetScrollToIndex(info);
     retryBranchTreeScrollToIndex(info);
     retrySearchScrollToIndex(info);
   }
@@ -3546,12 +3727,15 @@ export function AiChatScreen({
     activeThreadIdRef.current = nextThreadId;
     setActiveThreadId(nextThreadId);
     thinkingExpandedByMessageIdRef.current.clear();
+    thinkingExpectedByMessageIdRef.current.clear();
     clearComposerFocusVisibilityTimeouts();
     clearLatestJumpTimeouts();
     clearInlineEditVisibilityTimeouts();
+    clearReplyTargetVisibilityTimeouts();
     clearSearchScrollTimeouts();
     clearSearchHighlightTimeout();
     inlineEditSafeVisibleMessageIdsRef.current = new Set();
+    pendingReplyTargetScrollMessageIdRef.current = null;
     pendingSearchScrollMessageIdRef.current = null;
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
@@ -3874,6 +4058,7 @@ export function AiChatScreen({
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();
       clearInlineEditVisibilityTimeouts();
+      clearReplyTargetVisibilityTimeouts();
       clearBranchTreeScrollTimeouts();
       clearSearchScrollTimeouts();
       clearSearchHighlightTimeout();
@@ -4224,8 +4409,101 @@ export function AiChatScreen({
   }
 
   function abortReplyAssistRequest() {
-    replyAssistAbortControllerRef.current?.abort();
-    replyAssistAbortControllerRef.current = null;
+    replyAssistAbortControllersRef.current.forEach((controller) =>
+      controller.abort(),
+    );
+    replyAssistAbortControllersRef.current.clear();
+  }
+
+  function readReplyAssistCachedPages(
+    contextSignature: string,
+  ): ReplyAssistPagesByMode {
+    const cached = replyAssistCacheRef.current.get(contextSignature);
+    return cached
+      ? cloneReplyAssistPagesByMode(cached)
+      : createEmptyReplyAssistPagesByMode();
+  }
+
+  function writeReplyAssistCachedPages(
+    contextSignature: string,
+    nextPagesByMode: ReplyAssistPagesByMode,
+  ) {
+    const cloned = cloneReplyAssistPagesByMode(nextPagesByMode);
+    replyAssistCacheRef.current.set(contextSignature, cloned);
+    if (replyAssistContextSignatureRef.current === contextSignature) {
+      setReplyAssistPagesByMode(cloned);
+      setReplyAssistPageIndexByMode((current) => ({
+        long: Math.min(current.long, Math.max(cloned.long.length - 1, 0)),
+        short: Math.min(current.short, Math.max(cloned.short.length - 1, 0)),
+      }));
+    }
+  }
+
+  function appendReplyAssistCachedPage(
+    contextSignature: string,
+    mode: AiReplyAssistMode,
+    suggestions: string[],
+  ) {
+    const cached = readReplyAssistCachedPages(contextSignature);
+    cached[mode] = [...cached[mode], suggestions];
+    writeReplyAssistCachedPages(contextSignature, cached);
+  }
+
+  function buildReplyAssistRequestSnapshot():
+    | ReplyAssistRequestSnapshot
+    | null {
+    const threadId = activeThreadIdRef.current;
+    if (!threadId) {
+      return null;
+    }
+    const transcript = buildReplyAssistTranscript(visibleMessagesRef.current);
+    if (
+      transcript.length === 0 ||
+      transcript[transcript.length - 1]?.role !== "assistant"
+    ) {
+      return null;
+    }
+    const branchScopes = getPersistedCurrentBranchScopes();
+    return {
+      branchScopes,
+      contextSignature: buildReplyAssistContextSignature({
+        branchScopes,
+        threadId,
+        visibleMessages: visibleMessagesRef.current,
+      }),
+      threadId,
+      transcript,
+    };
+  }
+
+  async function runReplyAssistRequest(
+    requestKey: string,
+    input: {
+      mode: AiReplyAssistMode;
+      snapshot: ReplyAssistRequestSnapshot;
+    },
+  ) {
+    const existing = replyAssistInFlightRef.current.get(requestKey);
+    if (existing) {
+      return existing;
+    }
+    const controller = new AbortController();
+    replyAssistAbortControllersRef.current.add(controller);
+    const promise = generateReplyAssistSuggestions({
+      branchScopes: input.snapshot.branchScopes,
+      mode: input.mode,
+      signal: controller.signal,
+      space,
+      threadId: input.snapshot.threadId,
+      transcript: input.snapshot.transcript,
+    }).finally(() => {
+      replyAssistAbortControllersRef.current.delete(controller);
+      if (replyAssistInFlightRef.current.get(requestKey) === promise) {
+        replyAssistInFlightRef.current.delete(requestKey);
+      }
+    });
+    replyAssistInFlightRef.current.set(requestKey, promise);
+    return promise;
   }
 
   function closeReplyAssistModal() {
@@ -4234,85 +4512,150 @@ export function AiChatScreen({
     replyAssistContextSignatureRef.current = replyAssistContextSignature;
     setReplyAssistVisible(false);
     setReplyAssistMode("short");
-    setReplyAssistPagesByMode({
-      long: [],
-      short: [],
-    });
-    setReplyAssistPageIndexByMode({
-      long: 0,
-      short: 0,
-    });
+    setReplyAssistPagesByMode(createEmptyReplyAssistPagesByMode());
+    setReplyAssistPageIndexByMode(createEmptyReplyAssistPageIndexByMode());
     setReplyAssistError(null);
     setReplyAssistLoading(false);
   }
 
-  async function generateReplyAssistPage(mode: AiReplyAssistMode) {
-    const targetThreadId = activeThreadIdRef.current;
-    if (!targetThreadId) {
-      throw new Error("当前还没有可用会话。");
-    }
-    const transcript = buildReplyAssistTranscript(visibleMessagesRef.current);
-    if (transcript.length === 0 || transcript[transcript.length - 1]?.role !== "assistant") {
+  async function ensureReplyAssistFirstPage(
+    mode: AiReplyAssistMode,
+    options?: {
+      foreground?: boolean;
+      sessionId?: number;
+      snapshot?: ReplyAssistRequestSnapshot;
+    },
+  ) {
+    const snapshot = options?.snapshot ?? buildReplyAssistRequestSnapshot();
+    if (!snapshot) {
       throw new Error("当前还没有可供帮答的 AI 回复。");
     }
-    abortReplyAssistRequest();
-    const controller = new AbortController();
-    replyAssistAbortControllerRef.current = controller;
+    const cached = readReplyAssistCachedPages(snapshot.contextSignature);
+    if (cached[mode].length > 0) {
+      if (options?.foreground) {
+        setReplyAssistPagesByMode(cached);
+        setReplyAssistPageIndexByMode((current) => ({
+          ...current,
+          [mode]: Math.min(current[mode], Math.max(cached[mode].length - 1, 0)),
+        }));
+      }
+      return cached[mode][0];
+    }
+    const sessionId = options?.sessionId ?? replyAssistSessionIdRef.current;
+    if (options?.foreground) {
+      setReplyAssistLoading(true);
+      setReplyAssistError(null);
+    }
     try {
-      return await generateReplyAssistSuggestions({
-        branchScopes: getPersistedCurrentBranchScopes(),
-        mode,
-        signal: controller.signal,
-        space,
-        threadId: targetThreadId,
-        transcript,
-      });
+      const suggestions = await runReplyAssistRequest(
+        `${snapshot.contextSignature}:${mode}:page:0`,
+        {
+          mode,
+          snapshot,
+        },
+      );
+      const nextPagesByMode = readReplyAssistCachedPages(
+        snapshot.contextSignature,
+      );
+      if (nextPagesByMode[mode].length === 0) {
+        nextPagesByMode[mode] = [suggestions];
+        writeReplyAssistCachedPages(snapshot.contextSignature, nextPagesByMode);
+      }
+      if (
+        options?.foreground &&
+        screenMountedRef.current &&
+        replyAssistSessionIdRef.current === sessionId
+      ) {
+        const refreshedPages = readReplyAssistCachedPages(
+          snapshot.contextSignature,
+        );
+        setReplyAssistPagesByMode(refreshedPages);
+        setReplyAssistPageIndexByMode((current) => ({
+          ...current,
+          [mode]: 0,
+        }));
+      }
+      return suggestions;
+    } catch (error) {
+      if (options?.foreground && !isReplyAssistAbortError(error)) {
+        if (
+          screenMountedRef.current &&
+          replyAssistSessionIdRef.current === sessionId
+        ) {
+          setReplyAssistError(
+            error instanceof Error ? error.message : "AI 帮答生成失败",
+          );
+        }
+      }
+      throw error;
     } finally {
-      if (replyAssistAbortControllerRef.current === controller) {
-        replyAssistAbortControllerRef.current = null;
+      if (
+        options?.foreground &&
+        screenMountedRef.current &&
+        replyAssistSessionIdRef.current === sessionId
+      ) {
+        setReplyAssistLoading(false);
       }
     }
   }
 
-  async function ensureReplyAssistPage(
+  async function appendReplyAssistPage(
     mode: AiReplyAssistMode,
-    sessionId = replyAssistSessionIdRef.current,
+    options?: {
+      foreground?: boolean;
+      sessionId?: number;
+      snapshot?: ReplyAssistRequestSnapshot;
+    },
   ) {
-    const existingPages = replyAssistPagesByMode[mode];
-    if (existingPages.length > 0) {
-      return;
+    const snapshot = options?.snapshot ?? buildReplyAssistRequestSnapshot();
+    if (!snapshot) {
+      throw new Error("当前还没有可供帮答的 AI 回复。");
     }
-    setReplyAssistLoading(true);
-    setReplyAssistError(null);
+    const cached = readReplyAssistCachedPages(snapshot.contextSignature);
+    const nextPageIndex = cached[mode].length;
+    const sessionId = options?.sessionId ?? replyAssistSessionIdRef.current;
+    if (options?.foreground) {
+      setReplyAssistLoading(true);
+      setReplyAssistError(null);
+    }
     try {
-      const suggestions = await generateReplyAssistPage(mode);
-      if (
-        !screenMountedRef.current ||
-        replyAssistSessionIdRef.current !== sessionId
-      ) {
-        return;
+      const suggestions = await runReplyAssistRequest(
+        `${snapshot.contextSignature}:${mode}:page:${nextPageIndex}`,
+        {
+          mode,
+          snapshot,
+        },
+      );
+      const latestCached = readReplyAssistCachedPages(snapshot.contextSignature);
+      if (latestCached[mode].length <= nextPageIndex) {
+        appendReplyAssistCachedPage(snapshot.contextSignature, mode, suggestions);
       }
-      setReplyAssistPagesByMode((current) => ({
-        ...current,
-        [mode]: [suggestions],
-      }));
-      setReplyAssistPageIndexByMode((current) => ({
-        ...current,
-        [mode]: 0,
-      }));
+      if (
+        options?.foreground &&
+        screenMountedRef.current &&
+        replyAssistSessionIdRef.current === sessionId
+      ) {
+        setReplyAssistPageIndexByMode((current) => ({
+          ...current,
+          [mode]: nextPageIndex,
+        }));
+      }
+      return suggestions;
     } catch (error) {
-      if (isReplyAssistAbortError(error)) {
-        return;
+      if (options?.foreground && !isReplyAssistAbortError(error)) {
+        if (
+          screenMountedRef.current &&
+          replyAssistSessionIdRef.current === sessionId
+        ) {
+          setReplyAssistError(
+            error instanceof Error ? error.message : "AI 帮答生成失败",
+          );
+        }
       }
-      if (
-        !screenMountedRef.current ||
-        replyAssistSessionIdRef.current !== sessionId
-      ) {
-        return;
-      }
-      setReplyAssistError(error instanceof Error ? error.message : "AI 帮答生成失败");
+      throw error;
     } finally {
       if (
+        options?.foreground &&
         screenMountedRef.current &&
         replyAssistSessionIdRef.current === sessionId
       ) {
@@ -4325,58 +4668,42 @@ export function AiChatScreen({
     if (generating || !canOpenReplyAssist(visibleMessagesRef.current)) {
       return;
     }
+    const snapshot = buildReplyAssistRequestSnapshot();
+    if (!snapshot) {
+      return;
+    }
     replyAssistSessionIdRef.current += 1;
     const sessionId = replyAssistSessionIdRef.current;
-    replyAssistContextSignatureRef.current = replyAssistContextSignature;
+    replyAssistContextSignatureRef.current = snapshot.contextSignature;
     setReplyAssistVisible(true);
     setReplyAssistError(null);
-    await ensureReplyAssistPage(replyAssistMode, sessionId);
+    setReplyAssistPagesByMode(readReplyAssistCachedPages(snapshot.contextSignature));
+    setReplyAssistPageIndexByMode(createEmptyReplyAssistPageIndexByMode());
+    try {
+      await ensureReplyAssistFirstPage(replyAssistMode, {
+        foreground: true,
+        sessionId,
+        snapshot,
+      });
+    } catch (error) {
+      if (!isReplyAssistAbortError(error)) {
+        return;
+      }
+    }
   }
 
   async function handleRefreshReplyAssistPage(
     mode = replyAssistMode,
     sessionId = replyAssistSessionIdRef.current,
   ) {
-    setReplyAssistLoading(true);
-    setReplyAssistError(null);
     try {
-      const suggestions = await generateReplyAssistPage(mode);
-      if (
-        !screenMountedRef.current ||
-        replyAssistSessionIdRef.current !== sessionId
-      ) {
-        return;
-      }
-      let nextPageIndex = 0;
-      setReplyAssistPagesByMode((current) => {
-        const nextPages = [...current[mode], suggestions];
-        nextPageIndex = Math.max(nextPages.length - 1, 0);
-        return {
-          ...current,
-          [mode]: nextPages,
-        };
+      await appendReplyAssistPage(mode, {
+        foreground: true,
+        sessionId,
       });
-      setReplyAssistPageIndexByMode((current) => ({
-        ...current,
-        [mode]: nextPageIndex,
-      }));
     } catch (error) {
       if (isReplyAssistAbortError(error)) {
         return;
-      }
-      if (
-        !screenMountedRef.current ||
-        replyAssistSessionIdRef.current !== sessionId
-      ) {
-        return;
-      }
-      setReplyAssistError(error instanceof Error ? error.message : "AI 帮答生成失败");
-    } finally {
-      if (
-        screenMountedRef.current &&
-        replyAssistSessionIdRef.current === sessionId
-      ) {
-        setReplyAssistLoading(false);
       }
     }
   }
@@ -4387,17 +4714,103 @@ export function AiChatScreen({
     }
     setReplyAssistMode(mode);
     setReplyAssistError(null);
-    if (replyAssistPagesByMode[mode].length > 0) {
+    const cached = readReplyAssistCachedPages(replyAssistContextSignatureRef.current ?? replyAssistContextSignature);
+    setReplyAssistPagesByMode(cached);
+    if (cached[mode].length > 0) {
       return;
     }
-    await ensureReplyAssistPage(mode, replyAssistSessionIdRef.current);
+    try {
+      await ensureReplyAssistFirstPage(mode, {
+        foreground: true,
+        sessionId: replyAssistSessionIdRef.current,
+      });
+    } catch (error) {
+      if (!isReplyAssistAbortError(error)) {
+        return;
+      }
+    }
   }
+
+  useEffect(() => {
+    if (replyAssistWarmupTimeoutRef.current) {
+      clearTimeout(replyAssistWarmupTimeoutRef.current);
+      replyAssistWarmupTimeoutRef.current = null;
+    }
+    if (
+      generating ||
+      replyAssistVisible ||
+      !canOpenReplyAssist(visibleMessages)
+    ) {
+      return;
+    }
+    const snapshot = buildReplyAssistRequestSnapshot();
+    if (!snapshot) {
+      return;
+    }
+    const cached = readReplyAssistCachedPages(snapshot.contextSignature);
+    if (cached.short.length > 0) {
+      return;
+    }
+    replyAssistWarmupTimeoutRef.current = setTimeout(() => {
+      void ensureReplyAssistFirstPage("short", {
+        foreground: false,
+        snapshot,
+      }).catch(() => undefined);
+    }, 480);
+    return () => {
+      if (replyAssistWarmupTimeoutRef.current) {
+        clearTimeout(replyAssistWarmupTimeoutRef.current);
+        replyAssistWarmupTimeoutRef.current = null;
+      }
+    };
+  }, [generating, replyAssistContextSignature, replyAssistVisible, visibleMessages]);
+
+  useEffect(() => {
+    if (replyAssistBackgroundPrefetchTimeoutRef.current) {
+      clearTimeout(replyAssistBackgroundPrefetchTimeoutRef.current);
+      replyAssistBackgroundPrefetchTimeoutRef.current = null;
+    }
+    if (
+      !replyAssistVisible ||
+      replyAssistMode !== "short" ||
+      replyAssistLoading
+    ) {
+      return;
+    }
+    const snapshot = buildReplyAssistRequestSnapshot();
+    if (!snapshot) {
+      return;
+    }
+    const cached = readReplyAssistCachedPages(snapshot.contextSignature);
+    if (cached.short.length !== 1) {
+      return;
+    }
+    replyAssistBackgroundPrefetchTimeoutRef.current = setTimeout(() => {
+      void appendReplyAssistPage("short", {
+        foreground: false,
+        snapshot,
+      }).catch(() => undefined);
+    }, 260);
+    return () => {
+      if (replyAssistBackgroundPrefetchTimeoutRef.current) {
+        clearTimeout(replyAssistBackgroundPrefetchTimeoutRef.current);
+        replyAssistBackgroundPrefetchTimeoutRef.current = null;
+      }
+    };
+  }, [
+    replyAssistContextSignature,
+    replyAssistLoading,
+    replyAssistMode,
+    replyAssistPagesByMode,
+    replyAssistVisible,
+  ]);
 
   async function handleSend() {
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
     const attachments = pendingAttachments;
     const content = buildChatMessageContent(typedText, attachments);
+    const replyTarget = assistantReplyTarget;
     if ((!typedText && !attachments.length) || generating) {
       return;
     }
@@ -4427,20 +4840,52 @@ export function AiChatScreen({
       const targetThreadId = nextThreadId;
       const streamRequest = beginStreamingRequest(targetThreadId);
       streamGeneration = streamRequest.generation;
-      const activeBranch = getActiveBranchForNextMessage();
-      const managedGeneration = aiGenerationManager.startSendUserMessage({
-        attachments,
-        branchRootMessageId: activeBranch?.branchRootMessageId,
-        branchVersionIndex: activeBranch?.branchVersionIndex,
-        content,
-        sendPressedAt,
-        space,
-        subscriber: streamRequest.subscriber,
-        threadId: targetThreadId,
-      });
+      const managedGeneration = replyTarget
+        ? aiGenerationManager.startReplyToAssistantMessage({
+            assistantMessageId: replyTarget.messageId,
+            attachments,
+            content,
+            sendPressedAt,
+            space,
+            subscriber: {
+              ...streamRequest.subscriber,
+              onCreated: ({
+                assistantMessageId,
+                generationId,
+                userMessageId,
+                thinkingExpected,
+              }) => {
+                if (!isCurrentStream(targetThreadId, streamGeneration)) {
+                  return;
+                }
+                streamRequest.subscriber.onCreated?.({
+                  assistantMessageId,
+                  generationId,
+                  thinkingExpected,
+                  userMessageId,
+                });
+                showLatestMessageVersion(replyTarget.messageId);
+              },
+            },
+            threadId: targetThreadId,
+          })
+        : (() => {
+            const activeBranch = getActiveBranchForNextMessage();
+            return aiGenerationManager.startSendUserMessage({
+              attachments,
+              branchRootMessageId: activeBranch?.branchRootMessageId,
+              branchVersionIndex: activeBranch?.branchVersionIndex,
+              content,
+              sendPressedAt,
+              space,
+              subscriber: streamRequest.subscriber,
+              threadId: targetThreadId,
+            });
+          })();
       streamUnsubscribe = managedGeneration.unsubscribe;
       generationSubscriptionRef.current = managedGeneration.unsubscribe;
       await managedGeneration.promise;
+      setAssistantReplyTarget(null);
       await syncPersistedCurrentBranchRoute(targetThreadId, true);
     } catch (error) {
       if (
@@ -4504,7 +4949,11 @@ export function AiChatScreen({
         space,
         subscriber: {
           ...subscriber,
-          onCreated: ({ assistantMessageId, generationId }) => {
+          onCreated: ({
+            assistantMessageId,
+            generationId,
+            thinkingExpected,
+          }) => {
             if (!isCurrentStream(targetThreadId, streamGeneration)) {
               return;
             }
@@ -4512,6 +4961,7 @@ export function AiChatScreen({
               userMessageId,
               assistantMessageId,
               generationId,
+              thinkingExpected,
             });
             showLatestMessageVersion(userMessageId);
             showLatestMessageVersion(assistantMessageId);
@@ -4639,6 +5089,16 @@ export function AiChatScreen({
     if (!targetThreadId || generating) {
       return;
     }
+    const targetMessage = visibleMessagesRef.current.find(
+      (message) => message.id === messageId,
+    );
+    if (
+      !targetMessage ||
+      targetMessage.role !== "assistant" ||
+      targetMessage.versionIndex !== targetMessage.versionTotal
+    ) {
+      return;
+    }
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
@@ -4665,10 +5125,16 @@ export function AiChatScreen({
           space,
           subscriber: {
             ...subscriber,
-            onCreated: ({ assistantMessageId, generationId, userMessageId }) => {
+            onCreated: ({
+              assistantMessageId,
+              generationId,
+              userMessageId,
+              thinkingExpected,
+            }) => {
               subscriber.onCreated?.({
                 assistantMessageId,
                 generationId,
+                thinkingExpected,
                 userMessageId,
               });
               if (
@@ -4721,6 +5187,16 @@ export function AiChatScreen({
     if (!targetThreadId || generating) {
       return;
     }
+    const targetMessage = visibleMessagesRef.current.find(
+      (message) => message.id === messageId,
+    );
+    if (
+      !targetMessage ||
+      targetMessage.role !== "assistant" ||
+      targetMessage.versionIndex !== targetMessage.versionTotal
+    ) {
+      return;
+    }
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
@@ -4743,14 +5219,41 @@ export function AiChatScreen({
           space,
           subscriber: {
             ...subscriber,
-            onCreated: ({ assistantMessageId, generationId, userMessageId }) => {
+            onCreated: ({
+              assistantMessageId,
+              generationId,
+              userMessageId,
+              thinkingExpected,
+            }) => {
               if (!isCurrentStream(targetThreadId, streamGeneration)) {
                 return;
               }
               subscriber.onCreated?.({
                 assistantMessageId,
                 generationId,
+                thinkingExpected,
                 userMessageId,
+              });
+              setMessages((current) => {
+                let changed = false;
+                const nextMessages = current.map((message) => {
+                  if (message.id !== assistantMessageId) {
+                    return message;
+                  }
+                  changed = true;
+                  return {
+                    ...message,
+                    promptSnapshotJson: JSON.stringify({
+                      messageDisplayKind: "standalone_assistant",
+                    }),
+                  };
+                });
+                if (!changed) {
+                  return current;
+                }
+                messagesRef.current = nextMessages;
+                rebuildMessageIndex(nextMessages);
+                return nextMessages;
               });
               showLatestMessageVersion(assistantMessageId);
             },
@@ -4777,6 +5280,34 @@ export function AiChatScreen({
         }
       }
     }
+  }
+
+  function handleReplyToAssistant(messageId: string) {
+    if (generating) {
+      return;
+    }
+    if (assistantReplyTarget?.messageId === messageId) {
+      pendingReplyTargetScrollMessageIdRef.current = null;
+      clearReplyTargetVisibilityTimeouts();
+      setAssistantReplyTarget(null);
+      return;
+    }
+    const targetMessage = visibleMessagesRef.current.find(
+      (message) => message.id === messageId,
+    );
+    if (
+      !targetMessage ||
+      targetMessage.role !== "assistant" ||
+      targetMessage.status !== "completed" ||
+      targetMessage.versionIndex !== targetMessage.versionTotal
+    ) {
+      return;
+    }
+    setAssistantReplyTarget({
+      messageId,
+    });
+    setErrorMessage(null);
+    scheduleReplyTargetVisibility(messageId);
   }
 
   function handleEditUserMessage(messageId: string, content: string) {
@@ -5026,10 +5557,12 @@ export function AiChatScreen({
                   }}
                   onContinue={handleContinueAssistantMessage}
                   onContinueReply={handleContinueAssistantReply}
+                  onReplyToAssistant={handleReplyToAssistant}
                   onEditUser={handleEditUserMessage}
                   onRegenerate={(messageId) => {
                     void handleRegenerate(messageId);
                   }}
+                  replyActionMode={replyActionModeByMessageId.get(message.id)}
                   onSelectVersion={handleSelectMessageVersion}
                   onToggleFavorite={(targetMessage) => {
                     void handleToggleMessageFavorite(targetMessage);
@@ -5063,6 +5596,9 @@ export function AiChatScreen({
         activeTailState.status !== "idle";
       const isThinkingExpanded = Boolean(
         thinkingExpandedByMessageIdRef.current.get(message.id),
+      );
+      const thinkingExpected = Boolean(
+        thinkingExpectedByMessageIdRef.current.get(message.id),
       );
       const activeTailLanes: ("content" | "reasoning")[] = isThinkingExpanded
         ? ["content", "reasoning"]
@@ -5150,11 +5686,13 @@ export function AiChatScreen({
                 }
               }}
               pendingActionMessageId={pendingMessageActionId}
+              replyActionMode={replyActionModeByMessageId.get(message.id)}
               showAvatar={item.showAvatar}
               showUserAvatar={item.showUserAvatar}
               space={space}
               streaming={streamingRendererActive}
               streamingIdentity={streamingIdentity}
+              thinkingExpected={thinkingExpected}
               // prettier-ignore
               thinkingDefaultExpanded={thinkingExpandedByMessageIdRef.current.get(message.id) ?? false}
               onCopy={(targetMessage) => {
@@ -5163,6 +5701,7 @@ export function AiChatScreen({
               onCancelEdit={cancelInlineEdit}
               onContinue={handleContinueAssistantMessage}
               onContinueReply={handleContinueAssistantReply}
+              onReplyToAssistant={handleReplyToAssistant}
               onEditUser={handleEditUserMessage}
               onOpenCitation={openCitation}
               onRegenerate={(messageId) => {
@@ -5227,6 +5766,7 @@ export function AiChatScreen({
       handleEditUserMessage,
       handleContinueAssistantMessage,
       handleContinueAssistantReply,
+      handleReplyToAssistant,
       handleRegenerate,
       handleSubmitInlineRewrite,
       handleSelectMessageVersion,
@@ -5234,6 +5774,7 @@ export function AiChatScreen({
       memoryCapturesBySourceMessageId,
       openCitation,
       pendingMessageActionId,
+      replyActionModeByMessageId,
       searchHighlightMessageId,
       singleBubbleTailReplayEnabled,
       space,

@@ -41,7 +41,8 @@ test('AI chat screen keeps per-mode reply assist pages and writes a picked sugge
   assert.match(chat, /handleOpenReplyAssist/);
   assert.match(chat, /handleRefreshReplyAssistPage/);
   assert.match(chat, /generateReplyAssistSuggestions/);
-  assert.match(chat, /replyAssistAbortControllerRef/);
+  assert.match(chat, /replyAssistAbortControllersRef/);
+  assert.match(chat, /replyAssistInFlightRef/);
   assert.match(chat, /replyAssistContextSignatureRef/);
   assert.match(chat, /buildReplyAssistContextSignature/);
   assert.match(chat, /signal:\s*controller\.signal/);
@@ -58,7 +59,7 @@ test('AI reply assist modal uses a fixed-height reader-like sheet with page navi
   assert.match(modal, /accessibilityLabel="切换到短句帮答"/);
   assert.match(modal, /accessibilityLabel="上一页帮答候选"/);
   assert.match(modal, /accessibilityLabel="下一页帮答候选"/);
-  assert.match(modal, /`\$\{safePageIndex \+ 1\}\/\$\{totalPages\}`/);
+  assert.match(modal, /`\$\{safePageIndex \+ 1\}\/\$\{totalPages\}`|const pageLabel = `\$\{safePageIndex \+ 1\}\/\$\{totalPages\}`/);
   assert.match(modal, /height:\s*\d+/);
   assert.match(modal, /short'\s*\?\s*3\s*:\s*1/);
 });

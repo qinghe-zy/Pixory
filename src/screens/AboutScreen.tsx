@@ -10,6 +10,10 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { useToast } from '../components/AppToast';
 import { checkForAppUpdate } from '../services/updateCheckService';
 import { getAppMilestones, type AppMilestones } from '../services/milestoneService';
+import {
+  getPreloadedProductDocumentationMarkdown,
+  prefetchProductDocumentationAssets,
+} from '../services/productDocumentationService';
 import { colors, radius, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
@@ -29,11 +33,12 @@ function formatBytes(bytes: number): string {
 
 export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
-  const version = Constants.expoConfig?.version ?? '2.6.3';
+  const version = Constants.expoConfig?.version ?? '2.6.4';
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
 
   const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
   const [detailMd, setDetailMd] = useState<string | null>(null);
+  const [productDocMd, setProductDocMd] = useState<string>(() => getPreloadedProductDocumentationMarkdown());
   const [activeStatIndex, setActiveStatIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -64,6 +69,14 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         }
       }).catch(() => {});
     });
+
+    prefetchProductDocumentationAssets()
+      .then(() => {
+        if (isMounted) {
+          setProductDocMd(getPreloadedProductDocumentationMarkdown());
+        }
+      })
+      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -267,6 +280,11 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
         <Animated.View entering={FadeInUp.delay(750).duration(800).springify()} style={styles.linksContainer}>
           <Pressable onPress={() => openUrl('https://mist01.com')} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
             <Text style={styles.linkText}>访问官方网站</Text>
+            <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
+          </Pressable>
+          <View style={styles.linkSeparator} />
+          <Pressable onPress={() => onPushRoute({ name: 'product-doc', space, preloadedMarkdown: productDocMd })} style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}>
+            <Text style={styles.linkText}>产品文档</Text>
             <Feather color={colors.text.placeholder} name="arrow-right" size={16} />
           </Pressable>
           <View style={styles.linkSeparator} />

@@ -140,7 +140,7 @@ export interface SendUserMessageInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -163,7 +163,7 @@ export interface RetryAssistantMessageInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -176,7 +176,7 @@ export interface ContinueAssistantMessageInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -189,7 +189,29 @@ export interface ContinueAssistantReplyInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
+  onUpdated?: () => void;
+}
+
+export interface AiGenerationCreatedInfo {
+  assistantMessageId: string;
+  generationId: string;
+  thinkingExpected?: boolean;
+  userMessageId: string;
+}
+
+export interface ReplyToAssistantMessageInput {
+  space: PixorySpace;
+  threadId: string;
+  assistantMessageId: string;
+  content: string;
+  attachments?: AiOutgoingAttachment[];
+  sendPressedAt?: string;
+  signal?: AbortSignal;
+  getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -203,7 +225,7 @@ export interface RewriteUserMessageInput {
   sendPressedAt?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
-  onCreated?: (ids: { userMessageId: string; assistantMessageId: string; generationId: string }) => void;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -361,7 +383,22 @@ function hasStoppedGeneration(messageId: string, generationId: string): boolean 
 
 function buildGenerationGuardSnapshotJson(generationMetrics: AiGenerationMetricsDraft): string {
   return JSON.stringify({
+    messageDisplayKind: null,
     generationMetrics: redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(generationMetrics)),
+  });
+}
+
+type AiMessageDisplayKind = 'standalone_assistant';
+
+function buildGenerationGuardSnapshotJsonWithDisplayKind(
+  generationMetrics: AiGenerationMetricsDraft,
+  messageDisplayKind?: AiMessageDisplayKind | null,
+): string {
+  return JSON.stringify({
+    messageDisplayKind: messageDisplayKind ?? null,
+    generationMetrics: redactGenerationMetricsForDiagnostics(
+      finalizeGenerationMetrics(generationMetrics),
+    ),
   });
 }
 
@@ -537,13 +574,15 @@ const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
 const REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT = 12;
 const REPLY_ASSIST_CONTEXT_MAX_CHARS = 4200;
-const REPLY_ASSIST_MAX_ATTEMPTS = 3;
+const REPLY_ASSIST_MAX_ATTEMPTS = 2;
 const REPLY_ASSIST_SHORT_COUNT = 3;
 const REPLY_ASSIST_SHORT_MIN_CHARS = 4;
 const REPLY_ASSIST_SHORT_MAX_CHARS = 25;
+const REPLY_ASSIST_SHORT_SOFT_MAX_CHARS = REPLY_ASSIST_SHORT_MAX_CHARS + 4;
 const REPLY_ASSIST_LONG_COUNT = 1;
 const REPLY_ASSIST_LONG_MIN_CHARS = 35;
 const REPLY_ASSIST_LONG_MAX_CHARS = 120;
+const REPLY_ASSIST_LONG_SOFT_MAX_CHARS = REPLY_ASSIST_LONG_MAX_CHARS + 16;
 const REPLY_ASSIST_LONG_MIN_SENTENCES = 3;
 
 export type AiReplyAssistMode = 'short' | 'long';
@@ -667,20 +706,11 @@ function buildReplyAssistOutputContract(mode: AiReplyAssistMode): string {
 }
 
 function buildReplyAssistUserPrompt(input: {
-  companionMemoryPrefix: string;
   mode: AiReplyAssistMode;
-  stableMemoryPrefix: string;
-  thread: AiThreadRecord;
   transcript: Array<{ role: 'user' | 'assistant'; content: string }>;
 }): string {
   const transcript = formatReplyAssistTranscript(input.transcript);
-  const stableSections = [
-    buildReplyAssistRoleContext(input.thread),
-    input.companionMemoryPrefix,
-    input.stableMemoryPrefix,
-  ].filter(Boolean);
   return [
-    stableSections.length > 0 ? `稳定上下文：\n${stableSections.join('\n\n')}` : '',
     transcript ? `当前可见分支对话：\n${transcript}` : '',
     buildReplyAssistOutputContract(input.mode),
   ].filter(Boolean).join('\n\n');
@@ -728,7 +758,7 @@ function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: st
   if (mode === 'short') {
     return suggestions.map((suggestion) => {
       const charCount = replyAssistCharCount(suggestion);
-      if (charCount < REPLY_ASSIST_SHORT_MIN_CHARS || charCount > REPLY_ASSIST_SHORT_MAX_CHARS) {
+      if (charCount < REPLY_ASSIST_SHORT_MIN_CHARS || charCount > REPLY_ASSIST_SHORT_SOFT_MAX_CHARS) {
         throw new Error('AI 帮答短句长度不符合要求。');
       }
       return suggestion;
@@ -736,7 +766,7 @@ function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: st
   }
   return suggestions.map((suggestion) => {
     const charCount = replyAssistCharCount(suggestion);
-    if (charCount < REPLY_ASSIST_LONG_MIN_CHARS || charCount > REPLY_ASSIST_LONG_MAX_CHARS) {
+    if (charCount < REPLY_ASSIST_LONG_MIN_CHARS || charCount > REPLY_ASSIST_LONG_SOFT_MAX_CHARS) {
       throw new Error('AI 帮答长句长度不符合要求。');
     }
     if (replyAssistSentenceCount(suggestion) < REPLY_ASSIST_LONG_MIN_SENTENCES) {
@@ -1097,6 +1127,7 @@ function buildPromptSnapshotJson(input: {
   failureReason?: string | null;
   generationMetrics?: AiGenerationMetricsDraft | null;
   materialRules: string | null;
+  messageDisplayKind?: AiMessageDisplayKind | null;
   normalizedUsage: NormalizedProviderUsage | null;
   providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
   stopReason?: string | null;
@@ -1117,6 +1148,7 @@ function buildPromptSnapshotJson(input: {
     contextTrimmedByBudget: input.contextTrimmedByBudget,
     contextTrimmedByCount: input.contextTrimmedByCount,
     materialRules: input.materialRules,
+    messageDisplayKind: input.messageDisplayKind ?? null,
     system: input.system,
     generationMetrics: input.generationMetrics
       ? redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(input.generationMetrics))
@@ -1149,6 +1181,7 @@ function buildPromptScopeKey(thread: AiThreadRecord): string {
 function buildMetricsOnlyPromptSnapshotJson(input: {
   failureReason?: string | null;
   generationMetrics: AiGenerationMetricsDraft;
+  messageDisplayKind?: AiMessageDisplayKind | null;
   stopReason?: string | null;
 }): string {
   if (input.failureReason) {
@@ -1163,6 +1196,7 @@ function buildMetricsOnlyPromptSnapshotJson(input: {
       failureReason: input.failureReason ?? null,
       stopReason: input.stopReason ?? null,
     },
+    messageDisplayKind: input.messageDisplayKind ?? null,
     generationMetrics: redactGenerationMetricsForDiagnostics(finalizeGenerationMetrics(input.generationMetrics)),
   });
 }
@@ -2877,6 +2911,8 @@ async function streamAssistantReply(input: {
   onUpdated?: () => void;
 }): Promise<void> {
   const mode = input.mode ?? 'replace';
+  const messageDisplayKind: AiMessageDisplayKind | null =
+    mode === 'followup' ? 'standalone_assistant' : null;
   const initialAnswerText = mode === 'continue' ? input.initialAnswerText ?? '' : '';
   const initialReasoningText = mode === 'continue' ? input.initialReasoningText ?? null : null;
   const requestContent = input.requestContentOverride ?? input.userMessage.content;
@@ -2913,6 +2949,7 @@ async function streamAssistantReply(input: {
         assistantReset ? reasoningText || null : null,
         options?.buildPromptSnapshotJson?.() ?? buildMetricsOnlyPromptSnapshotJson({
           generationMetrics,
+          messageDisplayKind,
           stopReason,
         }),
       );
@@ -2935,6 +2972,7 @@ async function streamAssistantReply(input: {
       assistantReset ? reasoningText || null : undefined,
       options?.buildPromptSnapshotJson?.() ?? buildMetricsOnlyPromptSnapshotJson({
         generationMetrics,
+        messageDisplayKind,
         stopReason,
       })
     );
@@ -2967,7 +3005,10 @@ async function streamAssistantReply(input: {
           providerId: null,
           modelId: null,
           modelSnapshotJson: '{}',
-          promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+          promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(
+            generationMetrics,
+            messageDisplayKind,
+          ),
           completedAt: null,
         }
       : {
@@ -2978,7 +3019,10 @@ async function streamAssistantReply(input: {
           providerId: null,
           modelId: null,
           modelSnapshotJson: '{}',
-          promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+          promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(
+            generationMetrics,
+            messageDisplayKind,
+          ),
           createdAt: startedAt,
           completedAt: null,
         };
@@ -3049,7 +3093,11 @@ async function streamAssistantReply(input: {
         resolvedModel.message,
         answerText,
         reasoningText || null,
-        buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+        buildMetricsOnlyPromptSnapshotJson({
+          failureReason: failureCode,
+          generationMetrics,
+          messageDisplayKind,
+        })
       );
       emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: resolvedModel.message, completedAt: new Date().toISOString() });
       input.onUpdated?.();
@@ -3069,7 +3117,11 @@ async function streamAssistantReply(input: {
         apiKeyMessage,
         answerText,
         reasoningText || null,
-        buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+        buildMetricsOnlyPromptSnapshotJson({
+          failureReason: failureCode,
+          generationMetrics,
+          messageDisplayKind,
+        })
       );
       emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: apiKeyMessage, completedAt: new Date().toISOString() });
       input.onUpdated?.();
@@ -3198,7 +3250,7 @@ async function streamAssistantReply(input: {
       turnIntervalMs: turnIntervalMs != null && Number.isFinite(turnIntervalMs) ? turnIntervalMs : null,
     });
   } catch (error) {
-    if (await stopForAbort({ buildPromptSnapshotJson: () => buildMetricsOnlyPromptSnapshotJson({ generationMetrics, stopReason: currentStopReason() }) })) {
+    if (await stopForAbort({ buildPromptSnapshotJson: () => buildMetricsOnlyPromptSnapshotJson({ generationMetrics, messageDisplayKind, stopReason: currentStopReason() }) })) {
       return;
     }
     const readableError = normalizeAiErrorMessage(error);
@@ -3210,7 +3262,11 @@ async function streamAssistantReply(input: {
       readableError,
       answerText,
       reasoningText || null,
-      buildMetricsOnlyPromptSnapshotJson({ failureReason: failureCode, generationMetrics })
+      buildMetricsOnlyPromptSnapshotJson({
+        failureReason: failureCode,
+        generationMetrics,
+        messageDisplayKind,
+      })
     );
     emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
     input.onUpdated?.();
@@ -3235,6 +3291,7 @@ async function streamAssistantReply(input: {
       failureReason: input?.failureReason ?? null,
       generationMetrics,
       materialRules: prompt.materialRules ?? null,
+      messageDisplayKind,
       normalizedUsage: providerUsageRaw ? normalizeProviderUsage(provider.protocol, providerUsageRaw) : null,
       providerCachePolicy,
       stopReason: input?.stopReason ?? null,
@@ -3702,10 +3759,7 @@ export async function generateReplyAssistSuggestions(
       name: 'current_user_message' as const,
       stable: false,
       text: buildReplyAssistUserPrompt({
-        companionMemoryPrefix: memorySnapshot.companionMemoryPrefix,
         mode: input.mode,
-        stableMemoryPrefix: memorySnapshot.stableMemoryPrefix,
-        thread,
         transcript,
       }),
       version: 1,
@@ -3744,10 +3798,7 @@ export async function generateReplyAssistSuggestions(
 
   const systemPrompt = systemPromptSections.join('\n\n');
   const userPrompt = buildReplyAssistUserPrompt({
-    companionMemoryPrefix: '',
     mode: input.mode,
-    stableMemoryPrefix: '',
-    thread,
     transcript,
   });
   const adapter = getAdapterForProvider(resolvedThreadModel.provider);
@@ -3846,7 +3897,12 @@ export async function sendUserMessage(
       threadId: thread.id,
     });
   });
-  input.onCreated?.({ userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
+  input.onCreated?.({
+    userMessageId,
+    assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+    thinkingExpected: !thread.thinkingDisabled,
+  });
   input.onUpdated?.();
   let persistedAttachments: AiOutgoingAttachment[] = [];
   try {
@@ -3962,6 +4018,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     userMessageId: userMessage.id,
     assistantMessageId: input.assistantMessageId,
     generationId: generationMetrics.context.generationId,
+    thinkingExpected: !latestThread.thinkingDisabled,
   });
 
   await streamAssistantReply({
@@ -4051,6 +4108,7 @@ export async function continueAssistantMessage(input: ContinueAssistantMessageIn
     userMessageId: continuation.userMessage.id,
     assistantMessageId: input.assistantMessageId,
     generationId: generationMetrics.context.generationId,
+    thinkingExpected: false,
   });
   input.onUpdated?.();
 
@@ -4123,7 +4181,10 @@ export async function continueAssistantReply(input: ContinueAssistantReplyInput)
       role: 'assistant',
       status: 'generating',
       content: '',
-      promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+      promptSnapshotJson: buildGenerationGuardSnapshotJsonWithDisplayKind(
+        generationMetrics,
+        'standalone_assistant',
+      ),
     });
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistEndAt');
     await aiThreadRepository.setThreadCurrentBranch(db, {
@@ -4145,6 +4206,7 @@ export async function continueAssistantReply(input: ContinueAssistantReplyInput)
     userMessageId: continuation.previousUserMessage.id,
     assistantMessageId,
     generationId: generationMetrics.context.generationId,
+    thinkingExpected: !latestThread.thinkingDisabled,
   });
   input.onUpdated?.();
 
@@ -4159,7 +4221,6 @@ export async function continueAssistantReply(input: ContinueAssistantReplyInput)
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
     historyAnchorMessageId: input.assistantMessageId,
-    ignoreReasoningDeltas: true,
     mode: 'followup',
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
@@ -4169,6 +4230,154 @@ export async function continueAssistantReply(input: ContinueAssistantReplyInput)
     thread: latestThread,
     userMessage: continuation.previousUserMessage,
   });
+}
+
+export async function replyToAssistantMessage(
+  input: ReplyToAssistantMessageInput,
+): Promise<{ userMessageId: string; assistantMessageId: string }> {
+  const thread = await runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.findThreadById(db, input.threadId),
+  );
+  if (!thread || thread.space !== input.space) {
+    throw new Error("AI thread was not found.");
+  }
+
+  const userMessageId = createAiId("aimsg");
+  const assistantMessageId = createAiId("aimsg");
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: thread.contextType,
+    generationId: createAiId("aigen"),
+    messageId: assistantMessageId,
+    sendPressedAt: input.sendPressedAt,
+    space: input.space,
+    threadId: thread.id,
+  });
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const assistantMessage = await aiThreadRepository.findMessageById(
+      db,
+      input.assistantMessageId,
+    );
+    if (
+      !assistantMessage ||
+      assistantMessage.threadId !== thread.id ||
+      assistantMessage.role !== "assistant"
+    ) {
+      throw new Error("AI assistant message was not found.");
+    }
+    if (assistantMessage.status !== "completed") {
+      throw new Error("只有已完成的回复可以手动接话。");
+    }
+    if (!assistantMessage.content.trim()) {
+      throw new Error("这条回复还没有可回复的正文。");
+    }
+    await db.withTransactionAsync(async () => {
+      const previousAssistantVersion = await snapshotMessageVersion(
+        db,
+        assistantMessage,
+      );
+      const nextBranchVersionIndex = previousAssistantVersion.versionIndex + 1;
+      await aiThreadRepository.markVisibleMessagesAfterAsBranch(
+        db,
+        thread.id,
+        input.assistantMessageId,
+        input.assistantMessageId,
+        previousAssistantVersion.versionIndex,
+        assistantMessage,
+      );
+      markGenerationMetric(generationMetrics, "userMessagePersistStartAt");
+      await aiThreadRepository.createMessage(db, {
+        id: userMessageId,
+        threadId: thread.id,
+        branchRootMessageId: input.assistantMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        role: "user",
+        status: "completed",
+        content: input.content,
+        completedAt: new Date().toISOString(),
+      });
+      markGenerationMetric(generationMetrics, "userMessagePersistEndAt");
+      markGenerationMetric(generationMetrics, "assistantPlaceholderPersistStartAt");
+      await aiThreadRepository.createMessage(db, {
+        id: assistantMessageId,
+        threadId: thread.id,
+        branchRootMessageId: input.assistantMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        role: "assistant",
+        status: "generating",
+        content: "",
+        promptSnapshotJson: buildGenerationGuardSnapshotJson(generationMetrics),
+      });
+      markGenerationMetric(generationMetrics, "assistantPlaceholderPersistEndAt");
+      await aiThreadRepository.updateThread(db, thread.id, {
+        lastMessagePreview: input.content.slice(0, 80),
+      });
+      await aiThreadRepository.setThreadCurrentBranch(db, {
+        branchRootMessageId: input.assistantMessageId,
+        branchVersionIndex: nextBranchVersionIndex,
+        threadId: thread.id,
+      });
+    });
+  });
+
+  input.onCreated?.({
+    userMessageId,
+    assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+    thinkingExpected: !thread.thinkingDisabled,
+  });
+  input.onUpdated?.();
+  let persistedAttachments: AiOutgoingAttachment[] = [];
+  try {
+    persistedAttachments = await persistOutgoingAttachments({
+      attachments: input.attachments,
+      messageId: userMessageId,
+      space: input.space,
+      threadId: thread.id,
+    });
+  } catch (error) {
+    const readableError = normalizeAiErrorMessage(error);
+    const failureCode = setGenerationFailureReason(generationMetrics, error);
+    await markAssistantFailed(
+      input.space,
+      assistantMessageId,
+      generationMetrics.context.generationId,
+      readableError,
+      "",
+      null,
+      buildMetricsOnlyPromptSnapshotJson({
+        failureReason: failureCode,
+        generationMetrics,
+      }),
+    );
+    input.onMessagePatch?.({
+      generationId: generationMetrics.context.generationId,
+      id: assistantMessageId,
+      status: "failed",
+      content: "",
+      reasoningText: null,
+      errorMessage: readableError,
+      completedAt: new Date().toISOString(),
+    });
+    input.onUpdated?.();
+    throw error;
+  }
+
+  const latestThread = await loadThreadForGeneration(input.space, thread.id);
+  await streamAssistantReply({
+    attachments: persistedAttachments,
+    assistantMessageId,
+    generationMetrics,
+    getStreamingVisibility: input.getStreamingVisibility,
+    onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
+    onUpdated: input.onUpdated,
+    signal: input.signal,
+    space: input.space,
+    thread: latestThread,
+    userMessage: { id: userMessageId, content: input.content },
+  });
+
+  return { userMessageId, assistantMessageId };
 }
 
 export async function rewriteUserMessage(input: RewriteUserMessageInput): Promise<{ userMessageId: string; assistantMessageId: string }> {
@@ -4231,7 +4440,12 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     });
   });
 
-  input.onCreated?.({ userMessageId: input.userMessageId, assistantMessageId, generationId: generationMetrics.context.generationId });
+  input.onCreated?.({
+    userMessageId: input.userMessageId,
+    assistantMessageId,
+    generationId: generationMetrics.context.generationId,
+    thinkingExpected: !thread.thinkingDisabled,
+  });
   input.onUpdated?.();
   const latestThread = await loadThreadForGeneration(input.space, thread.id);
   const replayAttachments = await loadOutgoingAttachmentsForMessage({

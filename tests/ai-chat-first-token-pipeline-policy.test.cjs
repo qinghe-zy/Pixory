@@ -97,7 +97,7 @@ test('chat history trimming uses resolved model context window and preserves pro
   assert.match(chat, /modelContextWindowTokens\?: number \| null/);
   assert.match(chat, /buildChatHistory\(historyMessages, input\.userMessage\.id, \{/);
   assert.match(chat, /modelContextWindowTokens,/);
-  assert.match(chat, /const protectedPrompt = \[\s*prompt\.system,\s*prompt\.user,\s*input\.userMessage\.content/);
+  assert.match(chat, /const protectedPrompt = \[\s*prompt\.system,\s*prompt\.user,\s*requestContent/);
   assert.match(chat, /protectedPrompt,/);
   assert.match(chat, /fitBuiltPromptToContextBudget\(\{ modelContextWindowTokens, prompt \}\)/);
   assert.match(chat, /trimMessagesToContextBudget\(\{/);

@@ -53,7 +53,7 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
     .layout {
       display: flex;
       flex-direction: column;
-      padding: 24px 20px 80px 20px;
+      padding: 32px 20px 88px 20px;
     }
 
     /* ── Sidebar / TOC Bottom-Sheet ─────────────────────── */
@@ -66,18 +66,17 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
       bottom: 0;
       left: 0;
       width: 100%;
-      height: 60vh;
-      background: rgba(250, 249, 245, 0.95);
+      height: 75vh;
+      max-height: 75vh;
+      background: rgba(24, 23, 21, 0.85);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      border-top: 1px solid var(--hairline);
-      border-top-left-radius: 24px;
-      border-top-right-radius: 24px;
+      border-radius: 24px 24px 0 0;
       z-index: 1000;
       transform: translateY(100%);
       transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
       box-shadow: 0 -10px 40px rgba(0,0,0,0.08);
-      padding: 0 20px;
+      padding: 0;
     }
 
     .sidebar.mobile-open {
@@ -85,79 +84,92 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
     }
 
     .toc-title {
+      position: relative;
       font-size: 14px;
       font-weight: 600;
-      color: var(--muted);
+      color: rgba(255,255,255,0.5);
       margin-bottom: 0;
-      padding-bottom: 20px;
-      padding-top: 24px;
+      padding: 24px 32px 0 32px;
       letter-spacing: 0.05em;
       flex-shrink: 0;
+      text-align: center;
+    }
+
+    .toc-title::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.3);
     }
 
     .toc-list {
       list-style: none;
-      padding: 0;
+      padding: 12px 32px 24px 32px;
       margin: 0;
-      border-left: 2px solid var(--hairline);
       flex: 1;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      padding-bottom: 40px;
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0%, black 12px, black calc(100% - 24px), transparent 100%);
+      scrollbar-width: none;
     }
 
-    .toc-list::-webkit-scrollbar { width: 4px; }
-    .toc-list::-webkit-scrollbar-thumb { background-color: var(--hairline); border-radius: 4px; }
+    .toc-list::-webkit-scrollbar { display: none; }
 
     .toc-list li { margin-bottom: 12px; }
 
     .toc-list a {
       text-decoration: none;
-      color: var(--muted);
+      color: rgba(255,255,255,0.7);
       font-size: 15px;
       transition: color 0.2s;
       display: block;
-      padding-left: 16px;
+      padding-left: 0;
       position: relative;
       line-height: 1.4;
     }
 
-    .toc-list a.toc-h3 { padding-left: 32px; font-size: 14px; }
-    .toc-list a:active { color: var(--ink); }
+    .toc-list a.toc-h3 {
+      padding-left: 16px;
+      font-size: 14px;
+      color: rgba(255,255,255,0.4);
+    }
+    .toc-list a:active { color: #fff; }
     .toc-list a.active { color: var(--primary); font-weight: 500; }
     .toc-list a.active::before {
-      content: '';
-      position: absolute;
-      left: -2px;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background-color: var(--primary);
+      display: none;
     }
 
     /* ── FAB ────────────────────────────────────────────── */
 
     .mobile-toc-fab {
       position: fixed;
-      bottom: 32px;
+      bottom: 28px;
       right: 24px;
       width: 56px;
       height: 56px;
       border-radius: 28px;
-      background: var(--surface-dark);
-      color: #fff;
+      background: rgba(250, 249, 245, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--ink);
       display: flex;
       align-items: center;
       justify-content: center;
       box-shadow: 0 8px 24px rgba(0,0,0,0.15);
       z-index: 900;
-      border: none;
-      transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), background-color 0.2s;
+      border: 1px solid var(--hairline);
+      transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.3s;
     }
 
     .mobile-toc-fab:active {
       transform: scale(0.95) !important;
-      background: var(--ink);
+      background: rgba(250, 249, 245, 0.98);
     }
 
     .mobile-toc-overlay {
@@ -181,7 +193,7 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
 
     .markdown-body {
       font-size: 16px;
-      line-height: 1.8;
+      line-height: 1.75;
       color: var(--body);
       max-width: 100%;
       word-break: break-word;
@@ -199,15 +211,15 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
       line-height: 1.3;
     }
 
-    .markdown-body h1 { font-size: 2.2em; margin-top: 0.5em; letter-spacing: -0.02em; }
-    .markdown-body h2 { font-size: 1.8em; border-bottom: 1px solid var(--hairline); padding-bottom: 0.3em; }
-    .markdown-body h3 { font-size: 1.4em; }
+    .markdown-body h1 { font-size: 30px; margin-top: 0.45em; letter-spacing: -0.03em; line-height: 1.2; }
+    .markdown-body h2 { font-size: 24px; border-bottom: 1px solid var(--hairline); padding-bottom: 0.3em; line-height: 1.28; }
+    .markdown-body h3 { font-size: 20px; }
     .markdown-body h4 { font-size: 1.2em; }
     .markdown-body h5 { font-size: 1.05em; }
     .markdown-body h6 { font-size: 1em; color: var(--muted); }
 
     /* Paragraph */
-    .markdown-body p { margin-bottom: 1.5em; }
+    .markdown-body p { margin-bottom: 1.6em; }
 
     /* Links */
     .markdown-body a {
@@ -311,8 +323,9 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
     .markdown-body img {
       max-width: 100%;
       height: auto;
-      border-radius: 8px;
-      margin: 1.5em 0;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      margin: 2em 0;
       display: block;
     }
 
@@ -445,7 +458,7 @@ export function getAiMarkdownReaderHtml(markdownContent: string): string {
 
   <div class="mobile-toc-overlay" id="mobile-toc-overlay"></div>
   <button class="mobile-toc-fab" id="mobile-toc-fab" aria-label="目录导览">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
   </button>
 
   <div class="layout" id="main-layout">

@@ -22,6 +22,7 @@ interface AiStreamingReasoningTextProps {
   initialReasoningText?: string | null;
   onExpandedChange?: (expanded: boolean) => void;
   status: AiMessageStatus;
+  thinkingActive?: boolean;
 }
 
 function InlineStreamingCursor() {
@@ -52,6 +53,7 @@ function AiStreamingReasoningTextComponent({
   initialReasoningText = null,
   onExpandedChange,
   status,
+  thinkingActive,
 }: AiStreamingReasoningTextProps) {
   const snapshot = useStreamingMessageReasoningSnapshot(identity);
   const reasoningText = snapshot.hasSnapshot ? snapshot.reasoningText : initialReasoningText;
@@ -64,6 +66,7 @@ function AiStreamingReasoningTextComponent({
       onExpandedChange={onExpandedChange}
       reasoningText={reasoningText}
       status={streamingStatus}
+      thinkingActive={thinkingActive}
     />
   );
 }
