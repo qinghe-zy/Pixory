@@ -111,7 +111,7 @@ test('reasoning tail blocks use independent lane and frozen boundaries', () => {
 
 test('reasoning tail integrates with visible message state and thinking expanded toggle', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
-  assert.match(screen, /selectVisibleMessage\(\{\s*message,\s*tailOverride,/s);
+  assert.match(screen, /selectVisibleMessage\(\{\s*message:\s*sourceMessage,\s*tailOverride,/s);
   assert.match(screen, /frozenReasoningText:\s*tailState\.frozenReasoningText/);
   assert.match(screen, /targetReasoningText:/);
   assert.match(screen, /calculateEffectiveTotalReservedHeight\(\s*tailState,\s*activeLanes/s);

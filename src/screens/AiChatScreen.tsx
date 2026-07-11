@@ -340,6 +340,14 @@ function formatDateSeparator(value: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function getLocalDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "invalid-date";
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function getAiChatGreeting(date = new Date()): string {
   const hour = date.getHours();
   if (hour < 12) {
@@ -459,22 +467,6 @@ function isReplyAssistAbortError(error: unknown): boolean {
   );
 }
 
-function shouldShowDateSeparator(
-  messages: AiMessageWithCitations[],
-  index: number,
-): boolean {
-  if (index <= 0) {
-    return true;
-  }
-  const current = new Date(messages[index]?.createdAt ?? "");
-  const previous = new Date(messages[index - 1]?.createdAt ?? "");
-  return (
-    current.getFullYear() !== previous.getFullYear() ||
-    current.getMonth() !== previous.getMonth() ||
-    current.getDate() !== previous.getDate()
-  );
-}
-
 function messageHasContextTrim(message: AiMessageWithCitations): boolean {
   try {
     const snapshot = message.promptSnapshotJson
@@ -508,7 +500,12 @@ type VisibleMessageItem =
       message: AiMessageWithCitations;
       showAvatar: boolean;
       showUserAvatar: boolean;
-      showDateSeparator: boolean;
+    }
+  | {
+      type: "dateSeparator";
+      id: string;
+      label: string;
+      dateKey: string;
     }
   | {
       type: "streamTailSpacer";
@@ -1866,30 +1863,39 @@ export function AiChatScreen({
             updatedAt: tailState.updatedAt,
           }
         : undefined;
-    // prettier-ignore
-    const nextVisibleMessageItems = nextVisibleMessages.map((message, index): VisibleMessageItem => {
-        message = selectVisibleMessage({
-          message,
-          tailOverride,
-        });
-        const previousMessage = nextVisibleMessages[index - 1];
-        const showDateSeparator = shouldShowDateSeparator(
-          nextVisibleMessages,
-          index,
-        );
-        return {
-          id: message.id,
-          type: "message",
-          message,
-          showAvatar:
-            message.role === 'assistant' &&
-            (showDateSeparator ||
-              previousMessage?.role !== 'assistant' ||
-              messageUsesStandaloneAssistantDisplay(message)),
-          showUserAvatar: message.role === 'user' && (showDateSeparator || previousMessage?.role !== 'user'),
-          showDateSeparator,
-        };
+    const nextVisibleMessageItems: VisibleMessageItem[] = [];
+    let previousDateKey: string | null = null;
+    nextVisibleMessages.forEach((sourceMessage, index) => {
+      const message = selectVisibleMessage({
+        message: sourceMessage,
+        tailOverride,
       });
+      const previousMessage = nextVisibleMessages[index - 1];
+      const dateKey = getLocalDateKey(message.createdAt);
+      const startsNewDate = dateKey !== previousDateKey;
+      if (startsNewDate) {
+        nextVisibleMessageItems.push({
+          type: "dateSeparator",
+          id: `date-separator-${dateKey}`,
+          label: formatDateSeparator(message.createdAt),
+          dateKey,
+        });
+      }
+      nextVisibleMessageItems.push({
+        id: message.id,
+        type: "message",
+        message,
+        showAvatar:
+          message.role === 'assistant' &&
+          (startsNewDate ||
+            previousMessage?.role !== 'assistant' ||
+            messageUsesStandaloneAssistantDisplay(message)),
+        showUserAvatar:
+          message.role === 'user' &&
+          (startsNewDate || previousMessage?.role !== 'user'),
+      });
+      previousDateKey = dateKey;
+    });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
     nextVisibleMessageItems.forEach((item) => {
       if (item.type === "message") {
@@ -5577,6 +5583,9 @@ export function AiChatScreen({
 
   const renderMessageItem = useCallback(
     ({ item }: { item: VisibleMessageItem }) => {
+      if (item.type === "dateSeparator") {
+        return <Text style={styles.dateSeparator}>{item.label}</Text>;
+      }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
       }
@@ -5747,11 +5756,6 @@ export function AiChatScreen({
         singleBubbleTailMessage && baseTailEdge !== "single";
       return (
         <>
-          {item.showDateSeparator ? (
-            <Text style={styles.dateSeparator}>
-              {formatDateSeparator(message.createdAt)}
-            </Text>
-          ) : null}
           <View
             style={
               searchHighlightMessageId === message.id
