@@ -344,6 +344,19 @@ When adding, removing, renaming, or materially changing any user-visible feature
 
 Before packaging or writing release notes, review `docs/feature-matrix.md` against the changed files and tests. If the matrix is intentionally not updated, explain why in the final report.
 
+## Codex Command Timeout And Retry
+
+For every Codex-run command, including code-writing operations, tests, builds, device commands, deployments, and release commands:
+
+1. Set an explicit timeout appropriate to the operation. Use a short timeout for inspection commands and a longer timeout for known builds or test suites; do not use an arbitrary short timeout for work that normally takes longer.
+2. When a command times out, treat the result as unknown rather than failed. First inspect whether the process is still running and whether it already produced files, repository changes, installed artifacts, remote updates, or other side effects.
+3. For code-writing operations that time out, inspect `git diff`, `git status`, and the affected files before retrying. Continue from a valid partial edit or revert only the agent's incomplete edit; never blindly apply the same patch twice.
+4. Retry only when the operation is confirmed safe and idempotent. Use at most two automatic retries, increase the timeout when the first timeout was caused by insufficient allowance, and report the repeated blocker instead of looping indefinitely.
+5. Before retrying tests or builds, terminate or wait for the previous process so concurrent copies cannot contend for caches, ports, Gradle daemons, devices, or output files.
+6. Never blindly retry commands with external or irreversible side effects, including `eas update`, Git pushes, release/tag creation, uploads, deployments, database writes, or destructive filesystem operations. Query the destination state first and retry only if the intended result is confirmed absent.
+7. Preserve the existing EAS safeguard: if `eas update` times out, run `eas update:list` and verify whether a new production group already exists before considering another update command.
+8. Log the command attempt, timeout, state check, and retry outcome in the task report when a timeout materially affects delivery or verification.
+
 ## Hot Update (EAS Update) Workflow
 
 When the user requests a hot update or OTA update (e.g., `推热更新`), follow these rules:
