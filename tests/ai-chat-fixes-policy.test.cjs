@@ -496,7 +496,7 @@ test('AI failed streaming state is not overwritten by a final generating patch',
   assert.ok(failedReturnIndex >= 0);
   assert.ok(forcedPersistIndex > failedReturnIndex);
   assert.ok(forcedEmitIndex > failedReturnIndex);
-  assert.match(streamBlock, /if \(streamFailed\) \{\s*return;\s*\}/);
+  assert.match(streamBlock, /if \(streamFailed\) \{\s*flushStreamingTextChunks\(\);[\s\S]{0,120}return;\s*\}/);
 });
 
 

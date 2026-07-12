@@ -41,7 +41,7 @@ test('streaming output modernization acceptance contract is implemented', () => 
   assert.doesNotMatch(runtime, /!input\.bottomLocked[\s\S]{0,120}return 0/);
   assert.match(service, /schedulePersistStreamingSnapshot/);
   assert.match(service, /waitForScheduledPersistStreamingSnapshot/);
-  assert.match(service, /await waitForScheduledPersistStreamingSnapshot\(\);\s*await persistStreamingSnapshot\(true\)/);
+  assert.match(service, /await waitForScheduledPersistStreamingSnapshot\(\);\s*flushStreamingTextChunks\(\);\s*(?:mergeStreamingPerformanceSnapshot\(\);\s*)?await persistStreamingSnapshot\(true\)/);
   assert.doesNotMatch(service, /await persistStreamingSnapshot\(\);\s*\n/);
   assert.match(screen, /shouldPublishLiveStreamingPatch/);
   assert.match(screen, /bottomLocked.*auto-scroll/i);
