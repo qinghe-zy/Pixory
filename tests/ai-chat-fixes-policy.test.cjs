@@ -213,7 +213,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48/);
   assert.match(chat, /const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(chat, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
-  assert.match(chat, /const MESSAGE_SAFE_FLUSH_OFFSET = 1/);
+  assert.match(chat, /const MESSAGE_SAFE_FLUSH_OFFSET = 32/);
   assert.match(chat, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
   assert.match(chat, /const MESSAGE_LIST_ANCHOR_CONFIG = \{ minIndexForVisible: 0 \}/);
   assert.match(chat, /const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
