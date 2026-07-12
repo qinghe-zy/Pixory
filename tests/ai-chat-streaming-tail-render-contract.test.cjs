@@ -256,3 +256,34 @@ test('selectVisibleMessage keeps selected-version data while applying frozen tai
 
   assert.deepEqual(untouched, selectedVersionMessage);
 });
+
+test('selectVisibleMessage overlays terminal metadata while retaining frozen text geometry', () => {
+  const { selectVisibleMessage } = loadContracts();
+  const message = {
+    completedAt: null,
+    content: '冻结正文',
+    errorMessage: null,
+    id: 'assistant_terminal_overlay',
+    reasoningText: '冻结思考',
+    status: 'generating',
+    updatedAt: '2026-07-12T01:20:00.000Z',
+  };
+  const visible = selectVisibleMessage({
+    message,
+    tailOverride: {
+      completedAt: '2026-07-12T01:21:00.000Z',
+      errorMessage: null,
+      frozenContent: '冻结正文',
+      frozenReasoningText: '冻结思考',
+      messageId: message.id,
+      messageStatus: 'completed',
+      status: 'completed',
+      updatedAt: '2026-07-12T01:21:00.000Z',
+    },
+  });
+
+  assert.equal(visible.content, '冻结正文');
+  assert.equal(visible.reasoningText, '冻结思考');
+  assert.equal(visible.status, 'completed');
+  assert.equal(visible.completedAt, '2026-07-12T01:21:00.000Z');
+});

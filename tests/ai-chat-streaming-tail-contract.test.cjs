@@ -221,3 +221,54 @@ test('growing tail blocks invalidate stale measurements before safe commit', () 
   assert.equal(grown.blocks[0].blockId, openBlock.blockId);
   assert.equal(grown.blocks[0].measuredHeight, undefined);
 });
+
+test('detached tail publishes terminal message metadata without waiting for layout commit', () => {
+  const { createEmptyStreamingTailState, mergeStreamingTailPatch } = loadTailModel();
+  const completedAt = '2026-07-12T01:22:22.000Z';
+  const completed = mergeStreamingTailPatch({
+    bubbleWidth: 320,
+    patch: {
+      completedAt,
+      content: '最终正文',
+      errorMessage: null,
+      generationId: 'gen_visible_terminal',
+      id: 'assistant_visible_terminal',
+      status: 'completed',
+      updatedAt: completedAt,
+    },
+    previous: createEmptyStreamingTailState(),
+  });
+
+  assert.equal(completed.status, 'completed');
+  assert.equal(completed.messageStatus, 'completed');
+  assert.equal(completed.completedAt, completedAt);
+  assert.equal(completed.updatedAt, completedAt);
+  assert.equal(completed.errorMessage, null);
+});
+
+test('failed or stopped detached status cannot regress to generating', () => {
+  const { createEmptyStreamingTailState, mergeStreamingTailPatch } = loadTailModel();
+  const failed = mergeStreamingTailPatch({
+    bubbleWidth: 320,
+    patch: {
+      errorMessage: 'provider_failed',
+      generationId: 'gen_terminal_guard',
+      id: 'assistant_terminal_guard',
+      status: 'failed',
+    },
+    previous: createEmptyStreamingTailState(),
+  });
+  const lateGenerating = mergeStreamingTailPatch({
+    bubbleWidth: 320,
+    patch: {
+      content: '迟到的正文',
+      generationId: 'gen_terminal_guard',
+      id: 'assistant_terminal_guard',
+      status: 'generating',
+    },
+    previous: failed,
+  });
+
+  assert.equal(lateGenerating.messageStatus, 'failed');
+  assert.equal(lateGenerating.errorMessage, 'provider_failed');
+});

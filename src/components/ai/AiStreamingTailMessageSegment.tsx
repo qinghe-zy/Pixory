@@ -19,6 +19,21 @@ type AiStreamingTailMessageSegmentProps = {
   onMeasured: (blockId: string, height: number) => void;
 };
 
+function resolveBlockVerticalInset(
+  edge: AiTailSegmentEdge,
+  index: number,
+  blockCount: number,
+): "none" | "top" | "bottom" | "both" {
+  const hasTopInset =
+    index === 0 && (edge === "single" || edge === "first");
+  const hasBottomInset =
+    index === blockCount - 1 && (edge === "single" || edge === "last");
+  if (hasTopInset && hasBottomInset) return "both";
+  if (hasTopInset) return "top";
+  if (hasBottomInset) return "bottom";
+  return "none";
+}
+
 export function AiStreamingTailMessageSegment({
   blocks,
   bubbleWidth,
@@ -55,12 +70,13 @@ export function AiStreamingTailMessageSegment({
             !chrome.borderBottomClosed && styles.openBottom,
           ]}
         >
-          {blocks.map((block) => (
+          {blocks.map((block, index) => (
             <AiMeasuredStreamBlock
               block={block}
               bubbleWidth={bubbleWidth}
               key={block.blockId}
               onMeasured={onMeasured}
+              verticalInset={resolveBlockVerticalInset(edge, index, blocks.length)}
             />
           ))}
           {chrome.drawsCitations ? citations : null}
@@ -73,6 +89,7 @@ export function AiStreamingTailMessageSegment({
 
 const styles = StyleSheet.create({
   assistantBubble: {
+    alignSelf: "stretch",
     backgroundColor: aiLightColors.card,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.lg,
@@ -85,11 +102,13 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     marginTop: -rhythm.listCardGap,
     maxWidth: "100%",
+    width: "100%",
   },
   assistantStack: {
     alignItems: "flex-start",
     alignSelf: "flex-start",
     maxWidth: "94%",
+    width: "94%",
   },
   openBottom: {
     borderBottomLeftRadius: 0,

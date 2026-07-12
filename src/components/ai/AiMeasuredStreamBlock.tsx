@@ -17,14 +17,27 @@ type AiMeasuredStreamBlockProps = {
   bubbleWidth: number;
   insetMode?: 'bubble' | 'thinking';
   onMeasured: (blockId: string, height: number) => void;
+  verticalInset?: AiMeasuredStreamBlockVerticalInset;
 };
 
-function AiMeasuredStreamBlockComponent({ block, bubbleWidth, insetMode = 'bubble', onMeasured }: AiMeasuredStreamBlockProps) {
+type AiMeasuredStreamBlockVerticalInset =
+  | 'none'
+  | 'top'
+  | 'bottom'
+  | 'both';
+
+function AiMeasuredStreamBlockComponent({
+  block,
+  bubbleWidth,
+  insetMode = 'bubble',
+  onMeasured,
+  verticalInset = 'both',
+}: AiMeasuredStreamBlockProps) {
   const lastMeasuredHeightRef = useRef<number | null>(null);
   const measuredViewRef = useRef<View>(null);
   const measurementSignatureRef = useRef<string | null>(null);
   const suppressedMeasurementDeltaRef = useRef(0);
-  const measurementSignature = `${block.blockId}:${block.finalized}:${block.raw}:${insetMode}`;
+  const measurementSignature = `${block.blockId}:${block.finalized}:${block.raw}:${insetMode}:${verticalInset}`;
 
   const reportMeasuredHeight = useCallback((height: number) => {
     const signatureChanged =
@@ -109,7 +122,16 @@ function AiMeasuredStreamBlockComponent({ block, bubbleWidth, insetMode = 'bubbl
       <View
         onLayout={(event) => reportMeasuredHeight(event.nativeEvent.layout.height)}
         ref={measuredViewRef}
-        style={[styles.block, insetMode === 'thinking' && styles.thinkingBlock]}
+        style={[
+          styles.block,
+          insetMode === 'thinking' && styles.thinkingBlock,
+          insetMode === 'bubble' &&
+            (verticalInset === 'top' || verticalInset === 'both') &&
+            styles.blockTopInset,
+          insetMode === 'bubble' &&
+            (verticalInset === 'bottom' || verticalInset === 'both') &&
+            styles.blockBottomInset,
+        ]}
       >
         {block.lane === 'reasoning' ? (
           <Text style={styles.thinkingText}>{block.raw}</Text>
@@ -126,14 +148,20 @@ export const AiMeasuredStreamBlock = memo(AiMeasuredStreamBlockComponent);
 
 const styles = StyleSheet.create({
   block: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[1],
+    paddingHorizontal: spacing[3],
+  },
+  blockBottomInset: {
+    paddingBottom: spacing[3],
+  },
+  blockTopInset: {
+    paddingTop: spacing[3],
   },
   reservedBlock: {
     width: '100%',
   },
   thinkingBlock: {
     paddingHorizontal: 0,
+    paddingVertical: spacing[1],
   },
   thinkingText: {
     ...typography.textStyles.caption,

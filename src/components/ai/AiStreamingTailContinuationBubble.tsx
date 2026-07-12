@@ -35,12 +35,21 @@ export function AiStreamingTailContinuationBubble({
     <View style={styles.assistantRow}>
       <View style={styles.assistantStack}>
         <View style={styles.assistantBubble}>
-          {group.blocks.map((block) => (
+          {group.blocks.map((block, index) => (
             <AiMeasuredStreamBlock
               block={block}
               bubbleWidth={bubbleWidth}
               key={block.blockId}
               onMeasured={onMeasured}
+              verticalInset={
+                group.blocks.length === 1
+                  ? 'both'
+                  : index === 0
+                    ? 'top'
+                    : index === group.blocks.length - 1
+                      ? 'bottom'
+                      : 'none'
+              }
             />
           ))}
         </View>
@@ -51,6 +60,7 @@ export function AiStreamingTailContinuationBubble({
 
 const styles = StyleSheet.create({
   assistantBubble: {
+    alignSelf: 'stretch',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.lg,
@@ -62,11 +72,13 @@ const styles = StyleSheet.create({
   assistantRow: {
     alignItems: 'flex-start',
     maxWidth: '100%',
+    width: '100%',
   },
   assistantStack: {
     alignItems: 'flex-start',
     alignSelf: 'flex-start',
     maxWidth: '94%',
+    width: '94%',
   },
   reasoningRow: {
     alignSelf: 'flex-start',

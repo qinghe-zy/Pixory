@@ -132,6 +132,14 @@ export function AiChatComposer({
     onComposerHeightChange?.();
   }, [attachments.length, onComposerHeightChange]);
 
+  useEffect(() => {
+    if (value.length !== 0 || inputHeight === COMPOSER_INPUT_MIN_HEIGHT) {
+      return;
+    }
+    setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+    onComposerHeightChange?.();
+  }, [inputHeight, onComposerHeightChange, value]);
+
   return (
     <View style={styles.container}>
       <AiVoiceInputStatus error={voiceError} onCancel={onCancelVoiceInput} state={voiceState} />

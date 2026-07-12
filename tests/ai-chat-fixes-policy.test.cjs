@@ -345,7 +345,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /scheduleStreamingTailReconcile\("detached-patch"/);
   assert.match(chat, /scheduleStreamingTailReconcile\("final-completion"/);
   assert.match(chat, /bottomLockedRef\.current = bottomLockedRef\.current \|\| followLatest \|\| messageScrollOffsetRef\.current <= MESSAGE_SAFE_FLUSH_OFFSET/);
-  assert.match(chat, /streamingReadBufferActiveRef\.current = true;\s*pendingFinalReloadRef\.current = true;\s*hasBufferedStreamingUpdateRef\.current = true/);
+  assert.match(chat, /streamingReadBufferActiveRef\.current = true;\s*pendingFinalReloadRef\.current = true;\s*pendingStreamingTailCommitRef\.current = true;\s*hasBufferedStreamingUpdateRef\.current = true/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
@@ -1150,7 +1150,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent, areAiMessageBubblePropsEqual\)/);
   assert.match(chat, /message\.versionIndex === message\.versionTotal \? message : \{ \.\.\.message, versionIndex: message\.versionTotal \}/);
   assert.match(chat, /type VisibleMessageItem/);
-  assert.match(chat, /const nextVisibleMessageItems = nextVisibleMessages\.map/);
+  assert.match(chat, /nextVisibleMessages\.forEach\(\(sourceMessage, index\) =>/);
   assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
   assert.match(chat, /const \{\s*invertedMessageIndexById,\s*invertedMessageItems,\s*messagesById,/);
@@ -1211,6 +1211,15 @@ test('AI streaming first-token path keeps the live subscriber attached instead o
     /const waitingForFirstToken =\s*generating && !message\.content\.trim\(\) && !thinkingActive/,
   );
   assert.match(bubble, /streaming && streamingIdentity \?/);
+});
+
+test('AI composer collapses back to its minimum height when sent text is cleared', () => {
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+
+  assert.match(
+    composer,
+    /useEffect\(\(\) => \{[\s\S]{0,360}value\.length !== 0[\s\S]{0,360}setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\)[\s\S]{0,360}onComposerHeightChange\?\.\(\)/,
+  );
 });
 
 
@@ -1674,4 +1683,15 @@ test('AI chat keeps no-jitter scroll policy during streaming keyboard and return
   assert.doesNotMatch(chat, /scrollToEnd/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*followLatestMessage/);
   assert.doesNotMatch(chat, /onContentSizeChange=\{[^}]*scrollToOffset/);
+});
+
+test('AI chat renders one standalone date item per day outside message rows', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const messageRenderBranch = /const \{ message \} = item;[\s\S]*?<AiMessageBubble/.exec(chat)?.[0] ?? '';
+
+  assert.match(chat, /type:\s*["']dateSeparator["']/);
+  assert.match(chat, /dateKey:\s*string/);
+  assert.match(chat, /if \(item\.type === ["']dateSeparator["']\)/);
+  assert.doesNotMatch(messageRenderBranch, /item\.showDateSeparator/);
+  assert.doesNotMatch(messageRenderBranch, /formatDateSeparator\(message\.createdAt\)/);
 });

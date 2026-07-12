@@ -340,6 +340,14 @@ function formatDateSeparator(value: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function getLocalDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "invalid-date";
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function getAiChatGreeting(date = new Date()): string {
   const hour = date.getHours();
   if (hour < 12) {
@@ -459,22 +467,6 @@ function isReplyAssistAbortError(error: unknown): boolean {
   );
 }
 
-function shouldShowDateSeparator(
-  messages: AiMessageWithCitations[],
-  index: number,
-): boolean {
-  if (index <= 0) {
-    return true;
-  }
-  const current = new Date(messages[index]?.createdAt ?? "");
-  const previous = new Date(messages[index - 1]?.createdAt ?? "");
-  return (
-    current.getFullYear() !== previous.getFullYear() ||
-    current.getMonth() !== previous.getMonth() ||
-    current.getDate() !== previous.getDate()
-  );
-}
-
 function messageHasContextTrim(message: AiMessageWithCitations): boolean {
   try {
     const snapshot = message.promptSnapshotJson
@@ -508,7 +500,12 @@ type VisibleMessageItem =
       message: AiMessageWithCitations;
       showAvatar: boolean;
       showUserAvatar: boolean;
-      showDateSeparator: boolean;
+    }
+  | {
+      type: "dateSeparator";
+      id: string;
+      label: string;
+      dateKey: string;
     }
   | {
       type: "streamTailSpacer";
@@ -1856,36 +1853,49 @@ export function AiChatScreen({
     const tailOverride =
       tailState.status !== "idle" && tailState.messageId
         ? {
+            completedAt: tailState.completedAt,
+            errorMessage: tailState.errorMessage,
             frozenContent: tailState.frozenContent,
             frozenReasoningText: tailState.frozenReasoningText,
             messageId: tailState.messageId,
+            messageStatus: tailState.messageStatus,
             status: tailState.status,
+            updatedAt: tailState.updatedAt,
           }
         : undefined;
-    // prettier-ignore
-    const nextVisibleMessageItems = nextVisibleMessages.map((message, index): VisibleMessageItem => {
-        message = selectVisibleMessage({
-          message,
-          tailOverride,
-        });
-        const previousMessage = nextVisibleMessages[index - 1];
-        const showDateSeparator = shouldShowDateSeparator(
-          nextVisibleMessages,
-          index,
-        );
-        return {
-          id: message.id,
-          type: "message",
-          message,
-          showAvatar:
-            message.role === 'assistant' &&
-            (showDateSeparator ||
-              previousMessage?.role !== 'assistant' ||
-              messageUsesStandaloneAssistantDisplay(message)),
-          showUserAvatar: message.role === 'user' && (showDateSeparator || previousMessage?.role !== 'user'),
-          showDateSeparator,
-        };
+    const nextVisibleMessageItems: VisibleMessageItem[] = [];
+    let previousDateKey: string | null = null;
+    nextVisibleMessages.forEach((sourceMessage, index) => {
+      const message = selectVisibleMessage({
+        message: sourceMessage,
+        tailOverride,
       });
+      const previousMessage = nextVisibleMessages[index - 1];
+      const dateKey = getLocalDateKey(message.createdAt);
+      const startsNewDate = dateKey !== previousDateKey;
+      if (startsNewDate) {
+        nextVisibleMessageItems.push({
+          type: "dateSeparator",
+          id: `date-separator-${dateKey}`,
+          label: formatDateSeparator(message.createdAt),
+          dateKey,
+        });
+      }
+      nextVisibleMessageItems.push({
+        id: message.id,
+        type: "message",
+        message,
+        showAvatar:
+          message.role === 'assistant' &&
+          (startsNewDate ||
+            previousMessage?.role !== 'assistant' ||
+            messageUsesStandaloneAssistantDisplay(message)),
+        showUserAvatar:
+          message.role === 'user' &&
+          (startsNewDate || previousMessage?.role !== 'user'),
+      });
+      previousDateKey = dateKey;
+    });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
     nextVisibleMessageItems.forEach((item) => {
       if (item.type === "message") {
@@ -2374,6 +2384,7 @@ export function AiChatScreen({
         ) {
           streamingReadBufferActiveRef.current = true;
           pendingFinalReloadRef.current = true;
+          pendingStreamingTailCommitRef.current = true;
           hasBufferedStreamingUpdateRef.current = true;
           pendingFinalStreamingIdentityRef.current =
             activeStreamingIdentityRef.current;
@@ -3546,14 +3557,23 @@ export function AiChatScreen({
   }, [space]);
 
   const flushBufferedStreamingState = useCallback(
-    async ({ followLatest }: { followLatest: boolean }) => {
+    async ({
+      followLatest,
+      resetTail = false,
+    }: {
+      followLatest: boolean;
+      resetTail?: boolean;
+    }) => {
       pendingStreamingTailCommitRef.current = false;
       const bufferedPatch = bufferedStreamingPatchRef.current;
       const shouldReloadFinal = pendingFinalReloadRef.current;
       const pendingFinalStreamingIdentity =
         pendingFinalStreamingIdentityRef.current;
-      const targetThreadId = activeThreadIdRef.current;
+      const targetThreadId = pendingFinalStreamingIdentity
+        ? pendingFinalStreamingIdentity.threadId
+        : activeThreadIdRef.current;
       const shouldResetTailAfterFlush =
+        resetTail ||
         followLatest ||
         bottomLockedRef.current ||
         messageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET;
@@ -3652,7 +3672,10 @@ export function AiChatScreen({
       return false;
     }
     pendingStreamingTailCommitRef.current = false;
-    void flushBufferedStreamingState({ followLatest: false });
+    void flushBufferedStreamingState({
+      followLatest: false,
+      resetTail: true,
+    });
     return true;
   }, [flushBufferedStreamingState]);
   commitStreamingTailIfStableRef.current = commitStreamingTailIfStable;
@@ -5573,6 +5596,9 @@ export function AiChatScreen({
 
   const renderMessageItem = useCallback(
     ({ item }: { item: VisibleMessageItem }) => {
+      if (item.type === "dateSeparator") {
+        return <Text style={styles.dateSeparator}>{item.label}</Text>;
+      }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
       }
@@ -5743,11 +5769,6 @@ export function AiChatScreen({
         singleBubbleTailMessage && baseTailEdge !== "single";
       return (
         <>
-          {item.showDateSeparator ? (
-            <Text style={styles.dateSeparator}>
-              {formatDateSeparator(message.createdAt)}
-            </Text>
-          ) : null}
           <View
             style={
               searchHighlightMessageId === message.id

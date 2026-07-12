@@ -111,7 +111,7 @@ test('reasoning tail blocks use independent lane and frozen boundaries', () => {
 
 test('reasoning tail integrates with visible message state and thinking expanded toggle', () => {
   const screen = read('src/screens/AiChatScreen.tsx');
-  assert.match(screen, /selectVisibleMessage\(\{\s*message,\s*tailOverride,/s);
+  assert.match(screen, /selectVisibleMessage\(\{\s*message:\s*sourceMessage,\s*tailOverride,/s);
   assert.match(screen, /frozenReasoningText:\s*tailState\.frozenReasoningText/);
   assert.match(screen, /targetReasoningText:/);
   assert.match(screen, /calculateEffectiveTotalReservedHeight\(\s*tailState,\s*activeLanes/s);
@@ -486,4 +486,54 @@ test('hardening adds dev-only streaming tail performance instrumentation', () =>
   assert.match(measured, /recordTailReplayFirstTextVisible/);
   assert.match(measured, /recordTailReplayBlockMeasured/);
   assert.match(measured, /recordTailReplayMeasurementDiff/);
+});
+
+test('content replay uses a stable full-width continuation surface', () => {
+  const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
+  const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+  const measured = read('src/components/ai/AiMeasuredStreamBlock.tsx');
+
+  assert.match(segment, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(segment, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
+  assert.match(continuation, /assistantStack:\s*\{[\s\S]{0,180}width:\s*["']94%["']/);
+  assert.match(continuation, /assistantBubble:\s*\{[\s\S]{0,180}alignSelf:\s*["']stretch["']/);
+  assert.match(measured, /paddingHorizontal:\s*spacing\[3\]/);
+  assert.match(measured, /verticalInset\?:\s*AiMeasuredStreamBlockVerticalInset/);
+  assert.match(segment, /verticalInset=\{resolveBlockVerticalInset\(edge, index, blocks\.length\)\}/);
+});
+
+test('terminal replay schedules cleanup independently from visible terminal state', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(
+    screen,
+    /onSettled:\s*\(\)\s*=>\s*\{[\s\S]{0,1200}pendingStreamingTailCommitRef\.current\s*=\s*true/,
+  );
+  assert.match(
+    screen,
+    /const shouldResetTailAfterFlush\s*=\s*resetTail\s*\|\|/,
+  );
+  assert.match(
+    screen,
+    /flushBufferedStreamingState\(\{\s*followLatest:\s*false,\s*resetTail:\s*true,?\s*\}\)/,
+  );
+  assert.match(
+    screen,
+    /replayVisible:\s*Boolean\([\s\S]{0,180}visibleStreamingTailMessageIdsRef\.current\.has/,
+  );
+});
+
+test('terminal replay reload stays bound to the completed streaming identity', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+  const flushBody =
+    /const flushBufferedStreamingState = useCallback\([\s\S]*?\n  \);/m.exec(screen)?.[0] ?? '';
+
+  assert.match(
+    flushBody,
+    /const targetThreadId = pendingFinalStreamingIdentity\s*\? pendingFinalStreamingIdentity\.threadId\s*:\s*activeThreadIdRef\.current/,
+  );
+  assert.doesNotMatch(
+    flushBody,
+    /const pendingFinalStreamingIdentity =[\s\S]{0,180}const targetThreadId = activeThreadIdRef\.current/,
+  );
 });
