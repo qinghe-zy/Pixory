@@ -123,6 +123,13 @@ test('reasoning tail integrates with visible message state and thinking expanded
   assert.match(screen, /recomputeVisibleStreamingTailForCurrentScroll\(\{\s*forceRender:/);
   assert.match(screen, /streamingTailStateRef\.current\.messageId === messageId/);
   assert.match(screen, /const streamingRendererActive = Boolean\(streamingIdentity\) && generating && message\.id === activeAssistantId && !streamingReadModeActive/);
+  assert.match(screen, /const restoreLiveStreamingAtBottom = useCallback/);
+  assert.match(screen, /if \(!canRestoreLiveStreamingAtBottom\(\)\) \{\s*return false;\s*\}/);
+  assert.match(screen, /allowGeneratingPayoff: true/);
+  assert.match(screen, /liveStreamingRestoreAnimationFrameRef\.current = requestAnimationFrame/);
+  assert.match(screen, /cancelAnimationFrame\(liveStreamingRestoreAnimationFrameRef\.current\)/);
+  assert.match(screen, /if \(!canRestoreLiveStreamingAtBottom\(\)\) \{\s*return;\s*\}\s*pendingStreamingTailCommitRef\.current = false/);
+  assert.match(screen, /requestAnimationFrame\(\(\) => \{[\s\S]{0,500}flushBufferedStreamingState\(\{[\s\S]{0,120}followLatest: true/);
   assert.doesNotMatch(screen, /tailState\.totalReservedHeight/);
 });
 

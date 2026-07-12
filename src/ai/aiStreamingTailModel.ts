@@ -383,10 +383,11 @@ export function updateStreamingTailBlockMeasurement(input: {
 }
 
 export function settleStreamingTailShrinkDebt(input: {
+  allowGeneratingPayoff?: boolean;
   canApplyBlock: (block: AiStreamBlock) => boolean;
   previous: AiStreamingTailState;
 }): AiStreamingTailState {
-  if (!input.previous.debtPayoffEligible) {
+  if (!input.previous.debtPayoffEligible && !input.allowGeneratingPayoff) {
     streamingTailPerfDebug.recordTailReplayUnsafePayoff({
       debtHeight: input.previous.pendingShrinkHeight,
       reason: "not_eligible",

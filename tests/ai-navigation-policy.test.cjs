@@ -146,7 +146,9 @@ test('AI chat streaming does not force bottom after the user scrolls upward', ()
   assert.match(content, /handleMessageScroll/);
   assert.match(content, /onScroll=\{handleMessageScroll\}/);
   assert.match(content, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
-  assert.match(content, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
+  assert.match(content, /onMomentumScrollBegin=\{handleMessageMomentumScrollBegin\}/);
+  assert.match(content, /onMomentumScrollEnd=\{handleMessageMomentumScrollEnd\}/);
+  assert.match(content, /isMomentumScrollingRef\.current = false;\s*handleMessageScrollEnd\(event\)/);
   assert.match(content, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
   assert.match(content, /scrollEventThrottle=\{16\}/);
   assert.match(content, /if \(!force && userScrolledAwayFromBottomRef\.current\)/);

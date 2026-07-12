@@ -1098,6 +1098,7 @@ export function AiChatScreen({
   const userScrolledAwayFromBottomRef = useRef(false);
   const bottomLockedRef = useRef(true);
   const isUserDraggingRef = useRef(false);
+  const isMomentumScrollingRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const escapedFromLockRef = useRef(false);
   const lastUserScrollAtRef = useRef(0);
@@ -1145,6 +1146,7 @@ export function AiChatScreen({
     null,
   );
   const reconcileAnimationFrameRef = useRef<number | null>(null);
+  const liveStreamingRestoreAnimationFrameRef = useRef<number | null>(null);
   const reconcileForceRenderRef = useRef(false);
   const reconcileAllowFollowLatestRef = useRef(false);
   const reconcileReasonRef = useRef<string | null>(null);
@@ -1604,6 +1606,9 @@ export function AiChatScreen({
       }
       if (reconcileAnimationFrameRef.current != null) {
         cancelAnimationFrame(reconcileAnimationFrameRef.current);
+      }
+      if (liveStreamingRestoreAnimationFrameRef.current != null) {
+        cancelAnimationFrame(liveStreamingRestoreAnimationFrameRef.current);
       }
     };
   }, []);
@@ -2609,6 +2614,10 @@ export function AiChatScreen({
   }
 
   function resetStreamingReadBufferState() {
+    if (liveStreamingRestoreAnimationFrameRef.current != null) {
+      cancelAnimationFrame(liveStreamingRestoreAnimationFrameRef.current);
+      liveStreamingRestoreAnimationFrameRef.current = null;
+    }
     pendingStreamingTailCommitRef.current = false;
     visibleStreamingTailMessageIdsRef.current.clear();
     streamingReadBufferActiveRef.current = false;
@@ -2621,6 +2630,7 @@ export function AiChatScreen({
     isNearBottomRef.current = true;
     escapedFromLockRef.current = false;
     isUserDraggingRef.current = false;
+    isMomentumScrollingRef.current = false;
     messageScrollOffsetRef.current = 0;
     previousMessageScrollOffsetRef.current = 0;
     scrollingTowardLatestRef.current = true;
@@ -3635,9 +3645,85 @@ export function AiChatScreen({
     ],
   );
 
+  const canRestoreLiveStreamingAtBottom = useCallback(() => {
+    if (
+      nativeMessageScrollOffsetRef.current > MESSAGE_SAFE_FLUSH_OFFSET ||
+      isUserDraggingRef.current ||
+      isMomentumScrollingRef.current ||
+      Date.now() - lastUserScrollAtRef.current < USER_SCROLL_IDLE_TIMEOUT_MS
+    ) {
+      return false;
+    }
+    const tailState = streamingTailStateRef.current;
+    const isThinkingExpanded = tailState.messageId
+      ? Boolean(thinkingExpandedByMessageIdRef.current.get(tailState.messageId))
+      : false;
+    const activeLanes: ("reasoning" | "content")[] = isThinkingExpanded
+      ? ["reasoning", "content"]
+      : ["content"];
+    const activeBlocks = tailState.blocks.filter((block) =>
+      activeLanes.includes(block.lane),
+    );
+    if (
+      tailState.pendingShrinkHeight > 0 ||
+      calculateRemainingStreamingTailHeight(tailState, activeLanes) > 0 ||
+      activeBlocks.some(
+        (block) =>
+          tailState.promotedBlockIds.has(block.blockId) &&
+          typeof block.measuredHeight !== "number",
+      )
+    ) {
+      return false;
+    }
+    return true;
+  }, []);
+
+  const restoreLiveStreamingAtBottom = useCallback(() => {
+    const tailState = streamingTailStateRef.current;
+    if (
+      nativeMessageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET &&
+      !isUserDraggingRef.current &&
+      !isMomentumScrollingRef.current &&
+      Date.now() - lastUserScrollAtRef.current >= USER_SCROLL_IDLE_TIMEOUT_MS &&
+      tailState.pendingShrinkHeight > 0
+    ) {
+      const settledTailState = settleStreamingTailShrinkDebt({
+        allowGeneratingPayoff: true,
+        canApplyBlock: (block) =>
+          tailState.promotedBlockIds.has(block.blockId),
+        previous: tailState,
+      });
+      if (settledTailState !== tailState) {
+        streamingTailStateRef.current = settledTailState;
+        forceUpdateTailState();
+      }
+    }
+    if (!canRestoreLiveStreamingAtBottom()) {
+      return false;
+    }
+    if (liveStreamingRestoreAnimationFrameRef.current != null) {
+      return true;
+    }
+    liveStreamingRestoreAnimationFrameRef.current = requestAnimationFrame(() => {
+      liveStreamingRestoreAnimationFrameRef.current = null;
+      if (!canRestoreLiveStreamingAtBottom()) {
+        return;
+      }
+      pendingStreamingTailCommitRef.current = false;
+      void flushBufferedStreamingState({
+        followLatest: true,
+        resetTail: true,
+      });
+    });
+    return true;
+  }, [canRestoreLiveStreamingAtBottom, flushBufferedStreamingState]);
+
   const commitStreamingTailIfStable = useCallback(() => {
     if (!pendingStreamingTailCommitRef.current) {
       return false;
+    }
+    if (restoreLiveStreamingAtBottom()) {
+      return true;
     }
     const tailState = streamingTailStateRef.current;
     const isThinkingExpanded = tailState.messageId
@@ -3677,7 +3763,7 @@ export function AiChatScreen({
       resetTail: true,
     });
     return true;
-  }, [flushBufferedStreamingState]);
+  }, [flushBufferedStreamingState, restoreLiveStreamingAtBottom]);
   commitStreamingTailIfStableRef.current = commitStreamingTailIfStable;
 
   const requestStreamingTailCommit = useCallback(() => {
@@ -3731,8 +3817,15 @@ export function AiChatScreen({
         allowFollowLatest: bottomLockedRef.current || isNearBottomRef.current,
         retainWindow: true,
       });
+      if (nativeMessageScrollOffsetRef.current <= MESSAGE_SAFE_FLUSH_OFFSET) {
+        requestStreamingTailCommit();
+      }
     }, USER_SCROLL_IDLE_TIMEOUT_MS);
-  }, [scheduleStreamingTailReconcile]);
+  }, [requestStreamingTailCommit, scheduleStreamingTailReconcile]);
+
+  const handleMessageMomentumScrollBegin = useCallback(() => {
+    isMomentumScrollingRef.current = true;
+  }, []);
 
   const handleMessageScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -3772,6 +3865,14 @@ export function AiChatScreen({
       syncTailViewportPolicyForCurrentTailState,
       updateStreamingLockStateSnapshot,
     ],
+  );
+
+  const handleMessageMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      isMomentumScrollingRef.current = false;
+      handleMessageScrollEnd(event);
+    },
+    [handleMessageScrollEnd],
   );
 
   useEffect(() => {
@@ -6086,7 +6187,8 @@ export function AiChatScreen({
               }
               onScrollBeginDrag={handleMessageScrollBeginDrag}
               onScroll={handleMessageScroll}
-              onMomentumScrollEnd={handleMessageScrollEnd}
+              onMomentumScrollBegin={handleMessageMomentumScrollBegin}
+              onMomentumScrollEnd={handleMessageMomentumScrollEnd}
               onScrollEndDrag={handleMessageScrollEnd}
               onScrollToIndexFailed={handleMessageScrollToIndexFailed}
               renderItem={renderMessageItem}

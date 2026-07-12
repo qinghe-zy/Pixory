@@ -574,16 +574,14 @@ const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
 const REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT = 12;
 const REPLY_ASSIST_CONTEXT_MAX_CHARS = 4200;
-const REPLY_ASSIST_MAX_ATTEMPTS = 2;
+const REPLY_ASSIST_MAX_ATTEMPTS = 3;
 const REPLY_ASSIST_SHORT_COUNT = 3;
 const REPLY_ASSIST_SHORT_MIN_CHARS = 4;
 const REPLY_ASSIST_SHORT_MAX_CHARS = 25;
 const REPLY_ASSIST_SHORT_SOFT_MAX_CHARS = REPLY_ASSIST_SHORT_MAX_CHARS + 4;
 const REPLY_ASSIST_LONG_COUNT = 1;
-const REPLY_ASSIST_LONG_MIN_CHARS = 35;
-const REPLY_ASSIST_LONG_MAX_CHARS = 120;
-const REPLY_ASSIST_LONG_SOFT_MAX_CHARS = REPLY_ASSIST_LONG_MAX_CHARS + 16;
-const REPLY_ASSIST_LONG_MIN_SENTENCES = 3;
+const REPLY_ASSIST_LONG_MIN_CHARS = 20;
+const REPLY_ASSIST_LONG_MAX_CHARS = 200;
 
 export type AiReplyAssistMode = 'short' | 'long';
 
@@ -617,13 +615,6 @@ function normalizeReplyAssistText(value: string): string {
 
 function replyAssistCharCount(value: string): number {
   return [...value].length;
-}
-
-function replyAssistSentenceCount(value: string): number {
-  return value
-    .split(/[。！？!?]+/)
-    .map((part) => part.trim())
-    .filter(Boolean).length;
 }
 
 function formatReplyAssistTranscript(
@@ -699,7 +690,7 @@ function buildReplyAssistOutputContract(mode: AiReplyAssistMode): string {
   return [
     '当前模式：长句帮答。',
     `只返回 ${REPLY_ASSIST_LONG_COUNT} 条 suggestion。`,
-    `该句至少 ${REPLY_ASSIST_LONG_MIN_SENTENCES} 句话，至少 ${REPLY_ASSIST_LONG_MIN_CHARS} 个字，不超过 ${REPLY_ASSIST_LONG_MAX_CHARS} 个字。`,
+    `该句为 ${REPLY_ASSIST_LONG_MIN_CHARS} 到 ${REPLY_ASSIST_LONG_MAX_CHARS} 个字，句数和停顿由你根据当前语境自然决定。`,
     '语气延续当前对话，内容完整可直接发送。',
     '输出 JSON：{"suggestions":["..."]}',
   ].join('\n');
@@ -714,6 +705,17 @@ function buildReplyAssistUserPrompt(input: {
     transcript ? `当前可见分支对话：\n${transcript}` : '',
     buildReplyAssistOutputContract(input.mode),
   ].filter(Boolean).join('\n\n');
+}
+
+function buildReplyAssistCorrectionPrompt(
+  basePrompt: string,
+  previousValidationError: string,
+): string {
+  return [
+    basePrompt,
+    `上一轮输出未通过校验：${previousValidationError}`,
+    '请纠正上述问题，只返回符合约束的 JSON，不要解释。',
+  ].join('\n\n');
 }
 
 function extractReplyAssistJson(text: string): string {
@@ -766,11 +768,8 @@ function validateReplyAssistSuggestions(mode: AiReplyAssistMode, suggestions: st
   }
   return suggestions.map((suggestion) => {
     const charCount = replyAssistCharCount(suggestion);
-    if (charCount < REPLY_ASSIST_LONG_MIN_CHARS || charCount > REPLY_ASSIST_LONG_SOFT_MAX_CHARS) {
+    if (charCount < REPLY_ASSIST_LONG_MIN_CHARS || charCount > REPLY_ASSIST_LONG_MAX_CHARS) {
       throw new Error('AI 帮答长句长度不符合要求。');
-    }
-    if (replyAssistSentenceCount(suggestion) < REPLY_ASSIST_LONG_MIN_SENTENCES) {
-      throw new Error('AI 帮答长句句数不符合要求。');
     }
     return suggestion;
   });
@@ -3797,14 +3796,17 @@ export async function generateReplyAssistSuggestions(
   });
 
   const systemPrompt = systemPromptSections.join('\n\n');
-  const userPrompt = buildReplyAssistUserPrompt({
+  const baseUserPrompt = buildReplyAssistUserPrompt({
     mode: input.mode,
     transcript,
   });
   const adapter = getAdapterForProvider(resolvedThreadModel.provider);
-  let lastError: Error | null = null;
+  let previousValidationError: string | null = null;
 
   for (let attempt = 0; attempt < REPLY_ASSIST_MAX_ATTEMPTS; attempt += 1) {
+    const userPrompt = previousValidationError
+      ? buildReplyAssistCorrectionPrompt(baseUserPrompt, previousValidationError)
+      : baseUserPrompt;
     let text = '';
     let streamError: string | null = null;
     await adapter.streamChat(
@@ -3834,11 +3836,11 @@ export async function generateReplyAssistSuggestions(
     try {
       return validateReplyAssistSuggestions(input.mode, parseReplyAssistSuggestions(text));
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error('AI 帮答解析失败。');
+      previousValidationError = error instanceof Error ? error.message : 'AI 帮答解析失败。';
     }
   }
 
-  throw lastError ?? new Error('AI 帮答生成失败。');
+  throw new Error('帮答生成失败，请重试。');
 }
 
 export async function sendUserMessage(

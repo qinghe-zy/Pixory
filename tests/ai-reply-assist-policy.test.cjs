@@ -6,18 +6,32 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('AI reply assist uses a dedicated generation contract with fixed short/long lengths', () => {
+test('AI reply assist uses a dedicated generation contract with fixed short and flexible long lengths', () => {
   const service = read('src/ai/aiChatService.ts');
 
   assert.match(service, /export type AiReplyAssistMode = 'short' \| 'long'/);
   assert.match(service, /export async function generateReplyAssistSuggestions/);
   assert.match(service, /REPLY_ASSIST_SHORT_COUNT = 3/);
   assert.match(service, /REPLY_ASSIST_SHORT_MAX_CHARS = 25/);
-  assert.match(service, /REPLY_ASSIST_LONG_MIN_SENTENCES = 3/);
+  assert.match(service, /REPLY_ASSIST_LONG_MIN_CHARS = 20/);
+  assert.match(service, /REPLY_ASSIST_LONG_MAX_CHARS = 200/);
+  assert.doesNotMatch(service, /REPLY_ASSIST_LONG_MIN_SENTENCES/);
+  assert.doesNotMatch(service, /replyAssistSentenceCount/);
   assert.match(service, /buildReplyAssistUserPrompt/);
   assert.match(service, /validateReplyAssistSuggestions/);
   assert.match(service, /你是 Pixory 的聊天帮答生成器/);
   assert.match(service, /openAiUsageObservationEnabled/);
+});
+
+test('AI reply assist corrects validation failures up to three attempts without exposing raw errors', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /const REPLY_ASSIST_MAX_ATTEMPTS = 3;/);
+  assert.match(service, /function buildReplyAssistCorrectionPrompt/);
+  assert.match(service, /previousValidationError/);
+  assert.match(service, /buildReplyAssistCorrectionPrompt\([\s\S]{0,240}previousValidationError/);
+  assert.match(service, /throw new Error\('帮答生成失败，请重试。'\)/);
+  assert.match(service, /if \(streamError\) \{\s*throw new Error\(streamError\);\s*\}/);
 });
 
 test('AI chat composer adds a bulb entry beside the model icon for reply assist', () => {

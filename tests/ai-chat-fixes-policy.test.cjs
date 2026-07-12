@@ -226,7 +226,8 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /userScrolledAwayFromBottomRef\.current = !isNearBottomRef\.current/);
   assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
   assert.match(chat, /onScrollBeginDrag=\{handleMessageScrollBeginDrag\}/);
-  assert.match(chat, /onMomentumScrollEnd=\{handleMessageScrollEnd\}/);
+  assert.match(chat, /onMomentumScrollBegin=\{handleMessageMomentumScrollBegin\}/);
+  assert.match(chat, /onMomentumScrollEnd=\{handleMessageMomentumScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
   assert.match(chat, /<AiScrollToLatestButton\s+bottomOffset=\{composerShellHeight \+ spacing\[3\] \+ spacing\[1\.5\]\}\s+visible=\{showScrollToLatest && !inlineEditingActive\}\s+onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
@@ -365,6 +366,12 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /event\.nativeEvent\.contentOffset\.y <= MESSAGE_SAFE_FLUSH_OFFSET/);
   assert.match(chat, /pendingStreamingTailCommitRef/);
   assert.match(chat, /canCommitStreamingTailToMessage/);
+  assert.match(chat, /const canRestoreLiveStreamingAtBottom = useCallback/);
+  assert.match(chat, /nativeMessageScrollOffsetRef\.current > MESSAGE_SAFE_FLUSH_OFFSET/);
+  assert.match(chat, /isUserDraggingRef\.current/);
+  assert.match(chat, /tailState\.pendingShrinkHeight > 0/);
+  assert.match(chat, /promotedBlockIds\.has\(block\.blockId\)[\s\S]{0,160}typeof block\.measuredHeight !== "number"/);
+  assert.match(chat, /requestAnimationFrame\(\(\) => \{[\s\S]{0,500}canRestoreLiveStreamingAtBottom\(\)[\s\S]{0,500}flushBufferedStreamingState\(\{[\s\S]{0,120}followLatest: true,[\s\S]{0,120}resetTail: true/);
   assert.match(chat, /visibleStreamingTailMessageIdsRef/);
   assert.match(
     chat,

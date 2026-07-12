@@ -103,11 +103,11 @@ test('AI reply assist warms the first short page, quietly appends the second sho
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(service, /const REPLY_ASSIST_SHORT_SOFT_MAX_CHARS = REPLY_ASSIST_SHORT_MAX_CHARS \+ 4;/);
-  assert.match(service, /const REPLY_ASSIST_LONG_SOFT_MAX_CHARS = REPLY_ASSIST_LONG_MAX_CHARS \+ 16;/);
-  assert.match(service, /const REPLY_ASSIST_MAX_ATTEMPTS = 2;/);
+  assert.doesNotMatch(service, /REPLY_ASSIST_LONG_SOFT_MAX_CHARS/);
+  assert.match(service, /const REPLY_ASSIST_MAX_ATTEMPTS = 3;/);
   assert.match(service, /charCount < REPLY_ASSIST_SHORT_MIN_CHARS \|\| charCount > REPLY_ASSIST_SHORT_SOFT_MAX_CHARS/);
-  assert.match(service, /charCount < REPLY_ASSIST_LONG_MIN_CHARS \|\| charCount > REPLY_ASSIST_LONG_SOFT_MAX_CHARS/);
-  assert.match(service, /replyAssistSentenceCount\(suggestion\) < REPLY_ASSIST_LONG_MIN_SENTENCES/);
+  assert.match(service, /charCount < REPLY_ASSIST_LONG_MIN_CHARS \|\| charCount > REPLY_ASSIST_LONG_MAX_CHARS/);
+  assert.doesNotMatch(service, /replyAssistSentenceCount\(suggestion\)/);
 
   assert.match(chat, /replyAssistCacheRef = useRef\(new Map<string, ReplyAssistPagesByMode>\(\)\);/);
   assert.match(chat, /replyAssistInFlightRef = useRef\(new Map<string, Promise<string\[\]>>\(\)\);/);
