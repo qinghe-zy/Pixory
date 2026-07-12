@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  dispatchAiStreamEvent,
   type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
@@ -150,7 +151,8 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
       ? text.split('\n').flatMap(parseOpenAiStreamLine)
       : parseOpenAiChatCompletionJson(text);
     for (const event of events) {
-      await onEvent(event);
+      const pending = dispatchAiStreamEvent(onEvent, event);
+      if (pending) await pending;
     }
     return;
   }
@@ -182,7 +184,8 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
         sawStreamPayload = true;
       }
       for (const event of events) {
-        await onEvent(event);
+        const pending = dispatchAiStreamEvent(onEvent, event);
+        if (pending) await pending;
       }
     }
   }
@@ -192,12 +195,14 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
       sawStreamPayload = true;
     }
     for (const event of events) {
-      await onEvent(event);
+      const pending = dispatchAiStreamEvent(onEvent, event);
+      if (pending) await pending;
     }
   }
   if (!sawStreamPayload && rawText) {
     for (const event of parseOpenAiChatCompletionJson(rawText)) {
-      await onEvent(event);
+      const pending = dispatchAiStreamEvent(onEvent, event);
+      if (pending) await pending;
     }
   }
 }

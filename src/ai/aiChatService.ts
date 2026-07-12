@@ -83,6 +83,10 @@ import {
   type AiGenerationMetricsDraft,
 } from './aiGenerationMetrics';
 import {
+  takeStreamingPerformanceSnapshot,
+  type StreamingPerformanceIdentity,
+} from './aiStreamingPerformanceDiagnostics';
+import {
   deleteThreadProviderApiKey,
   getProviderApiKeyForSpace,
   getThreadProviderApiKey,
@@ -2918,9 +2922,55 @@ async function streamAssistantReply(input: {
   const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas);
   let answerText = initialAnswerText;
   let reasoningText = initialReasoningText ?? '';
+  const pendingAnswerChunks: string[] = [];
+  const pendingReasoningChunks: string[] = [];
+  let pendingAnswerChars = 0;
+  let pendingReasoningChars = 0;
+  function flushStreamingTextChunks() {
+    if (pendingAnswerChunks.length > 0) {
+      answerText += pendingAnswerChunks.join('');
+      pendingAnswerChunks.length = 0;
+      pendingAnswerChars = 0;
+    }
+    if (pendingReasoningChunks.length > 0) {
+      reasoningText += pendingReasoningChunks.join('');
+      pendingReasoningChunks.length = 0;
+      pendingReasoningChars = 0;
+    }
+  }
   let assistantReset = mode === 'continue';
   const generationMetrics = input.generationMetrics;
   const generationId = generationMetrics.context.generationId;
+  const streamingPerformanceIdentity: StreamingPerformanceIdentity = {
+    generationId,
+    messageId: input.assistantMessageId,
+    space: input.space,
+    threadId: input.thread.id,
+  };
+  const recordStreamingProviderDelta = (event: AiStreamEvent) => {
+    if (event.type === 'answer_delta') {
+      generationMetrics.counters.providerAnswerChars += [...event.text].length;
+    }
+    if (event.type === 'reasoning_delta') {
+      generationMetrics.counters.providerReasoningChars += [...event.text].length;
+    }
+  };
+  const recordStreamingPersistence = (elapsedMs: number) => {
+    generationMetrics.counters.partialPersistTotalMs += Math.max(0, elapsedMs);
+  };
+  const mergeStreamingPerformanceSnapshot = () => {
+    const snapshot = takeStreamingPerformanceSnapshot(streamingPerformanceIdentity);
+    if (!snapshot) return;
+    generationMetrics.counters.maxUiBacklogChars = Math.max(
+      generationMetrics.counters.maxUiBacklogChars,
+      snapshot.maxUiBacklogChars,
+    );
+    generationMetrics.counters.maxUiBacklogAgeMs = Math.max(
+      generationMetrics.counters.maxUiBacklogAgeMs,
+      snapshot.maxUiBacklogAgeMs,
+    );
+    generationMetrics.counters.detachedTailMergeTotalMs += snapshot.detachedTailMergeTotalMs;
+  };
   const emitMessagePatch = (patch: Omit<AiStreamingMessagePatch, 'generationId'>) => {
     input.onMessagePatch?.({ generationId, ...patch });
   };
@@ -3345,8 +3395,8 @@ async function streamAssistantReply(input: {
       return;
     }
     const now = Date.now();
-    const answerChars = answerText.length;
-    const reasoningChars = reasoningText.length;
+    const answerChars = answerText.length + pendingAnswerChars;
+    const reasoningChars = reasoningText.length + pendingReasoningChars;
     if (!force && answerChars === lastUiPatchAnswerChars && reasoningChars === lastUiPatchReasoningChars) {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
@@ -3397,13 +3447,35 @@ async function streamAssistantReply(input: {
       status: 'generating',
     });
   };
+  let pendingUiPatchTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleStreamingPatch = () => {
+    if (pendingUiPatchTimer || streamFailed || input.signal?.aborted) {
+      return;
+    }
+    const visibility = input.getStreamingVisibility?.() ?? { bottomLocked: true };
+    const intervalMs = targetStreamingPatchIntervalMs({
+      ...visibility,
+      devicePressure: generationMetrics.context.devicePressureThrottled,
+      visibleChars: answerText.length + reasoningText.length + pendingAnswerChars + pendingReasoningChars,
+    });
+    if (intervalMs == null) {
+      return;
+    }
+    pendingUiPatchTimer = setTimeout(() => {
+      pendingUiPatchTimer = null;
+      if (!streamFailed && (pendingAnswerChunks.length > 0 || pendingReasoningChunks.length > 0)) {
+        emitStreamingPatch(true);
+      }
+    }, intervalMs);
+  };
   const persistStreamingSnapshot = async (force = false) => {
     if (input.signal?.aborted) {
       return;
     }
+    flushStreamingTextChunks();
     const now = Date.now();
-    const answerChars = answerText.length;
-    const reasoningChars = reasoningText.length;
+    const answerChars = answerText.length + pendingAnswerChars;
+    const reasoningChars = reasoningText.length + pendingReasoningChars;
     if (!force && answerChars === lastPersistedAnswerChars && reasoningChars === lastPersistedReasoningChars) {
       generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
@@ -3413,16 +3485,19 @@ async function streamAssistantReply(input: {
       generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
     }
+    flushStreamingTextChunks();
     lastPersistAt = now;
     lastPersistedAnswerChars = answerChars;
     lastPersistedReasoningChars = reasoningChars;
     generationMetrics.counters.streamPersistCount += 1;
+    const persistStartedAt = Date.now();
     await runWithDatabaseSpace(input.space, (db) =>
       updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
         content: answerText,
         reasoningText: reasoningText || null,
       }, { syncFts: false })
     );
+    recordStreamingPersistence(Date.now() - persistStartedAt);
   };
   let persistInFlight = false;
   let persistPending = false;
@@ -3475,6 +3550,7 @@ async function streamAssistantReply(input: {
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
+        const eventStartedAt = Date.now();
         if (input.signal?.aborted || hasStoppedGeneration(input.assistantMessageId, generationId)) {
           return;
         }
@@ -3488,39 +3564,52 @@ async function streamAssistantReply(input: {
           return;
         }
         if (event.type === 'answer_delta') {
+          recordStreamingProviderDelta(event);
           generationMetrics.counters.providerDeltaCount += 1;
           generationMetrics.counters.answerDeltaCount += 1;
           if (!generationMetrics.timestamps.firstProviderDeltaAt) {
             markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
-          answerText = mode === 'continue'
-            ? appendContinuationAnswerDelta(answerText, event.text, initialAnswerText)
-            : answerText + event.text;
+          if (mode === 'continue') {
+            answerText = appendContinuationAnswerDelta(answerText, event.text, initialAnswerText);
+          } else {
+            pendingAnswerChunks.push(event.text);
+            pendingAnswerChars += event.text.length;
+          }
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
+          recordStreamingProviderDelta(event);
           generationMetrics.counters.providerDeltaCount += 1;
           generationMetrics.counters.reasoningDeltaCount += 1;
           if (!generationMetrics.timestamps.firstProviderDeltaAt) {
             markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
-          reasoningText += event.text;
+          pendingReasoningChunks.push(event.text);
+          pendingReasoningChars += event.text.length;
         }
         generationMetrics.counters.maxBufferedChars = Math.max(
           generationMetrics.counters.maxBufferedChars,
-          answerText.length + reasoningText.length
+          generationMetrics.counters.providerAnswerChars + generationMetrics.counters.providerReasoningChars
         );
         if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas)) {
           emitStreamingPatch();
+          scheduleStreamingPatch();
           generationMetrics.counters.streamMergedDeltaCount = Math.max(
             0,
             generationMetrics.counters.providerDeltaCount - generationMetrics.counters.streamUiPatchCount
           );
           schedulePersistStreamingSnapshot();
         }
+        generationMetrics.counters.providerEventHandlerTotalMs += Date.now() - eventStartedAt;
         if (event.type === 'error') {
+          flushStreamingTextChunks();
           streamFailed = true;
+          if (pendingUiPatchTimer) {
+            clearTimeout(pendingUiPatchTimer);
+            pendingUiPatchTimer = null;
+          }
           const readableError = normalizeAiErrorMessage(event.message);
           const failureCode = setGenerationFailureReason(generationMetrics, event.message);
           await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
@@ -3541,10 +3630,16 @@ async function streamAssistantReply(input: {
     input.onUpdated?.();
   } finally {
     pressureProbeActive = false;
+    if (pendingUiPatchTimer) {
+      clearTimeout(pendingUiPatchTimer);
+      pendingUiPatchTimer = null;
+    }
     clearProviderTimeout();
   }
 
   if (streamFailed) {
+    flushStreamingTextChunks();
+    mergeStreamingPerformanceSnapshot();
     return;
   }
 
@@ -3553,6 +3648,8 @@ async function streamAssistantReply(input: {
   }
 
   await waitForScheduledPersistStreamingSnapshot();
+  flushStreamingTextChunks();
+  mergeStreamingPerformanceSnapshot();
   await persistStreamingSnapshot(true);
   emitStreamingPatch(true);
 

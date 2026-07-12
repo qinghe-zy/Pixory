@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  dispatchAiStreamEvent,
   type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
@@ -36,11 +37,11 @@ async function emitGeminiTextFromChunk(chunk: unknown, onEvent: AiStreamEventHan
   const candidate = (chunk as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }).candidates?.[0];
   const usageMetadata = (chunk as { usageMetadata?: unknown }).usageMetadata;
   if (usageMetadata) {
-    await onEvent({ type: 'provider_usage', rawUsage: usageMetadata });
+    await dispatchAiStreamEvent(onEvent, { type: 'provider_usage', rawUsage: usageMetadata });
   }
   const text = candidate?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
   if (text) {
-    await onEvent({ type: 'answer_delta', text });
+    dispatchAiStreamEvent(onEvent, { type: 'answer_delta', text });
   }
 }
 
@@ -143,7 +144,7 @@ async function readGeminiStream(response: Response, onEvent: AiStreamEventHandle
       await emitGeminiTextFromChunk(chunk, onEvent);
     }
   } catch {
-    await onEvent({ type: 'answer_delta', text: trimmed });
+    dispatchAiStreamEvent(onEvent, { type: 'answer_delta', text: trimmed });
   }
 }
 

@@ -2,6 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 
 import {
   assertOkResponse,
+  dispatchAiStreamEvent,
   type AiChatAttachment,
   isAbortError,
   normalizeBaseUrl,
@@ -94,7 +95,8 @@ async function flushClaudeBuffer(buffer: string, onEvent: AiStreamEventHandler):
     return;
   }
   for (const event of parseClaudeStreamLine(buffer)) {
-    await onEvent(event);
+    const pending = dispatchAiStreamEvent(onEvent, event);
+    if (pending) await pending;
   }
 }
 
@@ -107,7 +109,8 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
     }
     for (const line of text.split('\n')) {
       for (const event of parseClaudeStreamLine(line)) {
-        await onEvent(event);
+        const pending = dispatchAiStreamEvent(onEvent, event);
+        if (pending) await pending;
       }
     }
     return;
@@ -132,7 +135,8 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
     buffer = lines.pop() ?? '';
     for (const line of lines) {
       for (const event of parseClaudeStreamLine(line)) {
-        await onEvent(event);
+        const pending = dispatchAiStreamEvent(onEvent, event);
+        if (pending) await pending;
       }
     }
   }

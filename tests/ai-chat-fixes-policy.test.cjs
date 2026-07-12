@@ -491,7 +491,7 @@ test('AI failed streaming state is not overwritten by a final generating patch',
   const streamBlock = /async function streamAssistantReply[\s\S]*?let finalCitations/.exec(service)?.[0] ?? '';
   const failedReturnIndex = streamBlock.indexOf('if (streamFailed)');
   const forcedPersistIndex = streamBlock.indexOf('await persistStreamingSnapshot(true)');
-  const forcedEmitIndex = streamBlock.indexOf('emitStreamingPatch(true)');
+  const forcedEmitIndex = streamBlock.lastIndexOf('emitStreamingPatch(true)');
 
   assert.ok(failedReturnIndex >= 0);
   assert.ok(forcedPersistIndex > failedReturnIndex);
@@ -1609,7 +1609,7 @@ test('AI streaming timeout only stops when the provider stays silent for 60 seco
   assert.match(service, /async \(event: AiStreamEvent\) => \{[\s\S]*scheduleProviderTimeout\(PROVIDER_IDLE_TIMEOUT_MS\)/);
   assert.match(service, /if \(event\.type === 'provider_usage'\) \{[\s\S]*return;/);
   assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*appendContinuationAnswerDelta\(answerText, event\.text, initialAnswerText\)/);
-  assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled && !ignoreReasoningDeltas\) \{[\s\S]*reasoningText \+= event\.text;/);
+  assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled && !ignoreReasoningDeltas\) \{[\s\S]*pendingReasoningChunks\.push\(event\.text\)/);
   assert.match(manager, /reason: 'timeout'/);
 });
 

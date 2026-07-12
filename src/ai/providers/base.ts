@@ -10,6 +10,17 @@ export type AiStreamEvent =
 
 export type AiStreamEventHandler = (event: AiStreamEvent) => void | Promise<void>;
 
+export function dispatchAiStreamEvent(
+  onEvent: AiStreamEventHandler,
+  event: AiStreamEvent,
+): Promise<void> | void {
+  if (event.type === 'answer_delta' || event.type === 'reasoning_delta') {
+    void onEvent(event);
+    return;
+  }
+  return onEvent(event);
+}
+
 export interface AiChatAttachment {
   type: 'input_image';
   name: string;

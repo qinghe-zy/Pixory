@@ -28,7 +28,7 @@ export type AiGenerationTimestampKey =
   | 'generationSettledAt';
 
 export interface AiGenerationMetricsDraft {
-  version: 1;
+  version: 2;
   timestamps: Partial<Record<AiGenerationTimestampKey, string>>;
   counters: {
     providerDeltaCount: number;
@@ -40,6 +40,13 @@ export interface AiGenerationMetricsDraft {
     streamSkippedUiPatchCount: number;
     streamSkippedPersistCount: number;
     maxBufferedChars: number;
+    maxUiBacklogChars: number;
+    maxUiBacklogAgeMs: number;
+    providerAnswerChars: number;
+    providerReasoningChars: number;
+    providerEventHandlerTotalMs: number;
+    partialPersistTotalMs: number;
+    detachedTailMergeTotalMs: number;
     finalAnswerChars: number;
     finalReasoningChars: number;
   };
@@ -123,7 +130,7 @@ export function createGenerationMetricsDraft(input: {
   sendPressedAt?: string | null;
 }): AiGenerationMetricsDraft {
   const draft: AiGenerationMetricsDraft = {
-    version: 1,
+    version: 2,
     timestamps: {},
     counters: {
       providerDeltaCount: 0,
@@ -135,6 +142,13 @@ export function createGenerationMetricsDraft(input: {
       streamSkippedUiPatchCount: 0,
       streamSkippedPersistCount: 0,
       maxBufferedChars: 0,
+      maxUiBacklogChars: 0,
+      maxUiBacklogAgeMs: 0,
+      providerAnswerChars: 0,
+      providerReasoningChars: 0,
+      providerEventHandlerTotalMs: 0,
+      partialPersistTotalMs: 0,
+      detachedTailMergeTotalMs: 0,
       finalAnswerChars: 0,
       finalReasoningChars: 0,
     },

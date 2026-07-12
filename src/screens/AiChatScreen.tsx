@@ -143,6 +143,10 @@ import {
 } from "../ai/aiStreamingTailViewportPolicy";
 import { streamingTailPerfDebug } from "../ai/aiStreamingPerfDebug";
 import {
+  recordDetachedTailMerge,
+  recordStreamingUiCommit,
+} from "../ai/aiStreamingPerformanceDiagnostics";
+import {
   getAiTailReplaySingleBubbleEnabled,
   refreshAiTailReplaySingleBubbleEnabled,
 } from "../ai/aiStreamingTailFeatureFlags";
@@ -3395,6 +3399,15 @@ export function AiChatScreen({
           reasoningText: patch.reasoningText,
           status: patch.status === "generating" ? patch.status : undefined,
         });
+        requestAnimationFrame(() => {
+          const visibleChars = (patch.content?.length ?? 0) + (patch.reasoningText?.length ?? 0);
+          recordStreamingUiCommit({
+            ...streamingIdentity,
+            backlogAgeMs: 0,
+            backlogChars: 0,
+            visibleChars,
+          });
+        });
       }
 
       if (canAttachLiveLayout) {
@@ -3441,10 +3454,18 @@ export function AiChatScreen({
             maxTailReservedHeightRef.current = 0;
             maxTailReservedHeightMessageIdRef.current = null;
           }
+          const tailMergeStartedAt = Date.now();
           const nextTailState = mergeStreamingTailPatch({
             bubbleWidth: targetBubbleWidth,
             patch,
             previous: tailStateToMerge,
+          });
+          recordDetachedTailMerge({
+            generationId: patch.generationId,
+            messageId: patch.id,
+            space,
+            threadId: targetThreadId,
+            elapsedMs: Date.now() - tailMergeStartedAt,
           });
           if (nextTailState !== currentTailState) {
             streamingTailStateRef.current = nextTailState;

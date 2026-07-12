@@ -37,6 +37,28 @@ test('streaming runtime defines adaptive UI and persist throttling tiers', () =>
   assert.match(runtime, /observedDelayMs < STREAMING_PRESSURE_RECOVERY_MS/);
 });
 
+test('streaming diagnostics records content-free ingress, backlog, UI, persistence, and detached timing', () => {
+  const metrics = read('src/ai/aiGenerationMetrics.ts');
+  const diagnostics = read('src/ai/aiStreamingPerformanceDiagnostics.ts');
+  const service = read('src/ai/aiChatService.ts');
+
+  for (const field of [
+    'providerAnswerChars',
+    'providerReasoningChars',
+    'maxUiBacklogChars',
+    'maxUiBacklogAgeMs',
+    'providerEventHandlerTotalMs',
+    'partialPersistTotalMs',
+    'detachedTailMergeTotalMs',
+  ]) {
+    assert.match(metrics, new RegExp(field));
+  }
+  assert.match(diagnostics, /recordStreamingUiCommit/);
+  assert.match(diagnostics, /recordDetachedTailMerge/);
+  assert.match(service, /recordStreamingProviderDelta/);
+  assert.match(service, /recordStreamingPersistence/);
+});
+
 test('streaming message store exposes a generation-scoped external subscription API', () => {
   const store = read('src/ai/aiStreamingMessageStore.ts');
   const component = read('src/components/ai/AiStreamingMessageText.tsx');
@@ -69,6 +91,42 @@ test('streaming message store exposes a generation-scoped external subscription 
   assert.match(component, /snapshot\.hasSnapshot \? snapshot\.reasoningText : initialReasoningText/);
   assert.match(component, /snapshot\.hasSnapshot \? snapshot\.status : status/);
   assert.match(component, /<AiThinkingBlock/);
+});
+
+test('provider readers dispatch deltas without awaiting UI or persistence work', () => {
+  for (const file of [
+    'src/ai/providers/openAiCompatibleProvider.ts',
+    'src/ai/providers/geminiProvider.ts',
+    'src/ai/providers/claudeProvider.ts',
+  ]) {
+    const provider = read(file);
+    assert.doesNotMatch(provider, /await onEvent\(event\)/);
+    assert.doesNotMatch(provider, /await onEvent\(\{ type: 'answer_delta'/);
+  }
+  const service = read('src/ai/aiChatService.ts');
+  assert.match(service, /recordStreamingProviderDelta/);
+  assert.match(service, /schedulePersistStreamingSnapshot/);
+});
+
+test('ordinary streaming accumulates provider chunks until display or persistence flushes', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /const pendingAnswerChunks: string\[\] = \[\];/);
+  assert.match(service, /const pendingReasoningChunks: string\[\] = \[\];/);
+  assert.match(service, /function flushStreamingTextChunks\(\)/);
+  assert.match(service, /pendingAnswerChunks\.push\(event\.text\)/);
+  assert.match(service, /pendingReasoningChunks\.push\(event\.text\)/);
+  assert.match(service, /if \(!force && now - lastUiPatchAt < effectivePatchIntervalMs\)/);
+  assert.match(service, /flushStreamingTextChunks\(\);/);
+});
+
+test('stream scheduler drains queued chunks even when no later provider delta arrives', () => {
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /let pendingUiPatchTimer: ReturnType<typeof setTimeout> \| null = null;/);
+  assert.match(service, /const scheduleStreamingPatch = \(\) =>/);
+  assert.match(service, /pendingUiPatchTimer = setTimeout\(\(\) => \{[\s\S]{0,160}emitStreamingPatch\(true\)/);
+  assert.match(service, /scheduleStreamingPatch\(\);\s*generationMetrics\.counters\.streamMergedDeltaCount/);
 });
 
 test('streaming patches and created callbacks carry generationId for stale patch rejection', () => {
@@ -152,7 +210,7 @@ test('service no longer uses fixed high-frequency streaming persistence', () => 
   assert.doesNotMatch(service, /const visibleText = answerText \+ '\\n' \+ reasoningText/);
   assert.match(service, /generationMetrics\.context\.devicePressureThrottled = pressure\.devicePressureThrottled/);
   assert.match(service, /devicePressure: generationMetrics\.context\.devicePressureThrottled/);
-  assert.match(service, /finally \{\s*pressureProbeActive = false;[\s\S]{0,80}clearProviderTimeout\(\);[\s\S]{0,20}\}/);
+  assert.match(service, /finally \{\s*pressureProbeActive = false;[\s\S]{0,220}clearProviderTimeout\(\);[\s\S]{0,20}\}/);
   assert.match(service, /answerText\.length \+ reasoningText\.length > 0/);
   assert.doesNotMatch(service, /!generationMetrics\.timestamps\.firstUiPatchAt && answerText\.length > 0/);
   assert.match(service, /streamMergedDeltaCount = Math\.max/);
