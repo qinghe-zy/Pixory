@@ -2,7 +2,7 @@
 
 ## 文档状态
 
-- 设计状态：已确认，等待书面规格复核
+- 设计状态：已确认，可进入实施计划
 - 产品范围：Pixory AI 聊天模块大更新第一版
 - 对外名称：`沉浸对话`、`日常陪伴`
 - 内部建议枚举：`immersive`、`companion`
@@ -220,6 +220,31 @@
 - 沉浸对话模式第一版不额外引入用户消息收集延迟，保持现有发送行为。
 
 800ms 与 2.4 秒是客户端体验常量，必须集中定义并可测试，不进入模型提示词。
+
+### 模式切换、历史上下文与高缓存
+
+现有请求的真实顺序是 `systemPrompt → history → current userPrompt`。历史消息通常比角色指令占用更多 token，因此模式隔离不能靠改写整段 system 或逐条包装历史完成，否则每次切换都会破坏可增长的历史前缀缓存。
+
+采用以下结构：
+
+```text
+两种模式共用的稳定 system 前缀
+→ 原样、按顺序增长的历史消息
+→ 当前用户消息
+→ 当前轮 presentationMode 指令与输出协议
+```
+
+- 新增独立 `presentationMode`，不得复用项目现有表示 `companion / roleplay / knowledge / personal` 的 `AiChatMode`。
+- 稳定 system 只增加两种模式共用的规则：Pixory 会在当前轮末尾声明回复协议；历史回复的长度、分条和排版只代表历史内容，不构成当前轮格式指令。
+- 具体的 `沉浸对话` 或 `日常陪伴` 指令只追加到当前 user prompt 的末尾，位于历史之后。切换模式时，前面的 system 与全部历史 token 保持不变，只让当前轮动态后缀分叉。
+- 历史用户消息和已显示 AI 正文原样进入 provider history；不按模式重写、不逐条添加标签、不加入模式 system 消息。只有父消息中已物化的 revealed 内容可进入历史。
+- 时间戳、切换时间、切换次数、`modeEpoch`、请求 ID、`generationId`、随机数、演出延迟和气泡数量不得进入提示词或稳定缓存键。
+- `presentationMode` 必须进入完整回复缓存、精确缓存和观测维度，防止跨模式复用最终答案；provider 的前缀缓存应尽量复用两种模式共同的真实 token 前缀，不能用无必要的切换序号制造新缓存家族。
+- 稳定记忆快照只在事实内容真正变化时更新；切换模式、改变分条数量或页面生命周期不得更新 `memoryEpoch`。
+- 记忆提取和摘要不得记录产品模式、AI 气泡数量、Markdown 结构、输入状态或演出节奏。用户在正文里明确表达的沟通偏好仍可作为用户偏好保存，但会话的 `presentationMode` 始终拥有当前轮格式优先级。
+- 缓存观测至少记录 `presentationMode`、`modeSwitchedThisTurn`、`stablePrefixHash`、`historyPrefixHash`、`historyPrefixEstimatedTokens`、`historyMessageCount`、`totalPromptTokens`、`cachedInputTokens`、`cachedTokenRatio`、`memoryEpochChanged` 和 `cacheMissReason`。history hash 只用于证明模式切换没有改写已发送历史，不进入提示词或 provider cache routing key。
+
+这套结构允许切换后的第一轮在动态尾部使用新协议，同时继续复用共同 system 和历史前缀。若 provider 只支持较粗粒度的前缀缓存，正确模式仍优先于命中率，不允许为了命中而让两种输出协议同时生效。
 
 ## 解析与展示流水线
 
