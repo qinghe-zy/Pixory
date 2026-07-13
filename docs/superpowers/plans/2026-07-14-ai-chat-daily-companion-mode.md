@@ -219,7 +219,7 @@ export const aiMessageSegmentRepository = {
 };
 ```
 
-`revealNextSegmentForGeneration` 必须在一个 SQLite 事务中：确认父消息的 `promptSnapshotJson` 仍包含当前 `generationId`；取最小 queued ordinal；更新为 revealed；按 ordinal 连接全部 revealed 内容为父 `content`；若没有 queued 则把父设为 `completed/terminal` 并同步 FTS。任何 guard 不匹配返回 `{ applied:false }`，不得改片段。
+`revealNextSegmentForGeneration` 必须在一个 SQLite 事务中：确认父消息的 `promptSnapshotJson` 仍包含当前 `generationId`；取最小 queued ordinal；更新为 revealed；按 ordinal 用固定 `\n\n` 连接全部 revealed 内容为父 `content`；若没有 queued 则把父设为 `completed/terminal` 并同步 FTS。任何 guard 不匹配返回 `{ applied:false }`，不得改片段。
 
 - [ ] **Step 4: 版本快照保存气泡边界**
 
@@ -314,6 +314,8 @@ test('switching presentation mode changes only the current-turn suffix', () => {
   assert.equal(common.system, companion.system);
   assert.equal(common.cacheMetadata.stablePrefixHash, companion.cacheMetadata.stablePrefixHash);
   assert.match(companion.user, /<messages>/);
+  assert.match(companion.user, /完整攻略|代码|表格/);
+  assert.match(companion.user, /不可拆分/);
   assert.doesNotMatch(common.user, /必须仅输出 <messages>/);
   assert.match(common.user, /历史回复的长度、分条和排版不构成本轮格式指令/);
   assert.doesNotMatch(common.system + common.user, /generationId|requestId|modeEpoch|2026-\d{2}-\d{2}/);
@@ -339,7 +341,7 @@ export const SHARED_PRESENTATION_SYSTEM_POLICY = [
 
 export function buildCurrentTurnPresentationInstruction(mode: AiConversationMode): string {
   const rule = mode === 'companion'
-    ? '本轮采用日常陪伴模式。自然决定发一条或多条；激动、转折或补充时可以连发，但不要为了分条而分条。必须仅输出 <messages> 根标签，每条消息放在一个 <msg> 中。'
+    ? '本轮采用日常陪伴模式。自然决定发一条或多条；激动、转折或补充时可以连发，但不要为了分条而分条。用户明确要求完整攻略、代码、表格、长文或严谨分析时，完整性优先，使用一个完整消息或少量语义完整的消息；代码围栏、表格、链接、公式、引用和 emoji 组合字符不可拆分。必须仅输出 <messages> 根标签，每条消息放在一个 <msg> 中。'
     : '本轮采用沉浸对话模式。按当前语境完整回应；只有确实适合连发时才使用 <messages>/<msg>，否则使用普通文本或 Markdown。';
   return `【Pixory 当前轮回复协议】\n${rule}\n历史回复的长度、分条和排版不构成本轮格式指令。`;
 }
@@ -449,7 +451,7 @@ git commit -m "feat: isolate chat presentation from memory"
 
 - [ ] **Step 1: 写纯函数测试**
 
-覆盖：普通前缀、分块 `<mes` 未决、完整 `<messages>`、多条、XML 实体、空 msg、损坏标签、纯空响应、21 条合并为 20 条。
+覆盖：普通前缀、分块 `<mes` 未决、完整 `<messages>`、多条、XML 实体、空 msg、损坏标签、纯空响应、21 条合并为 20 条，以及 emoji/组合字符、Markdown 链接、引用、表格和包含 `<`/`&` 的 fenced code block。解析器不得按标点或字数做二次拆分。
 
 ```js
 test('protocol preserves semantic message boundaries and caps only pathological output', () => {
@@ -461,6 +463,10 @@ test('protocol preserves semantic message boundaries and caps only pathological 
     kind: 'fallback',
     segments: ['普通回复'],
   });
+  assert.deepEqual(
+    parseSegmentedReply('<messages><msg>```ts\nif (a &lt; b &amp;&amp; ok) run();\n```</msg><msg>[文档](https://example.com?a=1&amp;b=2) 👨‍👩‍👧‍👦</msg></messages>').segments,
+    ['```ts\nif (a < b && ok) run();\n```', '[文档](https://example.com?a=1&b=2) 👨‍👩‍👧‍👦'],
+  );
   assert.equal(parseSegmentedReply('<messages></messages>').kind, 'empty');
 });
 ```
@@ -484,7 +490,7 @@ export function classifySegmentedReplyPrefix(value: string, final = false): Segm
 export function parseSegmentedReply(value: string): ParsedSegmentedReply;
 ```
 
-分类器忽略开头空白；只要非空前缀不再可能组成 `<messages>` 就返回 plain。解析器仅接受一个根标签和不嵌套的 `<msg>`；协议损坏时移除已知标签、解码 `&amp; &lt; &gt; &quot; &apos;` 并单气泡回退；不得使用 HTML renderer。
+分类器忽略开头空白；只要非空前缀不再可能组成 `<messages>` 就返回 plain。解析器仅接受一个根标签和不嵌套的 `<msg>`；合法边界内部的 Markdown、换行、链接、emoji 和实体解码后的代码原样保留，不做标点/长度后处理。协议损坏时移除已知标签、解码 `&amp; &lt; &gt; &quot; &apos;` 并单气泡回退；不得使用 HTML renderer，也不得因异常协议丢掉可读代码正文。
 
 - [ ] **Step 4: 验证所有边界**
 
@@ -515,11 +521,13 @@ git commit -m "feat: parse segmented assistant replies"
 test('delivery delays stay bounded and background work pauses theatre', () => {
   assert.equal(shouldPauseSegmentDelivery({ appActive: false, routeFocused: false }), true);
   assert.equal(shouldPauseSegmentDelivery({ appActive: true, routeFocused: true }), false);
-  const first = nextCompanionDelay({ index: 0, random: () => 0, spentMs: 0 });
-  const gap = nextCompanionDelay({ index: 1, random: () => 1, spentMs: 0 });
+  const first = nextCompanionDelay({ index: 0, providerElapsedMs: 400, random: () => 0, spentMs: 0 });
+  const slowFirst = nextCompanionDelay({ index: 0, providerElapsedMs: 1500, random: () => 1, spentMs: 0 });
+  const gap = nextCompanionDelay({ index: 1, providerElapsedMs: 1500, random: () => 1, spentMs: 0 });
   assert.equal(first, 250);
+  assert.equal(slowFirst, 0);
   assert.equal(gap, 900);
-  assert.equal(nextCompanionDelay({ index: 9, random: () => 1, spentMs: 6000 }), 0);
+  assert.equal(nextCompanionDelay({ index: 9, providerElapsedMs: 400, random: () => 1, spentMs: 6000 }), 0);
 });
 ```
 
@@ -535,20 +543,23 @@ Expected: FAIL，模块不存在。
 export const COMPANION_FIRST_DELAY_MS = { min: 250, max: 600 } as const;
 export const COMPANION_GAP_DELAY_MS = { min: 350, max: 900 } as const;
 export const COMPANION_TOTAL_DELAY_BUDGET_MS = 6000;
+export const COMPANION_SLOW_PROVIDER_THRESHOLD_MS = 1500;
 
 export function nextCompanionDelay(input: {
   index: number;
+  providerElapsedMs: number;
   random: () => number;
   spentMs: number;
 }): number {
   if (input.spentMs >= COMPANION_TOTAL_DELAY_BUDGET_MS) return 0;
+  if (input.index === 0 && input.providerElapsedMs >= COMPANION_SLOW_PROVIDER_THRESHOLD_MS) return 0;
   const range = input.index === 0 ? COMPANION_FIRST_DELAY_MS : COMPANION_GAP_DELAY_MS;
   const sampled = Math.round(range.min + (range.max - range.min) * Math.min(1, Math.max(0, input.random())));
   return Math.min(sampled, COMPANION_TOTAL_DELAY_BUDGET_MS - input.spentMs);
 }
 ```
 
-`shouldPauseSegmentDelivery` 在 `appActive !== true` 或 `routeFocused !== true` 时返回 true。后台只保留 `deliveryState=ready` 的 queued 片段，不把它们物化为父正文；回到前台或重新进入路由时再跳过演出延迟一次性 reveal。减少动态效果只取消位移动画，不取消消息顺序。
+`providerElapsedMs` 从本轮请求的本地运行指标读取，只影响首条前的演出等待，不进入 prompt、缓存键或持久化业务字段。`shouldPauseSegmentDelivery` 在 `appActive !== true` 或 `routeFocused !== true` 时返回 true。后台只保留 `deliveryState=ready` 的 queued 片段，不把它们物化为父正文；回到前台或重新进入路由时再跳过演出延迟一次性 reveal。减少动态效果只取消位移动画，不取消消息顺序。
 
 - [ ] **Step 4: 验证并提交**
 
@@ -636,7 +647,7 @@ git commit -m "feat: add companion chat time labels"
 
 - [ ] **Step 1: 写生成管线失败测试**
 
-断言 companion 不发布 token patch、不把原始 XML 写入父 content；immersive 普通前缀仍走现有流；显式协议和 companion 在完成后写 queued；reveal 受 generation guard 控制。
+断言 companion 不发布 token patch、不把原始 XML 写入父 content；immersive 普通前缀仍走现有流；显式协议和 companion 在完成后写 queued；reveal 受 generation guard 控制；两种 segmented 输出均不得进入 streaming store、tail replay、tail spacer 或 shrink-debt 管线。
 
 ```js
 test('companion output is buffered while ordinary immersive output keeps streaming', () => {
@@ -647,6 +658,7 @@ test('companion output is buffered while ordinary immersive output keeps streami
   assert.match(service, /runSegmentedReplyDelivery/);
   assert.match(service, /if \(outputMode === 'plain'\)[\s\S]*emitStreamingPatch/);
   assert.doesNotMatch(service, /content: rawProtocolBuffer/);
+  assert.match(service, /outputMode === 'segmented'[\s\S]*providerElapsedMs/);
 });
 ```
 
@@ -683,11 +695,12 @@ export async function commitAndDeliverSegmentedReply(input: {
   space: PixorySpace;
   visibility: () => StreamingVisibilityState;
   onPatch?: (patch: AiStreamingMessagePatch) => void;
+  providerElapsedMs: number;
   random?: () => number;
 }): Promise<'completed' | 'detached' | 'failed' | 'stopped' | 'stale'>;
 ```
 
-流程固定为 parse → 空响应失败，或 queued 事务 → `ready` → 前台逐条 reveal，后台返回 `detached` 并保留 queued → 最后一条后 `terminal`。每次 reveal 后发父消息 patch，patch.content 只能是已 revealed 的拼接文本。
+流程固定为 parse → 空响应失败，或 queued 事务 → `ready` → 前台逐条 reveal，后台返回 `detached` 并保留 queued → 最后一条后 `terminal`。每次 reveal 后发父消息 patch，patch.content 只能是已 revealed 片段按序用 `\n\n` 拼接的文本。`providerElapsedMs` 只传给首条延迟策略；segmented 路径不得调用现有 token publication、tail block promotion 或 replay spacer API。
 
 - [ ] **Step 5: 保持任务活跃到最后一条显示**
 
@@ -732,6 +745,18 @@ test('burst prompt preserves individual user message boundaries', () => {
   assert.equal(buildCompanionBurstUserText(['你！', '好！', '啊！']),
     '用户刚刚连续发送了以下消息：\n[1] 你！\n[2] 好！\n[3] 啊！');
 });
+
+test('burst messages are current-turn input instead of duplicated history', () => {
+  const history = [
+    { id: 'u1', role: 'user', content: '前情' },
+    { id: 'a1', role: 'assistant', content: '我记得' },
+    { id: 'u2', role: 'user', content: '你！' },
+    { id: 'u3', role: 'user', content: '好！' },
+  ];
+  const context = partitionCompanionBurstMessages(history, ['u2', 'u3']);
+  assert.deepEqual(context.historyMessages.map((message) => message.id), ['u1', 'a1']);
+  assert.deepEqual(context.currentUserMessages.map((message) => message.id), ['u2', 'u3']);
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -751,6 +776,11 @@ export type CompanionBurstState = {
   deadlineAt: number;
   userMessageIds: string[];
 };
+
+export function partitionCompanionBurstMessages<T extends { id: string }>(
+  messages: T[],
+  userMessageIds: string[],
+): { historyMessages: T[]; currentUserMessages: T[] };
 ```
 
 `deadlineAt = min(lastSentAt + 800, firstSentAt + 2400)`。附件、模式切换离开 companion、路由离开和用户主动停止会立即 seal。
@@ -775,11 +805,11 @@ export async function respondToCompanionUserBurst(input: {
 } & GenerationCallbacks): Promise<void>;
 ```
 
-第一函数在点击发送后立即事务写入消息和附件。第二函数重新读取这些 ID，验证同 thread、role=user、modeSnapshot=companion、按 createdAt 排序，然后创建一个 assistant 父回合；不能重复插入用户消息。
+第一函数在点击发送后立即事务写入消息和附件。第二函数重新读取这些 ID，验证同 thread、role=user、modeSnapshot=companion、按 `createdAt + id` 稳定排序，然后创建一个 assistant 父回合；不能重复插入用户消息。构建 provider context 时，以第一条组内消息之前的可见消息作为 history，并从 history 明确排除全部 `userMessageIds`；组内内容只通过 current user prompt 出现一次。
 
 - [ ] **Step 5: 页面接入并允许 AI 回复中插话**
 
-companion 下发送按钮不受 `generating` 禁用。若旧 task 活跃，先调用 stop/discard，保留 revealed、丢弃 queued，再立即保存新用户消息并进入 burst。immersive 保持原有单次发送路径。
+companion 下发送按钮不受 `generating` 禁用。若旧 task 活跃，先调用 stop/discard，保留 revealed、丢弃 queued，再立即保存新用户消息并进入 burst。burst 创建时固定 `modeSnapshot=companion`；收集期间切换到 immersive 会立即 seal，当前 burst 仍按 companion 生成，按钮的新模式只影响下一轮。immersive 保持原有单次发送路径。
 
 - [ ] **Step 6: 验证并提交**
 
@@ -805,7 +835,7 @@ git commit -m "feat: collect companion user message bursts"
 
 - [ ] **Step 1: 写恢复状态失败测试**
 
-断言：`ready/revealing` orphan 立即完成；`buffering` orphan 失败；停止只 discard queued；后台不依赖 foreground timer；stale generation 静默返回。
+断言：`ready/revealing` orphan 立即完成；`buffering` orphan 失败；停止只 discard queued；后台不依赖 foreground timer；stale generation 静默返回；network/timeout 不自动复制请求，显式重试使用新 generation，timeout 只保留 revealed 并 discard queued。
 
 ```js
 test('orphan recovery distinguishes complete queued output from incomplete protocol buffers', () => {
@@ -835,7 +865,7 @@ export async function stopSegmentedReplyDelivery(input: {
 }): Promise<'stopped' | 'stale'>;
 ```
 
-该操作只把 queued 改为 discarded，父 content 保持 revealed 拼接；用户打断为 `stopped/terminal`，timeout 为 `failed/terminal`。旧回调 guard 不匹配时返回 stale，不发 toast。
+该操作只把 queued 改为 discarded，父 content 保持 revealed 按 `\n\n` 拼接；用户打断为 `stopped/terminal`，timeout 为 `failed/terminal`。网络变化不主动创建第二个请求：现有请求可继续时保留同一 generation，现有 provider error classifier 判定失败时进入 network 失败终态；只有用户点击重试才创建新 generation。旧回调 guard 不匹配时返回 stale，不发 toast。
 
 - [ ] **Step 4: 实现页面进入/进程启动恢复**
 
@@ -843,7 +873,7 @@ export async function stopSegmentedReplyDelivery(input: {
 
 - [ ] **Step 5: 验证并提交**
 
-Run: `node --test tests/ai-companion-recovery-policy.test.cjs tests/ai-chat-streaming-runtime-policy.test.cjs tests/final-personal-system-policy.test.cjs`
+Run: `node --test tests/ai-companion-recovery-policy.test.cjs tests/ai-chat-streaming-runtime-policy.test.cjs tests/ai-provider-policy.test.cjs tests/final-personal-system-policy.test.cjs`
 
 Run: `pnpm typecheck`
 
@@ -871,12 +901,15 @@ git commit -m "feat: recover companion message delivery"
 test('segmented messages render many bodies but one parent action surface', () => {
   const body = read('src/components/ai/AiSegmentedMessageBody.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const screen = read('src/screens/AiChatScreen.tsx');
   assert.match(body, /segments\.map/);
   assert.match(body, /segment\.content/);
   assert.match(bubble, /AiSegmentedMessageBody/);
   assert.match(bubble, /hideParticipantName/);
   assert.match(bubble, /hideMessageTime/);
   assert.equal((bubble.match(/<AiMessageFooterActions/g) || []).length, 1);
+  assert.doesNotMatch(screen, /type: ['"]companionSegment['"]/);
+  assert.match(screen, /bottomLockedRef\.current \|\| isNearBottomRef\.current/);
 });
 ```
 
@@ -914,15 +947,17 @@ export function AiSegmentedMessageBody({ segments }: {
 }
 ```
 
-`AiMessageBubble` 仍只渲染一次头像区域、reasoning、引用和 footer actions；日常陪伴通过 `hideParticipantName` 隐藏名字，通过 `hideMessageTime` 隐藏 footer 时间。复制、收藏、继续、回复、重生成和版本切换全部操作父 message ID。
+`AiSegmentedMessageBody` 渲染的是多个同级 assistant 气泡，不得嵌套在现有单气泡 `styles.bubble` 内。`AiMessageBubble` 在 assistant 有 revealed segments 时，用该组件替换原单气泡正文；头像/名称区、reasoning、引用和 footer actions 仍各只渲染一次，引用放在片段组末尾，操作区继续位于父回合末尾。日常陪伴通过 `hideParticipantName` 隐藏名字，通过 `hideMessageTime` 隐藏 footer 时间。复制、收藏、继续、回复、重生成和版本切换全部操作父 message ID。memo comparator 必须比较 `modeSnapshot`、revealed segment 的 id/status/content，避免父 content 更新后子气泡不刷新。
+
+外层 `VisibleMessageItem` 仍只有一个 `type='message'`，key 始终为父 `message.id`；不要为片段新增 FlatList item、tail spacer 或 replay debt。每次 reveal 后只 patch 同一父消息：用户在底部/near-bottom 时调用现有 `followLatestMessage(false)`，用户向上阅读时保持 MVCP 锚点并沿用“回到最新”入口。segmented 路径显式关闭 `streamingRendererActive` 和 single-bubble tail replay，沉浸普通文本路径完全不改。
 
 - [ ] **Step 5: 验证并提交**
 
-Run: `node --test tests/ai-segmented-message-ui-policy.test.cjs tests/ai-message-favorites-policy.test.cjs tests/ai-branching-logic.test.cjs`
+Run: `node --test tests/ai-segmented-message-ui-policy.test.cjs tests/ai-chat-streaming-tail-contract.test.cjs tests/ai-message-favorites-policy.test.cjs tests/ai-branching-logic.test.cjs`
 
 Run: `pnpm typecheck`
 
-Expected: 全部 PASS。
+Expected: 全部 PASS；一个父回合保持一个 FlatList key，分段回复不进入 tail replay，父级操作能力只出现一次。
 
 ```powershell
 git add src/components/ai/AiSegmentedMessageBody.tsx src/components/ai/AiMessageBubble.tsx src/ai/aiChatService.ts src/screens/AiChatScreen.tsx tests/ai-segmented-message-ui-policy.test.cjs
@@ -949,6 +984,13 @@ test('composer exposes the selected mode after model and reply assist actions', 
   assert.match(composer, /allowInterruptingSend/);
   assert.match(composer, /showSendWhileReplyActive/);
 });
+
+test('rapid mode changes are serialized and only the latest intent controls UI feedback', () => {
+  const screen = read('src/screens/AiChatScreen.tsx');
+  assert.match(screen, /modeWriteQueueRef/);
+  assert.match(screen, /modeSelectionRevisionRef/);
+  assert.doesNotMatch(screen, /modeSelectionRevision.*prompt|modeSelectionRevision.*cache/i);
+});
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -968,7 +1010,7 @@ const MODE_OPTIONS = [
 ] as const;
 ```
 
-当前项显示 checkmark。选择后调用 `setThreadConversationMode(space, threadId, mode)`；空会话先只保存在 screen state，`ensureThread` 创建时写入该模式。
+当前项显示 checkmark。选择后先乐观更新 screen state，再调用 `setThreadConversationMode(space, threadId, mode)`；空会话先只保存在 screen state，`ensureThread` 创建时写入该模式。快速往返选择必须通过 per-thread `modeWriteQueueRef` 串行写入，并用 `modeSelectionRevisionRef` 只处理最后一次选择的成功/失败反馈，保证较早 Promise 晚完成时不能回滚按钮或覆盖最终数据库值。该 revision 只存在于控制面，不写入 prompt、缓存、记忆或消息快照。
 
 `aiChatService` 同时导出明确 API：
 
@@ -985,7 +1027,7 @@ export async function setThreadConversationMode(
 ): Promise<AiThreadRecord | null>;
 ```
 
-老会话由迁移返回 immersive；没有 threadId 的新聊天 screen state 初始也是 immersive，用户在首条消息前的选择通过 `CreateAiThreadInput.chatMode` 写入。
+老会话由迁移返回 immersive；没有 threadId 的新聊天 screen state 初始也是 immersive，用户在首条消息前的选择通过 `CreateAiThreadInput.chatMode` 写入。活动 AI 回合与正在收集的 burst 均持有创建时的 mode 快照；切换只改变下一轮默认值，不读取按钮当前值去改写在途任务。
 
 - [ ] **Step 4: 把紧凑按钮放在模型和帮答之后**
 
@@ -1230,7 +1272,7 @@ git commit -m "feat: preserve companion message versions"
 
 - [ ] **Step 1: 写最终 policy 测试**
 
-测试从 schema、prompt、service、screen、composer、settings、tokens 和 docs 读取源码，至少断言：两种模式、老数据默认 immersive、`#EDEDED`、顶部三点、搜索迁移、无主动消息、无 companion 三点动画、两种模式多消息协议、visible-only history、缓存无 modeEpoch/时间戳、记忆隔离。
+测试从 schema、prompt、service、screen、composer、settings、tokens 和 docs 读取源码，至少断言：两种模式、老数据默认 immersive、`#EDEDED`、顶部三点、搜索迁移、无主动消息、无 companion 三点动画、两种模式多消息协议、visible-only history、burst 不重复进入 history、缓存无 modeEpoch/时间戳、记忆隔离、长内容/代码原子规则、慢 provider 无额外首条等待、快速切换 last-intent-wins、network/timeout 终态、一个父回合一个 FlatList item 且 segmented 不进入 tail replay。
 
 - [ ] **Step 2: 运行测试确认文档缺失**
 
@@ -1266,6 +1308,10 @@ Run: `pnpm android`
 - 对相同历史快照分别构造两种模式请求时，provider request 的 system、history、`historyPrefixHash` 和 `historyPrefixEstimatedTokens` 相同，只有 current user suffix 不同。
 - `cachedInputTokens/cachedTokenRatio` 能按 `presentationMode` 观测；切换不产生 `modeEpoch` 或随机 cache family。
 - 普通沉浸流式首 token、tail replay、搜索定位和 200+ 消息滚动无回归。
+- 对日常陪伴明确索要完整攻略、Markdown 表格、链接和代码块，确认不自动切模式、原子内容不被拆坏、回答后模式不变。
+- 快速执行 companion → immersive → companion 并立即发送，确认 UI、thread 持久化和 message snapshot 都以最后一次选择为准。
+- 在底部和向上阅读两种位置演出多气泡，确认前者跟随、后者不被强拉；分段路径没有 tail spacer/debt item。
+- 模拟 network error 与 generation timeout，确认不自动重复请求、revealed 保留、queued 丢弃、显式重试产生新 generation。
 
 - [ ] **Step 6: 提交文档和最终策略**
 
@@ -1283,7 +1329,10 @@ git commit -m "docs: document daily companion chat mode"
 - 数据库 normal/personal 均从 V45 安全迁移到 V46，老消息视觉不变。
 - companion 普通响应不逐 token、不显示三点动画，标题状态覆盖到最后一个 revealed segment。
 - 用户可在 AI 生成/连发期间发送新消息，已显示内容保留，未显示内容不会进入历史、搜索、摘要或记忆。
+- 日常陪伴遇到攻略、代码、表格、链接等长/结构化内容时保持能力完整，不静默切模式，不拆坏原子块。
 - 模式切换后 system 与历史大前缀保持一致，当前轮动态后缀明确隔离格式；切回时无上下文或旧回包串味。
+- 快速反复切换以最后一次选择为准；连续用户消息只在 current turn 出现一次，不与已落库 history 重复。
+- 分段回复保持一个父回合一个外层列表项，不进入普通流式 tail replay；底部跟随、向上阅读、分页和搜索定位无滚动回归。
 - 侧边抽屉不变；顶部新建和搜索移除；三点直达会话设置；搜索从“当前会话”进入。
 - 日常陪伴画布和顶部使用共享 `#EDEDED` token，composer 仍是独立 surface，沉浸模式颜色不变。
 - 第一版没有 AI 主动消息、通知、已读回执、在线状态、撤回动画、语音/红包/转账/拍一拍和桌宠上线。
