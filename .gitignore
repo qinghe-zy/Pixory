@@ -41,6 +41,15 @@ yarn-error.*
 /output/builds/*.apk
 /output/release/*.apk
 
+# Local resumes and editable document exports
+/*.doc
+/*.docx
+/*.pdf
+/*.rtf
+/*.wps
+/output/doc/
+~$*.docx
+
 # typescript
 *.tsbuildinfo
 
