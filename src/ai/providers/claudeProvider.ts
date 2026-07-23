@@ -140,6 +140,7 @@ async function readClaudeStreamingResponse(response: Response, onEvent: AiStream
       }
     }
   }
+  buffer += decoder.decode();
   await flushClaudeBuffer(buffer, onEvent);
 }
 

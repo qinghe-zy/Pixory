@@ -133,6 +133,7 @@ async function readGeminiStream(response: Response, onEvent: AiStreamEventHandle
     buffer += decoder.decode(value, { stream: true });
     buffer = await emitCompletedGeminiChunks(buffer, onEvent);
   }
+  buffer += decoder.decode();
   const trimmed = buffer.trim();
   if (!trimmed || signal?.aborted) {
     return;

@@ -373,14 +373,21 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   assert.match(openai, /message\?\.content/);
   assert.doesNotMatch(openai, /if \(!contentType\.includes\('text\/event-stream'\)\)/);
   assert.match(openai, /sawStreamPayload/);
+  assert.match(openai, /function isOpenAiStreamPayloadLine/);
+  assert.match(openai, /trimmed\.startsWith\('data:'\)/);
+  assert.match(openai, /parsed\?\.choices\?\.\[0\]\?\.delta/);
+  assert.match(openai, /if \(sawStreamPayload\) \{\s*rawText = ''/);
+  assert.match(openai, /const trailing = decoder\.decode\(\)/);
   assert.match(openai, /trimmed\.startsWith\('\{'\)/);
   assert.match(openai, /rawText/);
   assert.match(gemini, /:streamGenerateContent/);
   assert.match(gemini, /await emitCompletedGeminiChunks\(buffer, onEvent\)/);
   assert.match(gemini, /buffer \+= decoder\.decode\(value, \{ stream: true \}\);[\s\S]{0,120}buffer = await emitCompletedGeminiChunks\(buffer, onEvent\)/);
+  assert.match(gemini, /buffer \+= decoder\.decode\(\)/);
   assert.match(gemini, /embedContent/);
   assert.match(claude, /stream:\s*true/);
   assert.match(claude, /content_block_delta/);
+  assert.match(claude, /buffer \+= decoder\.decode\(\)/);
 });
 
 test('provider API errors are normalized before reaching chat bubbles', () => {

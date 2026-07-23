@@ -31,6 +31,9 @@ test('streaming runtime defines adaptive UI and persist throttling tiers', () =>
   assert.match(runtime, /return 0/);
   assert.doesNotMatch(runtime, /if \(!input\.bottomLocked \|\| input\.appActive === false \|\| input\.routeFocused === false\) \{\s*return 0;\s*\}/);
   assert.match(runtime, /export function targetPersistIntervalMs/);
+  assert.match(runtime, /STREAMING_PRESSURE_PERSIST_INTERVAL_MS = 1000/);
+  assert.match(runtime, /targetPersistIntervalMs\(devicePressure = false\)/);
+  assert.match(runtime, /devicePressure \? STREAMING_PRESSURE_PERSIST_INTERVAL_MS/);
   assert.match(runtime, /export function shouldForceStreamingFlush/);
   assert.match(runtime, /export function updateStreamingDevicePressure/);
   assert.match(runtime, /observedDelayMs > STREAMING_PRESSURE_DELAY_MS/);
@@ -194,6 +197,7 @@ test('service no longer uses fixed high-frequency streaming persistence', () => 
   assert.match(service, /targetStreamingFps/);
   assert.match(service, /targetStreamingDisplayStep/);
   assert.match(service, /targetPersistIntervalMs/);
+  assert.match(service, /targetPersistIntervalMs\(generationMetrics\.context\.devicePressureThrottled\)/);
   assert.match(service, /schedulePersistStreamingSnapshot/);
   assert.doesNotMatch(service, /await persistStreamingSnapshot\(\);\s*\n/);
   assert.match(service, /STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS/);

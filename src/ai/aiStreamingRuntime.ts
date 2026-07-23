@@ -8,6 +8,7 @@ export type StreamingVisibilityState = {
 export type StreamingFlushReason = 'background' | 'completion' | 'error' | 'route_blur' | 'stop';
 
 export const STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS = 500;
+export const STREAMING_PRESSURE_PERSIST_INTERVAL_MS = 1000;
 export const STREAMING_PRESSURE_DELAY_MS = 250;
 export const STREAMING_PRESSURE_RECOVERY_MS = 120;
 export const STREAMING_PRESSURE_WINDOWS_REQUIRED = 2;
@@ -59,8 +60,8 @@ export function targetStreamingDisplayStep(input: {
   return Math.ceil(120 * pressureScale * longTextScale);
 }
 
-export function targetPersistIntervalMs(): number {
-  return STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS;
+export function targetPersistIntervalMs(devicePressure = false): number {
+  return devicePressure ? STREAMING_PRESSURE_PERSIST_INTERVAL_MS : STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS;
 }
 
 export function shouldForceStreamingFlush(reason: StreamingFlushReason): boolean {

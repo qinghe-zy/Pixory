@@ -122,6 +122,25 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
   }
 }
 
+function isOpenAiStreamPayloadLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('data:')) {
+    return true;
+  }
+  if (!trimmed.startsWith('{')) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed?.choices?.[0]?.delta !== undefined || (
+      parsed?.choices?.[0]?.message === undefined &&
+      parsed?.choices?.[0]?.finish_reason !== undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseOpenAiChatCompletionJson(text: string): AiStreamEvent[] {
   try {
     const parsed = JSON.parse(text);
@@ -181,14 +200,41 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
       break;
     }
     const chunk = decoder.decode(value, { stream: true });
-    rawText += chunk;
+    if (!sawStreamPayload) {
+      rawText += chunk;
+    }
     buffer += chunk;
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
       const events = parseOpenAiStreamLine(line);
-      if (events.length > 0 || line.trim().startsWith('data:')) {
+      if (isOpenAiStreamPayloadLine(line)) {
         sawStreamPayload = true;
+      }
+      if (sawStreamPayload) {
+        rawText = '';
+      }
+      for (const event of events) {
+        const pending = dispatchAiStreamEvent(onEvent, event);
+        if (pending) await pending;
+      }
+    }
+  }
+  const trailing = decoder.decode();
+  if (trailing) {
+    if (!sawStreamPayload) {
+      rawText += trailing;
+    }
+    buffer += trailing;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const events = parseOpenAiStreamLine(line);
+      if (isOpenAiStreamPayloadLine(line)) {
+        sawStreamPayload = true;
+      }
+      if (sawStreamPayload) {
+        rawText = '';
       }
       for (const event of events) {
         const pending = dispatchAiStreamEvent(onEvent, event);
@@ -198,8 +244,11 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   }
   if (buffer) {
     const events = parseOpenAiStreamLine(buffer);
-    if (events.length > 0 || buffer.trim().startsWith('data:')) {
+    if (isOpenAiStreamPayloadLine(buffer)) {
       sawStreamPayload = true;
+    }
+    if (sawStreamPayload) {
+      rawText = '';
     }
     for (const event of events) {
       const pending = dispatchAiStreamEvent(onEvent, event);

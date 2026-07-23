@@ -3480,7 +3480,7 @@ async function streamAssistantReply(input: {
       generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
     }
-    const persistIntervalMs = targetPersistIntervalMs() || STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS;
+    const persistIntervalMs = targetPersistIntervalMs(generationMetrics.context.devicePressureThrottled) || STREAMING_RECOVERABILITY_PERSIST_INTERVAL_MS;
     if (!force && now - lastPersistAt < persistIntervalMs) {
       generationMetrics.counters.streamSkippedPersistCount += 1;
       return;
