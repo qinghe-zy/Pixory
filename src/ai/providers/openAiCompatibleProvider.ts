@@ -39,6 +39,11 @@ type OpenAiCompatibleFetchInit = {
   signal?: AbortSignal;
 };
 
+type OpenAiCompatibleFetchResult = {
+  bodyText: string | null;
+  response: Response;
+};
+
 function openAiCompatibleEndpointCandidates(baseUrl: string): string[] {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   if (!normalizedBaseUrl) {
@@ -67,19 +72,21 @@ async function fetchOpenAiCompatibleResponse(
   baseUrl: string,
   path: string,
   init: OpenAiCompatibleFetchInit,
-  shouldRetryBody?: (response: Response) => Promise<'bad_shape' | null>
-): Promise<Response> {
+  shouldRetryBody?: (bodyText: string) => Promise<'bad_shape' | null>
+): Promise<OpenAiCompatibleFetchResult> {
   const candidates = openAiCompatibleEndpointCandidates(baseUrl);
-  let lastResponse: Response | null = null;
+  let lastResult: OpenAiCompatibleFetchResult | null = null;
   for (const candidateBaseUrl of candidates) {
     const response = await expoFetch(providerEndpoint(candidateBaseUrl, path), init);
-    lastResponse = response;
-    const bodyKind = response.ok && shouldRetryBody ? await shouldRetryBody(response.clone()) : null;
+    const bodyText = response.ok && shouldRetryBody ? await response.text() : null;
+    const result = { bodyText, response };
+    lastResult = result;
+    const bodyKind = bodyText !== null && shouldRetryBody ? await shouldRetryBody(bodyText) : null;
     if (!shouldRetryWithNextEndpoint(response, bodyKind) || candidateBaseUrl === candidates[candidates.length - 1]) {
-      return response;
+      return result;
     }
   }
-  return lastResponse as Response;
+  return lastResult as OpenAiCompatibleFetchResult;
 }
 
 function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
@@ -258,7 +265,7 @@ function buildOpenAiUserContent(text: string, attachments?: AiChatAttachment[]):
 
 export const openAiCompatibleProvider: AiProviderAdapter = {
   async listModels(input) {
-    const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/models', {
+    const { response } = await fetchOpenAiCompatibleResponse(input.baseUrl, '/models', {
       headers: { Authorization: `Bearer ${input.apiKey}` },
       signal: input.signal,
     });
@@ -275,7 +282,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       stream: false,
       temperature: 0,
     });
-    const response = await fetchOpenAiCompatibleResponse(
+    const { bodyText, response } = await fetchOpenAiCompatibleResponse(
       input.baseUrl,
       '/chat/completions',
       {
@@ -287,8 +294,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
         signal: input.signal,
         body: verifyBody,
       },
-      async (candidateResponse) => {
-        const text = await candidateResponse.text();
+      async (text) => {
         try {
           const json = JSON.parse(text) as OpenAiChatCompletionVerifyResponse;
           return Boolean(json?.id || json?.choices) ? null : 'bad_shape';
@@ -298,7 +304,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       }
     );
     await assertOkResponse(response, 'AI provider connection failed');
-    const text = await response.text();
+    const text = bodyText ?? await response.text();
     let json: OpenAiChatCompletionVerifyResponse | null = null;
     try {
       json = JSON.parse(text) as OpenAiChatCompletionVerifyResponse;
@@ -333,7 +339,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       if (shouldDisableDeepSeekThinking(input)) {
         body.thinking = { type: 'disabled' };
       }
-      const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/chat/completions', {
+      const { response } = await fetchOpenAiCompatibleResponse(input.baseUrl, '/chat/completions', {
         method: 'POST',
         headers: {
           Accept: 'text/event-stream',
@@ -358,7 +364,7 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
   },
 
   async embedText(input) {
-    const response = await fetchOpenAiCompatibleResponse(input.baseUrl, '/embeddings', {
+    const { response } = await fetchOpenAiCompatibleResponse(input.baseUrl, '/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${input.apiKey}`,

@@ -358,6 +358,8 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
       setStatus({ message: `${selectedCard.provider.displayName} 当前模型可用，可以开始对话。`, tone: 'success', title: '已验证' });
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : '测试失败', tone: 'error', title: '连接失败' });
+    } finally {
+      await loadProviders();
     }
   }
 

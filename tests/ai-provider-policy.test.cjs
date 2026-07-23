@@ -154,6 +154,15 @@ test('provider verification uses chat completions and records successful models'
   assert.doesNotMatch(claude, /async testConnection/);
 });
 
+test('provider settings refresh persisted card status after every verification outcome', () => {
+  const providerSettings = fs.readFileSync(providerSettingsPath, 'utf8');
+  const handlerStart = providerSettings.indexOf('async function testSelectedProvider()');
+  const handlerEnd = providerSettings.indexOf('async function syncSelectedProviderModels()', handlerStart);
+  const handler = providerSettings.slice(handlerStart, handlerEnd);
+
+  assert.match(handler, /finally\s*\{\s*await loadProviders\(\);\s*\}/);
+});
+
 test('OpenAI-compatible gateways retry naked base URLs with a v1 endpoint fallback', () => {
   const openai = fs.readFileSync(path.join(root, 'src/ai/providers/openAiCompatibleProvider.ts'), 'utf8');
   const settings = fs.readFileSync(providerSettingsPath, 'utf8');
