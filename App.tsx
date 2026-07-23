@@ -4,7 +4,7 @@ import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, ScrollView, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, ScrollView as RNGHScrollView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -475,7 +475,7 @@ export default function App() {
   const currentRouteRef = useRef(currentRoute);
   currentRouteRef.current = currentRoute;
 
-  const rootTabsScrollViewRef = useRef<ScrollView>(null);
+  const rootTabsScrollViewRef = useRef<any>(null);
   const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
   const currentTab = currentRoute.name === 'root' ? currentRoute.tab : undefined;
   const [renderedTabs, setRenderedTabs] = useState<Set<RootTabKey>>(
@@ -1982,7 +1982,7 @@ export default function App() {
     
     content = (
       <FloatingFooterProvider>
-        <ScrollView
+        <RNGHScrollView
           ref={rootTabsScrollViewRef}
           horizontal
           pagingEnabled
@@ -2079,7 +2079,7 @@ export default function App() {
               />
             ) : null}
           </View>
-        </ScrollView>
+        </RNGHScrollView>
       </FloatingFooterProvider>
     );
   }
