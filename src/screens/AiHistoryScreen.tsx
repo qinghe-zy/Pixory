@@ -200,7 +200,7 @@ export function AiHistoryScreen({
   function getThreadSwipeHandlers(thread: AiThreadHistoryItem) {
     const swipeValue = getSwipeAnimatedValue(thread.id);
     return PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 24 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+      onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 32 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2.5,
       onPanResponderMove: (_event, gesture) => {
         if (isSelecting) {
           return;
