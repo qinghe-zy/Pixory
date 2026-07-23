@@ -119,8 +119,8 @@ export function AiHomeScreen({
         </Pressable>
       )}
       scrollable
-      subtitle={spaceLabel}
       title="AI 工作台"
+      titleSlot={<Text style={[typography.textStyles.pageTitle, { color: aiLightColors.ink }]}>AI 工作台</Text>}
     >
       <View style={styles.mainStack}>
         <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
