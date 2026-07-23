@@ -1,15 +1,15 @@
 {
-  "version": "2.6.5",
-  "versionCode": 267,
+  "version": "2.6.6",
+  "versionCode": 268,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.6.5 发布。可前往官网下载区获取最新版，AI 流式回复的连续性与底部跟随体验已进一步稳定。",
+  "message": "Pixory 2.6.6 发布。可前往官网下载区获取最新版，AI 聊天性能、上下文控制和本地资料操作进一步完善。",
   "detailLines": [
-    "🌊 优化 AI 流式回复的终态接管与回放，减少长回复结束时的跳动、重叠和旧内容串回",
-    "⬇️ 加固聊天底部跟随与回到底部的时序，让流式生成、回看历史和返回最新之间切换更稳定",
-    "↩️ 修复续答与 AI 帮答在连续操作中的重试和分流边界，并补齐对应的流式契约回归测试"
+    "⚡ 优化流式消息处理与持久化路径，降低长回复时的额外开销",
+    "🧠 支持按会话设置最近对话轮数；上下文不足时优先保留最近完整问答节奏",
+    "📦 完善跨空间会话与素材来源操作的安全边界和提示"
   ],
-  "latestVersion": "2.6.5",
-  "latestVersionCode": 267,
+  "latestVersion": "2.6.6",
+  "latestVersionCode": 268,
   "downloadUrl": "https://mist01.com/#download"
 }

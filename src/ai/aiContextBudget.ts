@@ -19,7 +19,7 @@ export interface PromptBudgetResult {
   trimmed: boolean;
 }
 
-const DEFAULT_CONTEXT_BUDGET_TOKENS = 12000;
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 512_000;
 const CJK_CHAR_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/g;
 
 export function estimatePromptTokens(value: string): number {
@@ -31,8 +31,8 @@ export function estimatePromptTokens(value: string): number {
 }
 
 export function getConservativeContextBudget(modelContextWindowTokens?: number | null): number {
-  if (!modelContextWindowTokens || modelContextWindowTokens <= 0) {
-    return DEFAULT_CONTEXT_BUDGET_TOKENS;
+  if (!Number.isFinite(modelContextWindowTokens) || !modelContextWindowTokens || modelContextWindowTokens <= 0) {
+    return Math.floor(DEFAULT_CONTEXT_WINDOW_TOKENS * 0.7);
   }
   const targetBudget = Math.floor(modelContextWindowTokens * 0.7);
   return Math.min(modelContextWindowTokens, Math.max(1, targetBudget));
@@ -45,17 +45,34 @@ export function trimMessagesToContextBudget(input: {
 }): AiContextBudgetResult {
   const budget = getConservativeContextBudget(input.modelContextWindowTokens);
   const protectedTokens = estimatePromptTokens(input.protectedPrompt);
-  const selected: AiMessageRecord[] = [];
+  const conversationRounds: AiMessageRecord[][] = [];
+  let currentRound: AiMessageRecord[] | null = null;
+  const flushCompleteRound = () => {
+    if (currentRound?.some((message) => message.role === 'assistant')) {
+      conversationRounds.push(currentRound);
+    }
+  };
+  for (const message of input.messages) {
+    if (message.role === 'user') {
+      flushCompleteRound();
+      currentRound = [message];
+    } else if (message.role === 'assistant' && currentRound) {
+      currentRound.push(message);
+    }
+  }
+  flushCompleteRound();
+
+  const selectedRounds: AiMessageRecord[][] = [];
   let estimatedTokens = protectedTokens;
-  for (const message of [...input.messages].reverse()) {
-    const nextTokens = estimatePromptTokens(message.content);
-    if (estimatedTokens + nextTokens > budget) {
+  for (const round of [...conversationRounds].reverse()) {
+    const roundTokens = round.reduce((sum, message) => sum + estimatePromptTokens(message.content), 0);
+    if (estimatedTokens + roundTokens > budget) {
       break;
     }
-    selected.push(message);
-    estimatedTokens += nextTokens;
+    selectedRounds.push(round);
+    estimatedTokens += roundTokens;
   }
-  selected.reverse();
+  const selected = selectedRounds.reverse().flat();
   return {
     estimatedTokens,
     messages: selected,

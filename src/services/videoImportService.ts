@@ -69,6 +69,7 @@ export interface VideoImportError {
 }
 
 export interface ImportedVideoResult {
+  pendingSourceDeletionAssetId: string | null;
   sourceDeletionNotice: MoveDeletionNotice | null;
   video: ImageAssetRecord;
   tags: TagRecord[];
@@ -98,6 +99,7 @@ interface ImportSingleVideoParams {
   pickedAsset: PickedVideoAsset;
   videoImportNamingMode: VideoImportNamingMode;
   imageImportSourceMode: ImageImportSourceMode;
+  deferSourceDeletion: boolean;
   duplicateDecision?: DuplicateImportDecision;
 }
 
@@ -248,6 +250,7 @@ async function importSingleVideo({
   taskId,
   videoImportNamingMode,
   imageImportSourceMode,
+  deferSourceDeletion,
   duplicateDecision,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
@@ -331,17 +334,26 @@ async function importSingleVideo({
     await tagRepository.replaceImageTags(db, createdVideo.id, tags.map((tag) => tag.id));
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
+    let pendingSourceDeletionAssetId: string | null = null;
     if (effectiveImportSourceMode === 'move') {
-      let sourceDeleted = false;
-      try {
-        sourceDeleted = await deleteImportedSourceVideoAsset(pickedAsset);
-      } catch (error) {
-        console.warn('Pixory source video deletion was not completed:', error);
+      const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId);
+      if (deferSourceDeletion && sourceAssetId) {
+        pendingSourceDeletionAssetId = sourceAssetId;
+      } else if (deferSourceDeletion) {
+        sourceDeletionNotice = toMoveDeletionNotice(false);
+      } else {
+        let sourceDeleted = false;
+        try {
+          sourceDeleted = await deleteImportedSourceVideoAsset(pickedAsset);
+        } catch (error) {
+          console.warn('Pixory source video deletion was not completed:', error);
+        }
+        sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
       }
-      sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
     }
 
     return {
+      pendingSourceDeletionAssetId,
       sourceDeletionNotice,
       video: createdVideo,
       tags,
@@ -405,6 +417,7 @@ export async function importVideosToIp(params: {
   title?: string;
   duplicateDecision?: DuplicateImportDecision;
   imageImportSourceMode?: ImageImportSourceMode;
+  deferSourceDeletion?: boolean;
   videoImportNamingMode?: VideoImportNamingMode;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
@@ -474,6 +487,7 @@ export async function importVideosToIp(params: {
             taskId: task.id,
             duplicateDecision: params.duplicateDecision,
             imageImportSourceMode,
+            deferSourceDeletion: params.deferSourceDeletion ?? false,
             videoImportNamingMode,
           });
           importedVideos.push(importedVideo);

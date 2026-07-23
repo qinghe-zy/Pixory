@@ -14,6 +14,7 @@ import { AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiLightListGroup, AiLightListItem } from '../components/ai/AiLightList';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { AiSwitch } from '../components/ai/AiSwitch';
+import { AiContextSlider } from '../components/ai/AiContextSlider';
 import { AiUsageSummary } from '../components/ai/AiUsageSummary';
 import { aiLightColors, aiLightDisplayFont } from '../components/ai/aiLightTheme';
 import {
@@ -35,6 +36,7 @@ import {
   type AiThreadSessionModelConfig,
 } from '../ai/aiChatService';
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
+import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from '../ai/aiContextSettings';
 import { buildExternalContinuityPrompt } from '../ai/aiContinuityImportPrompt';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
 import { builtInModelsForProvider } from '../ai/providerRegistry';
@@ -169,6 +171,7 @@ export function AiSessionConfigScreen({
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [thinkingDisabled, setThinkingDisabled] = useState(false);
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(true);
+  const [contextHistoryRoundLimit, setContextHistoryRoundLimit] = useState(AI_CONTEXT_DEFAULTS.historyRoundLimit);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
@@ -213,6 +216,7 @@ export function AiSessionConfigScreen({
       setReplyPreference('auto');
       setThinkingDisabled(false);
       setDeepMemoryEnabled(false);
+      setContextHistoryRoundLimit(AI_CONTEXT_DEFAULTS.historyRoundLimit);
       setLastMaintenanceError(null);
       setMaintenanceStatus(null);
       setSessionModelConfig(null);
@@ -239,6 +243,9 @@ export function AiSessionConfigScreen({
     setReplyPreference(config.thread.replyPreference);
     setThinkingDisabled(config.thread.thinkingDisabled);
     setDeepMemoryEnabled(config.deepMemoryEnabled);
+    setContextHistoryRoundLimit(
+      normalizeAiContextSettings({ historyRoundLimit: config.thread.contextHistoryRoundLimit }).historyRoundLimit,
+    );
     setLastMaintenanceError(config.lastMaintenanceError);
     const [nextMaintenanceStatus, nextSessionModelConfig, nextThreadUsage] = await Promise.all([
       loadMemoryMaintenanceStatus(space, threadId),
@@ -273,6 +280,7 @@ export function AiSessionConfigScreen({
         avatarEnabled,
         boundaryMode,
         deepMemoryEnabled,
+        contextHistoryRoundLimit,
         replyPreference,
         roleInstructionWeight,
         space,
@@ -287,6 +295,7 @@ export function AiSessionConfigScreen({
     avatarEnabled,
     boundaryMode,
     deepMemoryEnabled,
+    contextHistoryRoundLimit,
     replyPreference,
     roleInstructionWeight,
     space,
@@ -1037,6 +1046,18 @@ export function AiSessionConfigScreen({
                 ))}
               </View>
             </View>
+            {threadId ? (
+              <AiContextSlider
+                label="最近对话轮数"
+                onCommit={setContextHistoryRoundLimit}
+                value={contextHistoryRoundLimit}
+              />
+            ) : null}
+            {threadId ? (
+              <Text style={styles.contextRoundHint}>
+                一问一答算一轮；实际装入数量仍受模型上下文窗口限制。
+              </Text>
+            ) : null}
           </AiLightListGroup>
 
           <AiLightListGroup
@@ -1701,6 +1722,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: rhythm.compactGridGap,
+  },
+  contextRoundHint: {
+    ...typography.textStyles.caption,
+    color: aiLightColors.mutedReadable,
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
   },
   inlineConfigPadding: {
     paddingBottom: spacing[4],

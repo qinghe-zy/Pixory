@@ -10,7 +10,7 @@ test('AI message favorites schema uses a dedicated local table with stable key',
   const schema = read('src/database/schema.ts');
   const db = read('src/database/db.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 45/);
+  assert.match(schema, /DATABASE_VERSION = 46/);
   assert.match(schema, /MIGRATION_STATEMENTS_V37/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_favorites/);
   assert.match(schema, /favoriteKey TEXT NOT NULL/);

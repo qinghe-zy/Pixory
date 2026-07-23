@@ -25,6 +25,7 @@ interface AppDialogProps {
   compactActions?: boolean;
   backgroundVariant?: PageBackgroundVariant;
   accent?: 'default' | 'ai';
+  dismissible?: boolean;
 }
 
 export function AppDialog({
@@ -44,6 +45,7 @@ export function AppDialog({
   compactActions = false,
   backgroundVariant,
   accent = 'default',
+  dismissible = true,
 }: AppDialogProps) {
   const themedBackground = accent === 'ai' || !backgroundVariant ? undefined : pageBackgroundImages[backgroundVariant];
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
@@ -51,9 +53,9 @@ export function AppDialog({
   const secondaryTone = accent === 'ai' ? 'ai' : 'default';
 
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="fade" onRequestClose={dismissible ? onClose : undefined} transparent visible={visible}>
       <View style={styles.overlay}>
-        <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} />
+        {dismissible ? <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} /> : null}
         <View style={[styles.panel, themedBackground ? styles.themedPanel : null, accent === 'ai' ? styles.aiPanel : null]}>
           {accent === 'ai' ? null : themedBackground ? (
             <Image resizeMode="cover" source={themedBackground.source} style={[styles.patternImage, styles.themedPatternImage]} />

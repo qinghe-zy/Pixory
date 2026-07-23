@@ -99,3 +99,10 @@ test('Me removes the title block while retaining a safe-area headerless inset', 
   assert.match(me, /showHeader=\{false\}/);
   assert.doesNotMatch(me, /title="我的"/);
 });
+
+test('cross-space chat confirmation discloses continuity and context limits before moving', () => {
+  const history = read('src/screens/AiHistoryScreen.tsx');
+
+  assert.match(history, /移动后会结束该回退窗口/);
+  assert.match(history, /IP\/知识库绑定会话暂不支持跨空间移动/);
+});

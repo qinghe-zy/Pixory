@@ -719,6 +719,11 @@ export function AiProviderSettingsScreen({ space, onBack }: AiProviderSettingsSc
             </View>
           </View>
         </View>
+        <View style={styles.providerDisclosure}>
+          <Text style={styles.caption}>API Key 保存在受保护的本地存储中。</Text>
+          <Text style={styles.caption}>对话请求会发送给你选择的模型服务商。</Text>
+          <Text style={styles.caption}>“测试成功”只代表本次验证通过，不是模型永久可用保证。</Text>
+        </View>
       </AiLightListGroup>
 
       <AiLightListGroup footer="不会影响已有独立设置的会话。" title="全局对话与向量模型">
@@ -1156,6 +1161,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     paddingBottom: spacing[4],
     gap: rhythm.fieldContentGap,
+  },
+  providerDisclosure: {
+    gap: rhythm.microGap,
+    paddingBottom: spacing[4],
+    paddingHorizontal: spacing[4],
   },
   inlineActions: {
     flexDirection: 'row',

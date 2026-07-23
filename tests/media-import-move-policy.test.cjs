@@ -24,14 +24,18 @@ test('file-picked assets are always copied even while the saved import mode is m
   assert.match(videoImport, /resolvePickedAssetImportMode\(\s*pickedAsset\.sourceKind \?\? 'album'/);
 });
 
-test('source deletion is best effort after persistence and reports partial success', () => {
+test('source deletion is deferred until all successful image and video imports are persisted', () => {
   const imageImport = read('src/services/imageImportService.ts');
   const videoImport = read('src/services/videoImportService.ts');
   const screen = read('src/screens/ImportImagesScreen.tsx');
 
   assert.match(imageImport, /sourceDeletionNotice:\s*MoveDeletionNotice \| null/);
   assert.match(videoImport, /sourceDeletionNotice:\s*MoveDeletionNotice \| null/);
-  assert.match(imageImport, /deleteImportedSourceAsset[\s\S]*catch[\s\S]*toMoveDeletionNotice/);
-  assert.match(videoImport, /deleteImportedSourceVideoAsset[\s\S]*catch[\s\S]*toMoveDeletionNotice/);
+  assert.match(imageImport, /pendingSourceDeletionAssetId:\s*string \| null/);
+  assert.match(videoImport, /pendingSourceDeletionAssetId:\s*string \| null/);
+  assert.match(imageImport, /deferSourceDeletion/);
+  assert.match(videoImport, /deferSourceDeletion/);
+  assert.match(screen, /deleteMediaStoreAssetsWithConfirmation\(pendingSourceDeletionAssetIds\)/);
+  assert.match(screen, /deferSourceDeletion:\s*true/);
   assert.match(screen, /原文件未删除 \$\{sourceDeletionFailureCount\}/);
 });

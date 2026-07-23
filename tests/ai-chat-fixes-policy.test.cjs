@@ -51,7 +51,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 45/);
+  assert.match(schema, /DATABASE_VERSION = 46/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -717,7 +717,7 @@ test('AI deep memory defaults on and stores local summaries memories and setting
   assert.match(sessionConfig, /deepMemoryEnabled/);
 });
 
-test('AI chat uses thirty short-term messages and avoids full reload for every streaming token', () => {
+test('AI chat uses configurable complete rounds and avoids full reload for every streaming token', () => {
   const service = read('src/ai/aiChatService.ts');
   const chat = read('src/screens/AiChatScreen.tsx');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
@@ -725,9 +725,10 @@ test('AI chat uses thirty short-term messages and avoids full reload for every s
   const regenerateBlock = /export async function regenerateAssistantMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function retryAssistantMessage/.exec(service)?.[0] ?? '';
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(service, /CHAT_HISTORY_MESSAGE_LIMIT = 30/);
+  assert.match(service, /contextHistoryLoadLimit/);
+  assert.match(service, /selectRecentMessagesByRound/);
+  assert.match(service, /historyRoundLimit/);
   assert.match(service, /searchCompletedMessageFts/);
-  assert.match(service, /\.slice\(-CHAT_HISTORY_MESSAGE_LIMIT\)/);
   assert.doesNotMatch(service, /\.slice\(-8\)/);
   assert.match(repository, /listRecentCompletedMessagesBefore/);
   assert.match(repository, /countCompletedNonSystemMessagesAfter/);
@@ -881,7 +882,7 @@ test('AI editing a user message keeps full branch history instead of deleting la
   const chat = read('src/screens/AiChatScreen.tsx');
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(schema, /DATABASE_VERSION = 45/);
+  assert.match(schema, /DATABASE_VERSION = 46/);
   assert.match(schema, /branchRootMessageId TEXT/);
   assert.match(schema, /branchVersionIndex INTEGER/);
   assert.match(schema, /MIGRATION_STATEMENTS_V31/);
@@ -941,7 +942,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 45/);
+  assert.match(schema, /DATABASE_VERSION = 46/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V32/);
   assert.match(db, /currentVersion < 32/);
@@ -967,7 +968,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes/);
-  assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, CHAT_HISTORY_MESSAGE_LIMIT, branchScopes\)/);
+  assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, DEEP_MEMORY_RECENT_MESSAGE_LIMIT, branchScopes\)/);
   assert.match(service, /scheduleDeferredCompanionMemoryMaintenance\(\{[\s\S]*branchScopes/);
   assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(memoryService, /listMemoryBoardItems\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
@@ -1527,7 +1528,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 45/);
+  assert.match(schema, /DATABASE_VERSION = 46/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);

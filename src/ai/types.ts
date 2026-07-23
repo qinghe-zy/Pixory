@@ -113,6 +113,7 @@ export interface AiThreadRecord {
   roleSnapshotJson: string;
   roleInstructionWeight: AiRoleInstructionWeight;
   replyPreference: AiReplyPreference;
+  contextHistoryRoundLimit: number;
   thinkingDisabled: boolean;
   boundaryMode: AiBoundaryMode;
   systemPrompt: string;

@@ -189,7 +189,8 @@ test('AI companion memory prompt assembly injects profile and summary context sa
   assert.match(service, /getUserProfile/);
   assert.match(service, /buildMainCompanionMemoryTemplate/);
   assert.doesNotMatch(service, /systemPromptAndRoleInstruction:\s*''/);
-  assert.match(chat, /CHAT_HISTORY_MESSAGE_LIMIT = 30/);
+  assert.match(chat, /contextHistoryLoadLimit/);
+  assert.match(chat, /selectRecentMessagesByRound/);
   assert.match(prompt, /userProfile/);
   assert.match(prompt, /summarySegments/);
   assert.match(prompt, /不要为了展示记忆而主动提旧事/);

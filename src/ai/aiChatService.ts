@@ -14,16 +14,18 @@ import {
   type AiProviderModelRecord,
   type AiProviderRecord,
   type AiReplyPreference,
+  type AiRoleCardRecord,
   type AiRoleInstructionWeight,
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
 import { classifyAiChatFastPath } from './aiChatFastPath';
 import { resolveAiChatPerformanceProfile } from './aiChatPerformanceMode';
+import { assertAiThreadSpaceMoveAllowed } from './aiThreadSpaceMovePolicy';
 import {
   deleteProviderModel as deleteProviderModelService,
   deleteProviderModels as deleteProviderModelsService,
@@ -43,6 +45,7 @@ import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContex
 import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, importPickedDocumentsToThread, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
 import { trimMessagesToContextBudget } from './aiContextBudget';
+import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from './aiContextSettings';
 import {
   buildCompanionMemoryPrefix,
   buildStableMemoryPrefix,
@@ -95,10 +98,12 @@ import {
 } from './secureAiSettingsService';
 import { verifyPersonalPassword } from '../services/personalSystemService';
 import {
+  copyAiRoleAvatarToAppStorage,
   copyLocalFile,
   ensureLocalDirectory,
   generateInternalFilename,
   getAiDocumentsDir,
+  getAiRoleAvatarsDir,
   joinStoragePath,
 } from '../services/fileStorageService';
 import { normalizeBaseUrl, type AiChatAttachment, type AiStreamEvent } from './providers/base';
@@ -300,6 +305,7 @@ export interface UpdateAiThreadSessionConfigInput {
   roleInstructionWeight: AiRoleInstructionWeight;
   replyPreference: AiReplyPreference;
   thinkingDisabled: boolean;
+  contextHistoryRoundLimit?: number;
   boundaryMode: AiBoundaryMode;
   providerId?: string | null;
   modelId?: string | null;
@@ -570,10 +576,10 @@ export interface AiMessageFavoriteListItem {
   messageUpdatedAt: string;
 }
 
-const CHAT_HISTORY_MESSAGE_LIMIT = 30;
 const CHAT_MESSAGE_PAGE_SIZE = 60;
 const DEEP_MEMORY_LIMIT = 5;
 const RELATED_HISTORY_LIMIT = 4;
+const DEEP_MEMORY_RECENT_MESSAGE_LIMIT = 30;
 const MODEL_TITLE_MIN_COMPLETED_MESSAGES = 6;
 const MODEL_TITLE_MAX_CHARS = 8;
 const REPLY_ASSIST_CONTEXT_MESSAGE_LIMIT = 12;
@@ -788,6 +794,13 @@ function parseThreadAvatarConfig(roleSnapshotJson: string): AiThreadAvatarConfig
         ? snapshot.avatarUri
         : null,
   };
+}
+
+function parseThreadRoleName(roleSnapshotJson: string): string | null {
+  const snapshot = parseThreadRoleSnapshot(roleSnapshotJson);
+  return typeof snapshot.name === 'string' && snapshot.name.trim()
+    ? snapshot.name.trim()
+    : null;
 }
 
 function parseThreadMessageAppearanceConfig(
@@ -1166,7 +1179,7 @@ function buildBranchRouteHash(branchScopes: AiBranchScope[]): string {
   }))));
 }
 
-function buildGenerationParamsHash(input: { thinkingDisabled: boolean }): string {
+function buildGenerationParamsHash(input: { thinkingDisabled: boolean; historyRoundLimit?: number }): string {
   return hashPromptCacheText(JSON.stringify(input));
 }
 
@@ -1358,6 +1371,180 @@ async function copyAttachmentToThreadStorage(input: {
   const targetUri = joinStoragePath(targetDir, generateInternalFilename(input.attachment.name));
   await copyLocalFile(input.attachment.uri, targetUri);
   return targetUri;
+}
+
+async function copyThreadAttachmentsBetweenSpaces(
+  snapshots: AiThreadExportSnapshot[],
+  targetSpace: PixorySpace
+): Promise<{ copiedTargetUris: string[]; snapshots: AiThreadExportSnapshot[] }> {
+  const copiedTargetUris: string[] = [];
+  try {
+    const copiedSnapshots: AiThreadExportSnapshot[] = [];
+    for (const snapshot of snapshots) {
+      const targetDir = getThreadAttachmentDirectory(targetSpace, snapshot.thread.id);
+      if (snapshot.attachments.length > 0) {
+        await ensureLocalDirectory(targetDir);
+      }
+      const attachments: AiMessageAttachmentRecord[] = [];
+      for (const attachment of snapshot.attachments) {
+        if (attachment.documentId) {
+          attachments.push(attachment);
+          continue;
+        }
+        const targetUri = joinStoragePath(targetDir, generateInternalFilename(attachment.name));
+        await copyLocalFile(attachment.localUri, targetUri);
+        copiedTargetUris.push(targetUri);
+        attachments.push({ ...attachment, localUri: targetUri });
+      }
+      copiedSnapshots.push({ ...snapshot, attachments });
+    }
+    return { copiedTargetUris, snapshots: copiedSnapshots };
+  } catch (error) {
+    await cleanupDeletedMaterialFiles(copiedTargetUris);
+    throw error;
+  }
+}
+
+interface AiRoleCardSpaceMoveBundle {
+  copiedTargetAvatarUris: string[];
+  memories: AiMemoryRecord[];
+  roleCards: Array<{
+    roleCard: AiRoleCardRecord;
+    shouldImport: boolean;
+    shouldReactivate: boolean;
+    targetAvatarEnabled: boolean;
+    targetAvatarUri: string | null;
+    targetOriginalArchivedAt: string | null;
+    targetRoleCardId: string;
+  }>;
+  snapshots: AiThreadExportSnapshot[];
+}
+
+function rewriteThreadRoleSnapshotForMove(input: {
+  roleSnapshotJson: string;
+  targetAvatarEnabled: boolean;
+  targetAvatarUri: string | null;
+  targetRoleCardId: string;
+  targetSpace: PixorySpace;
+}): string {
+  const existingSnapshot = parseThreadRoleSnapshot(input.roleSnapshotJson);
+  return JSON.stringify({
+    ...existingSnapshot,
+    id: input.targetRoleCardId,
+    space: input.targetSpace,
+    avatarEnabled: input.targetAvatarEnabled,
+    avatarUri: input.targetAvatarUri,
+  });
+}
+
+async function copyRoleCardsBetweenSpaces(input: {
+  existingTargetRoleCards: Map<string, AiRoleCardRecord>;
+  memories: AiMemoryRecord[];
+  memoryIdMap: Map<string, string>;
+  roleCards: AiRoleCardRecord[];
+  roleIdMap: Map<string, string>;
+  skippedMemoryIds: Set<string>;
+  snapshots: AiThreadExportSnapshot[];
+  targetSpace: PixorySpace;
+}): Promise<AiRoleCardSpaceMoveBundle> {
+  const copiedTargetAvatarUris: string[] = [];
+  try {
+    const roleCards = [];
+    for (const roleCard of input.roleCards) {
+      const targetRoleCardId = input.roleIdMap.get(roleCard.id);
+      if (!targetRoleCardId) {
+        throw new Error('角色卡迁移映射不完整。');
+      }
+      const existingTargetRoleCard = input.existingTargetRoleCards.get(targetRoleCardId);
+      const targetAvatarUri =
+        existingTargetRoleCard
+          ? existingTargetRoleCard.avatarUri
+          : roleCard.avatarEnabled && roleCard.avatarUri
+          ? await copyAiRoleAvatarToAppStorage(roleCard.avatarUri, input.targetSpace)
+          : null;
+      if (targetAvatarUri && !existingTargetRoleCard) {
+        copiedTargetAvatarUris.push(targetAvatarUri);
+      }
+      roleCards.push({
+        roleCard,
+        shouldImport: !existingTargetRoleCard,
+        shouldReactivate: Boolean(existingTargetRoleCard?.archivedAt),
+        targetAvatarEnabled:
+          existingTargetRoleCard?.avatarEnabled ?? roleCard.avatarEnabled,
+        targetAvatarUri,
+        targetOriginalArchivedAt: existingTargetRoleCard?.archivedAt ?? null,
+        targetRoleCardId,
+      });
+    }
+
+    const roleBundleBySourceId = new Map(
+      roleCards.map((bundle) => [bundle.roleCard.id, bundle])
+    );
+    const snapshots = input.snapshots.map((snapshot) => {
+      if (!snapshot.thread.roleCardId) {
+        return snapshot;
+      }
+      const roleBundle = roleBundleBySourceId.get(snapshot.thread.roleCardId);
+      if (!roleBundle) {
+        throw new Error('聊天引用的角色卡数据不完整，无法安全迁移。');
+      }
+      return {
+        ...snapshot,
+        thread: {
+          ...snapshot.thread,
+          roleCardId: roleBundle.targetRoleCardId,
+          roleSnapshotJson: rewriteThreadRoleSnapshotForMove({
+            roleSnapshotJson: snapshot.thread.roleSnapshotJson,
+            targetAvatarEnabled: roleBundle.targetAvatarEnabled,
+            targetAvatarUri: roleBundle.targetAvatarUri,
+            targetRoleCardId: roleBundle.targetRoleCardId,
+            targetSpace: input.targetSpace,
+          }),
+        },
+      };
+    });
+
+    const movedMessageIds = new Set(
+      snapshots.flatMap((snapshot) => snapshot.messages.map((message) => message.id))
+    );
+    const memories = input.memories
+      .filter((memory) => !input.skippedMemoryIds.has(memory.id))
+      .map((memory): AiMemoryRecord => {
+        const targetRoleCardId = memory.scopeId
+          ? input.roleIdMap.get(memory.scopeId)
+          : null;
+        if (!targetRoleCardId) {
+          throw new Error('角色记忆的迁移映射不完整。');
+        }
+        return {
+          ...memory,
+          id: input.memoryIdMap.get(memory.id) ?? createAiId('aimem'),
+          space: input.targetSpace,
+          scopeId: targetRoleCardId,
+          sourceMessageId:
+            memory.sourceMessageId && movedMessageIds.has(memory.sourceMessageId)
+              ? memory.sourceMessageId
+              : null,
+          supersededByMemoryId: memory.supersededByMemoryId
+            ? input.memoryIdMap.get(memory.supersededByMemoryId) ?? null
+            : null,
+          reconcileSourceMessageId:
+            memory.reconcileSourceMessageId && movedMessageIds.has(memory.reconcileSourceMessageId)
+              ? memory.reconcileSourceMessageId
+              : null,
+          // Numeric asset ids belong to a space-specific database and must never be
+          // interpreted as references to unrelated target-space assets.
+          ipId: null,
+          groupId: null,
+          imageAssetId: null,
+        };
+      });
+
+    return { copiedTargetAvatarUris, memories, roleCards, snapshots };
+  } catch (error) {
+    await cleanupDeletedMaterialFiles(copiedTargetAvatarUris);
+    throw error;
+  }
 }
 
 async function importDocumentAttachment(input: {
@@ -1570,11 +1757,11 @@ async function retrieveDynamicMemoryContext(db: SQLiteDatabase, thread: AiThread
     }),
     aiThreadRepository.searchCompletedMessageFts(db, {
       branchScopes,
-      limit: CHAT_HISTORY_MESSAGE_LIMIT + RELATED_HISTORY_LIMIT + 12,
+      limit: DEEP_MEMORY_RECENT_MESSAGE_LIMIT + RELATED_HISTORY_LIMIT + 12,
       query: userMessage,
       threadId: thread.id,
     }),
-    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, CHAT_HISTORY_MESSAGE_LIMIT, branchScopes),
+    aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, DEEP_MEMORY_RECENT_MESSAGE_LIMIT, branchScopes),
   ]);
   const rankedMemories = memories
     .map((memory) => ({
@@ -2221,7 +2408,7 @@ export async function listAiHomeThreads(input: {
           ...thread,
           avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
           avatarAvailable: thread.roleCardId ? activeRoleCardIds.has(thread.roleCardId) : false,
-          roleCardName: roleCard?.name ?? null,
+          roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
         };
       })
     );
@@ -2243,7 +2430,7 @@ export async function loadThreadSessionConfig(space: PixorySpace, threadId: stri
     const memoryJob = await aiThreadRepository.getThreadMemoryJob(db, thread.id);
     return {
       thread,
-      roleCardName: roleCard?.name ?? null,
+      roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
       avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
       userAvatarEnabled:
         parseThreadMessageAppearanceConfig(thread.roleSnapshotJson)
@@ -2491,6 +2678,7 @@ export async function updateAiThreadSessionConfig(input: UpdateAiThreadSessionCo
           : patchThreadRoleSnapshot(thread.roleSnapshotJson, roleSnapshotPatch),
       roleInstructionWeight: input.roleInstructionWeight,
       replyPreference: input.replyPreference,
+      contextHistoryRoundLimit: input.contextHistoryRoundLimit,
       thinkingDisabled: input.thinkingDisabled,
       systemPrompt: input.systemPrompt.trim() || getDefaultThreadSystemPrompt(thread.contextType),
     });
@@ -2582,7 +2770,7 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
     }
   }
 
-  const snapshots = await runWithDatabaseSpace(input.sourceSpace, async (db) => {
+  const moveExport = await runWithDatabaseSpace(input.sourceSpace, async (db) => {
     const exported = [];
     for (const threadId of uniqueThreadIds) {
       const snapshot = await aiThreadRepository.exportThread(db, threadId);
@@ -2590,21 +2778,178 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
         exported.push(snapshot);
       }
     }
-    return exported;
+    const roleCardIds = Array.from(new Set(
+      exported
+        .map((snapshot) => snapshot.thread.roleCardId)
+        .filter((roleCardId): roleCardId is string => Boolean(roleCardId))
+    ));
+    const roleCards: AiRoleCardRecord[] = [];
+    for (const roleCardId of roleCardIds) {
+      const roleCard = await aiRoleCardRepository.findAnyById(db, roleCardId);
+      if (!roleCard || roleCard.space !== input.sourceSpace) {
+        throw new Error('聊天引用的角色卡数据不完整，无法安全迁移。');
+      }
+      roleCards.push(roleCard);
+    }
+    const roleMemories = await aiThreadRepository.listRoleMemoriesForSpaceMove(
+      db,
+      input.sourceSpace,
+      roleCardIds
+    );
+    return { roleCards, roleMemories, snapshots: exported };
   });
 
+  const { roleCards, roleMemories, snapshots } = moveExport;
   if (snapshots.length === 0) {
     return 0;
   }
+  for (const snapshot of snapshots) {
+    assertAiThreadSpaceMoveAllowed(snapshot);
+  }
 
   const movedThreadIds = snapshots.map((snapshot) => snapshot.thread.id);
+  const sourceAttachmentRoot = getAiDocumentsDir(input.sourceSpace);
+  const sourceAttachmentUris = Array.from(new Set(
+    snapshots.flatMap((snapshot) => snapshot.attachments.map((attachment) => attachment.localUri))
+  )).filter((uri) => uri.startsWith(sourceAttachmentRoot));
+  const targetRoleState = await runWithDatabaseSpace(input.targetSpace, async (db) => {
+    const roleIdMap = new Map<string, string>();
+    const existingTargetRoleCards = new Map<string, AiRoleCardRecord>();
+    for (const roleCard of roleCards) {
+      const existing = await aiRoleCardRepository.findAnyById(db, roleCard.id);
+      if (existing && existing.space !== input.targetSpace) {
+        throw new Error('目标空间中的角色卡记录异常，无法安全迁移。');
+      }
+      roleIdMap.set(roleCard.id, roleCard.id);
+      if (existing) {
+        existingTargetRoleCards.set(roleCard.id, existing);
+      }
+    }
+    const existingTargetMemories =
+      await aiThreadRepository.findRoleMemoriesForSpaceMoveByIds(
+        db,
+        roleMemories.map((memory) => memory.id)
+      );
+    const existingMemoryById = new Map(
+      existingTargetMemories.map((memory) => [memory.id, memory])
+    );
+    const reservedMemoryIds = new Set(existingTargetMemories.map((memory) => memory.id));
+    const memoryIdMap = new Map<string, string>();
+    const skippedMemoryIds = new Set<string>();
+    for (const memory of roleMemories) {
+      const targetRoleCardId = memory.scopeId
+        ? roleIdMap.get(memory.scopeId)
+        : null;
+      if (!targetRoleCardId) {
+        throw new Error('角色记忆的迁移映射不完整。');
+      }
+      const existingMemory = existingMemoryById.get(memory.id);
+      if (
+        existingMemory?.space === input.targetSpace &&
+        existingMemory.scope === 'role' &&
+        existingMemory.scopeId === targetRoleCardId
+      ) {
+        memoryIdMap.set(memory.id, memory.id);
+        skippedMemoryIds.add(memory.id);
+        continue;
+      }
+      let targetMemoryId = memory.id;
+      while (
+        reservedMemoryIds.has(targetMemoryId) ||
+        (
+          await aiThreadRepository.findRoleMemoriesForSpaceMoveByIds(
+            db,
+            [targetMemoryId]
+          )
+        ).length > 0
+      ) {
+        targetMemoryId = createAiId('aimem');
+      }
+      memoryIdMap.set(memory.id, targetMemoryId);
+      reservedMemoryIds.add(targetMemoryId);
+    }
+    return {
+      existingTargetRoleCards,
+      memoryIdMap,
+      roleIdMap,
+      skippedMemoryIds,
+    };
+  });
+  const {
+    existingTargetRoleCards,
+    memoryIdMap,
+    roleIdMap,
+    skippedMemoryIds,
+  } = targetRoleState;
+  let snapshotsForImport = snapshots;
+  let targetAttachmentUris: string[] = [];
+  let targetRoleAvatarUris: string[] = [];
+  let importedTargetRoleCardIds: string[] = [];
+  let importedTargetRoleMemoryIds: string[] = [];
+  let reactivatedTargetRoleCards: Array<{
+    archivedAt: string;
+    id: string;
+  }> = [];
   let targetImported = false;
   try {
+    const copiedRoles = await copyRoleCardsBetweenSpaces({
+      existingTargetRoleCards,
+      memories: roleMemories,
+      memoryIdMap,
+      roleCards,
+      roleIdMap,
+      skippedMemoryIds,
+      snapshots,
+      targetSpace: input.targetSpace,
+    });
+    targetRoleAvatarUris = copiedRoles.copiedTargetAvatarUris;
+    importedTargetRoleCardIds = copiedRoles.roleCards
+      .filter((roleBundle) => roleBundle.shouldImport)
+      .map((roleBundle) => roleBundle.targetRoleCardId);
+    importedTargetRoleMemoryIds = copiedRoles.memories.map((memory) => memory.id);
+    reactivatedTargetRoleCards = copiedRoles.roleCards
+      .filter(
+        (roleBundle) =>
+          roleBundle.shouldReactivate && Boolean(roleBundle.targetOriginalArchivedAt)
+      )
+      .map((roleBundle) => ({
+        archivedAt: roleBundle.targetOriginalArchivedAt as string,
+        id: roleBundle.targetRoleCardId,
+      }));
+    const copiedAttachments = await copyThreadAttachmentsBetweenSpaces(
+      copiedRoles.snapshots,
+      input.targetSpace
+    );
+    snapshotsForImport = copiedAttachments.snapshots;
+    targetAttachmentUris = copiedAttachments.copiedTargetUris;
+
     await runWithDatabaseSpace(input.targetSpace, async (db) => {
       await db.withTransactionAsync(async () => {
-        for (const snapshot of snapshots) {
+        for (const roleBundle of copiedRoles.roleCards) {
+          if (roleBundle.shouldReactivate) {
+            await aiRoleCardRepository.setArchivedAtForSpaceMove(
+              db,
+              input.targetSpace,
+              roleBundle.targetRoleCardId,
+              null
+            );
+            continue;
+          }
+          if (!roleBundle.shouldImport) {
+            continue;
+          }
+          await aiRoleCardRepository.importRoleCardForSpaceMove(
+            db,
+            roleBundle.roleCard,
+            input.targetSpace,
+            roleBundle.targetRoleCardId,
+            roleBundle.targetAvatarUri
+          );
+        }
+        for (const snapshot of snapshotsForImport) {
           await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
         }
+        await aiThreadRepository.importRoleMemoriesForSpaceMove(db, copiedRoles.memories);
       });
     });
     targetImported = true;
@@ -2616,7 +2961,16 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
       threadIds: movedThreadIds,
     });
 
+    await runWithDatabaseSpace(input.targetSpace, async (db) => {
+      await db.withTransactionAsync(async () => {
+        for (const snapshot of snapshotsForImport) {
+          await aiThreadRepository.restoreMessageAttachmentDocumentLinks(db, snapshot.attachments);
+        }
+      });
+    });
+
     const deletedFileUris: string[] = [];
+    const deletedSourceRoleAvatarUris: string[] = [];
     await runWithDatabaseSpace(input.sourceSpace, async (db) => {
       await db.withTransactionAsync(async () => {
         await removeMaterialsByOwner({
@@ -2627,19 +2981,86 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
           ownerIds: movedThreadIds,
         });
         await aiThreadRepository.deleteThreads(db, movedThreadIds);
+        const deletedRoleCards =
+          await aiRoleCardRepository.deleteUnreferencedRoleCardsAfterThreadMove(
+            db,
+            input.sourceSpace,
+            roleCards.map((roleCard) => roleCard.id)
+          );
+        for (const roleCard of deletedRoleCards) {
+          if (
+            roleCard.avatarUri &&
+            !(await aiRoleCardRepository.isAvatarUriReferenced(
+              db,
+              input.sourceSpace,
+              roleCard.avatarUri
+            ))
+          ) {
+            deletedSourceRoleAvatarUris.push(roleCard.avatarUri);
+          }
+        }
       });
     });
-    await cleanupDeletedMaterialFiles(deletedFileUris);
+    const sourceRoleAvatarRoot = getAiRoleAvatarsDir(input.sourceSpace);
+    await cleanupDeletedMaterialFiles([
+      ...deletedFileUris,
+      ...sourceAttachmentUris,
+      ...deletedSourceRoleAvatarUris.filter((uri) => uri.startsWith(sourceRoleAvatarRoot)),
+    ]);
   } catch (error) {
+    let targetThreadsRolledBack = !targetImported;
     if (targetImported) {
       try {
         await permanentlyDeleteAiThreads(input.targetSpace, movedThreadIds);
+        targetThreadsRolledBack = true;
       } catch (rollbackError) {
         console.warn('Pixory AI thread move rollback failed.', {
           message: rollbackError instanceof Error ? rollbackError.message : 'unknown rollback error',
         });
       }
     }
+    const deletedTargetRoleAvatarUris: string[] = [];
+    if (!targetImported || targetThreadsRolledBack) {
+      try {
+        let deletedTargetRoleCards: AiRoleCardRecord[] = [];
+        await runWithDatabaseSpace(input.targetSpace, async (db) => {
+          await db.withTransactionAsync(async () => {
+            await aiThreadRepository.deleteRoleMemoriesForSpaceMove(
+              db,
+              input.targetSpace,
+              importedTargetRoleMemoryIds
+            );
+            for (const roleCard of reactivatedTargetRoleCards) {
+              await aiRoleCardRepository.setArchivedAtForSpaceMove(
+                db,
+                input.targetSpace,
+                roleCard.id,
+                roleCard.archivedAt
+              );
+            }
+            deletedTargetRoleCards =
+              await aiRoleCardRepository.deleteUnreferencedRoleCardsAfterThreadMove(
+                db,
+                input.targetSpace,
+                importedTargetRoleCardIds
+              );
+          });
+        });
+        deletedTargetRoleAvatarUris.push(
+          ...deletedTargetRoleCards
+            .map((roleCard) => roleCard.avatarUri)
+            .filter((uri): uri is string => Boolean(uri))
+        );
+      } catch (rollbackError) {
+        console.warn('Pixory AI role card move rollback failed.', {
+          message: rollbackError instanceof Error ? rollbackError.message : 'unknown rollback error',
+        });
+      }
+    }
+    await cleanupDeletedMaterialFiles([
+      ...(targetThreadsRolledBack ? targetAttachmentUris : []),
+      ...(!targetImported ? targetRoleAvatarUris : deletedTargetRoleAvatarUris),
+    ]);
     throw error;
   }
 
@@ -2729,10 +3150,46 @@ async function snapshotMessageVersion(
   });
 }
 
+function contextHistoryLoadLimit(roundLimit: number): number {
+  const normalizedRounds = normalizeAiContextSettings({ historyRoundLimit: roundLimit }).historyRoundLimit;
+  return Math.max(32, normalizedRounds * 3 + 1);
+}
+
+function selectRecentMessagesByRound(messages: AiMessageRecord[], roundLimit: number): {
+  messages: AiMessageRecord[];
+  trimmed: boolean;
+} {
+  const normalizedRounds = normalizeAiContextSettings({ historyRoundLimit: roundLimit }).historyRoundLimit;
+  const rounds: AiMessageRecord[][] = [];
+  let currentRound: AiMessageRecord[] | null = null;
+  const flushCompleteRound = () => {
+    if (currentRound?.some((message) => message.role === 'assistant')) {
+      rounds.push(currentRound);
+    }
+  };
+  for (const message of messages) {
+    if (message.role === 'user') {
+      flushCompleteRound();
+      currentRound = [message];
+    } else if (message.role === 'assistant' && currentRound) {
+      currentRound.push(message);
+    }
+  }
+  flushCompleteRound();
+  const selectedRounds = rounds.slice(-normalizedRounds);
+  const selectedMessages = selectedRounds.flat();
+  return {
+    messages: selectedMessages,
+    trimmed: selectedMessages.length < messages.length,
+  };
+}
+
 function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, options?: {
+  historyRoundLimit?: number;
   modelContextWindowTokens?: number | null;
   protectedPrompt?: string;
 }): {
+  contextTrimmedByCount: boolean;
   contextTrimmedByBudget: boolean;
   history: Array<{ role: 'assistant' | 'user'; content: string }>;
 } {
@@ -2740,13 +3197,17 @@ function buildChatHistory(messages: AiMessageRecord[], userMessageId: string, op
   const previousMessages = userIndex >= 0 ? messages.slice(0, userIndex) : messages;
   const completedMessages = previousMessages
     .filter((message) => message.role !== 'system' && message.status === 'completed')
-    .slice(-CHAT_HISTORY_MESSAGE_LIMIT);
+  const roundSelected = selectRecentMessagesByRound(
+    completedMessages,
+    options?.historyRoundLimit ?? AI_CONTEXT_DEFAULTS.historyRoundLimit,
+  );
   const budgeted = trimMessagesToContextBudget({
-    messages: completedMessages,
+    messages: roundSelected.messages,
     protectedPrompt: options?.protectedPrompt ?? 'Current user message and role instruction are protected from context trimming.',
     modelContextWindowTokens: options?.modelContextWindowTokens,
   });
   return {
+    contextTrimmedByCount: roundSelected.trimmed,
     contextTrimmedByBudget: budgeted.trimmed,
     history: budgeted.messages
       .map((message) => ({
@@ -3215,12 +3676,16 @@ async function streamAssistantReply(input: {
       return;
     }
     markGenerationMetric(generationMetrics, 'historyLoadStartAt');
+    const historyRoundLimit = normalizeAiContextSettings({
+      historyRoundLimit: input.thread.contextHistoryRoundLimit,
+    }).historyRoundLimit;
+    const historyLoadLimit = contextHistoryLoadLimit(historyRoundLimit);
     const historySource = await runWithDatabaseSpace(input.space, (db) =>
       aiThreadRepository.listRecentCompletedMessagesBefore(
         db,
         input.thread.id,
         input.historyAnchorMessageId ?? input.userMessage.id,
-        CHAT_HISTORY_MESSAGE_LIMIT + 1,
+        historyLoadLimit,
         branchScopes
       )
     );
@@ -3228,8 +3693,7 @@ async function streamAssistantReply(input: {
     if (await stopForAbort()) {
       return;
     }
-    contextTrimmedByCount = historySource.length > CHAT_HISTORY_MESSAGE_LIMIT;
-    const historyMessages = contextTrimmedByCount ? historySource.slice(1) : historySource;
+    const historyMessages = historySource;
     const protectedPrompt = [
       prompt.system,
       prompt.user,
@@ -3239,7 +3703,8 @@ async function streamAssistantReply(input: {
       mode === 'followup' ? input.continuationContext?.answerText ?? '' : '',
       mode === 'followup' ? input.continuationInstruction ?? '' : '',
     ].filter(Boolean).join('\n\n');
-    ({ contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
+    ({ contextTrimmedByCount, contextTrimmedByBudget, history } = buildChatHistory(historyMessages, input.userMessage.id, {
+      historyRoundLimit,
       modelContextWindowTokens,
       protectedPrompt,
     }));
@@ -3272,7 +3737,10 @@ async function streamAssistantReply(input: {
     const promptCacheSettings = await resolvePromptCacheSettings(input.space);
     providerCachePolicy = buildProviderCachePolicy({
       branchRouteHash: buildBranchRouteHash(branchScopes),
-      generationParamsHash: buildGenerationParamsHash({ thinkingDisabled: input.thread.thinkingDisabled }),
+      generationParamsHash: buildGenerationParamsHash({
+        historyRoundLimit,
+        thinkingDisabled: input.thread.thinkingDisabled,
+      }),
       metadata: prompt.cacheMetadata,
       modelId,
       previousRequestAt,

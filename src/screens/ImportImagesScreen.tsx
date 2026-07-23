@@ -28,6 +28,7 @@ import {
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
 import { importVideosToIp, pickVideosForImport, type PickedVideoAsset } from '../services/videoImportService';
 import { pickMediaFilesForImport } from '../services/mediaFilePickerService';
+import { deleteMediaStoreAssetsWithConfirmation } from '../services/mediaSourceDeletionService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
@@ -152,7 +153,6 @@ export function ImportImagesScreen({
   const [videoImportNamingMode, setVideoImportNamingMode] = useState<VideoImportNamingMode>('preserveOriginal');
   const [moveImportWarningDismissed, setMoveImportWarningDismissed] = useState(false);
   const [moveImportWarningVisible, setMoveImportWarningVisible] = useState(false);
-  const [moveImportWarningOptOut, setMoveImportWarningOptOut] = useState(false);
   const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
   const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
@@ -235,7 +235,6 @@ export function ImportImagesScreen({
     setImageImportSourceMode(nextMode);
     void runWithDatabaseSpace(space, (db) => settingsRepository.setImageImportSourceMode(db, nextMode));
     if (nextMode === 'move' && !moveImportWarningDismissed) {
-      setMoveImportWarningOptOut(false);
       setMoveImportWarningVisible(true);
     }
   }
@@ -250,13 +249,15 @@ export function ImportImagesScreen({
     void runWithDatabaseSpace(space, (db) => settingsRepository.setVideoMediaPickerSource(db, nextSource));
   }
 
-  async function confirmMoveImportWarning() {
-    if (moveImportWarningOptOut) {
+  async function dismissMoveImportWarningPermanently() {
+    try {
       await runWithDatabaseSpace(space, (db) => settingsRepository.setMoveImportWarningDismissed(db, true));
       setMoveImportWarningDismissed(true);
+    } catch {
+      showToast('偏好保存失败，下次仍会提醒。');
+    } finally {
+      setMoveImportWarningVisible(false);
     }
-    setMoveImportWarningVisible(false);
-    setMoveImportWarningOptOut(false);
   }
 
   function updateVideoImportNamingMode(nextMode: VideoImportNamingMode) {
@@ -501,6 +502,7 @@ export function ImportImagesScreen({
       let videoSkippedCount = 0;
       let failedCount = 0;
       let sourceDeletionFailureCount = 0;
+      const pendingSourceDeletionAssetIds: string[] = [];
 
       if (pickedAssets.length > 0) {
         setImportProgressLabel(`正在导入 ${pickedAssets.length} 张图片`);
@@ -515,6 +517,7 @@ export function ImportImagesScreen({
           pickedAssets,
           duplicateDecision,
           imageImportSourceMode,
+          deferSourceDeletion: true,
           taskToken,
         });
 
@@ -522,6 +525,11 @@ export function ImportImagesScreen({
         imageSkippedCount = imageResult.skippedCount;
         failedCount += imageResult.failedCount;
         sourceDeletionFailureCount += imageResult.importedImages.filter((item) => item.sourceDeletionNotice).length;
+        pendingSourceDeletionAssetIds.push(
+          ...imageResult.importedImages.flatMap((item) =>
+            item.pendingSourceDeletionAssetId ? [item.pendingSourceDeletionAssetId] : []
+          )
+        );
         importedAssetIds.push(...imageResult.importedImages.map((item) => item.image.id));
         importBatchId = imageResult.importBatch?.id ?? importBatchId;
 
@@ -556,14 +564,32 @@ export function ImportImagesScreen({
           duplicateDecision,
           imageImportSourceMode,
           videoImportNamingMode,
+          deferSourceDeletion: true,
         });
 
         videoSuccessCount = videoResult.successCount;
         videoSkippedCount = videoResult.skippedCount;
         failedCount += videoResult.failedCount;
         sourceDeletionFailureCount += videoResult.importedVideos.filter((item) => item.sourceDeletionNotice).length;
+        pendingSourceDeletionAssetIds.push(
+          ...videoResult.importedVideos.flatMap((item) =>
+            item.pendingSourceDeletionAssetId ? [item.pendingSourceDeletionAssetId] : []
+          )
+        );
         importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
         importBatchId = pickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
+      }
+
+      if (pendingSourceDeletionAssetIds.length > 0) {
+        let sourceDeleted = false;
+        try {
+          sourceDeleted = await deleteMediaStoreAssetsWithConfirmation(pendingSourceDeletionAssetIds);
+        } catch (error) {
+          devLog('Pixory source asset batch deletion was not completed:', error);
+        }
+        if (!sourceDeleted) {
+          sourceDeletionFailureCount += pendingSourceDeletionAssetIds.length;
+        }
       }
 
       setImportProgressLabel(null);
@@ -1058,30 +1084,22 @@ export function ImportImagesScreen({
         </DevOnlyCard>
       </View>
       <AppDialog
+        dismissible={false}
         message="移动模式会先把素材完整导入 Pixory，再请求 Android 删除相册原文件。系统删除确认仍需每次由你决定；文件来源始终只复制。"
-        onClose={() => {
-          setMoveImportWarningVisible(false);
-          setMoveImportWarningOptOut(false);
-        }}
-        onPrimary={() => void confirmMoveImportWarning()}
+        onClose={() => setMoveImportWarningVisible(false)}
+        onPrimary={() => setMoveImportWarningVisible(false)}
         primaryLabel="知道了"
         secondaryLabel={null}
         title="移动模式说明"
         visible={moveImportWarningVisible}
       >
         <Pressable
-          accessibilityLabel="下次不再弹出移动模式说明"
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: moveImportWarningOptOut }}
-          onPress={() => setMoveImportWarningOptOut((current) => !current)}
+          accessibilityLabel="知道了，下次不再弹出移动模式说明"
+          accessibilityRole="button"
+          onPress={() => void dismissMoveImportWarningPermanently()}
           style={({ pressed }) => [styles.warningOptOutRow, pressed && styles.pressed]}
         >
-          <Ionicons
-            color={moveImportWarningOptOut ? colors.primary.active : colors.text.tertiary}
-            name={moveImportWarningOptOut ? 'checkbox' : 'square-outline'}
-            size={18}
-          />
-          <Text style={styles.warningOptOutText}>下次不再弹出</Text>
+          <Text style={styles.warningOptOutText}>知道了，下次不再弹出</Text>
         </Pressable>
       </AppDialog>
       <AppDialog

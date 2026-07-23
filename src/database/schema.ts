@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 45;
+export const DATABASE_VERSION = 46;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1030,6 +1030,10 @@ CREATE TABLE IF NOT EXISTS ai_continuity_import_effects (
 
 CREATE INDEX IF NOT EXISTS idx_ai_continuity_import_effects_session
   ON ai_continuity_import_effects(importSessionId, effectOrder, createdAt);
+`;
+
+export const MIGRATION_STATEMENTS_V46 = `
+ALTER TABLE ai_threads ADD COLUMN contextHistoryRoundLimit INTEGER NOT NULL DEFAULT 30;
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

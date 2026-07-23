@@ -439,7 +439,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
 
       <AppDialog
         accent="ai"
-        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。`}
+        message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。移动会保留聊天、角色卡及头像、角色与线程记忆、附件、收藏和摘要；仍处于续聊导入回退窗口的会话，移动后会结束该回退窗口。IP/知识库绑定会话暂不支持跨空间移动。`}
         onClose={() => {
           if (!busy) {
             setPendingAction(null);

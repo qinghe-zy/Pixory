@@ -194,6 +194,136 @@ export const aiRoleCardRepository = {
     return row ? mapRoleCardRow(row) : null;
   },
 
+  async findAnyById(db: SQLiteDatabase, roleCardId: string): Promise<AiRoleCardRecord | null> {
+    const row = await db.getFirstAsync<AiRoleCardRow>(
+      'SELECT * FROM ai_role_cards WHERE id = ?',
+      roleCardId
+    );
+    return row ? mapRoleCardRow(row) : null;
+  },
+
+  async importRoleCardForSpaceMove(
+    db: SQLiteDatabase,
+    roleCard: AiRoleCardRecord,
+    targetSpace: PixorySpace,
+    targetRoleCardId: string,
+    targetAvatarUri: string | null
+  ): Promise<void> {
+    await db.runAsync(
+      `INSERT INTO ai_role_cards (
+        id,
+        space,
+        name,
+        description,
+        prompt,
+        firstMessage,
+        alternateGreetingsJson,
+        sourceType,
+        sourceJson,
+        defaultLanguage,
+        defaultModelId,
+        boundaryMode,
+        avatarEnabled,
+        avatarUri,
+        tagsJson,
+        createdAt,
+        updatedAt,
+        archivedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      targetRoleCardId,
+      targetSpace,
+      roleCard.name,
+      roleCard.description,
+      roleCard.prompt,
+      roleCard.firstMessage,
+      JSON.stringify(roleCard.alternateGreetings),
+      roleCard.sourceType,
+      roleCard.sourceJson,
+      roleCard.defaultLanguage,
+      roleCard.defaultModelId,
+      roleCard.boundaryMode,
+      roleCard.avatarEnabled ? 1 : 0,
+      targetAvatarUri,
+      JSON.stringify(roleCard.tags),
+      roleCard.createdAt,
+      roleCard.updatedAt
+    );
+  },
+
+  async setArchivedAtForSpaceMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    roleCardId: string,
+    archivedAt: string | null
+  ): Promise<void> {
+    await db.runAsync(
+      `UPDATE ai_role_cards
+       SET archivedAt = ?
+       WHERE id = ? AND space = ?`,
+      archivedAt,
+      roleCardId,
+      space
+    );
+  },
+
+  async deleteUnreferencedRoleCardsAfterThreadMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    roleCardIds: string[]
+  ): Promise<AiRoleCardRecord[]> {
+    const deletedRoleCards: AiRoleCardRecord[] = [];
+    for (const roleCardId of Array.from(new Set(roleCardIds))) {
+      const reference = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM ai_threads WHERE roleCardId = ?',
+        roleCardId
+      );
+      if ((reference?.count ?? 0) > 0) {
+        continue;
+      }
+      const roleCard = await aiRoleCardRepository.findAnyById(db, roleCardId);
+      if (!roleCard || roleCard.space !== space) {
+        continue;
+      }
+      const memoryRows = await db.getAllAsync<{ id: string }>(
+        `SELECT id FROM ai_memories
+         WHERE space = ? AND scope = 'role' AND scopeId = ?`,
+        space,
+        roleCardId
+      );
+      for (const memory of memoryRows) {
+        await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', memory.id);
+      }
+      await db.runAsync(
+        `DELETE FROM ai_memories
+         WHERE space = ? AND scope = 'role' AND scopeId = ?`,
+        space,
+        roleCardId
+      );
+      await db.runAsync(
+        'DELETE FROM ai_role_cards WHERE id = ? AND space = ?',
+        roleCardId,
+        space
+      );
+      deletedRoleCards.push(roleCard);
+    }
+    return deletedRoleCards;
+  },
+
+  async isAvatarUriReferenced(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    avatarUri: string
+  ): Promise<boolean> {
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM ai_role_cards
+       WHERE space = ? AND avatarUri = ?`,
+      space,
+      avatarUri
+    );
+    return (row?.count ?? 0) > 0;
+  },
+
   async findActiveByImportSource(
     db: SQLiteDatabase,
     space: PixorySpace,

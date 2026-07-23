@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-12（AI 流式终态与布局清理解耦、独立日期项与固定宽度 continuation、AI completed 续答/回复分流、AI 帮答弹窗、聊天侧边抽屉、顶部入口与流式 tail replay 契约、关于页内置产品文档阅读、产品文档图片本地缓存）
-适用版本：Pixory 2.6.5
+最后更新：2026-07-23（在 2026-07-13 能力基线基础上补充素材来源、模型数据说明与聊天跨空间迁移边界）
+适用版本：Pixory 2.6.6
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -16,6 +16,18 @@
 - 帮助 review 时判断改动是否遗漏相关模块、数据、测试或隐私边界。
 
 本文档依据当前源码、测试和发布配置整理。若与代码冲突，以代码和可运行行为为准，并优先修正文档。
+
+详细审计证据、架构观察、已知风险和下次增量复核方法见 [`docs/product-capability-baseline.md`](product-capability-baseline.md)。独立开发的新 AI 软件不属于 Pixory 功能矩阵，两者不默认共享产品定位、数据或发布计划。
+
+### 状态定义
+
+| 状态 | 含义 |
+| --- | --- |
+| 已实现 | 已存在完整用户入口和主要业务闭环，代码与现有验证均支持该声明 |
+| 部分实现 | 主链路可用，但存在明确缺口、边界或尚未闭环的文件/数据/恢复路径 |
+| 实验/不上线 | 仓库中存在代码或内部入口，但当前不属于正式发布范围，不应写入用户宣传或发布说明 |
+| 规划 | 仅有方向、设计或预留接口，不能作为现有能力宣传 |
+| 待验证 | 代码或文档存在，但缺少足够的运行时、设备端或端到端证据 |
 
 ---
 
@@ -34,7 +46,9 @@
 | 批量管理 | 已实现 | 多选、批量移动、批量打标签、批量整理、撤销 | `BatchManageImagesScreen`, `BatchImageOrganizePanel` |
 | 重复检测 | 已实现 | exact hash、visual hash、重复审查、跳过导入 | `DuplicateReviewScreen`, `duplicateDetectionService` |
 | 回收站 | 已实现 | 软删除、恢复、清空、过期清理 | `TrashScreen`, `trashService` |
-| 备份/导入导出 | 已实现 | 全量备份、单 IP 备份、隐私备份、加密包、系统目录导出 | `BackupScreen`, `BackupExportManagerScreen`, `backupService` |
+| 备份/导入导出 | 部分实现 | 已支持数据库、原图、缩略图备份，以及单 IP、隐私加密包和系统目录导出；AI 文档文件、聊天附件文件、角色头像尚未完整纳入备份包 | `BackupScreen`, `BackupExportManagerScreen`, `backupService` |
+| AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、引用和阅读；入口、术语、版本更新、跨资料搜索、备份恢复尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService` |
+| Live2D 桌宠 | 实验/不上线 | 代码和会话配置入口存在，但因缺少合适且权属清晰的正式素材，当前版本不发布、不宣传 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
 | 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件 | `MeScreen`, `PersonalUnlockModal`, `personalSystemService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理 | `StorageUsageScreen`, `storageUsageService` |
@@ -49,7 +63,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流、embedding | `src/ai/aiProviderService.ts`, `src/ai/providers/` |
-| Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
+| Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理；设置页静态说明 API Key 本地保护、对话请求发送给所选模型服务商，且单次测试成功不代表永久可用 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
 | 发送与生成 | 创建用户消息、assistant placeholder、stream provider、stop、continue、retry、regenerate、rewrite；已停止/失败且有正文的 assistant 回复可在原气泡内继续生成，续写阶段保留已有正文/思考上下文但只追加正文；已完成的 assistant 回复在当前末尾保持“续答”，会在下方生成一条新的 assistant 消息继续往下说且不写入伪造的 user/system 历史；当该 assistant 下方已经有后续消息时，同一入口改为“回复”，允许用户从这条历史 AI 消息重新接话并切出新的分支路线；聊天输入区新增 `AI 帮答`，基于当前可见分支、当前线程模型、人设提示词、摘要/画像/稳定记忆生成可直接发送的用户候选，短句固定三条、长句固定一条且允许 20–200 字自由安排句数和节奏；JSON、数量、重复或长度校验失败会携带原因自动纠错，首次加两次纠错仍失败才统一提示重试，provider/网络/取消错误不进入格式重试；刷新会追加新页但不写入消息历史；长文本发送并清空后会立即把编辑器收回默认两行高度，不依赖 Android 再次触发内容尺寸事件；聊天附件会在本轮发送中进入上下文，图片按支持视觉的 provider 作为多模态 payload 发送，文档导入线程材料并注入摘录；聊天页不提供视频附件入口 | `aiChatService`, `aiGenerationManager`, `AiChatComposer`, `providers/*` |
 | 流式性能 | generationId 防旧流污染、首 token live 显示、外部 streaming store；Provider delta 热路径只做轻量分发与 chunk 累积，显示和 SQLite 由独立合批调度完成，即使最后一个 delta 后也会 drain；generation metrics 记录内容无关的 Provider 字符数、UI backlog、handler/persist/tail 合并耗时，开发诊断按 generation identity 关联且不进入普通页面；查看历史时使用 measured tail occupancy、真实 FlatList spacer、block 级高度预留/显式测量/cache、reasoning/content lane 隔离；上滑后继续生成时，reasoning replay 保持在同一透明思考表面，content 独立进入固定 `94%` 宽度的连续正文气泡，字符/token 继续实时出现，同一行追加不改变气泡宽度，换行才增加正文高度，内部块不重复绘制边框或叠加卡片 inset；滑回最低处时，near-bottom 只预热，只有原生 offset 进入底部 `32px` 安全区、拖动与惯性结束、滚动稳定、尾块全部提升测量且高度债清零后，才在下一帧二次确认并恢复普通 streaming renderer、内联光标和自动跟随；completed/failed/stopped 业务终态、完成时间、错误与思考计时立即发布，不等待 replay 离屏，布局树则继续保持原位；离屏终态 reload 固定绑定该次 streaming identity 的线程，避免路由变化后刷新到其他会话；只有整条回放消息完全离开视口、尾块全部提升并重新测量且高度债清零后才清理 tail 并 reload 完整消息，避免可见区域换壳和坐标跳动；内容或终态签名改变时即使块高度不变也会主动重新测量；tail replay block key 与 generationId/startOffset/blockType 解耦并使用 `blockIndex`/`ordinal` 恒等契约，终态 stopped/failed/completed 会 finalize 开放尾块；tail replay 支持 feature flag/kill-switch，关闭时的 continuation fallback 同样保持 reasoning/content 视觉隔离；idle timeout 会走 failed 终态并和用户 stopped UX 区分；dev 环境记录 promoted/mounted/measured/firstTextVisible 与 mountCount 红线；低频 persist、后台 flush | `aiStreamingRuntime`, `aiStreamingPerformanceDiagnostics`, `aiStreamingMessageStore`, `aiStreamingTailModel`, `aiStreamingTailRenderContract`, `aiStreamingTailFeatureFlags`, `aiStreamingTailContinuation`, `aiStreamingBlockSplitter`, `aiStreamingHeightCache`, `AiChatScreen`, `AiStreamingMessageText`, `AiStreamingTailSpacer`, `AiMeasuredStreamBlock`, `AiStreamingTailMessageSegment`, `AiStreamingTailContinuationBubble` |
@@ -57,13 +71,17 @@
 | Prompt | stable/dynamic layer、角色卡 frame、material rules、history window、current user request | `promptBuilder` |
 | Prompt/cache | stable prefix hash、retrieval hash、cache key、Anthropic breakpoint、禁止 diagnostics 污染 prompt/cache | `aiPromptCache` |
 | 首 token pipeline | fast-path classifier、normal skip retrieval、资料模糊引用 fail-closed、keyword/full retrieval 分层 | `aiChatFastPath`, `aiRetrievalService` |
-| 上下文预算 | 真实 model context window、历史裁剪、保护 role/current request/retrieval/memory | `aiContextBudget` |
+| 上下文预算 | 真实 model context window（无法读取时回退 512K）、会话级最近对话轮数滑杆（一问一答算一轮）、历史裁剪、保护 role/current request/retrieval/memory | `aiContextBudget`, `aiContextSettings`, `AiContextSlider` |
 | 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句 | `sillyTavernRoleCardParser`, `aiRoleCardRepository` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
 | 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
+| 记忆导入/导出 | 续聊 Markdown 导出当前线程摘要、画像上下文、active memory 和上一轮对话；重新导入时解析原生 payload 或外部连续性块，经审读门禁后分别写入 summary/profile/memory，并保留可回退效果记录；当前不是独立的任意记忆库文件格式 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `AiSessionConfigScreen` |
 | 深度记忆 | 默认开启；更早维护本会话画像、自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板；全局用户画像在 AI 全局设置中维护；未配置远程记忆模型时使用本地轻量整理降级 | `aiMemory*`, `AiMemoryBoardScreen`, `AiProviderSettingsScreen` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
+| 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动和删除；尚无统一收件箱、全局跨资料搜索、内容 hash/版本、来源更新检测、同步状态和完整备份恢复 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen` |
+| 产品帮助文档 | 关于页进入应用内 Markdown 阅读，官网图片后台预取并持久缓存；这是产品帮助链路，不会自动作为用户知识库或系统 RAG 材料 | `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService`, `productManualMarkdown` |
+| Live2D 桌宠 | 实验/不上线；保留现有代码用于未来评估，正式启用前必须解决素材授权、远程依赖、隐私说明和 Android 性能验证 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
 | 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线；创作路线树入口位于会话设置的当前会话模块；Android 路线树避免全画布 SVG/bitmap，长路线用局部连线、限量网格与可见区渲染降低卡顿和闪退风险 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen`, `BranchTreeCanvas`, `AiSessionConfigScreen` |
 | 聊天搜索 | 当前路线 local exact/fuzzy 搜索，定位回聊天 | `AiChatSearchScreen`, `aiThreadRepository` |
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
@@ -97,7 +115,7 @@
 | 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
-| 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且始终复制；相册移动在 Pixory 导入完成后请求 Android 删除原件，取消或删除失败时保留导入结果并明确提示 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService` |
+| 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且始终复制；相册移动在全部成功素材完成 Pixory 本地持久化后，合并图片/视频 assetId 发起一次 Android 系统删除确认，取消、assetId 缺失或删除失败时保留导入结果并明确提示；说明弹窗提供“知道了”和“知道了，下次不再弹出”两个直接动作 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaSourceDeletionService`, `imageImportService`, `videoImportService` |
 | 资源包导入 | zip/cbz 包选择、zip-slip 防护、图片识别、按文件夹映射分组 | `packageImportService`, `ArchiveReaderScreen` |
 | 分享接入导入 | Android 分享图片/视频/文件到 Pixory | `ShareCollectScreen`, native media module |
 
@@ -149,13 +167,19 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| 普通备份 | normal space 全量备份，包含数据库、原图、缩略图、AI 文档/角色资产 | `backupService`, `BackupScreen` |
+| 普通备份 | 部分实现：当前 normal space 备份包含数据库、原图和缩略图；不会复制 `ai_documents`、聊天附件文件或 `ai_role_avatars` | `backupService`, `BackupScreen`, `fileStorageService` |
 | 单 IP 备份 | 指定 IP 备份 | `backupService` |
 | 隐私备份 | personal plain、personal encrypted、all encrypted pack | `backupService`, `personalSystemService` |
 | 备份导入 | plain backup merge、同名 IP 处理、encrypted personal pack 导入 | `backupService` |
 | 系统目录导出 | SAF 目录选择、导出到系统文件夹、进度 | `BackupExportManagerScreen`, native media module |
 | 存储统计 | 原图、缩略图、缓存、备份、回收站、IP 存储明细 | `StorageUsageScreen`, `storageUsageService`, `IpStorageDetailScreen` |
 | 缓存清理 | image memory/disk cache、temp cache、daily startup cleanup | `cacheCleanupService` |
+
+当前备份边界必须按以下方式理解：
+
+- AI 线程、消息、记忆、角色卡和材料索引等数据库记录会随对应空间数据库进入备份。
+- 数据库记录引用的 AI 文档原文件、线程附件文件和角色头像文件目前没有被 `backupService` 复制；换机或重装恢复后可能出现记录仍在但文件 URI 失效。
+- 在文件覆盖补齐并完成真实设备“导出 → 清空/重装 → 导入 → 打开文档/附件/头像”验证前，不得对外承诺 AI 数据可以完整恢复。
 
 ---
 
@@ -164,7 +188,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | 空间模型 | normal/personal 双数据库/双文件目录，route 携带 space | `database/db`, `route-space-policy`, `App.tsx` |
-| 聊天跨空间迁移 | 线程、消息、分支、引用、线程材料和续聊导入元数据按外键依赖顺序迁移；跨空间后锁定旧空间的续聊回退窗口，避免旧 effect 把记忆/画像写回错误空间 | `aiChatService`, `aiThreadRepository`, `aiDocumentService` |
+| 聊天跨空间迁移 | 普通且已停止生成、未使用会话专属 API Key 的线程，可连同消息、分支、引用、附件与文件、收藏、线程材料、线程记忆/摘要/维护状态、线程画像、角色卡完整配置/头像/角色记忆和续聊导入元数据按依赖顺序迁移；共享角色按稳定 `roleCardId` 去重，同批或分批移动到已有目标角色时复用目标卡并只补齐缺失记忆，不重复建卡或覆盖目标侧编辑；同一角色仍被源空间其他线程使用时保留源副本，无引用时才清理源角色及未共享头像；跨空间后清除仅在源数据库有效的素材数字引用，源空间同步清理线程记忆和独立 FTS，旧续聊回退窗口在目标空间锁定；IP/知识库绑定线程暂不跨独立空间数据库移动，避免静默错绑 | `aiChatService`, `aiThreadSpaceMovePolicy`, `aiRoleCardRepository`, `aiThreadRepository`, `aiDocumentService` |
 | 密码 | 设置、验证、修改、重置隐私系统 | `personalSystemService`, `PersonalUnlockModal` |
 | 锁定 | 后台 grace period、解锁 modal、普通/隐私路由隔离 | `App.tsx`, `PersonalUnlockModal` |
 | 隐私任务 token | 长任务中校验 session token，防止锁定后继续写入 | `personalTaskToken` |
@@ -219,17 +243,26 @@
 
 - 小改动：更新对应矩阵行。
 - 新模块：新增功能域小节，并补充主要入口、文件和测试。
-- 功能下线：标记为“移除”或删除条目，并说明替代路径。
+- 功能下线或暂不上线：保留条目并标记“实验/不上线”或“移除”，说明原因和替代路径，避免仓库残留代码被误判为已发布能力。
 - 发布前：检查本文档是否与 release notes、README、测试文件和源码入口一致。
+- 官网手册正文以 `docs/manual.md` 为事实源；`docs/manual.html` 在运行时读取该文件。应用内手册 `src/content/productManualMarkdown.ts` 是独立内嵌副本，修改用户手册时必须在同一变更中同步。
+
+### 下次升级的增量复核方法
+
+1. 先读取本矩阵和 `docs/product-capability-baseline.md`，不要默认重新全仓扫描。
+2. 从基线提交到当前提交列出变更文件：`git diff --name-only <baseline-commit>..HEAD`。
+3. 优先核对变更涉及的页面/导航、service/repository、数据库迁移、原生桥、导入导出、隐私/存储/发布配置和测试。
+4. 对每项用户可见变化更新矩阵状态、入口、边界和证据；代码存在但未发布的功能必须保持“实验/不上线”。
+5. 运行 `pnpm typecheck`、`pnpm test` 和 `git diff --check`，并把结果与未验证项写入能力基线。
+6. 只有基线缺失、可信度不足、发生大规模架构重写或增量范围无法确定时，才重新进行全仓扫描。
 
 ## 14. 留给未来的数据拓展接口
 
-2.5.6 版本重构了 \milestoneService.ts\ 与 Markdown 生成引擎，已经预留了极强的横向扩展性：
+2.5.6 版本重构了 `milestoneService.ts` 与 Markdown 生成引擎，并预留了以下扩展点；这些内容属于规划，不是当前已上线功能：
 
 1. **更多数据聚合接口**
-   目前底层已经通过 \
-unWithDatabaseSpace\ 支持了跨空间的 SQLite 聚合。未来如果要增加“最长连续聊天天数”、“总使用时长”等维度的统计，只需在 \getAppMilestones\ 中新增一条轻量级查询。
+   目前底层已经通过 `runWithDatabaseSpace` 支持跨空间的 SQLite 聚合。未来如果要增加“最长连续聊天天数”“总使用时长”等维度的统计，可以在 `getAppMilestones` 中增加相应查询。
 2. **多模态图表/年度报告接口**
-   在 \generateMilestonesDetailMarkdown\ 方法中，我们可以注入基于 Mermaid 或者 Chart.js 的图表语法。现有的 \AiMarkdownReader\ 已具备拦截拓展标签的能力，未来可以通过极小改动在阅读器中直接渲染“活跃度热力图”、“情感倾向饼图”。
+   `generateMilestonesDetailMarkdown` 可继续扩展图表输出；在实现渲染器、移动端性能和可访问性验证前，不应把热力图或情感图表列为现有能力。
 3. **沉浸式深链分发机制 (Deep Link Interception)**
-   目前的 WebView \onLinkPress\ 已支持了 \pixory://ip/...\ 和 \pixory://thread/...\。未来若要打通从手帐直接跳入“某个回忆节点 (Memory)”、“某张指定的图片 (Image)”，只需在 URL Schema 里新增对应的前缀，在 \MilestonesDetailScreen\ 中增加一行业务路由推送即可。
+   当前 WebView `onLinkPress` 已支持 `pixory://ip/...` 和 `pixory://thread/...`。未来可扩展 Memory/Image 深链，但仍需补充路由权限、隐私空间隔离和失效目标处理。

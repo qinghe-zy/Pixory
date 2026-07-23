@@ -46,6 +46,7 @@ export interface ImportImagesToIpParams {
   pickedAssets: PickedImageAsset[];
   duplicateDecision?: DuplicateImportDecision;
   imageImportSourceMode?: ImageImportSourceMode;
+  deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -60,6 +61,7 @@ export interface BuildImageAssetFromPickedFileParams {
   pickedAsset: PickedImageAsset;
   duplicateDecision?: DuplicateImportDecision;
   imageImportSourceMode?: ImageImportSourceMode;
+  deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -75,6 +77,7 @@ export interface ImportSingleImageParams {
   pickedAsset: PickedImageAsset;
   duplicateDecision?: DuplicateImportDecision;
   imageImportSourceMode?: ImageImportSourceMode;
+  deferSourceDeletion?: boolean;
   taskToken?: PersonalTaskToken | null;
 }
 
@@ -94,6 +97,7 @@ export interface PendingImageAssetImport {
   sourceAssetId: string | null;
   duplicateDecision: DuplicateImportDecision;
   imageImportSourceMode: ImageImportSourceMode;
+  deferSourceDeletion: boolean;
   isFavorite: boolean;
   note: string | null;
   taskToken?: PersonalTaskToken | null;
@@ -101,6 +105,7 @@ export interface PendingImageAssetImport {
 
 export interface ImportedImageResult {
   image: ImageAssetRecord;
+  pendingSourceDeletionAssetId: string | null;
   sourceDeletionNotice: MoveDeletionNotice | null;
   tags: TagRecord[];
 }
@@ -445,18 +450,26 @@ async function performSingleImageImport(
     });
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
+    let pendingSourceDeletionAssetId: string | null = null;
     if (pendingImageAsset.imageImportSourceMode === 'move') {
-      let sourceDeleted = false;
-      try {
-        sourceDeleted = await deleteImportedSourceAsset(pendingImageAsset);
-      } catch (error) {
-        devLog('Pixory source image deletion was not completed:', error);
+      if (pendingImageAsset.deferSourceDeletion && pendingImageAsset.sourceAssetId) {
+        pendingSourceDeletionAssetId = pendingImageAsset.sourceAssetId;
+      } else if (pendingImageAsset.deferSourceDeletion) {
+        sourceDeletionNotice = toMoveDeletionNotice(false);
+      } else {
+        let sourceDeleted = false;
+        try {
+          sourceDeleted = await deleteImportedSourceAsset(pendingImageAsset);
+        } catch (error) {
+          devLog('Pixory source image deletion was not completed:', error);
+        }
+        sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
       }
-      sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
     }
 
     return {
       image: createdImage,
+      pendingSourceDeletionAssetId,
       sourceDeletionNotice,
       tags: resolvedTags,
     };
@@ -574,6 +587,7 @@ export async function buildImageAssetFromPickedFile(
     sourceAssetId,
     duplicateDecision: params.duplicateDecision ?? 'importAll',
     imageImportSourceMode,
+    deferSourceDeletion: params.deferSourceDeletion ?? false,
     isFavorite: Boolean(isFavorite),
     note: normalizeOptionalText(note) ?? null,
     taskToken: params.taskToken ?? null,
@@ -604,6 +618,7 @@ export async function importSingleImage(
     pickedAsset,
     duplicateDecision: params.duplicateDecision,
     imageImportSourceMode: params.imageImportSourceMode,
+    deferSourceDeletion: params.deferSourceDeletion,
     taskToken: params.taskToken ?? null,
   });
 
@@ -660,6 +675,7 @@ export async function importImagesToIp(
         pickedAsset,
         duplicateDecision: params.duplicateDecision,
         imageImportSourceMode: params.imageImportSourceMode,
+        deferSourceDeletion: params.deferSourceDeletion,
         taskToken: params.taskToken ?? null,
       });
       const importedImage = await performSingleImageImport(db, pendingImageAsset, resolvedTags);

@@ -24,12 +24,19 @@ test('import form exposes independent right-aligned album and file source contro
   assert.match(screen, /<LightFormSection[\s\S]{0,360}title="选择视频"[\s\S]{0,160}>/);
 });
 
-test('move warning has one acknowledgement action and persists opt-out only on acknowledgement', () => {
+test('move warning has direct acknowledge and acknowledge-forever actions', () => {
   const screen = read('src/screens/ImportImagesScreen.tsx');
+  const dialog = read('src/components/AppDialog.tsx');
 
   assert.match(screen, /primaryLabel="知道了"/);
   assert.match(screen, /secondaryLabel=\{null\}/);
-  assert.match(screen, /下次不再弹出/);
+  assert.match(screen, /dismissible=\{false\}/);
+  assert.match(screen, />知道了，下次不再弹出</);
   assert.match(screen, /setMoveImportWarningDismissed/);
-  assert.match(screen, /confirmMoveImportWarning/);
+  assert.match(screen, /dismissMoveImportWarningPermanently/);
+  assert.doesNotMatch(screen, /moveImportWarningOptOut/);
+  assert.doesNotMatch(screen, /accessibilityRole="checkbox"/);
+  assert.match(dialog, /dismissible\?:\s*boolean/);
+  assert.match(dialog, /onRequestClose=\{dismissible \? onClose : undefined\}/);
+  assert.match(dialog, /dismissible \? <Pressable[\s\S]*onPress=\{onClose\}/);
 });

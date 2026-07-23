@@ -364,6 +364,7 @@ export interface CreateAiThreadInput {
   roleSnapshotJson?: string;
   roleInstructionWeight?: AiRoleInstructionWeight;
   replyPreference?: AiReplyPreference;
+  contextHistoryRoundLimit?: number;
   thinkingDisabled?: boolean;
   systemPrompt?: string;
   materialRulesSnapshot?: string | null;
@@ -405,6 +406,7 @@ export type UpdateAiThreadPatch = Partial<
     | 'roleSnapshotJson'
     | 'roleInstructionWeight'
     | 'replyPreference'
+    | 'contextHistoryRoundLimit'
     | 'thinkingDisabled'
     | 'systemPrompt'
     | 'materialRulesSnapshot'
@@ -608,8 +610,15 @@ export interface ReplaceCitationInput {
 export interface AiThreadExportSnapshot {
   thread: AiThreadRow;
   messages: AiMessageRecord[];
+  attachments: AiMessageAttachmentRecord[];
   citations: AiCitationRow[];
   versions: AiMessageVersionRow[];
+  favorites: AiMessageFavoriteRecord[];
+  memorySettings: AiThreadMemorySettingsRecord | null;
+  summary: AiThreadSummaryRecord | null;
+  threadMemories: AiMemoryRecord[];
+  memoryJob: AiThreadMemoryJobRecord | null;
+  summarySegments: AiThreadSummarySegmentRecord[];
   branchRouteMetadata: AiBranchRouteMetadataRecord[];
   continuityImportSessions: AiContinuityImportSessionRecord[];
   continuityImportBlocks: AiContinuityImportBlockRecord[];
@@ -642,6 +651,9 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     roleSnapshotJson: row.roleSnapshotJson,
     roleInstructionWeight: row.roleInstructionWeight === 'high' ? 'high' : 'default',
     replyPreference: row.replyPreference === 'concise' || row.replyPreference === 'detailed' ? row.replyPreference : 'auto',
+    contextHistoryRoundLimit: Number.isFinite(row.contextHistoryRoundLimit)
+      ? Math.max(1, Math.floor(row.contextHistoryRoundLimit))
+      : 30,
     thinkingDisabled: sqliteToBoolean(row.thinkingDisabled),
     boundaryMode: row.boundaryMode,
     systemPrompt: row.systemPrompt,
@@ -1204,6 +1216,7 @@ export const aiThreadRepository = {
         roleSnapshotJson,
         roleInstructionWeight,
         replyPreference,
+        contextHistoryRoundLimit,
         thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
@@ -1213,7 +1226,7 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       input.id,
       input.space,
       input.contextType,
@@ -1232,6 +1245,7 @@ export const aiThreadRepository = {
       input.roleSnapshotJson ?? '{}',
       input.roleInstructionWeight ?? 'default',
       input.replyPreference ?? 'auto',
+      input.contextHistoryRoundLimit ?? 30,
       booleanToSqlite(input.thinkingDisabled ?? false),
       input.systemPrompt ?? '',
       input.materialRulesSnapshot ?? null,
@@ -1266,6 +1280,9 @@ export const aiThreadRepository = {
       roleSnapshotJson: patch.roleSnapshotJson,
       roleInstructionWeight: patch.roleInstructionWeight,
       replyPreference: patch.replyPreference,
+      contextHistoryRoundLimit: patch.contextHistoryRoundLimit === undefined
+        ? undefined
+        : Math.max(1, Math.floor(patch.contextHistoryRoundLimit)),
       thinkingDisabled: patch.thinkingDisabled === undefined ? undefined : booleanToSqlite(patch.thinkingDisabled),
       systemPrompt: patch.systemPrompt,
       materialRulesSnapshot: patch.materialRulesSnapshot,
@@ -1392,6 +1409,12 @@ export const aiThreadRepository = {
        ORDER BY ai_message_citations.createdAt ASC`,
       threadId
     );
+    const attachments = await db.getAllAsync<AiMessageAttachmentRecord>(
+      `SELECT * FROM ai_message_attachments
+       WHERE threadId = ?
+       ORDER BY createdAt ASC`,
+      threadId
+    );
     const versions = await db.getAllAsync<AiMessageVersionRow>(
       `SELECT ai_message_versions.*
        FROM ai_message_versions
@@ -1406,6 +1429,37 @@ export const aiThreadRepository = {
        FROM ai_continuity_import_sessions
        WHERE threadId = ?
        ORDER BY createdAt ASC`,
+      threadId
+    );
+    const favorites = await db.getAllAsync<AiMessageFavoriteRecord>(
+      `SELECT * FROM ai_message_favorites
+       WHERE threadId = ?
+       ORDER BY createdAt ASC`,
+      threadId
+    );
+    const memorySettingsRow = await db.getFirstAsync<AiThreadMemorySettingsRow>(
+      'SELECT * FROM ai_thread_memory_settings WHERE threadId = ?',
+      threadId
+    );
+    const summary = await db.getFirstAsync<AiThreadSummaryRecord>(
+      'SELECT * FROM ai_thread_summaries WHERE threadId = ?',
+      threadId
+    );
+    const threadMemories = await db.getAllAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE space = ? AND scope = 'thread' AND scopeId = ?
+       ORDER BY createdAt ASC`,
+      thread.space,
+      threadId
+    );
+    const memoryJob = await db.getFirstAsync<AiThreadMemoryJobRecord>(
+      'SELECT * FROM ai_thread_memory_jobs WHERE threadId = ?',
+      threadId
+    );
+    const summarySegments = await db.getAllAsync<AiThreadSummarySegmentRecord>(
+      `SELECT * FROM ai_thread_summary_segments
+       WHERE threadId = ?
+       ORDER BY createdAt ASC, id ASC`,
       threadId
     );
     const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
@@ -1423,21 +1477,25 @@ export const aiThreadRepository = {
       threadId
     );
     return {
+      attachments,
       branchRouteMetadata,
       citations,
       continuityImportBlocks,
       continuityImportSessions,
+      favorites,
+      memoryJob,
+      memorySettings: memorySettingsRow ? mapMemorySettingsRow(memorySettingsRow) : null,
       messages,
+      summary,
+      summarySegments,
       thread,
+      threadMemories,
       userProfile,
       versions,
     };
   },
 
   async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
-    const knowledgeBaseId = snapshot.thread.boundKnowledgeBaseId
-      ? await db.getFirstAsync<{ id: string }>('SELECT id FROM ai_knowledge_bases WHERE id = ?', snapshot.thread.boundKnowledgeBaseId)
-      : null;
     await db.runAsync(
       `INSERT INTO ai_threads (
         id,
@@ -1448,6 +1506,7 @@ export const aiThreadRepository = {
         includeIpDocuments,
         title,
         titleStatus,
+        modelTitleGeneratedAt,
         providerId,
         modelId,
         sessionBaseUrl,
@@ -1456,6 +1515,7 @@ export const aiThreadRepository = {
         roleSnapshotJson,
         roleInstructionWeight,
         replyPreference,
+        contextHistoryRoundLimit,
         thinkingDisabled,
         systemPrompt,
         materialRulesSnapshot,
@@ -1467,15 +1527,16 @@ export const aiThreadRepository = {
         createdAt,
         updatedAt,
         archivedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       snapshot.thread.id,
       targetSpace,
       snapshot.thread.contextType,
       snapshot.thread.boundIpId ?? null,
-      knowledgeBaseId?.id ?? null,
+      snapshot.thread.boundKnowledgeBaseId ?? null,
       snapshot.thread.includeIpDocuments,
       snapshot.thread.title,
       snapshot.thread.titleStatus,
+      snapshot.thread.modelTitleGeneratedAt ?? null,
       snapshot.thread.providerId ?? null,
       snapshot.thread.modelId ?? null,
       snapshot.thread.sessionBaseUrl ?? null,
@@ -1484,6 +1545,7 @@ export const aiThreadRepository = {
       snapshot.thread.roleSnapshotJson,
       snapshot.thread.roleInstructionWeight ?? 'default',
       snapshot.thread.replyPreference ?? 'auto',
+      snapshot.thread.contextHistoryRoundLimit ?? 30,
       snapshot.thread.thinkingDisabled ?? 0,
       snapshot.thread.systemPrompt,
       snapshot.thread.materialRulesSnapshot ?? null,
@@ -1601,6 +1663,7 @@ export const aiThreadRepository = {
         message.updatedAt,
         message.completedAt
       );
+      await aiThreadRepository.syncMessageFts(db, message);
     }
 
     for (const citation of snapshot.citations) {
@@ -1668,6 +1731,167 @@ export const aiThreadRepository = {
       await aiThreadRepository.syncMessageVersionFts(db, mapMessageVersionRow(version));
     }
 
+    for (const attachment of snapshot.attachments ?? []) {
+      await db.runAsync(
+        `INSERT INTO ai_message_attachments (
+          id, messageId, threadId, kind, name, localUri, documentId, mimeType, fileSize, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        attachment.id,
+        attachment.messageId,
+        attachment.threadId,
+        attachment.kind,
+        attachment.name,
+        attachment.localUri,
+        attachment.mimeType,
+        attachment.fileSize,
+        attachment.createdAt
+      );
+    }
+
+    for (const favorite of snapshot.favorites ?? []) {
+      const targetFavoriteKey = favorite.favoriteKey.startsWith(`${favorite.space}|`)
+        ? `${targetSpace}|${favorite.favoriteKey.slice(favorite.space.length + 1)}`
+        : favorite.favoriteKey;
+      await db.runAsync(
+        `INSERT INTO ai_message_favorites (
+          id, space, threadId, messageId, favoriteKey, branchRootMessageId, branchVersionIndex,
+          branchScopesJson, messageVersionIndex, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        favorite.id,
+        targetSpace,
+        favorite.threadId,
+        favorite.messageId,
+        targetFavoriteKey,
+        favorite.branchRootMessageId,
+        favorite.branchVersionIndex,
+        favorite.branchScopesJson,
+        favorite.messageVersionIndex,
+        favorite.createdAt,
+        favorite.updatedAt
+      );
+    }
+
+    if (snapshot.memorySettings) {
+      await db.runAsync(
+        `INSERT INTO ai_thread_memory_settings (threadId, deepMemoryEnabled, updatedAt)
+         VALUES (?, ?, ?)`,
+        snapshot.memorySettings.threadId,
+        booleanToSqlite(snapshot.memorySettings.deepMemoryEnabled),
+        snapshot.memorySettings.updatedAt
+      );
+    }
+
+    if (snapshot.summary) {
+      await db.runAsync(
+        `INSERT INTO ai_thread_summaries (
+          threadId, summary, decisions, openQuestions, lastMessageId, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        snapshot.summary.threadId,
+        snapshot.summary.summary,
+        snapshot.summary.decisions,
+        snapshot.summary.openQuestions,
+        snapshot.summary.lastMessageId,
+        snapshot.summary.updatedAt
+      );
+    }
+
+    for (const memory of snapshot.threadMemories ?? []) {
+      const movedMemory = {
+        ...memory,
+        space: targetSpace,
+        // Asset ids are local to a space-specific database. Keep the descriptive
+        // snapshot but never let numeric ids resolve to unrelated target records.
+        ipId: null,
+        groupId: null,
+        imageAssetId: null,
+      };
+      await db.runAsync(
+        `INSERT INTO ai_memories (
+          id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
+          confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson,
+          sourceKind, supersededByMemoryId, mergeReason, mergedAt, lastReconciledAt,
+          reconcileSourceMessageId, createdAt, updatedAt, deletedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        movedMemory.id,
+        movedMemory.space,
+        movedMemory.scope,
+        movedMemory.scopeId,
+        movedMemory.type,
+        movedMemory.content,
+        movedMemory.normalizedContent,
+        movedMemory.sourceMessageId,
+        movedMemory.confidence,
+        movedMemory.importance,
+        movedMemory.status,
+        movedMemory.lastUsedAt,
+        movedMemory.ipId,
+        movedMemory.groupId,
+        movedMemory.imageAssetId,
+        movedMemory.assetSnapshotJson,
+        movedMemory.sourceKind,
+        movedMemory.supersededByMemoryId,
+        movedMemory.mergeReason,
+        movedMemory.mergedAt,
+        movedMemory.lastReconciledAt,
+        movedMemory.reconcileSourceMessageId,
+        movedMemory.createdAt,
+        movedMemory.updatedAt,
+        movedMemory.deletedAt
+      );
+      await aiThreadRepository.syncMemoryFts(db, movedMemory);
+    }
+
+    if (snapshot.memoryJob) {
+      await db.runAsync(
+        `INSERT INTO ai_thread_memory_jobs (
+          threadId, pendingTurnCount, lastConsolidatedMessageId, lastCaptureNoticeJson,
+          lastCompressedMessageId, uncompressedRoundCount, completedMessageCountAtProfileUpdate,
+          lastProfileUpdatedAt, profileUpdateCooldownUntil, lastMaintenanceError,
+          lastMaintenanceModelProviderId, lastMaintenanceModelId, lastMaintenanceCompletedAt,
+          lastMaintenanceUsedFallback, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        snapshot.memoryJob.threadId,
+        snapshot.memoryJob.pendingTurnCount,
+        snapshot.memoryJob.lastConsolidatedMessageId,
+        snapshot.memoryJob.lastCaptureNoticeJson,
+        snapshot.memoryJob.lastCompressedMessageId,
+        snapshot.memoryJob.uncompressedRoundCount,
+        snapshot.memoryJob.completedMessageCountAtProfileUpdate,
+        snapshot.memoryJob.lastProfileUpdatedAt,
+        snapshot.memoryJob.profileUpdateCooldownUntil,
+        snapshot.memoryJob.lastMaintenanceError,
+        snapshot.memoryJob.lastMaintenanceModelProviderId,
+        snapshot.memoryJob.lastMaintenanceModelId,
+        snapshot.memoryJob.lastMaintenanceCompletedAt,
+        snapshot.memoryJob.lastMaintenanceUsedFallback,
+        snapshot.memoryJob.updatedAt
+      );
+    }
+
+    for (const segment of snapshot.summarySegments ?? []) {
+      await db.runAsync(
+        `INSERT INTO ai_thread_summary_segments (
+          id, threadId, space, kind, summaryText, startMessageId, endMessageId,
+          startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId,
+          createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        segment.id,
+        segment.threadId,
+        targetSpace,
+        segment.kind,
+        segment.summaryText,
+        segment.startMessageId,
+        segment.endMessageId,
+        segment.startAt,
+        segment.endAt,
+        segment.roundCount,
+        segment.sourceSegmentIdsJson,
+        segment.continuityImportSessionId,
+        segment.createdAt,
+        segment.updatedAt
+      );
+    }
+
     for (const block of snapshot.continuityImportBlocks ?? []) {
       await db.runAsync(
         `INSERT INTO ai_continuity_import_blocks (
@@ -1732,6 +1956,31 @@ export const aiThreadRepository = {
     }
   },
 
+  async restoreMessageAttachmentDocumentLinks(
+    db: SQLiteDatabase,
+    attachments: AiMessageAttachmentRecord[]
+  ): Promise<void> {
+    for (const attachment of attachments) {
+      if (!attachment.documentId) {
+        continue;
+      }
+      const document = await db.getFirstAsync<{ id: string; localUri: string | null }>(
+        'SELECT id, localUri FROM ai_documents WHERE id = ?',
+        attachment.documentId
+      );
+      if (!document?.localUri) {
+        throw new Error('聊天附件关联的文档迁移不完整。');
+      }
+      await db.runAsync(
+        'UPDATE ai_message_attachments SET documentId = ?, localUri = ? WHERE id = ? AND threadId = ?',
+        attachment.documentId,
+        document.localUri,
+        attachment.id,
+        attachment.threadId
+      );
+    }
+  },
+
   async deleteUserProfilesBoundToThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
     for (const threadId of threadIds) {
@@ -1744,6 +1993,25 @@ export const aiThreadRepository = {
   async deleteThreads(db: SQLiteDatabase, threadIds: string[]): Promise<number> {
     let deletedCount = 0;
     for (const threadId of threadIds) {
+      await db.runAsync('DELETE FROM ai_message_fts WHERE threadId = ?', threadId);
+      await db.runAsync('DELETE FROM ai_message_version_fts WHERE threadId = ?', threadId);
+      const memoryIds = await db.getAllAsync<{ id: string }>(
+        `SELECT id FROM ai_memories
+         WHERE scope = 'thread' AND scopeId = ?`,
+        threadId
+      );
+      if (memoryIds.length > 0) {
+        const ids = memoryIds.map((row) => row.id);
+        await db.runAsync(`DELETE FROM ai_memory_fts WHERE id IN (${makeInClause(ids)})`, ...ids);
+      }
+      const thread = await db.getFirstAsync<{ space: PixorySpace }>('SELECT space FROM ai_threads WHERE id = ?', threadId);
+      if (thread) {
+        await db.runAsync(
+          `DELETE FROM ai_memories WHERE space = ? AND scope = 'thread' AND scopeId = ?`,
+          thread.space,
+          threadId
+        );
+      }
       await this.deleteUserProfilesBoundToThreads(db, [threadId]);
       const result = await db.runAsync('DELETE FROM ai_threads WHERE id = ?', threadId);
       deletedCount += result.changes;
@@ -4145,6 +4413,99 @@ export const aiThreadRepository = {
       ...sourceVisibilityClause.values,
       input.limit ?? 80
     );
+  },
+
+  async listRoleMemoriesForSpaceMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    roleCardIds: string[]
+  ): Promise<AiMemoryRecord[]> {
+    const uniqueRoleCardIds = Array.from(new Set(roleCardIds));
+    if (uniqueRoleCardIds.length === 0) {
+      return [];
+    }
+    const placeholders = uniqueRoleCardIds.map(() => '?').join(', ');
+    return db.getAllAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE space = ? AND scope = 'role' AND scopeId IN (${placeholders})
+       ORDER BY createdAt ASC, id ASC`,
+      space,
+      ...uniqueRoleCardIds
+    );
+  },
+
+  async findRoleMemoriesForSpaceMoveByIds(
+    db: SQLiteDatabase,
+    memoryIds: string[]
+  ): Promise<AiMemoryRecord[]> {
+    const uniqueMemoryIds = Array.from(new Set(memoryIds));
+    if (uniqueMemoryIds.length === 0) {
+      return [];
+    }
+    const placeholders = uniqueMemoryIds.map(() => '?').join(', ');
+    return db.getAllAsync<AiMemoryRecord>(
+      `SELECT * FROM ai_memories
+       WHERE id IN (${placeholders})`,
+      ...uniqueMemoryIds
+    );
+  },
+
+  async importRoleMemoriesForSpaceMove(
+    db: SQLiteDatabase,
+    memories: AiMemoryRecord[]
+  ): Promise<void> {
+    for (const memory of memories) {
+      await db.runAsync(
+        `INSERT INTO ai_memories (
+          id, space, scope, scopeId, type, content, normalizedContent, sourceMessageId,
+          confidence, importance, status, lastUsedAt, ipId, groupId, imageAssetId, assetSnapshotJson,
+          sourceKind, supersededByMemoryId, mergeReason, mergedAt, lastReconciledAt,
+          reconcileSourceMessageId, createdAt, updatedAt, deletedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        memory.id,
+        memory.space,
+        memory.scope,
+        memory.scopeId,
+        memory.type,
+        memory.content,
+        memory.normalizedContent,
+        memory.sourceMessageId,
+        memory.confidence,
+        memory.importance,
+        memory.status,
+        memory.lastUsedAt,
+        memory.ipId,
+        memory.groupId,
+        memory.imageAssetId,
+        memory.assetSnapshotJson,
+        memory.sourceKind,
+        memory.supersededByMemoryId,
+        memory.mergeReason,
+        memory.mergedAt,
+        memory.lastReconciledAt,
+        memory.reconcileSourceMessageId,
+        memory.createdAt,
+        memory.updatedAt,
+        memory.deletedAt
+      );
+      await aiThreadRepository.syncMemoryFts(db, memory);
+    }
+  },
+
+  async deleteRoleMemoriesForSpaceMove(
+    db: SQLiteDatabase,
+    space: PixorySpace,
+    memoryIds: string[]
+  ): Promise<void> {
+    for (const memoryId of Array.from(new Set(memoryIds))) {
+      await db.runAsync('DELETE FROM ai_memory_fts WHERE id = ?', memoryId);
+      await db.runAsync(
+        `DELETE FROM ai_memories
+         WHERE id = ? AND space = ? AND scope = 'role'`,
+        memoryId,
+        space
+      );
+    }
   },
 
   async syncMemoryFts(db: SQLiteDatabase, memory: AiMemoryRecord): Promise<void> {

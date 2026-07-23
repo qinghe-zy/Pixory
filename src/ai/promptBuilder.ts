@@ -311,9 +311,6 @@ export function fitBuiltPromptToContextBudget(input: {
   modelContextWindowTokens?: number | null;
   prompt: BuiltPrompt;
 }): BuiltPrompt {
-  if (!input.modelContextWindowTokens || input.modelContextWindowTokens <= 0) {
-    return input.prompt;
-  }
   const budgeted = fitPromptBlocksToContextBudget({
     blocks: input.prompt.promptLayers.map((layer) => ({
       key: layer.name,

@@ -6,19 +6,21 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 本地素材库仍然是 Pixory 的地基。图片、视频、IP 设定、文档、记忆和角色资产都优先落在本地 SQLite 与应用私有文件目录中，方便备份、迁移、回溯和继续喂给 AI 使用。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.6.5.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.6.5`
+当前功能状态与实现边界以 [`docs/feature-matrix.md`](docs/feature-matrix.md) 为索引；2026-07-13 的源码级扫描证据、已知风险和后续增量复核方法保存在 [`docs/product-capability-baseline.md`](docs/product-capability-baseline.md)。
+
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.6.6.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.6.6`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.6.5
+### Pixory 2.6.6
 
-这一版继续收口 AI 流式回复的连续性，重点解决长回复结束、回看历史和返回最新之间的衔接问题：
+这一版聚焦长对话性能与上下文控制，保持流式输出节奏不变：
 
-- 优化流式回复的终态接管与回放，减少长回复结束时的跳动、重叠和旧内容串回。
-- 加固聊天底部跟随与回到底部的时序，让生成中、回看历史和返回最新之间切换更稳定。
-- 修复续答与 AI 帮答在连续操作中的重试和分流边界，并补齐对应的流式契约回归测试。
+- 优化流式消息处理与持久化路径，降低长回复中的额外计算开销。
+- 支持按会话设置最近对话轮数；上下文不足时优先保留最近完整问答节奏。
+- 完善跨空间会话和素材来源操作的安全边界与提示。
 
 ### Pixory 2.6.4
 
@@ -69,7 +71,7 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 下载地址：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.5.apk](https://mist01.com/downloads/Pixory-v2.6.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.6.apk](https://mist01.com/downloads/Pixory-v2.6.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 ## 产品定位
@@ -159,11 +161,13 @@ Pixory 提供全局搜索、标签结果页、全部图片、全局分组、收�
 
 ### 11. 备份、导入和资源包面向迁移
 
-Pixory 的备份目标是保留完整资料库。备份可以包含数据库、原图、缩略图和 manifest。
+Pixory 的备份目标是逐步覆盖完整资料库。当前普通空间备份包含数据库、原图、缩略图和 manifest；数据库中的 AI 线程、消息、记忆、角色卡和材料索引会随数据库进入备份。
+
+当前仍有明确边界：受管 AI 文档原文件、聊天附件文件和角色头像文件尚未完整复制进备份包。换机或重装前，应另外保留这些文件的原始来源；在该缺口补齐并完成真实设备恢复验证前，不应把当前备份理解为所有 AI 文件均可完整迁移。
 
 当前支持：
 
-- 完整备份。
+- 普通空间数据库与素材文件备份。
 - 单 IP 备份。
 - 普通备份包合并导入。
 - personal 加密包导入。
@@ -198,7 +202,7 @@ Pixory 支持 DeepSeek、OpenAI/OpenAI-compatible、Gemini 和 Claude。API Key 
 | --- | --- |
 | AI 陪伴聊天 | 长线程、流式回复、停止、重试、再生成、重写、分支路线、聊天搜索 |
 | 角色卡 | 手动角色、SillyTavern PNG/JSON 导入、兼容 PNG 导出、续聊 Markdown、头像、首句 |
-| 深度记忆 | 自动捕获、手动记忆、记忆板、用户画像、摘要片段、作用域和撤销 |
+| 深度记忆 | 自动捕获、手动记忆、记忆板、用户画像、摘要片段、作用域、撤销，以及通过续聊 Markdown 审读导入/导出当前连续性记忆 |
 | Prompt/缓存 | fast-path、分层 retrieval、真实上下文窗口、stable prefix/cache key 保护 |
 | 资料与知识库 | 手动文本、TXT、Markdown、PDF、DOCX、IP 快照、线程材料、引用 |
 | 模型供应商 | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude、手动模型、SecureStore API Key |
@@ -211,7 +215,7 @@ Pixory 支持 DeepSeek、OpenAI/OpenAI-compatible、Gemini 和 Claude。API Key 
 | 批量整理 | 批量选择、快速整理、导入批次、批量编辑 |
 | 重复检查 | 内容 hash、视觉 hash、精确重复、相似图片复核 |
 | 回收站 | 软删除、恢复、清空、过期清理、清理失败记录 |
-| 备份导入 | 完整备份、IP 备份、备份导入、加密包、资源包导入 |
+| 备份导入 | 部分覆盖：数据库、原图、缩略图、IP 备份、备份导入、加密包、资源包导入；AI 文档/附件/角色头像文件待补齐 |
 | 存储管理 | 原图、预览、临时缓存、备份、回收站、按 IP 统计 |
 | 隐私空间 | 独立数据库、独立文件目录、密码、锁定、允许截屏 |
 | 外部入口 | 系统分享收集、外部视频打开、压缩包阅读入口 |
@@ -241,7 +245,7 @@ AppData/
 
 最新版 Android APK：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.5.apk](https://mist01.com/downloads/Pixory-v2.6.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.6.apk](https://mist01.com/downloads/Pixory-v2.6.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 安装流程：
@@ -265,6 +269,8 @@ assets/                      应用图标、背景图和随包视觉资源
 plugins/                     Android 集成相关的 Expo config plugin
 patches/                     项目依赖补丁
 docs/                        官网、远程更新 JSON、公告 JSON 和静态站点文件
+docs/feature-matrix.md       当前功能状态、入口、边界和维护规则
+docs/product-capability-baseline.md  源码审计基线、已知风险和增量复核方法
 docs/update-version.json     应用内更新信息
 docs/announcement.json       应用内公告信息
 app.json                     Expo 应用配置
@@ -339,7 +345,7 @@ pnpm run doctor
 
 Android APK 的默认下载从 `mist01.com` 服务器直下最新版，服务器只保留当前最新 APK；GitHub Releases 保留备用下载和历史版本：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.5.apk](https://mist01.com/downloads/Pixory-v2.6.5.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.6.apk](https://mist01.com/downloads/Pixory-v2.6.6.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
 
 应用内更新读取：
@@ -354,7 +360,7 @@ docs/update-version.json
 docs/announcement.json
 ```
 
-维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.6.5.apk -Version 2.6.5` 上传最新版 APK，并清理服务器旧 APK。
+维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.6.6.apk -Version 2.6.6` 上传最新版 APK，并清理服务器旧 APK。
 
 ## 产品原则
 

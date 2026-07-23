@@ -111,6 +111,18 @@ test('cross-space thread moves migrate thread-owned materials before deleting th
   assertOccursBefore(moveBody, 'removeMaterialsByOwner', 'aiThreadRepository.deleteThreads');
   assert.match(moveBody, /catch \(error\)[\s\S]*permanentlyDeleteAiThreads\(input\.targetSpace,\s*movedThreadIds\)/);
   assert.match(documentService, /cleanupSource \?\? true/);
+  assert.match(moveBody, /copyThreadAttachmentsBetweenSpaces/);
+  assert.match(moveBody, /restoreMessageAttachmentDocumentLinks/);
+  assert.match(moveBody, /\.\.\.\(targetThreadsRolledBack \? targetAttachmentUris : \[\]\)/);
+  assert.match(moveBody, /cleanupDeletedMaterialFiles\(\[\s*\.\.\.deletedFileUris,\s*\.\.\.sourceAttachmentUris,/);
+  assertOccursBefore(moveBody, 'copyThreadAttachmentsBetweenSpaces', 'aiThreadRepository.importThread');
+  assertOccursBefore(moveBody, 'moveThreadOwnedMaterialsBetweenSpaces', 'restoreMessageAttachmentDocumentLinks');
+  assertOccursBefore(
+    moveBody,
+    'aiThreadRepository.deleteThreads',
+    'const sourceRoleAvatarRoot'
+  );
+  assert.match(chatService, /if \(attachment\.documentId\) \{\s*attachments\.push\(attachment\);\s*continue;/s);
 });
 
 test('thread IP snapshot refresh updates the existing document id in place', () => {
