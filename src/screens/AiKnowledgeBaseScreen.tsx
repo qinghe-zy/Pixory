@@ -159,6 +159,7 @@ export function AiKnowledgeBaseScreen({ space, onBack, onImportMaterial, onOpenM
         </View>
       </View>
       <AppDialog
+        accent="ai"
         danger
         message={`将删除 ${selectedIds.length} 个知识库，并移除其中的材料记录和本地知识索引。原始材料文件不会被删除。`}
         onClose={() => setConfirmingBatchDelete(false)}

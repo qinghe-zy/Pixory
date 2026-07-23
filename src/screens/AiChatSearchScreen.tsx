@@ -112,8 +112,6 @@ export function AiChatSearchScreen({
   }
 
   const hasQuery = query.trim().length > 0;
-  const title = contextTitle ?? '当前聊天';
-
   return (
     <AppScreen backgroundColor={aiLightColors.canvas} contentStyle={styles.host}>
       <KeyboardAvoidingView
@@ -126,8 +124,7 @@ export function AiChatSearchScreen({
             <Ionicons color={aiLightColors.ink} name="chevron-back" size={22} />
           </Pressable>
           <View style={styles.titleBlock}>
-            <Text numberOfLines={1} style={styles.title}>聊天内搜索</Text>
-            <Text numberOfLines={1} style={styles.subtitle}>{title} · 本地模糊查询</Text>
+            <Text numberOfLines={1} style={styles.title}>查找聊天记录</Text>
           </View>
         </View>
 
@@ -143,16 +140,14 @@ export function AiChatSearchScreen({
         {!hasQuery && !errorMessage ? (
           <View style={styles.stateBox}>
             <Ionicons color={aiLightColors.primaryActive} name="search-outline" size={24} />
-            <Text style={styles.stateTitle}>输入关键词查找聊天</Text>
-            <Text style={styles.stateText}>会先显示精确查询结果，再显示本地模糊查询内容。</Text>
+            <Text style={styles.stateTitle}>搜索聊天记录</Text>
           </View>
         ) : null}
 
         {hasQuery && !loading && results.length === 0 && !errorMessage ? (
           <View style={styles.stateBox}>
             <Ionicons color={aiLightColors.muted} name="chatbubble-ellipses-outline" size={24} />
-            <Text style={styles.stateTitle}>当前路线没有找到相关聊天</Text>
-            <Text style={styles.stateText}>当前版本只搜索本分支路线，不会混入其他分支。</Text>
+            <Text style={styles.stateTitle}>没有匹配结果</Text>
           </View>
         ) : null}
 

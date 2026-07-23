@@ -150,6 +150,7 @@ export function AiRoleLibraryScreen({
         </View>
       )}
       <AppDialog
+        accent="ai"
         danger
         message={`将删除 ${selectedCardIds.length} 张已保存角色卡。已有聊天记录会保留当时的角色快照。`}
         onClose={() => setDeleteConfirmVisible(false)}

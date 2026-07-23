@@ -138,26 +138,40 @@ export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScre
       { label: '特别珍藏', value: milestones.totalFavoriteImages, explanation: `共收藏了 ${milestones.totalFavoriteImages} 份重要素材` },
       { label: '存储占用', value: formatBytes(milestones.totalStorageBytes), explanation: `当前本地数据共占用 ${formatBytes(milestones.totalStorageBytes)} 存储空间` },
     ];
+    const statRows = [0, 2, 4];
 
     return (
       <View style={styles.gridContainer}>
-        {stats.map((stat, idx) => (
-          <Pressable 
-            key={idx} 
-            style={styles.gridItem} 
-            onPress={() => setActiveStatIndex(activeStatIndex === idx ? null : idx)}
-          >
-            <View style={{ position: 'relative' }}>
-              {activeStatIndex === idx && (
-                <Animated.Text entering={FadeInDown.duration(200)} style={styles.statTooltipText}>
-                  {stat.explanation}
+        {statRows.map((rowStart) => {
+          const activeIndexInRow =
+            activeStatIndex !== null && activeStatIndex >= rowStart && activeStatIndex < rowStart + 2
+              ? activeStatIndex
+              : null;
+          return (
+            <View key={rowStart} style={styles.statRow}>
+              <View style={styles.statCells}>
+                {stats.slice(rowStart, rowStart + 2).map((stat, offset) => {
+                  const index = rowStart + offset;
+                  return (
+                    <Pressable
+                      key={stat.label}
+                      onPress={() => setActiveStatIndex(activeStatIndex === index ? null : index)}
+                      style={styles.gridItem}
+                    >
+                      <Text style={styles.gridValue}>{stat.value}</Text>
+                      <Text style={styles.gridLabel}>{stat.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {activeIndexInRow !== null ? (
+                <Animated.Text entering={FadeInDown.duration(200)} style={styles.statExplanation}>
+                  {stats[activeIndexInRow].explanation}
                 </Animated.Text>
-              )}
-              <Text style={styles.gridValue}>{stat.value}</Text>
+              ) : null}
             </View>
-            <Text style={styles.gridLabel}>{stat.label}</Text>
-          </Pressable>
-        ))}
+          );
+        })}
         <Pressable
           onPress={() => onPushRoute({ name: 'milestones-detail', space, preloadedMarkdown: detailMd })}
           style={styles.detailLinkBtn}
@@ -420,13 +434,18 @@ const styles = StyleSheet.create({
 
   /* 6-Grid Stats */
   gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     marginTop: spacing[2],
   },
-  gridItem: {
-    width: '50%',
+  statRow: {
     marginBottom: spacing[6],
+    width: '100%',
+  },
+  statCells: {
+    flexDirection: 'row',
+  },
+  gridItem: {
+    flex: 1,
+    minWidth: 0,
   },
   gridValue: {
     fontFamily: typography.family.mono, // Precision feel
@@ -450,14 +469,12 @@ const styles = StyleSheet.create({
     color: colors.text.placeholder,
     letterSpacing: 0.5,
   },
-  statTooltipText: {
-    position: 'absolute',
-    bottom: '100%',
-    left: 0,
-    marginBottom: 4,
-    ...typography.textStyles.micro,
+  statExplanation: {
+    ...typography.textStyles.caption,
     color: colors.text.tertiary,
-    width: 150,
+    lineHeight: 18,
+    marginTop: spacing[2],
+    width: '100%',
   },
 
   spacer: {

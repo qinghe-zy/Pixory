@@ -6517,7 +6517,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: aiLightColors.canvas,
+    backgroundColor: 'transparent',
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingBottom: spacing[3],

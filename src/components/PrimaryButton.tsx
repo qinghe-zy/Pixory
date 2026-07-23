@@ -1,8 +1,10 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, componentTokens, spacing, typography } from '../design/tokens';
+import { aiLightColors } from './ai/aiLightTheme';
 
 type ButtonVariant = 'solid' | 'ghost' | 'outline';
+type ButtonTone = 'default' | 'ai' | 'danger';
 
 interface PrimaryButtonProps {
   label: string;
@@ -11,6 +13,7 @@ interface PrimaryButtonProps {
   disabled?: boolean;
   variant?: ButtonVariant;
   compact?: boolean;
+  tone?: ButtonTone;
 }
 
 export function PrimaryButton({
@@ -20,8 +23,17 @@ export function PrimaryButton({
   disabled = false,
   variant = 'solid',
   compact = false,
+  tone = 'default',
 }: PrimaryButtonProps) {
   const isDisabled = disabled || loading;
+  const indicatorColor =
+    variant === 'solid'
+      ? colors.text.inverse
+      : tone === 'ai'
+        ? aiLightColors.primaryText
+        : tone === 'danger'
+          ? colors.semantic.danger
+          : colors.primary.default;
 
   return (
     <Pressable
@@ -33,18 +45,23 @@ export function PrimaryButton({
         styles.base,
         compact && styles.compact,
         variant === 'solid' ? styles.solid : variant === 'outline' ? styles.outline : styles.ghost,
+        variant === 'solid' && tone === 'ai' ? styles.aiSolid : null,
+        variant === 'solid' && tone === 'danger' ? styles.dangerSolid : null,
+        variant === 'outline' && tone === 'ai' ? styles.aiOutline : null,
         isDisabled && styles.disabled,
         pressed && !isDisabled && styles.pressed,
       ]}
     >
       <View style={styles.content}>
         {loading ? (
-          <ActivityIndicator color={variant === 'solid' ? colors.text.inverse : colors.primary.default} size="small" />
+          <ActivityIndicator color={indicatorColor} size="small" />
         ) : null}
         <Text
           style={[
             styles.label,
             variant === 'solid' ? styles.solidLabel : variant === 'outline' ? styles.outlineLabel : styles.ghostLabel,
+            variant !== 'solid' && tone === 'ai' ? styles.aiLabel : null,
+            variant !== 'solid' && tone === 'danger' ? styles.dangerLabel : null,
           ]}
         >
           {label}
@@ -69,10 +86,20 @@ const styles = StyleSheet.create({
   solid: {
     backgroundColor: colors.primary.default,
   },
+  aiSolid: {
+    backgroundColor: aiLightColors.primary,
+  },
+  dangerSolid: {
+    backgroundColor: colors.semantic.danger,
+  },
   outline: {
     backgroundColor: colors.background.input,
     borderColor: colors.border.default,
     borderWidth: 1,
+  },
+  aiOutline: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
   },
   ghost: {
     backgroundColor: 'transparent',
@@ -100,5 +127,11 @@ const styles = StyleSheet.create({
   },
   ghostLabel: {
     color: colors.primary.default,
+  },
+  aiLabel: {
+    color: aiLightColors.primaryText,
+  },
+  dangerLabel: {
+    color: colors.semantic.danger,
   },
 });

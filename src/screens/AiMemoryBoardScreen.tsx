@@ -522,6 +522,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       </AiLightScaffold>
 
       <AppDialog
+        accent="ai"
         visible={manualMemoryVisible}
         title="手动添加记忆"
         onClose={() => setManualMemoryVisible(false)}
@@ -557,6 +558,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       </AppDialog>
 
       <AppDialog
+        accent="ai"
         visible={Boolean(selectedMemory)}
         title="管理记忆"
         onClose={() => {
@@ -643,6 +645,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
       </AppDialog>
 
       <AppDialog
+        accent="ai"
         danger
         message="删除后，这条记忆不会再进入后续回复。"
         onClose={() => setPendingDeleteMemory(null)}
@@ -652,6 +655,7 @@ export function AiMemoryBoardScreen({ space, threadId, onBack }: AiMemoryBoardSc
         visible={Boolean(pendingDeleteMemory)}
       />
       <AppDialog
+        accent="ai"
         danger
         message="删除后，这段会话摘要不会再进入后续回复。"
         onClose={() => setPendingDeleteSummary(null)}

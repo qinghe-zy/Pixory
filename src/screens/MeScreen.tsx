@@ -233,7 +233,7 @@ export function MeScreen({
   }, [isPersonalMode, lockPulse, lockTransition]);
 
   return (
-    <ScreenScaffold backgroundVariant="profile" decorativeTitle={space === 'personal' ? 'Private' : 'Me'} errorMessage={errorMessage} footer={footer} scrollable title="我的">
+    <ScreenScaffold backgroundVariant="profile" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
       <ContentCard style={styles.heroCard}>
         <Pressable
           accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}

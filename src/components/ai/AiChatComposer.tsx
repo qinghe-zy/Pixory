@@ -304,15 +304,15 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
   },
   composerShell: {
-    backgroundColor: aiLightColors.canvas,
-    borderColor: aiLightColors.mutedSoft,
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     minHeight: spacing[10],
     paddingHorizontal: spacing[3],
     paddingTop: spacing[2],
     paddingBottom: spacing[2],
-    ...shadows.hairline,
+    ...shadows.sm,
   },
   /* --- Attachment rail --- */
   attachmentRail: {

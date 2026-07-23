@@ -359,6 +359,7 @@ export function AiComprehensiveRecordDrawer({
         </Animated.View>
       </View>
       <AppDialog
+        accent="ai"
         compactActions
         onClose={() => {
           setRenameThread(null);

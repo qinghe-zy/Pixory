@@ -9,6 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, typography } from '../design/tokens';
@@ -16,7 +17,7 @@ import { AppScreen } from './AppScreen';
 import { Header } from './Header';
 
 interface ScreenScaffoldProps {
-  title: string;
+  title?: string;
   titleSlot?: ReactNode;
   subtitle?: string;
   titleVariant?: 'page' | 'brand';
@@ -33,6 +34,7 @@ interface ScreenScaffoldProps {
   backgroundDimmed?: boolean;
   scrollViewRef?: RefObject<ScrollView | null>;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  showHeader?: boolean;
 }
 
 export function ScreenScaffold({
@@ -53,7 +55,10 @@ export function ScreenScaffold({
   backgroundDimmed,
   scrollViewRef,
   onScroll,
+  showHeader = true,
 }: ScreenScaffoldProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <AppScreen
       backgroundDimmed={backgroundDimmed}
@@ -64,15 +69,19 @@ export function ScreenScaffold({
       scrollViewRef={scrollViewRef}
       scrollable={scrollable}
     >
-      <Header
-        decorativeTitle={decorativeTitle}
-        onBack={onBack}
-        rightSlot={rightAction}
-        subtitle={subtitle}
-        title={title}
-        titleSlot={titleSlot}
-        titleVariant={titleVariant}
-      />
+      {showHeader ? (
+        <Header
+          decorativeTitle={decorativeTitle}
+          onBack={onBack}
+          rightSlot={rightAction}
+          subtitle={subtitle}
+          title={title ?? ''}
+          titleSlot={titleSlot}
+          titleVariant={titleVariant}
+        />
+      ) : (
+        <View style={{ height: insets.top }} />
+      )}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       <View pointerEvents={loading ? 'none' : 'auto'} style={[loading && styles.loadingContent, { flex: 1 }]}>
         {children}

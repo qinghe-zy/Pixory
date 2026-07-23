@@ -3,6 +3,7 @@ import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { pageBackgroundImages, type PageBackgroundVariant } from '../design/backgrounds';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { aiLightColors } from './ai/aiLightTheme';
 import { PrimaryButton } from './PrimaryButton';
 
 const dialogPatternImage = require('../../docs/black.png');
@@ -14,7 +15,7 @@ interface AppDialogProps {
   primaryLabel: string;
   onPrimary: () => void;
   onClose: () => void;
-  secondaryLabel?: string;
+  secondaryLabel?: string | null;
   tertiaryLabel?: string;
   onTertiary?: () => void;
   danger?: boolean;
@@ -23,6 +24,7 @@ interface AppDialogProps {
   actionLayout?: 'stack' | 'primaryThenSplit';
   compactActions?: boolean;
   backgroundVariant?: PageBackgroundVariant;
+  accent?: 'default' | 'ai';
 }
 
 export function AppDialog({
@@ -41,40 +43,43 @@ export function AppDialog({
   actionLayout = 'stack',
   compactActions = false,
   backgroundVariant,
+  accent = 'default',
 }: AppDialogProps) {
-  const themedBackground = backgroundVariant ? pageBackgroundImages[backgroundVariant] : undefined;
+  const themedBackground = accent === 'ai' || !backgroundVariant ? undefined : pageBackgroundImages[backgroundVariant];
   const splitSecondaryActions = actionLayout === 'primaryThenSplit' && Boolean(tertiaryLabel && onTertiary);
+  const primaryTone = accent === 'ai' ? (danger ? 'danger' : 'ai') : 'default';
+  const secondaryTone = accent === 'ai' ? 'ai' : 'default';
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.overlay}>
         <Pressable accessibilityLabel="关闭弹窗" onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View style={[styles.panel, themedBackground ? styles.themedPanel : null]}>
-          {themedBackground ? (
+        <View style={[styles.panel, themedBackground ? styles.themedPanel : null, accent === 'ai' ? styles.aiPanel : null]}>
+          {accent === 'ai' ? null : themedBackground ? (
             <Image resizeMode="cover" source={themedBackground.source} style={[styles.patternImage, styles.themedPatternImage]} />
           ) : (
             <Image resizeMode="stretch" source={dialogPatternImage} style={styles.patternImage} />
           )}
           <View style={styles.copy}>
-            <Text style={[styles.title, danger ? styles.dangerTitle : null]}>{title}</Text>
-            {message ? <Text style={styles.message}>{message}</Text> : null}
+            <Text style={[styles.title, accent === 'ai' ? styles.aiTitle : danger ? styles.dangerTitle : null]}>{title}</Text>
+            {message ? <Text style={[styles.message, accent === 'ai' ? styles.aiMessage : null]}>{message}</Text> : null}
           </View>
           {children ? <View style={styles.body}>{children}</View> : null}
           <View style={[styles.actions, compactActions ? styles.compactActions : null]}>
-            <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} />
+            <PrimaryButton compact={compactActions} disabled={primaryDisabled} label={primaryLabel} onPress={onPrimary} tone={primaryTone} />
             {splitSecondaryActions ? (
               <View style={styles.secondaryActionRow}>
                 <View style={styles.secondaryActionItem}>
-                  <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} variant="outline" />
+                  <PrimaryButton compact={compactActions} label={tertiaryLabel ?? ''} onPress={onTertiary ?? onClose} tone={secondaryTone} variant="outline" />
                 </View>
                 <View style={styles.secondaryActionItem}>
-                  <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} variant="outline" />
+                  {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="outline" /> : null}
                 </View>
               </View>
             ) : (
               <>
-                {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} variant="outline" /> : null}
-                <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} variant="ghost" />
+                {tertiaryLabel && onTertiary ? <PrimaryButton compact={compactActions} label={tertiaryLabel} onPress={onTertiary} tone={secondaryTone} variant="outline" /> : null}
+                {secondaryLabel ? <PrimaryButton compact={compactActions} label={secondaryLabel} onPress={onClose} tone={secondaryTone} variant="ghost" /> : null}
               </>
             )}
           </View>
@@ -107,6 +112,11 @@ const styles = StyleSheet.create({
   themedPanel: {
     backgroundColor: colors.background.page,
   },
+  aiPanel: {
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.lg,
+  },
   patternImage: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.24,
@@ -124,6 +134,9 @@ const styles = StyleSheet.create({
   dangerTitle: {
     color: colors.semantic.danger,
   },
+  aiTitle: {
+    color: aiLightColors.ink,
+  },
   message: {
     ...typography.textStyles.body,
     color: colors.text.body,
@@ -131,6 +144,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: rhythm.cardContentGap,
+  },
+  aiMessage: {
+    color: aiLightColors.mutedReadable,
   },
   compactActions: {
     gap: spacing[2],

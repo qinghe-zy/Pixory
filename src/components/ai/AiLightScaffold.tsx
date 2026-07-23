@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppScreen } from '../AppScreen';
 import type { PageBackgroundVariant } from '../../design/backgrounds';
 import { layout, radius, rhythm, spacing, typography } from '../../design/tokens';
-import { aiLightColors, aiLightDisplayFont } from './aiLightTheme';
+import { aiLightColors } from './aiLightTheme';
 
 interface AiLightScaffoldProps {
   bodyStyle?: StyleProp<ViewStyle>;
@@ -123,10 +123,10 @@ const styles = StyleSheet.create({
   title: {
     ...typography.textStyles.navTitle,
     color: aiLightColors.ink,
-    fontFamily: aiLightDisplayFont,
-    fontSize: 21,
-    fontWeight: '400',
-    lineHeight: 27,
+    fontFamily: typography.family.base,
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 24,
   },
   subtitle: {
     ...typography.textStyles.caption,

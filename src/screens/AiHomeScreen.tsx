@@ -211,8 +211,6 @@ export function AiHomeScreen({
 
       <View style={styles.quickGrid}>
         <QuickEntry icon="albums-outline" label="选择 IP 开聊" meta="从角色或 IP 开始对话" onPress={onOpenIpChatPicker} tone="primary" />
-        <QuickEntry icon="document-text-outline" label="资料库" meta="管理你的资料与文件" onPress={onOpenKnowledgeBase} tone="green" />
-        <QuickEntry icon="layers-outline" label="总资料库" meta="查看全部资料集合" onPress={onOpenGlobalMaterials} tone="warm" />
         <QuickEntry icon="time-outline" label="会话历史" meta="查看与管理历史记录" onPress={onOpenHistory} tone="gold" />
       </View>
     </AiLightScaffold>

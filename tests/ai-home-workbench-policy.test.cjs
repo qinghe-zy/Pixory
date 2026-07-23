@@ -24,8 +24,9 @@ test('AI home workbench exposes role library avatars, full-time chat history, an
   assert.match(screen, /最近聊天/);
   assert.match(screen, /角色库/);
   assert.match(screen, /选择 IP 开聊/);
-  assert.match(screen, /资料库/);
-  assert.match(screen, /总资料库/);
+  const quickGrid = /<View style=\{styles\.quickGrid\}>([\s\S]*?)<\/View>/.exec(screen)?.[1] ?? '';
+  assert.doesNotMatch(quickGrid, /label="资料库"/);
+  assert.doesNotMatch(quickGrid, /label="总资料库"/);
   assert.match(screen, /会话历史/);
   assert.match(screen, /rhythm\./);
   assert.match(screen, /spacing\[/);

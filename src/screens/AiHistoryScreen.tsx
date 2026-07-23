@@ -420,6 +420,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       </AiLightScaffold>
 
       <AppDialog
+        accent="ai"
         danger
         message={filter === 'archived'
           ? `永久删除 ${deleteThread ? 1 : selectedIds.length} 条聊天记录，并删除这些会话专属的会话资料和应用内资料副本。原始 IP 素材与系统原文件不会被删除。此操作不能撤销。`
@@ -437,6 +438,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       />
 
       <AppDialog
+        accent="ai"
         message={`${space === 'normal' ? '移入' : '移出'}隐私空间：${selectedIds.length} 条。`}
         onClose={() => {
           if (!busy) {
@@ -472,6 +474,7 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
       />
 
       <AppDialog
+        accent="ai"
         message="修改后会作为自定义聊天名称显示在最近继续和历史列表。"
         onClose={() => {
           if (!busy) {

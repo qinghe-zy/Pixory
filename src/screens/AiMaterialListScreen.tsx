@@ -231,6 +231,7 @@ export function AiMaterialListScreen({ space, knowledgeBaseId, threadId, onBack,
         </View>
       </View>
       <AppDialog
+        accent="ai"
         danger
         message={`将删除 ${selectedIds.length} 个资料的数据库记录、检索索引和应用内资料文件。原始 IP 素材与系统原文件不会被删除。${affectedOwnerCount ? `受影响 ${affectedOwnerCount} 个来源。` : ''}`}
         onClose={() => setConfirmingBatchRemove(false)}

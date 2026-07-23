@@ -1189,6 +1189,7 @@ export function AiSessionConfigScreen({
 
 
       <AppDialog
+        accent="ai"
         message="选择跟随全局默认后，此会话会使用模型账号页里的全局默认模型。选择具体模型后，仅在当前会话生效。"
         onClose={() => {
           if (!savingModel) {
@@ -1365,6 +1366,7 @@ export function AiSessionConfigScreen({
       </AppDialog>
 
       <AppDialog
+        accent="ai"
         message="修改后会同步显示在聊天页、最近继续和历史列表。"
         onClose={() => {
           if (!saving) {
@@ -1389,6 +1391,7 @@ export function AiSessionConfigScreen({
       </AppDialog>
 
       <AppDialog
+        accent="ai"
         danger
         message="删除后会将当前会话移入回收站，聊天记录和会话资料会保留，之后可在历史会话的回收站中恢复或永久删除。"
         onClose={() => {

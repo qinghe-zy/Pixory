@@ -20,8 +20,8 @@ test('AI chat search is a full-page current-route local fuzzy search flow', () =
   assert.match(chat, /onOpenChatSearch\(nextThreadId, getPersistedCurrentBranchScopes\(\)\)/);
   assert.match(search, /AiLightSearchBar/);
   assert.match(search, /searchThreadMessages/);
-  assert.match(search, /当前路线没有找到相关聊天/);
-  assert.match(search, /本地模糊查询/);
+  assert.match(search, /查找聊天记录/);
+  assert.match(search, /没有匹配结果/);
   assert.match(search, /formatSearchResultTime/);
   assert.match(search, /renderHighlightedSnippet/);
   assert.match(search, /matchHighlight/);
