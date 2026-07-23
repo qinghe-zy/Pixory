@@ -289,7 +289,7 @@ export function AiChatComposer({
                 onPress={onSend}
                 style={({ pressed }) => [styles.sendButton, !canSend && styles.disabledSendButton, pressed && canSend && styles.pressed]}
               >
-                <Ionicons color={aiLightColors.onDark} name="paper-plane-outline" size={spacing[5]} />
+                <Ionicons color={!canSend ? aiLightColors.primary : aiLightColors.onDark} name="paper-plane-outline" size={spacing[5]} />
               </Pressable>
             )}
           </View>

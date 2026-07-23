@@ -546,9 +546,9 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   storageHeader: {
-    flexDirection: 'column',
-    gap: rhythm.microGap,
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing[2],
+    alignItems: 'center',
     marginBottom: spacing[1],
   },
   storageTotalLabel: {
@@ -627,7 +627,7 @@ const styles = StyleSheet.create({
     gap: spacing[4],
   },
   coreAssetCard: {
-    ...shadows.xs,
+    ...shadows.sm,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,

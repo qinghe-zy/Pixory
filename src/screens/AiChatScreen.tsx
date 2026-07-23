@@ -6062,7 +6062,7 @@ export function AiChatScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={20} />
+                <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={22} />
               </Pressable>
             </View>
           </View>

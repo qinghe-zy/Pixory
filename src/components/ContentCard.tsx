@@ -14,8 +14,8 @@ export function ContentCard({ children, style }: ContentCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    ...shadows.hairline,
-    backgroundColor: colors.background.input,
+    ...shadows.sm,
+    backgroundColor: colors.background.surface,
     borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
