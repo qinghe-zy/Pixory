@@ -14,7 +14,7 @@ import {
   getPreloadedProductDocumentationMarkdown,
   prefetchProductDocumentationAssets,
 } from '../services/productDocumentationService';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 
 interface AboutScreenProps {
@@ -483,16 +483,12 @@ const styles = StyleSheet.create({
 
   /* --- Action Area --- */
   linksContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    backgroundColor: colors.background.surface,
     borderRadius: radius.xl,
     paddingVertical: spacing[1],
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.9)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.02,
-    shadowRadius: 12,
-    elevation: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.subtle,
+    ...shadows.sm,
     marginBottom: spacing[10],
   },
   linkButton: {

@@ -3,7 +3,7 @@ import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, PanResponder } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -1123,6 +1123,45 @@ export default function App() {
     );
   }
 
+  const currentRouteRef = useRef(currentRoute);
+  currentRouteRef.current = currentRoute;
+
+  const rootPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gs) => {
+        if (currentRouteRef.current?.name !== 'root') return false;
+        return (
+          Math.abs(gs.dx) > 6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (_evt, gs) => {
+        if (currentRouteRef.current?.name !== 'root') return;
+        const currentTab = currentRouteRef.current.tab;
+        const tabs: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
+        const index = tabs.indexOf(currentTab);
+        
+        const SWIPE_RELEASE_DISTANCE = 10;
+        const SWIPE_ACTIVATION_DISTANCE = 6;
+        
+        const isSwipeRight = gs.dx > SWIPE_RELEASE_DISTANCE || (gs.dx > SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18);
+        const isSwipeLeft = gs.dx < -SWIPE_RELEASE_DISTANCE || (gs.dx < -SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18);
+        
+        if (isSwipeRight) {
+          // Swipe Right: User requested "首页右滑进入整理", so Next Tab
+          if (index < tabs.length - 1) {
+            switchRootTab(tabs[index + 1]);
+          }
+        } else if (isSwipeLeft) {
+          // Swipe Left: Previous Tab
+          if (index > 0) {
+            switchRootTab(tabs[index - 1]);
+          }
+        }
+      },
+    })
+  ).current;
+
   const rootFooter =
     currentRoute.name === 'root' ? (
       <BottomTabBar activeTab={currentRoute.tab} onSelectTab={switchRootTab} />
@@ -2024,7 +2063,9 @@ export default function App() {
       <AppToastProvider>
         <AppUpdateAppliedNotice isReady={isReady} />
         <AppOtaUpdateFetchNotice isReady={isReady} />
-        {content}
+        <View style={{ flex: 1 }} {...rootPanResponder.panHandlers}>
+          {content}
+        </View>
         <PersonalUnlockModal
           hasCredential={personalCredentialAvailable}
           loading={personalAuthBusy}
