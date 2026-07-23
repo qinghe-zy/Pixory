@@ -2062,6 +2062,7 @@ export default function App() {
             {renderedTabs.has('me') ? (
               <MeScreen
                 space={activeSpace}
+                onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
                 onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
                 onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
                 onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}

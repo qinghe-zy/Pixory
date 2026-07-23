@@ -25,6 +25,7 @@ interface MeScreenProps {
   onOpenStorageUsage: () => void;
   onOpenDuplicateReview: () => void;
   onOpenAbout: () => void;
+  onOpenProviderSettings: () => void;
   onRequestPersonalUnlock: () => void;
   onLockPersonalSpace: () => void;
 }
@@ -57,6 +58,7 @@ export function MeScreen({
   onOpenStorageUsage,
   onOpenDuplicateReview,
   onOpenAbout,
+  onOpenProviderSettings,
   onRequestPersonalUnlock,
   onLockPersonalSpace,
 }: MeScreenProps) {
@@ -112,7 +114,7 @@ export function MeScreen({
     }
   );
 
-  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'settings') {
+  function handleEntryPress(key: 'favorites' | 'recent' | 'trash' | 'backup' | 'duplicate-review' | 'storage-usage' | 'about' | 'provider-settings') {
     if (key === 'favorites') {
       onOpenFavorites();
       return;
@@ -145,6 +147,11 @@ export function MeScreen({
 
     if (key === 'about') {
       onOpenAbout();
+      return;
+    }
+
+    if (key === 'provider-settings') {
+      onOpenProviderSettings();
     }
   }
 
@@ -392,13 +399,13 @@ export function MeScreen({
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
           <View style={styles.systemListDivider} />
-          <View accessibilityLabel="设置，未开放" accessible style={[styles.systemListItem, styles.disabledEntry]}>
+          <Pressable onPress={() => handleEntryPress('provider-settings')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
             <View style={styles.systemListIcon}>
               <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
             </View>
-            <Text style={styles.systemListTitle}>设置</Text>
-            <Text style={styles.unavailableBadge}>未开放</Text>
-          </View>
+            <Text style={styles.systemListTitle}>AI 设置</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+          </Pressable>
         </ContentCard>
       </View>
 

@@ -18,7 +18,7 @@ import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
 const HOME_THREAD_LIMIT = 30;
-const RECENT_CHAT_VISIBLE_ROWS = 4;
+const RECENT_CHAT_VISIBLE_ROWS = 6;
 const RECENT_CHAT_ROW_HEIGHT = 72;
 
 interface AiHomeScreenProps {
@@ -113,14 +113,8 @@ export function AiHomeScreen({
       errorMessage={errorMessage}
       footer={footer}
       headerDividerVisible={false}
-      rightAction={(
-        <Pressable accessibilityLabel="打开 AI 设置" accessibilityRole="button" onPress={onOpenProviderSettings} style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}>
-          <Ionicons color={aiLightColors.ink} name="settings-outline" size={metrics.iconSizeMd} />
-        </Pressable>
-      )}
       scrollable
-      title="AI 工作台"
-      titleSlot={<Text style={[typography.textStyles.pageTitle, { color: aiLightColors.ink }]}>AI 工作台</Text>}
+      title=""
     >
       <View style={styles.mainStack}>
         <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
