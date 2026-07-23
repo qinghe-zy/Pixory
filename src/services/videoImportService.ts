@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 import {
   assetRepository,
@@ -37,9 +38,14 @@ import {
   saveNativeVideoToMediaStore,
   computeFileSha256,
 } from '../native/pixoryMediaModule';
-import type { VideoImportNamingMode } from '../database/repositories/settingsRepository';
+import type { MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 import type { DuplicateImportDecision } from './imageImportService';
 import type { ImageImportSourceMode } from '../database/repositories/settingsRepository';
+import {
+  resolvePickedAssetImportMode,
+  toMoveDeletionNotice,
+  type MoveDeletionNotice,
+} from './mediaImportSourcePolicy';
 
 export interface PickedVideoAsset {
   uri: string;
@@ -47,6 +53,7 @@ export interface PickedVideoAsset {
   fileName: string;
   mimeType: string | null;
   fileSize: number | null;
+  sourceKind?: MediaPickerSource;
 }
 
 export interface PickVideosForImportResult {
@@ -62,6 +69,7 @@ export interface VideoImportError {
 }
 
 export interface ImportedVideoResult {
+  sourceDeletionNotice: MoveDeletionNotice | null;
   video: ImageAssetRecord;
   tags: TagRecord[];
 }
@@ -202,16 +210,13 @@ async function shouldSkipVideoDuplicateImport(
   return exactMatches.length > 0 ? '已跳过精确重复视频。' : null;
 }
 
-async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Promise<void> {
+async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Promise<boolean> {
   const sourceAssetId = resolvePickedVideoAssetId(pickedAsset.assetId);
   if (!sourceAssetId) {
-    throw new Error('移动导入无法删除原视频：系统没有返回可删除的媒体库资产 ID，请切换为复制模式。');
+    return false;
   }
 
-  const deleted = await MediaLibrary.deleteAssetsAsync([sourceAssetId]);
-  if (!deleted) {
-    throw new Error('移动导入无法删除原视频：系统未完成源文件删除。');
-  }
+  return MediaLibrary.deleteAssetsAsync([sourceAssetId]);
 }
 
 async function buildVideoPaths(space: PixorySpace, ipId: number, internalFilename: string) {
@@ -246,9 +251,10 @@ async function importSingleVideo({
   duplicateDecision,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
-  if (imageImportSourceMode === 'move' && !resolvePickedVideoAssetId(pickedAsset.assetId)) {
-    throw new Error('移动导入无法删除原视频：系统没有返回可删除的媒体库资产 ID，请从系统相册选择可管理的视频，或切换为复制模式。');
-  }
+  const effectiveImportSourceMode = resolvePickedAssetImportMode(
+    pickedAsset.sourceKind ?? 'album',
+    imageImportSourceMode
+  );
   const internalFilename = generateInternalFilename(originalFilename.endsWith(getExtension(originalFilename)) ? originalFilename : `${originalFilename}.mp4`);
   const { coverUri, originalUri, tempUri } = await buildVideoPaths(space, ipId, internalFilename);
   let createdVideoId: number | null = null;
@@ -324,11 +330,19 @@ async function importSingleVideo({
     createdVideoId = createdVideo.id;
     await tagRepository.replaceImageTags(db, createdVideo.id, tags.map((tag) => tag.id));
 
-    if (imageImportSourceMode === 'move') {
-      await deleteImportedSourceVideoAsset(pickedAsset);
+    let sourceDeletionNotice: MoveDeletionNotice | null = null;
+    if (effectiveImportSourceMode === 'move') {
+      let sourceDeleted = false;
+      try {
+        sourceDeleted = await deleteImportedSourceVideoAsset(pickedAsset);
+      } catch (error) {
+        console.warn('Pixory source video deletion was not completed:', error);
+      }
+      sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
     }
 
     return {
+      sourceDeletionNotice,
       video: createdVideo,
       tags,
     };
@@ -343,7 +357,9 @@ async function importSingleVideo({
   }
 }
 
-export async function pickVideosForImport(): Promise<PickVideosForImportResult> {
+export async function pickVideosForImport(
+  imageImportSourceMode: ImageImportSourceMode = 'copy'
+): Promise<PickVideosForImportResult> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Media library permission is required to import videos.');
@@ -353,6 +369,7 @@ export async function pickVideosForImport(): Promise<PickVideosForImportResult> 
     mediaTypes: ['videos'],
     allowsMultipleSelection: true,
     allowsEditing: false,
+    legacy: Platform.OS === 'android' && imageImportSourceMode === 'move',
     quality: 1,
     preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
   });
@@ -372,6 +389,7 @@ export async function pickVideosForImport(): Promise<PickVideosForImportResult> 
       fileName: asset.fileName ?? getFileNameFromUri(asset.uri),
       mimeType: asset.mimeType ?? 'video/mp4',
       fileSize: asset.fileSize ?? null,
+      sourceKind: 'album',
     })),
   };
 }

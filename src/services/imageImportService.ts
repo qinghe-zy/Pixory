@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { Image } from 'react-native';
+import { Image, Platform } from 'react-native';
 
 import { groupRepository, imageRepository, importBatchRepository, ipRepository, runWithDatabaseSpace, tagRepository } from '../database';
 import type { ImageAssetRecord, ImportBatchRecord, PixorySpace, TagRecord } from '../database';
@@ -17,9 +17,16 @@ import { generateThumbnail } from './thumbnailService';
 import { devLog } from '../utils/dev';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 import { computeFileSha256, computeImageDHash } from '../native/pixoryMediaModule';
-import type { ImageImportSourceMode } from '../database/repositories/settingsRepository';
+import type { ImageImportSourceMode, MediaPickerSource } from '../database/repositories/settingsRepository';
+import {
+  resolvePickedAssetImportMode,
+  toMoveDeletionNotice,
+  type MoveDeletionNotice,
+} from './mediaImportSourcePolicy';
 
-export type PickedImageAsset = ImagePicker.ImagePickerAsset;
+export interface PickedImageAsset extends ImagePicker.ImagePickerAsset {
+  sourceKind?: MediaPickerSource;
+}
 export type DuplicateImportDecision = 'importAll' | 'skipExact' | 'skipSimilar' | 'cancelImport';
 
 export interface PickImagesForImportResult {
@@ -94,6 +101,7 @@ export interface PendingImageAssetImport {
 
 export interface ImportedImageResult {
   image: ImageAssetRecord;
+  sourceDeletionNotice: MoveDeletionNotice | null;
   tags: TagRecord[];
 }
 
@@ -436,12 +444,20 @@ async function performSingleImageImport(
       tagCount: persistedImageTags.length,
     });
 
+    let sourceDeletionNotice: MoveDeletionNotice | null = null;
     if (pendingImageAsset.imageImportSourceMode === 'move') {
-      await deleteImportedSourceAsset(pendingImageAsset);
+      let sourceDeleted = false;
+      try {
+        sourceDeleted = await deleteImportedSourceAsset(pendingImageAsset);
+      } catch (error) {
+        devLog('Pixory source image deletion was not completed:', error);
+      }
+      sourceDeletionNotice = toMoveDeletionNotice(sourceDeleted);
     }
 
     return {
       image: createdImage,
+      sourceDeletionNotice,
       tags: resolvedTags,
     };
   } catch (error) {
@@ -479,18 +495,17 @@ async function shouldSkipDuplicateImport(
   return null;
 }
 
-export async function deleteImportedSourceAsset(pendingImageAsset: PendingImageAssetImport): Promise<void> {
+export async function deleteImportedSourceAsset(pendingImageAsset: PendingImageAssetImport): Promise<boolean> {
   if (!pendingImageAsset.sourceAssetId) {
-    throw new Error('移动导入无法删除原文件：系统没有返回可删除的媒体库资产 ID，请切换为复制模式。');
+    return false;
   }
 
-  const deleted = await MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
-  if (!deleted) {
-    throw new Error('移动导入无法删除原文件：系统未完成源文件删除。');
-  }
+  return MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
 }
 
-export async function pickImagesForImport(): Promise<PickImagesForImportResult> {
+export async function pickImagesForImport(
+  imageImportSourceMode: ImageImportSourceMode = 'copy'
+): Promise<PickImagesForImportResult> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Media library permission is required to import images.');
@@ -500,6 +515,7 @@ export async function pickImagesForImport(): Promise<PickImagesForImportResult> 
     mediaTypes: ['images'],
     allowsMultipleSelection: true,
     allowsEditing: false,
+    legacy: Platform.OS === 'android' && imageImportSourceMode === 'move',
     quality: 1,
     preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
   });
@@ -513,7 +529,9 @@ export async function pickImagesForImport(): Promise<PickImagesForImportResult> 
 
   return {
     canceled: false,
-    pickedAssets: result.assets.filter((asset) => asset.type === 'image' || asset.type == null),
+    pickedAssets: result.assets
+      .filter((asset) => asset.type === 'image' || asset.type == null)
+      .map((asset) => ({ ...asset, sourceKind: 'album' })),
   };
 }
 
@@ -535,10 +553,10 @@ export async function buildImageAssetFromPickedFile(
   const fileSize = pickedAsset.fileSize ?? 0;
   const { width, height } = await resolveDimensionsForPickedAsset(pickedAsset, originalFilename);
   const sourceAssetId = resolvePickedAssetId(pickedAsset.assetId);
-
-  if ((params.imageImportSourceMode ?? 'copy') === 'move' && !sourceAssetId) {
-    throw new Error('移动导入无法删除原文件：系统没有返回可删除的媒体库资产 ID，请从系统相册选择可管理的图片，或切换为复制模式。');
-  }
+  const imageImportSourceMode = resolvePickedAssetImportMode(
+    pickedAsset.sourceKind ?? 'album',
+    params.imageImportSourceMode ?? 'copy'
+  );
 
   return {
     space: params.space ?? 'normal',
@@ -555,7 +573,7 @@ export async function buildImageAssetFromPickedFile(
     fileSize,
     sourceAssetId,
     duplicateDecision: params.duplicateDecision ?? 'importAll',
-    imageImportSourceMode: params.imageImportSourceMode ?? 'copy',
+    imageImportSourceMode,
     isFavorite: Boolean(isFavorite),
     note: normalizeOptionalText(note) ?? null,
     taskToken: params.taskToken ?? null,

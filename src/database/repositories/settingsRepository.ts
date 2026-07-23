@@ -27,9 +27,13 @@ export const ASSET_LIST_VIEW_MODE_KEY = 'assetListViewMode';
 export const ASSET_LIST_SORT_ORDER_KEY = 'assetListSortOrder';
 export const IMAGE_IMPORT_SOURCE_MODE_KEY = 'imageImportSourceMode';
 export const VIDEO_IMPORT_NAMING_MODE_KEY = 'videoImportNamingMode';
+export const IMAGE_MEDIA_PICKER_SOURCE_KEY = 'imageMediaPickerSource';
+export const VIDEO_MEDIA_PICKER_SOURCE_KEY = 'videoMediaPickerSource';
+export const MOVE_IMPORT_WARNING_DISMISSED_KEY = 'moveImportWarningDismissed';
 
 export type AssetListViewMode = 'grid' | 'detail';
 export type ImageImportSourceMode = 'copy' | 'move';
+export type MediaPickerSource = 'album' | 'files';
 export type VideoImportNamingMode = 'generated' | 'preserveOriginal';
 export type MemoryMaintenanceMode = 'auto' | 'follow_chat' | 'deepseek_flash' | 'custom';
 
@@ -327,6 +331,33 @@ export const settingsRepository = {
 
   async setImageImportSourceMode(db: SQLiteDatabase, mode: ImageImportSourceMode): Promise<void> {
     await this.setValue(db, IMAGE_IMPORT_SOURCE_MODE_KEY, mode);
+  },
+
+  async getImageMediaPickerSource(db: SQLiteDatabase): Promise<MediaPickerSource> {
+    const value = await this.getValue(db, IMAGE_MEDIA_PICKER_SOURCE_KEY);
+    return value === 'files' ? 'files' : 'album';
+  },
+
+  async setImageMediaPickerSource(db: SQLiteDatabase, source: MediaPickerSource): Promise<void> {
+    await this.setValue(db, IMAGE_MEDIA_PICKER_SOURCE_KEY, source);
+  },
+
+  async getVideoMediaPickerSource(db: SQLiteDatabase): Promise<MediaPickerSource> {
+    const value = await this.getValue(db, VIDEO_MEDIA_PICKER_SOURCE_KEY);
+    return value === 'files' ? 'files' : 'album';
+  },
+
+  async setVideoMediaPickerSource(db: SQLiteDatabase, source: MediaPickerSource): Promise<void> {
+    await this.setValue(db, VIDEO_MEDIA_PICKER_SOURCE_KEY, source);
+  },
+
+  async getMoveImportWarningDismissed(db: SQLiteDatabase): Promise<boolean> {
+    const value = await this.getValue(db, MOVE_IMPORT_WARNING_DISMISSED_KEY);
+    return value === 'true';
+  },
+
+  async setMoveImportWarningDismissed(db: SQLiteDatabase, dismissed: boolean): Promise<void> {
+    await this.setValue(db, MOVE_IMPORT_WARNING_DISMISSED_KEY, dismissed ? 'true' : 'false');
   },
 
   async getVideoImportNamingMode(db: SQLiteDatabase): Promise<VideoImportNamingMode> {

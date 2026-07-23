@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppDialog } from '../components/AppDialog';
+import { CompactSegmentedControl } from '../components/CompactSegmentedControl';
 import { DevOnlyCard } from '../components/DevOnlyCard';
 import { FormTextareaRow } from '../components/FormTextareaRow';
 import { LightFormSection } from '../components/LightFormSection';
@@ -26,11 +27,12 @@ import {
 } from '../services/imageImportService';
 import { importPackageToIp, pickPackageForImport, type PackageImportResult } from '../services/packageImportService';
 import { importVideosToIp, pickVideosForImport, type PickedVideoAsset } from '../services/videoImportService';
+import { pickMediaFilesForImport } from '../services/mediaFilePickerService';
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
 import type { PersonalTaskToken } from '../services/personalTaskToken';
-import type { ImageImportSourceMode, VideoImportNamingMode } from '../database/repositories/settingsRepository';
+import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
 interface ImportImagesScreenProps {
   space?: PixorySpace;
@@ -40,6 +42,19 @@ interface ImportImagesScreenProps {
   initialMediaPicker?: 'images' | 'videos';
   onBack: () => void;
   onImported: (imageIds: number[], importBatchId: number | null) => void;
+}
+
+interface ImportImagesScreenData {
+  groups: GroupRecord[];
+  imageImportSourceMode: ImageImportSourceMode;
+  imageMediaPickerSource: MediaPickerSource;
+  importTemplates: ImportTemplateRecord[];
+  ip: IpRecord | null;
+  moveImportWarningDismissed: boolean;
+  recentGroupIds: number[];
+  recentTags: TagUsageItem[];
+  videoImportNamingMode: VideoImportNamingMode;
+  videoMediaPickerSource: MediaPickerSource;
 }
 
 export function ImportImagesScreen({
@@ -56,9 +71,20 @@ export function ImportImagesScreen({
     data: screenData,
     errorMessage: loadErrorMessage,
     reload,
-  } = useScreenLoad<{ ip: IpRecord | null; groups: GroupRecord[]; importTemplates: ImportTemplateRecord[]; recentGroupIds: number[]; recentTags: TagUsageItem[]; imageImportSourceMode: ImageImportSourceMode; videoImportNamingMode: VideoImportNamingMode }>(
+  } = useScreenLoad<ImportImagesScreenData>(
     async () => {
-      const [ip, groups, importTemplates, recentGroupIds, recentTags, imageImportSourceMode, videoImportNamingMode] = await runWithDatabaseSpace(space, (db) => Promise.all([
+      const [
+        ip,
+        groups,
+        importTemplates,
+        recentGroupIds,
+        recentTags,
+        imageImportSourceMode,
+        videoImportNamingMode,
+        imageMediaPickerSource,
+        videoMediaPickerSource,
+        moveImportWarningDismissed,
+      ] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findById(db, ipId),
         groupRepository.findByIpId(db, ipId),
         importTemplateRepository.findAll(db),
@@ -66,13 +92,38 @@ export function ImportImagesScreen({
         tagRepository.findRecentlyUsed(db, 8),
         settingsRepository.getImageImportSourceMode(db),
         settingsRepository.getVideoImportNamingMode(db),
+        settingsRepository.getImageMediaPickerSource(db),
+        settingsRepository.getVideoMediaPickerSource(db),
+        settingsRepository.getMoveImportWarningDismissed(db),
       ]));
 
-      return { ip, groups, importTemplates, recentGroupIds, recentTags, imageImportSourceMode, videoImportNamingMode };
+      return {
+        ip,
+        groups,
+        importTemplates,
+        recentGroupIds,
+        recentTags,
+        imageImportSourceMode,
+        videoImportNamingMode,
+        imageMediaPickerSource,
+        videoMediaPickerSource,
+        moveImportWarningDismissed,
+      };
     },
     [ipId, space],
     {
-      initialData: { ip: null, groups: [], importTemplates: [], recentGroupIds: [], recentTags: [], imageImportSourceMode: 'copy', videoImportNamingMode: 'preserveOriginal' },
+      initialData: {
+        ip: null,
+        groups: [],
+        importTemplates: [],
+        recentGroupIds: [],
+        recentTags: [],
+        imageImportSourceMode: 'copy',
+        videoImportNamingMode: 'preserveOriginal',
+        imageMediaPickerSource: 'album',
+        videoMediaPickerSource: 'album',
+        moveImportWarningDismissed: false,
+      },
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取导入配置失败：${message}`;
@@ -96,7 +147,12 @@ export function ImportImagesScreen({
   const [packageImportResult, setPackageImportResult] = useState<PackageImportResult | null>(null);
   const [duplicateDecision, setDuplicateDecision] = useState<DuplicateImportDecision>('importAll');
   const [imageImportSourceMode, setImageImportSourceMode] = useState<ImageImportSourceMode>('copy');
+  const [imageMediaPickerSource, setImageMediaPickerSource] = useState<MediaPickerSource>('album');
+  const [videoMediaPickerSource, setVideoMediaPickerSource] = useState<MediaPickerSource>('album');
   const [videoImportNamingMode, setVideoImportNamingMode] = useState<VideoImportNamingMode>('preserveOriginal');
+  const [moveImportWarningDismissed, setMoveImportWarningDismissed] = useState(false);
+  const [moveImportWarningVisible, setMoveImportWarningVisible] = useState(false);
+  const [moveImportWarningOptOut, setMoveImportWarningOptOut] = useState(false);
   const [isIpConflictDialogVisible, setIsIpConflictDialogVisible] = useState(false);
   const [importProgressLabel, setImportProgressLabel] = useState<string | null>(null);
   const [isTemplateDialogVisible, setIsTemplateDialogVisible] = useState(false);
@@ -163,12 +219,44 @@ export function ImportImagesScreen({
 
   useEffect(() => {
     setImageImportSourceMode(screenData?.imageImportSourceMode ?? 'copy');
+    setImageMediaPickerSource(screenData?.imageMediaPickerSource ?? 'album');
+    setVideoMediaPickerSource(screenData?.videoMediaPickerSource ?? 'album');
     setVideoImportNamingMode(screenData?.videoImportNamingMode ?? 'preserveOriginal');
-  }, [screenData?.imageImportSourceMode, screenData?.videoImportNamingMode]);
+    setMoveImportWarningDismissed(screenData?.moveImportWarningDismissed ?? false);
+  }, [
+    screenData?.imageImportSourceMode,
+    screenData?.imageMediaPickerSource,
+    screenData?.moveImportWarningDismissed,
+    screenData?.videoImportNamingMode,
+    screenData?.videoMediaPickerSource,
+  ]);
 
   function updateImageImportSourceMode(nextMode: ImageImportSourceMode) {
     setImageImportSourceMode(nextMode);
     void runWithDatabaseSpace(space, (db) => settingsRepository.setImageImportSourceMode(db, nextMode));
+    if (nextMode === 'move' && !moveImportWarningDismissed) {
+      setMoveImportWarningOptOut(false);
+      setMoveImportWarningVisible(true);
+    }
+  }
+
+  function updateImageMediaPickerSource(nextSource: MediaPickerSource) {
+    setImageMediaPickerSource(nextSource);
+    void runWithDatabaseSpace(space, (db) => settingsRepository.setImageMediaPickerSource(db, nextSource));
+  }
+
+  function updateVideoMediaPickerSource(nextSource: MediaPickerSource) {
+    setVideoMediaPickerSource(nextSource);
+    void runWithDatabaseSpace(space, (db) => settingsRepository.setVideoMediaPickerSource(db, nextSource));
+  }
+
+  async function confirmMoveImportWarning() {
+    if (moveImportWarningOptOut) {
+      await runWithDatabaseSpace(space, (db) => settingsRepository.setMoveImportWarningDismissed(db, true));
+      setMoveImportWarningDismissed(true);
+    }
+    setMoveImportWarningVisible(false);
+    setMoveImportWarningOptOut(false);
   }
 
   function updateVideoImportNamingMode(nextMode: VideoImportNamingMode) {
@@ -195,7 +283,19 @@ export function ImportImagesScreen({
     }
 
     try {
-      const result = await pickImagesForImport();
+      const result = imageMediaPickerSource === 'files'
+        ? await pickMediaFilesForImport('image').then((fileResult) => ({
+            canceled: fileResult.canceled,
+            pickedAssets: fileResult.pickedFiles.map((file) => ({
+              ...file,
+              fileSize: file.fileSize ?? undefined,
+              height: 0,
+              mimeType: file.mimeType ?? undefined,
+              type: 'image' as const,
+              width: 0,
+            })),
+          }))
+        : await pickImagesForImport(imageImportSourceMode);
       if (!result.canceled) {
         setPickedAssets((current) => mergePickedImages(current, result.pickedAssets));
       }
@@ -214,7 +314,12 @@ export function ImportImagesScreen({
     }
 
     try {
-      const result = await pickVideosForImport();
+      const result = videoMediaPickerSource === 'files'
+        ? await pickMediaFilesForImport('video').then((fileResult) => ({
+            canceled: fileResult.canceled,
+            pickedAssets: fileResult.pickedFiles,
+          }))
+        : await pickVideosForImport(imageImportSourceMode);
       if (!result.canceled) {
         setPickedVideos((current) => mergePickedVideos(current, result.pickedAssets));
       }
@@ -395,6 +500,7 @@ export function ImportImagesScreen({
       let imageSkippedCount = 0;
       let videoSkippedCount = 0;
       let failedCount = 0;
+      let sourceDeletionFailureCount = 0;
 
       if (pickedAssets.length > 0) {
         setImportProgressLabel(`正在导入 ${pickedAssets.length} 张图片`);
@@ -415,6 +521,7 @@ export function ImportImagesScreen({
         imageSuccessCount = imageResult.successCount;
         imageSkippedCount = imageResult.skippedCount;
         failedCount += imageResult.failedCount;
+        sourceDeletionFailureCount += imageResult.importedImages.filter((item) => item.sourceDeletionNotice).length;
         importedAssetIds.push(...imageResult.importedImages.map((item) => item.image.id));
         importBatchId = imageResult.importBatch?.id ?? importBatchId;
 
@@ -454,6 +561,7 @@ export function ImportImagesScreen({
         videoSuccessCount = videoResult.successCount;
         videoSkippedCount = videoResult.skippedCount;
         failedCount += videoResult.failedCount;
+        sourceDeletionFailureCount += videoResult.importedVideos.filter((item) => item.sourceDeletionNotice).length;
         importedAssetIds.push(...videoResult.importedVideos.map((item) => item.video.id));
         importBatchId = pickedAssets.length === 0 ? videoResult.importBatch?.id ?? null : null;
       }
@@ -476,6 +584,7 @@ export function ImportImagesScreen({
         `成功 ${successCount}`,
         skippedCount > 0 ? `跳过 ${skippedCount}` : null,
         failedCount > 0 ? `失败 ${failedCount}` : null,
+        sourceDeletionFailureCount > 0 ? `原文件未删除 ${sourceDeletionFailureCount}` : null,
       ].filter(Boolean);
         showToast(`导入完成：${toastParts.join(' · ')}`);
         onImported(importedAssetIds, importBatchId);
@@ -562,7 +671,16 @@ export function ImportImagesScreen({
       title="导入素材"
     >
       <View style={styles.formWrap}>
-        <LightFormSection title="选择图片">
+        <LightFormSection
+          headerRight={
+            <CompactSegmentedControl
+              disabled={isPicking || isSubmitting}
+              onChange={updateImageMediaPickerSource}
+              value={imageMediaPickerSource}
+            />
+          }
+          title="选择图片"
+        >
           <View style={styles.pickRow}>
             <Pressable
               accessibilityRole="button"
@@ -575,9 +693,15 @@ export function ImportImagesScreen({
               </View>
               <View style={styles.pickCopy}>
                 <Text numberOfLines={1} style={styles.pickTitle}>
-                  {isPicking ? '正在打开相册…' : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张` : '选择图片'}
+                  {isPicking
+                    ? imageMediaPickerSource === 'album' ? '正在打开相册…' : '正在打开文件…'
+                    : pickedAssets.length > 0 ? `已选择 ${pickedAssets.length} 张` : '选择图片'}
                 </Text>
-                <Text numberOfLines={1} style={styles.pickHint}>{pickedAssets.length > 0 ? '继续选择，或移除下方已选项' : '从系统相册批量选择原图'}</Text>
+                <Text numberOfLines={1} style={styles.pickHint}>
+                  {pickedAssets.length > 0
+                    ? '继续选择，或移除下方已选项'
+                    : imageMediaPickerSource === 'album' ? '从系统相册批量选择原图' : '从系统文件批量选择图片'}
+                </Text>
               </View>
             </Pressable>
             {pickedAssets.length > 0 ? (
@@ -608,7 +732,16 @@ export function ImportImagesScreen({
           </View>
         ) : null}
 
-        <LightFormSection title="选择视频">
+        <LightFormSection
+          headerRight={
+            <CompactSegmentedControl
+              disabled={isPickingVideos || isSubmitting}
+              onChange={updateVideoMediaPickerSource}
+              value={videoMediaPickerSource}
+            />
+          }
+          title="选择视频"
+        >
           <Pressable
             accessibilityRole="button"
             disabled={isPickingVideos || isSubmitting}
@@ -620,9 +753,15 @@ export function ImportImagesScreen({
             </View>
             <View style={styles.pickCopy}>
               <Text numberOfLines={1} style={styles.pickTitle}>
-                {isPickingVideos ? '正在打开文件选择…' : pickedVideos.length > 0 ? `已选择 ${pickedVideos.length} 个视频` : '选择视频'}
+                {isPickingVideos
+                  ? videoMediaPickerSource === 'album' ? '正在打开相册…' : '正在打开文件…'
+                  : pickedVideos.length > 0 ? `已选择 ${pickedVideos.length} 个视频` : '选择视频'}
               </Text>
-              <Text numberOfLines={1} style={styles.pickHint}>{pickedVideos.length > 0 ? '继续选择，或移除下方已选项' : '从系统文件中选择视频'}</Text>
+              <Text numberOfLines={1} style={styles.pickHint}>
+                {pickedVideos.length > 0
+                  ? '继续选择，或移除下方已选项'
+                  : videoMediaPickerSource === 'album' ? '从系统相册批量选择视频' : '从系统文件批量选择视频'}
+              </Text>
             </View>
           </Pressable>
           {pickedVideos.length > 0 ? (
@@ -919,6 +1058,33 @@ export function ImportImagesScreen({
         </DevOnlyCard>
       </View>
       <AppDialog
+        message="移动模式会先把素材完整导入 Pixory，再请求 Android 删除相册原文件。系统删除确认仍需每次由你决定；文件来源始终只复制。"
+        onClose={() => {
+          setMoveImportWarningVisible(false);
+          setMoveImportWarningOptOut(false);
+        }}
+        onPrimary={() => void confirmMoveImportWarning()}
+        primaryLabel="知道了"
+        secondaryLabel={null}
+        title="移动模式说明"
+        visible={moveImportWarningVisible}
+      >
+        <Pressable
+          accessibilityLabel="下次不再弹出移动模式说明"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: moveImportWarningOptOut }}
+          onPress={() => setMoveImportWarningOptOut((current) => !current)}
+          style={({ pressed }) => [styles.warningOptOutRow, pressed && styles.pressed]}
+        >
+          <Ionicons
+            color={moveImportWarningOptOut ? colors.primary.active : colors.text.tertiary}
+            name={moveImportWarningOptOut ? 'checkbox' : 'square-outline'}
+            size={18}
+          />
+          <Text style={styles.warningOptOutText}>下次不再弹出</Text>
+        </Pressable>
+      </AppDialog>
+      <AppDialog
         onClose={() => {
           setIsTemplateDialogVisible(false);
           resetTemplateForm();
@@ -1105,6 +1271,17 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
     flex: 1,
     fontWeight: '700',
+  },
+  warningOptOutRow: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing[2],
+    minHeight: 32,
+  },
+  warningOptOutText: {
+    ...typography.textStyles.micro,
+    color: colors.text.secondary,
   },
   currentIpRow: {
     alignItems: 'center',

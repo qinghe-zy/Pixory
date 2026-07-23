@@ -108,7 +108,7 @@ test('AI chat uses the design.md light mode surface', () => {
 
   assert.match(content, /backgroundColor=\{aiLightColors\.canvas\}/);
   assert.match(content, /aiLightDisplayFont/);
-  assert.match(theme, /canvas:\s*'#F2F2F7'/);
+  assert.match(theme, /canvas:\s*'#EDEDED'/);
   assert.match(theme, /surface:\s*'#FFFFFF'/);
   assert.match(theme, /card:\s*'#FFFFFF'/);
   assert.match(theme, /primary:\s*'#5B9CF6'/);
@@ -242,10 +242,10 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(composer, /onContentSizeChange/);
   assert.match(composer, /scrollEnabled=\{/);
   assert.match(composer, /borderRadius:\s*radius\.md/);
-  assert.match(composer, /backgroundColor:\s*aiLightColors\.canvas/);
-  assert.match(composer, /borderColor:\s*aiLightColors\.mutedSoft/);
-  assert.match(composer, /borderWidth:\s*1/);
-  assert.match(composer, /\.\.\.shadows\.hairline/);
+  assert.match(composer, /composerShell:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.surface/);
+  assert.match(composer, /composerShell:\s*\{[\s\S]*borderColor:\s*aiLightColors\.hairline/);
+  assert.match(composer, /borderWidth:\s*StyleSheet\.hairlineWidth/);
+  assert.match(composer, /\.\.\.shadows\.sm/);
   assert.match(composer, /styles\.addButton/);
   assert.match(composer, /name="add"/);
   assert.match(composer, /placeholder="输入提示或需求"/);

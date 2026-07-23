@@ -8,17 +8,21 @@ interface LightFormSectionProps {
   hint?: string;
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  headerRight?: ReactNode;
 }
 
-export function LightFormSection({ title, hint, children, style }: LightFormSectionProps) {
+export function LightFormSection({ title, hint, children, style, headerRight }: LightFormSectionProps) {
   const rows = Children.toArray(children).filter(Boolean);
 
   return (
     <View style={[styles.section, style]}>
-      {title || hint ? (
-        <View style={styles.header}>
-          {title ? <Text style={styles.title}>{title}</Text> : null}
-          {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {title || hint || headerRight ? (
+        <View style={styles.headerRow}>
+          <View style={styles.headerCopy}>
+            {title ? <Text style={styles.title}>{title}</Text> : null}
+            {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+          </View>
+          {headerRight}
         </View>
       ) : null}
       <View style={styles.rows}>
@@ -42,11 +46,18 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
-  header: {
+  headerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: rhythm.microGap,
     paddingHorizontal: spacing[4],
     paddingTop: spacing[3],
     paddingBottom: spacing[2],
+  },
+  headerCopy: {
+    flex: 1,
+    gap: rhythm.microGap,
+    minWidth: 0,
   },
   title: {
     ...typography.textStyles.bodyStrong,

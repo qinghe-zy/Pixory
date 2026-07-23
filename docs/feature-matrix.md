@@ -97,7 +97,7 @@
 | 导入目标 | 导入到指定 IP、创建新 IP、选择分组和标签 | `ImportImagesScreen`, `ImportResultScreen` |
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
-| 源文件移动 | 支持可映射来源的 source move，失败时保护原数据 | `imageImportService` |
+| 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且始终复制；相册移动在 Pixory 导入完成后请求 Android 删除原件，取消或删除失败时保留导入结果并明确提示 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService` |
 | 资源包导入 | zip/cbz 包选择、zip-slip 防护、图片识别、按文件夹映射分组 | `packageImportService`, `ArchiveReaderScreen` |
 | 分享接入导入 | Android 分享图片/视频/文件到 Pixory | `ShareCollectScreen`, native media module |
 
