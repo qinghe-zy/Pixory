@@ -34,6 +34,7 @@ interface AiLightScaffoldProps {
   rightAction?: ReactNode;
   scrollable?: boolean;
   scrollViewRef?: RefObject<ScrollView | null>;
+  showHeader?: boolean;
   subtitle?: string;
   title: string;
   titleSlot?: ReactNode;
@@ -53,6 +54,7 @@ export function AiLightScaffold({
   rightAction,
   scrollable = false,
   scrollViewRef,
+  showHeader = true,
   subtitle,
   title,
   titleSlot,
@@ -71,24 +73,28 @@ export function AiLightScaffold({
       scrollViewRef={scrollViewRef}
       scrollable={scrollable}
     >
-      <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
-        <View style={styles.side}>
-          {onBack ? (
-            <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={10} onPress={onBack} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-              <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
-            </Pressable>
-          ) : null}
+      {showHeader ? (
+        <View style={[styles.header, !headerDividerVisible && styles.headerNoDivider, { paddingTop: statusBarHeight + layout.pageTopOffset }]}>
+          <View style={styles.side}>
+            {onBack ? (
+              <Pressable accessibilityLabel="返回" accessibilityRole="button" hitSlop={10} onPress={onBack} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
+                <Ionicons color={aiLightColors.ink} name="chevron-back" size={20} />
+              </Pressable>
+            ) : null}
+          </View>
+          <View style={styles.titleWrap}>
+            {titleSlot ?? (
+              <Text numberOfLines={1} style={styles.title}>
+                {title}
+              </Text>
+            )}
+            {subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}
+          </View>
+          <View style={styles.side}>{rightAction}</View>
         </View>
-        <View style={styles.titleWrap}>
-          {titleSlot ?? (
-            <Text numberOfLines={1} style={styles.title}>
-              {title}
-            </Text>
-          )}
-          {subtitle ? <Text numberOfLines={1} style={styles.subtitle}>{subtitle}</Text> : null}
-        </View>
-        <View style={styles.side}>{rightAction}</View>
-      </View>
+      ) : (
+        <View style={{ paddingTop: statusBarHeight + layout.pageTopOffset }} />
+      )}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       <View pointerEvents={loading ? 'none' : 'auto'} style={[bodyStyle, loading && styles.loadingContent]}>
         {children}

@@ -18,7 +18,7 @@ import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh/elements/botanical-branch.png');
 
 const HOME_THREAD_LIMIT = 30;
-const RECENT_CHAT_VISIBLE_ROWS = 6;
+const RECENT_CHAT_VISIBLE_ROWS = 5;
 const RECENT_CHAT_ROW_HEIGHT = 72;
 
 interface AiHomeScreenProps {
@@ -114,6 +114,7 @@ export function AiHomeScreen({
       footer={footer}
       headerDividerVisible={false}
       scrollable
+      showHeader={false}
       title=""
     >
       <View style={styles.mainStack}>
