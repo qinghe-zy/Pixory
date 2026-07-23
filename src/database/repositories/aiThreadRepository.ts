@@ -611,6 +611,8 @@ export interface AiThreadExportSnapshot {
   citations: AiCitationRow[];
   versions: AiMessageVersionRow[];
   branchRouteMetadata: AiBranchRouteMetadataRecord[];
+  continuityImportSessions: AiContinuityImportSessionRecord[];
+  continuityImportBlocks: AiContinuityImportBlockRecord[];
   userProfile: AiUserProfileRecord | null;
 }
 
@@ -1399,12 +1401,37 @@ export const aiThreadRepository = {
       threadId
     );
     const branchRouteMetadata = await aiThreadRepository.listBranchRouteMetadata(db, threadId);
+    const continuityImportSessions = await db.getAllAsync<AiContinuityImportSessionRecord>(
+      `SELECT *
+       FROM ai_continuity_import_sessions
+       WHERE threadId = ?
+       ORDER BY createdAt ASC`,
+      threadId
+    );
+    const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
+      `SELECT ai_continuity_import_blocks.*
+       FROM ai_continuity_import_blocks
+       INNER JOIN ai_continuity_import_sessions
+         ON ai_continuity_import_sessions.id = ai_continuity_import_blocks.importSessionId
+       WHERE ai_continuity_import_sessions.threadId = ?
+       ORDER BY ai_continuity_import_blocks.createdAt ASC`,
+      threadId
+    );
     const userProfile = await db.getFirstAsync<AiUserProfileRecord>(
       'SELECT * FROM ai_user_profiles WHERE space = ? AND boundIpId IS NULL AND boundThreadId = ?',
       thread.space,
       threadId
     );
-    return { branchRouteMetadata, thread, messages, citations, versions, userProfile };
+    return {
+      branchRouteMetadata,
+      citations,
+      continuityImportBlocks,
+      continuityImportSessions,
+      messages,
+      thread,
+      userProfile,
+      versions,
+    };
   },
 
   async importThread(db: SQLiteDatabase, snapshot: AiThreadExportSnapshot, targetSpace: PixorySpace): Promise<void> {
@@ -1469,6 +1496,69 @@ export const aiThreadRepository = {
       snapshot.thread.updatedAt,
       snapshot.thread.archivedAt ?? null
     );
+
+    for (const session of snapshot.continuityImportSessions ?? []) {
+      const targetRollbackState = session.rollbackState === 'available' ? 'locked' : session.rollbackState;
+      const targetRollbackRoundsRemaining = targetRollbackState === 'locked' ? 0 : session.rollbackRoundsRemaining;
+      await db.runAsync(
+        `INSERT INTO ai_continuity_import_sessions (
+          id,
+          threadId,
+          space,
+          sourceKind,
+          sourcePlatform,
+          formatVersion,
+          status,
+          rollbackState,
+          rollbackRoundsRemaining,
+          reviewGateState,
+          preImportBranchRootMessageId,
+          preImportBranchVersionIndex,
+          importedBranchRootMessageId,
+          importedBranchVersionIndex,
+          importAnchorMessageId,
+          importAnchorMessageRole,
+          importBranchRootKind,
+          rawDocumentText,
+          rawDocumentHash,
+          parsedMessageCount,
+          containsCompressedContinuity,
+          memoryReviewStatus,
+          memoryReviewError,
+          createdAt,
+          updatedAt,
+          rolledBackAt,
+          stabilizedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        session.id,
+        snapshot.thread.id,
+        targetSpace,
+        session.sourceKind,
+        session.sourcePlatform,
+        session.formatVersion,
+        session.status,
+        targetRollbackState,
+        targetRollbackRoundsRemaining,
+        session.reviewGateState,
+        session.preImportBranchRootMessageId,
+        session.preImportBranchVersionIndex,
+        session.importedBranchRootMessageId,
+        session.importedBranchVersionIndex,
+        session.importAnchorMessageId,
+        session.importAnchorMessageRole,
+        session.importBranchRootKind,
+        session.rawDocumentText,
+        session.rawDocumentHash,
+        session.parsedMessageCount,
+        session.containsCompressedContinuity,
+        session.memoryReviewStatus,
+        session.memoryReviewError,
+        session.createdAt,
+        session.updatedAt,
+        session.rolledBackAt,
+        session.stabilizedAt
+      );
+    }
 
     for (const message of snapshot.messages) {
       await db.runAsync(
@@ -1576,6 +1666,25 @@ export const aiThreadRepository = {
         version.createdAt
       );
       await aiThreadRepository.syncMessageVersionFts(db, mapMessageVersionRow(version));
+    }
+
+    for (const block of snapshot.continuityImportBlocks ?? []) {
+      await db.runAsync(
+        `INSERT INTO ai_continuity_import_blocks (
+          id,
+          importSessionId,
+          kind,
+          title,
+          content,
+          createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        block.id,
+        block.importSessionId,
+        block.kind,
+        block.title,
+        block.content,
+        block.createdAt
+      );
     }
 
     for (const route of snapshot.branchRouteMetadata ?? []) {

@@ -105,7 +105,9 @@ test('AI branch route metadata and current route survive thread export import', 
 
   assert.match(exportSnapshotBlock, /branchRouteMetadata: AiBranchRouteMetadataRecord\[\]/);
   assert.match(exportThreadBlock, /const branchRouteMetadata = await aiThreadRepository\.listBranchRouteMetadata\(db, threadId\)/);
-  assert.match(exportThreadBlock, /return \{ branchRouteMetadata, thread, messages, citations, versions, userProfile \}/);
+  for (const field of ['branchRouteMetadata', 'thread', 'messages', 'citations', 'versions', 'userProfile']) {
+    assert.match(exportThreadBlock, new RegExp(`return \\{[\\s\\S]*${field},`));
+  }
   assert.match(importThreadBlock, /currentBranchRootMessageId/);
   assert.match(importThreadBlock, /currentBranchVersionIndex/);
   assert.match(importThreadBlock, /snapshot\.thread\.currentBranchRootMessageId \?\? null/);

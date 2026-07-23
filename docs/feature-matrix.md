@@ -164,6 +164,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | 空间模型 | normal/personal 双数据库/双文件目录，route 携带 space | `database/db`, `route-space-policy`, `App.tsx` |
+| 聊天跨空间迁移 | 线程、消息、分支、引用、线程材料和续聊导入元数据按外键依赖顺序迁移；跨空间后锁定旧空间的续聊回退窗口，避免旧 effect 把记忆/画像写回错误空间 | `aiChatService`, `aiThreadRepository`, `aiDocumentService` |
 | 密码 | 设置、验证、修改、重置隐私系统 | `personalSystemService`, `PersonalUnlockModal` |
 | 锁定 | 后台 grace period、解锁 modal、普通/隐私路由隔离 | `App.tsx`, `PersonalUnlockModal` |
 | 隐私任务 token | 长任务中校验 session token，防止锁定后继续写入 | `personalTaskToken` |
