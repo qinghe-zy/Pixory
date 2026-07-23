@@ -1668,6 +1668,7 @@ export function AiChatScreen({
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [isInitialMessageLoading, setIsInitialMessageLoading] = useState(true);
   const [singleBubbleTailReplayEnabled] = useState(
     getAiTailReplaySingleBubbleEnabled,
   );
@@ -4047,6 +4048,7 @@ export function AiChatScreen({
     userScrolledAwayFromBottomRef.current = false;
     bottomLockedRef.current = true;
     setScrollToLatestVisible(false);
+    setIsInitialMessageLoading(true);
     applyDisplayTitle(nextDisplayTitle);
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
@@ -4056,6 +4058,7 @@ export function AiChatScreen({
     if (!targetThreadId) {
       scrollToLatestMessage(false, true);
       void reloadMessages(null, true);
+      setIsInitialMessageLoading(false);
       return;
     }
     let cancelled = false;
@@ -4080,6 +4083,7 @@ export function AiChatScreen({
         forceToLatest: !hasSearchTarget,
       });
       if (!cancelled) {
+        setIsInitialMessageLoading(false);
         if (hasSearchTarget) {
           return;
         }
@@ -6203,7 +6207,7 @@ export function AiChatScreen({
               contentContainerStyle={styles.messageScrollContent}
               viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
             />
-            {invertedMessageItems.length === 0 && !errorMessage ? (
+            {invertedMessageItems.length === 0 && !isInitialMessageLoading && !errorMessage ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>
