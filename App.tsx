@@ -472,6 +472,45 @@ export default function App() {
   const currentRoute = routeStack[routeStack.length - 1] ?? INITIAL_ROUTE;
   const activeSpace = personalSessionState === 'unlocked' ? 'personal' : 'normal';
 
+  const currentRouteRef = useRef(currentRoute);
+  currentRouteRef.current = currentRoute;
+
+  const rootPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gs) => {
+        if (currentRouteRef.current?.name !== 'root') return false;
+        return (
+          Math.abs(gs.dx) > 6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (_evt, gs) => {
+        if (currentRouteRef.current?.name !== 'root') return;
+        const currentTab = currentRouteRef.current.tab;
+        const tabs: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
+        const index = tabs.indexOf(currentTab);
+        
+        const SWIPE_RELEASE_DISTANCE = 10;
+        const SWIPE_ACTIVATION_DISTANCE = 6;
+        
+        const isSwipeRight = gs.dx > SWIPE_RELEASE_DISTANCE || (gs.dx > SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18);
+        const isSwipeLeft = gs.dx < -SWIPE_RELEASE_DISTANCE || (gs.dx < -SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18);
+        
+        if (isSwipeRight) {
+          // Swipe Right: User requested "首页右滑进入整理", so Next Tab
+          if (index < tabs.length - 1) {
+            switchRootTab(tabs[index + 1]);
+          }
+        } else if (isSwipeLeft) {
+          // Swipe Left: Previous Tab
+          if (index > 0) {
+            switchRootTab(tabs[index - 1]);
+          }
+        }
+      },
+    })
+  ).current;
+
   async function checkRemoteNotices(isStillActive: () => boolean = () => true) {
     const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
     if (!isStillActive() || isExternalEntryRoute(activeRoute)) {
@@ -1122,45 +1161,6 @@ export default function App() {
       </SafeAreaProvider>
     );
   }
-
-  const currentRouteRef = useRef(currentRoute);
-  currentRouteRef.current = currentRoute;
-
-  const rootPanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_evt, gs) => {
-        if (currentRouteRef.current?.name !== 'root') return false;
-        return (
-          Math.abs(gs.dx) > 6 &&
-          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
-        );
-      },
-      onPanResponderRelease: (_evt, gs) => {
-        if (currentRouteRef.current?.name !== 'root') return;
-        const currentTab = currentRouteRef.current.tab;
-        const tabs: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
-        const index = tabs.indexOf(currentTab);
-        
-        const SWIPE_RELEASE_DISTANCE = 10;
-        const SWIPE_ACTIVATION_DISTANCE = 6;
-        
-        const isSwipeRight = gs.dx > SWIPE_RELEASE_DISTANCE || (gs.dx > SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18);
-        const isSwipeLeft = gs.dx < -SWIPE_RELEASE_DISTANCE || (gs.dx < -SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18);
-        
-        if (isSwipeRight) {
-          // Swipe Right: User requested "首页右滑进入整理", so Next Tab
-          if (index < tabs.length - 1) {
-            switchRootTab(tabs[index + 1]);
-          }
-        } else if (isSwipeLeft) {
-          // Swipe Left: Previous Tab
-          if (index > 0) {
-            switchRootTab(tabs[index - 1]);
-          }
-        }
-      },
-    })
-  ).current;
 
   const rootFooter =
     currentRoute.name === 'root' ? (
