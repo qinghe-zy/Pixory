@@ -497,14 +497,14 @@ export default function App() {
         const isSwipeLeft = gs.dx < -SWIPE_RELEASE_DISTANCE || (gs.dx < -SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18);
         
         if (isSwipeRight) {
-          // Swipe Right: User requested "首页右滑进入整理", so Next Tab
-          if (index < tabs.length - 1) {
-            switchRootTab(tabs[index + 1]);
-          }
-        } else if (isSwipeLeft) {
-          // Swipe Left: Previous Tab
+          // Swipe Right (Left-to-Right): Reveal Previous Tab (Left)
           if (index > 0) {
             switchRootTab(tabs[index - 1]);
+          }
+        } else if (isSwipeLeft) {
+          // Swipe Left (Right-to-Left): Reveal Next Tab (Right)
+          if (index < tabs.length - 1) {
+            switchRootTab(tabs[index + 1]);
           }
         }
       },
