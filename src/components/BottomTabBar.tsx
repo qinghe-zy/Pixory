@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     ...shadows.floating,
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
-    borderRadius: componentTokens.bottomTab.radiusTop,
+    borderRadius: radius.xxl,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     minHeight: Math.max(58, componentTokens.bottomTab.height - 10),

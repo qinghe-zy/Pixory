@@ -2180,13 +2180,8 @@ function FloatingRootFooter({ activeTab, onSelectTab }: { activeTab: RootTabKey;
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: colors.background.page,
-        borderTopLeftRadius: radius.xxl,
-        borderTopRightRadius: radius.xxl,
         paddingHorizontal: layout.pagePaddingHorizontal,
-        paddingTop: spacing[2],
         paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
-        ...shadows.hairline,
       }}
     >
       <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />
