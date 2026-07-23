@@ -363,11 +363,11 @@ const styles = StyleSheet.create({
   },
   primaryChatCardWrapper: {
     ...shadows.sm,
+    backgroundColor: aiLightColors.surface,
     borderRadius: 36,
   },
   primaryChatCard: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
     borderRadius: 36,
     borderWidth: StyleSheet.hairlineWidth,
