@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image, StyleSheet, useWindowDimensions, View, type ImageStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -49,6 +50,12 @@ export function PageBackground({
             style={buildElementStyle(element, width, height, insets.bottom, dimmed)}
           />
         ))}
+        {variant ? (
+          <LinearGradient
+            colors={['transparent', backgroundColor]}
+            style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 240 }}
+          />
+        ) : null}
       </View>
       <View style={styles.content}>{children}</View>
     </View>
