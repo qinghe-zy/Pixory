@@ -666,10 +666,6 @@ interface AiChatScreenProps {
   onOpenRoleLibrary: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
-  onOpenChatSearch: (
-    threadId: string,
-    currentBranchScopes: AiBranchScope[],
-  ) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
@@ -703,7 +699,6 @@ export function AiChatScreen({
   onOpenRoleLibrary,
   onOpenGlobalMaterials,
   onOpenSessionConfig,
-  onOpenChatSearch,
   onOpenMemoryBoard,
   onNewChat,
   onOpenThread,
@@ -4480,24 +4475,6 @@ export function AiChatScreen({
     }
   }
 
-  async function handleOpenChatSearch() {
-    try {
-      const nextThreadId = activeThreadIdRef.current ?? activeThreadId;
-      if (!nextThreadId || !screenMountedRef.current) {
-        setErrorMessage("当前还没有可搜索的聊天。");
-        return;
-      }
-      onOpenChatSearch(nextThreadId, getPersistedCurrentBranchScopes());
-    } catch (error) {
-      if (!screenMountedRef.current) {
-        return;
-      }
-      setErrorMessage(
-        error instanceof Error ? error.message : "无法打开聊天搜索",
-      );
-    }
-  }
-
   async function onOpenMemoryBoardFromChat() {
     try {
       const nextThreadId = await ensureThread();
@@ -6059,24 +6036,6 @@ export function AiChatScreen({
               >
                 <Ionicons color={aiLightColors.ink} name="menu-outline" size={22} />
               </Pressable>
-              <Pressable
-                accessibilityLabel="搜索当前聊天"
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !activeThreadId }}
-                disabled={!activeThreadId}
-                onPress={() => void handleOpenChatSearch()}
-                style={({ pressed }) => [
-                  styles.iconBtn,
-                  !activeThreadId && styles.iconBtnDisabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Ionicons
-                  color={activeThreadId ? aiLightColors.ink : aiLightColors.muted}
-                  name="search-outline"
-                  size={20}
-                />
-              </Pressable>
             </View>
             {/* Center: title */}
             <View style={styles.titleBlock}>
@@ -6103,27 +6062,7 @@ export function AiChatScreen({
                   pressed && styles.pressed,
                 ]}
               >
-                <Ionicons color={aiLightColors.ink} name="settings-outline" size={20} />
-              </Pressable>
-              <Pressable
-                accessibilityLabel="开启新会话"
-                accessibilityRole="button"
-                onPress={() => void handleNewChatPress()}
-                style={({ pressed }) => [
-                  styles.iconBtn,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <View pointerEvents="none" style={styles.newChatIconWrap}>
-                  <Ionicons
-                    color={aiLightColors.ink}
-                    name="chatbubble-ellipses-outline"
-                    size={23}
-                  />
-                  <View style={styles.newChatIconBadge}>
-                    <Ionicons color={aiLightColors.canvas} name="add" size={10} />
-                  </View>
-                </View>
+                <Ionicons color={aiLightColors.ink} name="ellipsis-horizontal" size={20} />
               </Pressable>
             </View>
           </View>

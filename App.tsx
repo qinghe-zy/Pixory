@@ -1686,16 +1686,6 @@ export default function App() {
             threadId,
           })
         }
-        onOpenChatSearch={(threadId, branchScopes) =>
-          pushRoute({
-            name: 'ai-chat-search',
-            branchScopes,
-            contextTitle: currentRoute.contextTitle,
-            contextType: currentRoute.contextType,
-            space: currentRoute.space,
-            threadId,
-          })
-        }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
@@ -1788,6 +1778,11 @@ export default function App() {
         onOpenThreadMaterials={
           currentRoute.threadId
             ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })
+            : undefined
+        }
+        onOpenChatSearch={
+          currentRoute.threadId
+            ? () => pushRoute({ name: 'ai-chat-search', branchScopes: [], contextTitle: currentRoute.contextTitle, contextType: currentRoute.contextType, space: currentRoute.space, threadId: currentRoute.threadId as string })
             : undefined
         }
         onOpenMemoryBoard={

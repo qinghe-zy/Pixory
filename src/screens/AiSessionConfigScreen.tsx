@@ -58,6 +58,7 @@ interface AiSessionConfigScreenProps {
   onOpenProviderSettings: () => void;
   onOpenRoleLibrary: () => void;
   onOpenThreadMaterials?: () => void;
+  onOpenChatSearch?: () => void;
   onOpenBranchTree?: () => void;
   onOpenMemoryBoard?: () => void;
   onStartChat: () => void;
@@ -148,6 +149,7 @@ export function AiSessionConfigScreen({
   onOpenProviderSettings,
   onOpenRoleLibrary,
   onOpenThreadMaterials,
+  onOpenChatSearch,
   onOpenBranchTree,
   onOpenMemoryBoard,
   onStartChat,
@@ -925,6 +927,12 @@ export function AiSessionConfigScreen({
                 onPress={onOpenThreadMaterials}
               />
             ) : null}
+            <AiLightListItem
+              disabled={!threadId || !onOpenChatSearch}
+              icon="search-outline"
+              title="查找聊天记录"
+              onPress={onOpenChatSearch}
+            />
             <AiLightListItem
               disabled={!threadId || !onOpenBranchTree}
               icon="git-branch-outline"
