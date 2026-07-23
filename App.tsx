@@ -2295,7 +2295,8 @@ function PersonalModeBanner() {
 
 const styles = StyleSheet.create({
   gestureRoot: {
-    flex: 1
+    flex: 1,
+    backgroundColor: colors.background.page,
   },
   stateScreen: {
     alignItems: 'center',
