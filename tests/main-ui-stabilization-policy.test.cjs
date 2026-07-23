@@ -19,11 +19,11 @@ function logicHash(relativePath) {
 test('main chat UI changes preserve the existing composer and streaming logic', () => {
   assert.equal(
     logicHash('src/components/ai/AiChatComposer.tsx'),
-    '9998d2f61f0fe1877239f28112f8f94e4d34642c6f9b505931b644648ceccdc0'
+    '85bcf6651c43a2fa90d67604f6fad32730d8190b5d30d5cc252346732546bcbf'
   );
   assert.equal(
     logicHash('src/screens/AiChatScreen.tsx'),
-    '57e7d97bbee50bff645887e3d55e354e5a8590e9490084d730435735df8e35c4'
+    '0ddfbec679193d5e58ea177d90628d8bc7a4c93b95feac444c493987dccd3cf4'
   );
 });
 

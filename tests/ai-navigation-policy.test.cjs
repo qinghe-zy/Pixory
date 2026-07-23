@@ -689,9 +689,10 @@ test('AI materials support batch removal and chat history supports rename', () =
   assert.match(service, /titleStatus:\s*'custom'/);
 });
 
-test('AI chat exposes comprehensive record drawer from the top-left menu', () => {
+test('AI chat keeps the header focused and moves search to session settings', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
+  const sessionConfig = read('src/screens/AiSessionConfigScreen.tsx');
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
@@ -702,14 +703,12 @@ test('AI chat exposes comprehensive record drawer from the top-left menu', () =>
   assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);
-  assert.match(chat, /accessibilityLabel="搜索当前聊天"/);
-  assert.match(chat, /name="search-outline"/);
   assert.match(chat, /accessibilityLabel="会话设置"/);
-  assert.match(chat, /name="settings-outline"/);
-  assert.match(chat, /accessibilityLabel="开启新会话"/);
-  assert.match(chat, /name="chatbubble-ellipses-outline"/);
-  assert.match(chat, /name="add"/);
-  assert.match(chat, /newChatIconBadge/);
+  assert.match(chat, /name="ellipsis-horizontal"/);
+  assert.doesNotMatch(chat, /accessibilityLabel="搜索当前聊天"/);
+  assert.doesNotMatch(chat, /accessibilityLabel="开启新会话"/);
+  assert.match(sessionConfig, /title="查找聊天记录"/);
+  assert.match(app, /onOpenChatSearch=\{[\s\S]*branchScopes:\s*\[\]/);
   assert.match(chat, /swipeDrawerPanResponder/);
   assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /DRAWER_SWIPE_RELEASE_DISTANCE = 10/);

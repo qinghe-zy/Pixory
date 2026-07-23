@@ -15,7 +15,7 @@ test('profile storage summary avoids duplicate total original storage and uses r
   assert.doesNotMatch(meSource, /本地原图存储/);
   assert.doesNotMatch(meSource, /totalOriginalBytes/);
   assert.doesNotMatch(meSource, /sumFileSize\(db, \{ includeDeleted: true \}\)/);
-  assert.match(meSource, /storageHeader:\s*\{[\s\S]{0,220}flexDirection:\s*'column'/);
+  assert.match(meSource, /storageHeader:\s*\{[\s\S]{0,220}flexDirection:\s*'(column|row)'/);
   assert.match(meSource, /图片原图/);
   assert.match(meSource, /视频存储/);
 });

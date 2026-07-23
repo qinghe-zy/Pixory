@@ -1,6 +1,6 @@
 {
-  "version": "2.6.6",
-  "versionCode": 268,
+  "version": "2.6.7",
+  "versionCode": 269,
   "enabled": true,
   "forceUpdate": false,
   "message": "Pixory 2.6.6 发布。可前往官网下载区获取最新版，AI 聊天性能、上下文控制和本地资料操作进一步完善。",
@@ -9,7 +9,7 @@
     "🧠 支持按会话设置最近对话轮数；上下文不足时优先保留最近完整问答节奏",
     "📦 完善跨空间会话与素材来源操作的安全边界和提示"
   ],
-  "latestVersion": "2.6.6",
-  "latestVersionCode": 268,
+  "latestVersion": "2.6.7",
+  "latestVersionCode": 269,
   "downloadUrl": "https://mist01.com/#download"
 }
