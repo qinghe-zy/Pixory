@@ -702,6 +702,10 @@ export function ImportImagesScreen({
             <CompactSegmentedControl
               disabled={isPicking || isSubmitting}
               onChange={updateImageMediaPickerSource}
+              options={[
+                { label: '相册', value: 'album' },
+                { label: '文件', value: 'files' },
+              ]}
               value={imageMediaPickerSource}
             />
           }
@@ -763,6 +767,10 @@ export function ImportImagesScreen({
             <CompactSegmentedControl
               disabled={isPickingVideos || isSubmitting}
               onChange={updateVideoMediaPickerSource}
+              options={[
+                { label: '相册', value: 'album' },
+                { label: '文件', value: 'files' },
+              ]}
               value={videoMediaPickerSource}
             />
           }

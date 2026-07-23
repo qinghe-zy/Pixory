@@ -17,14 +17,15 @@ import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useToast } from '../components/AppToast';
 
 interface TrashScreenProps {
-  space?: PixorySpace;
-  refreshToken: number;
+  space: PixorySpace;
+  refreshToken?: number;
   onBack: () => void;
   onChanged: () => void;
   storageMode?: boolean;
+  titleSlot?: React.ReactNode;
 }
 
-export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged, storageMode = false }: TrashScreenProps) {
+export function TrashScreen({ space, refreshToken, onBack, onChanged, storageMode = false, titleSlot }: TrashScreenProps) {
   const { showToast } = useToast();
   const [activeIpId, setActiveIpId] = useState<number | null>(null);
   const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
@@ -162,7 +163,7 @@ export function TrashScreen({ space = 'normal', refreshToken, onBack, onChanged,
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="trash" decorativeTitle="Trash" footer={footer} onBack={onBack} rightAction={rightAction} scrollable title="回收站">
+    <ScreenScaffold backgroundVariant="trash" decorativeTitle={titleSlot ? undefined : "Trash"} footer={footer} onBack={onBack} rightAction={rightAction} scrollable title={titleSlot ? '' : "回收站"} titleSlot={titleSlot}>
       <Pressable onPress={() => setIsFilterSheetVisible(true)} style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
         <Text style={styles.filterText}>{activeIpId == null ? '全部 IP' : ips.find((ip) => ip.id === activeIpId)?.name ?? '当前 IP'}</Text>
         <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />

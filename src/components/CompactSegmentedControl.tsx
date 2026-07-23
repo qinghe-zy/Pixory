@@ -3,25 +3,22 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MediaPickerSource } from '../database/repositories/settingsRepository';
 import { colors, radius, spacing, typography } from '../design/tokens';
 
-interface CompactSegmentedControlProps {
+interface CompactSegmentedControlProps<T extends string> {
   disabled?: boolean;
-  onChange: (value: MediaPickerSource) => void;
-  value: MediaPickerSource;
+  onChange: (value: T) => void;
+  options: Array<{ label: string; value: T }>;
+  value: T;
 }
 
-const OPTIONS: Array<{ label: string; value: MediaPickerSource }> = [
-  { label: '相册', value: 'album' },
-  { label: '文件', value: 'files' },
-];
-
-export function CompactSegmentedControl({
+export function CompactSegmentedControl<T extends string>({
   disabled = false,
   onChange,
+  options,
   value,
-}: CompactSegmentedControlProps) {
+}: CompactSegmentedControlProps<T>) {
   return (
     <View accessibilityRole="tablist" style={[styles.root, disabled && styles.disabled]}>
-      {OPTIONS.map((option) => {
+      {options.map((option) => {
         const selected = option.value === value;
         return (
           <Pressable

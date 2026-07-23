@@ -76,7 +76,7 @@ import { QuickOrganizeScreen } from './src/screens/QuickOrganizeScreen';
 import { RecentViewedScreen } from './src/screens/RecentViewedScreen';
 import { TagResultScreen } from './src/screens/TagResultScreen';
 import { TagsOverviewScreen } from './src/screens/TagsOverviewScreen';
-import { TrashScreen } from './src/screens/TrashScreen';
+import { GlobalTrashScreen } from './src/screens/GlobalTrashScreen';
 import { VideoDetailScreen } from './src/screens/VideoDetailScreen';
 import { VideoPlayerScreen } from './src/screens/VideoPlayerScreen';
 import type { ImageViewerContext } from './src/navigation/imageViewerContext';
@@ -1649,7 +1649,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'trash') {
-    content = <TrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} />;
+    content = <GlobalTrashScreen onBack={popRoute} onChanged={refreshLibrary} refreshToken={libraryRefreshToken} space={currentRoute.space} storageMode={currentRoute.storageMode} />;
   } else if (currentRoute.name === 'backup') {
     content = (
       <BackupScreen

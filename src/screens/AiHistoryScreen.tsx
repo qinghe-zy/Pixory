@@ -17,6 +17,8 @@ interface AiHistoryScreenProps {
   space: PixorySpace;
   onBack: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
+  forcedFilter?: AiThreadHistoryFilter;
+  titleSlot?: React.ReactNode;
 }
 
 const FILTERS: Array<{ key: AiThreadHistoryFilter; label: string }> = [
@@ -54,8 +56,14 @@ function historyGroupLabel(value: string): string {
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
 }
 
-export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreenProps) {
-  const [filter, setFilter] = useState<AiThreadHistoryFilter>('all');
+export function AiHistoryScreen({
+  space,
+  onBack,
+  onOpenThread,
+  forcedFilter,
+  titleSlot,
+}: AiHistoryScreenProps) {
+  const [filter, setFilter] = useState<AiThreadHistoryFilter>(forcedFilter ?? 'all');
   const [items, setItems] = useState<AiThreadHistoryItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState(searchText);
@@ -314,14 +322,11 @@ export function AiHistoryScreen({ space, onBack, onOpenThread }: AiHistoryScreen
         footer={selectionFooter}
         onBack={onBack}
         scrollable
-        subtitle={spaceLabel}
-        title="历史会话"
+        subtitle={titleSlot ? undefined : spaceLabel}
+        title={titleSlot ? '' : '历史会话'}
+        titleSlot={titleSlot}
       >
-        <View style={styles.filterRow}>
-          {FILTERS.map((item) => (
-            <AiLightChip active={filter === item.key} dense key={item.key} label={item.label} onPress={() => setFilter(item.key)} />
-          ))}
-        </View>
+
         <View style={styles.searchBox}>
           <Ionicons color={aiLightColors.mutedSoft} name="search-outline" size={16} />
           <TextInput

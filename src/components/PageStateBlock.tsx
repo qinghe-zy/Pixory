@@ -103,5 +103,7 @@ const styles = StyleSheet.create({
   },
   emptyWrap: {
     alignSelf: 'stretch',
+    flex: 1,
+    justifyContent: 'center',
   },
 });
