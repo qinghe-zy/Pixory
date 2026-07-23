@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from 'react';
+import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PageBackgroundVariant } from '../design/backgrounds';
 import { colors, layout, radius, rhythm, shadows, spacing } from '../design/tokens';
 import { PageBackground } from './PageBackground';
+
+export const FloatingFooterContext = createContext<number>(0);
 
 interface AppScreenProps {
   children: ReactNode;
@@ -47,7 +49,8 @@ export function AppScreen({
   onScroll,
 }: AppScreenProps) {
   const insets = useSafeAreaInsets();
-  const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset;
+  const floatingFooterHeight = useContext(FloatingFooterContext);
+  const bodyBottomPadding = (footer ? 0 : insets.bottom) + layout.pageBottomOffset + floatingFooterHeight;
 
   const body = scrollable ? (
     <ScrollView

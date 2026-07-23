@@ -1,0 +1,198 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - link "DuckDuckGo" [ref=f1e4] [cursor=pointer]:
+      - /url: /html/
+    - generic [ref=f1e5]:
+      - generic [ref=f1e6]:
+        - textbox [ref=f1e7]: WeChat typing indicator message sending failed states
+        - button "Submit" [ref=f1e8] [cursor=pointer]
+      - combobox [ref=f1e10] [cursor=pointer]:
+        - option "All Regions" [selected]
+        - option "Argentina"
+        - option "Australia"
+        - option "Austria"
+        - option "Belgium (fr)"
+        - option "Belgium (nl)"
+        - option "Brazil"
+        - option "Bulgaria"
+        - option "Canada (en)"
+        - option "Canada (fr)"
+        - option "Catalonia"
+        - option "Chile"
+        - option "China"
+        - option "Colombia"
+        - option "Croatia"
+        - option "Czech Republic"
+        - option "Denmark"
+        - option "Estonia"
+        - option "Finland"
+        - option "France"
+        - option "Germany"
+        - option "Greece"
+        - option "Hong Kong"
+        - option "Hungary"
+        - option "Iceland"
+        - option "India (en)"
+        - option "Indonesia (en)"
+        - option "Ireland"
+        - option "Israel (en)"
+        - option "Italy"
+        - option "Japan"
+        - option "Korea"
+        - option "Latvia"
+        - option "Lithuania"
+        - option "Malaysia (en)"
+        - option "Mexico"
+        - option "Netherlands"
+        - option "New Zealand"
+        - option "Norway"
+        - option "Pakistan (en)"
+        - option "Peru"
+        - option "Philippines (en)"
+        - option "Poland"
+        - option "Portugal"
+        - option "Romania"
+        - option "Russia"
+        - option "Saudi Arabia"
+        - option "Singapore"
+        - option "Slovakia"
+        - option "Slovenia"
+        - option "South Africa"
+        - option "Spain (ca)"
+        - option "Spain (es)"
+        - option "Sweden"
+        - option "Switzerland (de)"
+        - option "Switzerland (fr)"
+        - option "Taiwan"
+        - option "Thailand (en)"
+        - option "Turkey"
+        - option "US (English)"
+        - option "US (Spanish)"
+        - option "Ukraine"
+        - option "United Kingdom"
+        - option "Vietnam (en)"
+      - combobox [ref=f1e12] [cursor=pointer]:
+        - option "Any Time" [selected]
+        - option "Past Day"
+        - option "Past Week"
+        - option "Past Month"
+        - option "Past Year"
+  - generic [ref=f1e15]:
+    - generic [ref=f1e17]:
+      - heading [level=2] [ref=f1e18]:
+        - link "WeChat typing indicator stuck permanently after long agent ... - GitHub" [ref=f1e19] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FNousResearch%2Fhermes%2Dagent%2Fissues%2F38085&rut=b2962d0c3e889a06f5ece8f72d571635f4f8c99d4b34c0e258275f39a929b5ca
+      - generic [ref=f1e21]:
+        - link [ref=f1e23] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FNousResearch%2Fhermes%2Dagent%2Fissues%2F38085&rut=b2962d0c3e889a06f5ece8f72d571635f4f8c99d4b34c0e258275f39a929b5ca
+        - link "github.com/NousResearch/hermes-agent/issues/38085" [ref=f1e24] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FNousResearch%2Fhermes%2Dagent%2Fissues%2F38085&rut=b2962d0c3e889a06f5ece8f72d571635f4f8c99d4b34c0e258275f39a929b5ca
+        - text: 2026-06-03T00:00:00.0000000
+      - link "Describe the bug When an agent session on WeChat (iLink) exceeds ~10 minutes, the typing indicator (\". . . 正在输入\") becomes permanently stuck on the client side and never clears — even after the agent has finished responding and delivered the message." [ref=f1e25] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2FNousResearch%2Fhermes%2Dagent%2Fissues%2F38085&rut=b2962d0c3e889a06f5ece8f72d571635f4f8c99d4b34c0e258275f39a929b5ca
+    - generic [ref=f1e27]:
+      - heading [level=2] [ref=f1e28]:
+        - 'link "[Bug]: WeChat channel may trigger repeated refresh_typing ... - GitHub" [ref=f1e29] [cursor=pointer]':
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fagentscope%2Dai%2FQwenPaw%2Fissues%2F3044&rut=ec22a7ba0486b8eec35ad71be93a2e20610f314062bb9b48f8f1aadcef28d2cd
+      - generic [ref=f1e31]:
+        - link [ref=f1e33] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fagentscope%2Dai%2FQwenPaw%2Fissues%2F3044&rut=ec22a7ba0486b8eec35ad71be93a2e20610f314062bb9b48f8f1aadcef28d2cd
+        - link "github.com/agentscope-ai/QwenPaw/issues/3044" [ref=f1e34] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fagentscope%2Dai%2FQwenPaw%2Fissues%2F3044&rut=ec22a7ba0486b8eec35ad71be93a2e20610f314062bb9b48f8f1aadcef28d2cd
+        - text: 2026-04-07T00:00:00.0000000
+      - 'link "The channel may enter failure states such as poll thread failed and weixin channel stopped. In some cases, cron reports status=success, but actual delivery is unreliable or may silently fail. What I expected: WeChat scheduled tasks and message sending should not create repeated typing refresh tasks." [ref=f1e35] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fagentscope%2Dai%2FQwenPaw%2Fissues%2F3044&rut=ec22a7ba0486b8eec35ad71be93a2e20610f314062bb9b48f8f1aadcef28d2cd
+    - generic [ref=f1e37]:
+      - heading [level=2] [ref=f1e38]:
+        - link "WeChat 'user is typing' not working for me and my contacts (in ... - Reddit" [ref=f1e39] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.reddit.com%2Fr%2Fchinalife%2Fcomments%2F1b21xz9%2Fwechat_user_is_typing_not_working_for_me_and_my%2F&rut=3cd7d231b342b1ba19fe67efc532bd2190fa9dfb153ab1b7d259b717016d032d
+      - generic [ref=f1e41]:
+        - link [ref=f1e43] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.reddit.com%2Fr%2Fchinalife%2Fcomments%2F1b21xz9%2Fwechat_user_is_typing_not_working_for_me_and_my%2F&rut=3cd7d231b342b1ba19fe67efc532bd2190fa9dfb153ab1b7d259b717016d032d
+        - link "www.reddit.com/r/chinalife/comments/1b21xz9/wechat_user_is_typing_not_working_for_me_and_my/" [ref=f1e44] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.reddit.com%2Fr%2Fchinalife%2Fcomments%2F1b21xz9%2Fwechat_user_is_typing_not_working_for_me_and_my%2F&rut=3cd7d231b342b1ba19fe67efc532bd2190fa9dfb153ab1b7d259b717016d032d
+      - link "So as the title says, the 'user is typing' won't show up when I'm writing to my contacts, and neither it does when they're writing to me. Do you know why is this happening?" [ref=f1e45] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.reddit.com%2Fr%2Fchinalife%2Fcomments%2F1b21xz9%2Fwechat_user_is_typing_not_working_for_me_and_my%2F&rut=3cd7d231b342b1ba19fe67efc532bd2190fa9dfb153ab1b7d259b717016d032d
+    - generic [ref=f1e47]:
+      - heading [level=2] [ref=f1e48]:
+        - link "State Management | yangyang0507/pi-wechat | DeepWiki" [ref=f1e49] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fyangyang0507%2Fpi%2Dwechat%2F2.3%2Dstate%2Dmanagement&rut=35c2b638f6aa51dcac6b78415e837d364d19c087c61130935a3a1ac27f093f55
+      - generic [ref=f1e51]:
+        - link [ref=f1e53] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fyangyang0507%2Fpi%2Dwechat%2F2.3%2Dstate%2Dmanagement&rut=35c2b638f6aa51dcac6b78415e837d364d19c087c61130935a3a1ac27f093f55
+        - link "deepwiki.com/yangyang0507/pi-wechat/2.3-state-management" [ref=f1e54] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fyangyang0507%2Fpi%2Dwechat%2F2.3%2Dstate%2Dmanagement&rut=35c2b638f6aa51dcac6b78415e837d364d19c087c61130935a3a1ac27f093f55
+        - text: 2026-06-20T00:00:00.0000000
+      - link "The pi-wechat extension maintains an in-process state machine to synchronize the asynchronous nature of WeChat messages with the sequential processing model of the pi-coding-agent. It manages a message pipeline that ensures WeChat users receive timely feedback (via typing indicators) while the agent processes requests one at a time." [ref=f1e55] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fyangyang0507%2Fpi%2Dwechat%2F2.3%2Dstate%2Dmanagement&rut=35c2b638f6aa51dcac6b78415e837d364d19c087c61130935a3a1ac27f093f55
+    - generic [ref=f1e57]:
+      - heading [level=2] [ref=f1e58]:
+        - link "Troubleshooting your WeChat channel | SleekFlow Help" [ref=f1e59] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.sleekflow.io%2Fen_US%2Fwechat%2Ftroubleshooting%2Dyour%2Dwechat%2Dchannel&rut=e516b84ae4263d26d89a6c8977c0059c273f5598a0861c50f8133c74d7a72c42
+      - generic [ref=f1e61]:
+        - link [ref=f1e63] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.sleekflow.io%2Fen_US%2Fwechat%2Ftroubleshooting%2Dyour%2Dwechat%2Dchannel&rut=e516b84ae4263d26d89a6c8977c0059c273f5598a0861c50f8133c74d7a72c42
+        - link "help.sleekflow.io/en_US/wechat/troubleshooting-your-wechat-channel" [ref=f1e64] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.sleekflow.io%2Fen_US%2Fwechat%2Ftroubleshooting%2Dyour%2Dwechat%2Dchannel&rut=e516b84ae4263d26d89a6c8977c0059c273f5598a0861c50f8133c74d7a72c42
+        - text: 2024-11-20T00:00:00.0000000
+      - link "The error codes and messages listed in this article might not be up-to-date. For the most updated list of error codes, visit WeChat's documentation here." [ref=f1e65] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.sleekflow.io%2Fen_US%2Fwechat%2Ftroubleshooting%2Dyour%2Dwechat%2Dchannel&rut=e516b84ae4263d26d89a6c8977c0059c273f5598a0861c50f8133c74d7a72c42
+    - generic [ref=f1e67]:
+      - heading [level=2] [ref=f1e68]:
+        - link "Customer Service Enter Status | Weixin public doc" [ref=f1e69] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fopen%2Dability%2Fcustomer%2Dmessage%2Ftyping.html&rut=3bc861186cca84ba4795e324aa24451ffbcd8b76e803a85d8bbc84fe7dd0b39f
+      - generic [ref=f1e71]:
+        - link [ref=f1e73] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fopen%2Dability%2Fcustomer%2Dmessage%2Ftyping.html&rut=3bc861186cca84ba4795e324aa24451ffbcd8b76e803a85d8bbc84fe7dd0b39f
+        - link "developers.weixin.qq.com/miniprogram/en/dev/framework/open-ability/customer-message/typing.html" [ref=f1e74] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fopen%2Dability%2Fcustomer%2Dmessage%2Ftyping.html&rut=3bc861186cca84ba4795e324aa24451ffbcd8b76e803a85d8bbc84fe7dd0b39f
+      - link "Sending the input status requires that customer service have had a message interaction with the user within 30 seconds before sending it. In the input state (which lasts 15 seconds), the input state cannot be repeated. In the input state, if a message is sent to the user, the input state is also canceled." [ref=f1e75] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fopen%2Dability%2Fcustomer%2Dmessage%2Ftyping.html&rut=3bc861186cca84ba4795e324aa24451ffbcd8b76e803a85d8bbc84fe7dd0b39f
+    - generic [ref=f1e77]:
+      - heading [level=2] [ref=f1e78]:
+        - link "Web Tools Developer's Guide - Update Typing Indicator" [ref=f1e79] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.genesys.com%2Fcic%2FmergedProjects%2Fwh_tr%2FmergedProjects%2Fwh_tr_web_tools%2Fdesktop%2Fupdate_typing_indicator.htm&rut=3d426b5bccc8833597b272883283c92808a51c5775867dbb80be966db5a67c67
+      - generic [ref=f1e81]:
+        - link [ref=f1e83] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.genesys.com%2Fcic%2FmergedProjects%2Fwh_tr%2FmergedProjects%2Fwh_tr_web_tools%2Fdesktop%2Fupdate_typing_indicator.htm&rut=3d426b5bccc8833597b272883283c92808a51c5775867dbb80be966db5a67c67
+        - link "help.genesys.com/cic/mergedProjects/wh_tr/mergedProjects/wh_tr_web_tools/desktop/update_typing_indicator.htm" [ref=f1e84] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.genesys.com%2Fcic%2FmergedProjects%2Fwh_tr%2FmergedProjects%2Fwh_tr_web_tools%2Fdesktop%2Fupdate_typing_indicator.htm&rut=3d426b5bccc8833597b272883283c92808a51c5775867dbb80be966db5a67c67
+      - link "Update Typing Indicator To indicate to the agent that the remote user is typing, or has stopped typing, use the Update Typing Indicator message. This message can only be sent when a chat is active. Specifically, after a successful response to a Start a Chat message, and before an Exit a Chat message is sent for that chat session." [ref=f1e85] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.genesys.com%2Fcic%2FmergedProjects%2Fwh_tr%2FmergedProjects%2Fwh_tr_web_tools%2Fdesktop%2Fupdate_typing_indicator.htm&rut=3d426b5bccc8833597b272883283c92808a51c5775867dbb80be966db5a67c67
+    - generic [ref=f1e87]:
+      - heading [level=2] [ref=f1e88]:
+        - link "Monitoring and Troubleshooting | shangyexin/wechat-token-server | DeepWiki" [ref=f1e89] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fshangyexin%2Fwechat%2Dtoken%2Dserver%2F7.4%2Dmonitoring%2Dand%2Dtroubleshooting&rut=0ee146ef148c775f0bf6f5f59e7d8471cd744b4f597bda5bd5a9a27c9ca16f5a
+      - generic [ref=f1e91]:
+        - link [ref=f1e93] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fshangyexin%2Fwechat%2Dtoken%2Dserver%2F7.4%2Dmonitoring%2Dand%2Dtroubleshooting&rut=0ee146ef148c775f0bf6f5f59e7d8471cd744b4f597bda5bd5a9a27c9ca16f5a
+        - link "deepwiki.com/shangyexin/wechat-token-server/7.4-monitoring-and-troubleshooting" [ref=f1e94] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fshangyexin%2Fwechat%2Dtoken%2Dserver%2F7.4%2Dmonitoring%2Dand%2Dtroubleshooting&rut=0ee146ef148c775f0bf6f5f59e7d8471cd744b4f597bda5bd5a9a27c9ca16f5a
+        - text: 2025-10-17T00:00:00.0000000
+      - link "This page provides guidance for monitoring the health of a running wechat-token-server instance and diagnosing common operational issues. It covers log analysis, Redis state verification, health checking via HTTP endpoints, and systematic troubleshooting workflows." [ref=f1e95] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdeepwiki.com%2Fshangyexin%2Fwechat%2Dtoken%2Dserver%2F7.4%2Dmonitoring%2Dand%2Dtroubleshooting&rut=0ee146ef148c775f0bf6f5f59e7d8471cd744b4f597bda5bd5a9a27c9ca16f5a
+    - generic [ref=f1e97]:
+      - heading [level=2] [ref=f1e98]:
+        - link "WeChat Help Center" [ref=f1e99] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+      - generic [ref=f1e101]:
+        - link [ref=f1e103] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+        - link "help.wechat.com/cgi-bin/micromsg-bin/oshelpcenter?opcode=2&id=120813euEJVf1410236VvqaI&t=help_center/w_topic_detail" [ref=f1e104] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+      - link "What does the exclamation mark mean in my chats? If an exclamation mark appears when you're sending a message, it means that the message didn't go through due to an unstable or unavailable network. Please check your network settings and try again. To resend your message, tap the message with the exclamation point." [ref=f1e105] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+    - generic [ref=f1e107]:
+      - heading [level=2] [ref=f1e108]:
+        - link "Connectivity hardware capabilities / Audio Video Calling + Camera (for ..." [ref=f1e109] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fdevice%2Fvoip%2Fnotification.html&rut=e7005e37787f198eda530b9f71defc7f8b340574eec911948b687a7ab99999ae
+      - generic [ref=f1e111]:
+        - link [ref=f1e113] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fdevice%2Fvoip%2Fnotification.html&rut=e7005e37787f198eda530b9f71defc7f8b340574eec911948b687a7ab99999ae
+        - link "developers.weixin.qq.com/miniprogram/en/dev/framework/device/voip/notification.html" [ref=f1e114] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fdevice%2Fvoip%2Fnotification.html&rut=e7005e37787f198eda530b9f71defc7f8b340574eec911948b687a7ab99999ae
+      - link "If \"WeChat chat message\" and \"WeChat friends call WeChat\" can be received,Hardware Device Call WeChat cannot be received. At this time, there may be a problem with the hardware device call WeChat alert (e.g. Weixin Mini Program startup failure, etc.), and we are advised to refer to Section 7." [ref=f1e115] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fdevelopers.weixin.qq.com%2Fminiprogram%2Fen%2Fdev%2Fframework%2Fdevice%2Fvoip%2Fnotification.html&rut=e7005e37787f198eda530b9f71defc7f8b340574eec911948b687a7ab99999ae
+    - button "Next" [ref=f1e118] [cursor=pointer]
+    - link "Feedback" [ref=f1e120] [cursor=pointer]:
+      - /url: //duckduckgo.com/feedback.html

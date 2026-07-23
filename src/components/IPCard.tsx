@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { IpListItem, PixorySpace } from '../database';
@@ -19,28 +20,62 @@ export function IPCard({ ip, space = 'normal', onLongPress, onPress }: IPCardPro
   const coverBlurRadius = space === 'personal' && (ip.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip.coverBlurRadius) : undefined;
 
   return (
-    <Pressable
-      accessibilityLabel={`打开 ${ip.name}`}
-      accessibilityRole="button"
-      onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
-      onPress={() => onPress(ip.id)}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-    >
-      {ip.coverThumbnailFileUri ? (
-        <View style={styles.cover}>
-          <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
-          {content}
-        </View>
-      ) : (
-        <View style={[styles.cover, styles.fallbackCover]}>
-          <Text numberOfLines={1} style={styles.initialsText}>
-            {getIpInitials(ip.name)}
-          </Text>
-          <View style={styles.fallbackMark} />
-          {content}
-        </View>
-      )}
-    </Pressable>
+    <View style={styles.shadowContainer}>
+      <Pressable
+        accessibilityLabel={`打开 ${ip.name}`}
+        accessibilityRole="button"
+        onLongPress={onLongPress ? () => onLongPress(ip) : undefined}
+        onPress={() => onPress(ip.id)}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      >
+        {ip.coverThumbnailFileUri ? (
+          <View style={styles.cover}>
+            <View style={styles.imageInset}>
+              <SecureImage blurRadius={coverBlurRadius} contentFit="cover" space={space} style={[StyleSheet.absoluteFill, styles.coverImage]} uri={ip.coverThumbnailFileUri} />
+            </View>
+            <AcrylicGlass />
+            {content}
+          </View>
+        ) : (
+          <View style={[styles.cover, styles.fallbackCover]}>
+            <View style={styles.imageInset}>
+              <Text numberOfLines={1} style={styles.initialsText}>
+                {getIpInitials(ip.name)}
+              </Text>
+              <View style={styles.fallbackMark} />
+            </View>
+            <AcrylicGlass />
+            {content}
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function AcrylicGlass() {
+  return (
+    <>
+      <View pointerEvents="none" style={styles.acrylicFrosting} />
+      <View pointerEvents="none" style={styles.glassGlareContainer}>
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.25)', 'transparent', 'rgba(255, 255, 255, 0.05)']}
+          end={{ x: 1, y: 1 }}
+          start={{ x: 0, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={['transparent', 'rgba(255, 255, 255, 0.65)', 'transparent']}
+          end={{ x: 0.65, y: 1 }}
+          locations={[0.48, 0.5, 0.52]}
+          start={{ x: 0.35, y: 0 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <View pointerEvents="none" style={styles.outerRim} />
+      <View pointerEvents="none" style={styles.innerRim} />
+      <View pointerEvents="none" style={styles.cornerHighlightTL} />
+    </>
   );
 }
 
@@ -75,15 +110,25 @@ function CardCaption({ ip }: { ip: IpListItem }) {
 }
 
 const styles = StyleSheet.create({
+  shadowContainer: {
+    ...shadows.hero,
+    shadowColor: '#2C2318', 
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    width: '100%',
+  },
   card: {
-    ...shadows.sm,
+    shadowColor: '#1A130C',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
     aspectRatio: 2.08,
     backgroundColor: colors.background.empty,
-    borderColor: colors.border.subtle,
     borderRadius: componentTokens.ipCard.radius,
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     width: '100%',
+    elevation: 8,
   },
   cardPressed: {
     opacity: 0.88,
@@ -95,8 +140,15 @@ const styles = StyleSheet.create({
     padding: spacing[4],
     position: 'relative',
   },
+  imageInset: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 2.5,
+    borderRadius: componentTokens.ipCard.radius - 2.5,
+    overflow: 'hidden',
+    backgroundColor: colors.background.empty,
+  },
   coverImage: {
-    borderRadius: componentTokens.ipCard.radius,
+    borderRadius: componentTokens.ipCard.radius - 2.5,
   },
   fallbackCover: {
     backgroundColor: colors.background.empty,
@@ -120,6 +172,50 @@ const styles = StyleSheet.create({
     opacity: 0.22,
     position: 'absolute',
     top: spacing[5],
+  },
+  acrylicFrosting: {
+    ...StyleSheet.absoluteFillObject,
+    // Removed white frosting to restore crystal transparency
+  },
+  glassGlareContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  outerRim: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: componentTokens.ipCard.radius,
+    borderTopWidth: 2,
+    borderLeftWidth: 1.5,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.8)',
+    borderLeftColor: 'rgba(255, 255, 255, 0.4)',
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    borderRightColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  innerRim: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 1.5,
+    borderRadius: componentTokens.ipCard.radius - 1.5,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderRightWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    borderLeftColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: 'rgba(255, 255, 255, 0.02)',
+    borderRightColor: 'rgba(255, 255, 255, 0.01)',
+  },
+  cornerHighlightTL: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 20,
+    height: 20,
+    borderTopLeftRadius: componentTokens.ipCard.radius,
+    borderTopWidth: 2.5,
+    borderLeftWidth: 2.5,
+    borderTopColor: 'rgba(255, 255, 255, 1)',
+    borderLeftColor: 'rgba(255, 255, 255, 0.8)',
   },
   captionBlock: {
     alignItems: 'flex-end',

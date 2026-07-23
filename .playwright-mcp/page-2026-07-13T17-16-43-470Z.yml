@@ -1,0 +1,201 @@
+- generic [ref=f11e2]:
+  - generic [ref=f11e3]:
+    - link "DuckDuckGo" [ref=f11e4] [cursor=pointer]:
+      - /url: /html/
+    - generic [ref=f11e5]:
+      - generic [ref=f11e6]:
+        - textbox [ref=f11e7]: site:cs.help.wechat.com recall message chat delete
+        - button "Submit" [ref=f11e8] [cursor=pointer]
+      - combobox [ref=f11e10] [cursor=pointer]:
+        - option "All Regions" [selected]
+        - option "Argentina"
+        - option "Australia"
+        - option "Austria"
+        - option "Belgium (fr)"
+        - option "Belgium (nl)"
+        - option "Brazil"
+        - option "Bulgaria"
+        - option "Canada (en)"
+        - option "Canada (fr)"
+        - option "Catalonia"
+        - option "Chile"
+        - option "China"
+        - option "Colombia"
+        - option "Croatia"
+        - option "Czech Republic"
+        - option "Denmark"
+        - option "Estonia"
+        - option "Finland"
+        - option "France"
+        - option "Germany"
+        - option "Greece"
+        - option "Hong Kong"
+        - option "Hungary"
+        - option "Iceland"
+        - option "India (en)"
+        - option "Indonesia (en)"
+        - option "Ireland"
+        - option "Israel (en)"
+        - option "Italy"
+        - option "Japan"
+        - option "Korea"
+        - option "Latvia"
+        - option "Lithuania"
+        - option "Malaysia (en)"
+        - option "Mexico"
+        - option "Netherlands"
+        - option "New Zealand"
+        - option "Norway"
+        - option "Pakistan (en)"
+        - option "Peru"
+        - option "Philippines (en)"
+        - option "Poland"
+        - option "Portugal"
+        - option "Romania"
+        - option "Russia"
+        - option "Saudi Arabia"
+        - option "Singapore"
+        - option "Slovakia"
+        - option "Slovenia"
+        - option "South Africa"
+        - option "Spain (ca)"
+        - option "Spain (es)"
+        - option "Sweden"
+        - option "Switzerland (de)"
+        - option "Switzerland (fr)"
+        - option "Taiwan"
+        - option "Thailand (en)"
+        - option "Turkey"
+        - option "US (English)"
+        - option "US (Spanish)"
+        - option "Ukraine"
+        - option "United Kingdom"
+        - option "Vietnam (en)"
+      - combobox [ref=f11e12] [cursor=pointer]:
+        - option "Any Time" [selected]
+        - option "Past Day"
+        - option "Past Week"
+        - option "Past Month"
+        - option "Past Year"
+  - generic [ref=f11e15]:
+    - generic [ref=f11e17]:
+      - heading [level=2] [ref=f11e18]:
+        - link "Recall a Message Before It's Seen - WeChat Help Center" [ref=f11e19] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917543305999%2DRecall%2Da%2DMessage%2DBefore%2DIt%2Ds%2DSeen&rut=9d981f5e54675cd20d390ba761b589fb7b02c485c86f7122e7d5d139c3977214
+      - generic [ref=f11e21]:
+        - link [ref=f11e23] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917543305999%2DRecall%2Da%2DMessage%2DBefore%2DIt%2Ds%2DSeen&rut=9d981f5e54675cd20d390ba761b589fb7b02c485c86f7122e7d5d139c3977214
+        - link "cs.help.wechat.com/hc/en-us/articles/11917543305999-Recall-a-Message-Before-It-s-Seen" [ref=f11e24] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917543305999%2DRecall%2Da%2DMessage%2DBefore%2DIt%2Ds%2DSeen&rut=9d981f5e54675cd20d390ba761b589fb7b02c485c86f7122e7d5d139c3977214
+        - text: 2025-02-10T00:00:00.0000000
+      - 'link "Long press the message you want to recall. Select Recall from the menu, and the message will disappear from the conversation. Note: Messages can only be recalled within 2 minutes of being sent. The recipient will be notified when a message is recalled. All types of messages (text, voice, image, video, contact card, and location) can be recalled." [ref=f11e25] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917543305999%2DRecall%2Da%2DMessage%2DBefore%2DIt%2Ds%2DSeen&rut=9d981f5e54675cd20d390ba761b589fb7b02c485c86f7122e7d5d139c3977214
+    - generic [ref=f11e27]:
+      - heading [level=2] [ref=f11e28]:
+        - link "Messages - WeChat Help Center" [ref=f11e29] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+      - generic [ref=f11e31]:
+        - link [ref=f11e33] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+        - link "cs.help.wechat.com/hc/en-us/sections/11917308924559-Messages" [ref=f11e34] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+      - link "Messages Can I still receive messages after deleting my WeChat account? How to Translate a Message in a Chat How does WeChat display the time and date of a message? What is the Time Limit for Short Video and Voice Messages Recall a Message Before It's Seen How to Know if Your Message Has Been Read？ How to Cancel a Voice Message Recording" [ref=f11e35] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+    - generic [ref=f11e37]:
+      - heading [level=2] [ref=f11e38]:
+        - link "How to Recall Tickle Messages if I Accidentally Tickled Someone?" [ref=f11e39] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975462999439%2DHow%2Dto%2DRecall%2DTickle%2DMessages%2Dif%2DI%2DAccidentally%2DTickled%2DSomeone&rut=4b00e49efecb5b8db7e03cfd195b0178ae984b994d4ce42fa650713e643141db
+      - generic [ref=f11e41]:
+        - link [ref=f11e43] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975462999439%2DHow%2Dto%2DRecall%2DTickle%2DMessages%2Dif%2DI%2DAccidentally%2DTickled%2DSomeone&rut=4b00e49efecb5b8db7e03cfd195b0178ae984b994d4ce42fa650713e643141db
+        - link "cs.help.wechat.com/hc/en-us/articles/11975462999439-How-to-Recall-Tickle-Messages-if-I-Accidentally-Tickled-Someone" [ref=f11e44] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975462999439%2DHow%2Dto%2DRecall%2DTickle%2DMessages%2Dif%2DI%2DAccidentally%2DTickled%2DSomeone&rut=4b00e49efecb5b8db7e03cfd195b0178ae984b994d4ce42fa650713e643141db
+        - text: 2025-02-18T00:00:00.0000000
+      - 'link "If you accidentally tickled someone, long press the Tickle message within 2 minutes to recall it. Notes: If your friend is also using the latest version of WeChat, they will not receive your Tickle message or the recall notification. You can only recall Tickle messages within 2 minutes of sending them. Was this article helpful?" [ref=f11e45] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975462999439%2DHow%2Dto%2DRecall%2DTickle%2DMessages%2Dif%2DI%2DAccidentally%2DTickled%2DSomeone&rut=4b00e49efecb5b8db7e03cfd195b0178ae984b994d4ce42fa650713e643141db
+    - generic [ref=f11e47]:
+      - heading [level=2] [ref=f11e48]:
+        - link "How to Delete My Chat History - WeChat Help Center" [ref=f11e49] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917925363343%2DHow%2Dto%2DDelete%2DMy%2DChat%2DHistory&rut=0352268c5fecb02cb8323ed32738d2200f17a27724b69b0dfb307e56abaea611
+      - generic [ref=f11e51]:
+        - link [ref=f11e53] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917925363343%2DHow%2Dto%2DDelete%2DMy%2DChat%2DHistory&rut=0352268c5fecb02cb8323ed32738d2200f17a27724b69b0dfb307e56abaea611
+        - link "cs.help.wechat.com/hc/en-us/articles/11917925363343-How-to-Delete-My-Chat-History" [ref=f11e54] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917925363343%2DHow%2Dto%2DDelete%2DMy%2DChat%2DHistory&rut=0352268c5fecb02cb8323ed32738d2200f17a27724b69b0dfb307e56abaea611
+        - text: 2025-02-10T00:00:00.0000000
+      - 'link "To delete multiple messages: Long press one of the messages in your chat box > tap「Select」, select the message (s) you want to delete, and tap the trash icon below to delete." [ref=f11e55] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917925363343%2DHow%2Dto%2DDelete%2DMy%2DChat%2DHistory&rut=0352268c5fecb02cb8323ed32738d2200f17a27724b69b0dfb307e56abaea611
+    - generic [ref=f11e57]:
+      - heading [level=2] [ref=f11e58]:
+        - link "Chat History - WeChat Help Center" [ref=f11e59] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917306071439%2DChat%2DHistory&rut=f32ceac4dc537194347b01cd310e770046146075a5899ff7b45552fa1cc169ea
+      - generic [ref=f11e61]:
+        - link [ref=f11e63] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917306071439%2DChat%2DHistory&rut=f32ceac4dc537194347b01cd310e770046146075a5899ff7b45552fa1cc169ea
+        - link "cs.help.wechat.com/hc/en-us/sections/11917306071439-Chat-History" [ref=f11e64] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917306071439%2DChat%2DHistory&rut=f32ceac4dc537194347b01cd310e770046146075a5899ff7b45552fa1cc169ea
+      - link "Chat History Why Doesn't My Previous Chat History Appear When Using a New Device? Why Can't I Back Up My Chat History to WeChat's Server or a Cloud Service? How to Delete My Chat History How long can I save my chat history? How to Quickly Search Chat Content Where is my chat history stored? How Long Can My Unread Messages Last?" [ref=f11e65] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917306071439%2DChat%2DHistory&rut=f32ceac4dc537194347b01cd310e770046146075a5899ff7b45552fa1cc169ea
+    - generic [ref=f11e67]:
+      - heading [level=2] [ref=f11e68]:
+        - link "如何撤回已传送的讯息？ - WeChat 帮助中心" [ref=f11e69] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fzh%2Dcn%2Farticles%2F11917543305999%2D%25E5%25A6%2582%25E4%25BD%2595%25E6%2592%25A4%25E5%259B%259E%25E5%25B7%25B2%25E4%25BC%25A0%25E9%2580%2581%25E7%259A%2584%25E8%25AE%25AF%25E6%2581%25AF&rut=eef113be11fc613043c258668d3e342920a4746d3e157f0e419663cfb2fcbc70
+      - generic [ref=f11e71]:
+        - link [ref=f11e73] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fzh%2Dcn%2Farticles%2F11917543305999%2D%25E5%25A6%2582%25E4%25BD%2595%25E6%2592%25A4%25E5%259B%259E%25E5%25B7%25B2%25E4%25BC%25A0%25E9%2580%2581%25E7%259A%2584%25E8%25AE%25AF%25E6%2581%25AF&rut=eef113be11fc613043c258668d3e342920a4746d3e157f0e419663cfb2fcbc70
+        - link "cs.help.wechat.com/hc/zh-cn/articles/11917543305999-如何撤回已传送的讯息" [ref=f11e74] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fzh%2Dcn%2Farticles%2F11917543305999%2D%25E5%25A6%2582%25E4%25BD%2595%25E6%2592%25A4%25E5%259B%259E%25E5%25B7%25B2%25E4%25BC%25A0%25E9%2580%2581%25E7%259A%2584%25E8%25AE%25AF%25E6%2581%25AF&rut=eef113be11fc613043c258668d3e342920a4746d3e157f0e419663cfb2fcbc70
+        - text: 2025-02-10T00:00:00.0000000
+      - link "WeChat 仅支持撤回两分钟内传送的信息。长按（手指按住荧幕不松开）已传送的最后一条讯息 >「撤回」，即可将该讯息撤回。 说明：1. WeChat 支援撤回语音、文字、图片、影片、名片、位置讯息等。2. 如果讯息已传送超过两分钟，长按讯息则不会显示「撤回」。" [ref=f11e75] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fzh%2Dcn%2Farticles%2F11917543305999%2D%25E5%25A6%2582%25E4%25BD%2595%25E6%2592%25A4%25E5%259B%259E%25E5%25B7%25B2%25E4%25BC%25A0%25E9%2580%2581%25E7%259A%2584%25E8%25AE%25AF%25E6%2581%25AF&rut=eef113be11fc613043c258668d3e342920a4746d3e157f0e419663cfb2fcbc70
+    - generic [ref=f11e77]:
+      - heading [level=2] [ref=f11e78]:
+        - link "How do I delete my WeChat account? - WeChat Help Center" [ref=f11e79] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11916263548047%2DHow%2Ddo%2DI%2Ddelete%2Dmy%2DWeChat%2Daccount&rut=5465d5eb9fc3882341b8cc31907f14e0c997a2ff9e5884c6a448812a5eca4bff
+      - generic [ref=f11e81]:
+        - link [ref=f11e83] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11916263548047%2DHow%2Ddo%2DI%2Ddelete%2Dmy%2DWeChat%2Daccount&rut=5465d5eb9fc3882341b8cc31907f14e0c997a2ff9e5884c6a448812a5eca4bff
+        - link "cs.help.wechat.com/hc/en-us/articles/11916263548047-How-do-I-delete-my-WeChat-account" [ref=f11e84] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11916263548047%2DHow%2Ddo%2DI%2Ddelete%2Dmy%2DWeChat%2Daccount&rut=5465d5eb9fc3882341b8cc31907f14e0c997a2ff9e5884c6a448812a5eca4bff
+        - text: 2025-02-09T00:00:00.0000000
+      - link "- Once your account is canceled, all data will be permanently deleted, and your WeChat ID cannot be reused. - After submitting your cancellation request, your account will be automatically logged out." [ref=f11e85] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11916263548047%2DHow%2Ddo%2DI%2Ddelete%2Dmy%2DWeChat%2Daccount&rut=5465d5eb9fc3882341b8cc31907f14e0c997a2ff9e5884c6a448812a5eca4bff
+    - generic [ref=f11e87]:
+      - heading [level=2] [ref=f11e88]:
+        - link "How Do I Use Tickle? - WeChat Help Center" [ref=f11e89] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975461871375%2DHow%2DDo%2DI%2DUse%2DTickle&rut=53330e3a047fcb8de06ba3ec925b5c1a58110b5952f091ee1a5cacc9495706c2
+      - generic [ref=f11e91]:
+        - link [ref=f11e93] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975461871375%2DHow%2DDo%2DI%2DUse%2DTickle&rut=53330e3a047fcb8de06ba3ec925b5c1a58110b5952f091ee1a5cacc9495706c2
+        - link "cs.help.wechat.com/hc/en-us/articles/11975461871375-How-Do-I-Use-Tickle" [ref=f11e94] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975461871375%2DHow%2DDo%2DI%2DUse%2DTickle&rut=53330e3a047fcb8de06ba3ec925b5c1a58110b5952f091ee1a5cacc9495706c2
+        - text: 2025-02-18T00:00:00.0000000
+      - link "You can tickle your friend by double-tapping their profile photo in a group chat or private chat. A tickle message will then appear on their screen." [ref=f11e95] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11975461871375%2DHow%2DDo%2DI%2DUse%2DTickle&rut=53330e3a047fcb8de06ba3ec925b5c1a58110b5952f091ee1a5cacc9495706c2
+    - generic [ref=f11e97]:
+      - heading [level=2] [ref=f11e98]:
+        - link "How to Backup/Restore WeChat Chat History on Windows/Mac?" [ref=f11e99] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917889397775%2DHow%2Dto%2DBackup%2DRestore%2DWeChat%2DChat%2DHistory%2Don%2DWindows%2DMac&rut=e41587e096571972c32908676931efaf65d5065d34dd4e443b1f7774d9dd196f
+      - generic [ref=f11e101]:
+        - link [ref=f11e103] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917889397775%2DHow%2Dto%2DBackup%2DRestore%2DWeChat%2DChat%2DHistory%2Don%2DWindows%2DMac&rut=e41587e096571972c32908676931efaf65d5065d34dd4e443b1f7774d9dd196f
+        - link "cs.help.wechat.com/hc/en-us/articles/11917889397775-How-to-Backup-Restore-WeChat-Chat-History-on-Windows-Mac" [ref=f11e104] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917889397775%2DHow%2Dto%2DBackup%2DRestore%2DWeChat%2DChat%2DHistory%2Don%2DWindows%2DMac&rut=e41587e096571972c32908676931efaf65d5065d34dd4e443b1f7774d9dd196f
+        - text: 2025-02-10T00:00:00.0000000
+      - 'link "To back up or restore your WeChat chat history through WeChat for Windows/Mac, follow these steps: 1. Back up your chat history: - Ensure that both your mobile phone and computer are connected to the same Wi-Fi network. - Open WeChat for Windows/Mac, and tap the icon in the lower-left corner >「Migrate and Backup」>「Backup and Restore」." [ref=f11e105] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917889397775%2DHow%2Dto%2DBackup%2DRestore%2DWeChat%2DChat%2DHistory%2Don%2DWindows%2DMac&rut=e41587e096571972c32908676931efaf65d5065d34dd4e443b1f7774d9dd196f
+    - generic [ref=f11e107]:
+      - heading [level=2] [ref=f11e108]:
+        - link "How to Quickly Search Chat Content - WeChat Help Center" [ref=f11e109] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917907846799%2DHow%2Dto%2DQuickly%2DSearch%2DChat%2DContent&rut=91b8ccb01423812f45e052e8c1e1b3975f742452b540bdb60f8ef4e545983ae2
+      - generic [ref=f11e111]:
+        - link [ref=f11e113] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917907846799%2DHow%2Dto%2DQuickly%2DSearch%2DChat%2DContent&rut=91b8ccb01423812f45e052e8c1e1b3975f742452b540bdb60f8ef4e545983ae2
+        - link "cs.help.wechat.com/hc/en-us/articles/11917907846799-How-to-Quickly-Search-Chat-Content" [ref=f11e114] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917907846799%2DHow%2Dto%2DQuickly%2DSearch%2DChat%2DContent&rut=91b8ccb01423812f45e052e8c1e1b3975f742452b540bdb60f8ef4e545983ae2
+        - text: 2025-02-10T00:00:00.0000000
+      - link "1. Group Members For group chats, select a group member or enter their name in the search box to find messages from them. 2. Date Select a specific date to view the transcript for that day. 3. Media For viewing all of the photos and videos in a chat history." [ref=f11e115] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917907846799%2DHow%2Dto%2DQuickly%2DSearch%2DChat%2DContent&rut=91b8ccb01423812f45e052e8c1e1b3975f742452b540bdb60f8ef4e545983ae2
+    - button "Next" [ref=f11e118] [cursor=pointer]
+    - link "Feedback" [ref=f11e120] [cursor=pointer]:
+      - /url: //duckduckgo.com/feedback.html

@@ -14,9 +14,11 @@ import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type IpRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
+import { BlurView } from 'expo-blur';
+import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { formatDate } from '../utils/formatters';
 
 interface GroupOverviewScreenProps {
@@ -65,9 +67,14 @@ export function GroupOverviewScreen({
 
   const rightSlot = useMemo(
     () => (
-      <Pressable onPress={onCreateGroup} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
-        <Ionicons color={colors.primary.default} name="add" size={20} />
-      </Pressable>
+      <View style={styles.headerActionWrapper}>
+        <Pressable onPress={onCreateGroup} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
+          <BlurView intensity={50} style={styles.headerActionBlur} tint="light">
+            <LiquidGlassBezel radius={componentTokens.iconButton.radius} />
+            <Ionicons color={colors.primary.default} name="add" size={20} />
+          </BlurView>
+        </Pressable>
+      </View>
     ),
     [onCreateGroup]
   );
@@ -124,41 +131,42 @@ export function GroupOverviewScreen({
             <View key={section.value} style={styles.sectionBlock}>
               <SectionHeader title={section.label} />
               {section.items.map((group) => (
-                <Pressable
-                  key={group.id}
-                  onLongPress={() => setActionGroup(group)}
-                  onPress={() => onOpenGroup(group.id)}
-                  style={({ pressed }) => [pressed && styles.pressed]}
-                >
-                  <ContentCard style={styles.groupCard}>
-                    <View style={styles.coverWrap}>
-                      {group.coverThumbnailFileUri ? (
-                        <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
-                      ) : (
-                        <View style={styles.coverEmpty}>
-                          <Ionicons color={colors.primary.default} name="images-outline" size={26} />
-                          <Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text>
-                        </View>
-                      )}
-                    </View>
+                <View key={group.id} style={styles.groupCardWrapper}>
+                  <Pressable
+                    onLongPress={() => setActionGroup(group)}
+                    onPress={() => onOpenGroup(group.id)}
+                    style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}
+                  >
+                    <View style={styles.groupCardInner}>
+                      <View style={styles.coverWrap}>
+                        {group.coverThumbnailFileUri ? (
+                          <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                        ) : (
+                          <View style={styles.coverEmpty}>
+                            <Ionicons color={colors.primary.default} name="images-outline" size={26} />
+                            <Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text>
+                          </View>
+                        )}
+                      </View>
 
-                    <View style={styles.groupBody}>
-                      <View style={styles.groupHeader}>
-                        <Text numberOfLines={1} style={styles.groupName}>
-                          {group.name}
+                      <View style={styles.groupBody}>
+                        <View style={styles.groupHeader}>
+                          <Text numberOfLines={1} style={styles.groupName}>
+                            {group.name}
+                          </Text>
+                          <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
+                        </View>
+                        <Text numberOfLines={1} style={styles.groupDescription}>
+                          {group.description || '还没有分组说明'}
                         </Text>
-                        <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
-                      </View>
-                      <Text numberOfLines={1} style={styles.groupDescription}>
-                        {group.description || '还没有分组说明'}
-                      </Text>
-                      <View style={styles.metaRow}>
-                        <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
-                        <Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text>
+                        <View style={styles.metaRow}>
+                          <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
+                          <Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text>
+                        </View>
                       </View>
                     </View>
-                  </ContentCard>
-                </Pressable>
+                  </Pressable>
+                </View>
               ))}
             </View>
           ))}
@@ -211,15 +219,23 @@ export function GroupOverviewScreen({
 }
 
 const styles = StyleSheet.create({
-  headerAction: {
-    alignItems: 'center',
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.default,
+  headerActionWrapper: {
+    ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.15,
     borderRadius: componentTokens.iconButton.radius,
-    borderWidth: StyleSheet.hairlineWidth,
+  },
+  headerAction: {
+    borderRadius: componentTokens.iconButton.radius,
     height: componentTokens.iconButton.size,
-    justifyContent: 'center',
     width: componentTokens.iconButton.size,
+  },
+  headerActionBlur: {
+    alignItems: 'center',
+    borderRadius: componentTokens.iconButton.radius,
+    flex: 1,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   pressed: {
     opacity: 0.8,
@@ -234,7 +250,17 @@ const styles = StyleSheet.create({
   sectionBlock: {
     gap: rhythm.listCardGap,
   },
-  groupCard: {
+  groupCardWrapper: {
+    paddingBottom: rhythm.microGap,
+  },
+  groupCardFloating: {
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.default,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    ...shadows.sm,
+  },
+  groupCardInner: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: rhythm.listCardGap,

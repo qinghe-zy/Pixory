@@ -1,6 +1,8 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 
-import { colors, componentTokens, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
+import { LiquidGlassBezel } from './LiquidGlassBezel';
 
 interface FilterChipProps {
   label: string;
@@ -11,52 +13,70 @@ interface FilterChipProps {
 
 export function FilterChip({ label, active, onPress, dense = false }: FilterChipProps) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.base,
-        dense ? styles.dense : null,
-        active ? styles.active : styles.inactive,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text numberOfLines={1} style={[styles.text, dense ? styles.denseText : null, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
-    </Pressable>
+    <View style={styles.wrapper}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.base,
+          dense ? styles.dense : null,
+          pressed && styles.pressed,
+        ]}
+      >
+        <BlurView intensity={active ? 80 : 50} style={styles.blur} tint={active ? 'default' : 'light'}>
+          <LiquidGlassBezel active={active} contentIntensity={active ? 'heavy' : 'none'} radius={componentTokens.filterChip.radius} />
+          <View style={[styles.inner, active ? styles.activeInner : styles.inactiveInner, dense ? styles.denseInner : null]}>
+            <Text numberOfLines={1} style={[styles.text, dense ? styles.denseText : null, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
+          </View>
+        </BlurView>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.1,
+    borderRadius: componentTokens.filterChip.radius,
+  },
   base: {
-    alignItems: 'center',
     borderRadius: componentTokens.filterChip.radius,
     height: componentTokens.filterChip.height,
-    justifyContent: 'center',
-    maxWidth: '100%',
-    paddingHorizontal: componentTokens.filterChip.horizontalPadding,
   },
   dense: {
     height: 28,
+  },
+  blur: {
+    borderRadius: componentTokens.filterChip.radius,
+    overflow: 'hidden',
+    height: '100%',
+  },
+  inner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: componentTokens.filterChip.horizontalPadding,
+    height: '100%',
+  },
+  denseInner: {
     paddingHorizontal: spacing[2],
   },
-  active: {
-    backgroundColor: colors.primary.default,
-    borderColor: colors.primary.default,
-    borderWidth: StyleSheet.hairlineWidth,
+  activeInner: {
+    backgroundColor: 'rgba(86, 107, 72, 0.65)', // Using primary.default rgb directly to tint glass
   },
-  inactive: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
-    borderWidth: StyleSheet.hairlineWidth,
+  inactiveInner: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   pressed: {
     opacity: 0.78,
   },
   text: {
     ...typography.textStyles.caption,
-    fontWeight: '500',
+    fontWeight: '600',
     lineHeight: 18,
     maxWidth: 180,
+    zIndex: 1,
   },
   denseText: {
     ...typography.textStyles.micro,
@@ -64,9 +84,9 @@ const styles = StyleSheet.create({
     maxWidth: 148,
   },
   activeText: {
-    color: colors.text.inverse,
+    color: '#FFFFFF', // pure white on active primary glass
   },
   inactiveText: {
-    color: colors.text.primary,
+    color: colors.text.title,
   },
 });

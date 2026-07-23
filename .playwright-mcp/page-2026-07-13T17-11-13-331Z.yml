@@ -1,0 +1,561 @@
+- generic [active] [ref=e1]:
+  - link "欢迎进入 百度一下，你就知道，盲人用户进入读屏幕模式请按快捷键Ctrl加Alt加R；阅读详细操作说明请按快捷键Ctrl加Alt加问号键。":
+    - /url: javascript:void(0)
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic:
+          - link [ref=e6] [cursor=pointer]:
+            - /url: /
+            - img "到百度首页" [ref=e7]
+          - generic [ref=e10]:
+            - textbox [ref=e12]: 微信 对方正在输入 触发条件
+            - button "百度一下" [ref=e43] [cursor=pointer]
+      - generic [ref=e45]:
+        - link "百度首页" [ref=e46] [cursor=pointer]:
+          - /url: /
+        - link "设置" [ref=e47] [cursor=pointer]:
+          - /url: javascript:;
+        - link "登录" [ref=e48] [cursor=pointer]:
+          - /url: https://passport.baidu.com/v2/?login&tpl=mn&u=http%3A%2F%2Fwww.baidu.com%2F
+    - generic [ref=e51]:
+      - link [ref=e52] [cursor=pointer]:
+        - /url: https://chat.baidu.com/search?word=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&dyTabStr=MTIsMCwzLDEsMiwxMyw3LDYsNSw5&pd=csaitab&setype=csaitab&extParamsJson=%7B%22enter_type%22%3A%22search_a_tab%22%2C%22sa%22%3A%22vs_tab%22%2C%22apagelid%22%3A%2211239030257933629456%22%2C%22ori_lid%22%3A%2211239030257933629456%22%7D
+      - generic [ref=e54]: 网页
+      - link "图片" [ref=e55] [cursor=pointer]:
+        - /url: http://image.baidu.com/i?tn=baiduimage&ps=1&ct=201326592&lm=-1&cl=2&nc=1&ie=utf-8&lid=9bf90e7900003810&dyTabStr=MTIsMCwzLDEsMiwxMyw3LDYsNSw5&word=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "资讯" [ref=e56] [cursor=pointer]:
+        - /url: https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8&word=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "视频" [ref=e57] [cursor=pointer]:
+        - /url: /sf/vsearch?pd=video&tn=vsearch&lid=9bf90e7900003810&ie=utf-8&wd=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_spt=7&rsv_bp=1&f=8&oq=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs
+      - link "笔记" [ref=e58] [cursor=pointer]:
+        - /url: https://www.baidu.com/s?pd=note&rpf=pc&dyTabStr=MTIsMCwzLDEsMiwxMyw3LDYsNSw5&word=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "地图" [ref=e59] [cursor=pointer]:
+        - /url: https://map.baidu.com/?newmap=1&ie=utf-8&from=pstab&s=s%26wd%3D%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "贴吧" [ref=e60] [cursor=pointer]:
+        - /url: http://tieba.baidu.com/f?fr=wwwt&ie=utf-8&dyTabStr=MTIsMCwzLDEsMiwxMyw3LDYsNSw5&kw=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "文库" [ref=e61] [cursor=pointer]:
+        - /url: http://wenku.baidu.com/search?lm=0&od=0&ie=utf-8&dyTabStr=MTIsMCwzLDEsMiwxMyw3LDYsNSw5&word=%E5%BE%AE%E4%BF%A1+%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5+%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6
+      - link "更多" [ref=e62] [cursor=pointer]:
+        - /url: http://www.baidu.com/more/
+      - generic [ref=e63] [cursor=pointer]: 搜索工具
+    - generic [ref=e64]:
+      - generic [ref=e65]:
+        - table [ref=e67]:
+          - rowgroup [ref=e68]:
+            - row [ref=e69]:
+              - cell "相关搜索  微信更新  微信小程序  微信正在输入中怎么关闭  不让对方看到正在输入  关闭对方正在输入的软件  微信自动被屏蔽的原因有哪些    换一换 热搜榜 民生榜 财经榜  习近平将出席世界人工智能大会开幕式 1 台风巴威远程发威 热 2 海南将禁售燃油车 释放什么信号 新 3 未来五年 这样提高国民健康水平 4 人均日通话降至8.7分钟 5 《功夫女足》爆了 但周星驰有点偷懒 热 6 日本民众集会举牌“中国对不起” 7 重庆男子带“移动空调”江边钓鱼 8 长鑫近2万员工每人或可分超百万 9 游客忘拉手刹轿车溜进赛里木湖 10 “功夫女足和功夫差了十个少林足球” 11 关于台风天的几个误区 12 女子睡觉时被虫咬断一大把头发 13 中国首个禁售燃油车省份为何是海南 新 14 周星驰的“炸裂”票房不可复制 15 美股半导体大跌！闪迪跌超10%" [ref=e70]:
+                - generic [ref=e71]:
+                  - generic [ref=e77]:
+                    - generic [ref=e78]: 相关搜索
+                    - generic [ref=e80]:
+                      - link " 微信更新" [ref=e83] [cursor=pointer]:
+                        - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%9B%B4%E6%96%B0&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_1&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101631202
+                        - generic [ref=e84]:
+                          - generic [ref=e85]: 
+                          - generic [ref=e86]: 微信更新
+                      - link " 微信小程序" [ref=e89] [cursor=pointer]:
+                        - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_2&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101631202
+                        - generic [ref=e90]:
+                          - generic [ref=e91]: 
+                          - generic [ref=e92]: 微信小程序
+                      - link " 微信正在输入中怎么关闭" [ref=e95] [cursor=pointer]:
+                        - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E4%B8%AD%E6%80%8E%E4%B9%88%E5%85%B3%E9%97%AD&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_3&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101636703
+                        - generic [ref=e96]:
+                          - generic [ref=e97]: 
+                          - generic [ref=e98]: 微信正在输入中怎么关闭
+                      - link " 不让对方看到正在输入" [ref=e101] [cursor=pointer]:
+                        - /url: /s?wd=%E4%B8%8D%E8%AE%A9%E5%AF%B9%E6%96%B9%E7%9C%8B%E5%88%B0%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_4&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101636703
+                        - generic [ref=e102]:
+                          - generic [ref=e103]: 
+                          - generic [ref=e104]: 不让对方看到正在输入
+                      - link " 关闭对方正在输入的软件" [ref=e107] [cursor=pointer]:
+                        - /url: /s?wd=%E5%85%B3%E9%97%AD%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E7%9A%84%E8%BD%AF%E4%BB%B6&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_5&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101636703
+                        - generic [ref=e108]:
+                          - generic [ref=e109]: 
+                          - generic [ref=e110]: 关闭对方正在输入的软件
+                      - link " 微信自动被屏蔽的原因有哪些" [ref=e113] [cursor=pointer]:
+                        - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E8%87%AA%E5%8A%A8%E8%A2%AB%E5%B1%8F%E8%94%BD%E7%9A%84%E5%8E%9F%E5%9B%A0%E6%9C%89%E5%93%AA%E4%BA%9B&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=db6ch2IDo%2BVF%2B8cmeS5Z3HtGGtHAdM8WJ4Exf34v9Jyg76IyGe3jIRA4WHg&rfqid=9bf90e7900003810&rsv_dl=0_prs_28616_6&rq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsf=101636703
+                        - generic [ref=e114]:
+                          - generic [ref=e115]: 
+                          - generic [ref=e116]: 微信自动被屏蔽的原因有哪些
+                  - generic [ref=e120]:
+                    - generic "百度热搜" [ref=e121]:
+                      - link " " [ref=e122] [cursor=pointer]:
+                        - /url: https://top.baidu.com/board?platform=pc&sa=pcindex_a_right
+                        - generic [ref=e123]: 
+                        - generic [ref=e124]: 
+                      - link " 换一换" [ref=e126] [cursor=pointer]:
+                        - /url: javascript:void(0);
+                        - generic [ref=e127]: 
+                        - text: 换一换
+                    - generic [ref=e128]:
+                      - generic [ref=e129] [cursor=pointer]: 热搜榜
+                      - generic [ref=e130] [cursor=pointer]: 民生榜
+                      - generic [ref=e131] [cursor=pointer]: 财经榜
+                    - generic [ref=e133]:
+                      - generic [ref=e135]:
+                        - generic [ref=e136]: 
+                        - link "习近平将出席世界人工智能大会开幕式" [ref=e138] [cursor=pointer]:
+                          - /url: /s?wd=%E4%B9%A0%E8%BF%91%E5%B9%B3%E5%B0%86%E5%87%BA%E5%B8%AD%E4%B8%96%E7%95%8C%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD%E5%A4%A7%E4%BC%9A%E5%BC%80%E5%B9%95%E5%BC%8F&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_1&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e140]:
+                        - generic [ref=e141]: "1"
+                        - link "台风巴威远程发威" [ref=e142] [cursor=pointer]:
+                          - /url: /s?wd=%E5%8F%B0%E9%A3%8E%E5%B7%B4%E5%A8%81%E8%BF%9C%E7%A8%8B%E5%8F%91%E5%A8%81&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_2&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                        - generic [ref=e143]: 热
+                      - generic [ref=e145]:
+                        - generic [ref=e146]: "2"
+                        - link "海南将禁售燃油车 释放什么信号" [ref=e147] [cursor=pointer]:
+                          - /url: /s?wd=%E6%B5%B7%E5%8D%97%E5%B0%86%E7%A6%81%E5%94%AE%E7%87%83%E6%B2%B9%E8%BD%A6%20%E9%87%8A%E6%94%BE%E4%BB%80%E4%B9%88%E4%BF%A1%E5%8F%B7&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_3&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                        - generic [ref=e148]: 新
+                      - generic [ref=e150]:
+                        - generic [ref=e151]: "3"
+                        - link "未来五年 这样提高国民健康水平" [ref=e152] [cursor=pointer]:
+                          - /url: /s?wd=%E6%9C%AA%E6%9D%A5%E4%BA%94%E5%B9%B4%20%E8%BF%99%E6%A0%B7%E6%8F%90%E9%AB%98%E5%9B%BD%E6%B0%91%E5%81%A5%E5%BA%B7%E6%B0%B4%E5%B9%B3&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_4&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e154]:
+                        - generic [ref=e155]: "4"
+                        - link "人均日通话降至8.7分钟" [ref=e156] [cursor=pointer]:
+                          - /url: /s?wd=%E4%BA%BA%E5%9D%87%E6%97%A5%E9%80%9A%E8%AF%9D%E9%99%8D%E8%87%B38.7%E5%88%86%E9%92%9F&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_5&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e158]:
+                        - generic [ref=e159]: "5"
+                        - link "《功夫女足》爆了 但周星驰有点偷懒" [ref=e160] [cursor=pointer]:
+                          - /url: /s?wd=%E3%80%8A%E5%8A%9F%E5%A4%AB%E5%A5%B3%E8%B6%B3%E3%80%8B%E7%88%86%E4%BA%86%20%E4%BD%86%E5%91%A8%E6%98%9F%E9%A9%B0%E6%9C%89%E7%82%B9%E5%81%B7%E6%87%92&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_6&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                        - generic [ref=e161]: 热
+                      - generic [ref=e163]:
+                        - generic [ref=e164]: "6"
+                        - link "日本民众集会举牌“中国对不起”" [ref=e165] [cursor=pointer]:
+                          - /url: /s?wd=%E6%97%A5%E6%9C%AC%E6%B0%91%E4%BC%97%E9%9B%86%E4%BC%9A%E4%B8%BE%E7%89%8C%E2%80%9C%E4%B8%AD%E5%9B%BD%E5%AF%B9%E4%B8%8D%E8%B5%B7%E2%80%9D&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_7&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e167]:
+                        - generic [ref=e168]: "7"
+                        - link "重庆男子带“移动空调”江边钓鱼" [ref=e169] [cursor=pointer]:
+                          - /url: /s?wd=%E9%87%8D%E5%BA%86%E7%94%B7%E5%AD%90%E5%B8%A6%E2%80%9C%E7%A7%BB%E5%8A%A8%E7%A9%BA%E8%B0%83%E2%80%9D%E6%B1%9F%E8%BE%B9%E9%92%93%E9%B1%BC&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_8&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e171]:
+                        - generic [ref=e172]: "8"
+                        - link "长鑫近2万员工每人或可分超百万" [ref=e173] [cursor=pointer]:
+                          - /url: /s?wd=%E9%95%BF%E9%91%AB%E8%BF%912%E4%B8%87%E5%91%98%E5%B7%A5%E6%AF%8F%E4%BA%BA%E6%88%96%E5%8F%AF%E5%88%86%E8%B6%85%E7%99%BE%E4%B8%87&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_9&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e175]:
+                        - generic [ref=e176]: "9"
+                        - link "游客忘拉手刹轿车溜进赛里木湖" [ref=e177] [cursor=pointer]:
+                          - /url: /s?wd=%E6%B8%B8%E5%AE%A2%E5%BF%98%E6%8B%89%E6%89%8B%E5%88%B9%E8%BD%BF%E8%BD%A6%E6%BA%9C%E8%BF%9B%E8%B5%9B%E9%87%8C%E6%9C%A8%E6%B9%96&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_10&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e179]:
+                        - generic [ref=e180]: "10"
+                        - link "“功夫女足和功夫差了十个少林足球”" [ref=e181] [cursor=pointer]:
+                          - /url: /s?wd=%E2%80%9C%E5%8A%9F%E5%A4%AB%E5%A5%B3%E8%B6%B3%E5%92%8C%E5%8A%9F%E5%A4%AB%E5%B7%AE%E4%BA%86%E5%8D%81%E4%B8%AA%E5%B0%91%E6%9E%97%E8%B6%B3%E7%90%83%E2%80%9D&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=b087gv7c6Uk2aK1ZSrTqfg4ABvDMZ1PlETyjlP3uB0tzhR%2FmvnHzxoPQBTk&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_11&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e183]:
+                        - generic [ref=e184]: "11"
+                        - link "关于台风天的几个误区" [ref=e185] [cursor=pointer]:
+                          - /url: /s?wd=%E5%85%B3%E4%BA%8E%E5%8F%B0%E9%A3%8E%E5%A4%A9%E7%9A%84%E5%87%A0%E4%B8%AA%E8%AF%AF%E5%8C%BA&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=ace5s0zVFf35o9z5wVoBYka3m2A1l%2Fbt20jv4%2By9QOV5%2Bq5OsvsF4x6mUXU&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_12&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e187]:
+                        - generic [ref=e188]: "12"
+                        - link "女子睡觉时被虫咬断一大把头发" [ref=e189] [cursor=pointer]:
+                          - /url: /s?wd=%E5%A5%B3%E5%AD%90%E7%9D%A1%E8%A7%89%E6%97%B6%E8%A2%AB%E8%99%AB%E5%92%AC%E6%96%AD%E4%B8%80%E5%A4%A7%E6%8A%8A%E5%A4%B4%E5%8F%91&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=ace5s0zVFf35o9z5wVoBYka3m2A1l%2Fbt20jv4%2By9QOV5%2Bq5OsvsF4x6mUXU&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_13&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e191]:
+                        - generic [ref=e192]: "13"
+                        - link "中国首个禁售燃油车省份为何是海南" [ref=e193] [cursor=pointer]:
+                          - /url: /s?wd=%E4%B8%AD%E5%9B%BD%E9%A6%96%E4%B8%AA%E7%A6%81%E5%94%AE%E7%87%83%E6%B2%B9%E8%BD%A6%E7%9C%81%E4%BB%BD%E4%B8%BA%E4%BD%95%E6%98%AF%E6%B5%B7%E5%8D%97&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=ace5s0zVFf35o9z5wVoBYka3m2A1l%2Fbt20jv4%2By9QOV5%2Bq5OsvsF4x6mUXU&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_14&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                        - generic [ref=e194]: 新
+                      - generic [ref=e196]:
+                        - generic [ref=e197]: "14"
+                        - link "周星驰的“炸裂”票房不可复制" [ref=e198] [cursor=pointer]:
+                          - /url: /s?wd=%E5%91%A8%E6%98%9F%E9%A9%B0%E7%9A%84%E2%80%9C%E7%82%B8%E8%A3%82%E2%80%9D%E7%A5%A8%E6%88%BF%E4%B8%8D%E5%8F%AF%E5%A4%8D%E5%88%B6&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=ace5s0zVFf35o9z5wVoBYka3m2A1l%2Fbt20jv4%2By9QOV5%2Bq5OsvsF4x6mUXU&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_1_15_15&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+                      - generic [ref=e200]:
+                        - generic [ref=e201]: "15"
+                        - link "美股半导体大跌！闪迪跌超10%" [ref=e202] [cursor=pointer]:
+                          - /url: /s?wd=%E7%BE%8E%E8%82%A1%E5%8D%8A%E5%AF%BC%E4%BD%93%E5%A4%A7%E8%B7%8C%EF%BC%81%E9%97%AA%E8%BF%AA%E8%B7%8C%E8%B6%8510%25&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=ace5s0zVFf35o9z5wVoBYka3m2A1l%2Fbt20jv4%2By9QOV5%2Bq5OsvsF4x6mUXU&rqid=9bf90e7900003810&rsf=207e6698f76a58fd4a101bbd7854747e_16_30_16&rsv_dl=0_right_fyb_pchot_20811&sa=0_right_fyb_pchot_20811
+        - generic [ref=e203]:
+          - generic [ref=e210]:
+            - generic [ref=e211]:
+              - paragraph [ref=e221]:
+                - mark [ref=e222]:
+                  - text: ‌
+                  - strong [ref=e223]: 要同时满足两个关键条件
+                  - text: ‌
+                - text: 才会显示“对方正在输入”，光打字不一定行。‌‌
+                - button "参考文档，单指双击即可执行" [ref=e224]:
+                  - generic [ref=e225]: 百科
+              - generic [ref=e228]:
+                - generic [ref=e231]:
+                  - generic [ref=e232]:
+                    - generic [ref=e233]:
+                      - generic [ref=e234]: 🕒 啥时候能触发
+                      - text: 
+                    - generic [ref=e238]:
+                      - paragraph [ref=e245]:
+                        - text: 你发出消息后，
+                        - mark [ref=e246]:
+                          - text: ‌
+                          - strong [ref=e247]: 对方必须在10秒内打开对话框
+                          - text: ‌
+                        - text: ，超过这个时间窗口就来不及了。‌‌‌
+                        - generic [ref=e248]: 
+                      - link "" [ref=e260] [cursor=pointer]:
+                        - /url: http://www.baidu.com/link?url=uNdrJcXAOjbcSOzvLTQvrYVthBt8Qr0mXqm4130Ijf4LU-bYFeQPDPcELBbBda70GTIKCbxqz0HdYzGHKQtNESjZ8FRYP41ySh1Ktrj4os3
+                        - generic [ref=e262]:
+                          - generic [ref=e263]: 
+                          - text: 
+                  - generic [ref=e268]:
+                    - generic [ref=e269]:
+                      - generic [ref=e270]: 📝 怎么操作才算数
+                      - text: 
+                    - paragraph [ref=e281]:
+                      - text: 对方打开对话框后，
+                      - mark [ref=e282]:
+                        - text: ‌
+                        - strong [ref=e283]: 必须在输入框里实际打字
+                        - text: ‌
+                      - text: （哪怕只打个空格），字要进到聊天框里才算有效动作。‌‌
+                  - generic [ref=e284]:
+                    - generic [ref=e285]:
+                      - generic [ref=e286]: 🔍 为啥有时候看不到
+                      - text: 
+                    - generic [ref=e290]:
+                      - generic [ref=e296]:
+                        - paragraph [ref=e297]: 对方在输入法候选框里打字但没发送到聊天框、电脑端和手机端同步机制不同、断网后连网再发、直接复制粘贴等情况都不会触发提示。‌‌
+                        - paragraph [ref=e298]:
+                          - text: 用专业术语说这叫“信令握手”，微信为了节省电量和流量，不会让手机时刻保持连接监测状态。‌‌‌
+                          - generic [ref=e299]: 
+                      - link "" [ref=e311] [cursor=pointer]:
+                        - /url: http://www.baidu.com/link?url=uNdrJcXAOjbcSOzvLTQvrYVthBt8Qr0mXqm4130Ijf4LU-bYFeQPDPcELBbBda70AaAWaVQRTVSiJxQk4g6GnAgJHUUWTWUo5MMtpgGXfQS
+                        - generic [ref=e313]:
+                          - generic [ref=e314]: 
+                          - text: 
+                - generic [ref=e320]:
+                  - generic [ref=e322]: 想不想知道怎么设置微信让“正在输入”提示更稳定？可以帮你优化消息发送时机哦。
+                  - button "继续追问" [ref=e323]
+            - generic [ref=e332] [cursor=pointer]:
+              - generic [ref=e333]: 展开剩余28%内容
+              - generic [ref=e334]: 
+            - generic [ref=e335]:
+              - generic [ref=e336]: AI总结58篇结果生成
+              - generic [ref=e337]:
+                - generic [ref=e341] [cursor=pointer]:
+                  - generic [ref=e342]: 
+                  - generic [ref=e346]: 
+                  - generic [ref=e350]:
+                    - generic [ref=e351]: 
+                    - generic [ref=e357]:
+                      - generic [ref=e358]: 微信 对方正在输入 触发条件
+                      - generic [ref=e363]:
+                        - generic [ref=e364]: 长按识别，即刻体验百度AI
+                        - generic [ref=e365]: 以上内容均由AI生成
+                  - generic [ref=e367]: 
+                - generic [ref=e373]:
+                  - generic [ref=e374]: 
+                  - img "true" [ref=e375]
+          - generic [ref=e377]:
+            - generic [ref=e378]: 大家还在搜
+            - generic [ref=e379]:
+              - link "微信更新" [ref=e380] [cursor=pointer]:
+                - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%9B%B4%E6%96%B0&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101631202&rsv_dl=0_prs_28608_1
+              - link "微信小程序" [ref=e383] [cursor=pointer]:
+                - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101631202&rsv_dl=0_prs_28608_2
+              - link "微信正在输入中怎么关闭" [ref=e386] [cursor=pointer]:
+                - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E4%B8%AD%E6%80%8E%E4%B9%88%E5%85%B3%E9%97%AD&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_3
+              - link "不让对方看到正在输入" [ref=e389] [cursor=pointer]:
+                - /url: /s?wd=%E4%B8%8D%E8%AE%A9%E5%AF%B9%E6%96%B9%E7%9C%8B%E5%88%B0%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_4
+              - link "关闭对方正在输入的软件" [ref=e392] [cursor=pointer]:
+                - /url: /s?wd=%E5%85%B3%E9%97%AD%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E7%9A%84%E8%BD%AF%E4%BB%B6&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_5
+              - link "微信自动被屏蔽的原因有哪些" [ref=e395] [cursor=pointer]:
+                - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E8%87%AA%E5%8A%A8%E8%A2%AB%E5%B1%8F%E8%94%BD%E7%9A%84%E5%8E%9F%E5%9B%A0%E6%9C%89%E5%93%AA%E4%BA%9B&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_6
+              - link "对方正在输入什么手机会这样显示" [ref=e398] [cursor=pointer]:
+                - /url: /s?wd=%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E4%BB%80%E4%B9%88%E6%89%8B%E6%9C%BA%E4%BC%9A%E8%BF%99%E6%A0%B7%E6%98%BE%E7%A4%BA&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_7
+              - link "对方正在输入其他人能看见吗" [ref=e401] [cursor=pointer]:
+                - /url: /s?wd=%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E5%85%B6%E4%BB%96%E4%BA%BA%E8%83%BD%E7%9C%8B%E8%A7%81%E5%90%97&usm=3&ie=utf-8&rsv_pq=9bf90e7900003810&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&rsv_t=7329r%2Bqleuf14QzK%2BI4VfkTS1m%2F%2FhngIHU5nxHOxMcQApntMdk2P9lgf0Bw&rsf=101636703&rsv_dl=0_prs_28608_8
+          - generic [ref=e407]:
+            - heading [level=3] [ref=e410]:
+              - link [ref=e411] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4Y5iyagMjHpMT3-i3XCjJZFzDym2ZqqKAxsoHkRRCprAcm7XlU_1wjunnxcGTa1ufw9_qzfuTrwGAbxON3ffIfVRFBbU20VzQHbol9-VP2qhR9wpuBHSJZoBvle2ijQKnZnnrxLhtsBmP8p4Bi2AB3eq7QV6zn0kx314-dcbgaIOXMjkcj5vp1LTiQwTx9fNYzQidjA59qd2BF0jok4XZ5pW__bXdSus2v9Kjv00n9T1q
+                - generic [ref=e413]:
+                  - emphasis [ref=e414]: 微信
+                  - text: 聊天反复出现“
+                  - emphasis [ref=e415]: 对方正在输入
+                  - text: …”,说明对方在干什么?
+            - generic [ref=e416]:
+              - link [ref=e418] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4Y5iyagMjHpMT3-i3XCjJZFzDym2ZqqKAxsoHkRRCprAcm7XlU_1wjunnxcGTa1ufw9_qzfuTrwGAbxON3ffIfVRFBbU20VzQHbol9-VP2qhR9wpuBHSJZoBvle2ijQKnZnnrxLhtsBmP8p4Bi2AB3eq7QV6zn0kx314-dcbgaIOXMjkcj5vp1LTiQwTx9fNYzQidjA59qd2BF0jok4XZ5pW__bXdSus2v9Kjv00n9T1q
+              - generic [ref=e423]:
+                - generic [ref=e429] [cursor=pointer]:
+                  - text: 2026年3月26日
+                  - generic [ref=e430]:
+                    - emphasis [ref=e431]: 2.对方直接回你表情包
+                    - text: 。 3.对方直接用电脑端微信回复。 4.对方直接断网,输入完后再连网发送。 5.对方在输入法内一次性打完了要说的话。只要字没进聊天框里,你都看不见。 “对方正在输入”背后是什么原理? 再来点硬的:这背后的技术原理到...
+                - link "头像 青春兵团" [ref=e436] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4Y5iyagMjHpMT3-i3XCjJZFzDym2ZqqKAxsoHkRRCprAcm7XlU_1wjunnxcGTa1ufw9_qzfuTrwGAbxON3ffIfVRFBbU20VzQHbol9-VP2qhR9wpuBHSJZoBvle2ijQKnZnnrxLhtsBmP8p4Bi2AB3eq7QV6zn0kx314-dcbgaIOXMjkcj5vp1LTiQwTx9fNYzQidjA59qd2BF0jok4XZ5pW__bXdSus2v9Kjv00n9T1q
+                  - img "头像" [ref=e439]
+                  - generic [ref=e440]: 青春兵团
+                  - generic [ref=e441]: 
+          - generic [ref=e446]:
+            - heading [level=3] [ref=e447]:
+              - link "微信 对方正在输入 触发条件 - 精选笔记" [ref=e448] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=hnIb2OF8rxWLsf4HN8ixOGNE--m4056hWH98HN1qOAQKngQfkIdweoQyKNjLGF9IljRylHqW0CBH332LKaz-FJwU2hgwEPNUklJTXs6sS32gASjfl5ekmHzJviOElokHkQJZ-8r3NcfeF3gbrMzEP4AKv66hxEU6igHGiHSuwfhPXG29mYnsQGujCvsfTBHKZT8sN1eDgnWKeY1ecWgBbmPStvhsGqz-Y-KwW853er6Ipe1DtlSAyxKl4ceZhd-7
+                - generic [ref=e450]:
+                  - emphasis [ref=e452]: 微信 对方正在输入 触发条件
+                  - generic [ref=e453]: "- 精选笔记"
+            - generic [ref=e455]:
+              - link "微信‘对方正在输入’触发条件与机制详解 头像 蹲坑码字字" [ref=e458] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLBx95K2LFlzKKcwGCWCpRlqZewqHh9xF0GCuASHe7JWtd
+                - generic [ref=e459]:
+                  - heading "微信‘对方正在输入’触发条件与机制详解" [level=3] [ref=e466]
+                  - generic [ref=e470]:
+                    - img "头像" [ref=e473]
+                    - generic [ref=e474]: 蹲坑码字字
+              - link "微信‘对方正在输入’的触发条件与原理 头像 辣码酱" [ref=e478] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLBvT2oEl2xP7BCOGCTY9w07u1FF4teG2IQSQX41WQXG0E
+                - generic [ref=e479]:
+                  - heading "微信‘对方正在输入’的触发条件与原理" [level=3] [ref=e486]
+                  - generic [ref=e490]:
+                    - img "头像" [ref=e493]
+                    - generic [ref=e494]: 辣码酱
+              - link "微信‘对方正在输入’触发条件揭秘 头像 θ码猿" [ref=e498] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLB8UfawSLAGfCnAQqQHscBEtccNmwyB9Ja6j5HEObXw-f
+                - generic [ref=e499]:
+                  - heading "微信‘对方正在输入’触发条件揭秘" [level=3] [ref=e506]
+                  - generic [ref=e510]:
+                    - img "头像" [ref=e513]
+                    - generic [ref=e514]: θ码猿
+              - link "微信“对方正在输入”触发条件全解析 头像 影格管家" [ref=e518] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLB9WgQgz-P5X3ovbG83ndI-q829V1DSKrQfueSdUfkBD6
+                - generic [ref=e519]:
+                  - heading "微信“对方正在输入”触发条件全解析" [level=3] [ref=e526]
+                  - generic [ref=e530]:
+                    - img "头像" [ref=e533]
+                    - generic [ref=e534]: 影格管家
+            - link "查看更多笔记 >" [ref=e536] [cursor=pointer]:
+              - /url: http://www.baidu.com/link?url=CqGE9CbAPBxxG8lKlEzK4EgMaQiPUkOEBY_qy1qsjf7c6rvYWjooID2qPJKo2krFsDR8iShmF5TBiWmftCaWysEkVeenTZFvqgu5SFdQFAaPerVK4yIkNx5eX2UykTBA-DFj8iV-WEW17WCOmIKBmPeAJUPgnxU_Y4UCxuPcVfRlAQRLInGOtWSAXigiL2EzUO13fFqM0AywpCrjimlHF-gfuf0VpkvXzbJnyvhPcr_MHXouw3xcyLWaPzIYIK62
+          - generic [ref=e540]:
+            - heading [level=3] [ref=e543]:
+              - link [ref=e544] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4ZVp0XJgvItoNmB_3K54NUoVRzT3BUfQ_0fyzX17vJrvl3RUrUpK78SNhqsLmXBLDSX_JBRnsIrmhCoS9MQlHq3u96tI3F6iZqZPM26UvYC9Ycck-1bzANJnLG0vua1HRIu26aZ2tSMyyxc4g26NdE4mCIzy16w9fxrbCQHk7i2FzkNuvu0VxC0qZHT7ugEbvcfjN1jKqxzKjOz84bzs98x7dSW43D8Rao_a3MivXjbna
+                - generic [ref=e546]:
+                  - emphasis [ref=e547]: 微信
+                  - text: “
+                  - emphasis [ref=e548]: 对方正在输入
+                  - text: ”原来在这种情况下才会出现!
+            - generic [ref=e549]:
+              - link [ref=e551] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4ZVp0XJgvItoNmB_3K54NUoVRzT3BUfQ_0fyzX17vJrvl3RUrUpK78SNhqsLmXBLDSX_JBRnsIrmhCoS9MQlHq3u96tI3F6iZqZPM26UvYC9Ycck-1bzANJnLG0vua1HRIu26aZ2tSMyyxc4g26NdE4mCIzy16w9fxrbCQHk7i2FzkNuvu0VxC0qZHT7ugEbvcfjN1jKqxzKjOz84bzs98x7dSW43D8Rao_a3MivXjbna
+              - generic [ref=e556]:
+                - generic [ref=e562] [cursor=pointer]:
+                  - text: 2024年12月16日
+                  - generic [ref=e563]:
+                    - text: 因为这个提示的触发条件之一是“
+                    - emphasis [ref=e564]: 对方在十秒内打开聊天窗口并开始输入
+                    - text: ”。如果你等过了这段...
+                - link "微信公众平台" [ref=e569] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4ZVp0XJgvItoNmB_3K54NUoVRzT3BUfQ_0fyzX17vJrvl3RUrUpK78SNhqsLmXBLDSX_JBRnsIrmhCoS9MQlHq3u96tI3F6iZqZPM26UvYC9Ycck-1bzANJnLG0vua1HRIu26aZ2tSMyyxc4g26NdE4mCIzy16w9fxrbCQHk7i2FzkNuvu0VxC0qZHT7ugEbvcfjN1jKqxzKjOz84bzs98x7dSW43D8Rao_a3MivXjbna
+                  - generic [ref=e571]: 
+          - generic [ref=e574]:
+            - heading [level=3] [ref=e575]:
+              - link [ref=e576] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=VOzxSwLESf2O8pj1Q58F6ZKP0TTjI6V_AZkYZzaGc_6baB7d9qaulT84pVlL14P3uC7HmHLF9bk2hLG361j3-bAc4AldZuC4oTk8G15NYdyv0BBP5YiGhnSG__cmgaF6z5AEclx2pKV5WLoVse2x_K
+                - paragraph [ref=e579]:
+                  - generic [ref=e581]:
+                    - emphasis [ref=e582]: 对方正在输入
+                    - text: (微信聊天框顶端的文字... - 百度百科
+            - generic [ref=e586]:
+              - link [ref=e588] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=VOzxSwLESf2O8pj1Q58F6ZKP0TTjI6V_AZkYZzaGc_6baB7d9qaulT84pVlL14P3uC7HmHLF9bk2hLG361j3-bAc4AldZuC4oTk8G15NYdyv0BBP5YiGhnSG__cmgaF6z5AEclx2pKV5WLoVse2x_K
+              - generic [ref=e591]:
+                - paragraph [ref=e595]:
+                  - generic [ref=e597]:
+                    - text: 根据官方说明，
+                    - emphasis [ref=e598]: 触发“对方正在输入”提示需同时满足两个条件：时效性（消息发出后
+                    - text: ，对方在10秒内打开对话框）和动作感（对方在聊天输入框内进行了输入操作，如打字或空格）。若未满足上述条件，则可能不会显示该提示。具体原因包括：1.
+                    - emphasis [ref=e599]: 对方10秒后才回
+                    - text: 。这是因为超过了触发提...
+                  - generic [ref=e601]:
+                    - link "详情" [ref=e602] [cursor=pointer]:
+                      - /url: http://www.baidu.com/link?url=VOzxSwLESf2O8pj1Q58F6ZKP0TTjI6V_AZkYZzaGc_6baB7d9qaulT84pVlL14P3uC7HmHLF9bk2hLG361j3-bAc4AldZuC4oTk8G15NYdyv0BBP5YiGhnSG__cmgaF6z5AEclx2pKV5WLoVse2x_K
+                    - link "" [ref=e603] [cursor=pointer]:
+                      - /url: http://www.baidu.com/link?url=VOzxSwLESf2O8pj1Q58F6ZKP0TTjI6V_AZkYZzaGc_6baB7d9qaulT84pVlL14P3uC7HmHLF9bk2hLG361j3-bAc4AldZuC4oTk8G15NYdyv0BBP5YiGhnSG__cmgaF6z5AEclx2pKV5WLoVse2x_K
+                - generic [ref=e607]:
+                  - link "触发条件" [ref=e609] [cursor=pointer]:
+                    - /url: http://www.baidu.com/link?url=ETHBSs-oqRC4F8x2KQV4-r8WhXUf_SgrLuUeCUgU-EHVM4omdR9tzZLdSl3pQKhW5vQ9Wh9mnPgvmSgatlEqXqVsGiHMok_xLWVI_xkbb7p-MtfWWZbLSS_IotkyuJuL57g03VkNbb4Nl0TF9CzHHC5J0fLBMoxuh6OokGzOONe
+                  - link "不显示原因" [ref=e612] [cursor=pointer]:
+                    - /url: http://www.baidu.com/link?url=ETHBSs-oqRC4F8x2KQV4-r8WhXUf_SgrLuUeCUgU-EHVM4omdR9tzZLdSl3pQKhW5vQ9Wh9mnPgvmSgatlEqXqVsGiHMok_xLWVI_xkbb7p-MtfWWZbLSS_IotkyuJuL57g03VkNbb4Nl0TF9CzHHBNnwsm6ae1uih92cad4rja
+                  - link "技术原理" [ref=e615] [cursor=pointer]:
+                    - /url: http://www.baidu.com/link?url=ETHBSs-oqRC4F8x2KQV4-r8WhXUf_SgrLuUeCUgU-EHVM4omdR9tzZLdSl3pQKhW5vQ9Wh9mnPgvmSgatlEqXqVsGiHMok_xLWVI_xkbb7p-MtfWWZbLSS_IotkyuJuL57g03VkNbb4Nl0TF9CzHHHu9z_m3FVn03g93sgnLd5G
+                  - link "设计理念" [ref=e618] [cursor=pointer]:
+                    - /url: http://www.baidu.com/link?url=ETHBSs-oqRC4F8x2KQV4-r8WhXUf_SgrLuUeCUgU-EHVM4omdR9tzZLdSl3pQKhW5vQ9Wh9mnPgvmSgatlEqXqVsGiHMok_xLWVI_xkbb7p-MtfWWZbLSS_IotkyuJuL57g03VkNbb4Nl0TF9CzHHBXi-Ket-wptu3PpziLCEkm
+            - generic [ref=e620]:
+              - link "百度百科" [ref=e623] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=VOzxSwLESf2O8pj1Q58F6ZKP0TTjI6V_AZkYZzaGc_6baB7d9qaulT84pVlL14P3uC7HmHLF9bk2hLG361j3-bAc4AldZuC4oTk8G15NYdyv0BBP5YiGhnSG__cmgaF6z5AEclx2pKV5WLoVse2x_K
+              - generic [ref=e625] [cursor=pointer]: 
+          - generic [ref=e630]:
+            - heading [level=3] [ref=e633]:
+              - link [ref=e634] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHw31yl32EPosb4GdGtgIUENg9sf1sXn_TfhO7n3cei2YJoVXlZdaSLHldyHJpSuzHe
+                - generic [ref=e636]:
+                  - emphasis [ref=e637]: 微信
+                  - text: 对话框的“
+                  - emphasis [ref=e638]: 对方正在输入
+                  - text: ”,在什么情况下会出现?
+            - generic [ref=e639]:
+              - link [ref=e641] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHw31yl32EPosb4GdGtgIUENg9sf1sXn_TfhO7n3cei2YJoVXlZdaSLHldyHJpSuzHe
+              - generic [ref=e646]:
+                - generic [ref=e652] [cursor=pointer]:
+                  - text: 2026年3月26日
+                  - generic [ref=e653]:
+                    - emphasis [ref=e654]: 1、当你发送信息后，对方需要在 10 秒内打开对话框；2、对方打开对话框后并在输入框里打字（哪怕是个空格也行）
+                    - text: 。如果满足以上两个条件，那么微信对话框上就会显示「对方正在输入...」了，这也说明对方是足够在意你的。如果发送信息后对话框不显示「对方正在输入...」，这可能是以下几种情况：1、对方在 10 ...
+                - link "头像 简科技" [ref=e659] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHw31yl32EPosb4GdGtgIUENg9sf1sXn_TfhO7n3cei2YJoVXlZdaSLHldyHJpSuzHe
+                  - img "头像" [ref=e662]
+                  - generic [ref=e665]: 简科技
+                  - generic [ref=e666]: 
+          - generic [ref=e671]:
+            - heading [level=3] [ref=e674]:
+              - link [ref=e675] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHuLgQS26CXLOaED3_h5WIReLOWyhjBeclPDckloqf1IYWp_amhe3B4huVcA-zPPeNG
+                - generic [ref=e677]:
+                  - emphasis [ref=e678]: 微信
+                  - text: 聊天到底为什么会出现“
+                  - emphasis [ref=e679]: 对方正在输入
+                  - text: ”?
+            - generic [ref=e680]:
+              - link [ref=e682] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHuLgQS26CXLOaED3_h5WIReLOWyhjBeclPDckloqf1IYWp_amhe3B4huVcA-zPPeNG
+              - generic [ref=e687]:
+                - generic [ref=e693] [cursor=pointer]:
+                  - text: 2026年3月27日
+                  - generic [ref=e694]:
+                    - text: 真相是，
+                    - emphasis [ref=e695]: 要触发得同时满足两个条件：时效性：你发出消息后，对方必须在 10 秒内打开对话框
+                    - text: 。动作感：对方打开了且还在输入框里打了字（哪怕只是打个空格）。也就是说，如果你看到跟你聊天的对象出现了“对方正在输入”。恭喜你，至少 TA 还蛮重视你的！那么，由此衍伸的各种“对方正在输入”也就“破案”了：...
+                - link "头像  观察者网" [ref=e700] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzga03UKIsUxUf-ovurY8vSHuLgQS26CXLOaED3_h5WIReLOWyhjBeclPDckloqf1IYWp_amhe3B4huVcA-zPPeNG
+                  - generic [ref=e701]:
+                    - img "头像" [ref=e703]
+                    - generic [ref=e704]: 
+                  - generic [ref=e706]: 观察者网
+                  - generic [ref=e707]: 
+          - generic [ref=e712]:
+            - heading [level=3] [ref=e715]:
+              - link [ref=e716] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLBs3qPi-a_WmJBszReTx8KE-bvJmZSBqYpne7Xu4Z1zSz
+                - generic [ref=e718]:
+                  - emphasis [ref=e719]: 微信
+                  - text: “
+                  - emphasis [ref=e720]: 对方正在输入
+                  - text: ”的
+                  - emphasis [ref=e721]: 触发条件
+                  - text: 揭秘
+            - generic [ref=e722]:
+              - link [ref=e724] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLBs3qPi-a_WmJBszReTx8KE-bvJmZSBqYpne7Xu4Z1zSz
+              - generic [ref=e729]:
+                - generic [ref=e735] [cursor=pointer]:
+                  - text: 2026年3月31日
+                  - generic [ref=e736]:
+                    - text: ▼
+                    - emphasis [ref=e737]: 触发条件
+                    - text: 这个看似简单的状态提示背后其实有一套精妙的技术逻辑。要触发"
+                    - emphasis [ref=e738]: 对方正在输入
+                    - text: "\"提示,必须同时..."
+                - link "头像 θ码猿" [ref=e743] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=Gm1ZzVbjGePZeuQ_dovPeGs4ryJLeWic3kj5e5kbcFoo0BbaulztpOUXknWh7Rk4mWUWW9rPZrUk-gCB6CbLBs3qPi-a_WmJBszReTx8KE-bvJmZSBqYpne7Xu4Z1zSz
+                  - img "头像" [ref=e746]
+                  - generic [ref=e747]: θ码猿
+                  - generic [ref=e748]: 
+          - generic [ref=e753]:
+            - heading [level=3] [ref=e756]:
+              - link [ref=e757] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4WIqhrsoO9lo9M0Y9wOA7YWhMeuUEJ9agGhV8irgIRDiUZTkFrU9aOcSuFZWyZwCm3NIr5PCRKri5JMOjauHrVF-owqDNc5_iO0eymw-HcPun_giDD2zQlj54v0M_OsgIzSJrj-syfoH2abGIYN_yKmUvTOK5rksUmGvKM_NjTFiME7RIrk4GAruEab6ME--PcI83kp9aZuCLNHvJohKyNa5iU0u7IH4TC15pSS6TbRka
+                - generic [ref=e759]:
+                  - emphasis [ref=e760]: 微信
+                  - text: 聊天到底为什么会出现“
+                  - emphasis [ref=e761]: 对方正在输入
+                  - text: ”?
+            - generic [ref=e762]:
+              - link [ref=e764] [cursor=pointer]:
+                - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4WIqhrsoO9lo9M0Y9wOA7YWhMeuUEJ9agGhV8irgIRDiUZTkFrU9aOcSuFZWyZwCm3NIr5PCRKri5JMOjauHrVF-owqDNc5_iO0eymw-HcPun_giDD2zQlj54v0M_OsgIzSJrj-syfoH2abGIYN_yKmUvTOK5rksUmGvKM_NjTFiME7RIrk4GAruEab6ME--PcI83kp9aZuCLNHvJohKyNa5iU0u7IH4TC15pSS6TbRka
+              - generic [ref=e769]:
+                - generic [ref=e775] [cursor=pointer]:
+                  - text: 2026年3月28日
+                  - generic [ref=e776]:
+                    - text: 真相是,要
+                    - emphasis [ref=e777]: 触发
+                    - text: 得同时满足两个
+                    - emphasis [ref=e778]: 条件
+                    - text: ": 时效性:你发出消息后,对方必须在10秒内打开对话框。 动作感:对方打开了且还在输入框里打了字(哪怕只是打个空格)。 也就是说,如果你看到跟你聊天的对象出现了“"
+                    - emphasis [ref=e779]: 对方正在输入
+                    - text: ”,恭喜你,至少TA还蛮重视你的! 那么,由此...
+                - link "头像 日照共青团" [ref=e784] [cursor=pointer]:
+                  - /url: http://www.baidu.com/link?url=LBvpPSrnspM1jPxd54Tzgf9-M9wv0q8cjLU2EpZvp4WIqhrsoO9lo9M0Y9wOA7YWhMeuUEJ9agGhV8irgIRDiUZTkFrU9aOcSuFZWyZwCm3NIr5PCRKri5JMOjauHrVF-owqDNc5_iO0eymw-HcPun_giDD2zQlj54v0M_OsgIzSJrj-syfoH2abGIYN_yKmUvTOK5rksUmGvKM_NjTFiME7RIrk4GAruEab6ME--PcI83kp9aZuCLNHvJohKyNa5iU0u7IH4TC15pSS6TbRka
+                  - img "头像" [ref=e787]
+                  - generic [ref=e788]: 日照共青团
+                  - generic [ref=e789]: 
+        - generic [ref=e793]:
+          - generic [ref=e794]: 相关搜索
+          - table [ref=e795]:
+            - rowgroup [ref=e796]:
+              - row [ref=e797]:
+                - cell [ref=e798]:
+                  - link "微信更新" [ref=e799] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%9B%B4%E6%96%B0&rsf=101631202&rsp=0&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_1
+                - cell [ref=e802]:
+                  - link "微信小程序" [ref=e803] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F&rsf=101631202&rsp=1&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_2
+              - row [ref=e806]:
+                - cell [ref=e807]:
+                  - link "微信怎么触发对方正在输入" [ref=e808] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%80%8E%E4%B9%88%E8%A7%A6%E5%8F%91%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5&rsf=101631203&rsp=2&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_3
+                - cell [ref=e811]:
+                  - link "不让对方看到正在输入" [ref=e812] [cursor=pointer]:
+                    - /url: /s?wd=%E4%B8%8D%E8%AE%A9%E5%AF%B9%E6%96%B9%E7%9C%8B%E5%88%B0%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5&rsf=101636703&rsp=3&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_4
+              - row [ref=e815]:
+                - cell [ref=e816]:
+                  - link "关闭对方正在输入的软件" [ref=e817] [cursor=pointer]:
+                    - /url: /s?wd=%E5%85%B3%E9%97%AD%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E7%9A%84%E8%BD%AF%E4%BB%B6&rsf=101636703&rsp=4&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_5
+                - cell [ref=e820]:
+                  - link "对方正在输入什么手机会这样显示" [ref=e821] [cursor=pointer]:
+                    - /url: /s?wd=%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E4%BB%80%E4%B9%88%E6%89%8B%E6%9C%BA%E4%BC%9A%E8%BF%99%E6%A0%B7%E6%98%BE%E7%A4%BA&rsf=101636703&rsp=5&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_6
+              - row [ref=e824]:
+                - cell [ref=e825]:
+                  - link "微信看到对方正在输入可是没信息" [ref=e826] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E7%9C%8B%E5%88%B0%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E5%8F%AF%E6%98%AF%E6%B2%A1%E4%BF%A1%E6%81%AF&rsf=101636703&rsp=6&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_7
+                - cell [ref=e829]:
+                  - link "微信自动被屏蔽的原因有哪些" [ref=e830] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E8%87%AA%E5%8A%A8%E8%A2%AB%E5%B1%8F%E8%94%BD%E7%9A%84%E5%8E%9F%E5%9B%A0%E6%9C%89%E5%93%AA%E4%BA%9B&rsf=101636703&rsp=7&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_8
+              - row [ref=e833]:
+                - cell [ref=e834]:
+                  - link "对方正在输入其他人能看见吗" [ref=e835] [cursor=pointer]:
+                    - /url: /s?wd=%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%E5%85%B6%E4%BB%96%E4%BA%BA%E8%83%BD%E7%9C%8B%E8%A7%81%E5%90%97&rsf=101636703&rsp=8&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_9
+                - cell [ref=e838]:
+                  - link "微信怎么触发爱心" [ref=e839] [cursor=pointer]:
+                    - /url: /s?wd=%E5%BE%AE%E4%BF%A1%E6%80%8E%E4%B9%88%E8%A7%A6%E5%8F%91%E7%88%B1%E5%BF%83&rsf=101631203&rsp=9&f=1&rs_src=0&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&rsv_dl=brs_28338_10
+      - generic [ref=e844]:
+        - link:
+          - /url: ""
+        - strong [ref=e845]:
+          - generic [ref=e846]: "1"
+        - link "2" [ref=e847] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=10&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "3" [ref=e849] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=20&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "4" [ref=e851] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=30&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "5" [ref=e853] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=40&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "6" [ref=e855] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=50&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "7" [ref=e857] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=60&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "8" [ref=e859] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=70&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "9" [ref=e861] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=80&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link "10" [ref=e863] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=90&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=
+        - link [ref=e865] [cursor=pointer]:
+          - /url: /s?wd=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&pn=10&oq=%E5%BE%AE%E4%BF%A1%20%E5%AF%B9%E6%96%B9%E6%AD%A3%E5%9C%A8%E8%BE%93%E5%85%A5%20%E8%A7%A6%E5%8F%91%E6%9D%A1%E4%BB%B6&ie=utf-8&usm=3&rsv_pq=9bf90e7900003810&rsv_t=f1aaARSBL8XHC7Bvd02ONmsdy8TmOPndQkK5jTT0JEglfD8ny8ibzpVBJJs&topic_pn=&rsv_page=1
+      - generic [ref=e870]:
+        - link "帮助" [ref=e871] [cursor=pointer]:
+          - /url: https://help.baidu.com/question?prod_id=1
+        - link "举报" [ref=e872] [cursor=pointer]:
+          - /url: https://help.baidu.com/jubao?source=search
+        - link "用户反馈" [ref=e873] [cursor=pointer]:
+          - /url: javascript:;
+        - link "企业推广" [ref=e874] [cursor=pointer]:
+          - /url: https://e.baidu.com/lp/search/?refer=1298

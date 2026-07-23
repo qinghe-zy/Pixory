@@ -1,0 +1,194 @@
+- generic [ref=f10e2]:
+  - generic [ref=f10e3]:
+    - link "DuckDuckGo" [ref=f10e4] [cursor=pointer]:
+      - /url: /html/
+    - generic [ref=f10e5]:
+      - generic [ref=f10e6]:
+        - textbox [ref=f10e7]: site:help.wechat.com chat message exclamation resend loading sending
+        - button "Submit" [ref=f10e8] [cursor=pointer]
+      - combobox [ref=f10e10] [cursor=pointer]:
+        - option "All Regions" [selected]
+        - option "Argentina"
+        - option "Australia"
+        - option "Austria"
+        - option "Belgium (fr)"
+        - option "Belgium (nl)"
+        - option "Brazil"
+        - option "Bulgaria"
+        - option "Canada (en)"
+        - option "Canada (fr)"
+        - option "Catalonia"
+        - option "Chile"
+        - option "China"
+        - option "Colombia"
+        - option "Croatia"
+        - option "Czech Republic"
+        - option "Denmark"
+        - option "Estonia"
+        - option "Finland"
+        - option "France"
+        - option "Germany"
+        - option "Greece"
+        - option "Hong Kong"
+        - option "Hungary"
+        - option "Iceland"
+        - option "India (en)"
+        - option "Indonesia (en)"
+        - option "Ireland"
+        - option "Israel (en)"
+        - option "Italy"
+        - option "Japan"
+        - option "Korea"
+        - option "Latvia"
+        - option "Lithuania"
+        - option "Malaysia (en)"
+        - option "Mexico"
+        - option "Netherlands"
+        - option "New Zealand"
+        - option "Norway"
+        - option "Pakistan (en)"
+        - option "Peru"
+        - option "Philippines (en)"
+        - option "Poland"
+        - option "Portugal"
+        - option "Romania"
+        - option "Russia"
+        - option "Saudi Arabia"
+        - option "Singapore"
+        - option "Slovakia"
+        - option "Slovenia"
+        - option "South Africa"
+        - option "Spain (ca)"
+        - option "Spain (es)"
+        - option "Sweden"
+        - option "Switzerland (de)"
+        - option "Switzerland (fr)"
+        - option "Taiwan"
+        - option "Thailand (en)"
+        - option "Turkey"
+        - option "US (English)"
+        - option "US (Spanish)"
+        - option "Ukraine"
+        - option "United Kingdom"
+        - option "Vietnam (en)"
+      - combobox [ref=f10e12] [cursor=pointer]:
+        - option "Any Time" [selected]
+        - option "Past Day"
+        - option "Past Week"
+        - option "Past Month"
+        - option "Past Year"
+  - generic [ref=f10e15]:
+    - generic [ref=f10e17]:
+      - heading [level=2] [ref=f10e18]:
+        - link "Why does the exclamation mark appear in my chat?" [ref=f10e19] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917524691983%2DWhy%2Ddoes%2Dthe%2Dexclamation%2Dmark%2Dappear%2Din%2Dmy%2Dchat&rut=c2feb4781e18adb03f69e49ae1c39bf80dda4d997c83c93a54c41e316c1a14b3
+      - generic [ref=f10e21]:
+        - link [ref=f10e23] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917524691983%2DWhy%2Ddoes%2Dthe%2Dexclamation%2Dmark%2Dappear%2Din%2Dmy%2Dchat&rut=c2feb4781e18adb03f69e49ae1c39bf80dda4d997c83c93a54c41e316c1a14b3
+        - link "cs.help.wechat.com/hc/en-us/articles/11917524691983-Why-does-the-exclamation-mark-appear-in-my-chat" [ref=f10e24] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917524691983%2DWhy%2Ddoes%2Dthe%2Dexclamation%2Dmark%2Dappear%2Din%2Dmy%2Dchat&rut=c2feb4781e18adb03f69e49ae1c39bf80dda4d997c83c93a54c41e316c1a14b3
+        - text: 2025-02-10T00:00:00.0000000
+      - 'link "The exclamation mark indicates that your message did not send due to an unstable or unavailable network connection. To resolve this: - Check your network settings. - Tap the message with the exclamation mark to resend it. - If the issue persists, try switching to a different network (e.g., Wi-Fi) and attempt sending the message again." [ref=f10e25] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Farticles%2F11917524691983%2DWhy%2Ddoes%2Dthe%2Dexclamation%2Dmark%2Dappear%2Din%2Dmy%2Dchat&rut=c2feb4781e18adb03f69e49ae1c39bf80dda4d997c83c93a54c41e316c1a14b3
+    - generic [ref=f10e27]:
+      - heading [level=2] [ref=f10e28]:
+        - link "WeChat Help Center" [ref=f10e29] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+      - generic [ref=f10e31]:
+        - link [ref=f10e33] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+        - link "help.wechat.com/cgi-bin/micromsg-bin/oshelpcenter?opcode=2&id=120813euEJVf1410236VvqaI&t=help_center/w_topic_detail" [ref=f10e34] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+      - link "What does the exclamation mark mean in my chats? If an exclamation mark appears when you're sending a message, it means that the message didn't go through due to an unstable or unavailable network. Please check your network settings and try again. To resend your message, tap the message with the exclamation point." [ref=f10e35] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D2%26id%3D120813euEJVf1410236VvqaI%26t%3Dhelp_center%2Fw_topic_detail&rut=aed3bd4a28d4d7078748c1481913015d1a4ce938c5b6568cacbc44183c242dc3
+    - generic [ref=f10e37]:
+      - heading [level=2] [ref=f10e38]:
+        - link "Messages - WeChat Help Center" [ref=f10e39] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+      - generic [ref=f10e41]:
+        - link [ref=f10e43] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+        - link "cs.help.wechat.com/hc/en-us/sections/11917308924559-Messages" [ref=f10e44] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+      - link "How to Cancel a Voice Message Recording Why does the exclamation mark appear in my chat? How do I turn on or turn off the speaker in a voice chat? How to send videos, photos, location, or contact cards on WeChat? How to Fix Not Receiving WeChat Message Notifications How Do I Sort Photos or Videos Before Sending Them in a Chat or Moments?" [ref=f10e45] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus%2Fsections%2F11917308924559%2DMessages&rut=c8d930532ca2b7dc12f8244a486ea794e72e9307dc75642ebd883a1969afe918
+    - generic [ref=f10e47]:
+      - heading [level=2] [ref=f10e48]:
+        - link "WeChat Help Center" [ref=f10e49] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_topic_list%26lang%3Den%26detail%3D1003566&rut=e01c8ec5791f467edfa20f0003e2510accdf07bc764c5d598ef3fda95eaebdf4
+      - generic [ref=f10e51]:
+        - link [ref=f10e53] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_topic_list%26lang%3Den%26detail%3D1003566&rut=e01c8ec5791f467edfa20f0003e2510accdf07bc764c5d598ef3fda95eaebdf4
+        - link "help.wechat.com/cgi-bin/newreadtemplate?t=help_center/w_topic_list&lang=en&detail=1003566" [ref=f10e54] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_topic_list%26lang%3Den%26detail%3D1003566&rut=e01c8ec5791f467edfa20f0003e2510accdf07bc764c5d598ef3fda95eaebdf4
+      - link "About Tencent | WeChat Home | Contact Us | Privacy Policy | WeChat Safety Center Copyright @2012 - 2026 Tencent All Right Reserved" [ref=f10e55] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_topic_list%26lang%3Den%26detail%3D1003566&rut=e01c8ec5791f467edfa20f0003e2510accdf07bc764c5d598ef3fda95eaebdf4
+    - generic [ref=f10e57]:
+      - heading [level=2] [ref=f10e58]:
+        - link "WeChat Help Center" [ref=f10e59] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus&rut=bf6e3f3a384f4ac6e1cb23f24e6b1bcaff77af61783fdd63a3b50e9d4835511c
+      - generic [ref=f10e61]:
+        - link [ref=f10e63] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus&rut=bf6e3f3a384f4ac6e1cb23f24e6b1bcaff77af61783fdd63a3b50e9d4835511c
+        - link "cs.help.wechat.com/hc/en-us" [ref=f10e64] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus&rut=bf6e3f3a384f4ac6e1cb23f24e6b1bcaff77af61783fdd63a3b50e9d4835511c
+      - link "Self-service guide to regain your account access Popular Features" [ref=f10e65] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fcs.help.wechat.com%2Fhc%2Fen%2Dus&rut=bf6e3f3a384f4ac6e1cb23f24e6b1bcaff77af61783fdd63a3b50e9d4835511c
+    - generic [ref=f10e67]:
+      - heading [level=2] [ref=f10e68]:
+        - link "WeChat Help Center" [ref=f10e69] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=http%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D3&rut=5772af8795a943d36fbb7de43dfac665369667834a05ff1c55eccebac1d3f3b6
+      - generic [ref=f10e71]:
+        - link [ref=f10e73] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=http%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D3&rut=5772af8795a943d36fbb7de43dfac665369667834a05ff1c55eccebac1d3f3b6
+        - link "help.wechat.com/cgi-bin/micromsg-bin/oshelpcenter?opcode=3" [ref=f10e74] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=http%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D3&rut=5772af8795a943d36fbb7de43dfac665369667834a05ff1c55eccebac1d3f3b6
+      - link "Once 72 hours has lapsed since you sent your chat message, or 120 hours for images, audio, videos, and files, WeChat permanently deletes the content of the message on our servers." [ref=f10e75] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=http%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fopcode%3D3&rut=5772af8795a943d36fbb7de43dfac665369667834a05ff1c55eccebac1d3f3b6
+    - generic [ref=f10e77]:
+      - heading [level=2] [ref=f10e78]:
+        - link "WeChat Help Center" [ref=f10e79] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_index%26lang%3Den&rut=934c7801e73089da014bde755ec04f47e9844bf25a3f258bce7f49083a418c84
+      - generic [ref=f10e81]:
+        - link [ref=f10e83] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_index%26lang%3Den&rut=934c7801e73089da014bde755ec04f47e9844bf25a3f258bce7f49083a418c84
+        - link "help.wechat.com/cgi-bin/newreadtemplate?t=help_center/w_index&lang=en" [ref=f10e84] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_index%26lang%3Den&rut=934c7801e73089da014bde755ec04f47e9844bf25a3f258bce7f49083a418c84
+      - link "Why can't I back up my chat history to WeChat's server or a cloud service? How do I add WeChat friends? How do I know whether my message has been read? Why do I have to verify a credit card or debit card in order to complete parental or legal guardian verification of my account? How secure are my chat messages and conversations on WeChat?" [ref=f10e85] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Fw_index%26lang%3Den&rut=934c7801e73089da014bde755ec04f47e9844bf25a3f258bce7f49083a418c84
+    - generic [ref=f10e87]:
+      - heading [level=2] [ref=f10e88]:
+        - link "WeChat Help Center" [ref=f10e89] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fchannel_id%3D1&rut=21db990062b2ed64951db03b68f68d226b1e6ac99b826cfb46f435979b44c8d7
+      - generic [ref=f10e91]:
+        - link [ref=f10e93] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fchannel_id%3D1&rut=21db990062b2ed64951db03b68f68d226b1e6ac99b826cfb46f435979b44c8d7
+        - link "help.wechat.com/cgi-bin/micromsg-bin/oshelpcenter?channel_id=1" [ref=f10e94] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fchannel_id%3D1&rut=21db990062b2ed64951db03b68f68d226b1e6ac99b826cfb46f435979b44c8d7
+      - 'link "{\"faqtree\": {\"node\": [ {\"nodedetail\": {\"id\":\"150826bqevzm150826eyaur3\",\"pid\":\"1003388\",\"title\":\"How do I see all images in a chat?\",\"isleaf\":0}}, {\"nodedetail\": {\"id ..." [ref=f10e95] [cursor=pointer]':
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Fchannel_id%3D1&rut=21db990062b2ed64951db03b68f68d226b1e6ac99b826cfb46f435979b44c8d7
+    - generic [ref=f10e97]:
+      - heading [level=2] [ref=f10e98]:
+        - link "help.wechat.com" [ref=f10e99] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Ft%3Dhelp_center%2Ftopic_detail%26opcode%3D2%26id%3D1208117b2mai1411252EJr2q&rut=1fc930910b2fd2a33bc6a5db6ba50fa2871d134adf2ecfe0bd8995983505f24a
+      - generic [ref=f10e101]:
+        - link [ref=f10e103] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Ft%3Dhelp_center%2Ftopic_detail%26opcode%3D2%26id%3D1208117b2mai1411252EJr2q&rut=1fc930910b2fd2a33bc6a5db6ba50fa2871d134adf2ecfe0bd8995983505f24a
+        - link "help.wechat.com/cgi-bin/micromsg-bin/oshelpcenter?t=help_center/topic_detail&opcode=2&id=1208117b2mai1411252EJr2q" [ref=f10e104] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Ft%3Dhelp_center%2Ftopic_detail%26opcode%3D2%26id%3D1208117b2mai1411252EJr2q&rut=1fc930910b2fd2a33bc6a5db6ba50fa2871d134adf2ecfe0bd8995983505f24a
+      - link "How do I unblock my account? How do I backup/restore chat history through WeChat for Windows/Mac? How do I set Dark Mode? How do I enable/disable Moments videos autoplay on mobile" [ref=f10e105] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fmicromsg%2Dbin%2Foshelpcenter%3Ft%3Dhelp_center%2Ftopic_detail%26opcode%3D2%26id%3D1208117b2mai1411252EJr2q&rut=1fc930910b2fd2a33bc6a5db6ba50fa2871d134adf2ecfe0bd8995983505f24a
+    - generic [ref=f10e107]:
+      - heading [level=2] [ref=f10e108]:
+        - link "help.wechat.com" [ref=f10e109] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Ftopic_list%26lang%3Den%26detail%3D1003404&rut=1adc1b1123d8248d3e111ef204773512c0664524d9ff8bbec235bab230d0260d
+      - generic [ref=f10e111]:
+        - link [ref=f10e113] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Ftopic_list%26lang%3Den%26detail%3D1003404&rut=1adc1b1123d8248d3e111ef204773512c0664524d9ff8bbec235bab230d0260d
+        - link "help.wechat.com/cgi-bin/newreadtemplate?t=help_center/topic_list&lang=en&detail=1003404" [ref=f10e114] [cursor=pointer]:
+          - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Ftopic_list%26lang%3Den%26detail%3D1003404&rut=1adc1b1123d8248d3e111ef204773512c0664524d9ff8bbec235bab230d0260d
+      - link "Post; Personal & Privacy Settings; Viewing Tips for Moments; Popular Features. Tickle; Channels; WeChat Out; Shake; People Nearby; Favorites; Broadcast Messages ..." [ref=f10e115] [cursor=pointer]:
+        - /url: //duckduckgo.com/l/?uddg=https%3A%2F%2Fhelp.wechat.com%2Fcgi%2Dbin%2Fnewreadtemplate%3Ft%3Dhelp_center%2Ftopic_list%26lang%3Den%26detail%3D1003404&rut=1adc1b1123d8248d3e111ef204773512c0664524d9ff8bbec235bab230d0260d
+    - button "Next" [ref=f10e118] [cursor=pointer]
+    - link "Feedback" [ref=f10e120] [cursor=pointer]:
+      - /url: //duckduckgo.com/feedback.html

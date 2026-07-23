@@ -11,6 +11,8 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SecureImage } from '../components/SecureImage';
 import { commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
+import { BlurView } from 'expo-blur';
+import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, runWithDatabaseSpace, type GlobalGroupListItem, type PixorySpace } from '../database';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
@@ -123,23 +125,26 @@ export function GlobalGroupsScreen({
                 <Text style={styles.sectionCount}>{section.items.length}</Text>
               </View>
               {section.items.map((group) => (
-                <Pressable
-                  key={group.id}
-                  onLongPress={() => setActionGroup(group)}
-                  onPress={() => onOpenGroup(group.ipId, group.id)}
-                  style={({ pressed }) => [styles.groupCard, pressed && styles.pressed]}
-                >
-                  <View style={styles.coverWrap}>
-                    {group.coverThumbnailFileUri ? (
-                      <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
-                    ) : (
-                      <View style={styles.coverEmpty}>
-                        <Ionicons color={colors.primary.default} name="images-outline" size={22} />
+                <View key={group.id} style={styles.groupCardWrapper}>
+                  <Pressable
+                    onLongPress={() => setActionGroup(group)}
+                    onPress={() => onOpenGroup(group.ipId, group.id)}
+                    style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}
+                  >
+                    <View style={styles.groupCardInner}>
+                      <View style={styles.coverWrap}>
+                        {group.coverThumbnailFileUri ? (
+                          <SecureImage blurRadius={getGroupCoverBlurRadius(group)} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
+                        ) : (
+                          <View style={styles.coverEmpty}>
+                            <Ionicons color={colors.primary.default} name="images-outline" size={22} />
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                  <GroupCardCopy group={group} />
-                </Pressable>
+                      <GroupCardCopy group={group} />
+                    </View>
+                  </Pressable>
+                </View>
               ))}
             </View>
           ))}
@@ -272,17 +277,21 @@ const styles = StyleSheet.create({
     ...typography.textStyles.micro,
     color: colors.text.secondary,
   },
-  groupCard: {
-    ...shadows.xs,
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
+  groupCardWrapper: {
+    paddingBottom: rhythm.microGap,
+  },
+  groupCardFloating: {
+    backgroundColor: colors.background.elevated,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
+    ...shadows.sm,
+  },
+  groupCardInner: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing[3],
-    minHeight: 104,
-    overflow: 'hidden',
+    gap: rhythm.listCardGap,
+    minHeight: 80,
     padding: spacing[3],
   },
   coverWrap: {

@@ -352,22 +352,66 @@ function getLocalDateKey(value: string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function getAiChatGreeting(date = new Date()): string {
+function getAiChatStarterGroup(date = new Date()): { greeting: string; suggestions: readonly string[] } {
   const hour = date.getHours();
-  if (hour < 12) {
-    return "今天想聊点什么？";
+  
+  if (hour >= 6 && hour < 10) {
+    return {
+      greeting: "早安，今天也要开开心心呀",
+      suggestions: [
+        "昨晚做了一个奇怪的梦",
+        "今天有什么好建议吗？",
+        "给我一句元气满满的鼓励"
+      ]
+    };
+  } else if (hour >= 10 && hour < 12) {
+    return {
+      greeting: "上午好！在忙些什么呢？",
+      suggestions: [
+        "刚才发生了一件好玩的事",
+        "我来找你吐槽一下",
+        "帮我梳理一下现在的思绪"
+      ]
+    };
+  } else if (hour >= 12 && hour < 14) {
+    return {
+      greeting: "午饭时间到，快来歇一会儿～",
+      suggestions: [
+        "中午吃点什么好呢？",
+        "我好困，给我讲个笑话吧",
+        "闲着也是闲着，玩个文字游戏？"
+      ]
+    };
+  } else if (hour >= 14 && hour < 18) {
+    return {
+      greeting: "下午好，是不是有点犯困了？",
+      suggestions: [
+        "我有点累了，陪我聊会儿",
+        "推荐一首适合现在听的歌",
+        "带我出去脑洞大开一下！"
+      ]
+    };
+  } else if (hour >= 18 && hour < 23) {
+    return {
+      greeting: "终于闲下来了，今天过得怎样？",
+      suggestions: [
+        "终于可以彻底放松啦！",
+        "晚上有什么好玩的计划？",
+        "安静地听我说说今天的心事"
+      ]
+    };
+  } else {
+    // 23:00 - 05:59
+    return {
+      greeting: "夜深了，全世界都睡了，我还在。",
+      suggestions: [
+        "睡不着，陪我聊聊天",
+        "忽然想起来一段往事",
+        "别说话，快哄我睡觉"
+      ]
+    };
   }
-  if (hour < 18) {
-    return "现在想聊点什么？";
-  }
-  return "今晚想聊点什么？";
 }
-
-const STARTER_SUGGESTIONS = [
-  "整理这段资料",
-  "帮我发散想法",
-  "总结当前设定",
-] as const;
 
 function buildReplyAssistTranscript(
   messages: AiMessageWithCitations[],
@@ -621,11 +665,12 @@ function AiChatStarterHints({
 }: {
   onPickSuggestion: (value: string) => void;
 }) {
+  const starter = getAiChatStarterGroup();
   return (
     <View style={styles.starterWrap}>
-      <Text style={styles.starterGreeting}>{getAiChatGreeting()}</Text>
+      <Text style={styles.starterGreeting}>{starter.greeting}</Text>
       <View style={styles.starterSuggestions}>
-        {STARTER_SUGGESTIONS.map((suggestion) => (
+        {starter.suggestions.map((suggestion) => (
           <Pressable
             accessibilityRole="button"
             key={suggestion}

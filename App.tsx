@@ -3,13 +3,13 @@ import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, PanResponder } from 'react-native';
+import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, ScrollView, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { AppDialog } from './src/components/AppDialog';
-import { AppScreen } from './src/components/AppScreen';
+import { AppScreen, FloatingFooterContext } from './src/components/AppScreen';
 import { AppToastProvider, useToast } from './src/components/AppToast';
 import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
 import { BackupExportManagerScreen } from './src/screens/BackupExportManagerScreen';
@@ -18,7 +18,7 @@ import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
-import { colors, spacing, typography } from './src/design/tokens';
+import { colors, spacing, typography, componentTokens, layout, radius, shadows } from './src/design/tokens';
 import { imageRepository, initDatabase, resetDatabaseSpaceCache, runWithDatabaseSpace, settingsRepository, type IpLibraryFilter, type PixorySpace } from './src/database';
 import { AllImagesScreen } from './src/screens/AllImagesScreen';
 import { BatchManageImagesScreen } from './src/screens/BatchManageImagesScreen';
@@ -475,41 +475,52 @@ export default function App() {
   const currentRouteRef = useRef(currentRoute);
   currentRouteRef.current = currentRoute;
 
-  const rootPanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_evt, gs) => {
-        if (currentRouteRef.current?.name !== 'root') return false;
-        return (
-          Math.abs(gs.dx) > 6 &&
-          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
-        );
-      },
-      onPanResponderRelease: (_evt, gs) => {
-        if (currentRouteRef.current?.name !== 'root') return;
-        const currentTab = currentRouteRef.current.tab;
-        const tabs: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
-        const index = tabs.indexOf(currentTab);
-        
-        const SWIPE_RELEASE_DISTANCE = 10;
-        const SWIPE_ACTIVATION_DISTANCE = 6;
-        
-        const isSwipeRight = gs.dx > SWIPE_RELEASE_DISTANCE || (gs.dx > SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18);
-        const isSwipeLeft = gs.dx < -SWIPE_RELEASE_DISTANCE || (gs.dx < -SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18);
-        
-        if (isSwipeRight) {
-          // Swipe Right (Left-to-Right): Reveal Previous Tab (Left)
-          if (index > 0) {
-            switchRootTab(tabs[index - 1]);
-          }
-        } else if (isSwipeLeft) {
-          // Swipe Left (Right-to-Left): Reveal Next Tab (Right)
-          if (index < tabs.length - 1) {
-            switchRootTab(tabs[index + 1]);
-          }
-        }
-      },
-    })
-  ).current;
+  const rootTabsScrollViewRef = useRef<ScrollView>(null);
+  const ROOT_TABS: RootTabKey[] = ['home', 'organize', 'ai', 'me'];
+  const currentTab = currentRoute.name === 'root' ? currentRoute.tab : undefined;
+  const [renderedTabs, setRenderedTabs] = useState<Set<RootTabKey>>(
+    new Set([currentTab ?? 'home'])
+  );
+
+  const previousRouteNameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (currentRoute.name === 'root') {
+      const timer = setTimeout(() => {
+        setRenderedTabs(new Set(['home', 'organize', 'ai', 'me']));
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [currentRoute.name]);
+
+  useEffect(() => {
+    if (currentRoute.name === 'root' && currentTab) {
+      setRenderedTabs((prev) => {
+        if (prev.has(currentTab)) return prev;
+        const next = new Set(prev);
+        next.add(currentTab);
+        return next;
+      });
+      
+      const index = ROOT_TABS.indexOf(currentTab);
+      if (index !== -1 && rootTabsScrollViewRef.current) {
+        const shouldAnimate = previousRouteNameRef.current === 'root';
+        rootTabsScrollViewRef.current.scrollTo({ x: index * Dimensions.get('window').width, animated: shouldAnimate });
+      }
+    }
+    previousRouteNameRef.current = currentRoute.name;
+  }, [currentRoute.name, currentTab]);
+
+  const handleRootScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (currentRoute.name !== 'root') return;
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const width = e.nativeEvent.layoutMeasurement.width;
+    const index = Math.round(offsetX / width);
+    const tab = ROOT_TABS[index];
+    if (tab && currentRoute.tab !== tab) {
+      switchRootTab(tab);
+    }
+  };
 
   async function checkRemoteNotices(isStillActive: () => boolean = () => true) {
     const activeRoute = routeStackRef.current[routeStackRef.current.length - 1] ?? INITIAL_ROUTE;
@@ -1162,10 +1173,7 @@ export default function App() {
     );
   }
 
-  const rootFooter =
-    currentRoute.name === 'root' ? (
-      <BottomTabBar activeTab={currentRoute.tab} onSelectTab={switchRootTab} />
-    ) : undefined;
+  const rootFooter = undefined;
 
   let content;
 
@@ -1969,91 +1977,109 @@ export default function App() {
         title="开发入口不可用"
       />
     );
-  } else if (currentRoute.tab === 'organize') {
+  } else if (currentRoute.name === 'root') {
+    const sw = Dimensions.get('window').width;
+    
     content = (
-      <OrganizeScreen
-        space={activeSpace}
-        footer={rootFooter}
-        onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
-        onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: activeSpace })}
-        onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
-        onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: activeSpace })}
-        onImportVideosToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'videos', space: activeSpace })}
-        onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
-        onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: activeSpace })}
-        refreshToken={libraryRefreshToken}
-      />
-    );
-  } else if (currentRoute.tab === 'ai') {
-    content = (
-      <AiHomeScreen
-        footer={rootFooter}
-        onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
-        onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
-        onOpenIpChatPicker={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
-        onOpenKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
-        onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
-        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
-        onOpenThread={(thread) =>
-          openAiChatRoute({
-            name: 'ai-chat',
-            composerEntranceReason: 'open_thread',
-            contextTitle: thread.title,
-            contextType: thread.contextType,
-            includeIpDocuments: thread.includeIpDocuments,
-            ipId: thread.boundIpId ?? undefined,
-            knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
-            space: activeSpace,
-            threadId: thread.id,
-          })
-        }
-        onStartNormalChat={() =>
-          pushRoute({
-            name: 'ai-chat',
-            contextTitle: '普通聊天',
-            contextType: 'normal',
-            space: activeSpace,
-          })
-        }
-        onStartChatWithRole={(roleCardId) => startChatWithRoleCard(activeSpace, roleCardId)}
-        space={activeSpace}
-      />
-    );
-  } else if (currentRoute.tab === 'me') {
-    content = (
-      <MeScreen
-        footer={rootFooter}
-        space={activeSpace}
-        onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
-        onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
-        onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
-        onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
-        onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
-        onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
-        onLockPersonalSpace={() => {
-          void lockPersonalSpace('manual');
-        }}
-        onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: activeSpace })}
-        onOpenTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
-        personalSessionState={personalSessionState}
-        refreshToken={libraryRefreshToken}
-      />
-    );
-  } else {
-    content = (
-      <HomeLibraryScreen
-        footer={rootFooter}
-        initialFilter={currentRoute.initialFilter ?? 'all'}
-        onCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
-        onOpenGlobalSearch={() => {
-          setGlobalSearchQuery('');
-          pushRoute({ name: 'global-search', space: activeSpace });
-        }}
-        onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: activeSpace })}
-        onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
-        refreshKey={libraryRefreshToken}
-        space={activeSpace}
-      />
+      <FloatingFooterProvider>
+        <ScrollView
+          ref={rootTabsScrollViewRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          contentOffset={{ x: currentRoute.tab ? ROOT_TABS.indexOf(currentRoute.tab) * sw : 0, y: 0 }}
+          onMomentumScrollEnd={handleRootScrollEnd}
+          scrollEventThrottle={16}
+        >
+          <View style={{ width: sw }}>
+            {renderedTabs.has('home') ? (
+              <HomeLibraryScreen
+                initialFilter={currentRoute.initialFilter ?? 'all'}
+                onCreateIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+                onOpenGlobalSearch={() => {
+                  setGlobalSearchQuery('');
+                  pushRoute({ name: 'global-search', space: activeSpace });
+                }}
+                onOpenNeedsOrganizing={() => pushRoute({ name: 'quick-organize', space: activeSpace })}
+                onOpenIp={(ipId) => pushRoute({ name: 'ip-detail', ipId, space: activeSpace })}
+                refreshKey={libraryRefreshToken}
+                space={activeSpace}
+              />
+            ) : null}
+          </View>
+          <View style={{ width: sw }}>
+            {renderedTabs.has('organize') ? (
+              <OrganizeScreen
+                space={activeSpace}
+                onCreateFirstIp={() => pushRoute({ name: 'create-ip', space: activeSpace })}
+                onOpenCoverPicker={(ipId, groupId) => pushRoute({ name: 'group-cover-picker', ipId, groupId, space: activeSpace })}
+                onEditGroup={(ipId, groupId) => pushRoute({ name: 'edit-group', ipId, groupId, space: activeSpace })}
+                onImportImagesToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'images', space: activeSpace })}
+                onImportVideosToGroup={(ipId, groupId) => pushRoute({ name: 'import-images', ipId, groupId, initialMediaPicker: 'videos', space: activeSpace })}
+                onOpenGroup={(ipId, groupId) => pushRoute({ name: 'group-images', ipId, groupId, space: activeSpace })}
+                onOpenTag={(tagId) => pushRoute({ name: 'tag-result', tagId, space: activeSpace })}
+                refreshToken={libraryRefreshToken}
+              />
+            ) : null}
+          </View>
+          <View style={{ width: sw }}>
+            {renderedTabs.has('ai') ? (
+              <AiHomeScreen
+                onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
+                onOpenHistory={() => pushRoute({ name: 'ai-history', space: activeSpace })}
+                onOpenIpChatPicker={() => pushRoute({ name: 'ai-ip-picker', space: activeSpace })}
+                onOpenKnowledgeBase={() => pushRoute({ name: 'ai-knowledge-base', space: activeSpace })}
+                onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: activeSpace })}
+                onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: activeSpace })}
+                onOpenThread={(thread) =>
+                  openAiChatRoute({
+                    name: 'ai-chat',
+                    composerEntranceReason: 'open_thread',
+                    contextTitle: thread.title,
+                    contextType: thread.contextType,
+                    includeIpDocuments: thread.includeIpDocuments,
+                    ipId: thread.boundIpId ?? undefined,
+                    knowledgeBaseId: thread.boundKnowledgeBaseId ?? undefined,
+                    space: activeSpace,
+                    threadId: thread.id,
+                  })
+                }
+                onStartNormalChat={() =>
+                  pushRoute({
+                    name: 'ai-chat',
+                    contextTitle: '普通聊天',
+                    contextType: 'normal',
+                    space: activeSpace,
+                  })
+                }
+                onStartChatWithRole={(roleCardId) => startChatWithRoleCard(activeSpace, roleCardId)}
+                space={activeSpace}
+              />
+            ) : null}
+          </View>
+          <View style={{ width: sw }}>
+            {renderedTabs.has('me') ? (
+              <MeScreen
+                space={activeSpace}
+                onOpenFavorites={() => pushRoute({ name: 'favorites', space: activeSpace })}
+                onOpenBackup={() => pushRoute({ name: 'backup', space: activeSpace })}
+                onOpenDuplicateReview={() => pushRoute({ name: 'duplicate-review', space: activeSpace })}
+                onOpenAbout={() => pushRoute({ name: 'about', space: activeSpace })}
+                onOpenStorageUsage={() => pushRoute({ name: 'storage-usage', space: activeSpace })}
+                onRequestPersonalUnlock={() => setPersonalUnlockVisible(true)}
+                onLockPersonalSpace={() => {
+                  void lockPersonalSpace('manual');
+                }}
+                onOpenRecentViewed={() => pushRoute({ name: 'recent-viewed', space: activeSpace })}
+                onOpenTrash={() => pushRoute({ name: 'trash', space: activeSpace })}
+                personalSessionState={personalSessionState}
+                refreshToken={libraryRefreshToken}
+              />
+            ) : null}
+          </View>
+        </ScrollView>
+      </FloatingFooterProvider>
     );
   }
 
@@ -2063,8 +2089,11 @@ export default function App() {
       <AppToastProvider>
         <AppUpdateAppliedNotice isReady={isReady} />
         <AppOtaUpdateFetchNotice isReady={isReady} />
-        <View style={{ flex: 1 }} {...rootPanResponder.panHandlers}>
+        <View style={{ flex: 1 }}>
           {content}
+          {currentRoute.name === 'root' && (
+            <FloatingRootFooter activeTab={currentRoute.tab} onSelectTab={switchRootTab} />
+          )}
         </View>
         <PersonalUnlockModal
           hasCredential={personalCredentialAvailable}
@@ -2132,6 +2161,36 @@ export default function App() {
       </AppToastProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function FloatingFooterProvider({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const floatingFooterHeight = spacing[2] + Math.max(58, componentTokens.bottomTab.height - 10) + insets.bottom + layout.stickyFooterBottomOffset;
+  return <FloatingFooterContext.Provider value={floatingFooterHeight}>{children}</FloatingFooterContext.Provider>;
+}
+
+function FloatingRootFooter({ activeTab, onSelectTab }: { activeTab: RootTabKey; onSelectTab: (tab: RootTabKey) => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: colors.background.page,
+        borderTopLeftRadius: radius.xxl,
+        borderTopRightRadius: radius.xxl,
+        paddingHorizontal: layout.pagePaddingHorizontal,
+        paddingTop: spacing[2],
+        paddingBottom: insets.bottom + layout.stickyFooterBottomOffset,
+        ...shadows.hairline,
+      }}
+    >
+      <BottomTabBar activeTab={activeTab} onSelectTab={onSelectTab} />
+    </View>
   );
 }
 

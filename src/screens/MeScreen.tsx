@@ -281,6 +281,7 @@ export function MeScreen({
         </View>
         <View style={styles.libraryStatsRow}>
           <StatBlock label="素材总数" value={data?.activeAssetCount ?? 0} />
+          <View style={styles.statDivider} />
           <StatBlock label="IP 数量" value={data?.ipCount ?? 0} />
         </View>
         <View style={styles.storageBlock}>
@@ -426,8 +427,8 @@ export function MeScreen({
 function StatBlock({ label, value }: { label: string; value: number }) {
   return (
     <View style={styles.statBlock}>
-      <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }
@@ -600,23 +601,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   libraryStatsRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.inlineGap,
+    gap: spacing[4],
+  },
+  statDivider: {
+    backgroundColor: colors.border.strong,
+    height: 14,
+    width: StyleSheet.hairlineWidth,
   },
   statBlock: {
-    backgroundColor: colors.background.soft,
-    borderRadius: radius.md,
-    flex: 1,
-    gap: rhythm.microGap,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[2],
   },
   statValue: {
-    ...typography.textStyles.bodyStrong,
+    fontFamily: typography.family.stat,
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.text.title,
   },
   statLabel: {
-    ...typography.textStyles.micro,
+    ...typography.textStyles.body,
     color: colors.text.secondary,
   },
   entryList: {

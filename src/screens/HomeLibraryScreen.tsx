@@ -13,8 +13,10 @@ import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { BlurView } from 'expo-blur';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
+import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
 import { moveIpBetweenSpaces } from '../services/spaceMigrationService';
 
@@ -81,14 +83,19 @@ export function HomeLibraryScreen({
 
   const rightSlot = useMemo(
     () => (
-      <Pressable
-        accessibilityLabel="新建 IP"
-        hitSlop={10}
-        onPress={onCreateIp}
-        style={({ pressed }) => [styles.addAction, pressed && styles.pressed]}
-      >
-        <Ionicons color={colors.primary.default} name="add" size={componentTokens.iconButton.iconSize} />
-      </Pressable>
+      <View style={styles.addActionWrapper}>
+        <Pressable
+          accessibilityLabel="新建 IP"
+          hitSlop={10}
+          onPress={onCreateIp}
+          style={({ pressed }) => [styles.addAction, pressed && styles.pressed]}
+        >
+          <BlurView intensity={50} style={styles.addActionBlur} tint="light">
+            <LiquidGlassBezel radius={componentTokens.iconButton.radius} />
+            <Ionicons color={colors.primary.default} name="add" size={componentTokens.iconButton.iconSize} />
+          </BlurView>
+        </Pressable>
+      </View>
     ),
     [onCreateIp]
   );
@@ -337,19 +344,23 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.8,
   },
-  addAction: {
-    ...shadows.xs,
-    alignItems: 'center',
-    backgroundColor: colors.background.elevated,
-    borderColor: colors.border.default,
+  addActionWrapper: {
+    ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.15,
     borderRadius: componentTokens.iconButton.radius,
-    borderWidth: StyleSheet.hairlineWidth,
-    elevation: 2,
+  },
+  addAction: {
+    borderRadius: componentTokens.iconButton.radius,
     height: componentTokens.iconButton.size,
-    justifyContent: 'center',
-    minWidth: componentTokens.iconButton.size,
     width: componentTokens.iconButton.size,
-    zIndex: 2,
+  },
+  addActionBlur: {
+    alignItems: 'center',
+    borderRadius: componentTokens.iconButton.radius,
+    flex: 1,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   topArea: {
     gap: spacing[3],

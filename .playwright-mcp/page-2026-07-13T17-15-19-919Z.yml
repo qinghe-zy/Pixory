@@ -1,0 +1,343 @@
+- generic [active] [ref=f3e1]:
+  - link "欢迎进入 微信官方揭秘触发“对方正在输入”条件，包括对方10秒内打开对话框以及打字或空格；再回应微信没有“已读”，将回应与否选择权交回用户_腾讯新闻,盲人用户使用操作智能引导，请按快捷键Ctrl+Alt+R；阅读详细操作说明请按快捷键Ctrl+Alt+问号键。":
+    - /url: javascript:void(0)
+  - generic [ref=f3e5]:
+    - link [ref=f3e6] [cursor=pointer]:
+      - /url: https://www.qq.com
+    - list [ref=f3e8]:
+      - listitem [ref=f3e9]:
+        - link "首页" [ref=f3e10] [cursor=pointer]:
+          - /url: https://www.qq.com
+      - listitem [ref=f3e14]:
+        - link "要闻" [ref=f3e15] [cursor=pointer]:
+          - /url: https://news.qq.com
+      - listitem [ref=f3e16]:
+        - link "北京" [ref=f3e17] [cursor=pointer]:
+          - /url: https://news.qq.com/d/bj
+      - listitem [ref=f3e21]:
+        - link "AI" [ref=f3e22] [cursor=pointer]:
+          - /url: https://news.qq.com/ch/fx
+      - listitem [ref=f3e23]:
+        - link "教育" [ref=f3e24] [cursor=pointer]:
+          - /url: https://news.qq.com/ch/edu
+      - listitem [ref=f3e25]:
+        - generic [ref=f3e26] [cursor=pointer]: 更多
+    - generic [ref=f3e30] [cursor=pointer]: 游戏
+    - generic [ref=f3e36] [cursor=pointer]:
+      - img "应用" [ref=f3e37]
+      - generic [ref=f3e38]: 应用
+    - generic [ref=f3e39] [cursor=pointer]: 网页设置
+    - generic [ref=f3e40]: 登录
+    - generic [ref=f3e51] [cursor=pointer]:
+      - generic [ref=f3e52]: 安装电脑版
+      - generic [ref=f3e53]: 内容更精彩
+  - generic [ref=f3e55]:
+    - generic [ref=f3e56]:
+      - generic [ref=f3e57]:
+        - generic [ref=f3e61]:
+          - paragraph [ref=f3e67] [cursor=pointer]: "0"
+          - paragraph [ref=f3e73] [cursor=pointer]: "1"
+          - paragraph [ref=f3e79] [cursor=pointer]: "2"
+          - paragraph [ref=f3e85] [cursor=pointer]: 分享
+          - paragraph [ref=f3e94] [cursor=pointer]: 手机看
+          - generic [ref=f3e95] [cursor=pointer]:
+            - generic [ref=f3e96]:
+              - img "元宝·新闻妹" [ref=f3e97]
+              - img "元宝·新闻妹" [ref=f3e98]
+            - paragraph [ref=f3e99]: 元宝·新闻妹
+        - generic [ref=f3e100]:
+          - heading "微信官方揭秘触发“对方正在输入”条件，包括对方10秒内打开对话框以及打字或空格；再回应微信没有“已读”，将回应与否选择权交回用户" [level=1] [ref=f3e101]
+          - generic [ref=f3e103]:
+            - generic [ref=f3e104]:
+              - img "头像" [ref=f3e106] [cursor=pointer]
+              - generic [ref=f3e107]:
+                - link [ref=f3e108] [cursor=pointer]:
+                  - /url: https://news.qq.com/omn/author/8QMf2nla6oAevDzZ
+                  - paragraph [ref=f3e109]: 江南都市报
+                - paragraph [ref=f3e110]:
+                  - text: 2026-03-26 11:12
+                  - generic [ref=f3e111]: 发布于江西
+                  - text: 江南都市报官方账号
+            - generic [ref=f3e112]: 关注
+          - heading "3月26日，微信派发文《微信聊天到底为什么会出现“对方正在输入”？》。文章科普“对方正在输入”背后的机制和设计理念。 首先，必须满足两个条件触发“对方正在输入”。 时效性：你发出消息后，对方必须在 10 秒内打开对话框。 动作感：对方打开了且还在输入框里打了字（哪怕只是打个空格）。 三种显示状态的含义—— 持续显示型：对方一直在打字 图片 时有时无型：对方在“打了删、删了打”间反复横跳 不显示型：可能是对方很忙，或者是你懂的情况 图片 “对方正在输入”背后原理，用专业术语来说，叫“信令握手”。微信聊天并非时刻连接，而是套高效的“对讲机指挥塔”模式。简单来说：用对讲机喊话得先申请临时私密频道。当你发起聊天，对讲机会向指挥塔申请对接；如果对方在10 秒内“拿起对讲机”，指挥塔便会捕捉并立刻通知你：“报告！对方已准备回话！”微信出现“对方正在输入”，是微信在帮你模拟面对面聊天的“实时同在感”。 微信没有“已读”功能，是因为——“已读”意味着“看见了，但没回你”。这会带来猜忌焦虑，甚至催促对方立刻回复。没有已读功能，是把“回应与否”的选择权交回用户手中。“对方正在输入”则是一种“有限度的透明”，告诉你“我在线，我在乎，我正在回应”。保留了对话的气口，也留给彼此思考和沉默的权利。 来源：江南都市综合微信派 值班编辑：喻妍 校对：张竹影 值班主任：周艳华 值班编委：郭宁" [level=1] [ref=f3e125]:
+            - generic [ref=f3e132]:
+              - paragraph [ref=f3e133]:
+                - generic [ref=f3e134]: 3月26日，微信派发文《微信聊天到底为什么会出现“对方正在输入”？》。文章科普“对方正在输入”背后的机制和设计理念。
+              - paragraph [ref=f3e135]
+              - paragraph [ref=f3e136]:
+                - generic [ref=f3e137]: 首先，必须满足两个条件触发“对方正在输入”。
+              - generic [ref=f3e138]: 时效性：你发出消息后，对方必须在 10 秒内打开对话框。
+              - generic [ref=f3e139]: 动作感：对方打开了且还在输入框里打了字（哪怕只是打个空格）。
+              - generic [ref=f3e141]: 三种显示状态的含义——
+              - paragraph [ref=f3e143]:
+                - generic [ref=f3e144]: 持续显示型：对方一直在打字
+              - img "图片" [ref=f3e146]
+              - paragraph [ref=f3e147]
+              - paragraph [ref=f3e148]:
+                - generic [ref=f3e149]: 时有时无型：对方在“打了删、删了打”间反复横跳
+              - paragraph [ref=f3e150]:
+                - generic [ref=f3e151]: 不显示型：可能是对方很忙，或者是你懂的情况
+              - paragraph [ref=f3e152]:
+                - img "图片" [ref=f3e154]
+              - paragraph [ref=f3e155]
+              - paragraph [ref=f3e156]:
+                - strong [ref=f3e157]: “对方正在输入”背后原理，用专业术语来说，叫“信令握手”。微信聊天并非时刻连接，而是套高效的“对讲机指挥塔”模式。简单来说：用对讲机喊话得先申请临时私密频道。当你发起聊天，对讲机会向指挥塔申请对接；如果对方在10 秒内“拿起对讲机”，指挥塔便会捕捉并立刻通知你：“报告！对方已准备回话！”微信出现“对方正在输入”，是微信在帮你模拟面对面聊天的“实时同在感”。
+              - paragraph [ref=f3e158]:
+                - strong
+              - paragraph [ref=f3e159]:
+                - strong [ref=f3e160]: 微信没有“已读”功能，是因为——“已读”意味着“看见了，但没回你”。这会带来猜忌焦虑，甚至催促对方立刻回复。没有已读功能，是把“回应与否”的选择权交回用户手中。“对方正在输入”则是一种“有限度的透明”，告诉你“我在线，我在乎，我正在回应”。保留了对话的气口，也留给彼此思考和沉默的权利。
+              - paragraph [ref=f3e161]:
+                - strong
+              - heading "来源：江南都市综合微信派 值班编辑：喻妍 校对：张竹影 值班主任：周艳华 值班编委：郭宁" [level=1] [ref=f3e163]:
+                - generic [ref=f3e170]:
+                  - generic [ref=f3e172]:
+                    - generic [ref=f3e173]: 来
+                    - generic [ref=f3e174]: 源：江南都市综合微信派
+                  - generic [ref=f3e175]: 值班编辑：喻妍
+                  - strong [ref=f3e179]:
+                    - strong [ref=f3e180]:
+                      - generic [ref=f3e181]: 校对：张竹影
+                  - heading "值班主任：周艳华 值班编委：郭宁" [level=2] [ref=f3e186]:
+                    - generic [ref=f3e187]:
+                      - strong [ref=f3e189]:
+                        - strong [ref=f3e190]:
+                          - generic [ref=f3e191]:
+                            - generic [ref=f3e192]: 值班主任：周艳华
+                            - strong:
+                              - strong:
+                                - strong
+                      - heading [level=1] [ref=f3e195]:
+                        - heading "值班编委：郭宁" [level=2] [ref=f3e206]:
+                          - strong [ref=f3e208]:
+                            - strong [ref=f3e209]:
+                              - generic [ref=f3e210]:
+                                - generic [ref=f3e211]: 值班编委：郭宁
+                                - strong:
+                                  - strong:
+                                    - strong
+          - generic [ref=f3e214]:
+            - generic [ref=f3e215]: 免责声明：本内容来自腾讯平台创作者，不代表腾讯新闻或腾讯网的观点和立场。
+            - generic [ref=f3e216] [cursor=pointer]: 举报
+          - generic [ref=f3e220]:
+            - generic [ref=f3e221]: 00:39
+            - generic [ref=f3e233] [cursor=pointer]:
+              - generic [ref=f3e234]: 这才是真正的好传奇，3分钟爆终极，暴击999亿，高攻速，高回收！
+              - generic [ref=f3e235]:
+                - generic [ref=f3e236]: 广告新开至尊版-爆率回调版本
+                - generic [ref=f3e237]: 了解详情
+      - listbox "为你推荐新闻" [ref=f3e246]:
+        - generic [ref=f3e247]: 相关推荐
+        - list [ref=f3e248]:
+          - generic [ref=f3e251]:
+            - generic "手机号码“二次放号” 很多App存在解绑盲区" [ref=f3e252] [cursor=pointer]
+            - generic [ref=f3e254]:
+              - link "北京青年报官网" [ref=f3e255] [cursor=pointer]:
+                - /url: https://news.qq.com/omn/author/8QMc33dZ5I0Zvz%2FZ
+              - generic [ref=f3e256]: 15小时前
+          - generic [ref=f3e260]:
+            - generic "上线仅半年多，字节旗下付费小说“红烛故事”宣布将关停：7月10日起停止内容更新并启动用户资产自动退款，8月17日服务器正式关闭" [ref=f3e261] [cursor=pointer]
+            - generic [ref=f3e263]:
+              - link "湖北头条" [ref=f3e264] [cursor=pointer]:
+                - /url: https://news.qq.com/omn/author/8QMd3Hlf64wVsD7d
+              - generic [ref=f3e265]: 6小时前
+          - generic [ref=f3e269]:
+            - generic "正式提起诉讼：苹果指控OpenAI诱导挖角、非法盗取商业机密" [ref=f3e270] [cursor=pointer]
+            - generic [ref=f3e272]:
+              - link "宗熙先生" [ref=f3e273] [cursor=pointer]:
+                - /url: https://news.qq.com/omn/author/8QMc339d5YMauzvR7gt3
+              - generic [ref=f3e274]: 前天
+          - generic [ref=f3e283] [cursor=pointer]:
+            - generic [ref=f3e284]: 太懂观众了！每集都有爆点！
+            - generic [ref=f3e285]:
+              - generic [ref=f3e286]:
+                - generic [ref=f3e287]: 广告
+                - generic [ref=f3e288]: 精彩短剧
+              - generic [ref=f3e289]: 打开小程序
+          - generic [ref=f3e294]:
+            - generic "微信红包转账，有新变化！" [ref=f3e295] [cursor=pointer]
+            - generic [ref=f3e297]:
+              - link "安溪报" [ref=f3e298] [cursor=pointer]:
+                - /url: https://news.qq.com/omn/author/8QMf2HtZ64YYvjY%3D
+              - generic [ref=f3e299]: 2评论
+              - generic [ref=f3e300]: 前天
+          - generic [ref=f3e304]:
+            - generic "丰巢取件被指频繁跳保险弹窗广告 客服回应：暂无法关闭" [ref=f3e305] [cursor=pointer]
+            - generic [ref=f3e307]:
+              - link "快科技" [ref=f3e308] [cursor=pointer]:
+                - /url: https://news.qq.com/omn/author/8QMc2n9b5IIduznc
+              - generic [ref=f3e309]: 6评论
+              - generic [ref=f3e310]: 6小时前
+      - generic "文章评论区" [ref=f3e313]:
+        - generic [ref=f3e314]:
+          - generic [ref=f3e315]:
+            - generic [ref=f3e316]: 评论 1
+            - generic [ref=f3e317]:
+              - text: 文明上网理性发言，请遵守
+              - link "《新闻评论服务协议》" [ref=f3e318] [cursor=pointer]:
+                - /url: https://h5.news.qq.com/static/coralinfo.htm
+          - generic [ref=f3e322]:
+            - text: 请先
+            - generic [ref=f3e323] [cursor=pointer]: 登录
+            - text: 后发表评论~
+          - generic [ref=f3e325]:
+            - img "头像" [ref=f3e328] [cursor=pointer]
+            - generic [ref=f3e329]:
+              - generic [ref=f3e330]: 日行千里
+              - generic [ref=f3e335]: 这10秒机制就像等外卖小哥接单前那段揪心时间，微信把‘在线感’包装成温柔陷阱，我亲眼见过有人打了又删纠结半小时最后回个表情包
+              - generic [ref=f3e339]:
+                - generic [ref=f3e340]:
+                  - generic [ref=f3e341]: 贵州网友
+                  - text: 3月27日
+                - generic [ref=f3e346] [cursor=pointer]: 回复
+          - generic [ref=f3e349]: 已显示所有评论
+      - contentinfo "腾讯网版权底部" [ref=f3e351]:
+        - generic [ref=f3e352]:
+          - link "关于腾讯" [ref=f3e353] [cursor=pointer]:
+            - /url: https://www.tencent.com/zh-cn/
+          - text: "|"
+          - link "About Tencent" [ref=f3e354] [cursor=pointer]:
+            - /url: https://www.tencent.com/en-us/index.html
+          - text: "|"
+          - link "服务协议" [ref=f3e355] [cursor=pointer]:
+            - /url: https://h5.news.qq.com/static/contract.shtml
+          - text: "|"
+          - link "隐私政策" [ref=f3e356] [cursor=pointer]:
+            - /url: https://privacy.qq.com/mb/policy/tencent-privacypolicy
+          - text: "|"
+          - link "开放平台" [ref=f3e357] [cursor=pointer]:
+            - /url: https://open.tencent.com/
+          - text: "|"
+          - link "广告服务" [ref=f3e358] [cursor=pointer]:
+            - /url: https://e.qq.com/ads/
+          - text: "|"
+          - link "腾讯招聘" [ref=f3e359] [cursor=pointer]:
+            - /url: https://hr.tencent.com/
+          - text: "|"
+          - link "腾讯公益" [ref=f3e360] [cursor=pointer]:
+            - /url: https://gongyi.qq.com/
+          - text: "|"
+          - link "QQ浏览器" [ref=f3e361] [cursor=pointer]:
+            - /url: https://browser.qq.com/?from=qqnews
+          - text: "|"
+          - link "腾讯频道" [ref=f3e362] [cursor=pointer]:
+            - /url: https://pd.qq.com/?from=qqnews
+          - text: "|"
+          - link "客服中心" [ref=f3e363] [cursor=pointer]:
+            - /url: https://service.qq.com/
+        - generic [ref=f3e364]: Copyright © 1998 - 2026 Tencent. All Rights Reserved
+        - generic [ref=f3e365]:
+          - link "腾讯公司" [ref=f3e366] [cursor=pointer]:
+            - /url: https://www.tencent.com/
+          - link "版权所有" [ref=f3e367] [cursor=pointer]:
+            - /url: https://www.tencent.com/zh-cn/le/copyrightstatement.shtml
+    - generic [ref=f3e369]:
+      - generic [ref=f3e370]:
+        - heading "热门应用推荐" [level=1] [ref=f3e371]
+        - generic [ref=f3e372]:
+          - generic [ref=f3e374]:
+            - img "腾讯新闻·电脑版" [ref=f3e376]
+            - generic [ref=f3e377]:
+              - generic [ref=f3e378]: 腾讯新闻·电脑版
+              - generic [ref=f3e379]: 全网热点早知道
+            - button "点击下载" [ref=f3e380] [cursor=pointer]
+          - generic [ref=f3e382]:
+            - img "腾讯桌面整理" [ref=f3e384]
+            - generic [ref=f3e385]:
+              - generic [ref=f3e386]: 腾讯桌面整理
+              - generic [ref=f3e387]: 一款智能分类桌面软件
+            - button "点击下载" [ref=f3e388] [cursor=pointer]
+      - generic [ref=f3e389]:
+        - generic [ref=f3e390]: 精选视频
+        - generic [ref=f3e391]:
+          - generic "伊朗公布导弹打击美军画面！" [ref=f3e400]
+          - generic "媒体评：直面蒋方舟学术不端，证据到哪查处就要到哪" [ref=f3e403]
+          - generic "记者直击防灾减灾救灾一线：辽宁盘锦抢筑防洪墙，防范海水倒灌" [ref=f3e406]
+          - generic "抢中国空调后，外国网友琢磨“去中国避暑”" [ref=f3e409]
+          - generic "2026年杭州城乡居民养老缴费补贴提高" [ref=f3e412]
+      - generic [ref=f3e417] [cursor=pointer]:
+        - generic [ref=f3e419]: 05:00
+        - paragraph [ref=f3e437]: 林念智雅故事揪心反转！亲情伦理奇幻脑洞不容错过！
+      - generic [ref=f3e438]:
+        - generic [ref=f3e439]: 作者其他文章
+        - generic [ref=f3e444]:
+          - generic "一夜爆跌超100美元，现货黄金逼近4000美元大关" [ref=f3e445] [cursor=pointer]
+          - generic [ref=f3e446]: 1小时前
+        - generic [ref=f3e453]:
+          - generic "梅西用中文宣战英格兰：这将是我第一次对阵英格兰，我几乎跟所有球队都交过手，唯独没有碰过他们" [ref=f3e454] [cursor=pointer]
+          - generic [ref=f3e455]: 1小时前
+        - generic [ref=f3e462] [cursor=pointer]:
+          - generic [ref=f3e463]: 00:22
+          - generic [ref=f3e469]:
+            - generic [ref=f3e470]: 炒股不会跟主力的股民注意啦！用这个指标盯主力，超级好用！
+            - generic [ref=f3e471]:
+              - generic [ref=f3e472]:
+                - generic [ref=f3e473]: 广告
+                - generic [ref=f3e474]: 经传多赢股票
+              - generic [ref=f3e475]: 了解详情
+      - generic [ref=f3e479]:
+        - generic [ref=f3e484]:
+          - img "腾讯新闻·电脑版" [ref=f3e486]
+          - generic [ref=f3e487]:
+            - generic [ref=f3e488]: 腾讯新闻·电脑版
+            - generic [ref=f3e489]: 24小时陪你追热点
+          - button "点击下载" [ref=f3e490] [cursor=pointer]
+        - generic [ref=f3e491]:
+          - generic [ref=f3e492]:
+            - generic [ref=f3e493]:
+              - generic [ref=f3e494]: 热点榜
+              - generic [ref=f3e496] [cursor=pointer]: 榜单规则说明
+            - generic [ref=f3e497] [cursor=pointer]: 换一换
+          - list [ref=f3e503]:
+            - listitem [ref=f3e504]:
+              - generic [ref=f3e505]: "0"
+              - link "习近平将出席世界人工智能大会开幕式" [ref=f3e506] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A06TT600
+            - listitem [ref=f3e507]:
+              - generic [ref=f3e508]: "1"
+              - link "我国自研AI芯片取得架构突破" [ref=f3e509] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A0AEF500
+            - listitem [ref=f3e510]:
+              - generic [ref=f3e511]: "2"
+              - link "洪水编号到底有多重要" [ref=f3e512] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A04XI800
+            - listitem [ref=f3e513]:
+              - generic [ref=f3e514]: "3"
+              - link "我国夏粮产量创新高" [ref=f3e515] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A02NZE00
+            - listitem [ref=f3e516]:
+              - generic [ref=f3e517]: "4"
+              - link "这位老人获评全国见义勇为勇士" [ref=f3e518] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A07HDS00
+            - listitem [ref=f3e519]:
+              - generic [ref=f3e520]: "5"
+              - link "中国最新产品在菲律宾火了" [ref=f3e521] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A04S0300
+            - listitem [ref=f3e522]:
+              - generic [ref=f3e523]: "6"
+              - link "净网：严打编造传播涉汛等涉灾网络谣言" [ref=f3e524] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A02O7Y00
+            - listitem [ref=f3e525]:
+              - generic [ref=f3e526]: "7"
+              - link "沈阳为何出现极端暴雨？专家解读" [ref=f3e527] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713V0A9NK00
+            - listitem [ref=f3e529]:
+              - generic [ref=f3e530]: "8"
+              - link "伊朗关闭霍尔木兹海峡 中方回应" [ref=f3e531] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A0773E00
+            - listitem [ref=f3e532]:
+              - generic [ref=f3e533]: "9"
+              - link "2030年世界杯，举办国6个" [ref=f3e534] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/20260713A06S6Z00
+            - listitem [ref=f3e535]:
+              - generic [ref=f3e536]: "10"
+              - link "本科毕业无法进入教师岗位 系谣言" [ref=f3e537] [cursor=pointer]:
+                - /url: https://news.qq.com/rain/a/LNK2026071318858400
+  - generic [ref=f3e538]:
+    - link "返回首页" [ref=f3e539] [cursor=pointer]:
+      - /url: https://www.qq.com
+      - generic [ref=f3e543]: 首页
+    - generic "页面刷新" [ref=f3e544] [cursor=pointer]: 刷新
+    - generic "意见反馈" [ref=f3e550] [cursor=pointer]: 反馈
+    - generic "无障碍" [ref=f3e558] [cursor=pointer]
+    - generic "更多设置" [ref=f3e563] [cursor=pointer]: 更多
+    - generic "返回页面顶部": 顶部

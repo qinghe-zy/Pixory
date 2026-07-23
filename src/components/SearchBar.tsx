@@ -1,7 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { colors, componentTokens, shadows, spacing, typography } from '../design/tokens';
+
+import { LiquidGlassBezel } from './LiquidGlassBezel';
 
 interface SearchBarProps {
   value: string;
@@ -34,34 +38,52 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
     </>
   );
 
+  const innerStyle = [styles.inner];
+
   if (onPress) {
     return (
       <Pressable
         accessibilityLabel={placeholder}
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}
       >
-        {content}
+        <BlurView intensity={65} style={styles.blur} tint="light">
+          <LiquidGlassBezel contentIntensity="light" radius={componentTokens.searchBar.radius} />
+          <View style={innerStyle}>
+            {content}
+          </View>
+        </BlurView>
       </Pressable>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {content}
+    <View style={styles.wrapper}>
+      <BlurView intensity={65} style={styles.blur} tint="light">
+        <View style={innerStyle}>
+          {content}
+        </View>
+        <LiquidGlassBezel contentIntensity="light" radius={componentTokens.searchBar.radius} />
+      </BlurView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    ...shadows.xs,
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.default,
+  wrapper: {
+    ...shadows.hero,
+    shadowColor: '#3A2E1D', // darker shadow for more depth
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
     borderRadius: componentTokens.searchBar.radius,
-    borderWidth: StyleSheet.hairlineWidth,
+  },
+  blur: {
+    borderRadius: componentTokens.searchBar.radius,
+    overflow: 'hidden',
+  },
+  inner: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
     height: componentTokens.searchBar.height,
@@ -72,6 +94,7 @@ const styles = StyleSheet.create({
     color: colors.text.body,
     flex: 1,
     paddingVertical: 0,
+    zIndex: 1,
   },
   pressed: {
     opacity: 0.82,

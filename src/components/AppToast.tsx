@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
+import { LiquidGlassBezel } from './LiquidGlassBezel';
 
 type ToastTone = 'neutral' | 'success' | 'warning' | 'error' | 'info';
 
@@ -95,7 +96,8 @@ export function AppToastProvider({ children }: { children: ReactNode }) {
             style={[styles.toastShadow, toast.kind === 'undo' ? styles.undoToast : null]}
           >
             <View style={styles.toastMask}>
-              <BlurView intensity={50} tint="light" style={styles.toastBlur}>
+              <BlurView intensity={65} tint="light" style={styles.toastBlur}>
+                <LiquidGlassBezel contentIntensity="heavy" radius={radius.pill} />
                 <View style={[styles.iconWrap]}>
                   <Ionicons color={iconColorForToast(toast.tone)} name={iconForToast(toast.tone)} size={metrics.iconSizeSm} />
                 </View>
@@ -175,7 +177,9 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   toastShadow: {
-    ...shadows.floating,
+    ...shadows.hero,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.2,
     alignSelf: 'center',
     borderRadius: radius.pill,
     maxWidth: 420,
@@ -184,8 +188,6 @@ const styles = StyleSheet.create({
   toastMask: {
     borderRadius: radius.pill,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   toastBlur: {
     alignItems: 'center',
@@ -194,7 +196,6 @@ const styles = StyleSheet.create({
     minHeight: metrics.bottomActionHeight,
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
-    backgroundColor: 'rgba(255, 255, 255, 0.45)', // Slight white tint for frosted look
   },
   undoToast: {
     minHeight: metrics.bottomActionHeight,

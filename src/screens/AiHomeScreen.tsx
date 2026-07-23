@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,7 +11,7 @@ import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
-import { colors, layout, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
 
@@ -53,6 +54,11 @@ export function AiHomeScreen({
   onOpenThread,
   onStartChatWithRole,
 }: AiHomeScreenProps) {
+  const primaryCardScale = useSharedValue(1);
+  const primaryCardAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: primaryCardScale.value }],
+  }));
+
   const [loadedThreads, setLoadedThreads] = useState<{ space: PixorySpace; threads: AiHomeThreadItem[] }>({ space, threads: [] });
   const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; roleCards: AiRoleCardRecord[] }>({ space, roleCards: [] });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -117,10 +123,14 @@ export function AiHomeScreen({
       title="AI 工作台"
     >
       <View style={styles.mainStack}>
-        {/* Layer 1: The 3D Footprint Extrusion */}
-        <View style={styles.primaryChatCardExtrusion}>
-          {/* Layer 2: The Glass Body */}
-          <Pressable accessibilityRole="button" onPress={onStartNormalChat} style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}>
+        <Animated.View style={[styles.primaryChatCardWrapper, primaryCardAnimatedStyle]}>
+          <Pressable 
+            accessibilityRole="button" 
+            onPress={onStartNormalChat} 
+            onPressIn={() => { primaryCardScale.value = withSpring(0.95, { damping: 14, stiffness: 300 }); }}
+            onPressOut={() => { primaryCardScale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
+            style={({ pressed }) => [styles.primaryChatCard, pressed && styles.pressed]}
+          >
             <Image resizeMode="contain" source={primaryCardPatternImage} style={styles.primaryCardPattern} />
             <View style={styles.primaryIcon}>
               <Ionicons color={aiLightColors.primary} name="chatbubble-ellipses-outline" size={26} />
@@ -133,7 +143,7 @@ export function AiHomeScreen({
               <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
             </View>
           </Pressable>
-        </View>
+        </Animated.View>
 
         <View style={styles.roleRailWrap}>
           <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={styles.roleRailScroll} contentContainerStyle={styles.roleRailContent}>
@@ -351,26 +361,20 @@ const styles = StyleSheet.create({
   mainStack: {
     gap: rhythm.cardContentGap,
   },
-  primaryChatCardExtrusion: {
-    backgroundColor: 'rgba(0, 0, 0, 0.07)', // The dark 3D bevel color
+  primaryChatCardWrapper: {
+    ...shadows.sm,
     borderRadius: 36,
-    paddingBottom: 4, // This creates the physical 3D thickness flawlessly!
   },
   primaryChatCard: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.88)', // Clean white frosted glass
-    borderRadius: 36, // Matches parent for perfect corners
-
-    // Top highlight rim
-    borderTopWidth: 1.5,
-    borderTopColor: 'rgba(255, 255, 255, 1)',
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255, 255, 255, 0.8)',
-
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: 36,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: rhythm.inlineGap,
     minHeight: 104,
-    overflow: 'hidden', // Safely clips the pattern image
+    overflow: 'hidden',
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[4],
     position: 'relative',
@@ -469,6 +473,7 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
     minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[3],
+    ...shadows.sm,
   },
   roleLibraryText: {
     ...typography.textStyles.caption,
@@ -516,6 +521,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
+    ...shadows.sm,
   },
   recentChatPanelFilled: {
     height: RECENT_CHAT_ROW_HEIGHT * RECENT_CHAT_VISIBLE_ROWS,
@@ -601,7 +607,7 @@ const styles = StyleSheet.create({
   },
   quickEntry: {
     alignItems: 'center',
-    backgroundColor: aiLightColors.cardWash,
+    backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -612,6 +618,7 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[2],
+    ...shadows.sm,
   },
   quickIcon: {
     alignItems: 'center',
