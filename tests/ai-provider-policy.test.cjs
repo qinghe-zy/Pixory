@@ -373,9 +373,10 @@ test('provider adapters expose real streaming and embedding interfaces', () => {
   assert.match(openai, /message\?\.content/);
   assert.doesNotMatch(openai, /if \(!contentType\.includes\('text\/event-stream'\)\)/);
   assert.match(openai, /sawStreamPayload/);
-  assert.match(openai, /function isOpenAiStreamPayloadLine/);
-  assert.match(openai, /trimmed\.startsWith\('data:'\)/);
-  assert.match(openai, /parsed\?\.choices\?\.\[0\]\?\.delta/);
+  assert.match(openai, /type OpenAiStreamLineParseResult/);
+  assert.match(openai, /isStreamPayload/);
+  assert.match(openai, /parseOpenAiStreamLine\(line, sawStreamPayload\)/);
+  assert.doesNotMatch(openai, /function isOpenAiStreamPayloadLine/);
   assert.match(openai, /if \(sawStreamPayload\) \{\s*rawText = ''/);
   assert.match(openai, /const trailing = decoder\.decode\(\)/);
   assert.match(openai, /trimmed\.startsWith\('\{'\)/);

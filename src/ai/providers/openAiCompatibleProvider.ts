@@ -89,22 +89,39 @@ async function fetchOpenAiCompatibleResponse(
   return lastResult as OpenAiCompatibleFetchResult;
 }
 
-function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
+type OpenAiStreamLineParseResult = {
+  events: AiStreamEvent[];
+  isStreamPayload: boolean;
+};
+
+function parseOpenAiStreamLine(line: string, streamConfirmed = false): OpenAiStreamLineParseResult {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:') && !trimmed.startsWith('{')) {
-    return [];
+    return { events: [], isStreamPayload: streamConfirmed };
   }
-  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+  const sseFramed = trimmed.startsWith('data:');
+  const payload = sseFramed ? trimmed.slice(5).trim() : trimmed;
   if (!payload || payload === '[DONE]') {
-    return payload === '[DONE]' ? [{ type: 'completed' }] : [];
+    return {
+      events: payload === '[DONE]' ? [{ type: 'completed' }] : [],
+      isStreamPayload: sseFramed || streamConfirmed,
+    };
   }
   try {
     const parsed = JSON.parse(payload);
-    if (parsed.usage) {
-      return [{ type: 'provider_usage', rawUsage: parsed.usage }];
+    const choice = parsed.choices?.[0];
+    const isStreamPayload = sseFramed || streamConfirmed || choice?.delta !== undefined || (
+      choice?.message === undefined &&
+      (choice?.finish_reason !== undefined || parsed.usage !== undefined)
+    );
+    if (!isStreamPayload) {
+      return { events: [], isStreamPayload: false };
     }
-    const delta = parsed.choices?.[0]?.delta ?? {};
     const events: AiStreamEvent[] = [];
+    if (parsed.usage) {
+      events.push({ type: 'provider_usage', rawUsage: parsed.usage });
+    }
+    const delta = choice?.delta ?? {};
     const reasoningText = delta.reasoning_content ?? delta.reasoning ?? delta.reasoningText;
     if (typeof reasoningText === 'string' && reasoningText) {
       events.push({ type: 'reasoning_delta', text: reasoningText });
@@ -112,32 +129,13 @@ function parseOpenAiStreamLine(line: string): AiStreamEvent[] {
     if (typeof delta.content === 'string' && delta.content) {
       events.push({ type: 'answer_delta', text: delta.content });
     }
-    const finishReason = parsed.choices?.[0]?.finish_reason;
+    const finishReason = choice?.finish_reason;
     if (finishReason) {
       events.push({ type: 'completed', finishReason });
     }
-    return events;
+    return { events, isStreamPayload: true };
   } catch {
-    return [];
-  }
-}
-
-function isOpenAiStreamPayloadLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (trimmed.startsWith('data:')) {
-    return true;
-  }
-  if (!trimmed.startsWith('{')) {
-    return false;
-  }
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed?.choices?.[0]?.delta !== undefined || (
-      parsed?.choices?.[0]?.message === undefined &&
-      parsed?.choices?.[0]?.finish_reason !== undefined
-    );
-  } catch {
-    return false;
+    return { events: [], isStreamPayload: sseFramed || streamConfirmed };
   }
 }
 
@@ -166,21 +164,48 @@ function parseOpenAiChatCompletionJson(text: string): AiStreamEvent[] {
   }
 }
 
-async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<void> {
+async function readStreamingResponse(response: Response, onEvent: AiStreamEventHandler, signal?: AbortSignal): Promise<boolean> {
+  let sawCompletionEvent = false;
+  const dispatchEvents = (events: AiStreamEvent[]): Promise<void> | void => {
+    let pending: Promise<void> | undefined;
+    for (const event of events) {
+      if (event.type === 'completed') {
+        if (sawCompletionEvent) {
+          continue;
+        }
+        sawCompletionEvent = true;
+      }
+      if (pending) {
+        pending = pending.then(() => dispatchAiStreamEvent(onEvent, event) || undefined);
+        continue;
+      }
+      const next = dispatchAiStreamEvent(onEvent, event);
+      if (next) {
+        pending = next;
+      }
+    }
+    return pending;
+  };
   const body = response.body as unknown as { getReader?: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
   if (!body?.getReader) {
     const text = await response.text();
     if (signal?.aborted) {
-      return;
+      return false;
     }
-    const events = text.includes('data:')
-      ? text.split('\n').flatMap(parseOpenAiStreamLine)
-      : parseOpenAiChatCompletionJson(text);
-    for (const event of events) {
-      const pending = dispatchAiStreamEvent(onEvent, event);
+    let sawStreamPayload = false;
+    for (const line of text.split('\n')) {
+      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
+      if (parsedLine.isStreamPayload) {
+        sawStreamPayload = true;
+      }
+      const pending = dispatchEvents(parsedLine.events);
       if (pending) await pending;
     }
-    return;
+    if (!sawStreamPayload && text.trim()) {
+      const pending = dispatchEvents(parseOpenAiChatCompletionJson(text));
+      if (pending) await pending;
+    }
+    return sawCompletionEvent;
   }
 
   const reader = body.getReader();
@@ -190,11 +215,11 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
   let sawStreamPayload = false;
   while (true) {
     if (signal?.aborted) {
-      return;
+      return false;
     }
     const { done, value } = await reader.read();
     if (signal?.aborted) {
-      return;
+      return false;
     }
     if (done) {
       break;
@@ -207,17 +232,15 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
-      const events = parseOpenAiStreamLine(line);
-      if (isOpenAiStreamPayloadLine(line)) {
+      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
+      if (parsedLine.isStreamPayload) {
         sawStreamPayload = true;
       }
       if (sawStreamPayload) {
         rawText = '';
       }
-      for (const event of events) {
-        const pending = dispatchAiStreamEvent(onEvent, event);
-        if (pending) await pending;
-      }
+      const pending = dispatchEvents(parsedLine.events);
+      if (pending) await pending;
     }
   }
   const trailing = decoder.decode();
@@ -229,38 +252,33 @@ async function readStreamingResponse(response: Response, onEvent: AiStreamEventH
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
     for (const line of lines) {
-      const events = parseOpenAiStreamLine(line);
-      if (isOpenAiStreamPayloadLine(line)) {
+      const parsedLine = parseOpenAiStreamLine(line, sawStreamPayload);
+      if (parsedLine.isStreamPayload) {
         sawStreamPayload = true;
       }
       if (sawStreamPayload) {
         rawText = '';
       }
-      for (const event of events) {
-        const pending = dispatchAiStreamEvent(onEvent, event);
-        if (pending) await pending;
-      }
+      const pending = dispatchEvents(parsedLine.events);
+      if (pending) await pending;
     }
   }
   if (buffer) {
-    const events = parseOpenAiStreamLine(buffer);
-    if (isOpenAiStreamPayloadLine(buffer)) {
+    const parsedLine = parseOpenAiStreamLine(buffer, sawStreamPayload);
+    if (parsedLine.isStreamPayload) {
       sawStreamPayload = true;
     }
     if (sawStreamPayload) {
       rawText = '';
     }
-    for (const event of events) {
-      const pending = dispatchAiStreamEvent(onEvent, event);
-      if (pending) await pending;
-    }
+    const pending = dispatchEvents(parsedLine.events);
+    if (pending) await pending;
   }
   if (!sawStreamPayload && rawText) {
-    for (const event of parseOpenAiChatCompletionJson(rawText)) {
-      const pending = dispatchAiStreamEvent(onEvent, event);
-      if (pending) await pending;
-    }
+    const pending = dispatchEvents(parseOpenAiChatCompletionJson(rawText));
+    if (pending) await pending;
   }
+  return sawCompletionEvent;
 }
 
 function shouldDisableDeepSeekThinking(input: AiChatRequest): boolean {
@@ -399,11 +417,13 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
         body: JSON.stringify(body),
       });
       await assertOkResponse(response, 'AI chat request failed');
-      await readStreamingResponse(response, onEvent, input.signal);
+      const sawCompletionEvent = await readStreamingResponse(response, onEvent, input.signal);
       if (input.signal?.aborted) {
         return;
       }
-      await onEvent({ type: 'completed' });
+      if (!sawCompletionEvent) {
+        await onEvent({ type: 'completed' });
+      }
     } catch (error) {
       if (input.signal?.aborted || isAbortError(error)) {
         return;
