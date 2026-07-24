@@ -13,7 +13,7 @@ interface FilterChipProps {
 
 export function FilterChip({ label, active, onPress, dense = false }: FilterChipProps) {
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, active && styles.wrapperActive]}>
       <Pressable
         accessibilityRole="button"
         onPress={onPress}
@@ -23,10 +23,22 @@ export function FilterChip({ label, active, onPress, dense = false }: FilterChip
           pressed && styles.pressed,
         ]}
       >
-        <BlurView intensity={active ? 80 : 50} style={styles.blur} tint={active ? 'default' : 'light'}>
-          <LiquidGlassBezel active={active} contentIntensity={active ? 'heavy' : 'none'} radius={componentTokens.filterChip.radius} />
-          <View style={[styles.inner, active ? styles.activeInner : styles.inactiveInner, dense ? styles.denseInner : null]}>
-            <Text numberOfLines={1} style={[styles.text, dense ? styles.denseText : null, active ? styles.activeText : styles.inactiveText]}>{label}</Text>
+        <BlurView intensity={50} style={styles.blur} tint="light">
+          <LiquidGlassBezel active={false} radius={componentTokens.filterChip.radius} />
+          {active ? (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.activeTint]} />
+          ) : null}
+          <View style={[styles.inner, dense ? styles.denseInner : null]}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.text,
+                dense ? styles.denseText : null,
+                active ? styles.activeText : styles.inactiveText,
+              ]}
+            >
+              {label}
+            </Text>
           </View>
         </BlurView>
       </Pressable>
@@ -41,6 +53,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     borderRadius: componentTokens.filterChip.radius,
   },
+  wrapperActive: {
+    shadowColor: '#566B48',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+  },
   base: {
     borderRadius: componentTokens.filterChip.radius,
     height: componentTokens.filterChip.height,
@@ -53,6 +70,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     height: '100%',
   },
+  activeTint: {
+    backgroundColor: 'rgba(86, 107, 72, 0.28)',
+    borderRadius: componentTokens.filterChip.radius,
+  },
   inner: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -61,12 +82,6 @@ const styles = StyleSheet.create({
   },
   denseInner: {
     paddingHorizontal: spacing[2],
-  },
-  activeInner: {
-    backgroundColor: 'rgba(86, 107, 72, 0.65)', // Using primary.default rgb directly to tint glass
-  },
-  inactiveInner: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   pressed: {
     opacity: 0.78,
@@ -84,7 +99,7 @@ const styles = StyleSheet.create({
     maxWidth: 148,
   },
   activeText: {
-    color: '#FFFFFF', // pure white on active primary glass
+    color: colors.primary.dark,
   },
   inactiveText: {
     color: colors.text.title,
