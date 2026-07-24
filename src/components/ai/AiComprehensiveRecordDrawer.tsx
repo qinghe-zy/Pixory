@@ -11,6 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppDialog } from '../AppDialog';
 import type { AiThreadHistoryItem } from '../../database/repositories/aiThreadRepository';
@@ -50,6 +52,7 @@ export function AiComprehensiveRecordDrawer({
   onRenameThread,
   onDeleteThread,
 }: AiComprehensiveRecordDrawerProps) {
+  const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
   const [actionThread, setActionThread] = useState<AiThreadHistoryItem | null>(null);
   const [renameThread, setRenameThread] = useState<AiThreadHistoryItem | null>(null);
@@ -261,6 +264,7 @@ export function AiComprehensiveRecordDrawer({
           style={[
             styles.drawer,
             {
+              paddingBottom: Math.max(insets.bottom, spacing[5]),
               transform: [
                 {
                   translateX: Animated.add(slideAnim, drawerTranslateX),
@@ -270,6 +274,13 @@ export function AiComprehensiveRecordDrawer({
           ]}
           {...panResponder.panHandlers}
         >
+          <LinearGradient
+            colors={[aiLightColors.canvas, '#E2E2E2']}
+            end={{ x: 1, y: 0 }}
+            start={{ x: 0, y: 0 }}
+            style={styles.drawerGradient}
+          />
+          <View pointerEvents="none" style={styles.drawerHighlight} />
           <Text style={styles.brand}>Pixory AI</Text>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
@@ -356,6 +367,19 @@ export function AiComprehensiveRecordDrawer({
               <Text style={styles.emptyText}>暂无最近会话</Text>
             )}
           </ScrollView>
+          <Pressable
+            accessibilityLabel="收起面板"
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [styles.closeButtonShell, pressed && styles.pressed]}
+          >
+            <Text style={styles.closeButtonText}>收起面板</Text>
+            <View style={styles.closeButtonArrows}>
+              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
+              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} style={styles.stackedArrow} />
+              <Ionicons color={aiLightColors.ink} name="chevron-back-outline" size={16} />
+            </View>
+          </Pressable>
         </Animated.View>
       </View>
       <AppDialog
@@ -424,7 +448,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     flexShrink: 1,
-    gap: rhythm.screenSectionGap,
     height: '100%',
     maxHeight: '100%',
     paddingBottom: spacing[5],
@@ -433,12 +456,30 @@ const styles = StyleSheet.create({
     width: DRAWER_WIDTH,
     ...shadows.floating,
   },
+  drawerGradient: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomRightRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+  },
+  drawerHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomRightRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.9)',
+    borderRightWidth: 1.5,
+    borderRightColor: 'rgba(255, 255, 255, 0.9)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.9)',
+  },
   brand: {
     ...typography.textStyles.pageTitle,
     color: aiLightColors.ink,
+    marginBottom: rhythm.screenSectionGap,
   },
   primaryActions: {
     gap: rhythm.cardContentGap,
+    marginBottom: spacing[3],
   },
   actionRow: {
     alignItems: 'center',
@@ -457,10 +498,12 @@ const styles = StyleSheet.create({
   divider: {
     backgroundColor: aiLightColors.hairline,
     height: StyleSheet.hairlineWidth,
+    marginBottom: spacing[3],
   },
   sectionTitle: {
     ...typography.textStyles.bodyStrong,
     color: aiLightColors.muted,
+    marginBottom: spacing[3],
   },
   recentScroller: {
     flex: 1,
@@ -473,15 +516,19 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   recentRow: {
+    borderColor: 'transparent',
     borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.microGap,
     minHeight: metrics.minTouchSize,
     justifyContent: 'center',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
   },
   recentRowActive: {
     backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    ...shadows.sm,
   },
   recentTitleRow: {
     alignItems: 'center',
@@ -525,6 +572,7 @@ const styles = StyleSheet.create({
   statusText: {
     ...typography.textStyles.caption,
     color: aiLightColors.primaryActive,
+    marginBottom: spacing[2],
   },
   recentActionPopover: {
     alignSelf: 'flex-start',
@@ -620,5 +668,32 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.52,
+  },
+  closeButtonShell: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing[2],
+    marginTop: spacing[3],
+    minHeight: spacing[10],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    ...shadows.sm,
+  },
+  closeButtonText: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  closeButtonArrows: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  stackedArrow: {
+    marginRight: -10,
   },
 });

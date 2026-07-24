@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import type { ImageListItem, PixorySpace } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, shadows, spacing, typography } from '../design/tokens';
 import { formatDateTime, formatDuration, formatFileSize, formatImageDimensions } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
 
@@ -99,9 +99,10 @@ const styles = StyleSheet.create({
     opacity: 0.84,
   },
   row: {
+    ...shadows.sm,
     alignItems: 'center',
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',

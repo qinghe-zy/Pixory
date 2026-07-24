@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { AiRoleCardRecord } from '../../ai/types';
 import type { PixorySpace } from '../../database';
-import { metrics, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { metrics, radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import { SecureImage } from '../SecureImage';
 import { aiLightColors } from './aiLightTheme';
 
@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
     gap: rhythm.inlineGap,
     minHeight: 112,
     padding: spacing[3],
+    ...shadows.sm,
   },
   rowSelected: {
     backgroundColor: aiLightColors.card,

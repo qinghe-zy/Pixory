@@ -27,6 +27,7 @@ export function SortMenuButton({
   onChange,
   onFilterPress,
   hasActiveFilters,
+  filterIcon,
 }: {
   orderBy: ImageSortOrder;
   onChange: (orderBy: ImageSortOrder) => void;

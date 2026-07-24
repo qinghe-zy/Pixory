@@ -1986,6 +1986,7 @@ export default function App() {
           ref={rootTabsScrollViewRef}
           horizontal
           pagingEnabled
+          scrollEnabled={false}
           showsHorizontalScrollIndicator={false}
           bounces={false}
           directionalLockEnabled

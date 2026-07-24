@@ -11,6 +11,7 @@ import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
+import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { colors, layout, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiFullMinute } from '../utils/aiTimeFormatters';
@@ -153,6 +154,9 @@ export function AiHomeScreen({
                 >
                   <View style={styles.roleAvatarContainer}>
                     <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.pill, overflow: 'hidden' }]}>
+                      <LiquidGlassBezel contentIntensity="none" radius={radius.pill} />
+                    </View>
                   </View>
                   <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
                 </Pressable>
@@ -435,18 +439,26 @@ const styles = StyleSheet.create({
   roleAvatarContainer: {
     borderRadius: radius.pill,
     ...shadows.md,
-    shadowColor: '#000',
+    backgroundColor: colors.background.empty,
+    shadowColor: '#2C2318',
     shadowOpacity: 0.15,
-    shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowRadius: 16,
+    elevation: 6,
+    height: 48,
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   roleAvatarImage: {
-    borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 46,
-    width: 46,
+    height: 48,
+    width: 48,
+  },
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.pill,
+    overflow: 'hidden',
   },
   roleName: {
     ...typography.textStyles.micro,

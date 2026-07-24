@@ -118,9 +118,9 @@ const styles = StyleSheet.create({
     top: 28,
   },
   iconButton: {
-    ...shadows.xs,
+    ...shadows.sm,
     alignItems: 'center',
-    backgroundColor: colors.background.elevated,
+    backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
     borderRadius: componentTokens.iconButton.radius,
     borderWidth: StyleSheet.hairlineWidth,

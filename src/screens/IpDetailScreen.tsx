@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
 import { GroupRenameDialog } from '../components/GroupRenameDialog';
+import { IpDetailDrawer } from '../components/IpDetailDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SectionHeader } from '../components/SectionHeader';
@@ -76,6 +77,7 @@ export function IpDetailScreen({
   const [actionImage, setActionImage] = useState<ImageListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
+  const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpDetailRecord;
     groups: GroupListItem[];
@@ -88,7 +90,7 @@ export function IpDetailScreen({
       const [ip, groups, recentImages, recentImportBatches, needsOrganizingCount, organizationProgress] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findDetailById(db, ipId),
         groupRepository.findOverviewByIpId(db, ipId),
-        imageRepository.findRecentByIpId(db, ipId, 6, { mediaType: 'all' }),
+        imageRepository.findRecentByIpId(db, ipId, 15, { mediaType: 'all' }),
         importBatchRepository.findByIpId(db, ipId, 3),
         imageRepository.countNeedsOrganizing(db, ipId),
         imageRepository.getOrganizationProgress(db, ipId),
@@ -109,13 +111,30 @@ export function IpDetailScreen({
     }
   );
 
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          return gestureState.dx < -30 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dx < -50) {
+            setIsDrawerVisible(true);
+          }
+        },
+      }),
+    []
+  );
+
   const rightSlot = useMemo(
     () => (
-      <Pressable onPress={onEdit} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
-        <Ionicons color={colors.primary.default} name="create-outline" size={18} />
+      <Pressable onPress={() => setIsDrawerVisible(true)} style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons color={colors.primary.default} name="menu-outline" size={24} />
+        </View>
       </Pressable>
     ),
-    [onEdit]
+    []
   );
 
   const ip = data?.ip;
@@ -212,7 +231,7 @@ export function IpDetailScreen({
   }
 
   return (
-    <>
+    <View style={{ flex: 1 }} {...panResponder.panHandlers}>
     <ScreenScaffold backgroundVariant="archive" decorativeTitle="Archive" onBack={onBack} rightAction={rightSlot} scrollable title="IP详情">
       <PageStateBlock
         emptyDescription=""
@@ -290,64 +309,6 @@ export function IpDetailScreen({
               </>
             ) : null}
 
-            <View style={styles.managementSummary}>
-              <View style={styles.statsStrip}>
-                <StatBlock label="素材数量" value={String(ip.imageCount)} />
-                <StatBlock label="分组数量" value={String(ip.groupCount)} />
-                <StatBlock label="标签数量" value={String(ip.tagCount)} />
-                <StatBlock label="最近更新" value={formatUpdatedLabel(ip.recentUpdatedAt).replace(' 更新', '')} />
-              </View>
-              {managementSummary ? (
-                <>
-                <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? onOpenImportBatches : undefined} title="管理摘要" />
-                {needsOrganizingCount > 0 ? (
-                  <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
-                    <View style={styles.needsCopy}>
-                      <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
-                    </View>
-                    <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-                  </Pressable>
-                ) : null}
-
-                {organizationProgress ? (
-                  <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
-                    <View style={styles.progressHeader}>
-                      <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
-                      <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
-                    </View>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
-                    </View>
-                    <View style={styles.progressFacts}>
-                      <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
-                      <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
-                      <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
-                    </View>
-                  </Pressable>
-                ) : null}
-
-                {recentImportBatches.length > 0 ? (
-                  <View style={styles.batchList}>
-                    {recentImportBatches.slice(0, 2).map((batch) => {
-                      const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
-                      return (
-                        <Pressable key={batch.id} onPress={onOpenImportBatches} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
-                          <View style={styles.batchCopy}>
-                            <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
-                            <Text numberOfLines={1} style={styles.batchMeta}>
-                              {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
-                            </Text>
-                          </View>
-                          <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
-                </>
-              ) : null}
-            </View>
-
             <SectionHeader title="快捷操作" />
             <View style={styles.quickGrid}>
               {QUICK_ACTIONS.map((action) => (
@@ -362,46 +323,6 @@ export function IpDetailScreen({
                   <Text style={styles.quickLabel}>{action.label}</Text>
                 </Pressable>
               ))}
-            </View>
-
-            <View style={styles.groupSection}>
-              <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={onOpenGroups} title="分组入口" />
-              {groups.length > 0 ? (
-                <View style={styles.groupEntryList}>
-                  {groups.slice(0, 4).map((group) => (
-                    <Pressable
-                      key={group.id}
-                      onLongPress={() => setActionGroup(group)}
-                      onPress={() => onOpenGroup(group.id)}
-                      style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}
-                    >
-                      <View style={styles.groupEntryCover}>
-                        {group.coverThumbnailFileUri ? (
-                          <SecureImage
-                            blurRadius={groupCoverBlurRadius}
-                            contentFit="cover"
-                            space={space}
-                            style={styles.groupEntryCoverImage}
-                            uri={group.coverThumbnailFileUri}
-                          />
-                        ) : (
-                          <Ionicons color={colors.primary.default} name="images-outline" size={18} />
-                        )}
-                      </View>
-                      <View style={styles.groupEntryCopy}>
-                        <Text numberOfLines={1} style={styles.groupEntryTitle}>{group.name}</Text>
-                        <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)} · {group.imageCount} 张</Text>
-                      </View>
-                      <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
-                    </Pressable>
-                  ))}
-                </View>
-              ) : (
-                <Pressable onPress={onCreateGroup} style={({ pressed }) => [styles.emptyGroupEntry, pressed && styles.pressed]}>
-                  <Ionicons color={colors.primary.default} name="folder-open-outline" size={18} />
-                  <Text style={styles.emptyGroupText}>还没有分组，点击新建</Text>
-                </Pressable>
-              )}
             </View>
 
             <SectionHeader
@@ -421,6 +342,7 @@ export function IpDetailScreen({
               <View style={styles.recentGrid}>
                 {recentImages.map((image) => (
                   <ThumbnailTile
+                    aspectRatio={componentTokens.thumbnail.squareAspectRatio}
                     image={image}
                     key={image.id}
                     onLongPress={() => handleImageLongPress(image)}
@@ -428,12 +350,136 @@ export function IpDetailScreen({
                     space={space}
                   />
                 ))}
+                {Array.from({ length: (3 - (recentImages.length % 3)) % 3 }).map((_, i) => (
+                  <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
+                ))}
               </View>
+              {recentImages.length > 0 ? (
+                <View style={styles.recentViewAllDivider}>
+                  <View style={styles.dividerLine} />
+                  <Pressable onPress={onOpenAllImages} style={({ pressed }) => [styles.viewAllPrompt, pressed && styles.pressed]}>
+                    <Text style={styles.viewAllPromptText}>查看全部素材</Text>
+                    <Ionicons color={colors.text.tertiary} name="chevron-forward" size={12} />
+                  </Pressable>
+                  <View style={styles.dividerLine} />
+                </View>
+              ) : null}
             </PageStateBlock>
           </>
         ) : null}
       </PageStateBlock>
     </ScreenScaffold>
+    <IpDetailDrawer onClose={() => setIsDrawerVisible(false)} visible={isDrawerVisible}>
+      {ip ? (
+        <>
+          <SectionHeader title="基础操作" />
+          <Pressable onPress={() => { setIsDrawerVisible(false); onEdit(); }} style={({ pressed }) => [styles.drawerActionBtn, pressed && styles.pressed]}>
+            <View style={styles.drawerActionIcon}>
+              <Ionicons color={colors.primary.active} name="create-outline" size={20} />
+            </View>
+            <Text style={styles.drawerActionLabel}>编辑 IP 基础信息</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+          </Pressable>
+
+          <View style={[styles.managementSummary, { marginTop: 0 }]}>
+            <View style={styles.statsStrip}>
+              <StatBlock label="素材数量" value={String(ip.imageCount)} />
+              <StatBlock label="分组数量" value={String(ip.groupCount)} />
+              <StatBlock label="标签数量" value={String(ip.tagCount)} />
+            </View>
+            {managementSummary ? (
+              <>
+              <SectionHeader actionLabel={recentImportBatches.length > 0 ? '全部批次' : undefined} onActionPress={recentImportBatches.length > 0 ? () => { setIsDrawerVisible(false); onOpenImportBatches(); } : undefined} title="管理摘要" />
+              {needsOrganizingCount > 0 ? (
+                <Pressable onPress={() => { setIsDrawerVisible(false); onOpenNeedsOrganizing(); }} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
+                  <View style={styles.needsCopy}>
+                    <Text style={styles.needsTitle}>待整理 {needsOrganizingCount} 张</Text>
+                  </View>
+                  <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                </Pressable>
+              ) : null}
+
+              {organizationProgress ? (
+                <Pressable onPress={() => { setIsDrawerVisible(false); onOpenNeedsOrganizing(); }} style={({ pressed }) => [styles.progressPanel, pressed && styles.pressed]}>
+                  <View style={styles.progressHeader}>
+                    <Text style={styles.progressTitle}>当前 IP 整理度 {organizationProgress.organizationPercent}%</Text>
+                    <Text style={styles.progressMeta}>{organizationProgress.organizedCount}/{organizationProgress.totalCount}</Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${organizationProgress.organizationPercent}%` }]} />
+                  </View>
+                  <View style={styles.progressFacts}>
+                    <Text style={styles.progressFact}>无标签 {organizationProgress.untaggedCount} 张</Text>
+                    <Text style={styles.progressFact}>未分组 {organizationProgress.ungroupedCount} 张</Text>
+                    <Text style={styles.progressFact}>最近导入未整理 {organizationProgress.recentImportUnorganizedCount} 张</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+
+              {recentImportBatches.length > 0 ? (
+                <View style={styles.batchList}>
+                  {recentImportBatches.slice(0, 2).map((batch) => {
+                    const percent = batch.activeCount > 0 ? Math.round((batch.organizedCount / batch.activeCount) * 100) : 100;
+                    return (
+                      <Pressable key={batch.id} onPress={() => { setIsDrawerVisible(false); onOpenImportBatches(); }} style={({ pressed }) => [styles.batchRow, pressed && styles.pressed]}>
+                        <View style={styles.batchCopy}>
+                          <Text numberOfLines={1} style={styles.batchTitle}>{batch.name}</Text>
+                          <Text numberOfLines={1} style={styles.batchMeta}>
+                            {formatDateTime(batch.createdAt)} · {batch.activeCount} 张 · 整理度 {percent}%
+                          </Text>
+                        </View>
+                        <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+              </>
+            ) : null}
+          </View>
+
+          <View style={styles.groupSection}>
+            <SectionHeader actionLabel={commonButtonCopy.viewAll} onActionPress={() => { setIsDrawerVisible(false); onOpenGroups(); }} title="分组入口" />
+            {groups.length > 0 ? (
+              <View style={styles.groupEntryList}>
+                {groups.slice(0, 4).map((group) => (
+                  <Pressable
+                    key={group.id}
+                    onLongPress={() => { setIsDrawerVisible(false); setActionGroup(group); }}
+                    onPress={() => { setIsDrawerVisible(false); onOpenGroup(group.id); }}
+                    style={({ pressed }) => [styles.groupEntry, pressed && styles.pressed]}
+                  >
+                    <View style={styles.groupEntryCover}>
+                      {group.coverThumbnailFileUri ? (
+                        <SecureImage
+                          blurRadius={groupCoverBlurRadius}
+                          contentFit="cover"
+                          space={space}
+                          style={styles.groupEntryCoverImage}
+                          uri={group.coverThumbnailFileUri}
+                        />
+                      ) : (
+                        <Ionicons color={colors.primary.default} name="images-outline" size={18} />
+                      )}
+                    </View>
+                    <View style={styles.groupEntryCopy}>
+                      <Text numberOfLines={1} style={styles.groupEntryTitle}>{group.name}</Text>
+                      <Text style={styles.groupEntryMeta}>{getGroupTypeLabel(group.type)} · {group.imageCount} 张</Text>
+                    </View>
+                    <Ionicons color={colors.text.secondary} name="chevron-forward" size={16} />
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Pressable onPress={() => { setIsDrawerVisible(false); onCreateGroup(); }} style={({ pressed }) => [styles.emptyGroupEntry, pressed && styles.pressed]}>
+                <Ionicons color={colors.primary.default} name="folder-open-outline" size={18} />
+                <Text style={styles.emptyGroupText}>还没有分组，点击新建</Text>
+              </Pressable>
+            )}
+          </View>
+        </>
+      ) : null}
+    </IpDetailDrawer>
     <AppActionSheet
       items={actionGroup ? [
         { key: 'view', label: '查看素材', icon: 'images-outline', onPress: () => onOpenGroup(actionGroup.id) },
@@ -487,7 +533,7 @@ export function IpDetailScreen({
       title="删除分组"
       visible={Boolean(deleteGroup)}
     />
-    </>
+    </View>
   );
 }
 
@@ -504,6 +550,7 @@ function StatBlock({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   headerAction: {
+    ...shadows.sm,
     alignItems: 'center',
     backgroundColor: colors.background.surface,
     borderColor: colors.border.default,
@@ -743,7 +790,7 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
     gap: spacing[1],
-    width: '25%',
+    width: '33.33%',
   },
   statValue: {
     ...typography.textStyles.statNumber,
@@ -772,9 +819,12 @@ const styles = StyleSheet.create({
     width: '48%',
   },
   quickIcon: {
+    ...shadows.sm,
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
     borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 34,
     justifyContent: 'center',
     width: 34,
@@ -847,6 +897,52 @@ const styles = StyleSheet.create({
   recentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    justifyContent: 'space-between',
+    rowGap: rhythm.compactGridGap,
+  },
+  recentViewAllDivider: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    marginBottom: spacing[2],
+    marginTop: spacing[5],
+  },
+  dividerLine: {
+    backgroundColor: colors.border.subtle,
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  viewAllPrompt: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing[1],
+    paddingHorizontal: spacing[3],
+  },
+  viewAllPromptText: {
+    ...typography.textStyles.micro,
+    color: colors.text.tertiary,
+  },
+  drawerActionBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.background.input,
+    borderColor: colors.border.subtle,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing[3],
+    minHeight: 56,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+  },
+  drawerActionIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primary.weak,
+    borderRadius: radius.sm,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  drawerActionLabel: {
+    ...typography.textStyles.bodyStrong,
+    flex: 1,
   },
 });
