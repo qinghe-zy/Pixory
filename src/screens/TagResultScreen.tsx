@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
+import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { PageStateBlock } from '../components/PageStateBlock';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
@@ -71,7 +72,7 @@ export function TagResultScreen({
   onStartBatchManagement,
 }: TagResultScreenProps) {
   const [activeFilters, setActiveFilters] = useState<TagResultFilterState>(EMPTY_TAG_RESULT_FILTERS);
-  const [activeFilterDropdown, setActiveFilterDropdown] = useState<TagResultFilterDropdown | null>(null);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const { viewMode, sortOrder, setViewMode, setSortOrder } = useAssetListPreferences(space, 'createdAtDesc');
   const scrollViewRef = useRef<ScrollView | null>(null);
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
@@ -261,76 +262,49 @@ export function TagResultScreen({
         </View>
       ) : null}
 
-      <View style={styles.filterBarWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-          <FilterMenuButton active={activeFilters.favorite || activeFilters.ungrouped || activeFilters.recentViewed || activeFilters.similarSameSize || activeFilters.similarFilenamePrefix || activeFilters.similarDuplicate} label="状态" onPress={() => setActiveFilterDropdown((current) => (current === 'status' ? null : 'status'))} />
-          <FilterMenuButton active={activeFilters.ipIds.length > 0} label={`IP${activeFilters.ipIds.length > 0 ? ` ${activeFilters.ipIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'ip' ? null : 'ip'))} />
-          <FilterMenuButton active={activeFilters.groupIds.length > 0} label={`分组${activeFilters.groupIds.length > 0 ? ` ${activeFilters.groupIds.length}` : ''}`} onPress={() => setActiveFilterDropdown((current) => (current === 'group' ? null : 'group'))} />
-          <FilterMenuButton active={activeFilters.aspectRatio != null || activeFilters.size != null} label="尺寸" onPress={() => setActiveFilterDropdown((current) => (current === 'size' ? null : 'size'))} />
-          {hasActiveFilters ? (
-            <Pressable onPress={() => setActiveFilters(EMPTY_TAG_RESULT_FILTERS)} style={({ pressed }) => [styles.clearFilterPill, pressed && styles.pressed]}>
-              <Text style={styles.clearFilterText}>清空</Text>
-            </Pressable>
-          ) : null}
+      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
+            <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
+            <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
+          </View>
+          <Text style={styles.drawerSectionTitle}>相似 · 多选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="同尺寸" selected={activeFilters.similarSameSize} onPress={() => toggleSimilarFilter('similarSameSize')} />
+            <FilterOptionChip label="文件名前缀" selected={activeFilters.similarFilenamePrefix} onPress={() => toggleSimilarFilter('similarFilenamePrefix')} />
+            <FilterOptionChip label="疑似重复" selected={activeFilters.similarDuplicate} onPress={() => toggleSimilarFilter('similarDuplicate')} />
+          </View>
+        </View>
+
+        <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+          {ips.map((ip) => (
+            <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
+          ))}
         </ScrollView>
-        <Text numberOfLines={1} style={styles.filterStatus}>
-          {hasActiveFilters ? `已选 ${activeFilterLabels.length} 个条件：${filterLabel}` : '未设置筛选'}
-        </Text>
-        {activeFilterDropdown ? (
-          <FilterDrawer
-            mode={getTagResultFilterMode(activeFilterDropdown)}
-            onClear={() => clearFilterGroup(activeFilterDropdown)}
-            title={getTagResultFilterTitle(activeFilterDropdown)}
-          >
-            {activeFilterDropdown === 'status' ? (
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="收藏" selected={activeFilters.favorite} onPress={() => toggleBooleanFilter('favorite')} />
-                  <FilterOptionChip label="未分组" selected={activeFilters.ungrouped} onPress={() => toggleBooleanFilter('ungrouped')} />
-                  <FilterOptionChip label="最近查看" selected={activeFilters.recentViewed} onPress={() => toggleBooleanFilter('recentViewed')} />
-                </View>
-                <Text style={styles.drawerSectionTitle}>相似 · 多选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="同尺寸" selected={activeFilters.similarSameSize} onPress={() => toggleSimilarFilter('similarSameSize')} />
-                  <FilterOptionChip label="文件名前缀" selected={activeFilters.similarFilenamePrefix} onPress={() => toggleSimilarFilter('similarFilenamePrefix')} />
-                  <FilterOptionChip label="疑似重复" selected={activeFilters.similarDuplicate} onPress={() => toggleSimilarFilter('similarDuplicate')} />
-                </View>
-              </View>
-            ) : null}
-            {activeFilterDropdown === 'ip' ? (
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {ips.map((ip) => (
-                  <FilterOptionRow key={ip.id} label={ip.name} selected={activeFilters.ipIds.includes(ip.id)} onPress={() => toggleIpFilter(ip.id)} />
-                ))}
-              </ScrollView>
-            ) : null}
-            {activeFilterDropdown === 'group' ? (
-              <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
-                {groups.map((group) => (
-                  <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
-                ))}
-              </ScrollView>
-            ) : null}
-            {activeFilterDropdown === 'size' ? (
-              <View style={styles.drawerSections}>
-                <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
-                  <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
-                  <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
-                  <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
-                </View>
-                <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
-                <View style={styles.filterOptionGrid}>
-                  <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
-                  <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
-                </View>
-              </View>
-            ) : null}
-          </FilterDrawer>
-        ) : null}
-      </View>
+
+        <ScrollView nestedScrollEnabled style={styles.filterDrawerList}>
+          {groups.map((group) => (
+            <FilterOptionRow key={group.id} label={group.name} selected={activeFilters.groupIds.includes(group.id)} onPress={() => toggleGroupFilter(group.id)} />
+          ))}
+        </ScrollView>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>画幅 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="横图" selected={activeFilters.aspectRatio === 'landscape'} onPress={() => toggleAspectFilter('landscape', '横图')} />
+            <FilterOptionChip label="竖图" selected={activeFilters.aspectRatio === 'portrait'} onPress={() => toggleAspectFilter('portrait', '竖图')} />
+            <FilterOptionChip label="方图" selected={activeFilters.aspectRatio === 'square'} onPress={() => toggleAspectFilter('square', '方图')} />
+            <FilterOptionChip label="长图" selected={activeFilters.aspectRatio === 'panorama'} onPress={() => toggleAspectFilter('panorama', '长图')} />
+          </View>
+          <Text style={styles.drawerSectionTitle}>大小 · 单选</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="< 500 KB" selected={activeFilters.size?.label === '< 500 KB'} onPress={() => toggleSizeFilter({ label: '< 500 KB', maxFileSize: 500 * 1024 })} />
+            <FilterOptionChip label="> 2 MB" selected={activeFilters.size?.label === '> 2 MB'} onPress={() => toggleSizeFilter({ label: '> 2 MB', minFileSize: 2 * 1024 * 1024 })} />
+          </View>
+        </View>
+      </AssetFilterDrawer>
 
       <PageStateBlock
         emptyActionLabel={undefined}
@@ -361,6 +335,13 @@ export function TagResultScreen({
           >
             <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
+          <Pressable
+            accessibilityLabel="打开筛选"
+            onPress={() => setIsFilterDrawerOpen(true)}
+            style={({ pressed }) => [styles.viewModeButton, hasActiveFilters ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
+          >
+            <Ionicons color={hasActiveFilters ? colors.primary.active : colors.text.secondary} name="funnel-outline" size={15} />
+          </Pressable>
         </View>
         {viewMode === 'detail' ? (
           <View {...swipeSelection.panHandlers} style={styles.detailList}>
@@ -368,7 +349,7 @@ export function TagResultScreen({
               <AssetDetailRow
                 image={image}
                 key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
@@ -382,7 +363,7 @@ export function TagResultScreen({
               <ThumbnailTile
                 image={image}
                 key={image.id}
-                onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
+                onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
@@ -686,7 +667,8 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: rhythm.compactGridGap,
+    justifyContent: 'space-between',
+    rowGap: rhythm.compactGridGap,
     marginTop: rhythm.microGap,
   },
   detailList: {

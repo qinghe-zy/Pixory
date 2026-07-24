@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { ImageListItem, PixorySpace } from '../database';
-import { colors, componentTokens, radius, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, spacing, typography, shadows } from '../design/tokens';
 import { formatDuration } from '../utils/formatters';
 import { SecureImage } from './SecureImage';
 
@@ -15,6 +16,7 @@ interface ThumbnailTileProps {
   selected?: boolean;
   isSelectionMode?: boolean;
   onLayout?: (event: LayoutChangeEvent) => void;
+  index?: number;
 }
 
 export function ThumbnailTile({
@@ -26,6 +28,7 @@ export function ThumbnailTile({
   selected = false,
   isSelectionMode = false,
   onLayout,
+  index,
 }: ThumbnailTileProps) {
   const isVideo = image.mediaType === 'video';
   const accessibilityLabel = isVideo
@@ -35,8 +38,9 @@ export function ThumbnailTile({
     : selected
       ? `打开图片：${image.originalFilename}，已选中`
       : `打开图片：${image.originalFilename}`;
+  const entering = index !== undefined ? FadeIn.delay(Math.min(index * 20, 200)).duration(500) : FadeIn.duration(400);
   const content = (
-    <View style={[styles.tile, selected ? styles.selectedTile : null, { aspectRatio }]}>
+    <Animated.View entering={entering} style={[styles.tile, styles.tileFloating, selected ? styles.selectedTile : null, { aspectRatio }]}>
       {image.thumbnailFileUri ? (
         <SecureImage contentFit="cover" space={space} style={styles.image} uri={image.thumbnailFileUri} />
       ) : (
@@ -66,7 +70,7 @@ export function ThumbnailTile({
           </View>
         </>
       ) : null}
-    </View>
+    </Animated.View>
   );
 
   if (!onPress && !onLongPress) {
@@ -91,23 +95,37 @@ export function ThumbnailTile({
 
 const styles = StyleSheet.create({
   pressable: {
-    width: '31.6%',
+    width: '31.8%',
   },
   pressed: {
     opacity: 0.84,
   },
   tile: {
     backgroundColor: colors.background.empty,
-    borderColor: colors.border.subtle,
-    borderRadius: componentTokens.thumbnail.radius,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
     overflow: 'hidden',
     position: 'relative',
     width: '100%',
   },
+  tileFloating: {
+    ...shadows.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.25)',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: 'rgba(255, 255, 255, 0.12)',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: 'rgba(255, 255, 255, 0.04)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.02)',
+  },
   selectedTile: {
     borderColor: colors.primary.default,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   image: {
     height: '100%',

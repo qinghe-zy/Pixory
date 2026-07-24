@@ -1988,6 +1988,7 @@ export default function App() {
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           bounces={false}
+          directionalLockEnabled
           contentOffset={{ x: currentRoute.tab ? ROOT_TABS.indexOf(currentRoute.tab) * sw : 0, y: 0 }}
           onMomentumScrollEnd={handleRootScrollEnd}
           scrollEventThrottle={16}

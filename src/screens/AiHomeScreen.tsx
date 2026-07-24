@@ -151,7 +151,9 @@ export function AiHomeScreen({
                   onPress={() => onStartChatWithRole(role.roleCardId)}
                   style={({ pressed }) => [styles.roleShortcut, pressed && styles.pressed]}
                 >
-                  <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
+                  <View style={styles.roleAvatarContainer}>
+                    <SecureImage contentFit="cover" space={space} style={styles.roleAvatarImage} uri={role.avatarUri} />
+                  </View>
                   <Text numberOfLines={1} style={styles.roleName}>{role.name}</Text>
                 </Pressable>
               ))
@@ -430,8 +432,17 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
     width: 54,
   },
+  roleAvatarContainer: {
+    borderRadius: radius.pill,
+    ...shadows.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
   roleAvatarImage: {
-    borderColor: aiLightColors.hairline,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     height: 46,
