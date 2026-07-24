@@ -17,7 +17,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type ImageSortOrder, type ImportTemplateRecord, type IpRecord, type PixorySpace } from '../database';
-import { colors, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';

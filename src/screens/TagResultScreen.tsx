@@ -10,7 +10,7 @@ import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SortMenuButton, IMAGE_SORT_OPTIONS } from '../components/SortMenuButton';
 import { ThumbnailTile } from '../components/ThumbnailTile';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagRecord } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
