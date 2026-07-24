@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -153,6 +153,26 @@ export function AllImagesScreen({
     scrollViewRef,
     selectableMediaTypes: ['image', 'video'],
   });
+
+  const swipeFilterDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return (
+          gs.dx < -6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (
+          gs.dx < -10 ||
+          (gs.dx < -6 && gs.vx < -0.18)
+        ) {
+          setIsFilterDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
+
   const selectedAssets = useMemo(
     () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableAssets, multiSelect.selectedImageIds]
@@ -272,6 +292,7 @@ export function AllImagesScreen({
     />
   ) : undefined;
   return (
+    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundVariant="gallery"
       decorativeTitle="Gallery"
@@ -281,27 +302,17 @@ export function AllImagesScreen({
       rightAction={rightAction}
       scrollViewRef={scrollViewRef}
       scrollable
-      title="素材库"
+      title={ip ? `全部素材 · ${ip.name}` : '全部素材'}
     >
-      <View style={styles.summaryPanel}>
-        <View style={styles.summaryTopLine}>
-          <Text numberOfLines={1} style={styles.subtitle}>{ip?.name ?? '当前 IP'}</Text>
-          <View style={styles.countPill}>
-            <Ionicons color={colors.primary.active} name="images-outline" size={14} />
-            <Text style={styles.countPillText}>{images.length} 个</Text>
-          </View>
-        </View>
-        <View style={styles.summaryTitleRow}>
-          <Text numberOfLines={1} style={styles.summaryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'}</Text>
-          <View style={styles.summaryMetaRow}>
-            <Text numberOfLines={1} style={styles.summaryMeta}>分组 {groups.length}</Text>
-            <View style={styles.metaDot} />
-            <Text numberOfLines={1} style={styles.summaryMeta}>标签 {tags.length}</Text>
-          </View>
-        </View>
-      </View>
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+              <View style={styles.drawerSections}>
+                <Text style={styles.drawerSectionTitle}>视图</Text>
+                <View style={styles.filterOptionGrid}>
+                  <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
+                  <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
+                </View>
+              </View>
 
               <View style={styles.drawerSections}>
                 <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
@@ -367,32 +378,23 @@ export function AllImagesScreen({
         onRetry={reload}
       >
         <View style={styles.galleryHeading}>
+          <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
           <View style={styles.galleryActions}>
-            {hasActiveFilters ? (
-              <Text style={styles.galleryCount}>{activeFilterLabel}</Text>
+            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+              <Pressable
+                disabled={selectableAssets.length === 0}
+                onPress={multiSelect.toggleSelectAll}
+                style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+              >
+                <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
             ) : null}
-            <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
-            <Pressable
-              accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
-              onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
-              style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-            >
-              <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
-            </Pressable>
-            <Pressable
-              disabled={selectableAssets.length === 0}
-              onPress={multiSelect.toggleSelectAll}
-              style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-            >
-              <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="打开筛选"
-              onPress={() => setIsFilterDrawerOpen(true)}
-              style={({ pressed }) => [styles.viewModeButton, hasActiveFilters ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-            >
-              <Ionicons color={hasActiveFilters ? colors.primary.active : colors.text.secondary} name="funnel-outline" size={15} />
-            </Pressable>
+            <SortMenuButton
+              hasActiveFilters={hasActiveFilters}
+              onChange={setSortOrder}
+              onFilterPress={() => setIsFilterDrawerOpen(true)}
+              orderBy={sortOrder}
+            />
           </View>
         </View>
         {viewMode === 'detail' ? (
@@ -425,10 +427,14 @@ export function AllImagesScreen({
                 space={space}
               />
             ))}
+            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
+              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
+            ))}
           </View>
         )}
       </PageStateBlock>
     </ScreenScaffold>
+    </View>
   );
 }
 
@@ -501,6 +507,9 @@ function hasImageOnlyFilter(filters: AllImagesFilterState): boolean {
 }
 
 const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+  },
   headerAction: {
     alignItems: 'center',
     backgroundColor: colors.background.elevated,
@@ -741,15 +750,12 @@ const styles = StyleSheet.create({
   galleryHeading: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     marginBottom: rhythm.microGap,
   },
   galleryTitle: {
-    ...typography.textStyles.sectionTitle,
-  },
-  galleryCount: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
   },
   galleryActions: {
     alignItems: 'center',

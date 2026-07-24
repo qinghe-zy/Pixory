@@ -158,15 +158,21 @@ export function RecentViewedScreen({
         onRetry={reload}
       >
         <View style={styles.gridHeader}>
-          <Text style={styles.gridTitle}>素材</Text>
-          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
+          <Text style={styles.gridTitle}>图片</Text>
           <Pressable
-            accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
-            onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
-            style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
+            disabled={selectableAssets.length === 0}
+            onPress={multiSelect.toggleSelectAll}
+            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
           >
-            <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
+            <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
           </Pressable>
+          <SortMenuButton
+            filterIcon={viewMode === 'detail' ? 'list-outline' : 'grid-outline'}
+            hasActiveFilters={viewMode === 'detail'}
+            onChange={setSortOrder}
+            onFilterPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
+            orderBy={sortOrder}
+          />
         </View>
         {viewMode === 'detail' ? (
           <View {...swipeSelection.panHandlers} style={styles.detailList}>
@@ -178,6 +184,7 @@ export function RecentViewedScreen({
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
             ))}
@@ -186,14 +193,19 @@ export function RecentViewedScreen({
           <View {...swipeSelection.panHandlers} style={styles.grid}>
             {images.map((image) => (
               <ThumbnailTile
+                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
                 image={image}
                 key={image.id}
                 onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
+            ))}
+            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
+              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
             ))}
           </View>
         )}

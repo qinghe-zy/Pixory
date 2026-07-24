@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -12,7 +12,7 @@ import { ThumbnailTile } from '../components/ThumbnailTile';
 import { commonButtonCopy, commonEmptyStateCopy } from '../constants/copy';
 import { getGroupTypeLabel } from '../constants/groups';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageAspectRatioFilter, type ImageListItem, type IpRecord, type PixorySpace, type TagUsageItem } from '../database';
-import { colors, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, radius, rhythm, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useImageMultiSelect } from '../hooks/useImageMultiSelect';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
@@ -140,6 +140,26 @@ export function GroupImagesScreen({
     scrollViewRef,
     selectableMediaTypes: ['image', 'video'],
   });
+
+  const swipeFilterDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return (
+          gs.dx < -6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (
+          gs.dx < -10 ||
+          (gs.dx < -6 && gs.vx < -0.18)
+        ) {
+          setIsFilterDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
+
   const selectedAssets = useMemo(
     () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableAssets, multiSelect.selectedImageIds]
@@ -224,6 +244,7 @@ export function GroupImagesScreen({
   }
 
   return (
+    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundVariant="gallery"
       decorativeTitle="Gallery"
@@ -232,23 +253,18 @@ export function GroupImagesScreen({
       onScroll={swipeSelection.onScroll}
       scrollViewRef={scrollViewRef}
       scrollable
-      title="分组图片"
+      title={group ? group.name : '分组图片'}
     >
-      {group ? (
-        <View style={styles.summary}>
-          <View style={styles.summaryCopy}>
-            <Text numberOfLines={1} style={styles.subtitle}>
-              {ip?.name ?? '所属 IP'} / {getGroupTypeLabel(group.type)}
-            </Text>
-            <Text adjustsFontSizeToFit minimumFontScale={0.86} numberOfLines={2} style={styles.groupName}>
-              {group.name}
-            </Text>
-          </View>
-          <Text style={styles.countPill}>{images.length} 张</Text>
-        </View>
-      ) : null}
 
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>视图</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
+            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
+          </View>
+        </View>
+
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
           <View style={styles.filterOptionGrid}>
@@ -296,30 +312,25 @@ export function GroupImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
-        <View style={styles.gridHeader}>
-          <Text style={styles.gridTitle}>图片</Text>
-          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
-          <Pressable
-            accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
-            onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
-            style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-          >
-            <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
-          </Pressable>
-          <Pressable
-            disabled={selectableAssets.length === 0}
-            onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-          >
-            <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="打开筛选"
-            onPress={() => setIsFilterDrawerOpen(true)}
-            style={({ pressed }) => [styles.viewModeButton, hasActiveFilters ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-          >
-            <Ionicons color={hasActiveFilters ? colors.primary.active : colors.text.secondary} name="funnel-outline" size={15} />
-          </Pressable>
+        <View style={styles.galleryHeading}>
+          <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
+          <View style={styles.galleryActions}>
+            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+              <Pressable
+                disabled={selectableAssets.length === 0}
+                onPress={multiSelect.toggleSelectAll}
+                style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+              >
+                <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
+            ) : null}
+            <SortMenuButton
+              hasActiveFilters={hasActiveFilters}
+              onChange={setSortOrder}
+              onFilterPress={() => setIsFilterDrawerOpen(true)}
+              orderBy={sortOrder}
+            />
+          </View>
         </View>
         {viewMode === 'detail' ? (
           <View {...swipeSelection.panHandlers} style={styles.detailList}>
@@ -339,6 +350,7 @@ export function GroupImagesScreen({
           <View {...swipeSelection.panHandlers} style={styles.grid}>
             {images.map((image) => (
               <ThumbnailTile
+                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
                 image={image}
                 key={image.id}
                 onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
@@ -348,10 +360,14 @@ export function GroupImagesScreen({
                 space={space}
               />
             ))}
+            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
+              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
+            ))}
           </View>
         )}
       </PageStateBlock>
     </ScreenScaffold>
+    </View>
   );
 }
 
@@ -418,40 +434,8 @@ function hasImageOnlyFilter(filters: GroupResultFilterState): boolean {
 }
 
 const styles = StyleSheet.create({
-  summary: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.listCardGap,
-    justifyContent: 'space-between',
-    marginBottom: rhythm.microGap,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-  },
-  summaryCopy: {
+  host: {
     flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  subtitle: {
-    ...typography.textStyles.caption,
-    color: colors.text.secondary,
-  },
-  groupName: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  countPill: {
-    ...typography.textStyles.micro,
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    color: colors.primary.active,
-    overflow: 'hidden',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
   },
   filterBarWrap: {
     gap: rhythm.cardContentGap,
@@ -620,15 +604,20 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
     marginTop: rhythm.microGap,
   },
-  gridHeader: {
+  galleryHeading: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
     marginBottom: rhythm.microGap,
   },
-  gridTitle: {
-    ...typography.textStyles.sectionTitle,
+  galleryTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
+  },
+  galleryActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
   },
   selectAllButton: {
     backgroundColor: colors.primary.weak,

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { BatchImageOrganizePanel } from '../components/BatchImageOrganizePanel';
 import { AssetDetailRow } from '../components/AssetDetailRow';
@@ -147,6 +147,26 @@ export function TagResultScreen({
     scrollViewRef,
     selectableMediaTypes: ['image', 'video'],
   });
+
+  const swipeFilterDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return (
+          gs.dx < -6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (
+          gs.dx < -10 ||
+          (gs.dx < -6 && gs.vx < -0.18)
+        ) {
+          setIsFilterDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
+
   const selectedAssets = useMemo(
     () => selectableAssets.filter((image) => multiSelect.selectedImageIds.includes(image.id)),
     [selectableAssets, multiSelect.selectedImageIds]
@@ -243,6 +263,7 @@ export function TagResultScreen({
   }
 
   return (
+    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
     <ScreenScaffold
       backgroundVariant="tags"
       footer={footer}
@@ -252,17 +273,15 @@ export function TagResultScreen({
       scrollable
       title={tag ? `#${tag.name}` : '标签结果'}
     >
-      {tag ? (
-        <View style={styles.summary}>
-          <View style={styles.summaryCopy}>
-            <Text numberOfLines={1} style={styles.subtitle}>已排除回收站</Text>
-            <Text numberOfLines={1} style={styles.tagName}>#{tag.name}</Text>
-          </View>
-          <Text numberOfLines={1} style={styles.countText}>{images.length} 张</Text>
-        </View>
-      ) : null}
-
       <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>视图</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="宫格展示" selected={viewMode === 'grid'} onPress={() => setViewMode('grid')} />
+            <FilterOptionChip label="详细信息" selected={viewMode === 'detail'} onPress={() => setViewMode('detail')} />
+          </View>
+        </View>
+
         <View style={styles.drawerSections}>
           <Text style={styles.drawerSectionTitle}>状态 · 多选</Text>
           <View style={styles.filterOptionGrid}>
@@ -318,30 +337,25 @@ export function TagResultScreen({
         loadingTitle="正在读取标签结果"
         onRetry={reload}
       >
-        <View style={styles.gridHeader}>
-          <Text style={styles.gridTitle}>图片</Text>
-          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
-          <Pressable
-            accessibilityLabel={viewMode === 'detail' ? '切换为宫格展示' : '切换为详细信息展示'}
-            onPress={() => setViewMode(viewMode === 'detail' ? 'grid' : 'detail')}
-            style={({ pressed }) => [styles.viewModeButton, viewMode === 'detail' ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-          >
-            <Ionicons color={viewMode === 'detail' ? colors.primary.active : colors.text.secondary} name={viewMode === 'detail' ? 'list-outline' : 'grid-outline'} size={15} />
-          </Pressable>
-          <Pressable
-            disabled={selectableAssets.length === 0}
-            onPress={multiSelect.toggleSelectAll}
-            style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
-          >
-            <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="打开筛选"
-            onPress={() => setIsFilterDrawerOpen(true)}
-            style={({ pressed }) => [styles.viewModeButton, hasActiveFilters ? styles.viewModeButtonActive : null, pressed && styles.pressed]}
-          >
-            <Ionicons color={hasActiveFilters ? colors.primary.active : colors.text.secondary} name="funnel-outline" size={15} />
-          </Pressable>
+        <View style={styles.galleryHeading}>
+          <Text style={styles.galleryTitle}>{hasActiveFilters ? '筛选结果' : '全部素材'} · {images.length} 张</Text>
+          <View style={styles.galleryActions}>
+            {multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0 ? (
+              <Pressable
+                disabled={selectableAssets.length === 0}
+                onPress={multiSelect.toggleSelectAll}
+                style={({ pressed }) => [styles.selectAllButton, selectableAssets.length === 0 ? styles.disabled : null, pressed && selectableAssets.length > 0 ? styles.pressed : null]}
+              >
+                <Text style={styles.selectAllText}>{multiSelect.allSelected ? '取消全选' : '全选'}</Text>
+              </Pressable>
+            ) : null}
+            <SortMenuButton
+              hasActiveFilters={hasActiveFilters}
+              onChange={setSortOrder}
+              onFilterPress={() => setIsFilterDrawerOpen(true)}
+              orderBy={sortOrder}
+            />
+          </View>
         </View>
         {viewMode === 'detail' ? (
           <View {...swipeSelection.panHandlers} style={styles.detailList}>
@@ -353,6 +367,7 @@ export function TagResultScreen({
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
             ))}
@@ -361,19 +376,25 @@ export function TagResultScreen({
           <View {...swipeSelection.panHandlers} style={styles.grid}>
             {images.map((image) => (
               <ThumbnailTile
+                aspectRatio={componentTokens.thumbnail.squareAspectRatio}
                 image={image}
                 key={image.id}
                 onLayout={(event: any) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
                 onLongPress={() => handleImageLongPress(image)}
                 onPress={handleOpenImage}
                 selected={multiSelect.selectedImageIds.includes(image.id)}
+                isSelectionMode={multiSelect.isSelectionMode || multiSelect.selectedImageIds.length > 0}
                 space={space}
               />
+            ))}
+            {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
+              <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
             ))}
           </View>
         )}
       </PageStateBlock>
     </ScreenScaffold>
+    </View>
   );
 }
 
@@ -475,37 +496,8 @@ function hasImageOnlyFilter(filters: TagResultFilterState): boolean {
 }
 
 const styles = StyleSheet.create({
-  summary: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: rhythm.listCardGap,
-    justifyContent: 'space-between',
-    marginBottom: rhythm.microGap,
-    maxWidth: '100%',
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2],
-  },
-  summaryCopy: {
+  host: {
     flex: 1,
-    gap: rhythm.microGap,
-    minWidth: 0,
-  },
-  subtitle: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
-  },
-  tagName: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
-  },
-  countText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.active,
-    fontWeight: '500',
   },
   filterBarWrap: {
     gap: rhythm.cardContentGap,
@@ -675,15 +667,20 @@ const styles = StyleSheet.create({
     gap: rhythm.listCardGap,
     marginTop: rhythm.microGap,
   },
-  gridHeader: {
+  galleryHeading: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: rhythm.cardContentGap,
     justifyContent: 'space-between',
     marginBottom: rhythm.microGap,
   },
-  gridTitle: {
-    ...typography.textStyles.sectionTitle,
+  galleryTitle: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.primary,
+  },
+  galleryActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: rhythm.cardContentGap,
   },
   selectAllButton: {
     backgroundColor: colors.primary.weak,

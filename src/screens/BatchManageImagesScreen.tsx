@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
 
+import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
 import { AppDialog } from '../components/AppDialog';
 import { AlbumSaveDialog } from '../components/AlbumSaveDialog';
 import { LightFormSection } from '../components/LightFormSection';
@@ -111,13 +112,13 @@ export function BatchManageImagesScreen({
     }
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [selectedImageIds, setSelectedImageIds] = useState<number[]>(() => [...new Set(initialSelectedImageIds)]);
   const [mode, setMode] = useState<BatchMode>(initialMode);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(groupId ?? null);
   const [tagInput, setTagInput] = useState('');
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
-  const [isRuleMode, setIsRuleMode] = useState(false);
   const [activeRuleKeys, setActiveRuleKeys] = useState<BatchSelectionRuleKey[]>([]);
   const [activeRule, setActiveRule] = useState<BatchSelectionRulesResult | null>(null);
   const [isCreateGroupDialogVisible, setIsCreateGroupDialogVisible] = useState(false);
@@ -148,6 +149,25 @@ export function BatchManageImagesScreen({
     scrollViewRef,
     selectableMediaTypes: ['image'],
   });
+
+  const swipeFilterDrawerPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return (
+          gs.dx < -6 &&
+          Math.abs(gs.dx) > Math.abs(gs.dy) * 1.2
+        );
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (
+          gs.dx < -10 ||
+          (gs.dx < -6 && gs.vx < -0.18)
+        ) {
+          setIsFilterDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     setSelectedImageIds((current) => current.filter((imageId) => visibleImageIds.includes(imageId)));
@@ -641,24 +661,44 @@ export function BatchManageImagesScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="workflow" footer={footer} onBack={onBack} onScroll={swipeSelection.onScroll} scrollViewRef={scrollViewRef} scrollable title="批量管理">
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryIcon}>
-          <Ionicons color={colors.primary.default} name="albums-outline" size={22} />
+    <View style={styles.host} {...swipeFilterDrawerPanResponder.panHandlers}>
+    <ScreenScaffold backgroundVariant="workflow" decorativeTitle="Batch" footer={footer} onBack={onBack} onScroll={swipeSelection.onScroll} scrollViewRef={scrollViewRef} scrollable title={data?.ip ? `批量管理 · ${data.ip.name}` : '批量管理'}>
+
+      <AssetFilterDrawer visible={isFilterDrawerOpen} onClose={() => setIsFilterDrawerOpen(false)}>
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>快捷选择</Text>
+          <View style={styles.filterOptionGrid}>
+            <FilterOptionChip label="当前所有" selected={false} onPress={() => { selectByRule('visible'); setIsFilterDrawerOpen(false); }} />
+            <FilterOptionChip label="反选" selected={false} onPress={() => { selectByRule('invert'); setIsFilterDrawerOpen(false); }} />
+          </View>
         </View>
-        <View style={styles.summaryCopy}>
-          <Text numberOfLines={1} style={styles.summaryTitle}>{data?.ip?.name ?? '当前IP'}</Text>
-          <Text numberOfLines={2} style={styles.summaryMeta}>
-          {isScopedPile
-              ? `当前堆 ${images.length} 张，可批量整理`
-            : source === 'group-images'
-              ? `分组内 ${images.length} 张，可批量整理`
-              : importBatchId != null
-                ? `本次导入 ${images.length} 张，可批量整理`
-              : `当前 IP 共 ${images.length} 张，可批量整理`}
-          </Text>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>状态筛选</Text>
+          <View style={styles.filterOptionGrid}>
+            {source !== 'group-images' ? <FilterOptionChip label="未分组" selected={activeRuleKeys.includes('ungrouped')} onPress={() => { selectByRule('ungrouped'); setIsFilterDrawerOpen(false); }} /> : null}
+            <FilterOptionChip label="无标签" selected={activeRuleKeys.includes('untagged')} onPress={() => { selectByRule('untagged'); setIsFilterDrawerOpen(false); }} />
+          </View>
         </View>
-      </View>
+
+        <View style={styles.drawerSections}>
+          <Text style={styles.drawerSectionTitle}>规则模式</Text>
+          <View style={styles.filterOptionGrid}>
+            {BATCH_SELECTION_RULE_OPTIONS.filter((option) =>
+              option.key !== 'same-size' &&
+              option.key !== 'filename-prefix' &&
+              !(source === 'group-images' && option.key === 'ungrouped')
+            ).map((option) => (
+              <FilterOptionChip
+                key={option.key}
+                label={option.label}
+                onPress={() => { selectByRule(option.key); setIsFilterDrawerOpen(false); }}
+                selected={activeRuleKeys.includes(option.key)}
+              />
+            ))}
+          </View>
+        </View>
+      </AssetFilterDrawer>
 
       <PageStateBlock
         emptyActionLabel={commonButtonCopy.importImages}
@@ -673,37 +713,21 @@ export function BatchManageImagesScreen({
         onEmptyAction={onImportImages}
         onRetry={reload}
       >
-        <View style={styles.topBar}>
-          <Text style={styles.selectionText}>已选择 {selectedCount} 张</Text>
-          <SortMenuButton onChange={setSortOrder} orderBy={sortOrder} />
-          <Pressable onPress={handleSelectAllToggle} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
-            <Text style={styles.linkText}>{allSelected ? '取消全选' : '全选'}</Text>
-          </Pressable>
+        <View style={styles.galleryHeading}>
+          <Text style={styles.galleryTitle}>已选择 {selectedCount} 张</Text>
+          <View style={styles.galleryActions}>
+            <Pressable onPress={handleSelectAllToggle} style={({ pressed }) => [styles.selectAllButton, pressed && styles.pressed]}>
+              <Text style={styles.selectAllText}>{allSelected ? '取消全选' : '全选'}</Text>
+            </Pressable>
+            <SortMenuButton
+              hasActiveFilters={activeRuleKeys.length > 0}
+              onChange={setSortOrder}
+              onFilterPress={() => setIsFilterDrawerOpen(true)}
+              orderBy={sortOrder}
+            />
+          </View>
         </View>
 
-        <View style={styles.ruleWrap}>
-          <RuleChip label="当前筛选" onPress={() => selectByRule('visible')} />
-          {source !== 'group-images' ? <RuleChip label="未分组" onPress={() => selectByRule('ungrouped')} selected={activeRuleKeys.includes('ungrouped')} /> : null}
-          <RuleChip label="无标签" onPress={() => selectByRule('untagged')} selected={activeRuleKeys.includes('untagged')} />
-          <RuleChip label="反选" onPress={() => selectByRule('invert')} />
-          <RuleChip label="规则模式" onPress={() => setIsRuleMode((current) => !current)} selected={isRuleMode} />
-        </View>
-        {isRuleMode ? (
-          <View style={styles.ruleModePanel}>
-            {BATCH_SELECTION_RULE_OPTIONS.filter((option) =>
-              option.key !== 'same-size' &&
-              option.key !== 'filename-prefix' &&
-              !(source === 'group-images' && option.key === 'ungrouped')
-            ).map((option) => (
-              <RuleChip
-                key={option.key}
-                label={option.label}
-                onPress={() => selectByRule(option.key)}
-                selected={activeRuleKeys.includes(option.key)}
-              />
-            ))}
-          </View>
-        ) : null}
         {activeRule ? (
           <View style={styles.activeRulePanel}>
             <Text numberOfLines={2} style={styles.activeRuleText}>{activeRule.label} · {activeRule.description}</Text>
@@ -811,6 +835,7 @@ export function BatchManageImagesScreen({
         <View {...swipeSelection.panHandlers} style={[styles.grid, mode !== 'idle' ? styles.gridAfterPanel : null]}>
           {images.map((image) => (
             <ThumbnailTile
+              aspectRatio={componentTokens.thumbnail.squareAspectRatio}
               image={image}
               key={image.id}
               onLayout={(event) => swipeSelection.registerItemLayout(image.id, event.nativeEvent.layout)}
@@ -823,9 +848,13 @@ export function BatchManageImagesScreen({
               space={space}
             />
           ))}
+          {Array.from({ length: (3 - (images.length % 3)) % 3 }).map((_, i) => (
+            <View key={`dummy-${i}`} style={{ width: '31.8%' }} />
+          ))}
         </View>
       </PageStateBlock>
     </ScreenScaffold>
+    </View>
     <AppDialog
       danger
       message={`选中的 ${selectedCount} 张图片会进入回收站，原图和缩略图仍保留在本地。清空回收站前都可以恢复。`}
@@ -956,10 +985,11 @@ function BatchActionButton({
   );
 }
 
-function RuleChip({ label, onPress, selected = false }: { label: string; onPress: () => void; selected?: boolean }) {
+function FilterOptionChip({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.ruleChip, selected ? styles.ruleChipSelected : null, pressed && styles.pressed]}>
-      <Text style={[styles.ruleChipText, selected ? styles.ruleChipSelectedText : null]}>{label}</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.filterOptionChip, selected ? styles.filterOptionChipActive : null, pressed && styles.pressed]}>
+      <Text numberOfLines={1} style={[styles.filterOptionText, selected ? styles.filterOptionTextActive : null]}>{label}</Text>
+      {selected ? <Ionicons color={colors.primary.active} name="checkmark-circle" size={14} /> : null}
     </Pressable>
   );
 }
@@ -977,87 +1007,68 @@ function getFilenamePrefix(filename: string): string | null {
 }
 
 const styles = StyleSheet.create({
-  summaryCard: {
+  host: {
+    flex: 1,
+  },
+  drawerSections: {
+    padding: spacing[3],
+  },
+  drawerSectionTitle: {
+    ...typography.textStyles.bodyStrong,
+    marginBottom: spacing[2],
+  },
+  filterOptionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: rhythm.microGap,
+  },
+  filterOptionChip: {
     alignItems: 'center',
     backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    gap: rhythm.cardContentGap,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-  },
-  summaryIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.primary.weak,
-    borderRadius: radius.pill,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  summaryCopy: {
-    flex: 1,
     gap: rhythm.microGap,
-    minWidth: 0,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
   },
-  summaryTitle: {
-    ...typography.textStyles.bodyStrong,
-    color: colors.text.title,
+  filterOptionChipActive: {
+    backgroundColor: colors.primary.weak,
   },
-  summaryMeta: {
-    ...typography.textStyles.micro,
-    color: colors.text.secondary,
+  filterOptionText: {
+    ...typography.textStyles.caption,
   },
-  topBar: {
+  filterOptionTextActive: {
+    color: colors.primary.active,
+    fontWeight: '600',
+  },
+  galleryHeading: {
     alignItems: 'center',
-    backgroundColor: 'transparent',
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: rhythm.listCardGap,
     paddingHorizontal: spacing[1],
-    paddingVertical: spacing[1],
   },
-  ruleWrap: {
+  galleryTitle: {
+    ...typography.textStyles.bodyStrong,
+  },
+  galleryActions: {
+    alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.microGap,
-    marginBottom: rhythm.listCardGap,
+    gap: rhythm.cardContentGap,
   },
-  ruleModePanel: {
-    backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+  selectAllButton: {
+    padding: spacing[1],
+  },
+  selectAllText: {
+    ...typography.textStyles.caption,
+    color: colors.primary.default,
+  },
+  viewModeButton: {
+    padding: spacing[1],
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary.weak,
     borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: rhythm.microGap,
-    marginBottom: rhythm.listCardGap,
-    padding: spacing[2],
-  },
-  ruleChip: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    minHeight: 30,
-    justifyContent: 'center',
-    paddingHorizontal: spacing[2],
-  },
-  ruleChipSelected: {
-    backgroundColor: colors.primary.default,
-    borderColor: colors.primary.default,
-  },
-  ruleChipText: {
-    ...typography.textStyles.micro,
-    color: colors.primary.active,
-    fontWeight: '600',
-  },
-  ruleChipSelectedText: {
-    color: colors.text.inverse,
   },
   activeRulePanel: {
     alignItems: 'center',
@@ -1085,25 +1096,11 @@ const styles = StyleSheet.create({
     color: colors.primary.default,
     fontWeight: '700',
   },
-  selectionText: {
-    ...typography.textStyles.bodyStrong,
-  },
-  linkButton: {
-    paddingVertical: spacing[1],
-  },
-  linkText: {
-    ...typography.textStyles.caption,
-    color: colors.primary.default,
-    fontWeight: '500',
-  },
   optionList: {
     gap: rhythm.microGap,
     paddingVertical: spacing[2],
   },
   createGroupRow: {
-    alignItems: 'center',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
     borderRadius: radius.md,
     borderStyle: 'dashed',
     borderWidth: StyleSheet.hairlineWidth,
@@ -1232,9 +1229,9 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
   grid: {
-    columnGap: rhythm.compactGridGap,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
     rowGap: rhythm.compactGridGap,
   },
   gridAfterPanel: {

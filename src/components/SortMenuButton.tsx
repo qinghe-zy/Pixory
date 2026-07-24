@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ImageSortOrder } from '../database';
-import { colors, radius, spacing, typography } from '../design/tokens';
+import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 
 export const IMAGE_SORT_OPTIONS: Array<{ value: ImageSortOrder; label: string }> = [
   { value: 'lastViewedAtDesc', label: '最近查看' },
@@ -25,23 +25,53 @@ export function getImageSortLabel(orderBy: ImageSortOrder) {
 export function SortMenuButton({
   orderBy,
   onChange,
+  onFilterPress,
+  hasActiveFilters,
 }: {
   orderBy: ImageSortOrder;
   onChange: (orderBy: ImageSortOrder) => void;
+  onFilterPress?: () => void;
+  hasActiveFilters?: boolean;
+  filterIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
   return (
     <View style={styles.wrap}>
-      <Pressable
-        accessibilityLabel="选择素材排序"
-        onPress={() => setSortMenuVisible((visible) => !visible)}
-        style={({ pressed }) => [styles.button, sortMenuVisible && styles.buttonActive, pressed && styles.pressed]}
-      >
-        <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="swap-vertical-outline" size={14} />
-        <Text numberOfLines={1} style={[styles.text, sortMenuVisible && styles.textActive]}>{getImageSortLabel(orderBy)}</Text>
-        <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
-      </Pressable>
+      <View style={styles.pillContainer}>
+        <Pressable
+          accessibilityLabel="选择素材排序"
+          onPress={() => setSortMenuVisible((visible) => !visible)}
+          style={({ pressed }) => [
+            styles.sortButton,
+            sortMenuVisible && styles.buttonActive,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text numberOfLines={1} style={[styles.text, sortMenuVisible && styles.textActive]}>
+            {getImageSortLabel(orderBy)}
+          </Text>
+          <Ionicons color={sortMenuVisible ? colors.primary.active : colors.text.secondary} name="chevron-down" size={13} />
+        </Pressable>
+
+        {onFilterPress && (
+          <>
+            <View style={styles.divider} />
+            <Pressable
+              accessibilityLabel="打开筛选"
+              onPress={onFilterPress}
+              style={({ pressed }) => [
+                styles.filterButton,
+                hasActiveFilters && styles.buttonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons color={hasActiveFilters ? colors.primary.active : colors.text.secondary} name={filterIcon ?? 'funnel-outline'} size={14} />
+            </Pressable>
+          </>
+        )}
+      </View>
+
       {sortMenuVisible ? (
         <>
           <Pressable accessibilityLabel="关闭排序选择" onPress={() => setSortMenuVisible(false)} style={styles.dismissLayer} />
@@ -75,20 +105,37 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 20,
   },
-  button: {
-    alignItems: 'center',
+  pillContainer: {
+    ...shadows.sm,
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
+    alignItems: 'center',
+    height: 32,
+    overflow: 'hidden',
+  },
+  sortButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing[1],
-    minHeight: 32,
-    paddingHorizontal: spacing[2],
+    height: '100%',
+    paddingHorizontal: spacing[3],
+  },
+  filterButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    paddingHorizontal: spacing[3],
+  },
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    height: '40%',
+    backgroundColor: colors.border.subtle,
   },
   buttonActive: {
     backgroundColor: colors.primary.weak,
-    borderColor: colors.primary.light,
   },
   text: {
     ...typography.textStyles.micro,
@@ -107,8 +154,9 @@ const styles = StyleSheet.create({
     zIndex: 21,
   },
   menu: {
+    ...shadows.floating,
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing[1],
