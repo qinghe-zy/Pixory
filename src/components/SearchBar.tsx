@@ -49,7 +49,7 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
         style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}
       >
         <BlurView intensity={50} style={styles.blur} tint="light">
-          <LiquidGlassBezel contentIntensity="light" radius={componentTokens.searchBar.radius} />
+          <LiquidGlassBezel radius={componentTokens.searchBar.radius} />
           <View style={innerStyle}>
             {content}
           </View>
@@ -64,7 +64,7 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
         <View style={innerStyle}>
           {content}
         </View>
-        <LiquidGlassBezel contentIntensity="light" radius={componentTokens.searchBar.radius} />
+        <LiquidGlassBezel radius={componentTokens.searchBar.radius} />
       </BlurView>
     </View>
   );
@@ -73,6 +73,8 @@ export function SearchBar({ value, onChangeText, onFocus, onPress, placeholder }
 const styles = StyleSheet.create({
   wrapper: {
     ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.15,
     borderRadius: componentTokens.searchBar.radius,
   },
   blur: {
