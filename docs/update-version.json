@@ -3,14 +3,14 @@
   "versionCode": 270,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.6.7 发布。可前往官网下载区获取最新版，修复了闪退问题，优化了应用全局滑动逻辑。",
+  "message": "Pixory 2.6.8 发布。可前往官网下载区获取最新版，修复了闪退问题，优化了应用全局滑动逻辑。",
   "detailLines": [
     "⚡ 修复了热更新后可能导致 Rendered more hooks 闪退的问题",
     "🧠 优化了全局左滑/右滑进入不同页面的手势切换体验",
     "📦 修复了部分组件的 UI 样式细节"
   ],
-  "latestVersion": "2.6.7",
-  "latestVersionCode": 269,
+  "latestVersion": "2.6.8",
+  "latestVersionCode": 270,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 重构主页面 StrictPager，解决防误触和高度塌陷问题。"
 }
