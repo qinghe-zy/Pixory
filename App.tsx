@@ -15,6 +15,7 @@ import { ArchiveReaderScreen } from './src/screens/ArchiveReaderScreen';
 import { BackupExportManagerScreen } from './src/screens/BackupExportManagerScreen';
 import { BackupScreen } from './src/screens/BackupScreen';
 import { BottomTabBar, type RootTabKey } from './src/components/BottomTabBar';
+import { StrictPager } from './src/components/StrictPager';
 import { PersonalUnlockModal } from './src/components/PersonalUnlockModal';
 import { PrimaryButton } from './src/components/PrimaryButton';
 import { clearPersonalImageCache } from './src/components/SecureImage';
@@ -1982,19 +1983,16 @@ export default function App() {
     
     content = (
       <FloatingFooterProvider>
-        <RNGHScrollView
-          ref={rootTabsScrollViewRef}
-          horizontal
-          pagingEnabled
-          scrollEnabled={true}
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          directionalLockEnabled
-          contentOffset={{ x: currentRoute.tab ? ROOT_TABS.indexOf(currentRoute.tab) * sw : 0, y: 0 }}
-          onMomentumScrollEnd={handleRootScrollEnd}
-          scrollEventThrottle={16}
+        <StrictPager
+          activeIndex={currentRoute.tab ? ROOT_TABS.indexOf(currentRoute.tab) : 0}
+          onChange={(index) => {
+            const tab = ROOT_TABS[index];
+            if (tab && currentRoute.tab !== tab) {
+              switchRootTab(tab);
+            }
+          }}
         >
-          <View style={{ width: sw }}>
+          <View style={{ width: sw, flex: 1 }}>
             {renderedTabs.has('home') ? (
               <HomeLibraryScreen
                 initialFilter={currentRoute.initialFilter ?? 'all'}
@@ -2010,7 +2008,7 @@ export default function App() {
               />
             ) : null}
           </View>
-          <View style={{ width: sw }}>
+          <View style={{ width: sw, flex: 1 }}>
             {renderedTabs.has('organize') ? (
               <OrganizeScreen
                 space={activeSpace}
@@ -2025,7 +2023,7 @@ export default function App() {
               />
             ) : null}
           </View>
-          <View style={{ width: sw }}>
+          <View style={{ width: sw, flex: 1 }}>
             {renderedTabs.has('ai') ? (
               <AiHomeScreen
                 onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: activeSpace })}
@@ -2060,7 +2058,7 @@ export default function App() {
               />
             ) : null}
           </View>
-          <View style={{ width: sw }}>
+          <View style={{ width: sw, flex: 1 }}>
             {renderedTabs.has('me') ? (
               <MeScreen
                 space={activeSpace}
@@ -2081,7 +2079,7 @@ export default function App() {
               />
             ) : null}
           </View>
-        </RNGHScrollView>
+        </StrictPager>
       </FloatingFooterProvider>
     );
   }
