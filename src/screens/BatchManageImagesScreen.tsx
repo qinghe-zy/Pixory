@@ -17,7 +17,7 @@ import { commonButtonCopy } from '../constants/copy';
 import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../constants/groups';
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, importTemplateRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type ImageSortOrder, type ImportTemplateRecord, type IpRecord, type PixorySpace } from '../database';
-import { colors, componentTokens, metrics, radius, rhythm, spacing, typography } from '../design/tokens';
+import { colors, componentTokens, metrics, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useSubmitState } from '../hooks/useSubmitState';
 import { useSwipeGridSelection } from '../hooks/useSwipeGridSelection';
@@ -1238,10 +1238,6 @@ const styles = StyleSheet.create({
     marginTop: rhythm.listCardGap,
   },
   footerWrap: {
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
     gap: rhythm.microGap,
     paddingHorizontal: spacing[2],
     paddingVertical: spacing[1],
@@ -1284,9 +1280,10 @@ const styles = StyleSheet.create({
     gap: rhythm.microGap,
   },
   batchActionCard: {
+    ...shadows.sm,
     alignItems: 'center',
     backgroundColor: colors.background.surface,
-    borderColor: colors.border.subtle,
+    borderColor: colors.border.default,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',

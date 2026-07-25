@@ -19,6 +19,8 @@ import { colors, radius, rhythm, shadows, spacing, typography } from '../design/
 import { useScreenLoad } from '../hooks/useScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
+import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
+import { OptionSelectRow } from '../components/OptionSelectRow';
 
 interface GlobalGroupsScreenProps {
   space?: PixorySpace;
@@ -50,7 +52,7 @@ export function GlobalGroupsScreen({
   const [deleteGroup, setDeleteGroup] = useState<GlobalGroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
-  const [scopeMenuVisible, setScopeMenuVisible] = useState(false);
+  const [isIpDrawerOpen, setIsIpDrawerOpen] = useState(false);
   const { data: groups = [], isLoading, errorMessage, reload } = useScreenLoad<GlobalGroupListItem[]>(
     () => runWithDatabaseSpace(space, (db) => groupRepository.findOverview(db)),
     [refreshToken, space],
@@ -65,7 +67,7 @@ export function GlobalGroupsScreen({
 
   const ipScopes = [...new Map(groups.map((group) => [group.ipId, { id: group.ipId, name: group.ipName }])).values()];
   const visibleGroups = selectedIpId == null ? groups : groups.filter((group) => group.ipId === selectedIpId);
-  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? '当前 IP';
+  const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? '全部 IP';
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
     items: visibleGroups.filter((group) => group.type === option.value),
@@ -96,9 +98,21 @@ export function GlobalGroupsScreen({
     })();
   }
 
+  const headerRightAction = (
+    <Pressable onPress={() => setIsIpDrawerOpen(true)} style={({ pressed }) => [styles.headerFilterBtn, pressed && styles.pressed]}>
+      <BlurView intensity={50} style={styles.headerFilterBlur} tint="light">
+        <LiquidGlassBezel radius={16} />
+        <View style={styles.headerFilterInner}>
+          <Text numberOfLines={1} style={styles.headerFilterText}>{selectedIpName}</Text>
+          <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
+        </View>
+      </BlurView>
+    </Pressable>
+  );
+
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} scrollable title="分组" titleSlot={titleSlot}>
+    <ScreenScaffold backgroundVariant="archive" decorativeTitle="Groups" footer={footer} rightAction={headerRightAction} scrollable title="分组" titleSlot={titleSlot}>
       <PageStateBlock
         emptyActionLabel={onCreateFirstIp ? '去首页创建 IP' : undefined}
         emptyDescription="分组需要先归属于一个 IP。先创建或打开 IP，再在详情页新建分组。"
@@ -114,10 +128,6 @@ export function GlobalGroupsScreen({
         onRetry={reload}
       >
         <View style={styles.list}>
-          <Pressable onPress={() => setScopeMenuVisible(true)} style={({ pressed }) => [styles.scopePill, pressed && styles.pressed]}>
-            <Text numberOfLines={1} style={styles.scopePillText}>{selectedIpName}</Text>
-            <Ionicons color={colors.text.secondary} name="chevron-down" size={14} />
-          </Pressable>
           {groupedSections.map((section) => (
             <View key={section.value} style={styles.sectionBlock}>
               <View style={styles.sectionHeader}>
@@ -185,20 +195,27 @@ export function GlobalGroupsScreen({
       space={space}
       visible={Boolean(renameGroup)}
     />
-    <AppActionSheet
-      items={[
-        { key: 'all', label: '全部 IP', icon: 'albums-outline', onPress: () => setSelectedIpId(null) },
-        ...ipScopes.map((ip) => ({
-          key: String(ip.id),
-          label: ip.name,
-          icon: 'folder-outline' as const,
-          onPress: () => setSelectedIpId(ip.id),
-        })),
-      ]}
-      onClose={() => setScopeMenuVisible(false)}
-      title="筛选 IP"
-      visible={scopeMenuVisible}
-    />
+    <AssetFilterDrawer onClose={() => setIsIpDrawerOpen(false)} visible={isIpDrawerOpen}>
+      <OptionSelectRow
+        label="全部 IP"
+        onPress={() => {
+          setSelectedIpId(null);
+          setIsIpDrawerOpen(false);
+        }}
+        selected={selectedIpId === null}
+      />
+      {ipScopes.map((ip) => (
+        <OptionSelectRow
+          key={ip.id}
+          label={ip.name}
+          onPress={() => {
+            setSelectedIpId(ip.id);
+            setIsIpDrawerOpen(false);
+          }}
+          selected={selectedIpId === ip.id}
+        />
+      ))}
+    </AssetFilterDrawer>
     <AppDialog
       danger
       message={deleteGroup ? `删除「${deleteGroup.name}」后，分组内图片会保留并移动到未分组。` : ''}
@@ -237,29 +254,37 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: rhythm.entryCardGap,
+    paddingTop: spacing[4],
   },
   emptyGuideOffset: {
     paddingTop: spacing[8],
   },
-  scopePill: {
-    alignItems: 'center',
-    ...typography.textStyles.caption,
-    alignSelf: 'flex-start',
-    backgroundColor: colors.background.input,
-    borderColor: colors.border.subtle,
-    borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    color: colors.text.primary,
-    flexDirection: 'row',
-    gap: spacing[1],
-    overflow: 'hidden',
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1],
+  headerFilterBtn: {
+    ...shadows.sm,
+    shadowColor: '#3A2E1D',
+    shadowOpacity: 0.1,
+    borderRadius: 16,
+    height: 32,
+    maxWidth: 140,
+    minWidth: 80,
   },
-  scopePillText: {
-    ...typography.textStyles.caption,
-    color: colors.text.primary,
-    maxWidth: 220,
+  headerFilterBlur: {
+    borderRadius: 16,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  headerFilterInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    gap: 4,
+    flex: 1,
+  },
+  headerFilterText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.title,
+    fontSize: 13,
+    flexShrink: 1,
   },
   sectionBlock: {
     gap: rhythm.listCardGap,

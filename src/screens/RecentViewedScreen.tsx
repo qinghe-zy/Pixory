@@ -308,6 +308,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 32,
   },
+  selectAllButton: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.background.surface,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.subtle,
+  },
+  selectAllText: {
+    ...typography.textStyles.bodyStrong,
+    color: colors.text.secondary,
+    fontSize: 13,
+  },
   viewModeButtonActive: {
     backgroundColor: colors.primary.weak,
     borderColor: colors.primary.light,

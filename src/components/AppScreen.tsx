@@ -60,6 +60,7 @@ export function AppScreen({
       onScroll={onScroll}
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={false}
+      directionalLockEnabled
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bodyBottomPadding }, contentStyle]}
       style={styles.flex}
     >

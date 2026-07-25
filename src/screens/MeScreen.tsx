@@ -358,7 +358,7 @@ export function MeScreen({
         <ContentCard style={styles.toolsGroup}>
           <View style={styles.toolsGrid}>
             <Pressable onPress={() => handleEntryPress('trash')} style={({ pressed }) => [styles.toolGridItem, pressed && styles.pressed]}>
-              <View style={[styles.toolIconWrap, styles.trashIconWrap]}>
+              <View style={styles.toolIconWrap}>
                 <Ionicons color={colors.semantic.danger} name="trash-outline" size={22} />
               </View>
               <Text style={styles.toolTitle}>回收站</Text>
@@ -504,11 +504,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   avatar: {
+    ...shadows.sm,
     alignItems: 'center',
     backgroundColor: colors.primary.weak,
-    borderColor: colors.background.surface,
+    borderColor: colors.border.default,
     borderRadius: 34,
-    borderWidth: 3,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 68,
     justifyContent: 'center',
     overflow: 'hidden',
@@ -572,10 +573,13 @@ const styles = StyleSheet.create({
     color: colors.primary.active,
   },
   storageProgressBar: {
+    ...shadows.sm,
     flexDirection: 'row',
-    height: 6,
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.background.empty,
+    borderColor: colors.border.default,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   storageProgressSegment: {
@@ -686,8 +690,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   toolIconWrap: {
+    ...shadows.sm,
     alignItems: 'center',
-    backgroundColor: colors.primary.weak,
+    backgroundColor: colors.background.surface,
+    borderColor: colors.border.default,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 24,
     height: 48,
     justifyContent: 'center',
@@ -722,9 +729,7 @@ const styles = StyleSheet.create({
     ...typography.textStyles.body,
     flex: 1,
   },
-  trashIconWrap: {
-    backgroundColor: colors.semantic.dangerBackground,
-  },
+
   storageGlyph: {
     alignItems: 'center',
     height: 27,
