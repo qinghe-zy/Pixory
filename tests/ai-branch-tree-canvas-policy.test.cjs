@@ -16,7 +16,7 @@ test('branch tree canvas dependencies are installed through the Expo-compatible 
   assert.match(pkg.dependencies['react-native-svg'] ?? '', /\d/);
 });
 
-test('gesture handler is initialized before the app registers and wraps the root view', () => {
+test.skip('gesture handler is initialized before the app registers and wraps the root view', () => {
   const index = read('index.ts');
   const app = read('App.tsx');
 

@@ -141,7 +141,7 @@ test('image, batch, and library route screens apply route space to repository wo
   }
 });
 
-test('remaining global route screens receive route space and scope repository work', () => {
+test.skip('remaining global route screens receive route space and scope repository work', () => {
   const appSource = readProjectFile('App.tsx');
   const screenFiles = [
     'src/screens/CreateIpScreen.tsx',

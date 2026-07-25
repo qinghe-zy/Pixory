@@ -1,6 +1,6 @@
 {
-  "version": "2.6.7",
-  "versionCode": 269,
+  "version": "2.6.8",
+  "versionCode": 270,
   "enabled": true,
   "forceUpdate": false,
   "message": "Pixory 2.6.7 发布。可前往官网下载区获取最新版，修复了闪退问题，优化了应用全局滑动逻辑。",
@@ -11,5 +11,6 @@
   ],
   "latestVersion": "2.6.7",
   "latestVersionCode": 269,
-  "downloadUrl": "https://mist01.com/#download"
+  "downloadUrl": "https://mist01.com/#download",
+  "changelog": "1. 重构主页面 StrictPager，解决防误触和高度塌陷问题。"
 }

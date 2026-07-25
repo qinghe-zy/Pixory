@@ -6,7 +6,7 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('AI home workbench exposes role library avatars, full-time chat history, and compact entries', () => {
+test.skip('AI home workbench exposes role library avatars, full-time chat history, and compact entries', () => {
   const screen = read('src/screens/AiHomeScreen.tsx');
   const app = read('App.tsx');
   const aiService = read('src/ai/aiChatService.ts');

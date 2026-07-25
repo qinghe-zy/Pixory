@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.6.7",
+    "version": "2.6.8",
     "orientation": "portrait",
     "icon": "./docs/assets/og-cover.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 269,
+      "versionCode": 270,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./docs/assets/og-cover.png",
@@ -38,7 +38,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": "2.6.7",
+    "runtimeVersion": "2.6.8",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
@@ -52,7 +52,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Pixory 需要访问相册以便导入图片和选择本地头像。",
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u5bfc\u5165\u56fe\u7247\u548c\u9009\u62e9\u672c\u5730\u5934\u50cf\u3002",
           "microphonePermission": false
         }
       ],
@@ -60,8 +60,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Pixory 需要访问相册以便保存原图。",
-          "savePhotosPermission": "Pixory 需要写入相册以便保存原图。",
+          "photosPermission": "Pixory \u9700\u8981\u8bbf\u95ee\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
+          "savePhotosPermission": "Pixory \u9700\u8981\u5199\u5165\u76f8\u518c\u4ee5\u4fbf\u4fdd\u5b58\u539f\u56fe\u3002",
           "granularPermissions": [
             "photo"
           ]
