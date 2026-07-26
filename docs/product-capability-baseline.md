@@ -126,6 +126,21 @@ Pixory 当前仍以 Android-first 的陪伴型 AI 聊天为产品中心，IP 素
 - 真实文件导入、备份、清空/重装、恢复和 URI 可用性。
 - 不同 provider 的网络错误、限流、超时和流式协议差异。
 
+### 6.4 AI 记忆上下文设计问题清单（追加审查：2026-07-26）
+
+本节只记录当前源码审查发现的问题，不表示已经修复。问题关闭前，应补充对应实现、回归测试和验证证据。
+
+| 编号 | 级别 | 状态 | 问题 | 证据入口与影响 |
+| --- | --- | --- | --- | --- |
+| AIMEM-001 | P1 | 待修复 | 默认历史窗口为 30 轮，但摘要压缩要到未压缩轮数超过 50 才触发；在 31～50 轮期间，早期对话可能既不在历史窗口也不在摘要中。用户把历史窗口调小后，缺口会进一步扩大。 | `src/ai/aiContextSettings.ts`、`src/ai/aiMemorySummaryService.ts`。会话事件、关系状态和情绪连续性可能丢失，FTS 只能按关键词偶然找回。 |
+| AIMEM-002 | P1 | 待修复 | 自动画像、本地降级摘要和自动记忆会进入 `memory_snapshot` 的 System 前缀；当前安全说明不能阻止历史文本中的祈使句或提示注入内容在后续请求中获得更高通道优先级。 | `src/ai/promptBuilder.ts`、`src/ai/aiMemorySummaryService.ts`、`src/ai/aiMemoryProfileService.ts`。过去的对话内容可能污染角色规则、安全边界或当前回复行为。 |
+| AIMEM-003 | P1 | 待修复 | 记忆来源分支的可见性只在来源消息属于当前线程时进行判断；来源属于其他线程时会直接视为可见。共享 IP/角色/知识库记忆因此缺少来源分支语义。 | `src/database/repositories/aiThreadRepository.ts` 中的 `buildMemorySourceVisibilityClause`。废弃分支产生的共享记忆可能进入其他线程。 |
+| AIMEM-004 | P2 | 待修复 | 动态记忆检索存在两套实现；主聊天链路使用 `aiChatService.ts` 内的实现，而带有显式 scope 优先级的实现位于 `aiMemoryService.ts`，未成为唯一运行时入口。 | `src/ai/aiChatService.ts`、`src/ai/aiMemoryService.ts`。实际运行时可能让全局/低优先级记忆凭相关性或重要度挤过线程/IP 记忆；现有策略测试可能覆盖错实现。 |
+| AIMEM-005 | P2 | 待修复 | 稳定记忆快照与动态记忆检索没有按记忆 ID 去重，同一条记忆可能在 System 稳定前缀和 User 动态上下文中重复注入。 | `src/ai/aiMemoryService.ts`、`src/ai/promptBuilder.ts`。浪费上下文预算，并放大某条记忆对模型行为的影响。 |
+| AIMEM-006 | P2 | 待修复 | `profileText` 同时承担自动生成画像和用户手动画像文本；自动维护会覆盖该字段，下一次维护又会把生成文本作为“用户手动画像”输入。画像 JSON 也只做浅层校验。 | `src/ai/aiMemoryProfileService.ts`。用户确认内容与模型推断内容无法稳定区分，模型返回形状异常时维护任务可能失败。 |
+| AIMEM-007 | P2 | 待修复 | 数据模型支持 role/knowledge_base 作用域，但常规记忆提示词和抽取链路只允许 ip/thread，记忆看板也没有对应的创建/治理入口。 | `src/ai/aiMemoryReconciliationService.ts`、`src/ai/aiMemoryCaptureService.ts`、`src/screens/AiMemoryBoardScreen.tsx`。作用域设计与实际产品能力不一致，相关字段主要停留在导入或边缘路径。 |
+| AIMEM-008 | P2 | 待清理/确认 | `ai_thread_summaries` 会被维护流程写入，但主提示词实际读取的是 `ai_thread_summary_segments`；两套摘要模型的职责和生命周期没有完全收敛。 | `src/database/schema.ts`、`src/database/repositories/aiThreadRepository.ts`、`src/ai/aiMemoryCaptureService.ts`、`src/ai/aiMemoryService.ts`。增加维护复杂度，容易出现“已生成但未参与上下文”的假闭环。 |
+
 ## 7. 2026-07-13 验证基线
 
 源码审计完成时已经执行：

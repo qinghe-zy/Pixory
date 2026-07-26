@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiBranchScope, AiMemoryRecord, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
-import { saveRecentMemoryCaptures, shouldRunImmediateMemoryCapture, type MemoryCaptureNoticeItem } from './aiMemoryService';
+import { saveRecentMemoryCaptures, type MemoryCaptureNoticeItem } from './aiMemoryService';
 import {
   buildMemoryReconciliationPrompt,
   normalizeMemoryContentForReconciliation,
@@ -13,6 +13,7 @@ import {
 } from './aiMemoryReconciliationService';
 import { emptyMaintenanceStepResult, type MemoryMaintenanceStepResult } from './aiMemorySummaryService';
 import type { AiThreadRecord } from './types';
+import { MemoryFacade } from './memory/memoryFacade';
 
 const SUMMARY_DECISION_LIMIT = 8;
 const MEMORY_MODEL_CONTEXT_LIMIT = 18;
@@ -36,6 +37,15 @@ function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
   const random = Math.random().toString(36).slice(2, 10);
   return `${prefix}_${timestamp}_${random}`;
+}
+
+function hashMemoryCandidate(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
 }
 
 const normalizeMemoryContent = normalizeMemoryContentForReconciliation;
@@ -201,35 +211,6 @@ function allowedMemoryScopes(thread: AiThreadRecord): Array<{ scope: AiMemoryRec
   return scopes;
 }
 
-async function createMemoryFromCandidate(db: SQLiteDatabase, input: {
-  candidate: MemoryCandidate;
-  sourceMessageId: string;
-  space: PixorySpace;
-  thread: AiThreadRecord;
-  reason?: string | null;
-}): Promise<AiMemoryRecord | null> {
-  const scopeId = scopeIdForMemoryCandidate(input.thread, input.candidate);
-  if (input.candidate.scope === 'global' || !scopeId) {
-    return null;
-  }
-  const normalizedContent = normalizeMemoryContent(input.candidate.content);
-  const memory = await aiThreadRepository.createMemory(db, {
-    confidence: input.candidate.confidence,
-    content: input.candidate.content,
-    id: createAiId('aimem'),
-    importance: input.candidate.importance,
-    mergeReason: input.reason ?? null,
-    normalizedContent,
-    reconcileSourceMessageId: input.sourceMessageId,
-    scope: input.candidate.scope,
-    scopeId,
-    sourceMessageId: input.sourceMessageId,
-    space: input.space,
-    type: input.candidate.type,
-  });
-  return memory;
-}
-
 function candidateFromAddOperation(operation: AiMemoryReconciliationOperation): MemoryCandidate | null {
   if (operation.op !== 'add' || !operation.content || !operation.scope || !operation.type) {
     return null;
@@ -256,8 +237,9 @@ export async function captureDeepMemoryForExchange(input: {
   if (input.allowIrreversibleImportEffects === false) {
     return emptyMaintenanceStepResult();
   }
-  const exchangeText = `${input.userMessage.content}`;
-  const shouldCaptureImmediately = shouldRunImmediateMemoryCapture(exchangeText);
+  // Explicit remember/correction/forget is already handled by the local deterministic path.
+  // The remote maintenance model is therefore cadence-bound as well, keeping ordinary and
+  // explicit turns from silently creating one remote maintenance call per reply.
   const prepared = await runWithDatabaseSpace(input.space, async (db) => {
     const settings = await aiThreadRepository.getThreadMemorySettings(db, input.thread.id);
     if (!settings.deepMemoryEnabled) {
@@ -265,7 +247,7 @@ export async function captureDeepMemoryForExchange(input: {
     }
     const job = await aiThreadRepository.getThreadMemoryJob(db, input.thread.id);
     const nextPendingTurnCount = job.pendingTurnCount + 1;
-    if (!shouldCaptureImmediately && nextPendingTurnCount < 5) {
+    if (nextPendingTurnCount < 5) {
       await aiThreadRepository.updateThreadMemoryJob(db, {
         pendingTurnCount: nextPendingTurnCount,
         threadId: input.thread.id,
@@ -306,6 +288,93 @@ export async function captureDeepMemoryForExchange(input: {
     });
   const modelUpdate = modelResult.text ? parseModelMemoryUpdate(modelResult.text) : null;
   const modelOperations = modelResult.text ? parseMemoryReconciliationOperations(modelResult.text) : [];
+  const sanitized = sanitizeMemoryReconciliationOperations({
+    allowedScopes: allowedMemoryScopes(input.thread),
+    candidateMemories: prepared.relatedMemories,
+    operations: modelOperations,
+    space: input.space,
+  });
+  const captures: MemoryCaptureNoticeItem[] = sanitized.manualConflicts.map((conflict) => ({
+    content: `发现与手动记忆冲突：${conflict.content}`,
+    id: conflict.memoryId,
+    kind: 'conflict',
+    sourceMessageId: input.userMessage.id,
+  }));
+  const candidateInputs: MemoryCandidate[] = [
+    ...sanitized.accepted
+      .filter((operation) => operation.op === 'add')
+      .map((operation) => candidateFromAddOperation(operation))
+      .filter((candidate): candidate is MemoryCandidate => Boolean(candidate)),
+    ...(modelUpdate?.memories ?? prepared.localCandidates),
+  ];
+  const seenCandidates = new Set<string>();
+  for (const candidate of candidateInputs) {
+    const scopeId = scopeIdForMemoryCandidate(input.thread, candidate);
+    if (!scopeId || candidate.scope === 'global') {
+      continue;
+    }
+    const normalized = normalizeMemoryContent(candidate.content);
+    const dedupeKey = `${candidate.scope}:${scopeId}:${candidate.type}:${normalized}`;
+    if (seenCandidates.has(dedupeKey)) {
+      continue;
+    }
+    seenCandidates.add(dedupeKey);
+    const predicate = candidate.type === 'preference'
+      ? 'preference.general'
+      : candidate.type === 'instruction'
+        ? 'preference.communication'
+        : candidate.type === 'decision'
+          ? 'decision'
+          : candidate.type === 'task'
+            ? 'task'
+            : candidate.type === 'correction'
+              ? 'fact.identity'
+              : 'fact.identity';
+    try {
+      const claim = await MemoryFacade.createClaim({
+        confidenceBand: candidate.confidence >= 0.9 ? 'high' : candidate.confidence >= 0.6 ? 'medium' : 'low',
+        confidenceRaw: candidate.confidence,
+        importance: Math.max(0, Math.min(100, candidate.importance * 20)),
+        kind: candidate.type === 'task' ? 'task' : 'state',
+        lane: 'working',
+        predicate,
+        scopeId,
+        scopeType: candidate.scope,
+        sourceKind: 'message',
+        sourceMessageId: input.userMessage.id,
+        space: input.space,
+        speechMode: candidate.type === 'correction' ? 'corrected' : 'asserted',
+        stability: candidate.type === 'task' ? 'short' : 'long',
+        valueDisplay: candidate.content,
+        valueNormalized: normalized,
+        extractorVersion: modelResult.text ? 'maintenance-model-v1' : 'maintenance-local-v1',
+      }, {
+        commandId: `maintenance-v1:${input.assistantMessageId}:${hashMemoryCandidate(dedupeKey)}`,
+        source: 'memory_maintenance_queue',
+      });
+      if (candidate.confidence >= 0.75 && candidate.importance >= 2) {
+        captures.push({
+          content: claim.valueDisplay,
+          id: claim.id,
+          kind: modelResult.text ? 'added' : 'local_fallback',
+          sourceMessageId: input.userMessage.id,
+        });
+      }
+    } catch {
+      // A rejected/duplicate candidate never makes the maintenance pass fail.
+    }
+  }
+  for (const operation of sanitized.accepted) {
+    if (operation.op === 'stale' && operation.targetMemoryId?.startsWith('mclaim_')) {
+      await MemoryFacade.staleClaim({
+        claimId: operation.targetMemoryId,
+        space: input.space,
+      }, {
+        commandId: `maintenance-v1:${input.assistantMessageId}:stale:${operation.targetMemoryId}`,
+        source: 'memory_maintenance_queue',
+      }).catch(() => undefined);
+    }
+  }
 
   await runWithDatabaseSpace(input.space, async (db) => {
     await aiThreadRepository.upsertThreadSummary(db, {
@@ -315,128 +384,6 @@ export async function captureDeepMemoryForExchange(input: {
       summary: modelUpdate?.summary || prepared.fallbackSummary.summary,
       threadId: input.thread.id,
     });
-    const captures: MemoryCaptureNoticeItem[] = [];
-    const changedNormalizedContents = new Set<string>();
-    const sanitized = sanitizeMemoryReconciliationOperations({
-      allowedScopes: allowedMemoryScopes(input.thread),
-      candidateMemories: prepared.relatedMemories,
-      operations: modelOperations,
-      space: input.space,
-    });
-    let replacementMemoryId: string | null = null;
-    for (const conflict of sanitized.manualConflicts) {
-      captures.push({
-        content: `发现与手动记忆冲突：${conflict.content}`,
-        id: conflict.memoryId,
-        kind: 'conflict',
-        sourceMessageId: input.userMessage.id,
-      });
-    }
-    const addOrUpdateOperations = sanitized.accepted.filter((operation) => operation.op === 'add' || operation.op === 'update');
-    const staleOperations = sanitized.accepted.filter((operation) => operation.op === 'stale');
-    const keepOperations = sanitized.accepted.filter((operation) => operation.op === 'keep');
-    for (const operation of addOrUpdateOperations) {
-      if (operation.op === 'add') {
-        const candidate = candidateFromAddOperation(operation);
-        if (!candidate) {
-          continue;
-        }
-        const memory = await createMemoryFromCandidate(db, {
-          candidate,
-          reason: operation.reason ?? null,
-          sourceMessageId: input.userMessage.id,
-          space: input.space,
-          thread: input.thread,
-        });
-        if (memory) {
-          replacementMemoryId = memory.id;
-          changedNormalizedContents.add(memory.normalizedContent);
-          if (memory.confidence >= 0.75 && memory.importance >= 2) {
-            captures.push({ content: memory.content, id: memory.id, kind: 'added', sourceMessageId: input.userMessage.id });
-          }
-        }
-        continue;
-      }
-      if (operation.op === 'update' && operation.targetMemoryId && operation.content) {
-        const memory = await aiThreadRepository.updateMemoryByReconciliation(db, {
-          confidence: operation.confidence,
-          content: operation.content,
-          importance: operation.importance,
-          memoryId: operation.targetMemoryId,
-          normalizedContent: normalizeMemoryContent(operation.content),
-          reason: operation.reason ?? null,
-          sourceMessageId: input.userMessage.id,
-          type: operation.type,
-        });
-        if (memory) {
-          replacementMemoryId = memory.id;
-          changedNormalizedContents.add(memory.normalizedContent);
-          captures.push({ content: memory.content, id: memory.id, kind: 'updated', sourceMessageId: input.userMessage.id });
-        }
-        continue;
-      }
-    }
-    for (const operation of staleOperations) {
-      if (!operation.targetMemoryId) {
-        continue;
-      }
-      const memory = await aiThreadRepository.markMemoryStaleByReconciliation(db, {
-        memoryId: operation.targetMemoryId,
-        reason: operation.reason ?? null,
-        sourceMessageId: input.userMessage.id,
-        supersededByMemoryId: replacementMemoryId,
-      });
-      if (memory) {
-        captures.push({ content: memory.content, id: memory.id, kind: 'staled', sourceMessageId: input.userMessage.id });
-      }
-    }
-    for (const operation of keepOperations) {
-      if (operation.targetMemoryId) {
-        await aiThreadRepository.touchMemoryReconciled(db, {
-          memoryId: operation.targetMemoryId,
-          reason: operation.reason ?? null,
-          sourceMessageId: input.userMessage.id,
-        });
-      }
-    }
-
-    const candidates = modelUpdate ? modelUpdate.memories : prepared.localCandidates;
-    for (const candidate of candidates) {
-      if (candidate.scope === 'global') {
-        continue;
-      }
-      const normalizedContent = normalizeMemoryContent(candidate.content);
-      if (changedNormalizedContents.has(normalizedContent)) {
-        continue;
-      }
-      const scopeId = scopeIdForMemoryCandidate(input.thread, candidate);
-      if (!scopeId) {
-        continue;
-      }
-      const existing = await aiThreadRepository.findActiveMemoryByNormalizedContent(db, {
-        normalizedContent,
-        scope: candidate.scope,
-        scopeId,
-        space: input.space,
-      });
-      if (!existing) {
-        const memory = await createMemoryFromCandidate(db, {
-          candidate,
-          reason: modelResult.text ? '新增稳定记忆' : '本地明确记忆短语',
-          sourceMessageId: input.userMessage.id,
-          space: input.space,
-          thread: input.thread,
-        });
-        if (memory && memory.confidence >= 0.75 && memory.importance >= 2) {
-          captures.push({
-            content: memory.content,
-            id: memory.id,
-            kind: modelResult.text ? 'added' : 'local_fallback',
-            sourceMessageId: input.userMessage.id,
-          });
-        }
-      }
-    }
     await aiThreadRepository.updateThreadMemoryJob(db, {
       lastConsolidatedMessageId: input.assistantMessageId,
       lastMaintenanceError: modelResult.error ? `remote_failed_used_local_fallback: ${modelResult.error}` : null,

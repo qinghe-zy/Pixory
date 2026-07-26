@@ -12,7 +12,7 @@ test('continuity import persistence adds import sessions and V43 migration', () 
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const types = read('src/ai/aiContinuityImportTypes.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 46/);
+  assert.match(schema, /DATABASE_VERSION = 48/);
   assert.match(schema, /export const MIGRATION_STATEMENTS_V43 = `/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_sessions/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_blocks/);
@@ -59,10 +59,9 @@ test('external imported messages are reviewed, gated, and only become accepted a
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
   const profile = read('src/ai/aiMemoryProfileService.ts');
-  const reconciliation = read('src/ai/aiMemoryReconciliationService.ts');
 
   assert.match(review, /export async function reviewContinuityImportSession/);
-  assert.match(review, /rawDocumentText/);
+  assert.doesNotMatch(review, /session\.rawDocumentText/);
   assert.match(review, /parsedMessages/);
   assert.match(review, /continuityBlocks/);
   assert.match(review, /callMemoryMaintenanceModel/);
@@ -71,23 +70,23 @@ test('external imported messages are reviewed, gated, and only become accepted a
   assert.match(review, /markContinuityImportReviewAccepted/);
   assert.match(review, /markContinuityImportReviewFailed/);
   assert.match(review, /createReversibleContinuitySummarySegment/);
-  assert.match(review, /parseMemoryReconciliationOperations/);
+  assert.match(review, /parseExternalMemoryCandidates/);
+  assert.match(review, /parseExternalMemoryAudit/);
   assert.match(review, /sanitizeMemoryReconciliationOperations/);
-  assert.match(review, /createMemory\(/);
-  assert.match(review, /updateMemoryByReconciliation/);
-  assert.match(review, /markMemoryStaleByReconciliation/);
-  assert.match(review, /touchMemoryReconciled/);
+  assert.match(review, /MemoryFacade\.createClaim/);
+  assert.match(review, /MemoryFacade\.editClaim/);
+  assert.match(review, /MemoryFacade\.staleClaim/);
+  assert.doesNotMatch(review, /aiThreadRepository\.createMemory/);
   assert.match(review, /parseProfileJson/);
   assert.match(review, /upsertUserProfile/);
   assert.match(review, /withTransactionAsync/);
-  assert.match(review, /recordContinuityImportMemoryEffect/);
+  assert.match(review, /memory_import_id_map/);
   assert.match(review, /recordContinuityImportProfileEffect/);
   assert.match(queue, /loadContinuityImportReviewGateState/);
   assert.match(queue, /rollbackState === 'available'/);
   assert.match(queue, /reversibleImportSessionId/);
   assert.match(summary, /reversibleImportSessionId/);
   assert.match(profile, /reversibleImportSessionId/);
-  assert.match(reconciliation, /buildMemoryReconciliationPrompt/);
   assert.match(repository, /createReversibleContinuitySummarySegment/);
 });
 
@@ -104,21 +103,33 @@ test('external continuity import escalates to memory-model structure recovery wh
   assert.match(service, /containsCompressedContinuity/);
   assert.match(service, /confidence/);
   assert.match(service, /warnings/);
-  assert.match(service, /role !== 'user' && role !== 'assistant' && role !== 'system'/);
+  assert.match(service, /role !== 'user' && role !== 'assistant'/);
+  assert.match(service, /kind:\s*'untrusted_context'/);
   assert.match(maintenanceModel, /export async function callMemoryMaintenanceModel/);
 });
 
-test('continuity review reads explicit target fan-out fields before fallback parsing the whole review text', () => {
+test('external migration prompt only permits user and assistant transcript roles', () => {
+  const prompt = read('src/ai/aiContinuityImportPrompt.ts');
+
+  assert.match(prompt, /角色只能是 `user`、`assistant` 两种之一/);
+  assert.doesNotMatch(prompt, /角色只能是[^\n]*`system`/);
+  assert.match(prompt, /system.*不得写入 `Chat Transcript`/);
+});
+
+test('continuity review persists audited fan-out fields without legacy memory-operation fallback', () => {
   const review = read('src/ai/aiContinuityImportReviewService.ts');
 
   assert.match(review, /profilePatch/);
-  assert.match(review, /memoryOperations/);
+  assert.match(review, /decisionSummary/);
+  assert.match(review, /parseExternalMemoryAudit/);
   assert.match(review, /summaryArtifacts/);
   assert.match(review, /rejectedItems/);
   assert.match(review, /warnings/);
-  assert.match(review, /recordContinuityImportMemoryEffect/);
+  assert.match(review, /applyReviewOperationsToV1/);
+  assert.match(review, /memory_import_id_map/);
   assert.match(review, /recordContinuityImportProfileEffect/);
   assert.match(review, /createReversibleContinuitySummarySegment/);
+  assert.doesNotMatch(review, /parseMemoryReconciliationOperations/);
 });
 
 test('continuity rollback stays available for 10 effective rounds and preserves audit payload', () => {
@@ -185,15 +196,16 @@ test('session settings role-card selection is routed through the role library', 
   assert.match(editor, /await applyRoleCard\(card\.id\)/);
 });
 
-test('memory maintenance status separates import protection from ordinary pending rounds', () => {
+test('memory maintenance keeps import protection internal and out of the simplified board', () => {
   const session = read('src/screens/AiSessionConfigScreen.tsx');
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
   const service = read('src/ai/aiMemoryService.ts');
 
   assert.match(service, /protectedImportRoundCount/);
   assert.match(service, /ordinaryUncompressedRoundCount/);
-  assert.match(session, /导入保护/);
-  assert.match(board, /导入保护/);
+  assert.match(session, /lastMaintenanceCompletedAt|reviewGateState/);
+  assert.doesNotMatch(board, /导入保护/);
+  assert.match(read('src/ai/aiMemoryMaintenanceQueue.ts'), /reviewGateState === 'pending_review'/);
 });
 
 test('continuity import binds imported branch roots and scopes review gates to the active branch', () => {
@@ -218,7 +230,7 @@ test('reversible continuity maintenance persists real import-session attribution
   const service = read('src/ai/aiContinuityImportService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 46/);
+  assert.match(schema, /DATABASE_VERSION = 48/);
   assert.match(schema, /ALTER TABLE ai_thread_summary_segments ADD COLUMN continuityImportSessionId TEXT/);
   assert.match(schema, /export const MIGRATION_STATEMENTS_V45 = `/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_effects/);

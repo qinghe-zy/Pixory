@@ -28,9 +28,10 @@ test('Extreme Environment Policy - Malformed scopes are normalized strictly to i
   assert.match(captureSource, /!scope \|\| !type/); // If null, it gets rejected
 });
 
-test('Extreme Environment Policy - Empty LLM results bypass local RegEx hallucination', () => {
-  // Verifies the fix for issue 3: trusting an empty model result over a regex local hit
-  assert.match(captureSource, /const candidates = modelUpdate \? modelUpdate\.memories : prepared\.localCandidates;/);
+test('Extreme Environment Policy - Empty LLM results use bounded local Working candidates', () => {
+  assert.match(captureSource, /modelUpdate\?\.memories \?\? prepared\.localCandidates/);
+  assert.match(captureSource, /lane:\s*'working'/);
+  assert.match(captureSource, /A rejected\/duplicate candidate never makes the maintenance pass fail/);
 });
 
 test('Extreme Environment Policy - Reconciliation strictly rejects unauthorized manual staleness', () => {

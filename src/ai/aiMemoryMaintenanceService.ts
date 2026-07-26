@@ -1,6 +1,7 @@
 import type { PixorySpace } from '../database';
 import {
   isThreadMemoryMaintenanceActive,
+  runLocalCurrentTurnExtraction,
   runUnifiedMemoryMaintenancePass,
   scheduleMemoryMaintenance,
 } from './aiMemoryMaintenanceQueue';
@@ -62,18 +63,20 @@ export function scheduleCompanionMemoryMaintenance(input: {
 
 export function scheduleDeferredCompanionMemoryMaintenance(input: DeferredReplyMaintenanceInput): Promise<void> {
   const key = deferredReplyMaintenanceKey(input.space, input.threadId);
+  void runLocalCurrentTurnExtraction(input).catch(() => undefined);
+  const maintenanceInput = { ...input, currentTurnExtractionDone: true };
   const existing = deferredReplyMaintenanceTimers.get(key);
   return new Promise((resolve, reject) => {
     if (existing) {
       clearTimeout(existing.timeout);
-      existing.input = input;
+      existing.input = maintenanceInput;
       existing.resolvers.push(resolve);
       existing.rejectors.push(reject);
       existing.timeout = scheduleDeferredReplyMaintenanceTimeout(key, existing);
       return;
     }
     const entry = {
-      input,
+      input: maintenanceInput,
       rejectors: [reject],
       resolvers: [resolve],
       timeout: null as unknown as ReturnType<typeof setTimeout>,

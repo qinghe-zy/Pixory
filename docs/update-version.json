@@ -1,16 +1,16 @@
 {
-  "version": "2.6.8",
-  "versionCode": 270,
+  "version": "2.6.9",
+  "versionCode": 271,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.6.8 发布。可前往官网下载区获取最新版，修复了闪退问题，优化了应用全局滑动逻辑。",
+  "message": "Pixory 2.6.9 发布。新版记忆系统更稳、更省上下文，也更方便查看和纠正；可前往官网下载区获取最新版。",
   "detailLines": [
-    "⚡ 修复了热更新后可能导致 Rendered more hooks 闪退的问题",
-    "🧠 优化了全局左滑/右滑进入不同页面的手势切换体验",
-    "📦 修复了部分组件的 UI 样式细节"
+    "🧠 新增可重建的三层记忆账本与低噪声检索，无 Embedding 也能正常聊天",
+    "✍️ 简化记忆看板，确认、编辑、删除和作用域修改会真实影响后续对话",
+    "🔒 完善 Personal、思考内容、外部导入和删除恢复的隔离与治理"
   ],
-  "latestVersion": "2.6.8",
-  "latestVersionCode": 270,
+  "latestVersion": "2.6.9",
+  "latestVersionCode": 271,
   "downloadUrl": "https://mist01.com/#download",
-  "changelog": "1. 重构主页面 StrictPager，解决防误触和高度塌陷问题。"
+  "changelog": "1. 发布 Memory v1，补齐事件账本、ContextPlan、原生 v2 包导入导出和可控记忆看板。"
 }

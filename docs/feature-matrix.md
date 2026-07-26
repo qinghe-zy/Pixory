@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-23（在 2026-07-13 能力基线基础上补充素材来源、模型数据说明与聊天跨空间迁移边界）
-适用版本：Pixory 2.6.6
+最后更新：2026-07-27（补充记忆 v1 可重建投影、低噪声检索、导入恢复/全量回滚与安全确认治理）
+适用版本：Pixory 2.6.9
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -74,9 +74,9 @@
 | 上下文预算 | 真实 model context window（无法读取时回退 512K）、会话级最近对话轮数滑杆（一问一答算一轮）、历史裁剪、保护 role/current request/retrieval/memory | `aiContextBudget`, `aiContextSettings`, `AiContextSlider` |
 | 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句 | `sillyTavernRoleCardParser`, `aiRoleCardRepository` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
-| 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
-| 记忆导入/导出 | 续聊 Markdown 导出当前线程摘要、画像上下文、active memory 和上一轮对话；重新导入时解析原生 payload 或外部连续性块，经审读门禁后分别写入 summary/profile/memory，并保留可回退效果记录；当前不是独立的任意记忆库文件格式 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `AiSessionConfigScreen` |
-| 深度记忆 | 默认开启；更早维护本会话画像、自动捕获、手动记忆、profile、summary segment、维护队列、冲突协调、记忆板；全局用户画像在 AI 全局设置中维护；未配置远程记忆模型时使用本地轻量整理降级 | `aiMemory*`, `AiMemoryBoardScreen`, `AiProviderSettingsScreen` |
+| 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out；外部路径将候选抽取与独立审核分开，模型建议还需 evidence/scope/manual-lock 确定性校验；待审读任务有同进程去重并可由下一次后台维护续跑，失败状态不自动重复烧调用；给外部软件的迁移提示词只允许 user/assistant transcript，违规 system/developer/tool 内容在解析侧继续隔离为 untrusted context；Personal 外部导入必须逐次授权远程整理 | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
+| 记忆导入/导出 | 默认导出 Pixory Memory Package v2（JSON，确定性导入；兼容旧版 Markdown/v1 与外部文本审查）；事件、Claim、证据、画像、关系状态、episode、删除墓碑和 ID 映射纳入包；原生导入先 pending、失败可复用原分支幂等续跑，Claim/episode/关系/profile 随会话一起完整回滚；外部审核画像也同步进入 v1 profile 账本，外部回滚按 import session 精确隔离 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `src/ai/memory/nativeMemoryPackage*` |
+| 深度记忆 | v1 事件账本 + Working/Confirmed/Archive 三车道；每条消息即时写 current-turn observation，回答落盘后本地轻抽取，重维护异步批处理；Claim/episode/关系/profile 可从账本重建；无 Embedding 时 FTS/词面检索可用且无相关证据不注入，Confirmed 容量回收、冲突/安全边界、用户确认锁定和 ContextPlan 可追溯；看板仅展示长期记住/最近对话并支持真实编辑、确认、删除、作用域修改 | `aiMemory*`, `src/ai/memory/*`, `AiMemoryBoardScreen` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
 | 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动和删除；尚无统一收件箱、全局跨资料搜索、内容 hash/版本、来源更新检测、同步状态和完整备份恢复 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen` |
@@ -205,7 +205,7 @@
 | 远程公告 | `announcement.json` 拉取、一次性公告 id | `announcementService`, `docs/announcement.json` |
 | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
-| Android release | version 同步、Gradle assembleRelease、签名校验、官网部署、GitHub Release | `AGENTS.md`, `android/app/build.gradle` |
+| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release | `AGENTS.md`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、speech recognition、share/open intent | `src/native/pixoryMediaModule.ts` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |

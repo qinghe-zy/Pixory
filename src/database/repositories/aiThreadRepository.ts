@@ -250,6 +250,7 @@ export interface AiContinuityImportSessionRecord {
   rawDocumentHash: string;
   parsedMessageCount: number;
   containsCompressedContinuity: number;
+  remoteModelConsent: number;
   memoryReviewStatus: string | null;
   memoryReviewError: string | null;
   createdAt: string;
@@ -318,6 +319,8 @@ export interface AiMemoryRecord {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  memoryLane?: 'confirmed' | 'working' | 'archive';
+  memoryVersion?: number;
 }
 
 interface AiThreadMemorySettingsRow {
@@ -477,6 +480,7 @@ export interface CreateAiContinuityImportSessionInput {
   rawDocumentHash: string;
   parsedMessageCount?: number;
   containsCompressedContinuity?: boolean;
+  remoteModelConsent?: boolean;
   memoryReviewStatus?: string | null;
   memoryReviewError?: string | null;
   rolledBackAt?: string | null;
@@ -662,6 +666,7 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
     lastMessagePreview: row.lastMessagePreview ?? null,
     currentBranchRootMessageId: row.currentBranchRootMessageId ?? null,
     currentBranchVersionIndex: row.currentBranchVersionIndex ?? null,
+    lineageVersion: Number.isFinite(row.lineageVersion) ? Number(row.lineageVersion) : 0,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     archivedAt: row.archivedAt ?? null,
@@ -1055,14 +1060,37 @@ export const aiThreadRepository = {
       `UPDATE ai_threads
        SET currentBranchRootMessageId = ?,
            currentBranchVersionIndex = ?,
+           lineageVersion = lineageVersion + CASE
+             WHEN COALESCE(currentBranchRootMessageId, '∅') <> COALESCE(?, '∅')
+               OR COALESCE(currentBranchVersionIndex, -1) <> COALESCE(?, -1)
+             THEN 1 ELSE 0 END,
            updatedAt = ?
        WHERE id = ?`,
+      input.branchRootMessageId,
+      input.branchVersionIndex,
       input.branchRootMessageId,
       input.branchVersionIndex,
       createTimestamp(),
       input.threadId
     );
     const row = await db.getFirstAsync<AiThreadRow>('SELECT * FROM ai_threads WHERE id = ?', input.threadId);
+    if (row) {
+      await db.runAsync(
+        `INSERT INTO memory_lineage_meta (
+           threadId, currentRootMessageId, currentBranchVersionIndex, lineageVersion, updatedAt
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(threadId) DO UPDATE SET
+           currentRootMessageId = excluded.currentRootMessageId,
+           currentBranchVersionIndex = excluded.currentBranchVersionIndex,
+           lineageVersion = excluded.lineageVersion,
+           updatedAt = excluded.updatedAt`,
+        row.id,
+        row.currentBranchRootMessageId ?? null,
+        row.currentBranchVersionIndex ?? 0,
+        row.lineageVersion ?? 0,
+        createTimestamp()
+      );
+    }
     return row ? mapThreadRow(row) : null;
   },
 
@@ -2290,13 +2318,14 @@ export const aiThreadRepository = {
         rawDocumentHash,
         parsedMessageCount,
         containsCompressedContinuity,
+        remoteModelConsent,
         memoryReviewStatus,
         memoryReviewError,
         createdAt,
         updatedAt,
         rolledBackAt,
         stabilizedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
       input.space,
@@ -2318,6 +2347,7 @@ export const aiThreadRepository = {
       input.rawDocumentHash,
       input.parsedMessageCount ?? 0,
       booleanToSqlite(input.containsCompressedContinuity ?? false),
+      booleanToSqlite(input.remoteModelConsent ?? false),
       input.memoryReviewStatus ?? null,
       input.memoryReviewError ?? null,
       now,

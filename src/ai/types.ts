@@ -122,6 +122,7 @@ export interface AiThreadRecord {
   lastMessagePreview: string | null;
   currentBranchRootMessageId: string | null;
   currentBranchVersionIndex: number | null;
+  lineageVersion: number;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;

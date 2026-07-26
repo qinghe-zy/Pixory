@@ -7,6 +7,8 @@ import type { AiBranchScope } from '../database/repositories/aiThreadRepository'
 import { copyFileToSafWithProgress } from '../native/pixoryMediaModule';
 import { buildRoleContinuityMarkdown, sanitizeRoleContinuityFileName } from './aiRoleCardContinuityExport';
 import { buildSillyTavernRoleCardPngBase64 } from './sillyTavernRoleCardExporter';
+import { buildNativeMemoryPackage } from './memory/nativeMemoryPackage';
+import { migrateLegacyMemoriesToV1 } from './memory/memoryMigrationService';
 
 export interface ExportRoleContinuityPackageInput {
   space: PixorySpace;
@@ -21,6 +23,7 @@ export interface ExportRoleContinuityPackageResult {
   destinationDirUri: string;
   pngFileName: string;
   markdownFileName: string | null;
+  packageFileName: string;
   copiedFileCount: number;
 }
 
@@ -95,6 +98,7 @@ async function resolveExportBranchScopes(
 
 export async function exportRoleContinuityPackage(input: ExportRoleContinuityPackageInput): Promise<ExportRoleContinuityPackageResult> {
   const includeMarkdown = input.includeMarkdown !== false;
+  await migrateLegacyMemoriesToV1(input.space);
   const snapshot = await runWithDatabaseSpace(input.space, async (db) => {
     const roleCard = await aiRoleCardRepository.findById(db, input.roleCardId);
     if (!roleCard || roleCard.space !== input.space || roleCard.archivedAt) {
@@ -128,7 +132,12 @@ export async function exportRoleContinuityPackage(input: ExportRoleContinuityPac
     const messages = thread
       ? await aiThreadRepository.listMessages(db, thread.id, undefined, resolvedBranchScopes)
       : [];
-    return { roleCard, thread, memories, messages, resolvedBranchScopes };
+    const nativePackage = await buildNativeMemoryPackage(db, {
+      branchScopes: resolvedBranchScopes,
+      space: input.space,
+      thread,
+    });
+    return { nativePackage, roleCard, thread, memories, messages, resolvedBranchScopes };
   });
   const resolvedBranchScopes = snapshot.resolvedBranchScopes;
   const destinationDirUri = input.destinationDirUri ?? await requestDestinationDir();
@@ -144,6 +153,10 @@ export async function exportRoleContinuityPackage(input: ExportRoleContinuityPac
   await copyFileToSafWithProgress(pngUri, destinationDirUri, pngFileName, 'image/png', `role-card-png-${Date.now()}`);
 
   let copiedFileCount = 1;
+  const packageFileName = `${baseName}-MemoryPackage-v2.json`;
+  const packageUri = await writeLocalTextFile(packageFileName, JSON.stringify(snapshot.nativePackage, null, 2));
+  await copyFileToSafWithProgress(packageUri, destinationDirUri, packageFileName, 'application/json', `memory-package-v2-${Date.now()}`);
+  copiedFileCount += 1;
   let markdownFileName: string | null = null;
   if (includeMarkdown) {
     markdownFileName = `${baseName}-Continuity.md`;
@@ -164,6 +177,7 @@ export async function exportRoleContinuityPackage(input: ExportRoleContinuityPac
     copiedFileCount,
     destinationDirUri,
     markdownFileName,
+    packageFileName,
     pngFileName,
   };
 }

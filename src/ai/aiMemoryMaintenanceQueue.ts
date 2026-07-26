@@ -1,6 +1,10 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { AiBranchScope, AiMessageRecord } from '../database/repositories/aiThreadRepository';
 import { captureDeepMemoryForExchange } from './aiMemoryCaptureService';
+import { reviewContinuityImportSession } from './aiContinuityImportReviewService';
+import { drainCurrentTurnMemory, runLocalFastExtraction } from './memory/localFastExtractor';
+import { runMemoryLifecycleMaintenance } from './memory/memoryCalibrationService';
+import { recordRelationalSignals } from './memory/memoryRelationalStateService';
 import {
   hasStrongProfileSignal,
   maybeInitializeUserProfile,
@@ -12,7 +16,7 @@ import type { AiThreadRecord } from './types';
 
 export type MemoryMaintenanceReason = 'reply_completed' | 'leave_chat' | 'app_background' | 'manual';
 
-interface ScheduleMemoryMaintenanceInput {
+export interface ScheduleMemoryMaintenanceInput {
   space: PixorySpace;
   threadId: string;
   reason: MemoryMaintenanceReason;
@@ -20,6 +24,8 @@ interface ScheduleMemoryMaintenanceInput {
   thread?: AiThreadRecord;
   userMessage?: Pick<AiMessageRecord, 'id' | 'content'>;
   assistantMessageId?: string;
+  currentTurnExtractionDone?: boolean;
+  allowRemoteModelForPersonal?: boolean;
 }
 
 interface ActiveMaintenanceTask {
@@ -117,6 +123,46 @@ async function loadLastUserMessage(space: PixorySpace, threadId: string, branchS
   });
 }
 
+export async function runLocalCurrentTurnExtraction(input: ScheduleMemoryMaintenanceInput): Promise<void> {
+  const branchScopes = input.branchScopes ?? [];
+  const [reviewGateState, rollbackState] = await runWithDatabaseSpace(input.space, async (db) => {
+    const gate = await aiThreadRepository.loadContinuityImportReviewGateState(
+      db,
+      input.threadId,
+      branchScopes
+    );
+    const importSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(
+      db,
+      input.threadId,
+      branchScopes
+    );
+    const session = importSessionId
+      ? await aiThreadRepository.findContinuityImportSessionById(db, importSessionId)
+      : null;
+    return [gate, session?.rollbackState ?? null] as const;
+  });
+  if (
+    reviewGateState === 'pending_review'
+    || reviewGateState === 'failed'
+    || rollbackState === 'available'
+  ) {
+    return;
+  }
+  if (!input.thread || !input.userMessage) {
+    await drainCurrentTurnMemory({ maxDurationMs: 20, space: input.space, threadId: input.threadId });
+    return;
+  }
+  await runLocalFastExtraction({
+    branchRootMessageId: input.branchScopes?.[0]?.branchRootMessageId ?? null,
+    branchVersionIndex: input.branchScopes?.[0]?.branchVersionIndex ?? null,
+    messageContent: input.userMessage.content,
+    messageId: input.userMessage.id,
+    reasoningText: null,
+    space: input.space,
+    threadId: input.threadId,
+  });
+}
+
 export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaintenanceInput): Promise<void> {
   const branchScopes = input.branchScopes ?? [];
   const accumulator: MaintenancePassAccumulator = {
@@ -127,7 +173,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     usedFallback: false,
     usedRemote: false,
   };
-  let allowRemoteModel = true;
+  let allowRemoteModel = input.space !== 'personal' || input.allowRemoteModelForPersonal === true;
   let reversibleImportSessionId: string | null = null;
   let rollbackState: 'available' | 'locked' | 'rolled_back' | null = null;
   const runStep = async (step: Promise<MemoryMaintenanceStepResult>) => {
@@ -138,11 +184,24 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     }
   };
 
-  const reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
+  let reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.loadContinuityImportReviewGateState(db, input.threadId, branchScopes)
   );
+  const pendingImportSessionId = await runWithDatabaseSpace(input.space, (db) =>
+    aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes)
+  );
+  if (reviewGateState === 'pending_review' && pendingImportSessionId) {
+    await reviewContinuityImportSession({
+      importSessionId: pendingImportSessionId,
+      space: input.space,
+    });
+    reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
+      aiThreadRepository.loadContinuityImportReviewGateState(db, input.threadId, branchScopes)
+    );
+  }
   rollbackState = await runWithDatabaseSpace(input.space, async (db) => {
-    const importSessionId = await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes);
+    const importSessionId = pendingImportSessionId
+      ?? await aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes);
     if (!importSessionId) {
       return null;
     }
@@ -164,6 +223,21 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     await recordMaintenanceResult(input.space, input.threadId, accumulator);
     return;
   }
+
+  if (input.currentTurnExtractionDone) {
+    await drainCurrentTurnMemory({ maxDurationMs: 20, space: input.space, threadId: input.threadId });
+  } else {
+    await runLocalCurrentTurnExtraction(input);
+  }
+  if (input.userMessage) {
+    await recordRelationalSignals({
+      messageContent: input.userMessage.content,
+      messageId: input.userMessage.id,
+      space: input.space,
+      threadId: input.threadId,
+    }).catch(() => undefined);
+  }
+  await runMemoryLifecycleMaintenance(input.space).catch(() => undefined);
 
   await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
   await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));

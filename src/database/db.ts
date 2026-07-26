@@ -50,6 +50,9 @@ import {
   MIGRATION_STATEMENTS_V44,
   MIGRATION_STATEMENTS_V45,
   MIGRATION_STATEMENTS_V46,
+  MIGRATION_STATEMENTS_V47,
+  MIGRATION_STATEMENTS_V47_ADD_LINEAGE_COLUMN,
+  MIGRATION_STATEMENTS_V48,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -112,6 +115,32 @@ async function ensureAiBranchSchema(db: SQLiteDatabase): Promise<void> {
   if (!(await hasTable(db, 'ai_branch_route_metadata'))) {
     await db.execAsync(MIGRATION_STATEMENTS_V35);
   }
+}
+
+async function ensureAiMemoryLineageSchema(db: SQLiteDatabase): Promise<void> {
+  if (!(await hasTable(db, 'ai_threads'))) {
+    return;
+  }
+  if (!(await hasColumn(db, 'ai_threads', 'lineageVersion'))) {
+    await db.execAsync(MIGRATION_STATEMENTS_V47_ADD_LINEAGE_COLUMN);
+  }
+}
+
+async function ensureAiContinuityImportConsentSchema(db: SQLiteDatabase): Promise<void> {
+  if (!(await hasTable(db, 'ai_continuity_import_sessions'))) {
+    return;
+  }
+  if (!(await hasColumn(db, 'ai_continuity_import_sessions', 'remoteModelConsent'))) {
+    await db.execAsync(
+      'ALTER TABLE ai_continuity_import_sessions ADD COLUMN remoteModelConsent INTEGER NOT NULL DEFAULT 0;'
+    );
+  }
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY NOT NULL,
+      appliedAt TEXT NOT NULL
+    );
+  `);
 }
 
 async function ensureAiPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
@@ -347,8 +376,18 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
       await database.execAsync(MIGRATION_STATEMENTS_V46);
     }
 
+    if (currentVersion < 47) {
+      await database.execAsync(MIGRATION_STATEMENTS_V47);
+    }
+
+    if (currentVersion < 48) {
+      await database.execAsync(MIGRATION_STATEMENTS_V48);
+    }
+
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
+    await ensureAiMemoryLineageSchema(database);
+    await ensureAiContinuityImportConsentSchema(database);
     await ensureAiPerformanceIndexes(database);
     await ensureMemoryScopeGovernance(database);
 

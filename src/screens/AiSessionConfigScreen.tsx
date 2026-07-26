@@ -38,6 +38,7 @@ import {
 import { DEFAULT_AI_ROLE_PROMPT } from '../ai/aiConstants';
 import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from '../ai/aiContextSettings';
 import { buildExternalContinuityPrompt } from '../ai/aiContinuityImportPrompt';
+import { PERSONAL_EXTERNAL_IMPORT_REQUIRES_CONSENT } from '../ai/aiContinuityImportService';
 import { loadMemoryMaintenanceStatus } from '../ai/aiMemoryService';
 import { builtInModelsForProvider } from '../ai/providerRegistry';
 import { exportRoleContinuityPackage, getExportableRoleCardIdForThread } from '../ai/aiRoleCardContinuityExportService';
@@ -86,6 +87,20 @@ const SYSTEM_PROMPT_FOCUS_SCROLL_DELAY_MS = 260;
 const SYSTEM_PROMPT_FOCUS_TOP_OFFSET = 96;
 // Long role instructions should scroll inside the field instead of stretching behind the Android keyboard.
 const SYSTEM_PROMPT_TEXTAREA_MAX_HEIGHT = 220;
+
+function requestPersonalExternalImportConsent(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      '允许本次智能整理？',
+      '这不是 Pixory 原生包。为了拆分外部聊天，需要把本次文件内容发送给你配置的记忆模型。授权只对这一个文件生效。',
+      [
+        { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+        { text: '允许本次', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) }
+    );
+  });
+}
 
 const EMPTY_THREAD_USAGE: AiUsageAggregate = {
   cachedInputTokens: 0,
@@ -693,12 +708,31 @@ export function AiSessionConfigScreen({
       }
       const asset = pickerResult.assets[0];
       const text = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const importResult = await importThreadContinuity({
-        fileName: asset.name,
-        text,
-        space,
-        threadId,
-      });
+      let importResult;
+      try {
+        importResult = await importThreadContinuity({
+          fileName: asset.name,
+          text,
+          space,
+          threadId,
+        });
+      } catch (error) {
+        if (
+          space !== 'personal'
+          || !(error instanceof Error)
+          || error.message !== PERSONAL_EXTERNAL_IMPORT_REQUIRES_CONSENT
+          || !(await requestPersonalExternalImportConsent())
+        ) {
+          throw error;
+        }
+        importResult = await importThreadContinuity({
+          allowRemoteModelForPersonal: true,
+          fileName: asset.name,
+          text,
+          space,
+          threadId,
+        });
+      }
       const importedMessageCount = importResult.importedMessageCount;
       const continuityBlockCount = importResult.continuityBlockCount;
       const blocksOnlyImport = importedMessageCount === 0 && continuityBlockCount > 0;

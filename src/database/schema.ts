@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 46;
+export const DATABASE_VERSION = 48;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1034,6 +1034,373 @@ CREATE INDEX IF NOT EXISTS idx_ai_continuity_import_effects_session
 
 export const MIGRATION_STATEMENTS_V46 = `
 ALTER TABLE ai_threads ADD COLUMN contextHistoryRoundLimit INTEGER NOT NULL DEFAULT 30;
+`;
+
+export const MIGRATION_STATEMENTS_V47 = `
+CREATE TABLE IF NOT EXISTS memory_claims (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  schemaVersion INTEGER NOT NULL DEFAULT 1,
+  canonicalClaimId TEXT NOT NULL,
+  relatedClaimGroupId TEXT,
+  lane TEXT NOT NULL CHECK (lane IN ('confirmed', 'working', 'archive')),
+  status TEXT NOT NULL CHECK (status IN ('tentative', 'committed', 'confirmed', 'stale', 'superseded', 'conflicted', 'suppressed', 'deleted')),
+  kind TEXT NOT NULL CHECK (kind IN ('state', 'episode', 'task', 'commitment', 'relational_signal')),
+  actor TEXT NOT NULL CHECK (actor IN ('user', 'companion', 'joint')),
+  subjectEntityId TEXT NOT NULL,
+  subjectDisplay TEXT NOT NULL,
+  scopeType TEXT NOT NULL CHECK (scopeType IN ('global', 'role', 'ip', 'knowledge_base', 'thread', 'branch')),
+  scopeId TEXT,
+  predicate TEXT NOT NULL,
+  valueNormalized TEXT NOT NULL,
+  valueDisplay TEXT NOT NULL,
+  polarity TEXT NOT NULL CHECK (polarity IN ('positive', 'negative', 'unknown')),
+  speechMode TEXT NOT NULL CHECK (speechMode IN ('asserted', 'corrected', 'negated', 'hypothetical', 'joke', 'quoted', 'roleplay', 'uncertain')),
+  rawTimePhrase TEXT,
+  validFrom TEXT,
+  validTo TEXT,
+  validPrecision TEXT NOT NULL CHECK (validPrecision IN ('exact', 'day', 'month', 'relative', 'unknown')),
+  confidenceRaw REAL NOT NULL CHECK (confidenceRaw >= 0 AND confidenceRaw <= 1),
+  confidenceCalibrated REAL CHECK (confidenceCalibrated IS NULL OR (confidenceCalibrated >= 0 AND confidenceCalibrated <= 1)),
+  confidenceBand TEXT NOT NULL CHECK (confidenceBand IN ('high', 'medium', 'low')),
+  importance INTEGER NOT NULL CHECK (importance BETWEEN 0 AND 100),
+  stability TEXT NOT NULL CHECK (stability IN ('ephemeral', 'short', 'long', 'permanent')),
+  manualLocked INTEGER NOT NULL DEFAULT 0 CHECK (manualLocked IN (0, 1)),
+  safetyState TEXT NOT NULL DEFAULT 'none' CHECK (safetyState IN ('none', 'safety_pending', 'safety_confirmed')),
+  sourceKind TEXT NOT NULL CHECK (sourceKind IN ('message', 'summary', 'import', 'manual', 'assistant_commitment')),
+  sourceMessageId TEXT,
+  extractorVersion TEXT NOT NULL,
+  ontologyVersion TEXT NOT NULL,
+  projectionVersion INTEGER NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  lastUsedAt TEXT,
+  supersededByClaimId TEXT,
+  deletedAt TEXT,
+  FOREIGN KEY (sourceMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (supersededByClaimId) REFERENCES memory_claims(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_claims_active_canonical
+  ON memory_claims(space, canonicalClaimId, scopeType, COALESCE(scopeId, '∅'))
+  WHERE status IN ('tentative', 'committed', 'confirmed', 'conflicted')
+    AND deletedAt IS NULL;
+CREATE INDEX IF NOT EXISTS idx_memory_claims_scope_status
+  ON memory_claims(space, scopeType, scopeId, lane, status, importance);
+CREATE INDEX IF NOT EXISTS idx_memory_claims_source
+  ON memory_claims(sourceMessageId);
+CREATE INDEX IF NOT EXISTS idx_memory_claims_canonical
+  ON memory_claims(space, canonicalClaimId, updatedAt);
+
+CREATE TABLE IF NOT EXISTS memory_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  aggregateType TEXT NOT NULL CHECK (aggregateType IN ('claim', 'episode', 'relation', 'import')),
+  aggregateId TEXT NOT NULL,
+  eventType TEXT NOT NULL,
+  eventVersion INTEGER NOT NULL,
+  commandId TEXT NOT NULL,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  actorType TEXT NOT NULL CHECK (actorType IN ('user', 'system', 'model', 'import')),
+  actorId TEXT,
+  source TEXT NOT NULL,
+  payloadJson TEXT NOT NULL,
+  evidenceIdsJson TEXT NOT NULL DEFAULT '[]',
+  createdAt TEXT NOT NULL,
+  projectionVersion INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_events_aggregate
+  ON memory_events(space, aggregateType, aggregateId, eventVersion);
+CREATE INDEX IF NOT EXISTS idx_memory_events_projection
+  ON memory_events(space, projectionVersion, createdAt);
+
+CREATE TABLE IF NOT EXISTS memory_evidence (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  sourceType TEXT NOT NULL CHECK (sourceType IN ('message', 'summary', 'import', 'attachment')),
+  sourceId TEXT NOT NULL,
+  messageId TEXT,
+  role TEXT,
+  quote TEXT,
+  quoteHash TEXT NOT NULL,
+  charStart INTEGER,
+  charEnd INTEGER,
+  sourceRevision TEXT,
+  createdAt TEXT NOT NULL,
+  deletedAt TEXT,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_evidence_source
+  ON memory_evidence(space, sourceType, sourceId);
+CREATE INDEX IF NOT EXISTS idx_memory_evidence_message
+  ON memory_evidence(messageId);
+
+CREATE TABLE IF NOT EXISTS memory_outbox (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  eventId TEXT,
+  taskType TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'retry', 'dead', 'done')),
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  retryCount INTEGER NOT NULL DEFAULT 0,
+  leaseUntil TEXT,
+  nextRunAt TEXT NOT NULL,
+  lastError TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (eventId) REFERENCES memory_events(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_outbox_ready
+  ON memory_outbox(space, status, nextRunAt);
+
+CREATE TABLE IF NOT EXISTS memory_projection_meta (
+  space TEXT PRIMARY KEY NOT NULL CHECK (space IN ('normal', 'personal')),
+  projectionVersion INTEGER NOT NULL DEFAULT 0,
+  memoryEpoch INTEGER NOT NULL DEFAULT 0,
+  ontologyVersion TEXT NOT NULL DEFAULT 'ontology-v1',
+  retrievalScorerVersion TEXT NOT NULL DEFAULT 'retrieval-v1',
+  lastRebuiltAt TEXT,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_import_id_map (
+  packageId TEXT NOT NULL,
+  sourceType TEXT NOT NULL,
+  sourceId TEXT NOT NULL,
+  targetType TEXT NOT NULL,
+  targetId TEXT NOT NULL,
+  sourceHash TEXT NOT NULL,
+  importedAt TEXT NOT NULL,
+  PRIMARY KEY (packageId, sourceType, sourceId)
+);
+
+CREATE TABLE IF NOT EXISTS memory_deletion_certificates (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  commandId TEXT NOT NULL UNIQUE,
+  targetClaimIdsJson TEXT NOT NULL,
+  projectionCleared INTEGER NOT NULL DEFAULT 0,
+  ftsCleared INTEGER NOT NULL DEFAULT 0,
+  embeddingCleared INTEGER NOT NULL DEFAULT 0,
+  graphCleared INTEGER NOT NULL DEFAULT 0,
+  cacheEpochAdvanced INTEGER NOT NULL DEFAULT 0,
+  exportCleared INTEGER NOT NULL DEFAULT 0,
+  providerCacheLimitation TEXT,
+  createdAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_episodes (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  scopeType TEXT NOT NULL,
+  scopeId TEXT,
+  lane TEXT NOT NULL CHECK (lane IN ('confirmed', 'working', 'archive')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'closed', 'archived', 'deleted')),
+  title TEXT NOT NULL,
+  summaryText TEXT NOT NULL,
+  startMessageId TEXT,
+  endMessageId TEXT,
+  validFrom TEXT,
+  validTo TEXT,
+  sourceClaimIdsJson TEXT NOT NULL DEFAULT '[]',
+  sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+  branchRootMessageId TEXT,
+  branchVersionIndex INTEGER,
+  confidenceBand TEXT NOT NULL CHECK (confidenceBand IN ('high', 'medium', 'low')),
+  importance INTEGER NOT NULL CHECK (importance BETWEEN 0 AND 100),
+  projectionVersion INTEGER NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  archivedAt TEXT,
+  deletedAt TEXT,
+  FOREIGN KEY (startMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (endMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_episodes_scope
+  ON memory_episodes(space, scopeType, scopeId, lane, status, updatedAt);
+
+CREATE TABLE IF NOT EXISTS memory_relational_states (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  scopeType TEXT NOT NULL,
+  scopeId TEXT,
+  subjectEntityId TEXT NOT NULL,
+  metric TEXT NOT NULL CHECK (metric IN ('affinity', 'trust', 'tension', 'familiarity')),
+  value REAL NOT NULL CHECK (value BETWEEN -1.0 AND 1.0),
+  signalWeight REAL NOT NULL CHECK (signalWeight >= 0),
+  decayHalfLifeDays REAL NOT NULL CHECK (decayHalfLifeDays > 0),
+  lastEvidenceAt TEXT,
+  evidenceIdsJson TEXT NOT NULL DEFAULT '[]',
+  projectionVersion INTEGER NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(space, scopeType, scopeId, subjectEntityId, metric)
+);
+
+CREATE TABLE IF NOT EXISTS memory_profiles (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  scopeType TEXT NOT NULL,
+  scopeId TEXT,
+  profileJson TEXT NOT NULL,
+  profileText TEXT NOT NULL,
+  sourceClaimIdsJson TEXT NOT NULL DEFAULT '[]',
+  sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+  version INTEGER NOT NULL DEFAULT 1,
+  projectionVersion INTEGER NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(space, scopeType, scopeId)
+);
+
+CREATE TABLE IF NOT EXISTS memory_board_projection (
+  claimId TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  displayContent TEXT NOT NULL,
+  lane TEXT NOT NULL CHECK (lane IN ('confirmed', 'working', 'archive')),
+  scopeLabel TEXT NOT NULL,
+  sourceLabel TEXT NOT NULL,
+  needsReview INTEGER NOT NULL DEFAULT 0 CHECK (needsReview IN (0, 1)),
+  hasConflict INTEGER NOT NULL DEFAULT 0 CHECK (hasConflict IN (0, 1)),
+  sortKey REAL NOT NULL,
+  projectionVersion INTEGER NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
+  updatedAt TEXT NOT NULL,
+  PRIMARY KEY (claimId, space),
+  FOREIGN KEY (claimId) REFERENCES memory_claims(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_board_lane
+  ON memory_board_projection(space, lane, hidden, sortKey DESC);
+
+CREATE TABLE IF NOT EXISTS memory_current_turn_observations (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL,
+  branchRootMessageId TEXT,
+  branchVersionIndex INTEGER,
+  messageId TEXT NOT NULL,
+  intent TEXT NOT NULL CHECK (intent IN ('none', 'recall', 'correction', 'forget', 'confirm', 'historical', 'safety')),
+  explicitUserAction INTEGER NOT NULL DEFAULT 0 CHECK (explicitUserAction IN (0, 1)),
+  payloadJson TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'consumed', 'expired', 'deleted')),
+  extractorVersion TEXT NOT NULL,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL,
+  consumedAt TEXT,
+  deletedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (messageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_current_turn_pending
+  ON memory_current_turn_observations(threadId, status, expiresAt);
+
+CREATE TABLE IF NOT EXISTS memory_ontology_predicates (
+  ontologyVersion TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  description TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  PRIMARY KEY (ontologyVersion, predicate)
+);
+
+CREATE TABLE IF NOT EXISTS memory_ontology_aliases (
+  ontologyVersion TEXT NOT NULL,
+  aliasNormalized TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  objectNormalizer TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  PRIMARY KEY (ontologyVersion, aliasNormalized),
+  FOREIGN KEY (ontologyVersion, predicate)
+    REFERENCES memory_ontology_predicates(ontologyVersion, predicate)
+);
+
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+  claimId TEXT NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  providerId TEXT NOT NULL,
+  modelId TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  vectorJson TEXT NOT NULL,
+  sourceTextHash TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  PRIMARY KEY (claimId, space, modelId),
+  FOREIGN KEY (claimId) REFERENCES memory_claims(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_memory_embeddings_space_model
+  ON memory_embeddings(space, modelId, updatedAt);
+
+CREATE TABLE IF NOT EXISTS memory_lineage_meta (
+  threadId TEXT PRIMARY KEY NOT NULL,
+  currentRootMessageId TEXT,
+  currentBranchVersionIndex INTEGER NOT NULL DEFAULT 0,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO memory_ontology_predicates
+  (ontologyVersion, predicate, subjectKind, description)
+VALUES
+  ('ontology-v1', 'preference.general', 'user', 'General preference'),
+  ('ontology-v1', 'preference.food', 'user', 'Food preference or restriction'),
+  ('ontology-v1', 'preference.communication', 'user', 'Communication preference'),
+  ('ontology-v1', 'preference.schedule', 'user', 'Schedule preference'),
+  ('ontology-v1', 'fact.identity', 'user', 'Stable identity fact'),
+  ('ontology-v1', 'fact.household', 'user', 'Household fact'),
+  ('ontology-v1', 'fact.health', 'user', 'Health fact'),
+  ('ontology-v1', 'decision', 'user', 'Important decision'),
+  ('ontology-v1', 'boundary.safety', 'user', 'Safety boundary'),
+  ('ontology-v1', 'boundary.consent', 'user', 'Consent boundary'),
+  ('ontology-v1', 'task', 'user', 'Task or plan'),
+  ('ontology-v1', 'commitment', 'companion', 'Companion commitment'),
+  ('ontology-v1', 'relational.affinity', 'joint', 'Relational affinity signal'),
+  ('ontology-v1', 'relational.trust', 'joint', 'Relational trust signal'),
+  ('ontology-v1', 'relational.tension', 'joint', 'Relational tension signal'),
+  ('ontology-v1', 'relational.familiarity', 'joint', 'Relational familiarity signal'),
+  ('ontology-v1', 'state.emotion', 'user', 'Emotional state'),
+  ('ontology-v1', 'state.location', 'user', 'Location state'),
+  ('ontology-v1', 'state.health', 'user', 'Health state'),
+  ('ontology-v1', 'episode.scene', 'joint', 'Conversation episode');
+
+INSERT OR IGNORE INTO memory_ontology_aliases
+  (ontologyVersion, aliasNormalized, predicate, objectNormalizer)
+VALUES
+  ('ontology-v1', '喜欢', 'preference.general', 'text'),
+  ('ontology-v1', '偏好', 'preference.general', 'text'),
+  ('ontology-v1', '不喜欢', 'preference.general', 'text'),
+  ('ontology-v1', '讨厌', 'preference.general', 'text'),
+  ('ontology-v1', '不吃', 'preference.food', 'text'),
+  ('ontology-v1', '忌口', 'preference.food', 'text'),
+  ('ontology-v1', '过敏', 'boundary.safety', 'text'),
+  ('ontology-v1', '过敏于', 'boundary.safety', 'text'),
+  ('ontology-v1', '记住', 'preference.communication', 'text'),
+  ('ontology-v1', '以后默认', 'preference.communication', 'text');
+
+INSERT OR IGNORE INTO memory_projection_meta
+  (space, projectionVersion, memoryEpoch, ontologyVersion, retrievalScorerVersion, updatedAt)
+VALUES
+  ('normal', 0, 0, 'ontology-v1', 'retrieval-v1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  ('personal', 0, 0, 'ontology-v1', 'retrieval-v1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+`;
+
+export const MIGRATION_STATEMENTS_V47_ADD_LINEAGE_COLUMN = `
+ALTER TABLE ai_threads ADD COLUMN lineageVersion INTEGER NOT NULL DEFAULT 0;
+`;
+
+export const MIGRATION_STATEMENTS_V48 = `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY NOT NULL,
+  appliedAt TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO schema_migrations (version, appliedAt)
+VALUES
+  (47, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  (48, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

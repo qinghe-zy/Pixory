@@ -1,6 +1,6 @@
 {
   "name": "pixory",
-  "version": "2.6.8",
+  "version": "2.6.9",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.cjs",
     "doctor": "expo install --check",
-    "acceptance:android": "expo start --android -c"
+    "acceptance:android": "expo start --android -c",
+    "release:android": "powershell -ExecutionPolicy Bypass -File scripts/build-android-release.ps1"
   },
   "dependencies": {
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",

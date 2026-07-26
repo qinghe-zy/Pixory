@@ -220,6 +220,35 @@ async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<Expor
   return { ips: filteredIps, groups: filteredGroups, tags, images: imagesWithRelations, importBatches, importBatchItemsByBatchId };
 }
 
+async function buildMemoryBackupManifest(db: SQLiteDatabase, space: PixorySpace): Promise<Record<string, unknown>> {
+  const tableNames = [
+    'memory_events',
+    'memory_claims',
+    'memory_evidence',
+    'memory_current_turn_observations',
+    'memory_lineage_meta',
+    'memory_import_id_map',
+    'memory_deletion_certificates',
+    'memory_episodes',
+    'memory_relational_states',
+    'memory_profiles',
+  ];
+  const memory: Record<string, unknown> = {};
+  for (const table of tableNames) {
+    const where = table === 'memory_lineage_meta'
+      ? 'WHERE threadId IN (SELECT id FROM ai_threads WHERE space = ?)'
+      : table === 'memory_import_id_map'
+        ? ''
+        : 'WHERE space = ?';
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM ${table} ${where}`,
+      ...(where ? [space] : [])
+    );
+    memory[table] = rows;
+  }
+  return memory;
+}
+
 async function calculateDirectorySize(directoryUri: string): Promise<number> {
   const entries = await FileSystem.readDirectoryAsync(directoryUri);
   let totalBytes = 0;
@@ -339,6 +368,7 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
           videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db),
+          memory: await buildMemoryBackupManifest(db, space),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -407,6 +437,7 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
           videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db, ipId),
+          memory: await buildMemoryBackupManifest(db, space),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -490,6 +521,7 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
           videoCount: images.filter((image) => image.mediaType === 'video').length,
           images: buildManifestImageEntries(images),
           exportData: await buildExportData(db),
+          memory: await buildMemoryBackupManifest(db, space),
           plainExportWarning:
             'This is a plain personal export. If copied to a public directory, private names, metadata, originals, and thumbnails are visible.',
           safety:

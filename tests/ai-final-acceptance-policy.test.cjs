@@ -203,7 +203,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   const gemini = read('src/ai/providers/geminiProvider.ts');
 
   assert.match(types, /thinkingDisabled: boolean/);
-  assert.match(schema, /DATABASE_VERSION = 46/);
+  assert.match(schema, /DATABASE_VERSION = 48/);
   assert.match(schema, /thinkingDisabled INTEGER NOT NULL DEFAULT 0/);
   assert.match(schema, /MIGRATION_STATEMENTS_V40/);
   assert.match(db, /MIGRATION_STATEMENTS_V40/);
@@ -243,13 +243,13 @@ test('AI session settings clearly distinguish autosaved options from role instru
 test('AI memory board uses confirmation and compact governance labels', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
 
-  assert.match(board, /pendingDeleteMemory/);
+  assert.match(board, /deleteTarget/);
   assert.match(board, /AppDialog/);
-  assert.match(board, /删除这条记忆/);
-  assert.match(board, /删除这段摘要/);
-  assert.match(board, /microTag/);
+  assert.match(board, /忘记这条记忆/);
+  assert.doesNotMatch(board, /删除这段摘要/);
+  assert.match(board, /scopeText/);
   assert.match(board, /SCOPE_LABELS\[memory\.scope\]/);
-  assert.match(board, /TYPE_LABELS\[memory\.type\]/);
+  assert.match(board, /memory\.sourceKind === 'manual'/);
   assert.doesNotMatch(board, /formatMemoryImportanceLabel/);
   assert.doesNotMatch(board, /formatMemoryConfidenceLabel/);
   assert.doesNotMatch(board, /重要度 \{memory\.importance\} · 可信度 \{Math\.round\(memory\.confidence \* 100\)\}%/);
@@ -330,7 +330,9 @@ test('AI companion memory profile service updates session profiles early enough 
   assert.match(profile, /用户手动画像/);
   assert.match(profile, /prepared\.currentProfile\.profileText/);
   assert.match(prompts, /手动画像优先/);
-  assert.match(board, /人设画像/);
+  assert.match(board, /长期记住/);
+  assert.match(board, /最近对话/);
+  assert.doesNotMatch(board, /人设画像/);
   assert.match(providerSettings, /全局用户画像/);
   assert.match(providerSettings, /updateUserProfile\(space,\s*globalProfileDraft\.trim\(\),\s*null,\s*null\)/);
 });
@@ -350,18 +352,18 @@ test('AI memory board is reachable from session settings and supports user contr
   assert.match(board, /deleteMemory/);
 });
 
-test('AI memory board supports visible profile management', () => {
+test('AI memory board removes profile internals while global profile management stays in provider settings', () => {
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
   const providerSettings = read('src/screens/AiProviderSettingsScreen.tsx');
 
-  assert.match(board, /人设画像/);
-  assert.match(board, /画像用于长期理解你，不会覆盖当前要求/);
+  assert.doesNotMatch(board, /人设画像/);
+  assert.doesNotMatch(board, /画像用于长期理解你，不会覆盖当前要求/);
   assert.doesNotMatch(board, /globalProfileDraft/);
   assert.doesNotMatch(board, /handleSaveGlobalProfile/);
-  assert.match(board, /projectProfileDraft/);
-  assert.match(board, /handleSaveProjectProfile/);
-  assert.match(board, /本会话画像优先于当前 IP 画像和全局画像/);
-  assert.match(board, /lastUpdatedAt/);
+  assert.doesNotMatch(board, /projectProfileDraft/);
+  assert.doesNotMatch(board, /handleSaveProjectProfile/);
+  assert.match(board, /长期记住/);
+  assert.match(board, /最近对话/);
   assert.match(providerSettings, /全局用户画像/);
   assert.match(providerSettings, /globalProfileDraft/);
   assert.match(providerSettings, /handleSaveGlobalProfile/);
@@ -446,7 +448,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 46/);
+  assert.match(schema, /DATABASE_VERSION = 48/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);

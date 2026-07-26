@@ -10,6 +10,13 @@ import type {
 } from '../database/repositories/aiThreadRepository';
 import { buildMainCompanionMemoryTemplate } from './aiMemoryPrompts';
 import type { AiThreadRecord } from './types';
+import { compileMemoryUsageContract } from './memory/contextCompiler';
+import { retrieveMemoryClaims } from './memory/memoryRetrievalService';
+import { MemoryFacade } from './memory/memoryFacade';
+import { resolveCalibratedConfidence } from './memory/memoryTypes';
+import type { MemoryClaimRecord } from './memory/memoryTypes';
+import { migrateLegacyMemoriesToV1 } from './memory/memoryMigrationService';
+import { buildRelationalStateText } from './memory/memoryRelationalStateService';
 
 export const MEMORY_CAPTURE_PATTERNS = [
   /记住/,
@@ -49,6 +56,85 @@ function createMemoryId(): string {
 
 function normalizeMemoryContent(content: string): string {
   return content.replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 180);
+}
+
+function mapV1ClaimToLegacyMemory(claim: MemoryClaimRecord): AiMemoryRecord {
+  const scope = claim.scopeType === 'branch' ? 'thread' : claim.scopeType;
+  const type: AiMemoryRecord['type'] = claim.predicate.startsWith('preference.')
+    ? 'preference'
+    : claim.predicate === 'decision'
+      ? 'decision'
+      : claim.predicate === 'task'
+        ? 'task'
+        : claim.predicate === 'commitment'
+          ? 'instruction'
+          : claim.speechMode === 'corrected'
+            ? 'correction'
+            : 'fact';
+  return {
+    assetSnapshotJson: '{}',
+    confidence: resolveCalibratedConfidence(claim.confidenceCalibrated, claim.confidenceBand),
+    content: claim.valueDisplay,
+    createdAt: claim.createdAt,
+    deletedAt: claim.deletedAt,
+    groupId: null,
+    id: claim.id,
+    imageAssetId: null,
+    importance: Math.max(1, Math.min(5, Math.round(claim.importance / 20))),
+    ipId: scope === 'ip' && claim.scopeId ? Number(claim.scopeId) : null,
+    lastReconciledAt: null,
+    lastUsedAt: claim.lastUsedAt,
+    mergeReason: claim.status === 'conflicted' ? '新版记忆存在冲突，回答前必须澄清。' : null,
+    normalizedContent: claim.valueNormalized,
+    reconcileSourceMessageId: null,
+    space: claim.space,
+    scope,
+    scopeId: claim.scopeId,
+    sourceKind: claim.sourceKind === 'manual' ? 'manual' : 'auto',
+    sourceMessageId: claim.sourceMessageId,
+    status: claim.status === 'stale' ? 'stale' : claim.status === 'deleted' ? 'deleted' : 'active',
+    supersededByMemoryId: claim.supersededByClaimId,
+    type,
+    updatedAt: claim.updatedAt,
+    mergedAt: null,
+    memoryLane: claim.lane,
+    memoryVersion: claim.version,
+  };
+}
+
+async function listV1MemoryBoardItems(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+  options?: { limit?: number; offset?: number; status?: AiMemoryRecord['status'] | 'all' }
+): Promise<AiMemoryRecord[]> {
+  const statusClause = options?.status === 'stale'
+    ? `AND c.status = 'stale'`
+    : options?.status === 'all'
+      ? ''
+      : `AND c.status NOT IN ('deleted', 'suppressed', 'superseded')`;
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT c.*
+     FROM memory_claims c
+     WHERE c.space = ?
+       ${statusClause}
+       AND (
+         (c.scopeType = 'thread' AND c.scopeId = ?)
+         OR (c.scopeType = 'role' AND c.scopeId = ?)
+         OR (c.scopeType = 'ip' AND c.scopeId = ?)
+         OR (c.scopeType = 'knowledge_base' AND c.scopeId = ?)
+         OR c.scopeType = 'global'
+       )
+     ORDER BY c.lane ASC, c.importance DESC, c.updatedAt DESC
+     LIMIT ? OFFSET ?`,
+    thread.space,
+    thread.id,
+    thread.roleCardId,
+    thread.boundIpId == null ? null : String(thread.boundIpId),
+    thread.boundKnowledgeBaseId,
+    options?.limit ?? 80,
+    options?.offset ?? 0
+  );
+  return rows.map((row) => mapV1ClaimToLegacyMemory(row as unknown as MemoryClaimRecord));
 }
 
 function scopedBoardInput(thread: AiThreadRecord) {
@@ -99,6 +185,17 @@ export function shouldRunImmediateMemoryCapture(text: string): boolean {
 }
 
 export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadRecord, options?: { limit?: number; offset?: number; status?: AiMemoryRecord['status'] | 'all' }): Promise<AiMemoryRecord[]> {
+  const initialV1Items = await runWithDatabaseSpace(space, (db) => listV1MemoryBoardItems(db, thread, options));
+  if (initialV1Items.length > 0 || options?.status === 'stale' || options?.status === 'all') {
+    return initialV1Items;
+  }
+  const migrated = await migrateLegacyMemoriesToV1(space);
+  if (migrated > 0) {
+    const migratedV1Items = await runWithDatabaseSpace(space, (db) => listV1MemoryBoardItems(db, thread, options));
+    if (migratedV1Items.length > 0) {
+      return migratedV1Items;
+    }
+  }
   return runWithDatabaseSpace(space, (db) =>
     aiThreadRepository.listMemoryBoardItems(db, {
       ...scopedBoardInput(thread),
@@ -111,25 +208,134 @@ export async function listMemoryBoardItems(space: PixorySpace, thread: AiThreadR
 
 export async function createManualMemory(space: PixorySpace, input: ManualMemoryInput): Promise<AiMemoryRecord> {
   const content = input.content.replace(/\s+/g, ' ').trim();
-  return runWithDatabaseSpace(space, (db) =>
-    aiThreadRepository.createManualMemory(db, {
-      ...input,
-      content,
-      id: input.id ?? createMemoryId(),
-      normalizedContent: input.normalizedContent ?? normalizeMemoryContent(content),
-    })
-  );
+  const claim = await MemoryFacade.createClaim({
+    actor: 'user',
+    confidenceBand: 'high',
+    confidenceRaw: 1,
+    importance: 90,
+    kind: 'state',
+    lane: 'confirmed',
+    manualLocked: true,
+    predicate: input.type === 'preference'
+      ? 'preference.general'
+      : input.type === 'instruction'
+        ? 'preference.communication'
+        : input.type === 'decision'
+          ? 'decision'
+          : 'fact.identity',
+    scopeId: input.scopeId,
+    scopeType: input.scope,
+    sourceKind: 'manual',
+    space,
+    speechMode: 'corrected',
+    stability: 'permanent',
+    subjectDisplay: '用户',
+    subjectEntityId: 'user',
+    valueDisplay: content,
+    valueNormalized: input.normalizedContent ?? normalizeMemoryContent(content),
+  }, { actorId: 'user', source: 'memory_board' });
+  return mapV1ClaimToLegacyMemory(claim);
 }
 
-export async function updateMemoryContent(space: PixorySpace, memoryId: string, content: string): Promise<AiMemoryRecord | null> {
+export async function updateMemoryContent(space: PixorySpace, memoryId: string, content: string, expectedVersion?: number): Promise<AiMemoryRecord | null> {
+  if (memoryId.startsWith('mclaim_')) {
+    const current = await runWithDatabaseSpace(space, (db) =>
+      db.getFirstAsync<Record<string, unknown>>('SELECT * FROM memory_claims WHERE id = ?', memoryId)
+    );
+    if (!current) {
+      return null;
+    }
+    const claim = await MemoryFacade.editClaim({
+      claimId: memoryId,
+      patch: {
+        kind: current.kind as MemoryClaimRecord['kind'],
+        predicate: String(current.predicate),
+        scopeId: (current.scopeId as string | null) ?? null,
+        scopeType: current.scopeType as MemoryClaimRecord['scopeType'],
+        space,
+        valueDisplay: content.trim(),
+        valueNormalized: normalizeMemoryContent(content),
+      },
+      space,
+    }, { actorId: 'user', expectedVersion, source: 'memory_board' });
+    return mapV1ClaimToLegacyMemory(claim);
+  }
   return runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryContent(db, memoryId, content));
 }
 
-export async function deleteMemory(space: PixorySpace, memoryId: string): Promise<void> {
+export async function deleteMemory(space: PixorySpace, memoryId: string, expectedVersion?: number): Promise<void> {
+  if (memoryId.startsWith('mclaim_')) {
+    await MemoryFacade.deleteClaim({ claimId: memoryId, space }, { actorId: 'user', expectedVersion, source: 'memory_board' });
+    return;
+  }
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'deleted'));
 }
 
+export async function confirmMemory(space: PixorySpace, memoryId: string, expectedVersion?: number): Promise<void> {
+  if (memoryId.startsWith('mclaim_')) {
+    await MemoryFacade.confirmClaim({ claimId: memoryId, space }, {
+      actorId: 'user',
+      expectedVersion,
+      source: 'memory_board',
+    });
+    return;
+  }
+  const migrated = await migrateLegacyMemoriesToV1(space);
+  if (migrated > 0) {
+    const legacy = await runWithDatabaseSpace(space, (db) =>
+      db.getFirstAsync<{ id: string }>('SELECT id FROM ai_memories WHERE id = ?', memoryId)
+    );
+    if (legacy) {
+      const claimId = `mclaim_legacy_${memoryId}`;
+    await MemoryFacade.confirmClaim({ claimId, space }, {
+      actorId: 'user',
+      expectedVersion,
+        source: 'memory_board',
+      }).catch(() => undefined);
+    }
+  }
+}
+
+export async function changeMemoryScope(
+  space: PixorySpace,
+  memoryId: string,
+  scope: AiMemoryRecord['scope'],
+  scopeId: string | null,
+  expectedVersion?: number
+): Promise<AiMemoryRecord | null> {
+  if (memoryId.startsWith('mclaim_')) {
+    const claim = await MemoryFacade.changeClaimScope({
+      claimId: memoryId,
+      scopeId,
+      scopeType: scope,
+      space,
+    }, {
+      actorId: 'user',
+      expectedVersion,
+      source: 'memory_board',
+    });
+    return mapV1ClaimToLegacyMemory(claim);
+  }
+  await migrateLegacyMemoriesToV1(space);
+  const claimId = `mclaim_legacy_${memoryId}`;
+  const claim = await MemoryFacade.changeClaimScope({
+    claimId,
+    scopeId,
+    scopeType: scope,
+    space,
+  }, {
+    actorId: 'user',
+    expectedVersion,
+    source: 'memory_board',
+  }).catch(() => null);
+  return claim ? mapV1ClaimToLegacyMemory(claim) : null;
+}
+
 export async function markMemoryInaccurate(space: PixorySpace, memoryId: string): Promise<void> {
+  if (memoryId.startsWith('mclaim_')) {
+    await MemoryFacade.suppressClaim({ claimId: memoryId, space }, { actorId: 'user', source: 'memory_board' });
+    return;
+  }
   await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'stale'));
 }
 
@@ -286,9 +492,9 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const memories = await aiThreadRepository.listMemoryBoardItems(db, {
-    ...scopedBoardInput(thread),
-    branchScopes: options?.branchScopes,
+  // Stable prefixes must come from the v1 ledger. Reading the legacy board here
+  // would allow stale pre-migration rows to bypass lane/status/conflict policy.
+  const memories = await listV1MemoryBoardItems(db, thread, {
     limit: STABLE_MEMORY_LIMIT * 2,
   });
   const stable = memories
@@ -319,18 +525,19 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [profiles, segments] = await Promise.all([
+  const [profiles, segments, relationalStateText] = await Promise.all([
     aiThreadRepository.getUserProfiles(db, thread.space, { boundIpId: thread.boundIpId, boundThreadId: thread.id }),
     aiThreadRepository.listSummarySegments(db, thread.id, options?.branchScopes),
+    buildRelationalStateText({ db, space: thread.space, threadId: thread.id }),
   ]);
   const globalProfile = profiles.find((p) => p.boundIpId == null && p.boundThreadId == null);
   const projectProfile = profiles.find((p) => p.boundIpId != null && p.boundThreadId == null);
   const threadProfile = profiles.find((p) => p.boundThreadId === thread.id);
-  if (!globalProfile?.profileText && !projectProfile?.profileText && !threadProfile?.profileText && segments.length === 0) {
+  if (!globalProfile?.profileText && !projectProfile?.profileText && !threadProfile?.profileText && segments.length === 0 && !relationalStateText) {
     return '';
   }
   return buildMainCompanionMemoryTemplate({
-    relevantMemoriesText: '',
+    relevantMemoriesText: relationalStateText,
     summarySegmentsText: segments
       .map((segment) => `- ${segment.startAt ?? ''} 至 ${segment.endAt ?? ''}\n${segment.summaryText}`)
       .join('\n\n'),
@@ -397,6 +604,24 @@ export async function retrieveDynamicMemoryContext(
   const terms = queryTerms(userMessage);
   if (terms.length === 0) {
     return '';
+  }
+  try {
+    const v1Claims = await retrieveMemoryClaims(db, {
+      embeddingAvailable: false,
+      limit: DYNAMIC_MEMORY_LIMIT,
+      query: userMessage,
+      space: thread.space,
+      thread,
+    });
+    if (v1Claims.length > 0) {
+      await MemoryFacade.touchClaims(
+        thread.space,
+        v1Claims.map((item) => item.claim.id)
+      );
+      return compileMemoryUsageContract(v1Claims);
+    }
+  } catch {
+    // Legacy memory FTS remains the safe fallback during migration or on older databases.
   }
   const memories = await aiThreadRepository.searchActiveMemoryFts(db, {
     branchScopes: options?.branchScopes,

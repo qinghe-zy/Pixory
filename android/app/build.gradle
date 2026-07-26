@@ -98,8 +98,8 @@ android {
         applicationId 'com.pixory.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 270
-        versionName "2.6.8"
+        versionCode 271
+        versionName "2.6.9"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -123,6 +123,11 @@ android {
         }
         release {
             signingConfig signingConfigs.release
+            // Shipping APKs target physical Android devices only. Keep x86/x86_64
+            // available to debug builds so local emulator development still works.
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
@@ -145,7 +150,7 @@ android {
 android.applicationVariants.all { variant ->
     if (variant.name == "release") {
         variant.outputs.all {
-            outputFileName = "Pixory-v2.6.8-local-release.apk"
+            outputFileName = "Pixory-v2.6.9-local-release.apk"
         }
     }
 }
