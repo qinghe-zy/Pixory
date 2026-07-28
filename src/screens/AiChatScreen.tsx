@@ -1810,8 +1810,11 @@ export function AiChatScreen({
     inputRange: [0, 1],
     outputRange: [spacing[5], 0],
   });
+  const composerRevealMaskOpacity = composerEntranceProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
   const composerEntranceStyle = {
-    opacity: composerEntranceProgress,
     transform: [{ translateY: composerEntranceTranslateY }],
   };
   const latestAssistantMessage = useMemo(
@@ -6532,6 +6535,10 @@ export function AiChatScreen({
                 voiceError={voiceError}
                 voiceState={voiceState}
               />
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}
+              />
             </Animated.View>
           )}
           <AiScrollToLatestButton
@@ -6725,6 +6732,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[3],
     paddingTop: spacing[2],
     ...shadows.none,
+  },
+  composerRevealMask: {
+    backgroundColor: aiLightColors.canvas,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    zIndex: 3,
   },
   diaryHint: {
     alignItems: 'center',
