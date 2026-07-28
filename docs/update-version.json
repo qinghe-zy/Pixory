@@ -1,6 +1,6 @@
 {
   "version": "2.6.10",
-  "versionCode": 271,
+  "versionCode": 272,
   "enabled": true,
   "forceUpdate": false,
   "message": "Pixory 2.6.10 发布。新版记忆系统更稳、更省上下文，也更方便查看和纠正；可前往官网下载区获取最新版。",
@@ -10,7 +10,7 @@
     "🔒 完善 Personal、思考内容、外部导入和删除恢复的隔离与治理"
   ],
   "latestVersion": "2.6.10",
-  "latestVersionCode": 271,
+  "latestVersionCode": 272,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 发布 Memory v1，补齐事件账本、ContextPlan、原生 v2 包导入导出和可控记忆看板。"
 }
