@@ -1,15 +1,15 @@
 {
-  "version": "2.6.9",
+  "version": "2.6.10",
   "versionCode": 271,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.6.9 发布。新版记忆系统更稳、更省上下文，也更方便查看和纠正；可前往官网下载区获取最新版。",
+  "message": "Pixory 2.6.10 发布。新版记忆系统更稳、更省上下文，也更方便查看和纠正；可前往官网下载区获取最新版。",
   "detailLines": [
     "🧠 新增可重建的三层记忆账本与低噪声检索，无 Embedding 也能正常聊天",
     "✍️ 简化记忆看板，确认、编辑、删除和作用域修改会真实影响后续对话",
     "🔒 完善 Personal、思考内容、外部导入和删除恢复的隔离与治理"
   ],
-  "latestVersion": "2.6.9",
+  "latestVersion": "2.6.10",
   "latestVersionCode": 271,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 发布 Memory v1，补齐事件账本、ContextPlan、原生 v2 包导入导出和可控记忆看板。"
