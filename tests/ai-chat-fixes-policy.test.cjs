@@ -244,7 +244,7 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(composer, /onComposerHeightChange\?: \(\) => void/);
   assert.match(composer, /attachmentCountRef/);
   assert.match(composer, /onComposerHeightChange\?\.\(\)/);
-  assert.match(composer, /if \(nextHeight !== inputHeight\)/);
+  assert.match(composer, /if \(nextHeight === inputHeightRef\.current\) \{\s*return/);
 });
 
 test('AI chat sends attachments as provider payloads instead of filename-only prompt text', () => {
@@ -1231,8 +1231,20 @@ test('AI composer collapses back to its minimum height when sent text is cleared
 
   assert.match(
     composer,
-    /useEffect\(\(\) => \{[\s\S]{0,360}value\.length !== 0[\s\S]{0,360}setInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\)[\s\S]{0,360}onComposerHeightChange\?\.\(\)/,
+    /useEffect\(\(\) => \{[\s\S]{0,360}value\.length !== 0[\s\S]{0,360}updateInputHeight\(COMPOSER_INPUT_MIN_HEIGHT\)/,
   );
+});
+
+test('AI composer measures controlled long text independently from native input content-size events', () => {
+  const composer = read('src/components/ai/AiChatComposer.tsx');
+
+  assert.match(composer, /styles\.inputMeasurer/);
+  assert.match(composer, /numberOfLines=\{MAX_COMPOSER_LINES\}/);
+  assert.match(composer, /onLayout=\{handleMeasuredTextLayout\}/);
+  assert.match(composer, /\{value \? `\$\{value\}\\u200B` : '\\u200B'\}/);
+  assert.match(composer, /const handleMeasuredTextLayout = useCallback/);
+  assert.match(composer, /updateInputHeight\(event\.nativeEvent\.layout\.height\)/);
+  assert.doesNotMatch(composer, /onContentSizeChange=/);
 });
 
 

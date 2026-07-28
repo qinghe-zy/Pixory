@@ -200,7 +200,7 @@ const SHRINK_STABLE_DELAY_MS = 200;
 const RETAIN_RECONCILE_WINDOW_MS = 350;
 const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
-const COMPOSER_ENTRANCE_DURATION_MS = 500;
+const COMPOSER_ENTRANCE_DURATION_MS = 420;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
@@ -1798,7 +1798,7 @@ export function AiChatScreen({
   const inlineEditingActive = Boolean(editingUserMessageId);
   const composerEntranceTranslateY = composerEntranceProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [spacing[7], 0],
+    outputRange: [spacing[5], 0],
   });
   const composerEntranceStyle = {
     opacity: composerEntranceProgress,
@@ -6505,7 +6505,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.pagePaddingHorizontal,
   },
   composerPanel: {
-    backgroundColor: 'transparent',
+    backgroundColor: aiLightColors.canvas,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingBottom: spacing[3],

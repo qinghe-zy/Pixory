@@ -27,7 +27,7 @@ test.skip('main chat UI changes preserve the existing composer and streaming log
   );
 });
 
-test('AI canvas, title, and real composer use the approved floating visual treatment', () => {
+test('AI canvas, title, and real composer use the approved Android-safe floating visual treatment', () => {
   const theme = read('src/components/ai/aiLightTheme.ts');
   const scaffold = read('src/components/ai/AiLightScaffold.tsx');
   const composer = read('src/components/ai/AiChatComposer.tsx');
@@ -38,7 +38,7 @@ test('AI canvas, title, and real composer use the approved floating visual treat
   assert.match(theme, /posterRightFade:\s*'rgba\(237,\s*237,\s*237,\s*0\.82\)'/);
   assert.match(scaffold, /title:\s*\{[\s\S]*fontFamily:\s*typography\.family\.base[\s\S]*fontSize:\s*18[\s\S]*fontWeight:\s*'600'/);
   assert.match(composer, /composerShell:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.surface[\s\S]*borderWidth:\s*StyleSheet\.hairlineWidth[\s\S]*\.\.\.shadows\.sm/);
-  assert.match(chat, /composerPanel:\s*\{[\s\S]*backgroundColor:\s*'transparent'/);
+  assert.match(chat, /composerPanel:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.canvas/);
 });
 
 test('AI dialog and button styling is optional and default styling remains the default', () => {

@@ -239,7 +239,8 @@ test('AI chat composer matches the design.md light input surface', () => {
   assert.match(composer, /styles\.composerShell/);
   assert.match(composer, /multiline/);
   assert.match(composer, /MAX_COMPOSER_LINES/);
-  assert.match(composer, /onContentSizeChange/);
+  assert.match(composer, /styles\.inputMeasurer/);
+  assert.match(composer, /onLayout=\{handleMeasuredTextLayout\}/);
   assert.match(composer, /scrollEnabled=\{/);
   assert.match(composer, /borderRadius:\s*radius\.md/);
   assert.match(composer, /composerShell:\s*\{[\s\S]*backgroundColor:\s*aiLightColors\.surface/);
@@ -745,7 +746,7 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
 
   assert.match(chat, /composerEntranceKey\?: string/);
   assert.match(chat, /composerEntranceReason\?: ComposerEntranceReason/);
-  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 500/);
+  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 420/);
   assert.match(chat, /Animated\.Value\(shouldPrimeComposerEntrance \? 0 : 1\)/);
   assert.match(chat, /playedComposerEntranceKeysRef/);
   assert.match(chat, /composerEntranceRunRef/);
@@ -756,6 +757,8 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
   assert.match(chat, /Easing\.out\(Easing\.cubic\)/);
   assert.match(chat, /useNativeDriver: true/);
   assert.match(chat, /opacity: composerEntranceProgress/);
+  assert.match(chat, /outputRange: \[spacing\[5\], 0\]/);
+  assert.match(chat, /composerPanel:\s*\{[\s\S]{0,120}backgroundColor:\s*aiLightColors\.canvas/);
   assert.match(chat, /translateY: composerEntranceTranslateY/);
   assert.match(chat, /<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
   assert.match(app, /composerEntranceKey=\{currentRoute\.routeKey\}/);

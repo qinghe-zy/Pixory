@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 
 import { radius, rhythm, shadows, spacing, typography } from '../../design/tokens';
 import type { AiModelIconBrand } from '../../ai/aiModelIconService';
@@ -115,8 +115,26 @@ export function AiChatComposer({
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !generating;
   const inputRef = useRef<TextInput>(null);
   const attachmentCountRef = useRef(attachments.length);
+  const inputHeightRef = useRef(COMPOSER_INPUT_MIN_HEIGHT);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
   const [attachmentPopoverVisible, setAttachmentPopoverVisible] = useState(false);
+
+  const updateInputHeight = useCallback((measuredHeight: number) => {
+    const nextHeight = Math.min(
+      COMPOSER_INPUT_MAX_HEIGHT,
+      Math.max(COMPOSER_INPUT_MIN_HEIGHT, Math.ceil(measuredHeight))
+    );
+    if (nextHeight === inputHeightRef.current) {
+      return;
+    }
+    inputHeightRef.current = nextHeight;
+    setInputHeight(nextHeight);
+    onComposerHeightChange?.();
+  }, [onComposerHeightChange]);
+
+  const handleMeasuredTextLayout = useCallback((event: LayoutChangeEvent) => {
+    updateInputHeight(event.nativeEvent.layout.height);
+  }, [updateInputHeight]);
 
   useEffect(() => {
     if (generating) {
@@ -133,12 +151,11 @@ export function AiChatComposer({
   }, [attachments.length, onComposerHeightChange]);
 
   useEffect(() => {
-    if (value.length !== 0 || inputHeight === COMPOSER_INPUT_MIN_HEIGHT) {
+    if (value.length !== 0) {
       return;
     }
-    setInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
-    onComposerHeightChange?.();
-  }, [inputHeight, onComposerHeightChange, value]);
+    updateInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+  }, [updateInputHeight, value]);
 
   return (
     <View style={styles.container}>
@@ -181,32 +198,39 @@ export function AiChatComposer({
         ) : null}
 
         {/* --- Text input area --- */}
-        <TextInput
-          allowFontScaling={false}
-          maxFontSizeMultiplier={1}
-          ref={inputRef}
-          multiline
-          numberOfLines={COMPOSER_INPUT_DEFAULT_LINES}
-          onContentSizeChange={(event) => {
-            const nextHeight = Math.min(
-              COMPOSER_INPUT_MAX_HEIGHT,
-              Math.max(COMPOSER_INPUT_MIN_HEIGHT, event.nativeEvent.contentSize.height)
-            );
-            if (nextHeight !== inputHeight) {
-              setInputHeight(nextHeight);
-              onComposerHeightChange?.();
-            }
-          }}
-          onChangeText={onChangeText}
-          onFocus={onFocus}
-          placeholder={placeholder}
-          placeholderTextColor={aiLightColors.mutedSoft}
-          selectionColor={aiLightColors.primary}
-          scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
-          style={[styles.input, { height: inputHeight }]}
-          textAlignVertical="top"
-          value={value}
-        />
+        <View style={[styles.inputArea, { height: inputHeight }]}>
+          {/* Android can skip content-size events for controlled text updates, so mirror the value for layout. */}
+          <Text
+            accessible={false}
+            allowFontScaling={false}
+            ellipsizeMode="clip"
+            maxFontSizeMultiplier={1}
+            numberOfLines={MAX_COMPOSER_LINES}
+            onLayout={handleMeasuredTextLayout}
+            pointerEvents="none"
+            style={[styles.inputText, styles.inputMeasurer]}
+            textBreakStrategy="simple"
+          >
+            {value ? `${value}\u200B` : '\u200B'}
+          </Text>
+          <TextInput
+            allowFontScaling={false}
+            maxFontSizeMultiplier={1}
+            ref={inputRef}
+            multiline
+            numberOfLines={COMPOSER_INPUT_DEFAULT_LINES}
+            onChangeText={onChangeText}
+            onFocus={onFocus}
+            placeholder={placeholder}
+            placeholderTextColor={aiLightColors.mutedSoft}
+            selectionColor={aiLightColors.primary}
+            scrollEnabled={inputHeight >= COMPOSER_INPUT_MAX_HEIGHT}
+            style={[styles.inputText, styles.input]}
+            textAlignVertical="top"
+            textBreakStrategy="simple"
+            value={value}
+          />
+        </View>
 
         {/* --- Bottom toolbar: [model icon]  ...space...  [+ attach] [send/stop] --- */}
         <View style={styles.toolbar}>
@@ -360,7 +384,10 @@ const styles = StyleSheet.create({
     width: 24,
   },
   /* --- Text input --- */
-  input: {
+  inputArea: {
+    position: 'relative',
+  },
+  inputText: {
     color: aiLightColors.ink,
     fontFamily: typography.family.base,
     fontSize: typography.size.body,
@@ -371,6 +398,14 @@ const styles = StyleSheet.create({
     minHeight: COMPOSER_INPUT_MIN_HEIGHT,
     paddingHorizontal: 0,
     paddingVertical: 0,
+  },
+  inputMeasurer: {
+    opacity: 0,
+    position: 'absolute',
+    width: '100%',
+  },
+  input: {
+    height: '100%',
   },
   /* --- Bottom toolbar --- */
   toolbar: {
