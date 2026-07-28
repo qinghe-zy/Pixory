@@ -21,6 +21,16 @@ const primaryCardPatternImage = require('../../assets/backgrounds/japanese-fresh
 const HOME_THREAD_LIMIT = 30;
 const RECENT_CHAT_VISIBLE_ROWS = 5;
 const RECENT_CHAT_ROW_HEIGHT = 72;
+const homeThreadCache: Partial<Record<PixorySpace, AiHomeThreadItem[]>> = {};
+const homeRoleCardCache: Partial<Record<PixorySpace, AiRoleCardRecord[]>> = {};
+
+function getCachedHomeThreads(space: PixorySpace): AiHomeThreadItem[] {
+  return homeThreadCache[space] ?? [];
+}
+
+function getCachedHomeRoleCards(space: PixorySpace): AiRoleCardRecord[] {
+  return homeRoleCardCache[space] ?? [];
+}
 
 interface AiHomeScreenProps {
   footer?: ReactNode;
@@ -60,8 +70,8 @@ export function AiHomeScreen({
     transform: [{ scale: primaryCardScale.value }],
   }));
 
-  const [loadedThreads, setLoadedThreads] = useState<{ space: PixorySpace; threads: AiHomeThreadItem[] }>({ space, threads: [] });
-  const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; roleCards: AiRoleCardRecord[] }>({ space, roleCards: [] });
+  const [loadedThreads, setLoadedThreads] = useState<{ space: PixorySpace; threads: AiHomeThreadItem[] }>(() => ({ space, threads: getCachedHomeThreads(space) }));
+  const [loadedRoleCards, setLoadedRoleCards] = useState<{ space: PixorySpace; roleCards: AiRoleCardRecord[] }>(() => ({ space, roleCards: getCachedHomeRoleCards(space) }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const threads = loadedThreads.space === space ? loadedThreads.threads : [];
   const roleCards = loadedRoleCards.space === space ? loadedRoleCards.roleCards : [];
@@ -70,8 +80,10 @@ export function AiHomeScreen({
   useEffect(() => {
     let isMounted = true;
     setErrorMessage(null);
+    setLoadedThreads({ space, threads: getCachedHomeThreads(space) });
     void listAiHomeThreads({ limit: HOME_THREAD_LIMIT, space })
       .then((nextThreads) => {
+        homeThreadCache[space] = nextThreads;
         if (isMounted) {
           setLoadedThreads({ space, threads: nextThreads });
         }
@@ -88,8 +100,10 @@ export function AiHomeScreen({
 
   useEffect(() => {
     let isMounted = true;
+    setLoadedRoleCards({ space, roleCards: getCachedHomeRoleCards(space) });
     void listRoleCards(space)
       .then((nextRoleCards) => {
+        homeRoleCardCache[space] = nextRoleCards;
         if (isMounted) {
           setLoadedRoleCards({ space, roleCards: nextRoleCards });
         }

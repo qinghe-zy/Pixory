@@ -76,12 +76,12 @@ test('AI chat screen exposes context title, settings, streaming, thinking, and c
 test('AI chat header shows the current model below the chat title', () => {
   const content = chat();
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
-  assert.match(content, /getCurrentChatModelLabel/);
+  assert.match(content, /getCurrentChatModelPresentation/);
   assert.match(content, /modelLabel/);
   assert.match(content, /modelRefreshKey/);
   assert.match(content, /\[modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
   assert.match(content, /styles\.modelSubtitle/);
-  assert.match(service, /getCurrentChatModelLabel/);
+  assert.match(service, /getCurrentChatModelPresentation/);
   assert.match(service, /provider\.displayName/);
   assert.match(service, /model\?\.displayName/);
 });

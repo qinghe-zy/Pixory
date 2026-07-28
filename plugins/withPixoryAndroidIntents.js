@@ -18,6 +18,14 @@ const TEMPLATE_FILES = [
     source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt',
     target: 'app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt',
   },
+  {
+    source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/diary/DiaryAlarmReceiver.kt',
+    target: 'app/src/main/java/com/pixory/app/diary/DiaryAlarmReceiver.kt',
+  },
+  {
+    source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/diary/DiaryAlarmService.kt',
+    target: 'app/src/main/java/com/pixory/app/diary/DiaryAlarmService.kt',
+  },
 ];
 
 const PDFBOX_DEPENDENCY = 'implementation("com.tom-roush:pdfbox-android:2.0.27.0")';

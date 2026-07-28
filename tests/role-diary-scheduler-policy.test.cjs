@@ -42,7 +42,7 @@ test('only resets the diary session clock when the active thread changes', () =>
 
   assert.match(chat, /const evaluateDiaryTriggerRef = useRef\(evaluateDiaryTrigger\)/);
   assert.match(chat, /evaluateDiaryTriggerRef\.current = evaluateDiaryTrigger/);
-  assert.match(chat, /setRoleDiary\(null\);/);
+  assert.match(chat, /setRoleDiaries\(\[\]\);/);
   assert.match(chat, /setDiaryManualHint\(false\);/);
   assert.match(chat, /setDiaryCommandHint\(false\);/);
   assert.match(chat, /diarySessionStartedAtRef\.current = new Date\(\)\.toISOString\(\)/);

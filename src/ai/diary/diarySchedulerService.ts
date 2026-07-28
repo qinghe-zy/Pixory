@@ -8,6 +8,9 @@ import { generateRoleDiary } from './diaryGenerationService';
 import type { AiBranchScope, AiMessageRecord } from '../../database/repositories/aiThreadRepository';
 import { aiThreadRepository, settingsRepository } from '../../database';
 
+const STALE_GENERATING_JOB_MS = 15 * 60 * 1_000;
+const dueRunsBySpace = new Map<PixorySpace, Promise<void>>();
+
 export interface ScheduleDiaryJobInput {
   space: PixorySpace;
   roleCardId: string;
@@ -182,6 +185,10 @@ export async function scheduleDiaryWakeup(input: {
 export async function reconcileDiaryJobs(space: PixorySpace): Promise<RoleDiaryJobRecord[]> {
   const db = await getDatabase(space);
   const now = new Date().toISOString();
+  await diaryRepository.recoverStaleGeneratingJobs(
+    db,
+    new Date(Date.now() - STALE_GENERATING_JOB_MS).toISOString(),
+  );
   return db.getAllAsync<RoleDiaryJobRecord>(
     `SELECT * FROM companion_diary_jobs
      WHERE (status IN ('pending', 'due') AND scheduledFor <= ? AND (nextRunAt IS NULL OR nextRunAt <= ?))
@@ -192,10 +199,30 @@ export async function reconcileDiaryJobs(space: PixorySpace): Promise<RoleDiaryJ
 }
 
 export async function runDueDiaryJobs(space: PixorySpace): Promise<void> {
-  const jobs = await reconcileDiaryJobs(space);
-  for (const job of jobs) {
-    await runDiaryJob(space, job.id);
+  const existing = dueRunsBySpace.get(space);
+  if (existing) {
+    return existing;
   }
+  const task = (async () => {
+    const jobs = await reconcileDiaryJobs(space);
+    for (const job of jobs) {
+      await runDiaryJob(space, job.id);
+    }
+  })();
+  dueRunsBySpace.set(space, task);
+  void task.then(
+    () => {
+      if (dueRunsBySpace.get(space) === task) {
+        dueRunsBySpace.delete(space);
+      }
+    },
+    () => {
+      if (dueRunsBySpace.get(space) === task) {
+        dueRunsBySpace.delete(space);
+      }
+    },
+  );
+  return task;
 }
 
 function parseBranchScopes(value: string): AiBranchScope[] {
@@ -375,7 +402,9 @@ export function nextDiaryWakeupAt(now = new Date()): string {
   if (minutes < 23 * 60 + 50) {
     return new Date(now.getTime() + 10 * 60 * 1_000).toISOString();
   }
-  return nextBeijingDiaryCheck(now);
+  // A session that began before 23:50 may finish after midnight. Keep a
+  // short-lived wake-up chain until the quiet-period rule resolves it.
+  return new Date(now.getTime() + 10 * 60 * 1_000).toISOString();
 }
 
 function nextBeijingTimeAt(now: Date, hour: number, minute: number): string {

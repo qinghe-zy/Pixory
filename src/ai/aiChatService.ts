@@ -1969,15 +1969,14 @@ async function buildPromptForThread(
           query: memorySettings.deepMemoryEnabled ? userMessage : '',
           thread,
         });
-        const optedInDiary = thread.roleCardId
-          ? await diaryRepository.findCurrentDiaryForRole(db, thread.roleCardId)
-          : null;
-        const optedInDiaryVersion = optedInDiary && optedInDiary.contextOptIn === true
-          ? await diaryRepository.findCurrentVersion(db, optedInDiary.id)
-          : null;
-        const diaryContext = optedInDiaryVersion
-          ? `[角色日记（${optedInDiary?.diaryDate ?? ''}，仅作角色内心状态参考，不是用户说过的话）]\n${optedInDiaryVersion.body}`
-          : '';
+        const optedInDiaries = thread.roleCardId
+          ? await diaryRepository.listContextOptInDiaryVersionsForRole(db, thread.roleCardId)
+          : [];
+        const diaryContext = optedInDiaries
+          .map(({ diary, version }) =>
+            `[角色日记（${diary.diaryDate}，仅作角色内心状态参考，不是用户说过的话）]\n${version.body}`,
+          )
+          .join('\n\n');
         return {
           companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
           dynamicMemoryContext: [compiledMemory.context, diaryContext].filter(Boolean).join('\n\n'),
@@ -2253,25 +2252,32 @@ export async function loadThreadTitle(space: PixorySpace, threadId: string): Pro
 }
 
 export async function getCurrentChatModelLabel(space: PixorySpace, threadId?: string | null): Promise<string> {
+  return (await getCurrentChatModelPresentation(space, threadId)).label;
+}
+
+export async function getCurrentChatModelPresentation(
+  space: PixorySpace,
+  threadId?: string | null,
+): Promise<{ label: string; iconBrand: AiModelIconBrand }> {
   await ensureBuiltInProviders(space);
   const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
   const resolved = await resolveThreadChatModel(space, thread ?? emptyThreadModelConfig(space));
   if (resolved.status !== 'ready') {
-    return resolved.status === 'invalid_global_default' ? '全局默认模型已失效' : '当前会话模型已失效';
+    return {
+      iconBrand: 'default',
+      label: resolved.status === 'invalid_global_default' ? '全局默认模型已失效' : '当前会话模型已失效',
+    };
   }
   const model = await runWithDatabaseSpace(space, (db) => aiProviderRepository.findModel(db, resolved.provider.id, resolved.modelId));
   const modelName = model?.displayName ?? resolved.modelId;
-  return `${resolved.provider.displayName} · ${modelName}`;
+  return {
+    iconBrand: resolveModelIconBrand(resolved.provider.providerType, resolved.modelId, resolved.provider.baseUrl),
+    label: `${resolved.provider.displayName} · ${modelName}`,
+  };
 }
 
 export async function getCurrentChatModelIconBrand(space: PixorySpace, threadId?: string | null): Promise<AiModelIconBrand> {
-  await ensureBuiltInProviders(space);
-  const thread = threadId ? await runWithDatabaseSpace(space, (db) => aiThreadRepository.findThreadById(db, threadId)) : null;
-  const resolved = await resolveThreadChatModel(space, thread ?? emptyThreadModelConfig(space));
-  if (resolved.status !== 'ready') {
-    return 'default';
-  }
-  return resolveModelIconBrand(resolved.provider.providerType, resolved.modelId, resolved.provider.baseUrl);
+  return (await getCurrentChatModelPresentation(space, threadId)).iconBrand;
 }
 
 async function loadBranchRootMessages(
@@ -2443,18 +2449,17 @@ export async function listAiHomeThreads(input: {
 }): Promise<AiHomeThreadItem[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const threads = await aiThreadRepository.listHistoryItems(db, input.space, 'all', input.limit ?? 30, '');
-    const activeRoleCardIds = new Set((await aiRoleCardRepository.listActive(db, input.space)).map((roleCard) => roleCard.id));
-    return Promise.all(
-      threads.map(async (thread) => {
-        const roleCard = thread.roleCardId ? await aiRoleCardRepository.findById(db, thread.roleCardId) : null;
-        return {
-          ...thread,
-          avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
-          avatarAvailable: thread.roleCardId ? activeRoleCardIds.has(thread.roleCardId) : false,
-          roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
-        };
-      })
-    );
+    const activeRoleCards = await aiRoleCardRepository.listActive(db, input.space);
+    const roleCardsById = new Map(activeRoleCards.map((roleCard) => [roleCard.id, roleCard]));
+    return threads.map((thread) => {
+      const roleCard = thread.roleCardId ? roleCardsById.get(thread.roleCardId) : null;
+      return {
+        ...thread,
+        avatar: parseThreadAvatarConfig(thread.roleSnapshotJson),
+        avatarAvailable: Boolean(roleCard),
+        roleCardName: roleCard?.name ?? parseThreadRoleName(thread.roleSnapshotJson),
+      };
+    });
   });
 }
 

@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Alert,
   Animated,
   AppState,
@@ -79,8 +80,7 @@ import {
   DEFAULT_AI_USER_AVATAR_ENABLED,
   deleteAiThreads,
   flushStreamingMessageSnapshot,
-  getCurrentChatModelLabel,
-  getCurrentChatModelIconBrand,
+  getCurrentChatModelPresentation,
   generateReplyAssistSuggestions,
   listThreadMessages,
   loadThreadContinuityMilestones,
@@ -178,8 +178,9 @@ import {
   type PixorySpace,
 } from "../database";
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/diaryGenerationManager';
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
-import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDiaryJob, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
+import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
 import { beijingDiaryDate, beijingDiaryDayBounds, decideDiaryTrigger } from '../ai/diary/diaryTypes';
 import type {
   AiBranchScope,
@@ -324,37 +325,14 @@ function applyStreamingPatchToMessage(
   };
 }
 
-function formatDateSeparator(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const today = new Date();
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  ).getTime();
-  const startOfDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  ).getTime();
-  if (startOfDate === startOfToday) {
+function formatDateSeparator(dateKey: string): string {
+  if (dateKey === beijingDiaryDate(new Date())) {
     return "今天";
   }
-  if (startOfDate === startOfToday - 24 * 60 * 60 * 1000) {
+  if (dateKey === beijingDiaryDate(new Date(Date.now() - 24 * 60 * 60 * 1_000))) {
     return "昨天";
   }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function getLocalDateKey(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "invalid-date";
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return dateKey;
 }
 
 function getAiChatStarterGroup(date = new Date()): { greeting: string; suggestions: readonly string[] } {
@@ -572,6 +550,11 @@ type VisibleMessageItem =
       type: "streamTailContinuation";
       id: string;
       group: AiStreamingTailContinuationGroup;
+    }
+  | {
+      type: 'diary';
+      id: string;
+      diary: RoleDiaryRecord;
     };
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
@@ -1329,9 +1312,13 @@ export function AiChatScreen({
     threadId ?? null,
   );
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
-  const [roleDiary, setRoleDiary] = useState<RoleDiaryRecord | null>(null);
+  const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
   const [diaryManualHint, setDiaryManualHint] = useState(false);
   const [diaryCommandHint, setDiaryCommandHint] = useState(false);
+  const [diaryGenerationStatus, setDiaryGenerationStatus] = useState<
+    'generating' | { message: string; state: 'failed' } | null
+  >(null);
+  const diaryGenerationJobRef = useRef<Promise<void> | null>(null);
   const [streamingTailVersion, forceUpdateTailState] = useReducer(
     (x) => x + 1,
     0,
@@ -1823,116 +1810,155 @@ export function AiChatScreen({
   );
   const diarySessionStartedAtRef = useRef(new Date().toISOString());
 
-  const reloadRoleDiary = useCallback(async () => {
+  const reloadRoleDiaries = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
     if (!targetThreadId) {
-      setRoleDiary(null);
+      setRoleDiaries([]);
       return;
     }
-    const diary = await runWithDatabaseSpace(space, async (db) => {
+    const diaries = await runWithDatabaseSpace(space, async (db) => {
       const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      return thread?.roleCardId ? diaryRepository.findCurrentDiaryForRole(db, thread.roleCardId) : null;
+      return thread?.roleCardId ? diaryRepository.listCurrentDiariesForRole(db, thread.roleCardId) : [];
     });
     if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
-      setRoleDiary(diary);
+      setRoleDiaries(diaries);
     }
   }, [space]);
 
   useEffect(() => {
-    if (!thinking) {
-      void reloadRoleDiary();
+    if (!thinking && !isInitialMessageLoading) {
+      void reloadRoleDiaries();
     }
-  }, [activeThreadId, reloadRoleDiary, thinking]);
+  }, [activeThreadId, isInitialMessageLoading, reloadRoleDiaries, thinking]);
 
   const evaluateDiaryTrigger = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
     if (!targetThreadId || thinking) {
       return;
     }
-    const branchScopes = persistedCurrentBranchScopes.length > 0
-      ? persistedCurrentBranchScopes
-      : activeMessageBranchScopesRef.current ?? [];
-    const now = new Date();
-    const outcome = await runWithDatabaseSpace(space, async (db) => {
-      if ((await settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED')) === 'false') {
-        return null;
-      }
-      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      if (!thread?.roleCardId) {
-        return null;
-      }
-      const date = beijingDiaryDate(now);
-      const bounds = beijingDiaryDayBounds(date);
-      const dayMessages = await aiThreadRepository.listCompletedMessagesInDateRange(
-        db, targetThreadId, bounds.startIso, bounds.endIso, branchScopes,
-      );
-      const recentMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
-        db, targetThreadId, 80, branchScopes,
-      );
-      const latest = recentMessages.at(-1) ?? null;
-      const sessionStartedAt = resolveDiarySessionStartedAt(recentMessages) ?? diarySessionStartedAtRef.current;
-      const diaryDateToCheck = beijingDiaryDate(sessionStartedAt) !== date
-        ? beijingDiaryDate(sessionStartedAt)
-        : date;
-      const hasCompletedAutomaticDiary = await diaryRepository.hasCompletedAutomaticDiary(
-        db,
-        thread.roleCardId,
-        diaryDateToCheck,
-      );
-      const latestAt = latest?.completedAt ?? latest?.createdAt ?? null;
-      const isRecentContinuation = Boolean(latestAt)
-        && now.getTime() - new Date(latestAt as string).getTime() <= 10 * 60 * 1_000;
-      const decision = decideDiaryTrigger({
-        now,
-        hasCurrentDiary: hasCompletedAutomaticDiary,
-        hasDayChat: dayMessages.length > 0 || (isRecentContinuation && beijingDiaryDate(latestAt as string) !== date),
-        isSessionActive: thinking || isRecentContinuation,
-        lastInteractionAt: latestAt,
-        lastRealInteractionAt: latestAt,
-        sessionStartedAt,
-      });
-      return decision.kind === 'show_manual_hint' || decision.kind === 'auto_early_evening' || decision.kind === 'auto_late_evening' || decision.kind === 'auto_idle_monologue'
-        ? { decision, scopes: branchScopes }
-        : null;
+    return runDiaryTaskInBackground({
+      taskKey: `${space}:diary-trigger:${targetThreadId}`,
+      task: async () => {
+        const branchScopes = persistedCurrentBranchScopes.length > 0
+          ? persistedCurrentBranchScopes
+          : activeMessageBranchScopesRef.current ?? [];
+        const now = new Date();
+        const outcome = await runWithDatabaseSpace(space, async (db) => {
+          if ((await settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED')) === 'false') {
+            return null;
+          }
+          const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+          if (!thread?.roleCardId) {
+            return null;
+          }
+          const date = beijingDiaryDate(now);
+          const bounds = beijingDiaryDayBounds(date);
+          const dayMessages = await aiThreadRepository.listCompletedMessagesInDateRange(
+            db, targetThreadId, bounds.startIso, bounds.endIso, branchScopes,
+          );
+          const recentMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
+            db, targetThreadId, 80, branchScopes,
+          );
+          const latest = recentMessages.at(-1) ?? null;
+          const sessionStartedAt = resolveDiarySessionStartedAt(recentMessages) ?? diarySessionStartedAtRef.current;
+          const diaryDateToCheck = beijingDiaryDate(sessionStartedAt) !== date
+            ? beijingDiaryDate(sessionStartedAt)
+            : date;
+          const hasCompletedAutomaticDiary = await diaryRepository.hasCompletedAutomaticDiary(
+            db,
+            thread.roleCardId,
+            diaryDateToCheck,
+          );
+          const latestAt = latest?.completedAt ?? latest?.createdAt ?? null;
+          const isRecentContinuation = Boolean(latestAt)
+            && now.getTime() - new Date(latestAt as string).getTime() <= 10 * 60 * 1_000;
+          const decision = decideDiaryTrigger({
+            now,
+            hasCurrentDiary: hasCompletedAutomaticDiary,
+            hasDayChat: dayMessages.length > 0 || (isRecentContinuation && beijingDiaryDate(latestAt as string) !== date),
+            isSessionActive: thinking || isRecentContinuation,
+            lastInteractionAt: latestAt,
+            lastRealInteractionAt: latestAt,
+            sessionStartedAt,
+          });
+          return decision.kind === 'show_manual_hint' || decision.kind === 'auto_early_evening' || decision.kind === 'auto_late_evening' || decision.kind === 'auto_idle_monologue'
+            ? { decision, scopes: branchScopes }
+            : null;
+        });
+        if (!outcome || activeThreadIdRef.current !== targetThreadId) {
+          return;
+        }
+        if (outcome.decision.kind === 'show_manual_hint') {
+          setDiaryManualHint(true);
+          return;
+        }
+        const job = await prepareAndScheduleDiaryJob({
+          space,
+          threadId: targetThreadId,
+          diaryDate: outcome.decision.diaryDate,
+          triggerKind: outcome.decision.kind,
+          scheduledFor: now.toISOString(),
+          branchScopes: outcome.scopes,
+        });
+        await runDiaryJobInBackground({ jobId: job.id, space });
+        await reloadRoleDiaries();
+      },
     });
-    if (!outcome || activeThreadIdRef.current !== targetThreadId) {
-      return;
-    }
-    if (outcome.decision.kind === 'show_manual_hint') {
-      setDiaryManualHint(true);
-      return;
-    }
-    const job = await prepareAndScheduleDiaryJob({
-      space,
-      threadId: targetThreadId,
-      diaryDate: outcome.decision.diaryDate,
-      triggerKind: outcome.decision.kind,
-      scheduledFor: now.toISOString(),
-      branchScopes: outcome.scopes,
-    });
-    await runDiaryJob(space, job.id);
-    await reloadRoleDiary();
-  }, [persistedCurrentBranchScopes, reloadRoleDiary, space, thinking]);
+  }, [persistedCurrentBranchScopes, reloadRoleDiaries, space, thinking]);
 
   const generateDiaryManually = useCallback(async () => {
+    if (diaryGenerationJobRef.current) {
+      return diaryGenerationJobRef.current;
+    }
     const targetThreadId = activeThreadIdRef.current;
     if (!targetThreadId) {
       return;
     }
-    const job = await prepareAndScheduleDiaryJob({
-      space,
-      threadId: targetThreadId,
-      diaryDate: beijingDiaryDate(diarySessionStartedAtRef.current),
-      triggerKind: 'manual',
-      scheduledFor: new Date().toISOString(),
-      branchScopes: persistedCurrentBranchScopes.length > 0
-        ? persistedCurrentBranchScopes
-        : activeMessageBranchScopesRef.current ?? [],
+    const task = runDiaryTaskInBackground({
+      taskKey: `${space}:manual-diary:${targetThreadId}`,
+      task: async () => {
+      setDiaryGenerationStatus('generating');
+      try {
+        const job = await prepareAndScheduleDiaryJob({
+          space,
+          threadId: targetThreadId,
+          diaryDate: beijingDiaryDate(diarySessionStartedAtRef.current),
+          triggerKind: 'manual',
+          scheduledFor: new Date().toISOString(),
+          branchScopes: persistedCurrentBranchScopes.length > 0
+            ? persistedCurrentBranchScopes
+            : activeMessageBranchScopesRef.current ?? [],
+        });
+        setDiaryManualHint(false);
+        await runDiaryJobInBackground({ jobId: job.id, space });
+        const completedJob = await runWithDatabaseSpace(space, (db) =>
+          diaryRepository.findJobById(db, job.id),
+        );
+        if (completedJob?.status !== 'completed') {
+          throw new Error(completedJob?.errorMessage ?? '日记生成失败，请稍后重试。');
+        }
+        await reloadRoleDiaries();
+        if (activeThreadIdRef.current === targetThreadId) {
+          setDiaryGenerationStatus(null);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '日记生成失败，请稍后重试。';
+        if (activeThreadIdRef.current === targetThreadId) {
+          setDiaryGenerationStatus({ message, state: 'failed' });
+        }
+        throw error;
+      }
+      },
     });
-    setDiaryManualHint(false);
-    await runDiaryJob(space, job.id);
-    await reloadRoleDiary();
-  }, [persistedCurrentBranchScopes, reloadRoleDiary, space]);
+    diaryGenerationJobRef.current = task;
+    try {
+      await task;
+    } finally {
+      if (diaryGenerationJobRef.current === task) {
+        diaryGenerationJobRef.current = null;
+      }
+    }
+  }, [persistedCurrentBranchScopes, reloadRoleDiaries, space]);
 
   const generateDiaryFromCommand = useCallback(async () => {
     setDiaryCommandHint(false);
@@ -1946,17 +1972,42 @@ export function AiChatScreen({
   }, [evaluateDiaryTrigger]);
 
   useEffect(() => {
-    setRoleDiary(null);
+    setRoleDiaries([]);
     setDiaryManualHint(false);
     setDiaryCommandHint(false);
+    setDiaryGenerationStatus(null);
     diarySessionStartedAtRef.current = new Date().toISOString();
-    void evaluateDiaryTriggerRef.current().catch(() => undefined);
-    const timer = setInterval(() => void evaluateDiaryTriggerRef.current().catch(() => undefined), 60_000);
-    return () => clearInterval(timer);
   }, [activeThreadId]);
 
   useEffect(() => {
-    if (!activeThreadId) {
+    if (!activeThreadId || isInitialMessageLoading) {
+      return undefined;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNext = () => {
+      if (cancelled) {
+        return;
+      }
+      const delay = Math.max(1_000, Date.parse(nextDiaryWakeupAt()) - Date.now());
+      timer = setTimeout(runCheck, delay);
+    };
+    const runCheck = () => {
+      void evaluateDiaryTriggerRef.current()
+        .catch(() => undefined)
+        .finally(scheduleNext);
+    };
+    runCheck();
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [activeThreadId, isInitialMessageLoading]);
+
+  useEffect(() => {
+    if (!activeThreadId || isInitialMessageLoading) {
       return;
     }
     const branchScopes = persistedCurrentBranchScopes.length > 0
@@ -1968,12 +2019,12 @@ export function AiChatScreen({
       scheduledFor: nextDiaryWakeupAt(),
       branchScopes,
     }).catch(() => undefined);
-  }, [activeThreadId, persistedCurrentBranchScopes, space]);
+  }, [activeThreadId, isInitialMessageLoading, persistedCurrentBranchScopes, space]);
 
   const reconcileDueDiaryJobs = useCallback(async () => {
     await runDueDiaryJobs(space);
-    await reloadRoleDiary();
-  }, [reloadRoleDiary, space]);
+    await reloadRoleDiaries();
+  }, [reloadRoleDiaries, space]);
   const reconcileDueDiaryJobsRef = useRef(reconcileDueDiaryJobs);
 
   useEffect(() => {
@@ -1981,8 +2032,11 @@ export function AiChatScreen({
   }, [reconcileDueDiaryJobs]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reconcileDueDiaryJobs().catch(() => undefined);
-  }, [reconcileDueDiaryJobs]);
+  }, [isInitialMessageLoading, reconcileDueDiaryJobs]);
 
   function getSelectedMessageVersionIndex(
     messageId: string,
@@ -2088,38 +2142,58 @@ export function AiChatScreen({
             updatedAt: tailState.updatedAt,
           }
         : undefined;
+    const messagesByDate = new Map<string, AiMessageWithCitations[]>();
+    nextVisibleMessages.forEach((message) => {
+      const dateKey = beijingDiaryDate(message.createdAt);
+      const dayMessages = messagesByDate.get(dateKey) ?? [];
+      dayMessages.push(message);
+      messagesByDate.set(dateKey, dayMessages);
+    });
+    const visibleDiariesByDate = new Map(
+      thinking ? [] : roleDiaries.map((diary) => [diary.diaryDate, diary] as const),
+    );
+    const calendarDates = Array.from(
+      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys()]),
+    ).sort();
     const nextVisibleMessageItems: VisibleMessageItem[] = [];
-    let previousDateKey: string | null = null;
-    nextVisibleMessages.forEach((sourceMessage, index) => {
-      const message = selectVisibleMessage({
-        message: sourceMessage,
-        tailOverride,
+    let previousMessage: AiMessageWithCitations | undefined;
+    calendarDates.forEach((dateKey) => {
+      const dayMessages = messagesByDate.get(dateKey) ?? [];
+      const diary = visibleDiariesByDate.get(dateKey) ?? null;
+      nextVisibleMessageItems.push({
+        type: "dateSeparator",
+        id: `date-separator-${dateKey}`,
+        label: formatDateSeparator(dateKey),
+        dateKey,
       });
-      const previousMessage = nextVisibleMessages[index - 1];
-      const dateKey = getLocalDateKey(message.createdAt);
-      const startsNewDate = dateKey !== previousDateKey;
-      if (startsNewDate) {
+      dayMessages.forEach((sourceMessage, index) => {
+        const message = selectVisibleMessage({
+          message: sourceMessage,
+          tailOverride,
+        });
+        const startsNewDate = index === 0;
         nextVisibleMessageItems.push({
-          type: "dateSeparator",
-          id: `date-separator-${dateKey}`,
-          label: formatDateSeparator(message.createdAt),
-          dateKey,
+          id: message.id,
+          type: "message",
+          message,
+          showAvatar:
+            message.role === 'assistant' &&
+            (startsNewDate ||
+              previousMessage?.role !== 'assistant' ||
+              messageUsesStandaloneAssistantDisplay(message)),
+          showUserAvatar:
+            message.role === 'user' &&
+            (startsNewDate || previousMessage?.role !== 'user'),
+        });
+        previousMessage = message;
+      });
+      if (diary) {
+        nextVisibleMessageItems.push({
+          type: 'diary',
+          id: `diary-${diary.id}`,
+          diary,
         });
       }
-      nextVisibleMessageItems.push({
-        id: message.id,
-        type: "message",
-        message,
-        showAvatar:
-          message.role === 'assistant' &&
-          (startsNewDate ||
-            previousMessage?.role !== 'assistant' ||
-            messageUsesStandaloneAssistantDisplay(message)),
-        showUserAvatar:
-          message.role === 'user' &&
-          (startsNewDate || previousMessage?.role !== 'user'),
-      });
-      previousDateKey = dateKey;
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
     nextVisibleMessageItems.forEach((item) => {
@@ -2215,6 +2289,8 @@ export function AiChatScreen({
     selectedVersionByMessageId,
     singleBubbleTailReplayEnabled,
     streamingTailVersion,
+    roleDiaries,
+    thinking,
   ]);
   const {
     invertedMessageIndexById,
@@ -3502,15 +3578,9 @@ export function AiChatScreen({
       // prettier-ignore
       const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages));
       replaceMessages(renderedMessages);
-      const titleRequestId = nextRequestId("title");
-      void loadThreadTitle(space, targetThreadId).then((title) => {
-        if (title && isLatestRequest("title", titleRequestId, targetThreadId)) {
-          applyDisplayTitle(title);
-        }
-      });
       void reloadContinuityMilestones(targetThreadId);
     },
-    [applyDisplayTitle, reloadContinuityMilestones, space],
+    [reloadContinuityMilestones, space],
   );
 
   async function loadPersistedCurrentBranchScopes(targetThreadId: string): Promise<AiBranchScope[]> {
@@ -3728,15 +3798,12 @@ export function AiChatScreen({
   const reloadModelLabel = useCallback(
     async (targetThreadId: string | null) => {
       const requestId = nextRequestId("model");
-      const [label, brand] = await Promise.all([
-        getCurrentChatModelLabel(space, targetThreadId),
-        getCurrentChatModelIconBrand(space, targetThreadId),
-      ]);
+      const { label, iconBrand } = await getCurrentChatModelPresentation(space, targetThreadId);
       if (!isLatestRequest("model", requestId, targetThreadId)) {
         return;
       }
       setModelLabel(label);
-      setModelIconBrand(brand);
+      setModelIconBrand(iconBrand);
     },
     [space],
   );
@@ -4350,24 +4417,39 @@ export function AiChatScreen({
   }, [threadId, space]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reloadModelLabel(threadId ?? null);
   }, [modelRefreshKey, reloadModelLabel, threadId]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reloadParticipantAppearance(threadId ?? null);
   }, [reloadParticipantAppearance, threadId]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reloadThreadTitle(threadId ?? null);
   }, [reloadThreadTitle, threadId]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reloadMemoryCaptures(threadId ?? null);
-  }, [reloadMemoryCaptures, threadId]);
+  }, [isInitialMessageLoading, reloadMemoryCaptures, threadId]);
 
   useEffect(() => {
+    if (isInitialMessageLoading) {
+      return;
+    }
     void reloadRecentThreads();
-  }, [reloadRecentThreads, activeThreadId]);
+  }, [activeThreadId, isInitialMessageLoading, reloadRecentThreads]);
 
   useEffect(() => {
     if (isLoadingEarlierRef.current) {
@@ -5261,16 +5343,14 @@ export function AiChatScreen({
   async function handleSend() {
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
-    const shouldOfferDiaryCreation = isDiaryCreationRequest(typedText);
+    const diaryCommandRequested = isDiaryCreationRequest(typedText);
     const attachments = pendingAttachments;
     const content = buildChatMessageContent(typedText, attachments);
     const replyTarget = assistantReplyTarget;
     if ((!typedText && !attachments.length) || generating) {
       return;
     }
-    if (!shouldOfferDiaryCreation) {
-      setDiaryCommandHint(false);
-    }
+    setDiaryCommandHint(false);
     const actionToken = beginGenerationAction();
     if (!actionToken) {
       return;
@@ -5295,6 +5375,20 @@ export function AiChatScreen({
         return;
       }
       const targetThreadId = nextThreadId;
+      let shouldOfferDiaryCreation = false;
+      if (diaryCommandRequested) {
+        try {
+          shouldOfferDiaryCreation = await runWithDatabaseSpace(space, async (db) => {
+            const [enabled, thread] = await Promise.all([
+              settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED'),
+              aiThreadRepository.findThreadById(db, targetThreadId),
+            ]);
+            return enabled !== 'false' && Boolean(thread?.roleCardId);
+          });
+        } catch {
+          shouldOfferDiaryCreation = false;
+        }
+      }
       const streamRequest = beginStreamingRequest(targetThreadId);
       streamGeneration = streamRequest.generation;
       const managedGeneration = replyTarget
@@ -5932,6 +6026,24 @@ export function AiChatScreen({
       if (item.type === "dateSeparator") {
         return <Text style={styles.dateSeparator}>{item.label}</Text>;
       }
+      if (item.type === 'diary') {
+        return (
+          <DiaryChatCard
+            contextOptIn={item.diary.contextOptIn}
+            createdAt={item.diary.updatedAt}
+            diaryDate={item.diary.diaryDate}
+            onContextChoice={(accepted) => {
+              void runWithDatabaseSpace(space, (db) =>
+                diaryRepository.setContextOptIn(db, item.diary.id, accepted),
+              )
+                .then(() => reloadRoleDiaries())
+                .catch(() => undefined);
+            }}
+            onOpen={() => onOpenDiary(item.diary.id)}
+            themeKey={item.diary.themeKey}
+          />
+        );
+      }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
       }
@@ -6237,6 +6349,8 @@ export function AiChatScreen({
       singleBubbleTailReplayEnabled,
       space,
       scheduleStreamingTailReconcile,
+      onOpenDiary,
+      reloadRoleDiaries,
     ],
   );
 
@@ -6346,22 +6460,6 @@ export function AiChatScreen({
               removeClippedSubviews={tailListRemoveClippedSubviews}
               updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
               windowSize={tailListWindowSize}
-              ListHeaderComponent={
-                roleDiary && !thinking ? (
-                  <DiaryChatCard
-                    contextOptIn={roleDiary.contextOptIn}
-                    createdAt={roleDiary.updatedAt}
-                    diaryDate={roleDiary.diaryDate}
-                    onContextChoice={(accepted) => {
-                      void runWithDatabaseSpace(space, async (db) => {
-                        await diaryRepository.setContextOptIn(db, roleDiary.id, accepted);
-                      }).then(() => reloadRoleDiary());
-                    }}
-                    onOpen={() => onOpenDiary(roleDiary.id)}
-                    themeKey={roleDiary.themeKey}
-                  />
-                ) : null
-              }
               ListFooterComponent={
                 <>
                   {errorMessage ? (
@@ -6417,7 +6515,23 @@ export function AiChatScreen({
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
-              {diaryCommandHint && !thinking ? (
+              {diaryGenerationStatus ? (
+                <View style={styles.diaryHint}>
+                  {diaryGenerationStatus === 'generating' ? (
+                    <ActivityIndicator color={aiLightColors.primaryActive} size="small" style={styles.diaryHintSpinner} />
+                  ) : null}
+                  <Text style={styles.diaryHintText}>
+                    {diaryGenerationStatus === 'generating'
+                      ? '正在为您创作日记...'
+                      : `日记生成失败：${diaryGenerationStatus.message}`}
+                  </Text>
+                  {diaryGenerationStatus !== 'generating' ? (
+                    <Pressable onPress={() => void generateDiaryManually().catch(() => undefined)}>
+                      <Text style={styles.diaryHintAction}>重试</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : diaryCommandHint && !thinking ? (
                 <View style={styles.diaryHint}>
                   <Text style={styles.diaryHintText}>是否要为您创作日记</Text>
                   <Pressable onPress={() => void generateDiaryFromCommand().catch(() => undefined)}>
@@ -6749,6 +6863,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing[1],
   },
   diaryHintText: { ...typography.textStyles.micro, color: aiLightColors.muted },
+  diaryHintSpinner: { marginRight: spacing[2] },
   diaryHintAction: { ...typography.textStyles.micro, color: aiLightColors.primaryActive, marginLeft: spacing[2] },
   diaryHintDismiss: { ...typography.textStyles.micro, color: aiLightColors.muted, marginLeft: spacing[3] },
   header: {

@@ -1,6 +1,9 @@
 package com.pixory.app.media
 
 import android.app.Activity
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
@@ -16,6 +19,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.MediaStore
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.webkit.MimeTypeMap
@@ -30,6 +34,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.pixory.app.diary.DiaryAlarmReceiver
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -504,6 +509,84 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   }
 
   @ReactMethod
+  fun scheduleDiaryAlarm(triggerAtMs: Double, jobId: String, promise: Promise) {
+    val safeJobId = jobId.trim()
+    if (safeJobId.isEmpty()) {
+      promise.reject("PIXORY_DIARY_ALARM_INVALID", "日记任务标识不能为空。")
+      return
+    }
+    val triggerAt = triggerAtMs.toLong()
+    if (triggerAt <= System.currentTimeMillis()) {
+      promise.reject("PIXORY_DIARY_ALARM_PAST", "日记提醒时间已过去。")
+      return
+    }
+    val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val pendingIntent = diaryAlarmPendingIntent(safeJobId)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        promise.resolve("inexact")
+        return
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+      } else {
+        alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+      }
+      promise.resolve("exact")
+    } catch (error: Exception) {
+      promise.reject("PIXORY_DIARY_ALARM_FAILED", error.message ?: "日记提醒安排失败。", error)
+    }
+  }
+
+  @ReactMethod
+  fun cancelDiaryAlarm(jobId: String, promise: Promise) {
+    val safeJobId = jobId.trim()
+    if (safeJobId.isEmpty()) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      val pendingIntent = diaryAlarmPendingIntent(safeJobId)
+      alarmManager.cancel(pendingIntent)
+      pendingIntent.cancel()
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("PIXORY_DIARY_ALARM_CANCEL_FAILED", error.message ?: "日记提醒取消失败。", error)
+    }
+  }
+
+  @ReactMethod
+  fun canScheduleExactDiaryAlarm(promise: Promise) {
+    val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    promise.resolve(Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms())
+  }
+
+  @ReactMethod
+  fun openDiaryExactAlarmSettings(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      promise.resolve(false)
+      return
+    }
+    val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    if (alarmManager.canScheduleExactAlarms()) {
+      promise.resolve(false)
+      return
+    }
+    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+      data = Uri.parse("package:${reactContext.packageName}")
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+      reactContext.currentActivity?.startActivity(intent) ?: reactContext.startActivity(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("PIXORY_DIARY_ALARM_SETTINGS_FAILED", error.message ?: "无法打开日记提醒设置。", error)
+    }
+  }
+
+  @ReactMethod
   fun addListener(eventName: String) = Unit
 
   @ReactMethod
@@ -575,6 +658,17 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
         .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         .emit("PixoryMediaIntentReceived", payload)
     }
+  }
+
+  private fun diaryAlarmPendingIntent(jobId: String): PendingIntent {
+    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+    val intent = Intent(reactContext, DiaryAlarmReceiver::class.java).apply {
+      action = DiaryAlarmReceiver.ACTION_DIARY_ALARM
+      data = Uri.parse("pixory://diary-alarm/${Uri.encode(jobId)}")
+      putExtra(DiaryAlarmReceiver.EXTRA_JOB_ID, jobId)
+    }
+    return PendingIntent.getBroadcast(reactContext, jobId.hashCode(), intent, flags)
   }
 
   private fun sendCopyProgress(taskId: String, copiedBytes: Long, totalBytes: Long) {

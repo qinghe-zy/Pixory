@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-28（补充记忆分支作用域、删除墓碑防复活与导入证据引用闭环）
+最后更新：2026-07-29（补充角色日记 Android 后台唤醒、上下文选择与聊天热路径优化）
 适用版本：Pixory 2.6.9
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -36,7 +36,7 @@
 | 功能域 | 当前状态 | 主要用户价值 | 关键入口 |
 | --- | --- | --- | --- |
 | AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复 | `AiHomeScreen`, `AiChatScreen`, `src/ai/` |
-| 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；冻结当前线程已采纳分支的来源快照，复用会话模型独立生成；精确本地口令匹配后提供非打扰确认，不影响夜间自动日记；聊天页卡片、信纸阅读页、内心独白时间线、可选上下文注入与 Android 本地定时任务 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen` |
+| 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；冻结当前线程已采纳分支的来源快照，复用会话模型独立生成；精确本地口令仅在已启用且绑定角色卡的会话中提供非打扰确认，不影响夜间自动日记；确认后任务由独立运行时持有，退出聊天页仍会静默完成，长时间中断的 `generating` 任务在前台协调时恢复；Android 通过 AlarmManager、receiver 与 Headless JS 执行持久唤醒，无法使用精确闹钟时退化为省电的 inexact alarm；聊天页只在下一个相关夜间节点检查，并把全部日记按北京时间并入消息时间线；用户确认纳入上下文的最近日记会独立注入，不会被较新未选择日记覆盖 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen`, `PixoryMediaModule` |
 | 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |
 | IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面 | `HomeLibraryScreen`, `IpDetailScreen` |
 | 图片/视频导入 | 已实现 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次；相册可在导入成功后请求 Android 删除确认，系统文件夹始终复制保留原文件；大批量选择仅渲染少量预览，文件入口使用系统返回的显示文件名，视频复制进度合并写入以避免长视频导入时积压 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService` |
@@ -88,7 +88,7 @@
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
 | Usage | provider usage 归一化、cached token ratio、线程/总览用量 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary` |
 | 消息渲染 | Markdown (全新标记解析器防注入)、代码块、表格、原生图片附件画廊展示、HTML/CSS WebView、数学块、citation、thinking block、render cache | `AiMessageContent`, `AiMessageBubble`, `AiMarkdownReader` |
-| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；聊天消息按本地自然日插入独立 `dateSeparator` 列表项，当天/前一天显示“今天/昨天”，每个自然日只出现一次且不会进入 reasoning 或正文节点；聊天页支持左侧菜单按钮和全屏右滑打开综合记录抽屉，顶部搜索靠近抽屉入口，右侧提供会话设置与聊天气泡形态的新会话入口；输入框左下角模型图标右侧提供小灯泡 `AI 帮答` 入口，弹出固定高度的底部阅读器式候选面板，支持短句/长句切换、刷新保留历史页与左右翻页；聊天输入区首次进入时以 420ms 淡入并从下方轻移 20px，动画层使用页面同色合成底以避免 Android elevation 阴影产生黑色中间帧；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
+| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；聊天消息与日记按北京时间自然日插入独立 `dateSeparator` 列表项，当天/前一天显示“今天/昨天”，每个自然日只出现一次且不会进入 reasoning 或正文节点；聊天首屏将消息页与非关键模型/外观/记录读取分阶段加载，并合并模型图标与名称查询，返回工作台优先显示内存快照再后台刷新；聊天页支持左侧菜单按钮和全屏右滑打开综合记录抽屉，顶部搜索靠近抽屉入口，右侧提供会话设置与聊天气泡形态的新会话入口；输入框左下角模型图标右侧提供小灯泡 `AI 帮答` 入口，弹出固定高度的底部阅读器式候选面板，支持短句/长句切换、刷新保留历史页与左右翻页；聊天输入区首次进入时以 420ms 淡入并从下方轻移 20px，动画层使用页面同色合成底以避免 Android elevation 阴影产生黑色中间帧；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
 
 ---
 
@@ -206,7 +206,7 @@
 | 远程公告 | `announcement.json` 拉取、一次性公告 id | `announcementService`, `docs/announcement.json` |
 | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
-| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release | `AGENTS.md`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
+| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用纯色背景与居中聊天图标 | `AGENTS.md`, `app.json`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、speech recognition、share/open intent | `src/native/pixoryMediaModule.ts` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |

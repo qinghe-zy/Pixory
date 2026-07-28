@@ -122,6 +122,30 @@ export const diaryRepository = {
     return rows.map(mapDiaryRow);
   },
 
+  async listContextOptInDiaryVersionsForRole(
+    db: SQLiteDatabase,
+    roleCardId: string,
+    limit = 3,
+  ): Promise<Array<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord }>> {
+    const rows = await db.getAllAsync<RoleDiaryRow>(
+      `SELECT * FROM companion_diaries
+       WHERE roleCardId = ? AND contextOptIn = 1
+         AND status IN ('ready_pending_presentation', 'ready')
+       ORDER BY diaryDate DESC, updatedAt DESC
+       LIMIT ?`,
+      roleCardId,
+      Math.max(1, limit),
+    );
+    const diaries = rows.map(mapDiaryRow);
+    const entries = await Promise.all(diaries.map(async (diary) => {
+      const version = await diaryRepository.findCurrentVersion(db, diary.id);
+      return version ? { diary, version } : null;
+    }));
+    return entries.filter(
+      (entry): entry is { diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } => entry != null,
+    );
+  },
+
   async findDiaryVersion(db: SQLiteDatabase, diaryIdValue: string): Promise<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null> {
     const diary = await diaryRepository.findCurrentDiaryById(db, diaryIdValue);
     if (!diary) {
@@ -238,6 +262,20 @@ export const diaryRepository = {
 
   async findJobById(db: SQLiteDatabase, jobId: string): Promise<RoleDiaryJobRecord | null> {
     return db.getFirstAsync<RoleDiaryJobRecord>('SELECT * FROM companion_diary_jobs WHERE id = ?', jobId);
+  },
+
+  async recoverStaleGeneratingJobs(db: SQLiteDatabase, staleBefore: string): Promise<void> {
+    const now = createTimestamp();
+    await db.runAsync(
+      `UPDATE companion_diary_jobs
+       SET status = CASE WHEN attemptCount >= 3 THEN 'failed' ELSE 'due' END,
+           errorMessage = CASE WHEN attemptCount >= 3 THEN '角色日记生成多次中断，已停止重试。' ELSE NULL END,
+           nextRunAt = NULL,
+           updatedAt = ?
+       WHERE status = 'generating' AND updatedAt <= ?`,
+      now,
+      staleBefore,
+    );
   },
 
   /** Atomically grants one runner ownership of a due diary job. */
