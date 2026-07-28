@@ -1936,12 +1936,21 @@ export function AiChatScreen({
     await generateDiaryManually();
   }, [generateDiaryManually]);
 
+  const evaluateDiaryTriggerRef = useRef(evaluateDiaryTrigger);
+
   useEffect(() => {
+    evaluateDiaryTriggerRef.current = evaluateDiaryTrigger;
+  }, [evaluateDiaryTrigger]);
+
+  useEffect(() => {
+    setRoleDiary(null);
+    setDiaryManualHint(false);
+    setDiaryCommandHint(false);
     diarySessionStartedAtRef.current = new Date().toISOString();
-    void evaluateDiaryTrigger().catch(() => undefined);
-    const timer = setInterval(() => void evaluateDiaryTrigger().catch(() => undefined), 60_000);
+    void evaluateDiaryTriggerRef.current().catch(() => undefined);
+    const timer = setInterval(() => void evaluateDiaryTriggerRef.current().catch(() => undefined), 60_000);
     return () => clearInterval(timer);
-  }, [activeThreadId, evaluateDiaryTrigger]);
+  }, [activeThreadId]);
 
   useEffect(() => {
     if (!activeThreadId) {

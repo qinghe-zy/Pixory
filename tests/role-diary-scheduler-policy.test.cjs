@@ -37,6 +37,19 @@ test('claims each diary job once and reconciles durable work on foreground', () 
   assert.match(chat, /persistedCurrentBranchScopes/);
 });
 
+test('only resets the diary session clock when the active thread changes', () => {
+  const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
+
+  assert.match(chat, /const evaluateDiaryTriggerRef = useRef\(evaluateDiaryTrigger\)/);
+  assert.match(chat, /evaluateDiaryTriggerRef\.current = evaluateDiaryTrigger/);
+  assert.match(chat, /setRoleDiary\(null\);/);
+  assert.match(chat, /setDiaryManualHint\(false\);/);
+  assert.match(chat, /setDiaryCommandHint\(false\);/);
+  assert.match(chat, /diarySessionStartedAtRef\.current = new Date\(\)\.toISOString\(\)/);
+  assert.match(chat, /\}, \[activeThreadId\]\);/);
+  assert.doesNotMatch(chat, /\}, \[activeThreadId, evaluateDiaryTrigger\]\);/);
+});
+
 test('can cancel pending diary jobs when the feature is disabled', () => {
   const repository = readFileSync('src/ai/diary/diaryRepository.ts', 'utf8');
   const settings = readFileSync('src/screens/AiSessionConfigScreen.tsx', 'utf8');
