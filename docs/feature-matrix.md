@@ -206,7 +206,7 @@
 | 远程公告 | `announcement.json` 拉取、一次性公告 id | `announcementService`, `docs/announcement.json` |
 | OTA | Expo update 配置、生产 OTA 下载提示 | `app.json`, `update-check-policy` |
 | 官网 | 首页下载、updates、sitemap、release-facing docs | `docs/index.html`, `docs/updates.html`, `docs/sitemap.xml` |
-| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release | `AGENTS.md`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
+| Android release | version 同步、clean 后仅构建 ARM 真机 ABI、产物 ABI/签名校验、官网部署、GitHub Release；桌面图标使用预合成 legacy launcher bitmap，避免 adaptive-icon 前景遮罩裁切；Android 12+ 启动屏使用纯色背景与居中聊天图标 | `AGENTS.md`, `app.json`, `scripts/build-android-release.ps1`, `android/app/build.gradle` |
 | Native bridge | SAF copy、zip entry、PDF render/text、video metadata、thumbnail、hash、speech recognition、share/open intent | `src/native/pixoryMediaModule.ts` |
 | UI 基础组件 | toast、dialog、action sheet、empty state、form、header、cards、chips、sort menu | `src/components/` |
 | 设计 tokens | spacing、rhythm、colors、radius、typography、metrics | `src/design/tokens/` |
