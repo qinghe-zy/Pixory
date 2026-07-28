@@ -134,6 +134,7 @@ export async function exportRoleContinuityPackage(input: ExportRoleContinuityPac
       : [];
     const nativePackage = await buildNativeMemoryPackage(db, {
       branchScopes: resolvedBranchScopes,
+      roleCardId: roleCard.id,
       space: input.space,
       thread,
     });

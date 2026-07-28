@@ -11,6 +11,7 @@ const observationPath = path.join(root, 'src/ai/memory/memoryCurrentTurnReposito
 const extractorPath = path.join(root, 'src/ai/memory/localFastExtractor.ts');
 const queuePath = path.join(root, 'src/ai/aiMemoryMaintenanceQueue.ts');
 const deferredPath = path.join(root, 'src/ai/aiMemoryMaintenanceService.ts');
+const chatServicePath = path.join(root, 'src/ai/aiChatService.ts');
 
 function loadTypeScriptModule(filePath) {
   const output = ts.transpileModule(fs.readFileSync(filePath, 'utf8'), {
@@ -80,4 +81,22 @@ test('reply completion schedules current-turn extraction before remote maintenan
   const deferred = fs.readFileSync(deferredPath, 'utf8');
   assert.match(queue, /runLocalCurrentTurnExtraction|current.turn|currentTurn/);
   assert.match(deferred, /runLocalCurrentTurnExtraction|current.turn|currentTurn/);
+});
+
+test('local extraction stores branch-scoped claims when the current turn is on a branch', () => {
+  const source = fs.readFileSync(extractorPath, 'utf8');
+  assert.match(source, /branchRootMessageId/);
+  assert.match(source, /scopeType:\s*branchScopeId\s*\?\s*['"]branch['"]\s*:\s*['"]thread['"]/);
+  assert.match(source, /scopeId:\s*branchScopeId/);
+  assert.match(source, /branchVersionIndex/);
+});
+
+test('explicit forget and correction observations are staged before provider resolution', () => {
+  const source = fs.readFileSync(chatServicePath, 'utf8');
+  assert.match(source, /stageExplicitMemoryIntentObservation/);
+  const streamStart = source.indexOf('async function streamAssistantReply');
+  const streamBody = source.slice(streamStart, source.indexOf('\nasync function ', streamStart + 30));
+  const stageIndex = streamBody.indexOf('stageExplicitMemoryIntentObservation');
+  const providerIndex = streamBody.indexOf('resolveThreadChatModel');
+  assert.ok(stageIndex >= 0 && providerIndex >= 0 && stageIndex < providerIndex);
 });

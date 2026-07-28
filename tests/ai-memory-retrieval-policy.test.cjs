@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, '..');
 const retrievalPath = path.join(root, 'src/ai/memory/memoryRetrievalService.ts');
 const compilerPath = path.join(root, 'src/ai/memory/contextCompiler.ts');
 const memoryServicePath = path.join(root, 'src/ai/aiMemoryService.ts');
+const chatServicePath = path.join(root, 'src/ai/aiChatService.ts');
+const generationMetricsPath = path.join(root, 'src/ai/aiGenerationMetrics.ts');
 
 function loadTypeScriptModule(filePath) {
   const source = fs.readFileSync(filePath, 'utf8');
@@ -73,4 +75,32 @@ test('chat memory path uses the new retrieval and usage-contract modules', () =>
   assert.match(retrieval, /retrieval-v1/);
   assert.match(compiler, /Memory Usage Prompt Contract|usage=|certainty/);
   assert.match(memoryService, /memoryRetrievalService|retrieveMemoryClaims/);
+});
+
+test('stable prompt memory is confirmed-only and honors current-turn exclusions', () => {
+  const memoryService = fs.readFileSync(memoryServicePath, 'utf8');
+  assert.match(memoryService, /excludedClaimIds/);
+  assert.match(memoryService, /memory\.memoryLane === ['"]confirmed['"]/);
+  assert.match(memoryService, /memory\.status === ['"]active['"]/);
+  assert.match(memoryService, /excludedClaimIds/);
+  assert.match(memoryService, /c\.id NOT IN/);
+});
+
+test('memory retrieval accepts only the active branch lineage for branch-scoped claims', () => {
+  const retrieval = fs.readFileSync(retrievalPath, 'utf8');
+  assert.match(retrieval, /branchScopes/);
+  assert.match(retrieval, /branchRootMessageId/);
+  assert.match(retrieval, /branchVersionIndex/);
+});
+
+test('generation diagnostics record ContextPlan retrieval and projection metadata', () => {
+  const metrics = fs.readFileSync(generationMetricsPath, 'utf8');
+  const chat = fs.readFileSync(chatServicePath, 'utf8');
+  assert.match(metrics, /memoryProjectionVersion/);
+  assert.match(metrics, /memoryRetrievalScorerVersion/);
+  assert.match(metrics, /memoryRetrievalCandidateCount/);
+  assert.match(metrics, /memoryRetrievalInjectedCount/);
+  assert.match(chat, /memoryContextPlan\.projectionVersion/);
+  assert.match(chat, /memoryContextPlan\.retrievalScorerVersion/);
+  assert.match(chat, /memoryContextPlan\.candidateClaimIds\.length/);
 });

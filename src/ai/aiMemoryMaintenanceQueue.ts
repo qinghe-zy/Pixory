@@ -4,6 +4,7 @@ import { captureDeepMemoryForExchange } from './aiMemoryCaptureService';
 import { reviewContinuityImportSession } from './aiContinuityImportReviewService';
 import { drainCurrentTurnMemory, runLocalFastExtraction } from './memory/localFastExtractor';
 import { runMemoryLifecycleMaintenance } from './memory/memoryCalibrationService';
+import { drainMemoryIndexOutbox } from './memory/memoryIndexOutboxService';
 import { recordRelationalSignals } from './memory/memoryRelationalStateService';
 import {
   hasStrongProfileSignal,
@@ -153,6 +154,7 @@ export async function runLocalCurrentTurnExtraction(input: ScheduleMemoryMainten
     return;
   }
   await runLocalFastExtraction({
+    branchScopes,
     branchRootMessageId: input.branchScopes?.[0]?.branchRootMessageId ?? null,
     branchVersionIndex: input.branchScopes?.[0]?.branchVersionIndex ?? null,
     messageContent: input.userMessage.content,
@@ -238,6 +240,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     }).catch(() => undefined);
   }
   await runMemoryLifecycleMaintenance(input.space).catch(() => undefined);
+  await drainMemoryIndexOutbox({ space: input.space }).catch(() => undefined);
 
   await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
   await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));

@@ -1958,10 +1958,12 @@ async function buildPromptForThread(
         const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
         const intent = detectMemoryIntent(userMessage);
         const excludedClaimIds = await resolveMemoryIntentTargetClaimIds(db, {
+          branchScopes,
           observation: intent,
           thread,
         });
         const compiledMemory = await compileMemoryContextPlan(db, {
+          branchScopes,
           excludedClaimIds,
           query: memorySettings.deepMemoryEnabled ? userMessage : '',
           thread,
@@ -1971,7 +1973,7 @@ async function buildPromptForThread(
           dynamicMemoryContext: compiledMemory.context,
           memoryContextPlan: compiledMemory.plan,
           memorySettings,
-          stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+          stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, excludedClaimIds, settings: memorySettings }),
         };
       });
       return memoryBundle;
@@ -2045,6 +2047,13 @@ async function buildPromptForThread(
   });
   if (generationMetrics) {
     generationMetrics.context.chatMode = chatMode;
+    generationMetrics.context.memoryProjectionVersion = memoryContextPlan.projectionVersion;
+    generationMetrics.context.memoryRetrievalScorerVersion = memoryContextPlan.retrievalScorerVersion;
+    generationMetrics.context.memoryRetrievalCandidateCount = memoryContextPlan.candidateClaimIds.length;
+    generationMetrics.context.memoryRetrievalInjectedCount = Math.max(
+      0,
+      memoryContextPlan.candidateClaimIds.length - memoryContextPlan.omittedClaimIds.length
+    );
     generationMetrics.context.fastPathClassification = finalFastPath.classification;
     generationMetrics.context.chatPerformanceProfile = resolveAiChatPerformanceProfile({
       contextType: thread.contextType,
@@ -3374,6 +3383,62 @@ async function maybeGenerateModelThreadTitleAfterReply(input: {
   }
 }
 
+async function stageExplicitMemoryIntentObservation(input: {
+  space: PixorySpace;
+  thread: AiThreadRecord;
+  messageId: string;
+  messageContent: string;
+}): Promise<void> {
+  const intent = detectMemoryIntent(input.messageContent);
+  if (!intent.explicitUserAction || (intent.intent !== 'forget' && intent.intent !== 'correction')) {
+    return;
+  }
+  await runWithDatabaseSpace(input.space, async (db) => {
+    const message = await aiThreadRepository.findMessageById(db, input.messageId);
+    const branchScopes = message?.branchRootMessageId && message.branchVersionIndex != null
+      ? await aiThreadRepository.resolveBranchLineage(
+        db,
+        message.branchRootMessageId,
+        message.branchVersionIndex
+      )
+      : [];
+    const targetClaimIds = await resolveMemoryIntentTargetClaimIds(db, {
+      branchScopes,
+      observation: intent,
+      thread: input.thread,
+    });
+    const targets = targetClaimIds.length > 0
+      ? await db.getAllAsync<{
+        canonicalClaimId: string;
+        predicate: string;
+        scopeType: string;
+        scopeId: string | null;
+      }>(
+        `SELECT canonicalClaimId, predicate, scopeType, scopeId
+         FROM memory_claims
+         WHERE space = ? AND id IN (${targetClaimIds.map(() => '?').join(', ')})`,
+        input.space,
+        ...targetClaimIds
+      )
+      : [];
+    await writeCurrentTurnObservation(db, {
+      branchRootMessageId: branchScopes[0]?.branchRootMessageId ?? null,
+      branchVersionIndex: branchScopes[0]?.branchVersionIndex ?? null,
+      explicitUserAction: true,
+      intent: intent.intent,
+      messageId: input.messageId,
+      payload: {
+        ...intent.payload,
+        candidateSource: 'pre-provider-intent-v1',
+        targetClaimIds,
+        targets,
+      },
+      space: input.space,
+      threadId: input.thread.id,
+    });
+  });
+}
+
 async function streamAssistantReply(input: {
   space: PixorySpace;
   thread: AiThreadRecord;
@@ -3403,6 +3468,12 @@ async function streamAssistantReply(input: {
     space: input.space,
     threadId: input.thread.id,
   }).catch(() => 0);
+  await stageExplicitMemoryIntentObservation({
+    messageContent: input.userMessage.content,
+    messageId: input.userMessage.id,
+    space: input.space,
+    thread: input.thread,
+  });
   const mode = input.mode ?? 'replace';
   const messageDisplayKind: AiMessageDisplayKind | null =
     mode === 'followup' ? 'standalone_assistant' : null;

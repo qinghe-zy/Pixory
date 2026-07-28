@@ -4,6 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { createTimestamp } from '../../database/utils';
 import type { AiThreadRecord } from '../types';
+import type { AiBranchScope } from '../../database/repositories/aiThreadRepository';
 import { compileMemoryUsageContract } from './contextCompiler';
 import { getMemoryProjectionMeta } from './memoryEventRepository';
 import {
@@ -78,6 +79,7 @@ export async function compileMemoryContextPlan(
   input: {
     thread: AiThreadRecord;
     query: string;
+    branchScopes?: AiBranchScope[];
     embeddingAvailable?: boolean;
     excludedClaimIds?: string[];
   }
@@ -88,6 +90,7 @@ export async function compileMemoryContextPlan(
     retrieveMemoryClaimsWithDiagnostics(db, {
       embeddingAvailable: input.embeddingAvailable ?? false,
       excludedClaimIds: input.excludedClaimIds,
+      branchScopes: input.branchScopes,
       query: input.query,
       space: input.thread.space,
       thread: input.thread,

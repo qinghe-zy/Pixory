@@ -4,6 +4,7 @@ import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../.
 import type { AiMessageRecord } from '../../database/repositories/aiThreadRepository';
 import { createTimestamp } from '../../database/utils';
 import { MemoryFacade } from './memoryFacade';
+import { buildCanonicalClaimId } from './memoryCanonicalization';
 import { nativeClaimToMemoryInput, type NativeMemoryPackage } from './nativeMemoryPackage';
 
 function createImportId(prefix: string): string {
@@ -15,6 +16,7 @@ function safeRole(value: unknown): 'user' | 'assistant' | null {
 }
 
 function mapImportedMessage(row: Record<string, unknown>): {
+  sourceId: string | null;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string | null;
@@ -28,7 +30,33 @@ function mapImportedMessage(row: Record<string, unknown>): {
     content: content.slice(0, 12000),
     createdAt: typeof row.createdAt === 'string' ? row.createdAt : null,
     role,
+    sourceId: typeof row.id === 'string' ? row.id : null,
   };
+}
+
+function parseJsonStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof value !== 'string') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function claimScopeKey(
+  canonicalClaimId: string,
+  scopeType: string,
+  scopeId: string | null
+): string {
+  return [canonicalClaimId, scopeType, scopeId ?? '∅'].join('\u001F');
 }
 
 async function recordNativeImportIdMap(
@@ -63,15 +91,18 @@ async function createNativeImportMessageProjection(
     space: PixorySpace;
     threadId: string;
   },
-  messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string | null }>
+  messages: Array<{ sourceId: string | null; role: 'user' | 'assistant'; content: string; createdAt: string | null }>
 ): Promise<{
   importRoot: AiMessageRecord;
   session: Awaited<ReturnType<typeof aiThreadRepository.createContinuityImportSession>>;
+  messageIdMap: Map<string, string>;
 }> {
   let output: {
     importRoot: AiMessageRecord;
     session: Awaited<ReturnType<typeof aiThreadRepository.createContinuityImportSession>>;
+    messageIdMap: Map<string, string>;
   } | null = null;
+  const messageIdMap = new Map<string, string>();
   await db.withTransactionAsync(async () => {
     const thread = await aiThreadRepository.findThreadById(db, input.threadId);
     if (!thread || thread.space !== input.space) {
@@ -106,6 +137,7 @@ async function createNativeImportMessageProjection(
       importBranchRootKind: 'continuity_import_root',
     });
     for (const [index, message] of messages.entries()) {
+      const importedMessageId = createImportId(`aimsg${index}`);
       await aiThreadRepository.createContinuityImportMessage(db, {
         branchRootMessageId: importRoot.id,
         branchVersionIndex: 1,
@@ -113,11 +145,14 @@ async function createNativeImportMessageProjection(
         content: message.content,
         continuityImportSessionId: session.id,
         continuitySyntheticKind: null,
-        id: createImportId(`aimsg${index}`),
+        id: importedMessageId,
         role: message.role,
         status: 'completed',
         threadId: input.threadId,
       });
+      if (message.sourceId) {
+        messageIdMap.set(message.sourceId, importedMessageId);
+      }
     }
     await aiThreadRepository.setThreadCurrentBranch(db, {
       branchRootMessageId: importRoot.id,
@@ -134,7 +169,7 @@ async function createNativeImportMessageProjection(
       input.package.packageId,
       now
     );
-    output = { importRoot, session };
+    output = { importRoot, messageIdMap, session };
   });
   if (!output) {
     throw new Error('native_memory_import_session_create_failed');
@@ -160,6 +195,7 @@ export async function importNativeMemoryPackage(input: {
     .map(mapImportedMessage)
     .filter((message): message is NonNullable<typeof message> => Boolean(message));
   const importedClaims: Array<{ sourceId: string; targetId: string }> = [];
+  let importedMessageIdMap = new Map<string, string>();
   const result = await runWithDatabaseSpace(input.space, async (db) => {
     const existing = await db.getFirstAsync<{ targetId: string }>(
       `SELECT targetId
@@ -186,6 +222,7 @@ export async function importNativeMemoryPackage(input: {
       }
     }
     const created = await createNativeImportMessageProjection(db, input, messages);
+    importedMessageIdMap = created.messageIdMap;
     return {
       duplicate: false as const,
       importRoot: created.importRoot,
@@ -205,17 +242,97 @@ export async function importNativeMemoryPackage(input: {
     };
   }
 
+  const deletionGuards = await runWithDatabaseSpace(input.space, async (db) => {
+    const deletedClaims = await db.getAllAsync<{
+      id: string;
+      canonicalClaimId: string | null;
+      scopeType: string;
+      scopeId: string | null;
+    }>(
+      `SELECT id, canonicalClaimId, scopeType, scopeId FROM memory_claims
+       WHERE space = ? AND status IN ('deleted', 'suppressed')`,
+      input.space
+    );
+    const certificates = await db.getAllAsync<{ targetClaimIdsJson: string }>(
+      `SELECT targetClaimIdsJson FROM memory_deletion_certificates WHERE space = ?`,
+      input.space
+    );
+    return {
+      scopeKeys: new Set(
+        deletedClaims
+          .filter((claim) => Boolean(claim.canonicalClaimId))
+          .map((claim) => claimScopeKey(claim.canonicalClaimId as string, claim.scopeType, claim.scopeId))
+      ),
+      claimIds: new Set(deletedClaims.map((claim) => claim.id)),
+      certificateClaimIds: new Set(certificates.flatMap((certificate) => parseJsonStringArray(certificate.targetClaimIdsJson))),
+    };
+  });
+  const packageTombstoneIds = new Set(
+    input.package.tombstones.flatMap((tombstone) => [
+      ...(typeof tombstone.id === 'string' ? [tombstone.id] : []),
+      ...parseJsonStringArray(tombstone.targetClaimIdsJson),
+      ...(typeof tombstone.canonicalClaimId === 'string' ? [tombstone.canonicalClaimId] : []),
+    ])
+  );
+
   for (const sourceClaim of input.package.claims) {
     const sourceId = typeof sourceClaim.id === 'string' ? sourceClaim.id : null;
     if (!sourceId) continue;
+    const canonicalClaimId = typeof sourceClaim.canonicalClaimId === 'string' ? sourceClaim.canonicalClaimId : null;
     const claimInput = nativeClaimToMemoryInput(sourceClaim, input.space);
     if (!claimInput) continue;
+    const remapsConversationScope = claimInput.scopeType === 'thread' || claimInput.scopeType === 'branch';
+    const remappedClaimInput = {
+      ...claimInput,
+      canonicalClaimId: remapsConversationScope ? undefined : claimInput.canonicalClaimId,
+      scopeId: claimInput.scopeType === 'thread'
+        ? input.threadId
+        : claimInput.scopeType === 'branch'
+          ? `${result.importRoot.id}:1`
+          : claimInput.scopeId,
+    };
+    const targetCanonicalClaimId = remapsConversationScope
+      ? buildCanonicalClaimId({
+        canonicalObject: remappedClaimInput.valueNormalized,
+        polarity: remappedClaimInput.polarity ?? 'positive',
+        predicate: remappedClaimInput.predicate,
+        privacyDomain: remappedClaimInput.space,
+        schemaVersion: 1,
+        scopeId: remappedClaimInput.scopeId,
+        scopeType: remappedClaimInput.scopeType,
+        subjectEntityId: remappedClaimInput.subjectEntityId ?? 'user',
+        validTimeBucket: remappedClaimInput.validFrom ?? remappedClaimInput.validPrecision ?? 'unknown',
+      })
+      : canonicalClaimId;
+    const localScopeKey = targetCanonicalClaimId
+      ? claimScopeKey(targetCanonicalClaimId, remappedClaimInput.scopeType, remappedClaimInput.scopeId ?? null)
+      : null;
+    // A stale package must not resurrect a claim that was deleted locally or
+    // was covered by a deletion certificate/tombstone after the export.
+    if (
+      packageTombstoneIds.has(sourceId)
+      || (canonicalClaimId && packageTombstoneIds.has(canonicalClaimId))
+      || deletionGuards.claimIds.has(sourceId)
+      || (localScopeKey && deletionGuards.scopeKeys.has(localScopeKey))
+      || deletionGuards.certificateClaimIds.has(sourceId)
+    ) {
+      continue;
+    }
+    const importedSourceMessageId = remappedClaimInput.sourceMessageId
+      ? importedMessageIdMap.get(remappedClaimInput.sourceMessageId) ?? null
+      : null;
+    // A package must not turn a dangling message reference into an unsupported
+    // assertion. Claims without a message reference remain valid for manual or
+    // summary-derived memory, but an explicit reference must be restored first.
+    if (remappedClaimInput.sourceMessageId && !importedSourceMessageId) {
+      continue;
+    }
     const targetId = `mclaim_import_${input.package.packageId.slice(0, 12)}_${sourceId.slice(-20)}`;
     const created = await MemoryFacade.createClaim({
-        ...claimInput,
+        ...remappedClaimInput,
         id: targetId,
         sourceKind: 'import',
-        sourceMessageId: null,
+        sourceMessageId: importedSourceMessageId,
       }, {
         actorId: input.package.packageId,
         commandId: `native-import:${input.package.packageId}:${sourceId}`,

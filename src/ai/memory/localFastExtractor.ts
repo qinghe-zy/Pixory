@@ -1,4 +1,5 @@
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../../database';
+import type { AiBranchScope } from '../../database/repositories/aiThreadRepository';
 import { MemoryFacade } from './memoryFacade';
 import { detectMemoryIntent, type MemoryIntentObservation } from './memoryIntentDetector';
 import {
@@ -21,6 +22,7 @@ export interface LocalFastExtractorInput {
   messageContent: string;
   branchRootMessageId?: string | null;
   branchVersionIndex?: number | null;
+  branchScopes?: AiBranchScope[];
   reasoningText?: string | null;
   thinking?: string | null;
 }
@@ -225,6 +227,7 @@ export async function runLocalFastExtraction(input: LocalFastExtractorInput): Pr
       }> };
     }
     const ids = await resolveMemoryIntentTargetClaimIds(db, {
+      branchScopes: input.branchScopes,
       observation: intent,
       thread,
     });
@@ -245,9 +248,12 @@ export async function runLocalFastExtraction(input: LocalFastExtractorInput): Pr
     );
     return { ids, targets: rows };
   });
+  const branchScopeId = input.branchRootMessageId && input.branchVersionIndex != null
+    ? `${input.branchRootMessageId}:${input.branchVersionIndex}`
+    : null;
   const candidates = extractLocalClaimCandidates(input.messageContent, {
-    scopeId: input.threadId,
-    scopeType: 'thread',
+    scopeId: branchScopeId ?? input.threadId,
+    scopeType: branchScopeId ? 'branch' : 'thread',
   });
   const observation = await runWithDatabaseSpace(input.space, (db) =>
     writeCurrentTurnObservation(db, {
@@ -311,6 +317,9 @@ export async function drainCurrentTurnMemory(input: {
     }
     const payload = parseObservationPayload(observation);
     await runLocalFastExtraction({
+      branchScopes: observation.branchRootMessageId && observation.branchVersionIndex != null
+        ? [{ branchRootMessageId: observation.branchRootMessageId, branchVersionIndex: observation.branchVersionIndex }]
+        : [],
       branchRootMessageId: observation.branchRootMessageId,
       branchVersionIndex: observation.branchVersionIndex,
       messageContent: message.content,

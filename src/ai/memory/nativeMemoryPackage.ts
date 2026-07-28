@@ -39,6 +39,58 @@ function toRecordArray(rows: unknown[]): Array<Record<string, unknown>> {
   return rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object' && !Array.isArray(row));
 }
 
+function parseJsonStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof value !== 'string') {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function buildPackageScopeFilter(input: {
+  thread: AiThreadRecord | null;
+  roleCardId?: string | null;
+  branchScopes?: Array<{ branchRootMessageId: string; branchVersionIndex: number }>;
+}, alias: string, includeBranches: boolean): { clause: string; values: string[] } {
+  const clauses: string[] = [];
+  const values: string[] = [];
+  const roleCardId = input.thread?.roleCardId ?? input.roleCardId ?? null;
+  if (input.thread) {
+    clauses.push(`${alias}.scopeType = 'global'`);
+    clauses.push(`(${alias}.scopeType = 'thread' AND ${alias}.scopeId = ?)`);
+    values.push(input.thread.id);
+    if (roleCardId) {
+      clauses.push(`(${alias}.scopeType = 'role' AND ${alias}.scopeId = ?)`);
+      values.push(roleCardId);
+    }
+    if (input.thread.boundIpId != null) {
+      clauses.push(`(${alias}.scopeType = 'ip' AND ${alias}.scopeId = ?)`);
+      values.push(String(input.thread.boundIpId));
+    }
+    if (input.thread.boundKnowledgeBaseId) {
+      clauses.push(`(${alias}.scopeType = 'knowledge_base' AND ${alias}.scopeId = ?)`);
+      values.push(input.thread.boundKnowledgeBaseId);
+    }
+    if (includeBranches && input.branchScopes?.length) {
+      clauses.push(`(${alias}.scopeType = 'branch' AND ${alias}.scopeId IN (${input.branchScopes.map(() => '?').join(', ')}))`);
+      values.push(...input.branchScopes.map((scope) => `${scope.branchRootMessageId}:${scope.branchVersionIndex}`));
+    }
+  } else if (roleCardId) {
+    clauses.push(`(${alias}.scopeType = 'role' AND ${alias}.scopeId = ?)`);
+    values.push(roleCardId);
+  }
+  return { clause: clauses.length ? `(${clauses.join(' OR ')})` : '1 = 0', values };
+}
+
 function stripSensitiveMessageFields(row: Record<string, unknown>): Record<string, unknown> {
   return {
     branchRootMessageId: row.branchRootMessageId ?? null,
@@ -57,11 +109,14 @@ export async function buildNativeMemoryPackage(
     space: PixorySpace;
     thread: AiThreadRecord | null;
     branchScopes?: Array<{ branchRootMessageId: string; branchVersionIndex: number }>;
+    roleCardId?: string | null;
     exporterVersion?: string;
   }
 ): Promise<NativeMemoryPackage> {
   const createdAt = createTimestamp();
-  const [messages, events, claims, evidence, episodes, relations, profiles, summaries, tombstones] = await Promise.all([
+  const claimScope = buildPackageScopeFilter(input, 'c', true);
+  const aggregateScope = buildPackageScopeFilter(input, 'a', true);
+  const scopedRows = await Promise.all([
     input.thread
       ? db.getAllAsync<Record<string, unknown>>(
         `SELECT id, role, status, content, createdAt, branchRootMessageId, branchVersionIndex
@@ -70,20 +125,87 @@ export async function buildNativeMemoryPackage(
         input.thread.id
       )
       : Promise.resolve([]),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_events WHERE space = ? ORDER BY projectionVersion ASC, eventVersion ASC', input.space),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_claims WHERE space = ? ORDER BY updatedAt ASC', input.space),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_evidence WHERE space = ? ORDER BY createdAt ASC', input.space),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_episodes WHERE space = ? ORDER BY updatedAt ASC', input.space),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_relational_states WHERE space = ? ORDER BY updatedAt ASC', input.space),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_profiles WHERE space = ? ORDER BY updatedAt ASC', input.space),
+    db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_claims
+       WHERE space = ? AND ${claimScope.clause}
+         AND status NOT IN ('deleted', 'suppressed') AND deletedAt IS NULL
+         ${input.thread ? 'AND (sourceMessageId IS NULL OR sourceMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?))' : ''}
+       ORDER BY updatedAt ASC`,
+      input.space,
+      ...claimScope.values,
+      ...(input.thread ? [input.thread.id] : [])
+    ),
+    db.getAllAsync<Record<string, unknown>>(
+      `SELECT id, status FROM memory_claims WHERE space = ? AND ${claimScope.clause}`,
+      input.space,
+      ...claimScope.values
+    ),
+    db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_episodes
+       WHERE space = ? AND ${aggregateScope.clause} AND status <> 'deleted' AND deletedAt IS NULL
+       ORDER BY updatedAt ASC`,
+      input.space,
+      ...aggregateScope.values
+    ),
+    db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_relational_states WHERE space = ? AND ${aggregateScope.clause} ORDER BY updatedAt ASC`,
+      input.space,
+      ...aggregateScope.values
+    ),
+    db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_profiles WHERE space = ? AND ${aggregateScope.clause} ORDER BY updatedAt ASC`,
+      input.space,
+      ...aggregateScope.values
+    ),
     input.thread
       ? db.getAllAsync<Record<string, unknown>>(
         'SELECT * FROM ai_thread_summary_segments WHERE threadId = ? ORDER BY startAt ASC',
         input.thread.id
       )
       : Promise.resolve([]),
-    db.getAllAsync<Record<string, unknown>>('SELECT * FROM memory_deletion_certificates WHERE space = ? ORDER BY createdAt ASC', input.space),
   ]);
+  const [messages, claims, scopedClaims, episodes, relations, profiles, summaries] = scopedRows;
+  const aggregateGroups = [
+    ['claim', toRecordArray(scopedClaims).map((row) => row.id).filter((id): id is string => typeof id === 'string')],
+    ['episode', toRecordArray(episodes).map((row) => row.id).filter((id): id is string => typeof id === 'string')],
+    ['relation', toRecordArray(relations).map((row) => row.id).filter((id): id is string => typeof id === 'string')],
+    ['import', toRecordArray(profiles).map((row) => row.id).filter((id): id is string => typeof id === 'string')],
+  ] as const;
+  const eventClauses = aggregateGroups
+    .filter(([, ids]) => ids.length > 0)
+    .map(([type, ids]) => `(aggregateType = ? AND aggregateId IN (${ids.map(() => '?').join(', ')}))`);
+  const eventValues = aggregateGroups
+    .filter(([, ids]) => ids.length > 0)
+    .flatMap(([type, ids]) => [type, ...ids]);
+  const events = eventClauses.length > 0
+    ? await db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_events
+       WHERE space = ? AND (${eventClauses.join(' OR ')})
+       ORDER BY projectionVersion ASC, eventVersion ASC`,
+      input.space,
+      ...eventValues
+    )
+    : [];
+  const evidenceIds = [...new Set(toRecordArray(events).flatMap((event) => parseJsonStringArray(event.evidenceIdsJson)))];
+  const evidence = evidenceIds.length > 0
+    ? await db.getAllAsync<Record<string, unknown>>(
+      `SELECT * FROM memory_evidence WHERE space = ? AND id IN (${evidenceIds.map(() => '?').join(', ')}) ORDER BY createdAt ASC`,
+      input.space,
+      ...evidenceIds
+    )
+    : [];
+  const deletedClaimIds = new Set(
+    toRecordArray(scopedClaims)
+      .filter((claim) => claim.status === 'deleted' || claim.status === 'suppressed')
+      .map((claim) => claim.id)
+      .filter((id): id is string => typeof id === 'string')
+  );
+  const tombstones = deletedClaimIds.size > 0
+    ? (await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM memory_deletion_certificates WHERE space = ? ORDER BY createdAt ASC',
+      input.space
+    )).filter((certificate) => parseJsonStringArray(certificate.targetClaimIdsJson).some((id) => deletedClaimIds.has(id)))
+    : [];
   const branchRoutes = input.branchScopes?.map((scope) => ({ ...scope })) ?? [];
   const packageSeed = [
     input.space,

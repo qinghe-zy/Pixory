@@ -5,6 +5,7 @@ import type {
   MemoryConfidenceBand,
   MemorySpace,
 } from './memoryTypes';
+import type { AiBranchScope } from '../../database/repositories/aiThreadRepository';
 import type { AiThreadRecord } from '../types';
 import type { MemoryIntentObservation } from './memoryIntentDetector';
 
@@ -92,7 +93,7 @@ function queryTerms(query: string): string[] {
   return [...new Set(terms)].slice(0, 24);
 }
 
-function scopeAllowed(claim: MemoryClaimRecord, thread: AiThreadRecord): boolean {
+function scopeAllowed(claim: MemoryClaimRecord, thread: AiThreadRecord, branchScopes: AiBranchScope[] = []): boolean {
   if (claim.scopeType === 'thread') {
     return claim.scopeId === thread.id;
   }
@@ -105,6 +106,9 @@ function scopeAllowed(claim: MemoryClaimRecord, thread: AiThreadRecord): boolean
   if (claim.scopeType === 'knowledge_base') {
     return Boolean(thread.boundKnowledgeBaseId && claim.scopeId === thread.boundKnowledgeBaseId);
   }
+  if (claim.scopeType === 'branch') {
+    return branchScopes.some((scope) => claim.scopeId === `${scope.branchRootMessageId}:${scope.branchVersionIndex}`);
+  }
   return claim.scopeType === 'global';
 }
 
@@ -114,6 +118,7 @@ export async function resolveMemoryIntentTargetClaimIds(
     thread: AiThreadRecord;
     observation: MemoryIntentObservation;
     limit?: number;
+    branchScopes?: AiBranchScope[];
   }
 ): Promise<string[]> {
   if (
@@ -129,7 +134,7 @@ export async function resolveMemoryIntentTargetClaimIds(
      LIMIT 64`,
     input.thread.space
   );
-  const claims = rows.map(mapClaimRow).filter((claim) => scopeAllowed(claim, input.thread));
+  const claims = rows.map(mapClaimRow).filter((claim) => scopeAllowed(claim, input.thread, input.branchScopes));
   const deictic = /(?:这个|这件事|刚才|上条|那件事)/u.test(input.observation.targetText);
   if (deictic) {
     return claims
@@ -245,6 +250,7 @@ export async function retrieveMemoryClaims(
     space: MemorySpace;
     thread: AiThreadRecord;
     query: string;
+    branchScopes?: AiBranchScope[];
     limit?: number;
     embeddingAvailable?: boolean;
   }
@@ -258,6 +264,7 @@ export async function retrieveMemoryClaimsWithDiagnostics(
     space: MemorySpace;
     thread: AiThreadRecord;
     query: string;
+    branchScopes?: AiBranchScope[];
     limit?: number;
     embeddingAvailable?: boolean;
     excludedClaimIds?: string[];
@@ -304,7 +311,7 @@ export async function retrieveMemoryClaimsWithDiagnostics(
   const excluded = new Set(input.excludedClaimIds ?? []);
   const ranked = rows
     .map(mapClaimRow)
-    .filter((claim) => scopeAllowed(claim, input.thread) && !excluded.has(claim.id))
+    .filter((claim) => scopeAllowed(claim, input.thread, input.branchScopes) && !excluded.has(claim.id))
     .map((claim) => ({
       claim,
       lexical: lexicalScore(claim, terms),

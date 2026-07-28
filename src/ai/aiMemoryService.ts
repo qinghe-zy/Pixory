@@ -43,6 +43,7 @@ export interface MemoryCaptureNoticeItem {
 
 export interface BuildMemoryPrefixOptions {
   branchScopes?: AiBranchScope[];
+  excludedClaimIds?: string[];
   settings?: AiThreadMemorySettingsRecord;
 }
 
@@ -105,32 +106,52 @@ function mapV1ClaimToLegacyMemory(claim: MemoryClaimRecord): AiMemoryRecord {
 async function listV1MemoryBoardItems(
   db: SQLiteDatabase,
   thread: AiThreadRecord,
-  options?: { limit?: number; offset?: number; status?: AiMemoryRecord['status'] | 'all' }
+  options?: {
+    limit?: number;
+    offset?: number;
+    status?: AiMemoryRecord['status'] | 'all';
+    lane?: MemoryClaimRecord['lane'];
+    branchScopes?: AiBranchScope[];
+    excludedClaimIds?: string[];
+  }
 ): Promise<AiMemoryRecord[]> {
   const statusClause = options?.status === 'stale'
     ? `AND c.status = 'stale'`
     : options?.status === 'all'
       ? ''
       : `AND c.status NOT IN ('deleted', 'suppressed', 'superseded')`;
+  const branchPairs = options?.branchScopes?.map(() => '(c.scopeId = ?)').join(' OR ') ?? '';
+  const branchClause = branchPairs ? `OR (c.scopeType = 'branch' AND (${branchPairs}))` : '';
+  const excluded = options?.excludedClaimIds ?? [];
+  const excludedClause = excluded.length > 0
+    ? `AND c.id NOT IN (${excluded.map(() => '?').join(', ')})`
+    : '';
+  const laneClause = options?.lane ? 'AND c.lane = ?' : '';
   const rows = await db.getAllAsync<Record<string, unknown>>(
     `SELECT c.*
      FROM memory_claims c
      WHERE c.space = ?
        ${statusClause}
+       ${laneClause}
+       ${excludedClause}
        AND (
          (c.scopeType = 'thread' AND c.scopeId = ?)
          OR (c.scopeType = 'role' AND c.scopeId = ?)
          OR (c.scopeType = 'ip' AND c.scopeId = ?)
          OR (c.scopeType = 'knowledge_base' AND c.scopeId = ?)
-         OR c.scopeType = 'global'
-       )
+          OR c.scopeType = 'global'
+          ${branchClause}
+        )
      ORDER BY c.lane ASC, c.importance DESC, c.updatedAt DESC
      LIMIT ? OFFSET ?`,
     thread.space,
+    ...(options?.lane ? [options.lane] : []),
+    ...excluded,
     thread.id,
     thread.roleCardId,
     thread.boundIpId == null ? null : String(thread.boundIpId),
     thread.boundKnowledgeBaseId,
+    ...(options?.branchScopes?.map((scope) => `${scope.branchRootMessageId}:${scope.branchVersionIndex}`) ?? []),
     options?.limit ?? 80,
     options?.offset ?? 0
   );
@@ -237,62 +258,60 @@ export async function createManualMemory(space: PixorySpace, input: ManualMemory
   return mapV1ClaimToLegacyMemory(claim);
 }
 
-export async function updateMemoryContent(space: PixorySpace, memoryId: string, content: string, expectedVersion?: number): Promise<AiMemoryRecord | null> {
-  if (memoryId.startsWith('mclaim_')) {
-    const current = await runWithDatabaseSpace(space, (db) =>
-      db.getFirstAsync<Record<string, unknown>>('SELECT * FROM memory_claims WHERE id = ?', memoryId)
-    );
-    if (!current) {
-      return null;
-    }
-    const claim = await MemoryFacade.editClaim({
-      claimId: memoryId,
-      patch: {
-        kind: current.kind as MemoryClaimRecord['kind'],
-        predicate: String(current.predicate),
-        scopeId: (current.scopeId as string | null) ?? null,
-        scopeType: current.scopeType as MemoryClaimRecord['scopeType'],
-        space,
-        valueDisplay: content.trim(),
-        valueNormalized: normalizeMemoryContent(content),
-      },
-      space,
-    }, { actorId: 'user', expectedVersion, source: 'memory_board' });
-    return mapV1ClaimToLegacyMemory(claim);
+async function loadV1ClaimForMemory(
+  space: PixorySpace,
+  memoryId: string
+): Promise<{ claimId: string; row: Record<string, unknown> } | null> {
+  const claimId = memoryId.startsWith('mclaim_') ? memoryId : `mclaim_legacy_${memoryId}`;
+  if (!memoryId.startsWith('mclaim_')) {
+    await migrateLegacyMemoriesToV1(space);
   }
-  return runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryContent(db, memoryId, content));
+  const row = await runWithDatabaseSpace(space, (db) =>
+    db.getFirstAsync<Record<string, unknown>>(
+      'SELECT * FROM memory_claims WHERE id = ? AND space = ?',
+      claimId,
+      space
+    )
+  );
+  return row ? { claimId, row } : null;
+}
+
+export async function updateMemoryContent(space: PixorySpace, memoryId: string, content: string, expectedVersion?: number): Promise<AiMemoryRecord | null> {
+  const current = await loadV1ClaimForMemory(space, memoryId);
+  if (!current) {
+    return null;
+  }
+  const claim = await MemoryFacade.editClaim({
+    claimId: current.claimId,
+    patch: {
+      kind: current.row.kind as MemoryClaimRecord['kind'],
+      predicate: String(current.row.predicate),
+      scopeId: (current.row.scopeId as string | null) ?? null,
+      scopeType: current.row.scopeType as MemoryClaimRecord['scopeType'],
+      space,
+      valueDisplay: content.trim(),
+      valueNormalized: normalizeMemoryContent(content),
+    },
+    space,
+  }, { actorId: 'user', expectedVersion, source: 'memory_board' });
+  return mapV1ClaimToLegacyMemory(claim);
 }
 
 export async function deleteMemory(space: PixorySpace, memoryId: string, expectedVersion?: number): Promise<void> {
-  if (memoryId.startsWith('mclaim_')) {
-    await MemoryFacade.deleteClaim({ claimId: memoryId, space }, { actorId: 'user', expectedVersion, source: 'memory_board' });
-    return;
+  const current = await loadV1ClaimForMemory(space, memoryId);
+  if (current) {
+    await MemoryFacade.deleteClaim({ claimId: current.claimId, space }, { actorId: 'user', expectedVersion, source: 'memory_board' });
   }
-  await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'deleted'));
 }
 
 export async function confirmMemory(space: PixorySpace, memoryId: string, expectedVersion?: number): Promise<void> {
-  if (memoryId.startsWith('mclaim_')) {
-    await MemoryFacade.confirmClaim({ claimId: memoryId, space }, {
+  const current = await loadV1ClaimForMemory(space, memoryId);
+  if (current) {
+    await MemoryFacade.confirmClaim({ claimId: current.claimId, space }, {
       actorId: 'user',
       expectedVersion,
       source: 'memory_board',
     });
-    return;
-  }
-  const migrated = await migrateLegacyMemoriesToV1(space);
-  if (migrated > 0) {
-    const legacy = await runWithDatabaseSpace(space, (db) =>
-      db.getFirstAsync<{ id: string }>('SELECT id FROM ai_memories WHERE id = ?', memoryId)
-    );
-    if (legacy) {
-      const claimId = `mclaim_legacy_${memoryId}`;
-    await MemoryFacade.confirmClaim({ claimId, space }, {
-      actorId: 'user',
-      expectedVersion,
-        source: 'memory_board',
-      }).catch(() => undefined);
-    }
   }
 }
 
@@ -303,23 +322,12 @@ export async function changeMemoryScope(
   scopeId: string | null,
   expectedVersion?: number
 ): Promise<AiMemoryRecord | null> {
-  if (memoryId.startsWith('mclaim_')) {
-    const claim = await MemoryFacade.changeClaimScope({
-      claimId: memoryId,
-      scopeId,
-      scopeType: scope,
-      space,
-    }, {
-      actorId: 'user',
-      expectedVersion,
-      source: 'memory_board',
-    });
-    return mapV1ClaimToLegacyMemory(claim);
+  const current = await loadV1ClaimForMemory(space, memoryId);
+  if (!current) {
+    return null;
   }
-  await migrateLegacyMemoriesToV1(space);
-  const claimId = `mclaim_legacy_${memoryId}`;
   const claim = await MemoryFacade.changeClaimScope({
-    claimId,
+    claimId: current.claimId,
     scopeId,
     scopeType: scope,
     space,
@@ -327,16 +335,15 @@ export async function changeMemoryScope(
     actorId: 'user',
     expectedVersion,
     source: 'memory_board',
-  }).catch(() => null);
-  return claim ? mapV1ClaimToLegacyMemory(claim) : null;
+  });
+  return mapV1ClaimToLegacyMemory(claim);
 }
 
 export async function markMemoryInaccurate(space: PixorySpace, memoryId: string): Promise<void> {
-  if (memoryId.startsWith('mclaim_')) {
-    await MemoryFacade.suppressClaim({ claimId: memoryId, space }, { actorId: 'user', source: 'memory_board' });
-    return;
+  const current = await loadV1ClaimForMemory(space, memoryId);
+  if (current) {
+    await MemoryFacade.suppressClaim({ claimId: current.claimId, space }, { actorId: 'user', source: 'memory_board' });
   }
-  await runWithDatabaseSpace(space, (db) => aiThreadRepository.updateMemoryStatus(db, memoryId, 'stale'));
 }
 
 export async function listSummarySegments(space: PixorySpace, threadId: string): Promise<AiThreadSummarySegmentRecord[]> {
@@ -495,10 +502,14 @@ export async function buildStableMemoryPrefix(db: SQLiteDatabase, thread: AiThre
   // Stable prefixes must come from the v1 ledger. Reading the legacy board here
   // would allow stale pre-migration rows to bypass lane/status/conflict policy.
   const memories = await listV1MemoryBoardItems(db, thread, {
+    branchScopes: options?.branchScopes,
+    excludedClaimIds: options?.excludedClaimIds,
+    lane: 'confirmed',
     limit: STABLE_MEMORY_LIMIT * 2,
   });
   const stable = memories
-    .filter((memory) => memory.status === 'active' && shouldInjectMemoryIntoPrompt(memory))
+    .filter((memory) => memory.status === 'active' && memory.memoryLane === 'confirmed' && shouldInjectMemoryIntoPrompt(memory))
+    .filter((memory) => !(options?.excludedClaimIds ?? []).includes(memory.id))
     .map((memory) => ({ memory, priority: getMemoryPromptPriority(memory, thread) }))
     .filter((item) => item.priority > 0)
     .sort((left, right) => {

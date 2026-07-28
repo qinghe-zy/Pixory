@@ -66,6 +66,12 @@ export interface AiGenerationMetricsDraft {
     loadedMessageCountAtSend: number;
     retrievalSnippetCount: number;
     memoryEpoch: string | null;
+    memoryProjectionVersion: number | null;
+    memoryRetrievalScorerVersion: string | null;
+    memoryRetrievalCandidateCount: number;
+    memoryRetrievalInjectedCount: number;
+    memoryModelCalls: number;
+    memoryModelCost: number | null;
     stablePrefixEstimatedTokens: number | null;
     totalPromptTokens: number | null;
     cachedInputTokens: number | null;
@@ -168,6 +174,12 @@ export function createGenerationMetricsDraft(input: {
       loadedMessageCountAtSend: input.loadedMessageCountAtSend ?? 0,
       retrievalSnippetCount: 0,
       memoryEpoch: null,
+      memoryProjectionVersion: null,
+      memoryRetrievalScorerVersion: null,
+      memoryRetrievalCandidateCount: 0,
+      memoryRetrievalInjectedCount: 0,
+      memoryModelCalls: 0,
+      memoryModelCost: null,
       stablePrefixEstimatedTokens: null,
       totalPromptTokens: null,
       cachedInputTokens: null,

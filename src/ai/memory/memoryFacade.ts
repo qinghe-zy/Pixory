@@ -69,15 +69,30 @@ async function recordMessageEvidence(
   const evidenceId = `mevidence_${hashMemoryValue(
     [claim.space, claim.id, sourceMessageId].join('\u001F')
   ).slice(0, 32)}`;
+  const sourceMessage = await db.getFirstAsync<{ role: string | null; content: string | null }>(
+    `SELECT ai_messages.role, ai_messages.content
+     FROM ai_messages
+     INNER JOIN ai_threads ON ai_threads.id = ai_messages.threadId
+     WHERE ai_messages.id = ? AND ai_threads.space = ?
+     LIMIT 1`,
+    sourceMessageId,
+    claim.space
+  );
+  const quote = typeof sourceMessage?.content === 'string'
+    ? sourceMessage.content.slice(0, 2000)
+    : '';
+  const quoteHash = hashMemoryValue(quote);
   const result = await db.runAsync(
     `INSERT OR IGNORE INTO memory_evidence (
        id, space, sourceType, sourceId, messageId, role, quote, quoteHash, createdAt
-     ) VALUES (?, ?, 'message', ?, ?, 'user', NULL, ?, ?)`,
+     ) VALUES (?, ?, 'message', ?, ?, ?, ?, ?, ?)`,
     evidenceId,
     claim.space,
     sourceMessageId,
     sourceMessageId,
-    hashMemoryValue(sourceMessageId),
+    sourceMessage?.role === 'assistant' ? 'assistant' : 'user',
+    quote,
+    quoteHash,
     createTimestamp()
   );
   const count = await db.getFirstAsync<{ count: number }>(
@@ -209,7 +224,7 @@ async function appendAndProject(
   const result = await appendMemoryEvent(db, input);
   if (result.inserted) {
     await applyMemoryEventAndAdvance(db, result.event, {
-      incrementEpoch: options.incrementEpoch,
+      incrementEpoch: options.incrementEpoch ?? true,
     });
     if (options.outboxTaskType) {
       await enqueueMemoryOutbox(db, {
@@ -236,6 +251,26 @@ export async function createClaim(
         ...input,
         id: input.id ?? deriveMemoryCommandAggregateId('mclaim', input.space, commandId, 'create'),
       }, meta.projectionVersion + 1);
+      const replayedClaim = await findMemoryClaimById(db, input.space, claim.id);
+      if (replayedClaim) {
+        createdClaim = replayedClaim;
+        return;
+      }
+      const tombstoned = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM memory_claims
+         WHERE space = ? AND canonicalClaimId = ? AND scopeType = ?
+           AND COALESCE(scopeId, '∅') = COALESCE(?, '∅')
+           AND status IN ('deleted', 'suppressed')
+         LIMIT 1`,
+        input.space,
+        claim.canonicalClaimId,
+        claim.scopeType,
+        claim.scopeId
+      );
+      const explicitManualRecreate = input.sourceKind === 'manual' && options.actorId === 'user';
+      if (tombstoned && !explicitManualRecreate) {
+        throw new Error('memory_claim_tombstoned');
+      }
       const existing = await db.getFirstAsync<Record<string, unknown>>(
         `SELECT id FROM memory_claims
          WHERE space = ? AND canonicalClaimId = ? AND scopeType = ?

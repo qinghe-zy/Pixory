@@ -970,7 +970,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(service, /const attachmentPromptContext = preparedAttachments\.promptContext/);
   assert.match(service, /buildPromptForThread\(input\.thread, requestContent, branchScopes, \{[\s\S]*attachmentPromptContext[\s\S]*generationMetrics/);
   assert.match(service, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
-  assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings \}\)/);
+  assert.match(service, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, excludedClaimIds, settings: memorySettings \}\)/);
   assert.match(service, /searchCompletedMessageFts\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes/);
   assert.match(service, /listRecentCompletedNonSystemMessages\(db, thread\.id, DEEP_MEMORY_RECENT_MESSAGE_LIMIT, branchScopes\)/);
@@ -1145,7 +1145,7 @@ test('AI prompt build reuses deep memory settings instead of repeating settings 
   assert.match(memoryService, /settings\?: AiThreadMemorySettingsRecord/);
   assert.match(chat, /const memorySettings = await aiThreadRepository\.getThreadMemorySettings\(db, thread\.id\)/);
   assert.match(chat, /buildCompanionMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings/);
-  assert.match(chat, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, settings: memorySettings/);
+  assert.match(chat, /buildStableMemoryPrefix\(db, thread, \{ branchScopes, excludedClaimIds, settings: memorySettings/);
   assert.match(chat, /compileMemoryContextPlan\(db, \{/);
   assert.match(chat, /memorySettings\.deepMemoryEnabled \? userMessage : ''/);
 });

@@ -83,6 +83,32 @@ test('stale claims are excluded from normal retrieval while historical retrieval
   assert.match(source, /includeStale\?/);
 });
 
+test('native export excludes deleted projections and native import honors deletion tombstones', () => {
+  const exporter = read('src/ai/memory/nativeMemoryPackage.ts');
+  const importer = read('src/ai/memory/nativeMemoryPackageImportService.ts');
+  assert.match(exporter, /status NOT IN \('deleted', 'suppressed'\)/);
+  assert.match(importer, /tombstones/);
+  assert.match(importer, /memory_deletion_certificates/);
+  assert.match(importer, /messageIdMap/);
+  assert.match(importer, /sourceMessageId: importedSourceMessageId/);
+  assert.match(importer, /scopeType === 'thread'/);
+  assert.match(importer, /scopeId:[\s\S]{0,100}input\.threadId/);
+  assert.match(importer, /const targetCanonicalClaimId = remapsConversationScope[\s\S]*buildCanonicalClaimId/);
+  assert.match(importer, /claimScopeKey\(targetCanonicalClaimId, remappedClaimInput\.scopeType/);
+  assert.match(importer, /const importedSourceMessageId = remappedClaimInput\.sourceMessageId/);
+  assert.match(importer, /remappedClaimInput\.sourceMessageId && !importedSourceMessageId/);
+});
+
+test('native role continuity export only includes the active context scopes and their event evidence', () => {
+  const exporter = read('src/ai/memory/nativeMemoryPackage.ts');
+  const roleExporter = read('src/ai/aiRoleCardContinuityExportService.ts');
+  assert.match(exporter, /buildPackageScopeFilter/);
+  assert.match(exporter, /sourceMessageId IS NULL OR sourceMessageId IN/);
+  assert.match(exporter, /aggregateType = \? AND aggregateId IN/);
+  assert.match(exporter, /memory_evidence WHERE space = \? AND id IN/);
+  assert.match(roleExporter, /roleCardId: roleCard\.id/);
+});
+
 test('memory quality and cost envelope metrics are executable pure functions', () => {
   const source = read('src/ai/memory/memoryDiagnostics.ts');
   assert.match(source, /computeMemoryQualityMetrics/);

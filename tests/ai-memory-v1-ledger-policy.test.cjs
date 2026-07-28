@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, '..');
 const canonicalPath = path.join(root, 'src/ai/memory/memoryCanonicalization.ts');
 const eventPath = path.join(root, 'src/ai/memory/memoryEventRepository.ts');
 const facadePath = path.join(root, 'src/ai/memory/memoryFacade.ts');
+const indexOutboxPath = path.join(root, 'src/ai/memory/memoryIndexOutboxService.ts');
+const maintenanceQueuePath = path.join(root, 'src/ai/aiMemoryMaintenanceQueue.ts');
 const typesPath = path.join(root, 'src/ai/memory/memoryTypes.ts');
 
 function loadTypeScriptModule(filePath) {
@@ -95,6 +97,7 @@ test('MemoryFacade is the only v1 claim write entry point', () => {
   assert.match(source, /export (async )?function touchClaims/);
   assert.match(memoryService, /MemoryFacade\.touchClaims/);
   assert.doesNotMatch(memoryService, /UPDATE memory_claims/);
+  assert.doesNotMatch(memoryService, /aiThreadRepository\.(?:updateMemoryContent|updateMemoryStatus)/);
 });
 
 test('episode, relation, and profile projections also enter through ledger-backed facade commands', () => {
@@ -133,4 +136,28 @@ test('conflicted claims remain explicit and native imports preserve the conflict
   assert.match(facade, /eventType: 'claim_conflicted'/);
   assert.match(facade, /status: 'conflicted'/);
   assert.match(importer, /sourceStatus === 'conflicted'/);
+});
+
+test('prompt-visible memory writes advance memoryEpoch and evidence hashes the quote', () => {
+  const facade = fs.readFileSync(facadePath, 'utf8');
+  assert.match(facade, /incrementEpoch:\s*true/);
+  assert.match(facade, /quote/);
+  assert.match(facade, /hashMemoryValue\(quote\)/);
+});
+
+test('memory index outbox has a deterministic v1 consumer', () => {
+  assert.ok(fs.existsSync(indexOutboxPath));
+  const consumer = fs.readFileSync(indexOutboxPath, 'utf8');
+  const queue = fs.readFileSync(maintenanceQueuePath, 'utf8');
+  assert.match(consumer, /memory_embedding_upsert/);
+  assert.match(consumer, /memory_delete_indexes/);
+  assert.match(consumer, /status = 'done'/);
+  assert.match(queue, /drainMemoryIndexOutbox/);
+});
+
+test('automatic claim creation cannot recreate a tombstoned canonical claim', () => {
+  const facade = fs.readFileSync(facadePath, 'utf8');
+  assert.match(facade, /status IN \('deleted', 'suppressed'\)/);
+  assert.match(facade, /memory_claim_tombstoned/);
+  assert.match(facade, /input\.sourceKind === 'manual'/);
 });
