@@ -83,6 +83,10 @@ interface PixoryMediaNativeModule {
   listZipImageEntries(zipUri: string): Promise<NativeZipEntry[]>;
   extractZipEntryToTemp(zipUri: string, entryName: string, destinationUri: string): Promise<string>;
   cleanupTempSession(tempDirUri: string): Promise<boolean>;
+  scheduleDiaryAlarm(triggerAtMs: number, jobId: string): Promise<'exact' | 'inexact'>;
+  cancelDiaryAlarm(jobId: string): Promise<boolean>;
+  canScheduleExactDiaryAlarm(): Promise<boolean>;
+  openDiaryExactAlarmSettings(): Promise<boolean>;
 }
 
 const nativeModule = NativeModules.PixoryMediaModule as PixoryMediaNativeModule | undefined;
@@ -213,4 +217,20 @@ export function extractNativeZipEntryToTemp(
 
 export function cleanupNativeTempSession(tempDirUri: string): Promise<boolean> {
   return requireNativeModule().cleanupTempSession(tempDirUri);
+}
+
+export function scheduleDiaryAlarm(triggerAtMs: number, jobId: string): Promise<'exact' | 'inexact'> {
+  return requireNativeModule().scheduleDiaryAlarm(triggerAtMs, jobId);
+}
+
+export function cancelDiaryAlarm(jobId: string): Promise<boolean> {
+  return requireNativeModule().cancelDiaryAlarm(jobId);
+}
+
+export function canScheduleExactDiaryAlarm(): Promise<boolean> {
+  return requireNativeModule().canScheduleExactDiaryAlarm();
+}
+
+export function openDiaryExactAlarmSettings(): Promise<boolean> {
+  return requireNativeModule().openDiaryExactAlarmSettings();
 }

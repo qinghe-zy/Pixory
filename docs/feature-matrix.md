@@ -36,9 +36,10 @@
 | 功能域 | 当前状态 | 主要用户价值 | 关键入口 |
 | --- | --- | --- | --- |
 | AI 陪伴聊天 | 已实现，重点方向 | 长聊天、角色扮演、记忆、资料上下文、分支和流式回复 | `AiHomeScreen`, `AiChatScreen`, `src/ai/` |
+| 角色日记 | 已实现，首版 | 以北京时间和角色为单位保存当日私密日记；冻结当前线程已采纳分支的来源快照，复用会话模型独立生成；精确本地口令匹配后提供非打扰确认，不影响夜间自动日记；聊天页卡片、信纸阅读页、内心独白时间线、可选上下文注入与 Android 本地定时任务 | `src/ai/diary/`, `DiaryChatCard`, `DiaryDeckPager`, `DiaryReaderScreen`, `CompanionInnerLifeScreen` |
 | 陪伴手帐与数据面板 | 已实现，未来可扩展 | 珍珠时间线、双轴古典排版字体、底层零延迟预取、SQLite C++聚合、多维数据详单、WebView原生深链拦截 | `AboutScreen`, `MilestonesDetailScreen`, `milestoneService.ts` |
 | IP 资产库 | 已实现，基础能力 | 按 IP 管理图片、视频、分组、标签、备注和封面 | `HomeLibraryScreen`, `IpDetailScreen` |
-| 图片/视频导入 | 已实现 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次 | `ImportImagesScreen`, `imageImportService`, `videoImportService` |
+| 图片/视频导入 | 已实现 | 批量导入、复制原文件、生成缩略图、重复检查、导入批次；相册可在导入成功后请求 Android 删除确认，系统文件夹始终复制保留原文件；大批量选择仅渲染少量预览，文件入口使用系统返回的显示文件名，视频复制进度合并写入以避免长视频导入时积压 | `ImportImagesScreen`, `mediaFilePickerService`, `imageImportService`, `videoImportService` |
 | 图片浏览与整理 | 已实现 | 全部素材、分组素材、标签素材、收藏、最近查看、快速整理 | `AllImagesScreen`, `ImageViewerScreen`, `QuickOrganizeScreen` |
 | 视频体验 | 已实现 | 视频详情、沉浸播放、手势、队列、横竖屏、进度偏好 | `VideoDetailScreen`, `VideoPlayerScreen` |
 | 分组与标签 | 已实现 | 全局分组、IP 分组、标签管理、多选、筛选和结果页 | `GlobalGroupsScreen`, `TagsOverviewScreen` |
@@ -49,7 +50,7 @@
 | 备份/导入导出 | 部分实现 | 已支持数据库、原图、缩略图备份，以及单 IP、隐私加密包和系统目录导出；AI 文档文件、聊天附件文件、角色头像尚未完整纳入备份包 | `BackupScreen`, `BackupExportManagerScreen`, `backupService` |
 | AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、引用和阅读；入口、术语、版本更新、跨资料搜索、备份恢复尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService` |
 | Live2D 桌宠 | 实验/不上线 | 代码和会话配置入口存在，但因缺少合适且权属清晰的正式素材，当前版本不发布、不宣传 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
-| 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件 | `MeScreen`, `PersonalUnlockModal`, `personalSystemService` |
+| 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库 | `App.tsx`, `MeScreen`, `PersonalUnlockModal`, `personalSystemService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理 | `StorageUsageScreen`, `storageUsageService` |
 | 更新与公告 | 已实现 | 远程版本检查、公告、官网下载、GitHub fallback | `updateCheckService`, `announcementService` |

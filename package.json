@@ -15,7 +15,9 @@
   },
   "dependencies": {
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/ma-shan-zheng": "^0.4.2",
     "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@expo-google-fonts/zcool-xiaowei": "^0.4.1",
     "@lobehub/icons-rn": "^2.8.1",
     "@noble/hashes": "^2.2.0",
     "expo": "~54.0.35",

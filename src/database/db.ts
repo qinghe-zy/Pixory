@@ -53,6 +53,8 @@ import {
   MIGRATION_STATEMENTS_V47,
   MIGRATION_STATEMENTS_V47_ADD_LINEAGE_COLUMN,
   MIGRATION_STATEMENTS_V48,
+  MIGRATION_STATEMENTS_V49,
+  MIGRATION_STATEMENTS_V50,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -382,6 +384,14 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
 
     if (currentVersion < 48) {
       await database.execAsync(MIGRATION_STATEMENTS_V48);
+    }
+
+    if (currentVersion < 49) {
+      await database.execAsync(MIGRATION_STATEMENTS_V49);
+    }
+
+    if (currentVersion < 50) {
+      await database.execAsync(MIGRATION_STATEMENTS_V50);
     }
 
     await ensureImportTemplatesSchema(database);

@@ -39,3 +39,14 @@ test('source deletion is deferred until all successful image and video imports a
   assert.match(screen, /deferSourceDeletion:\s*true/);
   assert.match(screen, /原文件未删除 \$\{sourceDeletionFailureCount\}/);
 });
+
+test('import strategy only presents source deletion for album selections', () => {
+  const screen = read('src/screens/ImportImagesScreen.tsx');
+
+  assert.match(screen, /const hasAlbumPickerSource = imageMediaPickerSource === 'album' \|\| videoMediaPickerSource === 'album'/);
+  assert.match(screen, /const canRequestAlbumSourceDeletion = hasAlbumPickerSource \|\| hasAlbumPickedAsset/);
+  assert.match(screen, /label="相册导入后删除原文件"/);
+  assert.match(screen, /hint=\{canRequestAlbumSourceDeletion/);
+  assert.match(screen, /系统文件夹来源始终复制，保留原文件。/);
+  assert.match(screen, /disabled=\{isSubmitting \|\| !canRequestAlbumSourceDeletion\}/);
+});

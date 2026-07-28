@@ -35,6 +35,8 @@ import { useToast } from '../components/AppToast';
 import type { PersonalTaskToken } from '../services/personalTaskToken';
 import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
+const PICKED_IMAGE_PREVIEW_LIMIT = 5;
+
 interface ImportImagesScreenProps {
   space?: PixorySpace;
   taskToken?: PersonalTaskToken | null;
@@ -169,6 +171,12 @@ export function ImportImagesScreen({
     () => (pickedAssets.length > 0 || pickedVideos.length > 0) && !isSubmitting,
     [pickedAssets.length, pickedVideos.length, isSubmitting]
   );
+  const hasAlbumPickerSource = imageMediaPickerSource === 'album' || videoMediaPickerSource === 'album';
+  const hasAlbumPickedAsset = [
+    ...pickedAssets,
+    ...pickedVideos,
+  ].some((asset) => (asset.sourceKind ?? 'album') === 'album');
+  const canRequestAlbumSourceDeletion = hasAlbumPickerSource || hasAlbumPickedAsset;
   const ip = screenData?.ip ?? null;
   const groups = screenData?.groups ?? [];
   const importTemplates = screenData?.importTemplates ?? [];
@@ -565,6 +573,7 @@ export function ImportImagesScreen({
           imageImportSourceMode,
           videoImportNamingMode,
           deferSourceDeletion: true,
+          taskToken,
         });
 
         videoSuccessCount = videoResult.successCount;
@@ -736,7 +745,7 @@ export function ImportImagesScreen({
             </Pressable>
             {pickedAssets.length > 0 ? (
               <View style={styles.previewRow}>
-                {pickedAssets.map((asset, index) => (
+                {pickedAssets.slice(0, PICKED_IMAGE_PREVIEW_LIMIT).map((asset, index) => (
                   <View key={`${getPickedImageKey(asset)}-${index}`} style={styles.previewCard}>
                     <Image resizeMode="cover" source={{ uri: asset.uri }} style={styles.previewImage} />
                     <Pressable
@@ -750,6 +759,9 @@ export function ImportImagesScreen({
                     </Pressable>
                   </View>
                 ))}
+                {pickedAssets.length > PICKED_IMAGE_PREVIEW_LIMIT ? (
+                  <Text style={styles.pickHint}>另有 {pickedAssets.length - PICKED_IMAGE_PREVIEW_LIMIT} 张图片</Text>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -846,10 +858,13 @@ export function ImportImagesScreen({
 
         <LightFormSection title="导入策略">
           <SwitchSettingRow
-            disabled={isSubmitting}
-            label="素材导入使用移动模式"
+            disabled={isSubmitting || !canRequestAlbumSourceDeletion}
+            hint={canRequestAlbumSourceDeletion
+              ? '导入成功后请求 Android 删除相册原文件确认；系统文件夹来源始终复制。'
+              : '系统文件夹来源始终复制，保留原文件。'}
+            label="相册导入后删除原文件"
             onValueChange={(enabled) => updateImageImportSourceMode(enabled ? 'move' : 'copy')}
-            value={imageImportSourceMode === 'move'}
+            value={canRequestAlbumSourceDeletion && imageImportSourceMode === 'move'}
           />
           <SwitchSettingRow
             disabled={isSubmitting}

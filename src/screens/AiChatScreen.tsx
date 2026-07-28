@@ -44,6 +44,7 @@ import {
   type AiComposerAttachment,
 } from "../components/ai/AiChatComposer";
 import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
+import { DiaryChatCard } from '../components/ai/DiaryChatCard';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
@@ -176,6 +177,10 @@ import {
   settingsRepository,
   type PixorySpace,
 } from "../database";
+import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
+import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDiaryJob, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
+import { beijingDiaryDate, beijingDiaryDayBounds, decideDiaryTrigger } from '../ai/diary/diaryTypes';
 import type {
   AiBranchScope,
   AiThreadContinuityMilestoneRecord,
@@ -712,6 +717,7 @@ interface AiChatScreenProps {
   onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
+  onOpenDiary: (diaryId: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (
@@ -745,6 +751,7 @@ export function AiChatScreen({
   onOpenGlobalMaterials,
   onOpenSessionConfig,
   onOpenMemoryBoard,
+  onOpenDiary,
   onNewChat,
   onOpenThread,
   onOpenSource,
@@ -1322,6 +1329,9 @@ export function AiChatScreen({
     threadId ?? null,
   );
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
+  const [roleDiary, setRoleDiary] = useState<RoleDiaryRecord | null>(null);
+  const [diaryManualHint, setDiaryManualHint] = useState(false);
+  const [diaryCommandHint, setDiaryCommandHint] = useState(false);
   const [streamingTailVersion, forceUpdateTailState] = useReducer(
     (x) => x + 1,
     0,
@@ -1808,6 +1818,159 @@ export function AiChatScreen({
     () => findLatestAssistantMessage(messages),
     [messages],
   );
+  const diarySessionStartedAtRef = useRef(new Date().toISOString());
+
+  const reloadRoleDiary = useCallback(async () => {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId) {
+      setRoleDiary(null);
+      return;
+    }
+    const diary = await runWithDatabaseSpace(space, async (db) => {
+      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+      return thread?.roleCardId ? diaryRepository.findCurrentDiaryForRole(db, thread.roleCardId) : null;
+    });
+    if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
+      setRoleDiary(diary);
+    }
+  }, [space]);
+
+  useEffect(() => {
+    if (!thinking) {
+      void reloadRoleDiary();
+    }
+  }, [activeThreadId, reloadRoleDiary, thinking]);
+
+  const evaluateDiaryTrigger = useCallback(async () => {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId || thinking) {
+      return;
+    }
+    const branchScopes = persistedCurrentBranchScopes.length > 0
+      ? persistedCurrentBranchScopes
+      : activeMessageBranchScopesRef.current ?? [];
+    const now = new Date();
+    const outcome = await runWithDatabaseSpace(space, async (db) => {
+      if ((await settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED')) === 'false') {
+        return null;
+      }
+      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+      if (!thread?.roleCardId) {
+        return null;
+      }
+      const date = beijingDiaryDate(now);
+      const bounds = beijingDiaryDayBounds(date);
+      const dayMessages = await aiThreadRepository.listCompletedMessagesInDateRange(
+        db, targetThreadId, bounds.startIso, bounds.endIso, branchScopes,
+      );
+      const recentMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
+        db, targetThreadId, 80, branchScopes,
+      );
+      const latest = recentMessages.at(-1) ?? null;
+      const sessionStartedAt = resolveDiarySessionStartedAt(recentMessages) ?? diarySessionStartedAtRef.current;
+      const diaryDateToCheck = beijingDiaryDate(sessionStartedAt) !== date
+        ? beijingDiaryDate(sessionStartedAt)
+        : date;
+      const hasCompletedAutomaticDiary = await diaryRepository.hasCompletedAutomaticDiary(
+        db,
+        thread.roleCardId,
+        diaryDateToCheck,
+      );
+      const latestAt = latest?.completedAt ?? latest?.createdAt ?? null;
+      const isRecentContinuation = Boolean(latestAt)
+        && now.getTime() - new Date(latestAt as string).getTime() <= 10 * 60 * 1_000;
+      const decision = decideDiaryTrigger({
+        now,
+        hasCurrentDiary: hasCompletedAutomaticDiary,
+        hasDayChat: dayMessages.length > 0 || (isRecentContinuation && beijingDiaryDate(latestAt as string) !== date),
+        isSessionActive: thinking || isRecentContinuation,
+        lastInteractionAt: latestAt,
+        lastRealInteractionAt: latestAt,
+        sessionStartedAt,
+      });
+      return decision.kind === 'show_manual_hint' || decision.kind === 'auto_early_evening' || decision.kind === 'auto_late_evening' || decision.kind === 'auto_idle_monologue'
+        ? { decision, scopes: branchScopes }
+        : null;
+    });
+    if (!outcome || activeThreadIdRef.current !== targetThreadId) {
+      return;
+    }
+    if (outcome.decision.kind === 'show_manual_hint') {
+      setDiaryManualHint(true);
+      return;
+    }
+    const job = await prepareAndScheduleDiaryJob({
+      space,
+      threadId: targetThreadId,
+      diaryDate: outcome.decision.diaryDate,
+      triggerKind: outcome.decision.kind,
+      scheduledFor: now.toISOString(),
+      branchScopes: outcome.scopes,
+    });
+    await runDiaryJob(space, job.id);
+    await reloadRoleDiary();
+  }, [persistedCurrentBranchScopes, reloadRoleDiary, space, thinking]);
+
+  const generateDiaryManually = useCallback(async () => {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId) {
+      return;
+    }
+    const job = await prepareAndScheduleDiaryJob({
+      space,
+      threadId: targetThreadId,
+      diaryDate: beijingDiaryDate(diarySessionStartedAtRef.current),
+      triggerKind: 'manual',
+      scheduledFor: new Date().toISOString(),
+      branchScopes: persistedCurrentBranchScopes.length > 0
+        ? persistedCurrentBranchScopes
+        : activeMessageBranchScopesRef.current ?? [],
+    });
+    setDiaryManualHint(false);
+    await runDiaryJob(space, job.id);
+    await reloadRoleDiary();
+  }, [persistedCurrentBranchScopes, reloadRoleDiary, space]);
+
+  const generateDiaryFromCommand = useCallback(async () => {
+    setDiaryCommandHint(false);
+    await generateDiaryManually();
+  }, [generateDiaryManually]);
+
+  useEffect(() => {
+    diarySessionStartedAtRef.current = new Date().toISOString();
+    void evaluateDiaryTrigger().catch(() => undefined);
+    const timer = setInterval(() => void evaluateDiaryTrigger().catch(() => undefined), 60_000);
+    return () => clearInterval(timer);
+  }, [activeThreadId, evaluateDiaryTrigger]);
+
+  useEffect(() => {
+    if (!activeThreadId) {
+      return;
+    }
+    const branchScopes = persistedCurrentBranchScopes.length > 0
+      ? persistedCurrentBranchScopes
+      : activeMessageBranchScopesRef.current ?? [];
+    void scheduleDiaryWakeup({
+      space,
+      threadId: activeThreadId,
+      scheduledFor: nextDiaryWakeupAt(),
+      branchScopes,
+    }).catch(() => undefined);
+  }, [activeThreadId, persistedCurrentBranchScopes, space]);
+
+  const reconcileDueDiaryJobs = useCallback(async () => {
+    await runDueDiaryJobs(space);
+    await reloadRoleDiary();
+  }, [reloadRoleDiary, space]);
+  const reconcileDueDiaryJobsRef = useRef(reconcileDueDiaryJobs);
+
+  useEffect(() => {
+    reconcileDueDiaryJobsRef.current = reconcileDueDiaryJobs;
+  }, [reconcileDueDiaryJobs]);
+
+  useEffect(() => {
+    void reconcileDueDiaryJobs().catch(() => undefined);
+  }, [reconcileDueDiaryJobs]);
 
   function getSelectedMessageVersionIndex(
     messageId: string,
@@ -4340,6 +4503,9 @@ export function AiChatScreen({
     // prettier-ignore
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
+      if (state === 'active') {
+        void reconcileDueDiaryJobsRef.current().catch(() => undefined);
+      }
       if (state !== 'active') {
         void flushActiveStreamingSnapshot();
       }
@@ -5083,11 +5249,15 @@ export function AiChatScreen({
   async function handleSend() {
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
+    const shouldOfferDiaryCreation = isDiaryCreationRequest(typedText);
     const attachments = pendingAttachments;
     const content = buildChatMessageContent(typedText, attachments);
     const replyTarget = assistantReplyTarget;
     if ((!typedText && !attachments.length) || generating) {
       return;
+    }
+    if (!shouldOfferDiaryCreation) {
+      setDiaryCommandHint(false);
     }
     const actionToken = beginGenerationAction();
     if (!actionToken) {
@@ -5159,6 +5329,9 @@ export function AiChatScreen({
           })();
       streamUnsubscribe = managedGeneration.unsubscribe;
       generationSubscriptionRef.current = managedGeneration.unsubscribe;
+      if (shouldOfferDiaryCreation) {
+        setDiaryCommandHint(true);
+      }
       await managedGeneration.promise;
       setAssistantReplyTarget(null);
       await syncPersistedCurrentBranchRoute(targetThreadId, true);
@@ -6161,6 +6334,22 @@ export function AiChatScreen({
               removeClippedSubviews={tailListRemoveClippedSubviews}
               updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
               windowSize={tailListWindowSize}
+              ListHeaderComponent={
+                roleDiary && !thinking ? (
+                  <DiaryChatCard
+                    contextOptIn={roleDiary.contextOptIn}
+                    createdAt={roleDiary.updatedAt}
+                    diaryDate={roleDiary.diaryDate}
+                    onContextChoice={(accepted) => {
+                      void runWithDatabaseSpace(space, async (db) => {
+                        await diaryRepository.setContextOptIn(db, roleDiary.id, accepted);
+                      }).then(() => reloadRoleDiary());
+                    }}
+                    onOpen={() => onOpenDiary(roleDiary.id)}
+                    themeKey={roleDiary.themeKey}
+                  />
+                ) : null
+              }
               ListFooterComponent={
                 <>
                   {errorMessage ? (
@@ -6216,6 +6405,22 @@ export function AiChatScreen({
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
+              {diaryCommandHint && !thinking ? (
+                <View style={styles.diaryHint}>
+                  <Text style={styles.diaryHintText}>是否要为您创作日记</Text>
+                  <Pressable onPress={() => void generateDiaryFromCommand().catch(() => undefined)}>
+                    <Text style={styles.diaryHintAction}>是</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setDiaryCommandHint(false)}>
+                    <Text style={styles.diaryHintDismiss}>否</Text>
+                  </Pressable>
+                </View>
+              ) : diaryManualHint && !thinking ? (
+                <View style={styles.diaryHint}>
+                  <Text style={styles.diaryHintText}>今天快结束了，</Text>
+                  <Pressable onPress={() => void generateDiaryManually().catch(() => undefined)}><Text style={styles.diaryHintAction}>点击生成今天的日记</Text></Pressable>
+                </View>
+              ) : null}
               {activeContinuityMilestone ? (
                 <View style={styles.continuityInlineNotice}>
                   <Pressable
@@ -6512,6 +6717,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing[2],
     ...shadows.none,
   },
+  diaryHint: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: spacing[1],
+  },
+  diaryHintText: { ...typography.textStyles.micro, color: aiLightColors.muted },
+  diaryHintAction: { ...typography.textStyles.micro, color: aiLightColors.primaryActive, marginLeft: spacing[2] },
+  diaryHintDismiss: { ...typography.textStyles.micro, color: aiLightColors.muted, marginLeft: spacing[3] },
   header: {
     alignItems: "center",
     borderBottomColor: aiLightColors.hairline,

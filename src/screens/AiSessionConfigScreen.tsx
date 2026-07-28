@@ -49,6 +49,7 @@ import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../d
 import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
 import { PET_MODELS } from '../config/petModels';
 import { Live2DPetManagerModal } from '../components/ai/Live2DPetManagerModal';
+import { cancelPendingDiaryJobs } from '../ai/diary/diarySchedulerService';
 
 interface AiSessionConfigScreenProps {
   space: PixorySpace;
@@ -62,6 +63,7 @@ interface AiSessionConfigScreenProps {
   onOpenChatSearch?: () => void;
   onOpenBranchTree?: () => void;
   onOpenMemoryBoard?: () => void;
+  onOpenInnerLife?: () => void;
   onStartChat: () => void;
   onCurrentThreadDeleted?: () => void;
 }
@@ -167,6 +169,7 @@ export function AiSessionConfigScreen({
   onOpenChatSearch,
   onOpenBranchTree,
   onOpenMemoryBoard,
+  onOpenInnerLife,
   onStartChat,
   onCurrentThreadDeleted,
 }: AiSessionConfigScreenProps) {
@@ -187,7 +190,26 @@ export function AiSessionConfigScreen({
   const [roleInstructionWeight, setRoleInstructionWeight] = useState<AiRoleInstructionWeight>('default');
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [thinkingDisabled, setThinkingDisabled] = useState(false);
+  const [roleDiaryEnabled, setRoleDiaryEnabled] = useState(true);
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(true);
+
+  useEffect(() => {
+    void runWithDatabaseSpace(space, async (db) => {
+      const stored = await settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED');
+      setRoleDiaryEnabled(stored !== 'false');
+    });
+  }, [space]);
+  const updateRoleDiaryEnabled = useCallback((enabled: boolean) => {
+    setRoleDiaryEnabled(enabled);
+    void (async () => {
+      await runWithDatabaseSpace(space, (db) =>
+        settingsRepository.setValue(db, 'AI_ROLE_DIARY_ENABLED', enabled ? 'true' : 'false'),
+      );
+      if (!enabled) {
+        await cancelPendingDiaryJobs(space);
+      }
+    })().catch(() => undefined);
+  }, [space]);
   const [contextHistoryRoundLimit, setContextHistoryRoundLimit] = useState(AI_CONTEXT_DEFAULTS.historyRoundLimit);
   const [lastMaintenanceError, setLastMaintenanceError] = useState<string | null>(null);
   const [maintenanceStatus, setMaintenanceStatus] = useState<MemoryMaintenanceStatus | null>(null);
@@ -973,6 +995,13 @@ export function AiSessionConfigScreen({
               title="创作路线树"
               subtitle="查看改写、重生成形成的路线"
               onPress={onOpenBranchTree}
+            />
+            <AiLightListItem
+              disabled={!threadId || !currentRoleCardId || !onOpenInnerLife}
+              icon="book-outline"
+              title="内心独白"
+              subtitle="日记、独白与梦境"
+              onPress={onOpenInnerLife}
               isLast
             />
           </AiLightListGroup>
@@ -1001,6 +1030,18 @@ export function AiSessionConfigScreen({
                   />
                 ) : null
               }
+            />
+            <AiLightListItem
+              accessibilityRole="switch"
+              accessibilityState={{ checked: roleDiaryEnabled }}
+              icon="book-outline"
+              title="角色日记"
+              subtitle="在安静的夜晚写下角色自己的心绪"
+              showChevron={false}
+              onPress={() => updateRoleDiaryEnabled(!roleDiaryEnabled)}
+              action={<AiSwitch value={roleDiaryEnabled} onValueChange={(next) => {
+                updateRoleDiaryEnabled(next);
+              }} />}
             />
             <AiLightListItem
               accessibilityRole="switch"

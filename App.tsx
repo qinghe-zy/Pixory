@@ -2,6 +2,8 @@ import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
+import { MaShanZheng_400Regular } from '@expo-google-fonts/ma-shan-zheng';
+import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, ScrollView, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -52,6 +54,8 @@ import { AiRoleCardEditorScreen } from './src/screens/AiRoleCardEditorScreen';
 import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
+import { DiaryReaderScreen } from './src/screens/DiaryReaderScreen';
+import { CompanionInnerLifeScreen } from './src/screens/CompanionInnerLifeScreen';
 import { applyRoleCardToThread, createNormalThreadFromRoleCard, type AiMessageFavoriteListItem } from './src/ai/aiChatService';
 import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
@@ -208,6 +212,8 @@ type AppRoute =
       branchScopes: AiBranchScope[];
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
+  | { name: 'diary-reader'; space: PixorySpace; diaryId: string }
+  | { name: 'companion-inner-life'; space: PixorySpace; threadId: string }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
@@ -446,6 +452,8 @@ export default function App() {
     PlayfairDisplay_400Regular,
     PlayfairDisplay_400Regular_Italic,
     JetBrainsMono_400Regular,
+    DiaryHandwriting: MaShanZheng_400Regular,
+    DiaryKai: ZCOOLXiaoWei_400Regular,
   });
   const [status, setStatus] = useState('正在初始化 Pixory 本地数据库与文件目录...');
   const [isReady, setIsReady] = useState(false);
@@ -792,6 +800,7 @@ export default function App() {
       const sessionId = `${Date.now()}-${generation}`;
       const taskToken = createPersonalTaskToken(sessionId, generation);
       personalTaskTokenRef.current = taskToken;
+      setRenderedTabs(new Set([currentRouteRef.current.name === 'root' ? currentRouteRef.current.tab : 'home']));
       const session: SpaceSession = {
         space: 'personal',
         sessionId,
@@ -1735,6 +1744,7 @@ export default function App() {
           })
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
+        onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           openAiChatRoute({
@@ -1762,6 +1772,8 @@ export default function App() {
         threadId={currentRoute.threadId}
       />
     );
+  } else if (currentRoute.name === 'diary-reader') {
+    content = <DiaryReaderScreen diaryId={currentRoute.diaryId} onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'ai-branch-tree') {
     const previousRoute = routeStack[routeStack.length - 2];
     content = (
@@ -1838,6 +1850,11 @@ export default function App() {
             ? () => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId: currentRoute.threadId as string })
             : undefined
         }
+        onOpenInnerLife={
+          currentRoute.threadId
+            ? () => pushRoute({ name: 'companion-inner-life', space: currentRoute.space, threadId: currentRoute.threadId as string })
+            : undefined
+        }
         onStartChat={popRoute}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
@@ -1845,6 +1862,8 @@ export default function App() {
     );
   } else if (currentRoute.name === 'ai-memory-board') {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
+  } else if (currentRoute.name === 'companion-inner-life') {
+    content = <CompanionInnerLifeScreen onBack={popRoute} onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'milestones-detail') {
     content = <MilestonesDetailScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'product-doc') {

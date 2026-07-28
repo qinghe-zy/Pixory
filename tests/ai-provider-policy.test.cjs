@@ -101,7 +101,7 @@ test('provider verification state is stored without API key plaintext', () => {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
 
-  assert.match(schema, /DATABASE_VERSION = 48/);
+  assert.match(schema, /DATABASE_VERSION = 50/);
   assert.match(schema, /keyUpdatedAt TEXT/);
   assert.match(schema, /lastVerifiedAt TEXT/);
   assert.match(schema, /lastVerifyStatus TEXT/);

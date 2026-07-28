@@ -16,9 +16,15 @@ importers:
       '@expo-google-fonts/jetbrains-mono':
         specifier: ^0.4.1
         version: 0.4.1
+      '@expo-google-fonts/ma-shan-zheng':
+        specifier: ^0.4.2
+        version: 0.4.2
       '@expo-google-fonts/playfair-display':
         specifier: ^0.4.2
         version: 0.4.2
+      '@expo-google-fonts/zcool-xiaowei':
+        specifier: ^0.4.1
+        version: 0.4.1
       '@lobehub/icons-rn':
         specifier: ^2.8.1
         version: 2.8.1(expo-linear-gradient@15.0.8(expo@54.0.35(@babel/core@7.29.0)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -656,8 +662,14 @@ packages:
   '@expo-google-fonts/jetbrains-mono@0.4.1':
     resolution: {integrity: sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==}
 
+  '@expo-google-fonts/ma-shan-zheng@0.4.2':
+    resolution: {integrity: sha512-pCcOmxTamTpXHjUqx4R8wO3JQ612yuIx+i45Cd2Rzq3pLJY+lhTG/MwhotO3pjS4ba3dc06LL90RxXh2QfB/KA==}
+
   '@expo-google-fonts/playfair-display@0.4.2':
     resolution: {integrity: sha512-mWhBV59RUjSS3aYpytUb7UyHHTnXcHh7epAn7gq+M4XAEh5PuMKUrP8eiUfkJLb6UwHZCi7EhQpUzxHu5OL96w==}
+
+  '@expo-google-fonts/zcool-xiaowei@0.4.1':
+    resolution: {integrity: sha512-UshFhpSWZq9hhultiV3IwqyRimKQEJd1yCCBTBCF8gU5B5OMEMXFJcaVdy4D1jD5R30QvTnmhGOA94116mqQ1g==}
 
   '@expo/cli@54.0.25':
     resolution: {integrity: sha512-WnUqIb8oMBhtwSfIqdCHCzcaDIpLNXItRVd5miuvWi4GO0SGo89PSsAkbVJ+LJgcaY+v5rbgMELJS9I/CqOulA==}
@@ -3806,7 +3818,11 @@ snapshots:
 
   '@expo-google-fonts/jetbrains-mono@0.4.1': {}
 
+  '@expo-google-fonts/ma-shan-zheng@0.4.2': {}
+
   '@expo-google-fonts/playfair-display@0.4.2': {}
+
+  '@expo-google-fonts/zcool-xiaowei@0.4.1': {}
 
   '@expo/cli@54.0.25(expo@54.0.35(@babel/core@7.29.0)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)':
     dependencies:

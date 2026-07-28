@@ -12,7 +12,7 @@ test('continuity import persistence adds import sessions and V43 migration', () 
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const types = read('src/ai/aiContinuityImportTypes.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 48/);
+  assert.match(schema, /DATABASE_VERSION = 50/);
   assert.match(schema, /export const MIGRATION_STATEMENTS_V43 = `/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_sessions/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_blocks/);
@@ -230,7 +230,7 @@ test('reversible continuity maintenance persists real import-session attribution
   const service = read('src/ai/aiContinuityImportService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 48/);
+  assert.match(schema, /DATABASE_VERSION = 50/);
   assert.match(schema, /ALTER TABLE ai_thread_summary_segments ADD COLUMN continuityImportSessionId TEXT/);
   assert.match(schema, /export const MIGRATION_STATEMENTS_V45 = `/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_continuity_import_effects/);

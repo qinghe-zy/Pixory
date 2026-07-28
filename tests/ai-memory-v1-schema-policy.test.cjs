@@ -27,7 +27,7 @@ const requiredTables = [
 ];
 
 test('memory v1 schema is registered as a repeatable migration', () => {
-  assert.match(schema, /DATABASE_VERSION\s*=\s*48/);
+  assert.match(schema, /DATABASE_VERSION\s*=\s*50/);
   assert.match(schema, /MIGRATION_STATEMENTS_V47/);
   assert.match(db, /MIGRATION_STATEMENTS_V47/);
   assert.match(db, /currentVersion\s*<\s*47/);

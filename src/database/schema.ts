@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 48;
+export const DATABASE_VERSION = 50;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1401,6 +1401,76 @@ INSERT OR IGNORE INTO schema_migrations (version, appliedAt)
 VALUES
   (47, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   (48, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+`;
+
+export const MIGRATION_STATEMENTS_V49 = `
+CREATE TABLE IF NOT EXISTS companion_diaries (
+  id TEXT PRIMARY KEY NOT NULL,
+  roleCardId TEXT NOT NULL,
+  diaryDate TEXT NOT NULL,
+  currentVersionId TEXT,
+  themeKey TEXT NOT NULL,
+  bodyFontKey TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('generating', 'ready_pending_presentation', 'ready', 'failed')),
+  sourceThreadId TEXT,
+  sourceBranchRouteJson TEXT NOT NULL DEFAULT '[]',
+  sourceSnapshotHash TEXT NOT NULL,
+  contextOptIn INTEGER CHECK (contextOptIn IN (0, 1)),
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(roleCardId, diaryDate)
+);
+
+CREATE TABLE IF NOT EXISTS companion_diary_versions (
+  id TEXT PRIMARY KEY NOT NULL,
+  diaryId TEXT NOT NULL,
+  versionNumber INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  pageLayoutJson TEXT,
+  generationModelSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+  sourceSummarySnapshot TEXT,
+  sourceSnapshotHash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('current', 'superseded')),
+  createdAt TEXT NOT NULL,
+  supersededAt TEXT,
+  UNIQUE(diaryId, versionNumber),
+  FOREIGN KEY (diaryId) REFERENCES companion_diaries(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS companion_diary_jobs (
+  id TEXT PRIMARY KEY NOT NULL,
+  roleCardId TEXT NOT NULL,
+  diaryDate TEXT NOT NULL,
+  triggerKind TEXT NOT NULL,
+  scheduledFor TEXT NOT NULL,
+  sourceThreadId TEXT,
+  sourceBranchRouteJson TEXT NOT NULL DEFAULT '[]',
+  sourceSnapshotHash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'due', 'generating', 'completed', 'failed', 'cancelled')),
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  attemptCount INTEGER NOT NULL DEFAULT 0,
+  nextRunAt TEXT,
+  errorMessage TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_companion_diaries_role_date
+  ON companion_diaries(roleCardId, diaryDate DESC);
+CREATE INDEX IF NOT EXISTS idx_companion_diary_jobs_ready
+  ON companion_diary_jobs(status, scheduledFor, nextRunAt);
+CREATE INDEX IF NOT EXISTS idx_companion_diary_versions_diary
+  ON companion_diary_versions(diaryId, versionNumber DESC);
+`;
+
+// A diary may be generated after a quiet-period timer fires. Preserve the exact
+// source at scheduling time so later messages, edits, or role-card changes do
+// not alter what that diary is about.
+export const MIGRATION_STATEMENTS_V50 = `
+ALTER TABLE companion_diary_jobs ADD COLUMN sourceMessagesJson TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE companion_diary_jobs ADD COLUMN sourceSummarySnapshot TEXT;
+ALTER TABLE companion_diary_jobs ADD COLUMN roleSnapshotJson TEXT NOT NULL DEFAULT '{}';
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

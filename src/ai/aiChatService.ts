@@ -61,6 +61,7 @@ import {
 import { resolveMemoryIntentTargetClaimIds } from './memory/memoryRetrievalService';
 import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
+import { diaryRepository } from './diary/diaryRepository';
 import {
   buildPromptCacheMetadata,
   buildProviderCachePolicy,
@@ -375,7 +376,7 @@ function filterSnippetsPresentInPrompt(snippets: RetrievedSnippet[], prompt: { u
   });
 }
 
-type ResolvedThreadChatModel =
+export type ResolvedThreadChatModel =
   | {
       status: 'ready';
       apiKey: string | null;
@@ -1818,7 +1819,7 @@ function modelInvalidMessage(source: ThreadModelSource): string {
     : '当前会话模型已失效，请重新选择模型，或切换为跟随全局默认。';
 }
 
-async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelConfig): Promise<ResolvedThreadChatModel> {
+export async function resolveThreadChatModel(space: PixorySpace, thread: ThreadModelConfig): Promise<ResolvedThreadChatModel> {
   await ensureBuiltInProviders(space);
   return runWithDatabaseSpace(space, async (db) => {
     const providers = await aiProviderRepository.listProviders(db);
@@ -1968,9 +1969,18 @@ async function buildPromptForThread(
           query: memorySettings.deepMemoryEnabled ? userMessage : '',
           thread,
         });
+        const optedInDiary = thread.roleCardId
+          ? await diaryRepository.findCurrentDiaryForRole(db, thread.roleCardId)
+          : null;
+        const optedInDiaryVersion = optedInDiary && optedInDiary.contextOptIn === true
+          ? await diaryRepository.findCurrentVersion(db, optedInDiary.id)
+          : null;
+        const diaryContext = optedInDiaryVersion
+          ? `[角色日记（${optedInDiary?.diaryDate ?? ''}，仅作角色内心状态参考，不是用户说过的话）]\n${optedInDiaryVersion.body}`
+          : '';
         return {
           companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
-          dynamicMemoryContext: compiledMemory.context,
+          dynamicMemoryContext: [compiledMemory.context, diaryContext].filter(Boolean).join('\n\n'),
           memoryContextPlan: compiledMemory.plan,
           memorySettings,
           stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, excludedClaimIds, settings: memorySettings }),

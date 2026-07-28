@@ -37,6 +37,7 @@ import {
   getNativeVideoMetadata,
   saveNativeVideoToMediaStore,
   computeFileSha256,
+  type NativeCopyProgressEvent,
 } from '../native/pixoryMediaModule';
 import type { MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 import type { DuplicateImportDecision } from './imageImportService';
@@ -46,6 +47,9 @@ import {
   toMoveDeletionNotice,
   type MoveDeletionNotice,
 } from './mediaImportSourcePolicy';
+import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
+
+const VIDEO_IMPORT_PROGRESS_WRITE_INTERVAL_MS = 750;
 
 export interface PickedVideoAsset {
   uri: string;
@@ -101,6 +105,14 @@ interface ImportSingleVideoParams {
   imageImportSourceMode: ImageImportSourceMode;
   deferSourceDeletion: boolean;
   duplicateDecision?: DuplicateImportDecision;
+  progressWriter: VideoImportProgressWriter;
+  taskToken?: PersonalTaskToken | null;
+}
+
+interface VideoImportProgressWriter {
+  finishCopy(): Promise<void>;
+  handleProgress(event: NativeCopyProgressEvent): void;
+  startCopy(): void;
 }
 
 class DuplicateVideoImportSkippedError extends Error {
@@ -124,6 +136,52 @@ function getFileNameFromUri(fileUri: string): string {
 function getExtension(filename: string): string {
   const match = /\.[A-Za-z0-9]+$/.exec(filename);
   return match ? match[0].toLowerCase() : '.mp4';
+}
+
+function createVideoImportProgressWriter(db: SQLiteDatabase, taskId: string): VideoImportProgressWriter {
+  let acceptingProgress = false;
+  let lastQueuedAt = 0;
+  let pendingEvent: NativeCopyProgressEvent | null = null;
+  let writeChain = Promise.resolve();
+
+  function queuePendingProgress(force = false) {
+    if (!pendingEvent || (!force && Date.now() - lastQueuedAt < VIDEO_IMPORT_PROGRESS_WRITE_INTERVAL_MS)) {
+      return;
+    }
+
+    const event = pendingEvent;
+    pendingEvent = null;
+    lastQueuedAt = Date.now();
+    writeChain = writeChain
+      .then(async () => {
+        await backgroundTaskRepository.update(db, taskId, {
+          status: 'copying',
+          completedBytes: event.copiedBytes,
+          totalBytes: event.totalBytes > 0 ? event.totalBytes : null,
+        });
+      })
+      .catch((error) => {
+        console.warn('Pixory video import progress update failed.', error);
+      });
+  }
+
+  return {
+    startCopy() {
+      acceptingProgress = true;
+    },
+    handleProgress(event) {
+      if (!acceptingProgress) {
+        return;
+      }
+      pendingEvent = event;
+      queuePendingProgress();
+    },
+    async finishCopy() {
+      acceptingProgress = false;
+      queuePendingProgress(true);
+      await writeChain;
+    },
+  };
 }
 
 function resolvePickedVideoAssetId(assetId: string | null | undefined): string | null {
@@ -252,7 +310,10 @@ async function importSingleVideo({
   imageImportSourceMode,
   deferSourceDeletion,
   duplicateDecision,
+  progressWriter,
+  taskToken,
 }: ImportSingleVideoParams): Promise<ImportedVideoResult> {
+  assertPersonalTaskActive(taskToken);
   const originalFilename = buildFallbackFilename(pickedAsset, videoImportNamingMode);
   const effectiveImportSourceMode = resolvePickedAssetImportMode(
     pickedAsset.sourceKind ?? 'album',
@@ -268,7 +329,13 @@ async function importSingleVideo({
       currentLabel: originalFilename,
       totalBytes: pickedAsset.fileSize ?? null,
     });
-    await copyUriToFileWithProgress(pickedAsset.uri, tempUri, taskId);
+    progressWriter.startCopy();
+    try {
+      await copyUriToFileWithProgress(pickedAsset.uri, tempUri, taskId);
+    } finally {
+      await progressWriter.finishCopy();
+    }
+    assertPersonalTaskActive(taskToken);
     const copiedInfo = await getFileInfo(tempUri);
     if (!copiedInfo.exists || copiedInfo.isDirectory || (copiedInfo.size ?? 0) <= 0) {
       throw new Error('视频复制后文件不可用。');
@@ -280,6 +347,7 @@ async function importSingleVideo({
       currentLabel: originalFilename,
     });
     const contentHash = await computeFileSha256(tempUri);
+    assertPersonalTaskActive(taskToken);
     const shouldSkip = await shouldSkipVideoDuplicateImport(db, duplicateDecision, contentHash);
     if (shouldSkip) {
       throw new DuplicateVideoImportSkippedError(shouldSkip);
@@ -292,6 +360,7 @@ async function importSingleVideo({
     }
 
     const metadata = await getNativeVideoMetadata(originalUri);
+    assertPersonalTaskActive(taskToken);
     let coverThumbnailFileUri: string | null = null;
     let previewStatus: 'ready' | 'failed' = 'ready';
     try {
@@ -304,6 +373,7 @@ async function importSingleVideo({
     } catch {
       previewStatus = 'failed';
     }
+    assertPersonalTaskActive(taskToken);
 
     await backgroundTaskRepository.update(db, taskId, {
       status: 'writingDatabase',
@@ -330,8 +400,10 @@ async function importSingleVideo({
       note: normalizeOptionalText(note) ?? null,
       previewStatus,
     });
+    assertPersonalTaskActive(taskToken);
     createdVideoId = createdVideo.id;
     await tagRepository.replaceImageTags(db, createdVideo.id, tags.map((tag) => tag.id));
+    assertPersonalTaskActive(taskToken);
 
     let sourceDeletionNotice: MoveDeletionNotice | null = null;
     let pendingSourceDeletionAssetId: string | null = null;
@@ -419,11 +491,14 @@ export async function importVideosToIp(params: {
   imageImportSourceMode?: ImageImportSourceMode;
   deferSourceDeletion?: boolean;
   videoImportNamingMode?: VideoImportNamingMode;
+  taskToken?: PersonalTaskToken | null;
 }): Promise<ImportVideosToIpResult> {
   const space = params.space ?? 'normal';
+  assertPersonalTaskActive(params.taskToken);
   await ensureAppDirectories(space);
 
   return runWithDatabaseSpace(space, async (db) => {
+    assertPersonalTaskActive(params.taskToken);
     const groupIds = normalizeGroupIds(params.groupIds);
     await ensureImportTargetExists(db, params.ipId, groupIds);
 
@@ -447,15 +522,12 @@ export async function importVideosToIp(params: {
       totalCount: params.pickedAssets.length,
       currentLabel: '准备导入视频',
     });
+    const progressWriter = createVideoImportProgressWriter(db, task.id);
     const progressSubscription = addNativeCopyProgressListener((event) => {
       if (event.taskId !== task.id) {
         return;
       }
-      void backgroundTaskRepository.update(db, task.id, {
-        status: 'copying',
-        completedBytes: event.copiedBytes,
-        totalBytes: event.totalBytes > 0 ? event.totalBytes : null,
-      });
+      progressWriter.handleProgress(event);
     });
 
     const importBatch = await importBatchRepository.create(db, {
@@ -464,6 +536,7 @@ export async function importVideosToIp(params: {
       totalCount: params.pickedAssets.length,
     });
     const tags = await resolveTags(db, params.tagNames);
+    assertPersonalTaskActive(params.taskToken);
     const importedVideos: ImportedVideoResult[] = [];
     const errors: VideoImportError[] = [];
     const skippedItems: VideoImportError[] = [];
@@ -474,6 +547,7 @@ export async function importVideosToIp(params: {
     try {
       for (const pickedAsset of params.pickedAssets) {
         try {
+          assertPersonalTaskActive(params.taskToken);
           const importedVideo = await importSingleVideo({
             db,
             groupIds,
@@ -489,6 +563,8 @@ export async function importVideosToIp(params: {
             imageImportSourceMode,
             deferSourceDeletion: params.deferSourceDeletion ?? false,
             videoImportNamingMode,
+            progressWriter,
+            taskToken: params.taskToken ?? null,
           });
           importedVideos.push(importedVideo);
           await importBatchRepository.createItem(db, {

@@ -3773,6 +3773,32 @@ export const aiThreadRepository = {
     return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
+  async listCompletedMessagesInDateRange(
+    db: SQLiteDatabase,
+    threadId: string,
+    startIso: string,
+    endIso: string,
+    branchScopes?: AiBranchScope[],
+  ): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages candidate
+       WHERE candidate.threadId = ?
+         AND candidate.status = 'completed'
+         AND candidate.role <> 'system'
+         AND candidate.createdAt >= ?
+         AND candidate.createdAt < ?
+         ${visibleBranchClause.clause}
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC`,
+      threadId,
+      startIso,
+      endIso,
+      ...visibleBranchClause.values,
+    );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
+  },
+
   async findPreviousMessageByRole(db: SQLiteDatabase, threadId: string, beforeMessageId: string, role: AiMessageRole, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord | null> {
     const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
     const row = await db.getFirstAsync<AiMessageRecord>(
