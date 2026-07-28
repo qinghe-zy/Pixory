@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 50;
+export const DATABASE_VERSION = 51;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1471,6 +1471,21 @@ export const MIGRATION_STATEMENTS_V50 = `
 ALTER TABLE companion_diary_jobs ADD COLUMN sourceMessagesJson TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE companion_diary_jobs ADD COLUMN sourceSummarySnapshot TEXT;
 ALTER TABLE companion_diary_jobs ADD COLUMN roleSnapshotJson TEXT NOT NULL DEFAULT '{}';
+`;
+
+// Summary coverage is valid only for the exact materialized branch and message
+// versions from which it was produced. Existing segments are conservative-stale
+// until a maintenance pass recreates them with complete provenance.
+export const MIGRATION_STATEMENTS_V51 = `
+ALTER TABLE ai_thread_summary_segments ADD COLUMN sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE ai_thread_summary_segments ADD COLUMN branchRouteHash TEXT NOT NULL DEFAULT '';
+ALTER TABLE ai_thread_summary_segments ADD COLUMN lineageVersion INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_thread_summary_segments ADD COLUMN sourceMessageVersionHash TEXT NOT NULL DEFAULT '';
+ALTER TABLE ai_thread_summary_segments ADD COLUMN quality TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE ai_thread_summary_segments ADD COLUMN status TEXT NOT NULL DEFAULT 'stale';
+
+CREATE INDEX IF NOT EXISTS idx_ai_summary_segments_coverage
+  ON ai_thread_summary_segments(threadId, status, branchRouteHash, lineageVersion, createdAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

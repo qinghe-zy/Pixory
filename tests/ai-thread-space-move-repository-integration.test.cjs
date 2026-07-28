@@ -156,7 +156,11 @@ function createSchema(db) {
     CREATE TABLE ai_thread_summary_segments (
       id TEXT PRIMARY KEY, threadId TEXT, space TEXT, kind TEXT, summaryText TEXT,
       startMessageId TEXT, endMessageId TEXT, startAt TEXT, endAt TEXT, roundCount INTEGER,
-      sourceSegmentIdsJson TEXT, continuityImportSessionId TEXT, createdAt TEXT, updatedAt TEXT
+      sourceSegmentIdsJson TEXT, continuityImportSessionId TEXT,
+      sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]', branchRouteHash TEXT NOT NULL DEFAULT '',
+      lineageVersion INTEGER NOT NULL DEFAULT 0, sourceMessageVersionHash TEXT NOT NULL DEFAULT '',
+      quality TEXT NOT NULL DEFAULT 'legacy', status TEXT NOT NULL DEFAULT 'stale',
+      createdAt TEXT, updatedAt TEXT
     );
     CREATE TABLE ai_continuity_import_sessions (
       id TEXT PRIMARY KEY, threadId TEXT, space TEXT, sourceKind TEXT, sourcePlatform TEXT,
@@ -258,6 +262,8 @@ function makeSnapshot(space) {
       id: 'segment-1', threadId: 'thread-1', space, kind: 'compressed',
       summaryText: '压缩摘要', startMessageId: 'message-1', endMessageId: 'message-1',
       startAt: now, endAt: now, roundCount: 1, sourceSegmentIdsJson: '[]',
+      sourceMessageIdsJson: '["message-1"]', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceMessageVersionHash: 'version-hash', quality: 'model', status: 'active',
       continuityImportSessionId: null, createdAt: now, updatedAt: now,
     }],
     branchRouteMetadata: [],

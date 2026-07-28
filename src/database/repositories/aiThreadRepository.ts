@@ -223,6 +223,12 @@ export interface AiThreadSummarySegmentRecord {
   endAt: string | null;
   roundCount: number;
   sourceSegmentIdsJson: string;
+  sourceMessageIdsJson: string;
+  branchRouteHash: string;
+  lineageVersion: number;
+  sourceMessageVersionHash: string;
+  quality: 'legacy' | 'local' | 'model' | 'merged';
+  status: 'active' | 'stale';
   continuityImportSessionId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1901,8 +1907,9 @@ export const aiThreadRepository = {
         `INSERT INTO ai_thread_summary_segments (
           id, threadId, space, kind, summaryText, startMessageId, endMessageId,
           startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          sourceMessageIdsJson, branchRouteHash, lineageVersion, sourceMessageVersionHash,
+          quality, status, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         segment.id,
         segment.threadId,
         targetSpace,
@@ -1915,6 +1922,12 @@ export const aiThreadRepository = {
         segment.roundCount,
         segment.sourceSegmentIdsJson,
         segment.continuityImportSessionId,
+        segment.sourceMessageIdsJson ?? '[]',
+        segment.branchRouteHash ?? '',
+        segment.lineageVersion ?? 0,
+        segment.sourceMessageVersionHash ?? '',
+        segment.quality ?? 'legacy',
+        segment.status ?? 'stale',
         segment.createdAt,
         segment.updatedAt
       );
@@ -3497,16 +3510,17 @@ export const aiThreadRepository = {
     return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
   },
 
-  async findMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<AiMessageRecord[]> {
+  async findMessagesByIds(db: SQLiteDatabase, messageIds: string[], branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     if (messageIds.length === 0) {
       return [];
     }
-    return db.getAllAsync<AiMessageRecord>(
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM ai_messages
        WHERE id IN (${makeInClause(messageIds)})
        ORDER BY createdAt ASC, rowid ASC`,
       ...messageIds
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
   async resolveBranchLineage(
@@ -3652,6 +3666,36 @@ export const aiThreadRepository = {
       threadId,
       ...visibleBranchClause.values,
       limit
+    );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
+  },
+
+  async listCompletedNonSystemMessagesBefore(
+    db: SQLiteDatabase,
+    threadId: string,
+    beforeMessageId: string,
+    branchScopes?: AiBranchScope[]
+  ): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.status = 'completed'
+         AND candidate.role <> 'system'
+         AND candidate.id <> target.id
+         ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('candidate')}
+         AND (
+           candidate.createdAt < target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+         )
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC`,
+      beforeMessageId,
+      threadId,
+      ...visibleBranchClause.values
     );
     return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
@@ -4181,8 +4225,10 @@ export const aiThreadRepository = {
     await db.runAsync(
       `INSERT INTO ai_thread_summary_segments (
         id, threadId, space, kind, summaryText, startMessageId, endMessageId,
-        startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId,
+        sourceMessageIdsJson, branchRouteHash, lineageVersion, sourceMessageVersionHash,
+        quality, status, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
       input.space,
@@ -4195,6 +4241,12 @@ export const aiThreadRepository = {
       input.roundCount,
       input.sourceSegmentIdsJson,
       input.continuityImportSessionId ?? null,
+      input.sourceMessageIdsJson,
+      input.branchRouteHash,
+      input.lineageVersion,
+      input.sourceMessageVersionHash,
+      input.quality,
+      input.status,
       now,
       now
     );
@@ -4210,6 +4262,7 @@ export const aiThreadRepository = {
     return db.getAllAsync<AiThreadSummarySegmentRecord>(
       `SELECT * FROM ai_thread_summary_segments
        WHERE threadId = ?
+         AND status = 'active'
          AND ${excludeRolledBackContinuityPayload('ai_thread_summary_segments')}
          ${visibilityClause.clause ? `AND ${visibilityClause.clause}` : ''}
        ORDER BY createdAt ASC, id ASC`,

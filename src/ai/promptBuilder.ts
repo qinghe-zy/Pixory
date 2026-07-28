@@ -4,6 +4,8 @@ import {
   AI_PROMPT_LAYER_VERSIONS,
   buildPromptCacheMetadata,
   type AiChatMode,
+  type AiDynamicContextSegment,
+  type AiDynamicContextSegmentType,
   type AiPromptBlock,
   type AiPromptCacheMetadata,
 } from './aiPromptCache';
@@ -235,6 +237,30 @@ function joinBlocks(blocks: Array<{ text: string }>): string {
   return blocks.map((item) => item.text).filter(Boolean).join('\n\n');
 }
 
+function compileDynamicSegments(
+  segments: AiDynamicContextSegment[] | undefined,
+  type: AiDynamicContextSegmentType,
+): string {
+  return (segments ?? [])
+    .filter((segment) => segment.type === type && !segment.traceOnly && segment.text.trim())
+    .slice()
+    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))
+    .map((segment) => segment.text.trim())
+    .join('\n\n');
+}
+
+function compileUserObservation(input: {
+  companionMemoryPrefix?: string | null;
+  userProfile?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
+}): string {
+  return [
+    input.companionMemoryPrefix,
+    input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
+    compileDynamicSegments(input.dynamicSegments, 'user_observation'),
+  ].filter(Boolean).join('\n\n');
+}
+
 function buildNextReplyNudge(input: {
   hasMaterialContext: boolean;
   postHistoryInstruction?: string | null;
@@ -258,13 +284,20 @@ function buildNextReplyNudge(input: {
 }
 
 function promptBlockPriority(name: AiPromptBlock['name']): 'dynamic' | 'protected' | 'required' | 'stable' {
-  if (name === 'current_user_message') {
+  if (name === 'current_user_message' || name === 'summary_bridge') {
     return 'required';
   }
   if (name === 'memory_snapshot') {
     return 'protected';
   }
-  if (name === 'dynamic_memory' || name === 'retrieval_context' || name === 'history_window') {
+  if (
+    name === 'companion_runtime'
+    || name === 'temporal_open_loops'
+    || name === 'user_observation'
+    || name === 'dynamic_memory'
+    || name === 'retrieval_context'
+    || name === 'history_window'
+  ) {
     return 'dynamic';
   }
   return 'stable';
@@ -348,8 +381,10 @@ export function buildNormalChatPrompt(input: {
   stableMemoryPrefix?: string | null;
   userProfile?: string | null;
   summarySegments?: string | null;
+  stableSummarySnapshot?: string | null;
   companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
   roleCardContext?: AiRolePromptContext | null;
   rolePrompt?: string | null;
   materialSnippets?: Array<{ label: string; text: string }>;
@@ -366,6 +401,7 @@ export function buildNormalChatPrompt(input: {
       ].join('\n\n')
     : '';
   const retrievalContext = [materialSection, input.attachmentPromptContext].filter(Boolean).join('\n\n');
+  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
 
   const stableBlocks = [
     block('stable_app_policy', '', true),
@@ -379,14 +415,16 @@ export function buildNormalChatPrompt(input: {
     block('stable_material_rules', '', true),
     block('stable_tool_definitions', '', true),
     block('memory_snapshot', [
-      input.companionMemoryPrefix,
-      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
-      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
       input.stableMemoryPrefix,
     ].filter(Boolean).join('\n\n'), true),
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
+    block('companion_runtime', compileDynamicSegments(input.dynamicSegments, 'companion_runtime'), false),
+    block('temporal_open_loops', compileDynamicSegments(input.dynamicSegments, 'temporal_open_loops'), false),
+    block('summary_bridge', compileDynamicSegments(input.dynamicSegments, 'summary_bridge'), false),
+    block('user_observation', compileUserObservation(input), false),
     block('dynamic_memory', input.dynamicMemoryContext, false),
     block('retrieval_context', retrievalContext, false),
     block('current_user_message', [
@@ -416,8 +454,10 @@ export function buildMaterialBoundPrompt(input: {
   stableMemoryPrefix?: string | null;
   userProfile?: string | null;
   summarySegments?: string | null;
+  stableSummarySnapshot?: string | null;
   companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
   roleCardContext?: AiRolePromptContext | null;
   materialRules?: string;
   contextSummary: string;
@@ -435,6 +475,7 @@ export function buildMaterialBoundPrompt(input: {
     ...input.snippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
     input.attachmentPromptContext,
   ].join('\n\n');
+  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
   const stableBlocks = [
     block('stable_app_policy', '', true),
     block('stable_role', frameRoleInstruction([
@@ -446,14 +487,16 @@ export function buildMaterialBoundPrompt(input: {
     block('stable_material_rules', ['资料规则：', materialRules].join('\n'), true),
     block('stable_tool_definitions', '', true),
     block('memory_snapshot', [
-      input.companionMemoryPrefix,
-      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
-      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
       input.stableMemoryPrefix,
     ].filter(Boolean).join('\n\n'), true),
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
+    block('companion_runtime', compileDynamicSegments(input.dynamicSegments, 'companion_runtime'), false),
+    block('temporal_open_loops', compileDynamicSegments(input.dynamicSegments, 'temporal_open_loops'), false),
+    block('summary_bridge', compileDynamicSegments(input.dynamicSegments, 'summary_bridge'), false),
+    block('user_observation', compileUserObservation(input), false),
     block('dynamic_memory', input.dynamicMemoryContext, false),
     block('retrieval_context', retrievalContext, false),
     block('current_user_message', [

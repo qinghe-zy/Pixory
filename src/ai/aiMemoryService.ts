@@ -536,22 +536,19 @@ export async function buildCompanionMemoryPrefix(db: SQLiteDatabase, thread: AiT
   if (!settings.deepMemoryEnabled) {
     return '';
   }
-  const [profiles, segments, relationalStateText] = await Promise.all([
+  const [profiles, relationalStateText] = await Promise.all([
     aiThreadRepository.getUserProfiles(db, thread.space, { boundIpId: thread.boundIpId, boundThreadId: thread.id }),
-    aiThreadRepository.listSummarySegments(db, thread.id, options?.branchScopes),
     buildRelationalStateText({ db, space: thread.space, threadId: thread.id }),
   ]);
   const globalProfile = profiles.find((p) => p.boundIpId == null && p.boundThreadId == null);
   const projectProfile = profiles.find((p) => p.boundIpId != null && p.boundThreadId == null);
   const threadProfile = profiles.find((p) => p.boundThreadId === thread.id);
-  if (!globalProfile?.profileText && !projectProfile?.profileText && !threadProfile?.profileText && segments.length === 0 && !relationalStateText) {
+  if (!globalProfile?.profileText && !projectProfile?.profileText && !threadProfile?.profileText && !relationalStateText) {
     return '';
   }
   return buildMainCompanionMemoryTemplate({
     relevantMemoriesText: relationalStateText,
-    summarySegmentsText: segments
-      .map((segment) => `- ${segment.startAt ?? ''} 至 ${segment.endAt ?? ''}\n${segment.summaryText}`)
-      .join('\n\n'),
+    summarySegmentsText: '',
     userProfileText: globalProfile?.profileText ?? '',
     projectProfileText: projectProfile?.profileText ?? '',
     threadProfileText: threadProfile?.profileText ?? '',

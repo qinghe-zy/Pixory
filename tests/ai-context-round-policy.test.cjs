@@ -30,7 +30,38 @@ test('AI context token trimming keeps complete rounds together', () => {
 
 test('AI thread exports and imports preserve the context round limit', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
-  const importBlock = /async importThread\([\s\S]*?\n  \},\n\n  async/.exec(repository)?.[0] ?? '';
+  const importStart = repository.indexOf('async importThread');
+  const importEnd = repository.indexOf('async deleteUserProfilesBoundToThreads', importStart);
+  const importBlock = importStart >= 0 && importEnd > importStart
+    ? repository.slice(importStart, importEnd)
+    : '';
   assert.match(importBlock, /contextHistoryRoundLimit/);
   assert.match(importBlock, /snapshot\.thread\.contextHistoryRoundLimit \?\? 30/);
+});
+
+test('every assistant generation compiles one branch-aware coverage plan before provider dispatch', () => {
+  const service = read('src/ai/aiChatService.ts');
+  assert.match(service, /compileConversationCoverage/);
+  assert.match(service, /anchorMessageId:\s*options\?\.historyAnchorMessageId/);
+  assert.match(service, /historyRoundLimit/);
+  assert.match(service, /coverage\.recentMessages/);
+  assert.match(service, /stableSummarySnapshot:\s*coverage\.stableSummaryText/);
+  assert.match(service, /type:\s*'summary_bridge'/);
+  assert.match(service, /coverage\.plan\.coverageComplete/);
+  assert.match(service, /coverageComplete\s*=\s*coverage\.plan\.coverageComplete/);
+});
+
+test('coverage diagnostics are content-free and include dynamic token counts', () => {
+  const metrics = read('src/ai/aiGenerationMetrics.ts');
+  for (const field of [
+    'coverageComplete',
+    'coverageSummarySegmentCount',
+    'coverageBridgeMessageCount',
+    'coverageProvisionalMessageCount',
+    'coverageLineageVersion',
+    'dynamicContextTokenCount',
+  ]) {
+    assert.match(metrics, new RegExp(`${field}:`));
+  }
+  assert.doesNotMatch(metrics, /coverageText|bridgeText|summaryText/);
 });

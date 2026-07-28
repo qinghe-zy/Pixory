@@ -64,6 +64,13 @@ export interface AiGenerationMetricsDraft {
     branchScopeCount: number;
     historyMessageCount: number;
     loadedMessageCountAtSend: number;
+    coverageComplete: boolean;
+    coverageSummarySegmentCount: number;
+    coverageBridgeMessageCount: number;
+    coverageProvisionalMessageCount: number;
+    coverageLineageVersion: number | null;
+    coverageBranchRouteHash: string | null;
+    dynamicContextTokenCount: number;
     retrievalSnippetCount: number;
     memoryEpoch: string | null;
     memoryProjectionVersion: number | null;
@@ -172,6 +179,13 @@ export function createGenerationMetricsDraft(input: {
       branchScopeCount: 0,
       historyMessageCount: 0,
       loadedMessageCountAtSend: input.loadedMessageCountAtSend ?? 0,
+      coverageComplete: false,
+      coverageSummarySegmentCount: 0,
+      coverageBridgeMessageCount: 0,
+      coverageProvisionalMessageCount: 0,
+      coverageLineageVersion: null,
+      coverageBranchRouteHash: null,
+      dynamicContextTokenCount: 0,
       retrievalSnippetCount: 0,
       memoryEpoch: null,
       memoryProjectionVersion: null,

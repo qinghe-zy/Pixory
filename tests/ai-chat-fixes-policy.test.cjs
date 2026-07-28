@@ -51,7 +51,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   const service = read('src/ai/aiChatService.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_message_versions/);
   assert.match(schema, /originalMessageId TEXT NOT NULL/);
   assert.match(schema, /versionIndex INTEGER NOT NULL/);
@@ -738,7 +738,8 @@ test('AI chat uses configurable complete rounds and avoids full reload for every
   assert.match(repository, /findPreviousMessageByRole/);
   assert.match(repository, /findNextMessageByRole/);
   assert.match(repository, /listMessageIdsAfter/);
-  assert.match(streamBlock, /listRecentCompletedMessagesBefore/);
+  assert.match(streamBlock, /buildPromptForThread/);
+  assert.match(streamBlock, /coverage\.recentMessages/);
   assert.doesNotMatch(streamBlock, /listMessages\(db, input\.thread\.id\)/);
   assert.doesNotMatch(regenerateBlock, /listMessages\(db, thread\.id\)/);
   assert.doesNotMatch(rewriteBlock, /listMessages\(db, thread\.id\)/);
@@ -780,7 +781,7 @@ test('AI companion memory compression is asynchronous and segment based', () => 
   const queue = read('src/ai/aiMemoryMaintenanceQueue.ts');
   const chat = read('src/ai/aiChatService.ts');
 
-  assert.match(summary, /UNCOMPRESSED_ROUND_THRESHOLD = 50/);
+  assert.match(summary, /summaryPrewarmRoundThreshold/);
   assert.match(summary, /COMPRESS_OLDEST_ROUND_COUNT = 20/);
   assert.match(summary, /SUMMARY_SEGMENT_LIMIT = 5/);
   assert.match(summary, /PRESERVE_LATEST_SEGMENT_COUNT = 2/);
@@ -887,7 +888,7 @@ test('AI editing a user message keeps full branch history instead of deleting la
   const chat = read('src/screens/AiChatScreen.tsx');
   const rewriteBlock = /export async function rewriteUserMessage[\s\S]*?\r?\n}\r?\n\r?\nexport async function stopStreamingMessage/.exec(service)?.[0] ?? '';
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /branchRootMessageId TEXT/);
   assert.match(schema, /branchVersionIndex INTEGER/);
   assert.match(schema, /MIGRATION_STATEMENTS_V31/);
@@ -946,8 +947,9 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   const memoryService = read('src/ai/aiMemoryService.ts');
   const profile = read('src/ai/aiMemoryProfileService.ts');
   const summary = read('src/ai/aiMemorySummaryService.ts');
+  const coverageService = read('src/ai/context/conversationCoverageService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_version_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V32/);
   assert.match(db, /currentVersion < 32/);
@@ -977,7 +979,7 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(service, /scheduleDeferredCompanionMemoryMaintenance\(\{[\s\S]*branchScopes/);
   assert.match(memoryService, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(memoryService, /listMemoryBoardItems\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
-  assert.match(memoryService, /listSummarySegments\(db, thread\.id, options\?\.branchScopes\)/);
+  assert.match(coverageService, /listSummarySegments\(db, input\.thread\.id, input\.branchScopes\)/);
   assert.match(memoryService, /searchActiveMemoryFts\(db, \{[\s\S]*branchScopes: options\?\.branchScopes/);
   assert.match(maintenance, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(maintenance, /const branchScopes = input\.branchScopes \?\? \[\]/);
@@ -993,7 +995,8 @@ test('AI branch scoping keeps hidden branches out of prompts retrieval and memor
   assert.match(profile, /listRecentCompletedNonSystemMessages\(db, threadId, 30, options\.branchScopes\)/);
   assert.match(summary, /branchScopes\?: AiBranchScope\[\]/);
   assert.match(summary, /listSummarySegments\(db, threadId, options\.branchScopes\)/);
-  assert.match(summary, /listCompletedNonSystemMessagesAfter\(db, threadId, job\.lastCompressedMessageId, UNCOMPRESSED_MESSAGE_SCAN_LIMIT, options\.branchScopes\)/);
+  assert.match(summary, /messageScanLimit = \(prewarmRoundThreshold \+ COMPRESS_OLDEST_ROUND_COUNT \+ 5\) \* 2/);
+  assert.match(summary, /listCompletedNonSystemMessagesAfter\(db, threadId, job\.lastCompressedMessageId, messageScanLimit, options\.branchScopes\)/);
 });
 
 test('AI stop-and-new-chat routes immediately while generation cleanup runs in the background', () => {
@@ -1546,7 +1549,7 @@ test('AI memory retrieval uses FTS candidates without full history scans', () =>
   const service = read('src/ai/aiChatService.ts');
   const memoryService = read('src/ai/aiMemoryService.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_message_fts USING fts5/);
   assert.match(schema, /CREATE VIRTUAL TABLE IF NOT EXISTS ai_memory_fts USING fts5/);
   assert.match(db, /MIGRATION_STATEMENTS_V26/);

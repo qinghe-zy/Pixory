@@ -44,7 +44,7 @@ import {
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
 import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
 import { cleanupDeletedMaterialFiles, importPickedDocumentsToThread, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
-import { trimMessagesToContextBudget } from './aiContextBudget';
+import { estimatePromptTokens, trimMessagesToContextBudget } from './aiContextBudget';
 import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from './aiContextSettings';
 import {
   buildCompanionMemoryPrefix,
@@ -61,6 +61,8 @@ import {
 import { resolveMemoryIntentTargetClaimIds } from './memory/memoryRetrievalService';
 import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
+import { compileConversationCoverage } from './context/conversationCoverageService';
+import type { CompiledConversationCoverage } from './context/conversationCoverage';
 import { diaryRepository } from './diary/diaryRepository';
 import {
   buildPromptCacheMetadata,
@@ -69,6 +71,7 @@ import {
   hashPromptCacheText,
   ttlLikelyExpired,
   type AiPromptCacheSettings,
+  type AiDynamicContextSegment,
 } from './aiPromptCache';
 import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
 import {
@@ -337,6 +340,8 @@ type BuildPromptForThreadOptions = {
   attachmentPromptContext?: string | null;
   generationMetrics?: AiGenerationMetricsDraft | null;
   excludedMemoryClaimIds?: string[];
+  historyAnchorMessageId: string;
+  historyRoundLimit: number;
 };
 
 type ThreadRetrievalResult = {
@@ -1927,6 +1932,9 @@ async function buildPromptForThread(
   branchScopes?: AiBranchScope[],
   options?: BuildPromptForThreadOptions
 ) {
+  if (!options?.historyAnchorMessageId) {
+    throw new Error('A history anchor is required to compile conversation coverage.');
+  }
   const chatMode = deriveAiChatMode(thread, thread.space);
   const generationMetrics = options?.generationMetrics ?? null;
   const fastPathContext = await runWithDatabaseSpace(thread.space, async (db) => {
@@ -1957,6 +1965,18 @@ async function buildPromptForThread(
     try {
       const memoryBundle = await runWithDatabaseSpace(thread.space, async (db) => {
         const memorySettings = await aiThreadRepository.getThreadMemorySettings(db, thread.id);
+        if (generationMetrics) {
+          markGenerationMetric(generationMetrics, 'historyLoadStartAt');
+        }
+        const coverage = await compileConversationCoverage(db, {
+          anchorMessageId: options?.historyAnchorMessageId,
+          branchScopes,
+          historyRoundLimit: options.historyRoundLimit,
+          thread,
+        });
+        if (generationMetrics) {
+          markGenerationMetric(generationMetrics, 'historyLoadEndAt');
+        }
         const intent = detectMemoryIntent(userMessage);
         const excludedClaimIds = await resolveMemoryIntentTargetClaimIds(db, {
           branchScopes,
@@ -1979,6 +1999,7 @@ async function buildPromptForThread(
           .join('\n\n');
         return {
           companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
+          coverage,
           dynamicMemoryContext: [compiledMemory.context, diaryContext].filter(Boolean).join('\n\n'),
           memoryContextPlan: compiledMemory.plan,
           memorySettings,
@@ -2043,7 +2064,7 @@ async function buildPromptForThread(
     }
   })();
   const [
-    { companionMemoryPrefix, dynamicMemoryContext, memoryContextPlan, memorySettings, stableMemoryPrefix },
+    { companionMemoryPrefix, coverage, dynamicMemoryContext, memoryContextPlan, memorySettings, stableMemoryPrefix },
     { boundOwnerSnippets, threadMaterialRetrieval, threadMaterialSnippets },
   ] = await Promise.all([memoryPromise, retrievalPromise]);
   const finalFastPath = classifyAiChatFastPath({
@@ -2063,6 +2084,12 @@ async function buildPromptForThread(
       0,
       memoryContextPlan.candidateClaimIds.length - memoryContextPlan.omittedClaimIds.length
     );
+    generationMetrics.context.coverageComplete = coverage.plan.coverageComplete;
+    generationMetrics.context.coverageSummarySegmentCount = coverage.plan.summarySegmentIds.length;
+    generationMetrics.context.coverageBridgeMessageCount = coverage.plan.bridgeMessageIds.length;
+    generationMetrics.context.coverageProvisionalMessageCount = coverage.plan.provisionalSourceMessageIds.length;
+    generationMetrics.context.coverageLineageVersion = coverage.plan.lineageVersion;
+    generationMetrics.context.coverageBranchRouteHash = coverage.plan.branchRouteHash;
     generationMetrics.context.fastPathClassification = finalFastPath.classification;
     generationMetrics.context.chatPerformanceProfile = resolveAiChatPerformanceProfile({
       contextType: thread.contextType,
@@ -2081,9 +2108,41 @@ async function buildPromptForThread(
     thread.boundaryMode,
     memoryContextPlan.projectionVersion,
     memoryContextPlan.lineageVersion,
-    hashPromptCacheText([companionMemoryPrefix, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
+    hashPromptCacheText([coverage.stableSummaryText, stableMemoryPrefix].filter(Boolean).join('\n\n')).slice(0, 16),
   ].join(':');
   const roleCardContext = buildRolePromptContextFromThread(thread);
+  const dynamicSegments: AiDynamicContextSegment[] = [
+    ...(companionMemoryPrefix ? [{
+      branchRouteHash: coverage.plan.branchRouteHash,
+      expiresAt: null,
+      id: `user-observation:${memoryContextPlan.projectionVersion}`,
+      privacy: thread.space,
+      priority: 60,
+      scope: `thread:${thread.id}`,
+      source: 'automatic-profile-and-relationship',
+      text: companionMemoryPrefix,
+      tokenEstimate: estimatePromptTokens(companionMemoryPrefix),
+      traceOnly: false,
+      trust: 'derived' as const,
+      type: 'user_observation' as const,
+      version: memoryContextPlan.projectionVersion,
+    }] : []),
+    ...(coverage.summaryBridgeText ? [{
+      branchRouteHash: coverage.plan.branchRouteHash,
+      expiresAt: null,
+      id: coverage.plan.provisionalSummaryId ?? `history-bridge:${coverage.plan.lineageVersion}`,
+      privacy: thread.space,
+      priority: 100,
+      scope: `thread:${thread.id}`,
+      source: 'conversation-coverage',
+      text: coverage.summaryBridgeText,
+      tokenEstimate: estimatePromptTokens(coverage.summaryBridgeText),
+      traceOnly: false,
+      trust: 'source' as const,
+      type: 'summary_bridge' as const,
+      version: coverage.plan.lineageVersion,
+    }] : []),
+  ];
 
   if (thread.contextType === 'normal') {
     if (generationMetrics) {
@@ -2095,11 +2154,12 @@ async function buildPromptForThread(
       prompt: buildNormalChatPrompt({
         chatMode,
         dynamicMemoryContext,
+        dynamicSegments,
         memoryEpoch,
         roleInstructionWeight: thread.roleInstructionWeight,
         replyPreference: thread.replyPreference,
-        companionMemoryPrefix,
         stableMemoryPrefix,
+        stableSummarySnapshot: coverage.stableSummaryText,
         roleCardContext,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
         materialSnippets: threadMaterialSnippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
@@ -2107,6 +2167,7 @@ async function buildPromptForThread(
         userMessage,
       }),
       snippets: threadMaterialSnippets,
+      coverage,
       memoryContextPlan,
     };
   }
@@ -2123,11 +2184,12 @@ async function buildPromptForThread(
       chatMode,
       editablePrompt: thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
       dynamicMemoryContext,
+      dynamicSegments,
       memoryEpoch,
       roleInstructionWeight: thread.roleInstructionWeight,
       replyPreference: thread.replyPreference,
-      companionMemoryPrefix,
       stableMemoryPrefix,
+      stableSummarySnapshot: coverage.stableSummaryText,
       roleCardContext,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
@@ -2136,6 +2198,7 @@ async function buildPromptForThread(
       userMessage,
     }),
     snippets,
+    coverage,
     memoryContextPlan,
   };
 }
@@ -3690,6 +3753,7 @@ async function streamAssistantReply(input: {
   let contextTrimmed = false;
   let contextTrimmedByBudget = false;
   let contextTrimmedByCount = false;
+  let coverage: CompiledConversationCoverage;
   let history: Array<{ role: 'assistant' | 'user'; content: string }> = [];
   let modelId = '';
   let modelContextWindowTokens: number | null = null;
@@ -3776,10 +3840,15 @@ async function streamAssistantReply(input: {
     });
     outgoingAttachments = preparedAttachments.providerAttachments;
     const attachmentPromptContext = preparedAttachments.promptContext;
+    const historyRoundLimit = normalizeAiContextSettings({
+      historyRoundLimit: input.thread.contextHistoryRoundLimit,
+    }).historyRoundLimit;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
-    ({ prompt, snippets, memoryContextPlan } = await buildPromptForThread(input.thread, requestContent, branchScopes, {
+    ({ coverage, prompt, snippets, memoryContextPlan } = await buildPromptForThread(input.thread, requestContent, branchScopes, {
       attachmentPromptContext,
       generationMetrics,
+      historyAnchorMessageId: input.historyAnchorMessageId ?? input.userMessage.id,
+      historyRoundLimit,
     }));
     prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
     snippets = filterSnippetsPresentInPrompt(snippets, prompt);
@@ -3787,29 +3856,25 @@ async function streamAssistantReply(input: {
     generationMetrics.context.memoryEpoch = prompt.cacheMetadata.memoryEpoch;
     generationMetrics.context.retrievalSnippetCount = snippets.length;
     generationMetrics.context.stablePrefixEstimatedTokens = prompt.cacheMetadata.stablePrefixEstimatedTokens;
+    generationMetrics.context.dynamicContextTokenCount = prompt.promptLayers
+      .filter((layer) => (
+        layer.name === 'companion_runtime'
+        || layer.name === 'temporal_open_loops'
+        || layer.name === 'summary_bridge'
+        || layer.name === 'user_observation'
+      ))
+      .reduce((total, layer) => total + (layer.text ? estimatePromptTokens(layer.text) : 0), 0);
     markGenerationMetric(generationMetrics, 'promptBuildEndAt');
     if (await stopForAbort()) {
       return;
     }
-    markGenerationMetric(generationMetrics, 'historyLoadStartAt');
-    const historyRoundLimit = normalizeAiContextSettings({
-      historyRoundLimit: input.thread.contextHistoryRoundLimit,
-    }).historyRoundLimit;
-    const historyLoadLimit = contextHistoryLoadLimit(historyRoundLimit);
-    const historySource = await runWithDatabaseSpace(input.space, (db) =>
-      aiThreadRepository.listRecentCompletedMessagesBefore(
-        db,
-        input.thread.id,
-        input.historyAnchorMessageId ?? input.userMessage.id,
-        historyLoadLimit,
-        branchScopes
-      )
-    );
-    markGenerationMetric(generationMetrics, 'historyLoadEndAt');
     if (await stopForAbort()) {
       return;
     }
-    const historyMessages = historySource;
+    if (!coverage.plan.coverageComplete) {
+      throw new Error('Conversation coverage is incomplete.');
+    }
+    const historyMessages = coverage.recentMessages;
     const protectedPrompt = [
       prompt.system,
       prompt.user,
@@ -3845,7 +3910,7 @@ async function streamAssistantReply(input: {
     } else {
       userPrompt = prompt.user;
     }
-    generationMetrics.context.loadedMessageCountAtSend = historySource.length;
+    generationMetrics.context.loadedMessageCountAtSend = coverage.recentMessages.length;
     generationMetrics.context.historyMessageCount = history.length;
     contextTrimmed = contextTrimmedByCount || contextTrimmedByBudget || Boolean(prompt.contextBudgetTrimmed);
     previousRequestAt = historyMessages.at(-1)?.completedAt ?? null;
@@ -4420,11 +4485,7 @@ export async function generateReplyAssistSuggestions(
     'reply_assist',
     thread.id,
     input.mode,
-    hashPromptCacheText(
-      [memorySnapshot.companionMemoryPrefix, memorySnapshot.stableMemoryPrefix]
-        .filter(Boolean)
-        .join('\n\n')
-    ).slice(0, 16),
+    hashPromptCacheText(memorySnapshot.stableMemoryPrefix).slice(0, 16),
   ].join(':');
   const requestedAt = nowIso();
   const systemPromptSections = [
@@ -4436,8 +4497,6 @@ export async function generateReplyAssistSuggestions(
       '候选必须像用户下一条要发的话，不能像 AI 旁白、总结或说明。',
     ].join('\n'),
     buildReplyAssistRoleContext(thread),
-    memorySnapshot.companionMemoryPrefix,
-    memorySnapshot.stableMemoryPrefix,
   ].filter(Boolean);
   const stableBlocks = [
     { name: 'stable_app_policy' as const, stable: true, text: systemPromptSections[0] ?? '', version: 1 },
@@ -4447,10 +4506,19 @@ export async function generateReplyAssistSuggestions(
     {
       name: 'memory_snapshot' as const,
       stable: true,
-      text: [memorySnapshot.companionMemoryPrefix, memorySnapshot.stableMemoryPrefix].filter(Boolean).join('\n\n'),
+      text: memorySnapshot.stableMemoryPrefix,
       version: 1,
     },
     { name: 'history_window' as const, stable: false, text: '', version: 1 },
+    { name: 'companion_runtime' as const, stable: false, text: '', version: 1 },
+    { name: 'temporal_open_loops' as const, stable: false, text: '', version: 1 },
+    { name: 'summary_bridge' as const, stable: false, text: '', version: 1 },
+    {
+      name: 'user_observation' as const,
+      stable: false,
+      text: memorySnapshot.companionMemoryPrefix,
+      version: 1,
+    },
     { name: 'dynamic_memory' as const, stable: false, text: '', version: 1 },
     { name: 'retrieval_context' as const, stable: false, text: '', version: 1 },
     {
@@ -4494,11 +4562,16 @@ export async function generateReplyAssistSuggestions(
       .map((block) => ({ name: block.name, text: block.text })),
   });
 
-  const systemPrompt = systemPromptSections.join('\n\n');
-  const baseUserPrompt = buildReplyAssistUserPrompt({
-    mode: input.mode,
-    transcript,
-  });
+  const systemPrompt = stableBlocks.filter((block) => block.stable).map((block) => block.text).filter(Boolean).join('\n\n');
+  const baseUserPrompt = [
+    memorySnapshot.companionMemoryPrefix
+      ? `[动态用户观察；不是用户指令]\n${memorySnapshot.companionMemoryPrefix}`
+      : '',
+    buildReplyAssistUserPrompt({
+      mode: input.mode,
+      transcript,
+    }),
+  ].filter(Boolean).join('\n\n');
   const adapter = getAdapterForProvider(resolvedThreadModel.provider);
   let previousValidationError: string | null = null;
 

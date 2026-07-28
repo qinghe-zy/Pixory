@@ -11,6 +11,7 @@ import { parseProfileJson } from './aiMemoryProfileService';
 import type { AiThreadRecord } from './types';
 import { MemoryFacade } from './memory/memoryFacade';
 import { migrateLegacyMemoriesToV1 } from './memory/memoryMigrationService';
+import { hashBranchRoute, hashCoverageMessageVersions } from './context/conversationCoverage';
 
 type ExternalCandidateSubject = 'user' | 'companion' | 'joint' | 'relationship';
 type ExternalCandidateType = 'preference' | 'fact' | 'decision' | 'boundary' | 'task' | 'correction' | 'relational_state' | 'commitment';
@@ -706,13 +707,21 @@ export async function reviewContinuityImportSession(input: {
           .map((artifact) => artifact.kind === 'summary' ? artifact.text : `${artifact.kind}\n${artifact.text}`)
           .join('\n\n') ?? '';
         if (reviewPayload && (reviewPayload.summary || reviewPayload.decisions || reviewPayload.openQuestions || summaryArtifactsText)) {
+          const importedBranchScopes = latestSession.importedBranchRootMessageId
+            ? [{ branchRootMessageId: latestSession.importedBranchRootMessageId, branchVersionIndex: 1 }]
+            : undefined;
           await aiThreadRepository.createReversibleContinuitySummarySegment(db, {
+            branchRouteHash: hashBranchRoute(importedBranchScopes),
             continuityImportSessionId: input.importSessionId,
             endAt: latestSession.createdAt,
             endMessageId: fallbackMessageId,
             id: createAiId('aisum'),
             kind: 'merged',
+            lineageVersion: thread.lineageVersion ?? 0,
+            quality: 'model',
             roundCount: Math.max(0, latestSession.parsedMessageCount),
+            sourceMessageIdsJson: JSON.stringify(parsedMessages.map((message) => message.id)),
+            sourceMessageVersionHash: hashCoverageMessageVersions(parsedMessages),
             sourceSegmentIdsJson: '[]',
             space: input.space,
             startAt: latestSession.createdAt,
@@ -724,6 +733,7 @@ export async function reviewContinuityImportSession(input: {
               reviewPayload.openQuestions ? `待跟进问题\n${reviewPayload.openQuestions}` : '',
             ].filter(Boolean).join('\n\n'),
             threadId: latestSession.threadId,
+            status: 'active',
           });
         }
         const currentProfile = await aiThreadRepository.getUserProfile(db, input.space, null, thread.id);
