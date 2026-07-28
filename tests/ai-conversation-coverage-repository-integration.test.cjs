@@ -132,10 +132,10 @@ function insertMessage(db, input) {
     );
 }
 
-test('V51 declares exact summary provenance and applies it after V50', () => {
+test('V51 exact summary provenance remains declared and ordered before later migrations', () => {
   const schema = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.match(schema, /DATABASE_VERSION = 51/);
+  assert.match(schema, /DATABASE_VERSION = 52/);
   assert.match(schema, /MIGRATION_STATEMENTS_V51/);
   for (const field of [
     'sourceMessageIdsJson',
@@ -148,6 +148,7 @@ test('V51 declares exact summary provenance and applies it after V50', () => {
     assert.match(schema, new RegExp(`ADD COLUMN ${field}`));
   }
   assert.ok(dbSource.indexOf('MIGRATION_STATEMENTS_V50') < dbSource.indexOf('MIGRATION_STATEMENTS_V51'));
+  assert.ok(dbSource.indexOf('MIGRATION_STATEMENTS_V51') < dbSource.indexOf('MIGRATION_STATEMENTS_V52'));
   assert.match(dbSource, /currentVersion < 51[\s\S]*MIGRATION_STATEMENTS_V51/);
 });
 

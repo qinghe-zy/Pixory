@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-07-29（补充角色日记、精确对话覆盖与聊天热路径优化）
+最后更新：2026-07-29（补充角色日记、精确对话覆盖、陪伴事件与时间连续性）
 适用版本：Pixory 2.6.9
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -78,6 +78,7 @@
 | 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out；外部路径将候选抽取与独立审核分开，模型建议还需 evidence/scope/manual-lock 确定性校验；待审读任务有同进程去重并可由下一次后台维护续跑，失败状态不自动重复烧调用；给外部软件的迁移提示词只允许 user/assistant transcript，违规 system/developer/tool 内容在解析侧继续隔离为 untrusted context；Personal 外部导入必须逐次授权远程整理 | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
 | 记忆导入/导出 | 默认导出 Pixory Memory Package v2（JSON，确定性导入；兼容旧版 Markdown/v1 与外部文本审查）；包只包含当前会话可见 scope 的 Claim、关联账本事件与证据，避免带出其他线程记忆；原生导入先 pending、失败可复用原分支幂等续跑，导入消息 ID 映射后保留 Claim 证据引用并跳过悬空消息引用，已删除/抑制 Claim 由本地投影、删除证书和包内墓碑共同拦截，Claim/episode/关系/profile 随会话一起完整回滚；外部审核画像也同步进入 v1 profile 账本，外部回滚按 import session 精确隔离 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `src/ai/memory/nativeMemoryPackage*` |
 | 深度记忆 | v1 事件账本 + Working/Confirmed/Archive 三车道；每条消息即时写 current-turn observation，回答落盘后本地轻抽取，重维护异步批处理；Claim/episode/关系/profile 可从账本重建；无 Embedding 时 FTS/词面检索可用且无相关证据不注入，Confirmed 容量回收、冲突/安全边界、用户确认锁定和 ContextPlan 可追溯；稳定提示仅注入 Confirmed，当前轮 forget/correction 会排除目标 Claim，分支 Claim 仅在当前祖先 lineage 可见；看板仅展示长期记住/最近对话并支持真实编辑、确认、删除、作用域修改 | `aiMemory*`, `src/ai/memory/*`, `AiMemoryBoardScreen` |
+| 陪伴事件与时间连续性 | 已实现，V1 核心 | 当前完成的用户消息先经无网络本地观察器生成追加式 Companion Event，保存精确消息版本、证据跨度、speech mode、置信度、分支路线和幂等键；引用、否定、假设、玩笑、角色扮演与第三方转述不会形成高影响事件；明确边界/纠正当前轮进入动态约束。时间短语按原时区保存 UTC 范围和本地 date key，共同约定形成 branch-scoped OpenLoop；完成、取消、“别再问”及默认期限可结算，每项最多主动提及两次且未回应后静默七天；每轮最多一个旧事项作为可选动态话题，不发送主动消息或通知。含混强信号才创建带 SQLite lease 的后台丰富任务，无模型、离线或 Personal 未授权时本地路径继续工作 | `src/ai/companion/`, `aiChatService`, `companion_events`, `companion_temporal_anchors`, `companion_open_loops`, `companion_runtime_jobs` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
 | 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动和删除；尚无统一收件箱、全局跨资料搜索、内容 hash/版本、来源更新检测、同步状态和完整备份恢复 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen` |
@@ -189,7 +190,7 @@
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
 | 空间模型 | normal/personal 双数据库/双文件目录，route 携带 space | `database/db`, `route-space-policy`, `App.tsx` |
-| 聊天跨空间迁移 | 普通且已停止生成、未使用会话专属 API Key 的线程，可连同消息、分支、引用、附件与文件、收藏、线程材料、线程记忆/摘要/维护状态、线程画像、角色卡完整配置/头像/角色记忆和续聊导入元数据按依赖顺序迁移；共享角色按稳定 `roleCardId` 去重，同批或分批移动到已有目标角色时复用目标卡并只补齐缺失记忆，不重复建卡或覆盖目标侧编辑；同一角色仍被源空间其他线程使用时保留源副本，无引用时才清理源角色及未共享头像；跨空间后清除仅在源数据库有效的素材数字引用，源空间同步清理线程记忆和独立 FTS，旧续聊回退窗口在目标空间锁定；IP/知识库绑定线程暂不跨独立空间数据库移动，避免静默错绑 | `aiChatService`, `aiThreadSpaceMovePolicy`, `aiRoleCardRepository`, `aiThreadRepository`, `aiDocumentService` |
+| 聊天跨空间迁移 | 普通且已停止生成、未使用会话专属 API Key 的线程，可连同消息、分支、引用、附件与文件、收藏、线程材料、线程记忆/摘要/维护状态、线程画像、角色卡完整配置/头像/角色记忆、续聊导入元数据，以及 Companion Event、时间锚点、OpenLoop、后台任务和内容无关 trace 按依赖顺序迁移；运行中的 companion job 在目标空间清除旧 lease 并转为可恢复 retry；共享角色按稳定 `roleCardId` 去重，同批或分批移动到已有目标角色时复用目标卡并只补齐缺失记忆，不重复建卡或覆盖目标侧编辑；同一角色仍被源空间其他线程使用时保留源副本，无引用时才清理源角色及未共享头像；跨空间后清除仅在源数据库有效的素材数字引用，源空间同步清理线程记忆和独立 FTS，旧续聊回退窗口在目标空间锁定；IP/知识库绑定线程暂不跨独立空间数据库移动，避免静默错绑 | `aiChatService`, `aiThreadSpaceMovePolicy`, `aiRoleCardRepository`, `aiThreadRepository`, `aiDocumentService` |
 | 密码 | 设置、验证、修改、重置隐私系统 | `personalSystemService`, `PersonalUnlockModal` |
 | 锁定 | 后台 grace period、解锁 modal、普通/隐私路由隔离 | `App.tsx`, `PersonalUnlockModal` |
 | 隐私任务 token | 长任务中校验 session token，防止锁定后继续写入 | `personalTaskToken` |

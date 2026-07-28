@@ -633,7 +633,14 @@ export interface AiThreadExportSnapshot {
   continuityImportSessions: AiContinuityImportSessionRecord[];
   continuityImportBlocks: AiContinuityImportBlockRecord[];
   userProfile: AiUserProfileRecord | null;
+  companionEvents?: CompanionSnapshotRow[];
+  companionTemporalAnchors?: CompanionSnapshotRow[];
+  companionOpenLoops?: CompanionSnapshotRow[];
+  companionRuntimeJobs?: CompanionSnapshotRow[];
+  companionContextTraces?: CompanionSnapshotRow[];
 }
+
+type CompanionSnapshotRow = Record<string, string | number | null>;
 
 function validateUserProfileScope(input: { boundIpId?: number | null; boundThreadId?: string | null }): void {
   if (input.boundIpId != null && input.boundThreadId != null) {
@@ -1496,6 +1503,26 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC, id ASC`,
       threadId
     );
+    const companionEvents = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_events WHERE threadId = ? ORDER BY eventSequence ASC, id ASC',
+      threadId
+    );
+    const companionTemporalAnchors = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_temporal_anchors WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionOpenLoops = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_open_loops WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRuntimeJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_runtime_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionContextTraces = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_context_traces WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
     const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
       `SELECT ai_continuity_import_blocks.*
        FROM ai_continuity_import_blocks
@@ -1514,6 +1541,11 @@ export const aiThreadRepository = {
       attachments,
       branchRouteMetadata,
       citations,
+      companionContextTraces,
+      companionEvents,
+      companionOpenLoops,
+      companionRuntimeJobs,
+      companionTemporalAnchors,
       continuityImportBlocks,
       continuityImportSessions,
       favorites,
@@ -1698,6 +1730,90 @@ export const aiThreadRepository = {
         message.completedAt
       );
       await aiThreadRepository.syncMessageFts(db, message);
+    }
+
+    for (const event of snapshot.companionEvents ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_events (
+          id, space, subjectType, subjectId, roleCardId, threadId, branchRootMessageId,
+          branchVersionIndex, branchRouteHash, lineageVersion, sourceMessageId,
+          sourceMessageVersionHash, category, subtype, speechMode, confidence, intensity,
+          sincerity, payloadJson, evidenceSpanJson, extractorVersion, provenanceJson,
+          idempotencyKey, status, eventSequence, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        event.id, targetSpace, event.subjectType, event.subjectId, event.roleCardId ?? null,
+        snapshot.thread.id, event.branchRootMessageId ?? null, event.branchVersionIndex ?? null,
+        event.branchRouteHash, event.lineageVersion, event.sourceMessageId,
+        event.sourceMessageVersionHash, event.category, event.subtype, event.speechMode,
+        event.confidence, event.intensity, event.sincerity, event.payloadJson,
+        event.evidenceSpanJson, event.extractorVersion, event.provenanceJson,
+        event.idempotencyKey, event.status, event.eventSequence, event.createdAt
+      );
+    }
+
+    for (const anchor of snapshot.companionTemporalAnchors ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_temporal_anchors (
+          id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sourceEventId,
+          sourceMessageId, rawText, startAtUtc, endAtUtc, parseTimeZone, localDateKey,
+          precision, anchorType, recurrenceRule, mentionCount, lastMentionedAt, status,
+          confidence, parserVersion, idempotencyKey, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        anchor.id, targetSpace, anchor.roleCardId ?? null, snapshot.thread.id,
+        anchor.branchRouteHash, anchor.lineageVersion, anchor.sourceEventId,
+        anchor.sourceMessageId, anchor.rawText, anchor.startAtUtc ?? null, anchor.endAtUtc ?? null,
+        anchor.parseTimeZone, anchor.localDateKey, anchor.precision, anchor.anchorType,
+        anchor.recurrenceRule ?? null, anchor.mentionCount ?? 0, anchor.lastMentionedAt ?? null,
+        anchor.status, anchor.confidence, anchor.parserVersion,
+        anchor.idempotencyKey, anchor.createdAt, anchor.updatedAt
+      );
+    }
+
+    for (const loop of snapshot.companionOpenLoops ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_open_loops (
+          id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sourceEventId,
+          sourceMessageId, temporalAnchorId, kind, topicText, status, priority,
+          earliestMentionAt, expiresAt, mentionCount, lastMentionedAt, lastMentionedRound,
+          recurrenceRule, resolutionEvidenceMessageId, idempotencyKey, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        loop.id, targetSpace, loop.roleCardId ?? null, snapshot.thread.id, loop.branchRouteHash,
+        loop.lineageVersion, loop.sourceEventId, loop.sourceMessageId,
+        loop.temporalAnchorId ?? null, loop.kind, loop.topicText, loop.status, loop.priority,
+        loop.earliestMentionAt, loop.expiresAt ?? null, loop.mentionCount,
+        loop.lastMentionedAt ?? null, loop.lastMentionedRound ?? null, loop.recurrenceRule ?? null,
+        loop.resolutionEvidenceMessageId ?? null, loop.idempotencyKey, loop.createdAt, loop.updatedAt
+      );
+    }
+
+    for (const job of snapshot.companionRuntimeJobs ?? []) {
+      const importedStatus = job.status === 'running' ? 'retry' : job.status;
+      await db.runAsync(
+        `INSERT INTO companion_runtime_jobs (
+          id, space, threadId, branchRouteHash, lineageVersion, sourceMessageId, jobType,
+          status, payloadJson, idempotencyKey, attemptCount, nextRunAt, leaseOwner,
+          leaseUntil, lastErrorCode, createdAt, updatedAt, completedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+        job.id, targetSpace, snapshot.thread.id, job.branchRouteHash, job.lineageVersion,
+        job.sourceMessageId ?? null, job.jobType, importedStatus, job.payloadJson,
+        job.idempotencyKey, job.attemptCount, job.nextRunAt, job.lastErrorCode ?? null,
+        job.createdAt, job.updatedAt, job.completedAt ?? null
+      );
+    }
+
+    for (const trace of snapshot.companionContextTraces ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_context_traces (
+          id, space, threadId, sourceMessageId, branchRouteHash, lineageVersion,
+          policyVersion, eventCount, diagnosticCandidateCount, optionalCandidateCount,
+          selectedTopicType, observerDurationMs, compilerDurationMs, reasonCodesJson, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        trace.id, targetSpace, snapshot.thread.id, trace.sourceMessageId ?? null,
+        trace.branchRouteHash, trace.lineageVersion, trace.policyVersion, trace.eventCount,
+        trace.diagnosticCandidateCount, trace.optionalCandidateCount,
+        trace.selectedTopicType ?? null, trace.observerDurationMs, trace.compilerDurationMs,
+        trace.reasonCodesJson, trace.createdAt
+      );
     }
 
     for (const citation of snapshot.citations) {

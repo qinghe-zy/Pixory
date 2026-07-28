@@ -178,6 +178,7 @@ import {
   type PixorySpace,
 } from "../database";
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import { scheduleCompanionMaintenance } from '../ai/companion/companionMaintenanceQueue';
 import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/diaryGenerationManager';
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
 import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
@@ -4599,14 +4600,17 @@ export function AiChatScreen({
       appActiveRef.current = state === "active";
       if (state === 'active') {
         void reconcileDueDiaryJobsRef.current().catch(() => undefined);
+        scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
       if (state !== 'active') {
         void flushActiveStreamingSnapshot();
+        scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
     });
     return () => {
       screenMountedRef.current = false;
       void flushActiveStreamingSnapshot();
+      scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       subscription.remove();
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();

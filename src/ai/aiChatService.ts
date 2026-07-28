@@ -63,6 +63,11 @@ import { resolveMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService
 import { normalizeAiErrorMessage } from './aiErrorMessageService';
 import { compileConversationCoverage } from './context/conversationCoverageService';
 import type { CompiledConversationCoverage } from './context/conversationCoverage';
+import { compileCompanionContext, type CompanionContextPlan } from './companion/companionContextCompiler';
+import { markCompanionOpenLoopMentioned, markCompanionTemporalAnchorMentioned, recordCompanionContextTrace } from './companion/companionEventRepository';
+import { deriveCompanionTraceId } from './companion/companionDiagnostics';
+import { scheduleCompanionMaintenance } from './companion/companionMaintenanceQueue';
+import { observeCompanionCurrentTurn } from './companion/companionRuntimeService';
 import { diaryRepository } from './diary/diaryRepository';
 import {
   buildPromptCacheMetadata,
@@ -342,6 +347,7 @@ type BuildPromptForThreadOptions = {
   excludedMemoryClaimIds?: string[];
   historyAnchorMessageId: string;
   historyRoundLimit: number;
+  companionDynamicSegments?: AiDynamicContextSegment[];
 };
 
 type ThreadRetrievalResult = {
@@ -2112,6 +2118,7 @@ async function buildPromptForThread(
   ].join(':');
   const roleCardContext = buildRolePromptContextFromThread(thread);
   const dynamicSegments: AiDynamicContextSegment[] = [
+    ...(options?.companionDynamicSegments ?? []),
     ...(companionMemoryPrefix ? [{
       branchRouteHash: coverage.plan.branchRouteHash,
       expiresAt: null,
@@ -3749,6 +3756,7 @@ async function streamAssistantReply(input: {
 
   let apiKey: string | null = '';
   let branchScopes: AiBranchScope[] = [];
+  let companionContextPlan: CompanionContextPlan | null = null;
   let cacheObservationBase: ReturnType<typeof buildCacheObservationBase>;
   let contextTrimmed = false;
   let contextTrimmedByBudget = false;
@@ -3768,6 +3776,71 @@ async function streamAssistantReply(input: {
   const requestedAt = startedAt;
 
   try {
+    markGenerationMetric(generationMetrics, 'branchResolveStartAt');
+    branchScopes = await runWithDatabaseSpace(input.space, (db) =>
+      resolveStreamingBranchScopes(db, {
+        assistantMessageId: input.assistantMessageId,
+        userMessageId: input.userMessage.id,
+      })
+    );
+    generationMetrics.context.branchScopeCount = branchScopes.length;
+    markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    try {
+      const observed = await observeCompanionCurrentTurn({
+        branchScopes,
+        space: input.space,
+        thread: input.thread,
+        userMessageId: input.userMessage.id,
+      });
+      const compilerStartedAt = Date.now();
+      const compiledPlan = await runWithDatabaseSpace(input.space, async (db) => {
+        const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessages(
+          db,
+          input.thread.id,
+          branchScopes,
+        );
+        return compileCompanionContext(db, {
+          branchRouteHash: observed.branchRouteHash,
+          currentMessageId: input.userMessage.id,
+          currentRound: Math.floor(completedMessageCount / 2),
+          lineageVersion: input.thread.lineageVersion ?? 0,
+          now: requestedAt,
+          space: input.space,
+          threadId: input.thread.id,
+        });
+      });
+      companionContextPlan = compiledPlan;
+      generationMetrics.context.companionEventCount = observed.events.length;
+      generationMetrics.context.companionDiagnosticCandidateCount = observed.diagnosticCandidateCount;
+      generationMetrics.context.companionObserverDurationMs = observed.observerDurationMs;
+      generationMetrics.context.companionCompilerDurationMs = Date.now() - compilerStartedAt;
+      generationMetrics.context.companionOptionalCandidateCount = compiledPlan.optionalCandidateCount;
+      generationMetrics.context.companionPolicyVersion = compiledPlan.policyVersion;
+      generationMetrics.context.companionSelectedTopicType = compiledPlan.selectedTopicType;
+      await runWithDatabaseSpace(input.space, (db) => recordCompanionContextTrace(db, {
+        branchRouteHash: observed.branchRouteHash,
+        compilerDurationMs: generationMetrics.context.companionCompilerDurationMs,
+        diagnosticCandidateCount: observed.diagnosticCandidateCount,
+        eventCount: observed.events.length,
+        id: deriveCompanionTraceId({
+          branchRouteHash: observed.branchRouteHash,
+          lineageVersion: input.thread.lineageVersion ?? 0,
+          sourceMessageId: input.userMessage.id,
+          space: input.space,
+          threadId: input.thread.id,
+        }),
+        lineageVersion: input.thread.lineageVersion ?? 0,
+        observerDurationMs: observed.observerDurationMs,
+        optionalCandidateCount: compiledPlan.optionalCandidateCount,
+        policyVersion: compiledPlan.policyVersion,
+        selectedTopicType: compiledPlan.selectedTopicType,
+        sourceMessageId: input.userMessage.id,
+        space: input.space,
+        threadId: input.thread.id,
+      }));
+    } catch {
+      companionContextPlan = null;
+    }
     markGenerationMetric(generationMetrics, 'providerResolveStartAt');
     const resolvedModel = await resolveThreadChatModel(input.space, input.thread);
     markGenerationMetric(generationMetrics, 'providerResolveEndAt');
@@ -3818,15 +3891,6 @@ async function streamAssistantReply(input: {
       return;
     }
 
-    markGenerationMetric(generationMetrics, 'branchResolveStartAt');
-    branchScopes = await runWithDatabaseSpace(input.space, (db) =>
-      resolveStreamingBranchScopes(db, {
-        assistantMessageId: input.assistantMessageId,
-        userMessageId: input.userMessage.id,
-      })
-    );
-    generationMetrics.context.branchScopeCount = branchScopes.length;
-    markGenerationMetric(generationMetrics, 'branchResolveEndAt');
     const hasImageAttachments = (input.attachments ?? []).some((a) => a.kind === 'image');
     // If the user attached images, always send them — the user's intent is the
     // strongest signal.  Model capability flags may be stale or incomplete; let
@@ -3846,6 +3910,7 @@ async function streamAssistantReply(input: {
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
     ({ coverage, prompt, snippets, memoryContextPlan } = await buildPromptForThread(input.thread, requestContent, branchScopes, {
       attachmentPromptContext,
+      companionDynamicSegments: companionContextPlan?.dynamicSegments,
       generationMetrics,
       historyAnchorMessageId: input.historyAnchorMessageId ?? input.userMessage.id,
       historyRoundLimit,
@@ -4345,6 +4410,19 @@ async function streamAssistantReply(input: {
       });
       finalMessagePersisted = Boolean(current);
       if (current?.status === 'completed') {
+        if (companionContextPlan?.selectedOpenLoopId) {
+          await markCompanionOpenLoopMentioned(db, {
+            id: companionContextPlan.selectedOpenLoopId,
+            mentionedAt: completedAt,
+            round: companionContextPlan.currentRound,
+          });
+        }
+        if (companionContextPlan?.selectedTemporalAnchorId) {
+          await markCompanionTemporalAnchorMentioned(db, {
+            id: companionContextPlan.selectedTemporalAnchorId,
+            mentionedAt: completedAt,
+          });
+        }
         const memoryIntent = detectMemoryIntent(input.userMessage.content);
         await writeCurrentTurnObservation(db, {
           branchRootMessageId: branchScopes[0]?.branchRootMessageId ?? null,
@@ -4441,6 +4519,7 @@ async function streamAssistantReply(input: {
       threadId: input.thread.id,
       userMessage: input.userMessage,
     });
+    scheduleCompanionMaintenance({ space: input.space });
   }
   input.onUpdated?.();
 }

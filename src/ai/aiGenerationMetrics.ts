@@ -70,6 +70,13 @@ export interface AiGenerationMetricsDraft {
     coverageProvisionalMessageCount: number;
     coverageLineageVersion: number | null;
     coverageBranchRouteHash: string | null;
+    companionEventCount: number;
+    companionDiagnosticCandidateCount: number;
+    companionOptionalCandidateCount: number;
+    companionSelectedTopicType: string | null;
+    companionObserverDurationMs: number;
+    companionCompilerDurationMs: number;
+    companionPolicyVersion: string | null;
     dynamicContextTokenCount: number;
     retrievalSnippetCount: number;
     memoryEpoch: string | null;
@@ -185,6 +192,13 @@ export function createGenerationMetricsDraft(input: {
       coverageProvisionalMessageCount: 0,
       coverageLineageVersion: null,
       coverageBranchRouteHash: null,
+      companionEventCount: 0,
+      companionDiagnosticCandidateCount: 0,
+      companionOptionalCandidateCount: 0,
+      companionSelectedTopicType: null,
+      companionObserverDurationMs: 0,
+      companionCompilerDurationMs: 0,
+      companionPolicyVersion: null,
       dynamicContextTokenCount: 0,
       retrievalSnippetCount: 0,
       memoryEpoch: null,

@@ -59,6 +59,23 @@ function loadRoleCardRepository() {
   }
 }
 
+function loadSchemaModule() {
+  const filename = path.join(root, 'src/database/schema.ts');
+  const originalExtension = require.extensions['.ts'];
+  require.extensions['.ts'] = function compileTypeScript(module, sourcePath) {
+    const output = ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
+      compilerOptions: { esModuleInterop: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      fileName: sourcePath,
+    }).outputText;
+    module._compile(output, sourcePath);
+  };
+  try { delete require.cache[require.resolve(filename)]; return require(filename); }
+  finally {
+    if (originalExtension) require.extensions['.ts'] = originalExtension;
+    else delete require.extensions['.ts'];
+  }
+}
+
 class AsyncDatabase {
   constructor() {
     this.db = new DatabaseSync(':memory:');
@@ -195,6 +212,7 @@ function createSchema(db) {
       normalizedContent TEXT, assetSnapshotJson TEXT, updatedAt TEXT
     );
   `);
+  db.exec(loadSchemaModule().MIGRATION_STATEMENTS_V52);
 }
 
 function makeSnapshot(space) {
@@ -270,6 +288,41 @@ function makeSnapshot(space) {
     continuityImportSessions: [],
     continuityImportBlocks: [],
     userProfile: null,
+    companionEvents: [{
+      id: 'event-1', space, subjectType: 'thread', subjectId: 'thread-1', roleCardId: null,
+      threadId: 'thread-1', branchRootMessageId: null, branchVersionIndex: null,
+      branchRouteHash: 'route-main', lineageVersion: 0, sourceMessageId: 'message-1',
+      sourceMessageVersionHash: 'hash-1', category: 'interaction', subtype: 'gratitude',
+      speechMode: 'asserted', confidence: 0.8, intensity: 0.5, sincerity: 1,
+      payloadJson: '{}', evidenceSpanJson: '{}', extractorVersion: 'companion-observer-v1',
+      provenanceJson: '[]', idempotencyKey: 'event-idem-1', status: 'active', eventSequence: 1, createdAt: now,
+    }],
+    companionTemporalAnchors: [{
+      id: 'anchor-1', space, roleCardId: null, threadId: 'thread-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceEventId: 'event-1', sourceMessageId: 'message-1', rawText: '明天',
+      startAtUtc: now, endAtUtc: now, parseTimeZone: 'Asia/Shanghai', localDateKey: '2026-07-24',
+      precision: 'day', anchorType: 'point', recurrenceRule: null, status: 'active', confidence: 0.9,
+      parserVersion: 'companion-temporal-v1', idempotencyKey: 'anchor-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionOpenLoops: [{
+      id: 'loop-1', space, roleCardId: null, threadId: 'thread-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceEventId: 'event-1', sourceMessageId: 'message-1', temporalAnchorId: 'anchor-1',
+      kind: 'deadline', topicText: '明天的结果', status: 'open', priority: 70, earliestMentionAt: now,
+      expiresAt: null, mentionCount: 0, lastMentionedAt: null, lastMentionedRound: null,
+      recurrenceRule: null, resolutionEvidenceMessageId: null, idempotencyKey: 'loop-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionRuntimeJobs: [{
+      id: 'job-1', space, threadId: 'thread-1', branchRouteHash: 'route-main', lineageVersion: 0,
+      sourceMessageId: 'message-1', jobType: 'event_enrichment', status: 'running', payloadJson: '{}',
+      idempotencyKey: 'job-idem-1', attemptCount: 1, nextRunAt: now, leaseOwner: 'old-worker', leaseUntil: now,
+      lastErrorCode: null, createdAt: now, updatedAt: now, completedAt: null,
+    }],
+    companionContextTraces: [{
+      id: 'trace-1', space, threadId: 'thread-1', sourceMessageId: 'message-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, policyVersion: 'companion-event-policy-v1', eventCount: 1,
+      diagnosticCandidateCount: 0, optionalCandidateCount: 1, selectedTopicType: 'open_loop',
+      observerDurationMs: 1, compilerDurationMs: 1, reasonCodesJson: '[]', createdAt: now,
+    }],
   };
 }
 
@@ -288,6 +341,8 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal(exported.favorites.length, 1);
     assert.equal(exported.threadMemories.length, 1);
     assert.equal(exported.summarySegments.length, 1);
+    assert.equal(exported.companionEvents.length, 1);
+    assert.equal(exported.companionOpenLoops.length, 1);
 
     await repository.importThread(target, exported, 'personal');
     assert.equal((await target.getFirstAsync('SELECT space FROM ai_threads WHERE id = ?', 'thread-1')).space, 'personal');
@@ -300,6 +355,12 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_message_fts')).count, 1);
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_message_version_fts')).count, 1);
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_memory_fts')).count, 1);
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_events')).space, 'personal');
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_open_loops')).space, 'personal');
+    const movedJob = await target.getFirstAsync('SELECT space, status, leaseOwner FROM companion_runtime_jobs');
+    assert.equal(movedJob.space, 'personal');
+    assert.equal(movedJob.status, 'retry');
+    assert.equal(movedJob.leaseOwner, null);
 
     await target.runAsync(
       'INSERT INTO ai_documents (id, localUri) VALUES (?, ?)',
