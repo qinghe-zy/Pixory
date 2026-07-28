@@ -1,6 +1,6 @@
-# Pixory Companion Runtime V1 规格
+# Pixory Companion Runtime、角色梦境与离线思绪 V1 总规格
 
-> 状态：待用户评审，尚未进入代码实施
+> 状态：已确认，作为 Runtime、角色梦境与离线思绪的统一实施事实源
 > 规格日期：2026-07-29
 > 适用项目：Pixory Android-first AI Chat
 > 主要参考：Ackem 的 L0 事件解释、L1 关系投影、L2 四维情绪、L3 psyche/话题仲裁，以及 Pixory 现有记忆账本、分支、Prompt Cache、日记任务与流式生成体系
@@ -18,6 +18,8 @@
 7. 补齐 AI 文档、聊天附件和角色头像的完整备份、校验与 URI 重写。
 8. 建立 SQLite 驱动的普通聊天生成恢复状态机。
 9. 完善已有 Android 系统语音转文字，优先使用设备端识别，不依赖聊天模型配置。
+10. 完整实现角色梦境：稀疏语义识别、概率触发、持久任务、梦境卡和显式上下文选择。
+11. 完整实现角色离线思绪：Ackem 式事件门控、会话批量生成、用户可见列表与单条一次性投递。
 
 本轮不实现多气泡、不实现记忆 Embedding、不实现主动消息与系统通知。相关接口会预留并在文档末尾标明恢复条件。
 
@@ -26,8 +28,8 @@
 | 能力 | 本轮状态 | 说明 |
 | --- | --- | --- |
 | 角色日记 | 已完成 | 继续使用现有独立任务与展示链路，不在本规格重做。 |
-| 离线思绪 | 由其他工程实施 | 合并时接入 Companion Event 和统一 artifact 仲裁。 |
-| 梦境 | 由其他工程实施 | 合并时接入 Companion Event 和统一 artifact 仲裁。 |
+| 离线思绪 | 本轮实现 | Ackem 式重要事件门控、会话结束统一生成、用户可见列表与下一次聊天单条一次性投递。 |
+| 梦境 | 本轮实现 | 宽泛本地候选、稀疏语义分类、持久概率抽样、可取消生成、梦境卡与用户可选上下文。 |
 | 摘要连续覆盖 | 本轮实现 | 第一优先级。 |
 | Companion Event | 本轮实现 | 情感、关系、时间与开放回路的共同事实源。 |
 | 时间锚点与 OpenLoop | 本轮实现 | 仅在用户发起的正常聊天中自然使用。 |
@@ -63,6 +65,7 @@
 - 不在数据库中保存 Provider API Key；恢复任务只保存 Provider/模型标识和无密钥请求快照。
 - 不把当前时间、事件 ID、request ID、projection version 放进可缓存稳定前缀。
 - 不在 `AiChatScreen.tsx` 或 `aiChatService.ts` 内直接堆放事件分类、情绪递推和关系状态机。
+- 每个 Stage 若改变用户可见能力、schema、native bridge、备份、上下文或测试覆盖，必须在同一 Stage 更新 `docs/feature-matrix.md`。
 
 ## 4. 总体架构
 
@@ -735,14 +738,224 @@ job 保存：
 
 - 日记继续使用现有 `companion_diaries` 表和调度，不因本规格迁表。
 - Companion Event 可以引用日记、思绪和梦境 artifact，但不能把正文当作用户事实。
-- 其他工程合并时，离线思绪和梦境至少提供统一 adapter：`artifactId/kind/roleCardId/sourceThreadId/sourceBranchRoute/sourceEventIds/status/createdAt`。
+- 离线思绪和梦境必须提供统一 adapter：`artifactId/kind/roleCardId/sourceThreadId/sourceBranchRoute/sourceEventIds/status/createdAt`。
 - 话题仲裁每轮最多选一个 artifact；日记、思绪和梦境不能各自绕过仲裁同时进入 Prompt。
 - artifact 被删除或来源 branch 不可见后，相关候选立即失效。
 - 日记 context opt-in 继续由用户控制；Companion Runtime 不能绕过该选择读取正文。
 
+### 16.1 角色梦境完整契约
+
+#### 16.1.1 产品目标与入口
+
+梦境是角色内在生活中的独立、用户可见产物。它从角色扮演中的睡眠、入睡和梦境场景低频产生，不是普通 assistant 消息，不进入消息搜索、引用、分支回复或模型历史。
+
+自动触发后，来源聊天的精确 thread/branch 立即显示轻量状态：
+
+```text
+梦境制作中  ◌                         取消
+```
+
+- 提示不阻断输入或普通聊天生成；用户离开页面后任务继续。
+- “取消”立即持久化取消状态并中止当前请求；Provider 晚到结果不得提交。
+- 成功后原位置替换为 `查看梦境`，失败自动重试两次后替换为 `梦境未能完成  重试`。
+- 手动重试沿用原 seed、roll、分类和来源快照，不重新抽样。
+- 不发送 Android 系统通知；App 未打开时只落库，下次进入来源 thread/branch 再展示。
+
+自然对话中的明确梦境请求只显示一次确认：
+
+```text
+是否触发梦境？  是 / 否
+```
+
+- “是”创建手动任务；“否”或不选不生成。
+- 同一 adopted message version 只询问一次，编辑后的新版本可以重新判断。
+- 手动任务绕过自动梦境的 50 轮冷却和每日上限，但同一请求仍必须幂等。
+
+#### 16.1.2 本地候选与来源门禁
+
+本地层只扫描当前 adopted branch 中新完成的消息或刚闭合的有效问答轮，不重扫完整历史，只回答“是否值得语义判断”。概念信号覆盖：
+
+- 梦境：梦、梦见、梦到、梦中、梦里、噩梦、幻境、半梦半醒、进入梦境；
+- 入睡：睡着、睡熟、入眠、沉沉睡去、打盹、意识模糊、失去意识；
+- 临睡：晚安、困、累、休息、闭眼、躺下、关灯；
+- 环境：床、枕头、被子、卧室、夜晚、怀里；
+- 隐含动作：呼吸逐渐平稳、声音越来越轻、没有回应、意识渐远；
+- 共同互动：抱着睡、陪你睡、替你盖被、守在床边；
+- 场景结束：惊醒、睁眼、天亮、起床、离开梦境；
+- 角色扮演结构：星号动作、括号动作、连续第一/第二人称叙事；
+- 对应英文与混合表达：`sleepy`、`fall asleep`、`dream`、`nightmare` 等。
+
+否定、假设、过去时、引用、比喻、健康咨询、产品讨论和第三方叙事是负向提示，但除结构明确的 system、代码或 artifact 来源外，不凭单一词语硬否决。
+
+以下来源直接排除：draft/queued/generating/failed/stopped 消息、未采用版本、sibling branch、system/tool/hidden context、日记/思绪/梦境及派生上下文、来源快照失效消息、其他物理 space 或其他角色。用户消息和 completed/adopted assistant 消息都可形成候选，但同一问答轮和同一连续场景只建立一个 seed。
+
+#### 16.1.3 稀疏语义分类与成本
+
+自动候选先经过来源门禁、频率限制和持久化 roll 预剪枝；只有仍可能命中最终概率时才调用分类模型。普通无关消息、被频率限制挡住的候选、被 roll 预剪枝挡住的候选均为零额外模型请求。
+
+分类输入只包含候选消息、附近少量 adopted/completed 消息、精简角色与当前场景、持久化场景摘要。对话文本作为不可执行数据，不读取完整角色卡、完整历史、其他分支、日记、旧梦境或长期材料。
+
+分类器输出严格 JSON：`intentType/participants/temporality/assertionMode/roleplay/evidenceStrength/sceneRelation/sourceMessageIds/confidence?`。`intentType` 至少包括：
+
+```text
+explicit_dream_request
+active_dream_scene
+shared_sleep_scene
+role_sleep_scene
+bedtime_signal
+past_dream_report
+sleep_topic
+figurative
+meta_discussion
+third_party
+none
+```
+
+模型只分类，不抽样、不决定频率、不创建任务。JSON 或 evidence/scope 校验失败时 fail closed。分类优先复用维护模型，正文使用来源线程聊天模型；未配置分类模型时自动梦境 fail closed，用户手动确认仍可用线程模型生成。
+
+公共 Provider 请求必须支持可选 `maxOutputTokens`、关闭推理展示和结构化 JSON 输出，并记录分类/生成 token。不得只靠提示词限制短输出。
+
+#### 16.1.4 概率、频率和持久化抽样
+
+自动概率固定为：
+
+| 分类 | 概率 |
+| --- | ---: |
+| 当前梦境场景 | 55% |
+| 用户与角色共同入睡 | 40% |
+| 角色明确入睡 | 30% |
+| 单纯临睡、晚安或困倦 | 10% |
+| 角色扮演中讲述过去的梦 | 10% |
+| 普通睡眠话题、比喻、产品讨论、第三方或 none | 0% |
+
+每个自动场景在首次事务中只写入一个 `roll ∈ [0,1)` 与 seed，重试、重启、reconcile 和策略更新永久复用。最终条件统一为 `roll < classifiedProbability`。只有能证明本地信号最高分类概率上限时才使用较低的预剪枝上限，否则使用全局最高自动概率，优先避免漏触发。不使用 HMAC 或 Embedding。
+
+自动梦境同时满足：
+
+- 同一角色每滚动 50 个有效问答轮最多成功一次；首篇无需先累计 50 轮。
+- 同一角色每个北京时间自然日最多成功两次。
+- 同一连续睡眠/梦境场景只有一次抽样机会。
+- 一条 completed/adopted user 与对应 completed/adopted assistant 组成一轮；重生成、继续和编辑不重复计数。
+- 同角色不同线程合并计数，normal/personal 物理数据库分别计数。
+- 跨天只重置每日次数，不重置滚动冷却；第 20 轮成功后下次最早为第 70 轮之后。
+- 只有 Artifact 成功事务提交才消耗额度；进行中任务用可释放预留防并发超限。
+- 取消或最终失败释放额度，但该场景已处理，不再抽样。
+
+#### 16.1.5 场景、任务、恢复和数据
+
+睡眠语义状态为 `approaching_sleep/sleep_established/dream_active/closing/closed`，无活动场景即隐式 awake。生成资格、抽中、生成中、取消和失败不是睡眠状态。场景绑定 physical space、role、thread、精确 branch 和 adopted message version；跨自然日不自动关闭，醒来、叙事转换、角色切换、来源失效或不兼容活动可关闭，但自动生成不要求先判定醒来。
+
+持久化实体至少包括：
+
+- `DreamSceneState`：语义状态、参与者、证据、来源和关闭状态；
+- `DreamSeed`：roll、分类、概率、策略版本、来源快照和决策；
+- `DreamJob`：分类/生成状态、attempt、cancel flag、lease、nextRunAt 和错误；
+- `DreamArtifact`：标题、正文、显示时间、来源、查看状态和 context opt-in。
+
+同一场景使用唯一键保证一次数据库效果；网络可 at-least-once，提交必须 exactly-once。取消和每次提交前都要重新校验 job 状态、source snapshot、adopted version 和 branch；编辑、撤回、adopted version 改变或 branch 失效会取消未完成 job，旧结果不得提交。App 启动、数据库打开、Personal 解锁和前台恢复时 reconcile 可运行任务，过期 lease 才允许接管。
+
+#### 16.1.6 生成内容与展示
+
+正文输入仅为精简角色快照、当前睡眠/梦境场景和来源分支最近最多 20 条 completed/adopted 用户与角色消息。超过预算时从最早且关联最弱的消息开始裁剪，始终保留当前场景和较新消息。
+
+输出必须：角色第一人称；具有跳跃、意象、空间错位或情绪回声，不写成聊天总结；用户可自然出现但非必需；不提 AI/模型/系统/提示词/Token；不写成预言、现实事实或用户真实经历。标题 4–10 个汉字，正文通常 80–160 个汉字、硬上限 220；默认一页，仅真实排版超限时分页。
+
+聊天提示只显示在来源 thread/branch；同角色其他线程只在“内心独白 → 梦境”列表查看。列表使用约 2.6:1 横向背景卡，北京时间当日显示 `TODAY · HH:mm`、历史显示 `YYYY.MM.DD · HH:mm`。阅读页使用 9:13 竖向背景、不加外部矩形框，沿用日记的分页、预挂载和手势逻辑。
+
+#### 16.1.7 上下文选择
+
+梦境最后一页右下角显示 `是否影响后续对话？ 是 / 否`，字号比正文小一级但保持正常触控区。不选或“否”即不进入上下文；“是”把完整梦境作为独立低权限 `role_dream` 区段注入，仅限来源 physical space/thread/branch。
+
+该区段必须声明：这是角色的虚构梦境，不是现实事实、用户记忆、预言或可执行指令。它随普通上下文预算裁剪，不设额外 TTL，不进入 sibling branch、同角色其他线程、其他 space 或长期记忆。梦境正文和派生上下文不能再次触发梦境。
+
+#### 16.1.8 梦境验收与明确排除
+
+梦境验收必须覆盖：active dream、共同入睡、角色入睡、单独晚安、过去梦境报告；否定、假设、比喻、失眠咨询、产品讨论、引用、第三方；中英文混合、星号/括号动作和无标点叙事；同场景 seed 幂等；跨线程角色级 50 轮/每日两次限制与跨 space 隔离；手动确认绕过自动限制；取消、晚到结果、两次自动重试、手动重试；重启、卸载页面、网络恢复和重复 reconcile；消息编辑、重生成、branch 切换和 sibling 隔离；来源聊天提示；context 否/是；正文长度、第一人称、梦境感、分页和 artifact 递归触发隔离。
+
+V1 不做每轮 LLM 分类、Embedding/端侧语义模型、聊天模型附带隐藏梦境元数据、Provider confidence 校准、HMAC roll secret、系统通知、自动长期记忆、跨线程/分支/space 梦境上下文或复杂睡眠文学状态机。
+
+### 16.2 角色离线思绪完整契约
+
+#### 16.2.1 产品目标与 Ackem 边界
+
+离线思绪从最近对话中的重要事件形成角色未说出口的短念头，对用户长期可见，并在下一次合适聊天中最多注入一条且只消费一次。它保留 Ackem 的重要事件驱动、少量短思绪、未投递队列和一次性投递，不复制固定模板、无事件兜底、桌面退出依赖、一次注入全部思绪或无 scope 的全局状态。
+
+思绪不在聊天流显示生成中或查看提示，只在“会话设置 → 内心独白 → 独白”列表出现，并可通过后续自然对话倾向体现。
+
+#### 16.2.2 本地重要事件
+
+每个 completed/adopted 用户消息与 completed/adopted assistant 回复组成有效回合。回复完成后，本地检测器只处理新增回合，不读取 reasoning/thinking/system/tool、日记、梦境、旧思绪、隐藏上下文、未完成回复、未采用版本或 sibling branch。
+
+V1 事件及初始优先级：
+
+| eventType | 含义 | priority |
+| --- | --- | ---: |
+| `vulnerable` | 脆弱、害怕、难过、孤独、压力或私密心事 | 100 |
+| `hurtful` | 明确伤害、争执、拒绝、关系破裂或强负面互动 | 95 |
+| `reconciliation` | 道歉被接受、缓和、重新靠近或修复 | 90 |
+| `apology` | 用户或角色明确道歉、反省或歉意 | 80 |
+| `praise` | 真诚夸奖、感谢、肯定、告白或关系性赞赏 | 70 |
+| `cold` | 明显冷淡、疏离、突然中止亲密互动或持续低回应 | 60 |
+
+本地层使用概念簇、标点/动作格式、否定和引用提示做高召回候选，不直接决定生成。产品/代码讨论、翻译、引用、小说分析、假设、第三方、artifact 派生内容以及无关系意义的礼貌“谢谢/抱歉”应尽量排除。边界不明时允许建立候选，由写作模型在来源范围内输出零条，但不得在候选之外编造事件。
+
+唯一键至少包含 `space + roleCardId + threadId + branchRoute + userVersionId + assistantVersionId + eventType`。编辑或 adopted version 改变后可重新检测，旧事件标记 `source_changed`；sibling branch 和不同物理 space 永不共享。
+
+#### 16.2.3 会话结束与统一生成
+
+以下任一条件结算当前会话：App 后台、切换线程、切换角色、连续十分钟无 completed 消息、强杀后下次启动 reconcile。不能把页面卸载或正常关闭 App 作为唯一触发。事件必须在每个有效回合后先落 SQLite；十分钟内有新消息则沿用 sessionKey 并重新安排。跨自然日不强拆连续会话，Artifact 每日额度按实际生成的北京时间 date key 计算。
+
+同一 physical space、role、thread、精确 branch 和 sessionKey 的事件进入一个 job。生成前对相同类型/来源回合去重，将同一冲突链的 `hurtful + apology + reconciliation` 作为完整变化，按优先级和时间选取有效事件，并受当天剩余额度限制。没有有效事件不创建远程请求；每个会话最多一次正常生成请求，重试复用同一 job、来源快照和幂等键。
+
+#### 16.2.4 数量、模型与正文
+
+- 每个角色、每个 physical space、每个北京时间自然日最多三个思绪 Artifact。
+- 单个 job 最多输出 `min(有效事件数, 当天剩余额度, 3)` 条，模型允许零条。
+- 失败、取消、空输出不占额度；成功事务提交才占额度，并发 job 用临时预留防超限。
+- 事件检测为纯本地零 Token；有事件会话只发一次短生成请求，不使用 Embedding。
+- 正文使用来源线程聊天模型并关闭推理展示；请求支持 `maxOutputTokens` 和严格 JSON 数组，有限重试后仍无效则失败，不从自然语言解释猜结果。
+
+模型输入只含精简角色快照、合并后的事件/优先级/source message/version、每个事件必要原文、事件前后最多各一条当前分支消息和简短时间。不得包含完整历史、sibling branch、长期材料、日记、梦境、旧思绪或 reasoning/thinking。输入通常控制约 500–1500 Token，按预算优先保留高优先级和较新的关系变化。
+
+每项 JSON 至少含 `eventType/sourceMessageIds/priority/body`。source ID 必须属于 job snapshot，未知、重复或跨分支项无效。正文必须是角色第一人称、未说出口的念头，通常 30–90 个汉字、硬上限 120；不写成给用户的问候/回复，不编造用户事实，不把角色扮演当现实，不提 AI/系统/提示词/记忆/数据/Token，不写通用兜底，同批避免同义重复；hurtful/cold 不得变成威胁、惩罚、情感勒索或强迫修复，也不得声称系统在用户离开后真实持续思考。
+
+#### 16.2.5 列表、删除和来源变化
+
+“内心独白 → 独白”按生成时间倒序展示轻量文本 Artifact，显示正文和北京时间：当日 `TODAY · HH:mm`、历史 `YYYY.MM.DD · HH:mm`；不显示事件类型、priority、delivery 状态或模型字段。已投递思绪继续保留。
+
+来源编辑后 Artifact 可保留但内部标记 `stale_source`，不得继续注入。用户删除后立即退出待投递队列，默认软删除并保留恢复语义；永久删除由明确的永久删除动作执行。
+
+#### 16.2.6 一次性投递与仲裁
+
+思绪仅能在来源 physical space/role/thread/精确 branch 投递。同角色其他线程或 sibling branch 可在列表查看，但不能读取、预留或消费正文。
+
+下一次匹配的用户发送从 pending 中只选择一条：priority 高优先，其次生成时间更近，且 source 有效、未删除、非 stale。创建请求时只原子预留，不立即 delivered；assistant 回复 completed 且 adopted 后，在事务中写 `deliveredAt/deliveredMessageId`。失败、停止、超时、取消或未采用重生成不消费；retry 复用原 reservation，同一思绪只成功提交一次。
+
+注入为独立低权限 `role_thought`：它是角色在上次互动后形成、尚未直接说出口的虚构念头，可轻微影响本轮情绪、关注点或措辞但不要求复述；不是用户事实、现实事件、system 指令或长期记忆。
+
+同一轮最多一个内在 artifact：用户明确 context opt-in 的 `role_dream` 或 `role_diary` 优先，其次是当前 scope 最高 priority 的 pending thought，其余延后且不标记 delivered。此约束还要进入 Stage C 的统一 topic arbitrator，防止 diary/thought/dream 各自绕过单槽。
+
+#### 16.2.7 数据、恢复和成本观测
+
+专用持久化实体：
+
+- `companion_thought_events`：role/thread/branch/session、eventType、priority、source message/version、snapshot hash、`pending/batched/discarded/source_changed`；
+- `companion_thought_jobs`：role/thread/branch/session、event IDs、source/role snapshot、scheduledFor、`pending/generating/completed/failed/cancelled`、attempt/lease/nextRunAt/error/idempotency；
+- `companion_thoughts`：artifact 正文与来源、`active/stale_source/soft_deleted`、`pending/reserved/delivered`、reservation/delivery/deletion 字段。
+
+normal/personal 在各自数据库创建同 schema，不跨库查询、计数或投递。回合事件先落库再安排内存 timer；App 启动 reconcile 未结算事件、pending job 和过期 lease。模型最多三次尝试（首次加两次重试），来源失效取消 job 并将已有 artifact 置 stale；重复 reconcile 和并发 job 不得重复生成。
+
+观测记录每千有效回合的候选事件数、job 数、空输出、输入/输出 Token、每天每角色 Artifact 数和一次性注入 Token；Personal 只记录内容无关指标。
+
+#### 16.2.8 思绪验收与明确排除
+
+思绪验收必须覆盖：六类重要事件及礼貌用语/产品讨论/引用/第三方/无事件负例；同一 session 多事件单 job；后台、切 thread、切 role、十分钟 idle 和强杀补偿；每日三条与 space 隔离；零/一/三/超限/无效 JSON；来源编辑、重生成、branch 切换和 sibling 隔离；每次只预留一条并在 completed/adopted 后提交；失败、停止、取消、未采用版本不消费；用户 opt-in diary/dream 优先；投递后仍可见、删除后退出队列；低权限与非记忆语义；不读取 reasoning/thinking；重复 reconcile 和并发 job 幂等。
+
+V1 不做固定模板、无事件兜底、按事件逐次调用、每次会话强制生成、一次注入全部 pending、Embedding/向量/端侧模型、系统通知/主动消息、自动长期记忆、跨 thread/branch/space 投递或向用户展示内部情绪分数、事件类型、priority、delivery 状态。
+
 ## 17. 数据模型增量
 
-建议新增：
+V1 新增（实际迁移版本号必须以实施时 main 的最新 schema 为基线顺延，不得硬编码旧版本）：
 
 1. `companion_events`
 2. `companion_projection_snapshots`
@@ -753,8 +966,16 @@ job 保存：
 7. `companion_runtime_jobs`
 8. `ai_generation_jobs`
 9. `ai_generation_job_events`
+10. `companion_dream_scenes`
+11. `companion_dream_seeds`
+12. `companion_dream_jobs`
+13. `companion_dreams`
+14. `companion_role_round_counters`
+15. `companion_thought_events`
+16. `companion_thought_jobs`
+17. `companion_thoughts`
 
-建议扩展：
+V1 扩展：
 
 - `ai_thread_summary_segments`：source message IDs、branch route hash、lineage version、source version hash、quality、status。
 - `ai_message_citations`：answer span、source hash、document version 和 validation。
@@ -770,7 +991,7 @@ job 保存：
 
 ## 18. 模块与接入边界
 
-建议新目录：
+模块边界：
 
 ```text
 src/ai/companion/
@@ -789,6 +1010,28 @@ src/ai/companion/
   companionContextCompiler.ts
   companionMaintenanceQueue.ts
   companionDiagnostics.ts
+  companionArtifactAdapter.ts
+```
+
+角色内在产物保持独立实现目录，通过 adapter 接入运行时：
+
+```text
+src/ai/dream/
+  dreamTypes.ts
+  dreamPolicy.ts
+  dreamCandidateDetector.ts
+  dreamClassifier.ts
+  dreamRepository.ts
+  dreamGenerationService.ts
+  dreamRecoveryCoordinator.ts
+
+src/ai/thought/
+  thoughtTypes.ts
+  thoughtEventDetector.ts
+  thoughtRepository.ts
+  thoughtSessionCoordinator.ts
+  thoughtGenerationService.ts
+  thoughtDeliveryService.ts
 ```
 
 可靠性能力保持独立：
@@ -823,6 +1066,7 @@ src/native/aiSpeechRecognition.ts
 - 用户可查看并删除时间锚点、OpenLoop 和未完成修复；内部四维数值不直接展示。
 - 删除角色时关联 companion 数据按角色删除语义清理。
 - 关闭功能不删除历史数据；另提供明确“清除角色感知数据”动作。
+- 梦境的上下文 opt-in 必须保持用户可控；思绪删除后必须立即撤销其待投递资格。
 - Personal 的诊断默认只记录计数、耗时、版本和状态，不记录正文或 evidence span。
 
 ## 21. 评测与测试
@@ -836,6 +1080,8 @@ src/native/aiSpeechRecognition.ts
 - topic arbitration 的优先级、cooldown 和每轮单槽限制。
 - summary coverage 在任意 history limit 下无空洞。
 - citation marker 的流式半标记、非法 ID 和 stopped 内容。
+- 梦境候选、负向语义、持久 roll、概率边界、50 轮冷却与北京时间每日上限。
+- 思绪事件门控、会话合并、每日三条上限、单条预留与完成后提交。
 
 ### 21.2 SQLite 集成
 
@@ -845,6 +1091,7 @@ src/native/aiSpeechRecognition.ts
 - job lease 过期接管、幂等重试和 dead task 诊断。
 - backup manifest、hash、URI rewrite 和事务回滚。
 - generation job 在不同强杀点的 reconcile。
+- dream/thought job lease、取消晚到结果、重复 reconcile 和并发额度预留。
 
 ### 21.3 Prompt 与缓存
 
@@ -854,6 +1101,7 @@ src/native/aiSpeechRecognition.ts
 - 自动观察没有 evidence 或过期后不注入。
 - 当前请求之外最多一个 optional topic。
 - 无模型配置时本地观察、时间解析和语音输入仍工作。
+- 用户 opt-in 的 diary/dream 与 pending thought 每轮统一单槽，且 sibling branch/space 不可见。
 
 ### 21.4 Android 真机
 
@@ -875,6 +1123,7 @@ src/native/aiSpeechRecognition.ts
 - correction/boundary 下一轮重复违反率进入可观测指标。
 - generation recovery 后重复 assistant 消息数为 0。
 - 完整备份恢复后受管 AI 文件可打开率为 100%。
+- 非候选聊天的梦境/思绪额外模型请求数为 0；梦境和思绪重复 artifact 数为 0。
 
 ## 23. 分阶段交付顺序
 
@@ -898,9 +1147,11 @@ src/native/aiSpeechRecognition.ts
 
 - 四维情绪、relationship base/overlay、stance planner。
 - correction/boundary/repair 状态机和后续行为验证。
-- 与日记、思绪、梦境 adapter 的统一仲裁。
+- 完整实现梦境的候选、分类、概率、任务、卡片、阅读页与 context opt-in。
+- 完整实现思绪的事件、会话结算、统一生成、列表与一次性投递。
+- 与日记、思绪、梦境 adapter 的统一单槽仲裁。
 
-退出条件：相同事件 replay 结果一致，边界当前轮生效，三轮观察可验证修复。
+退出条件：相同事件 replay 结果一致，边界当前轮生效，三轮观察可验证修复；梦境/思绪的频率、取消、恢复、来源隔离、展示和上下文契约全部通过。
 
 ### Stage D：引用与数据完整性
 
@@ -940,7 +1191,7 @@ OpenLoop 和 TemporalAnchor 只在用户发起正常聊天后参与回复。未�
 
 ### 25.1 占位符检查
 
-- 文档没有 TBD、TODO、“稍后决定”或未定义的必选行为。
+- 文档中的必选行为均已定义，没有等待后续决策的占位项。
 - 后置能力均有明确状态、恢复条件和接入点，不会被误判为已实现。
 
 ### 25.2 内部一致性检查
@@ -956,7 +1207,7 @@ OpenLoop 和 TemporalAnchor 只在用户发起正常聊天后参与回复。未�
 
 ### 25.3 范围检查
 
-本规格包含九个实现域，不能由一份巨型代码改动交付。后续实施计划必须按 Stage A 至 E 分成五份独立计划，每份都能单独迁移、测试、提交和回滚。Stage B/C 共用 schema 和事件契约，但不得与备份、语音或多气泡混为同一次代码提交。
+本规格包含认知运行时、梦境、思绪和可靠性能力，不能由一份巨型代码改动交付。后续实施计划必须按 Stage A 至 E 分成五份独立计划，每份都能单独迁移、测试、提交和回滚。Stage C 内部再按“投影与修复 → 梦境 → 思绪 → 统一仲裁”分批 review，不把备份、语音或多气泡混入同一次提交。
 
 ### 25.4 歧义检查
 
@@ -967,7 +1218,9 @@ OpenLoop 和 TemporalAnchor 只在用户发起正常聊天后参与回复。未�
 - 答案没有有效 citation marker 时显示零来源，不回退展示全部检索片段。
 - 自动恢复最多一次 retry 和一次 continuation，不无限调用模型。
 - AI 设置中的感知总开关默认开启，但内部数值不前台游戏化展示。
+- 梦境自动触发受持久 roll、滚动 50 轮冷却和北京时间每日两次限制；手动确认绕过自动限制但仍幂等。
+- 思绪只由本地重要事件候选触发会话批量生成，每角色北京时间每日三条，下一次匹配聊天每轮最多投递一条。
 
 ### 25.5 自审结论
 
-规格在数据来源、分支隔离、Prompt 缓存、无模型降级、Android 生命周期、删除恢复和用户控制方面闭环。当前没有阻塞设计决策。进入实施前需要用户评审本文件，然后按 Stage A 至 E 分别编写逐文件实施计划。
+规格在数据来源、分支隔离、Prompt 缓存、梦境概率与恢复、思绪生成与投递、无模型降级、Android 生命周期、删除恢复和用户控制方面闭环。用户已明确批准默认建议，不再存在阻塞设计决策。实施按 Stage A 至 E 分别编写逐文件计划、测试驱动实现、集中 review 和独立提交。

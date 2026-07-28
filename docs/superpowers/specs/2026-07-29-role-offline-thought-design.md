@@ -1,7 +1,7 @@
 # Pixory 角色离线思绪 V1 设计规格
 
 日期：2026-07-29
-状态：已确认，待实现计划
+状态：已确认；完整契约已并入 `docs/ai-chat-research/pixory-companion-runtime-v1-spec.md`，本文件保留为设计审计记录
 
 ## 1. 目标
 

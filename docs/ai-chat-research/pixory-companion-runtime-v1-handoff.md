@@ -2,8 +2,8 @@
 
 > 用途：交给一个不了解此前聊天上下文的新 Codex 窗口。
 > 仓库：`D:\Project\Pixory\pixory`
-> 当前主规格：`docs/ai-chat-research/pixory-companion-runtime-v1-spec.md`
-> 主规格提交：`b0dddd3 docs: specify companion cognitive runtime`
+> 当前总规格：`docs/ai-chat-research/pixory-companion-runtime-v1-spec.md`
+> 初始运行时规格提交：`b0dddd3 docs: specify companion cognitive runtime`（当前内容以后续总规格提交为准）
 > 交接日期：2026-07-29
 
 ## 1. 新窗口应先做什么
@@ -44,7 +44,7 @@ Pixory 当前以 Android-first 的陪伴式 AI 聊天为中心。用户希望吸
 当前状态已经调整：
 
 - 角色日记已经实现并经过多轮 review、修复和性能加固。
-- 离线思绪与梦境已交给其他工程并行处理。
+- 离线思绪与梦境的独立产品设计已完成，并已完整并入当前总规格；当前接手任务负责代码闭环。
 - 多气泡和 `ResponsePresentationPlan` 暂时不做。
 - 本窗口负责认知运行时、上下文连续覆盖和剩余可靠性能力。
 - 记忆 Embedding 暂时不启用。
@@ -76,13 +76,13 @@ Pixory 当前以 Android-first 的陪伴式 AI 聊天为中心。用户希望吸
 
 不要重写日记数据表或调度。认知运行时只能通过 adapter 和 event reference 与日记集成，并继续尊重日记 `contextOptIn`。
 
-### 4.2 并行中：离线思绪与梦境
+### 4.2 已完成设计、待实现：离线思绪与梦境
 
-其他工程可能正在新增或修改 artifact、screen、schema、prompt、job 和测试文件。开始每一个 Stage 前都要重新检查工作区和最近提交。
+角色梦境和离线思绪已分别完成设计，并合并进总规格第 16 节。当前基线没有对应产品代码；开始每一个 Stage 前仍要重新检查工作区和最近提交，防止其他工程在共享 main 合入同名 artifact、screen、schema、prompt、job 或测试文件。
 
-交接编写期间，梦境设计已经由并行工程提交为 `4788ab9 docs: define role dream experience`。这表示梦境产品规格已有新的事实源，但不代表梦境代码已经完成；接手者应读取该提交后的当前文件，而不是依赖本交接对梦境细节的概括。
+梦境独立设计提交为 `4788ab9 docs: define role dream experience`，离线思绪独立设计提交为 `f98e0f2 docs: define role offline thoughts`。两份设计的完整约束现已统一进入总规格；独立文档保留为设计审计记录，不再与总规格竞争事实源。
 
-合并要求：
+实现要求：
 
 - 最少提供统一 adapter：`artifactId/kind/roleCardId/sourceThreadId/sourceBranchRoute/sourceEventIds/status/createdAt`。
 - 每轮最多只有日记、思绪、梦境中的一项进入话题仲裁。
@@ -434,11 +434,11 @@ git diff --check
 3. docs/ai-chat-research/pixory-companion-runtime-v1-spec.md
 4. docs/feature-matrix.md
 
-主规格提交是 b0dddd3。产品范围与架构已确认，不要重新从零讨论。当前明确不做多气泡/ResponsePresentationPlan、不启用记忆 Embedding、不做主动消息和系统通知。
+初始运行时规格提交是 b0dddd3，梦境设计提交是 4788ab9，思绪设计提交是 f98e0f2；当前产品范围以工作区内总规格最新版本为准。产品范围与架构已确认，不要重新从零讨论。当前明确不做多气泡/ResponsePresentationPlan、不启用记忆 Embedding、不做主动消息和系统通知。
 
 情感系统要充分参考 Ackem：D:\Project\pixory_research\projects\Ackem，重点查看 engine/types.ts、interpreter.ts、relationship.ts、emotion.ts、psyche.ts、orchestrator.ts、strategy/topicSelector.ts 和 temporalAwareness。借鉴其 L0-L3、连续四维情绪、关系状态、衰减限幅、memory echo 和话题仲裁，但必须按 Pixory 的 SQLite、space、role、thread、branch 和可恢复任务架构独立实现。
 
-先从 Stage A 开始：修复 31-50 轮摘要空洞，建立 ConversationCoveragePlan、history bridge/provisional summary，并把每轮变化的陪伴状态移出稳定 Prompt 前缀，确保连续情绪变化不改变 stablePrefixHash。先写 Stage A 实施计划，再按 TDD 实施、验证和独立提交。不要一次性实施 Stage B-E。
+先从 Stage A 开始：修复 31-50 轮摘要空洞，建立 ConversationCoveragePlan、history bridge/provisional summary，并把每轮变化的陪伴状态移出稳定 Prompt 前缀，确保连续情绪变化不改变 stablePrefixHash。先写 Stage A 实施计划，再按 TDD 实施、验证和独立提交；随后依次对 Stage B、C、D、E 重复“计划 → TDD → 集中 review → 完整验证 → 独立提交”，不得跨阶段混写。Stage C 必须按总规格完整交付梦境和离线思绪，而不是只留 adapter。
 
 工作区有其他工程并行改动。开始前检查 git status，绝对不要回退或提交无关文件。每个用户可见功能、schema、native bridge、备份或 AI 能力变化都要同步 docs/feature-matrix.md。验证至少包含 pnpm typecheck、pnpm test、git diff --check；原生改动还需 expo prebuild 和 Kotlin 编译。
 ```
