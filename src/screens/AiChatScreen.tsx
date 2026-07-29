@@ -744,6 +744,7 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
+  const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
     Platform.OS === "android"
       ? Math.max(StatusBar.currentHeight ?? 0, insets.top)
@@ -6357,7 +6358,15 @@ export function AiChatScreen({
   return (
     <AppScreen
       backgroundColor={aiLightColors.canvas}
-      contentStyle={styles.drawerHost}
+      contentStyle={[
+        styles.drawerHost,
+        {
+          paddingBottom:
+            initialBottomInsetRef.current +
+            layout.pageBottomOffset -
+            spacing[2],
+        },
+      ]}
     >
       {/* prettier-ignore */}
       <KeyboardAvoidingView
@@ -6367,7 +6376,13 @@ export function AiChatScreen({
       >
         {/* prettier-ignore */}
         <View
-          style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
+          style={[
+            styles.screenContent,
+            {
+              paddingTop:
+                statusBarHeight + layout.pageTopOffset - spacing[2],
+            },
+          ]}
           {...swipeDrawerPanResponder.panHandlers}
         >
           <View style={styles.header}>
@@ -6922,12 +6937,10 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   title: {
-    ...typography.textStyles.navTitle,
     color: aiLightColors.ink,
-    fontFamily: aiLightDisplayFont,
-    fontSize: 20,
-    fontWeight: '400',
-    lineHeight: 26,
+    fontSize: typography.textStyles.body.fontSize,
+    fontWeight: typography.textStyles.body.fontWeight,
+    lineHeight: typography.textStyles.body.lineHeight,
     maxWidth: "90%",
   },
   modelSubtitle: {

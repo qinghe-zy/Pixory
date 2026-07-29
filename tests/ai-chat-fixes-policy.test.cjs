@@ -108,7 +108,7 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
   assert.match(chat, /enabled=\{Platform\.OS === 'android'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
-  assert.match(chat, /<View\s+style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}[\s\S]{0,140}\{\.\.\.swipeDrawerPanResponder\.panHandlers\}/);
+  assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
   assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);

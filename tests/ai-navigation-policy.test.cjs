@@ -697,10 +697,10 @@ test('AI chat keeps the header focused and moves search to session settings', ()
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
   assert.match(chat, /onOpenHistory/);
   assert.match(chat, /AiComprehensiveRecordDrawer/);
-  assert.match(chat, /contentStyle=\{styles\.drawerHost\}/);
+  assert.match(chat, /contentStyle=\{\[[\s\S]{0,120}styles\.drawerHost,[\s\S]{0,220}paddingBottom:\s*initialBottomInsetRef\.current/);
   assert.match(chat, /KeyboardAvoidingView/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
-  assert.match(chat, /<View\s+style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}[\s\S]{0,140}\{\.\.\.swipeDrawerPanResponder\.panHandlers\}/);
+  assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
   assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);

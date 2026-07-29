@@ -30,7 +30,7 @@ test('AI context token trimming keeps complete rounds together', () => {
 
 test('AI thread exports and imports preserve the context round limit', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
-  const importBlock = /async importThread\([\s\S]*?\n  \},\n\n  async/.exec(repository)?.[0] ?? '';
+  const importBlock = /async importThread\([\s\S]*?\r?\n  \},\r?\n\r?\n  async/.exec(repository)?.[0] ?? '';
   assert.match(importBlock, /contextHistoryRoundLimit/);
   assert.match(importBlock, /snapshot\.thread\.contextHistoryRoundLimit \?\? 30/);
 });
