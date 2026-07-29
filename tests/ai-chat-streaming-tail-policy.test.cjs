@@ -172,7 +172,7 @@ test('tail replay single-bubble path is guarded by a fail-safe remote JS flag', 
   assert.doesNotMatch(chat, /setSingleBubbleTailReplayEnabled/);
 });
 
-test('single-bubble tail replay uses message segments and keeps legacy continuation as a kill-switch fallback', () => {
+test('single-bubble tail replay uses message segments without duplicating the long-press action surface', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const contract = read('src/ai/aiStreamingTailRenderContract.ts');
@@ -186,7 +186,8 @@ test('single-bubble tail replay uses message segments and keeps legacy continuat
   assert.match(chat, /tailDebtSpacer/);
   assert.match(chat, /messageSegment/);
   assert.match(chat, /AiStreamingTailMessageSegment/);
-  assert.match(chat, /footer=\{/);
+  assert.doesNotMatch(chat, /footer=\{/);
+  assert.match(chat, /showActionButtons=\{message\.role === "assistant" && message\.id === latestVisibleMessageId\}/);
   assert.match(chat, /assistantBubbleEdge=\{/);
   assert.match(chat, /baseTailFooterVisible/);
   assert.doesNotMatch(chat, /hideFooterActions=\{\s*singleBubbleTailReplayEnabled[\s\S]{0,180}streamingTailStateRef\.current\.status !== "idle"\s*\}/);
@@ -197,7 +198,7 @@ test('single-bubble tail replay uses message segments and keeps legacy continuat
   assert.match(bubble, /message\.status === 'completed'/);
   assert.match(bubble, /message\.status === 'failed'/);
   assert.match(bubble, /message\.status === 'stopped'/);
-  assert.match(bubble, /const footerActionsVisible =\s*!hideFooterActions && \(isUser \|\| assistantTerminal\)/);
+  assert.match(bubble, /const footerActionsVisible =[\s\S]{0,180}showActionButtons[\s\S]{0,100}message\.versionTotal > 1/);
   assert.doesNotMatch(bubble, /position:\s*['"]absolute['"]/);
   assert.match(bubble, /hideCitations\?: boolean/);
   assert.match(bubble, /!isUser && !hideCitations/);

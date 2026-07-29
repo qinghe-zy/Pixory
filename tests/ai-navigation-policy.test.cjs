@@ -209,9 +209,10 @@ test('AI chat composer supports image and document attachments without a video u
   assert.match(composer, /添加附件/);
 });
 
-test('AI chat messages expose compact copy, edit, and regenerate buttons below bubbles', () => {
+test('AI chat messages move full actions into long press and keep only latest AI footer actions', () => {
   const content = chat();
   const bubble = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageBubble.tsx'), 'utf8');
+  const contextMenu = fs.readFileSync(path.join(root, 'src/components/ai/AiMessageContextMenu.tsx'), 'utf8');
 
   assert.match(content, /expo-clipboard/);
   assert.match(content, /Clipboard\.setStringAsync/);
@@ -225,9 +226,11 @@ test('AI chat messages expose compact copy, edit, and regenerate buttons below b
   assert.match(bubble, /name="refresh-outline"/);
   assert.match(bubble, /height:\s*28/);
   assert.match(bubble, /width:\s*28/);
-  assert.doesNotMatch(content, /messageActionTarget/);
-  assert.doesNotMatch(content, /MESSAGE_MENU_WIDTH/);
-  assert.doesNotMatch(bubble, /onLongPress/);
+  assert.match(bubble, /onLongPress/);
+  assert.match(bubble, /showActionButtons/);
+  assert.match(content, /latestVisibleMessageId/);
+  assert.match(content, /AiMessageContextMenu/);
+  assert.match(contextMenu, /timeLabel/);
 });
 
 test('AI chat composer matches the design.md light input surface', () => {
