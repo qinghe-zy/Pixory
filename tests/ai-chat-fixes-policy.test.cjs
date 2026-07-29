@@ -114,7 +114,7 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
   assert.doesNotMatch(chat, /enabled=\{Platform\.OS === 'ios'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
-  assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
+  assert.match(chat, /paddingTop:\s*statusBarHeight \+ spacing\[1\.5\]/);
   assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
@@ -1182,7 +1182,7 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(chat, /message\.versionIndex === message\.versionTotal \? message : \{ \.\.\.message, versionIndex: message\.versionTotal \}/);
   assert.match(chat, /type VisibleMessageItem/);
   assert.match(chat, /const messagesByDate = new Map<string, AiMessageWithCitations\[\]>\(\)/);
-  assert.match(chat, /dayMessages\.forEach\(\(sourceMessage, index\) =>/);
+  assert.match(chat, /mixedItems\.forEach\(\(item\) =>/);
   assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
   assert.match(chat, /const \{\s*invertedMessageIndexById,\s*invertedMessageItems,\s*messagesById,/);

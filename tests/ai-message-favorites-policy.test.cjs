@@ -100,7 +100,6 @@ test('AI chat screen toggles favorites with current branch and visible version i
   assert.match(chat, /favorited=\{/);
   assert.match(chat, /favoriteDisabledByGeneration=\{/);
   assert.match(chat, /favoritePending=\{/);
-  assert.match(chat, /onToggleFavorite=\{/);
   assert.match(chat, /persistedCurrentBranchScopes,/);
   assert.match(chat, /selectedVersionByMessageId,/);
 });

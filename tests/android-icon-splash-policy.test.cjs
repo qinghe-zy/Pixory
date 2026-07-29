@@ -13,7 +13,7 @@ function readJson(file) {
 
 test('uses chat artwork as a standard Android launcher icon', () => {
   const config = readJson('app.json').expo;
-  assert.equal(config.icon, chatIcon);
+  assert.equal(config.icon, './icons/02_右上_蓝发女孩.png');
   assert.equal(config.android.adaptiveIcon, undefined);
 
   const manifest = fs.readFileSync(
@@ -42,16 +42,16 @@ test('uses chat artwork as a standard Android launcher icon', () => {
 test('configures Android 12 splash from the chat artwork', () => {
   const packageJson = readJson('package.json');
   const config = readJson('app.json').expo;
-  const splash = config.plugins.find(
+  const splashPlugin = config.plugins.find(
     (entry) => Array.isArray(entry) && entry[0] === 'expo-splash-screen',
   );
 
   assert.match(packageJson.dependencies['expo-splash-screen'] ?? '', /^~31\./);
-  assert.deepEqual(splash, [
+  assert.deepEqual(splashPlugin, [
     'expo-splash-screen',
     {
-      backgroundColor: '#FAFAF7',
-      image: chatIcon,
+      backgroundColor: '#BBCCF5',
+      image: './icons/04_右下_聊天图标.png',
       imageWidth: 192,
       resizeMode: 'contain',
     },

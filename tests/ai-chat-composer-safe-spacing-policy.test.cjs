@@ -17,7 +17,7 @@ test('AI chat keeps bottom safe-area spacing stable and reduces only the externa
   );
   assert.match(
     chat,
-    /paddingTop:\s*statusBarHeight\s*\+\s*layout\.pageTopOffset\s*-\s*spacing\[2\]/,
+    /paddingTop:\s*statusBarHeight \+ spacing\[1\.5\]/,
   );
   assert.match(chat, /fontSize:\s*typography\.textStyles\.body\.fontSize/);
   assert.match(chat, /fontWeight:\s*typography\.textStyles\.body\.fontWeight/);

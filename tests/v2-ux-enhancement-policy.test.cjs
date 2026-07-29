@@ -68,11 +68,11 @@ test('expo config persists Android intent entry patches through a local config p
 
   assert.match(appConfig, /\.\/plugins\/withPixoryAndroidIntents/);
   assert.match(appConfig, /"softwareKeyboardLayoutMode": "resize"/);
-  assert.match(manifest, /android:windowSoftInputMode="adjustResize"/);
+  assert.match(manifest, /android:windowSoftInputMode="adjustNothing"/);
   assert.match(pluginSource, /AndroidManifest\.xml/);
   assert.match(pluginSource, /MainActivity\.kt/);
   assert.match(pluginSource, /PixoryMediaModule\.kt/);
-  assert.match(manifestTemplate, /android:windowSoftInputMode="adjustResize"/);
+  assert.match(manifestTemplate, /android:windowSoftInputMode="adjustNothing"/);
   assert.match(manifestTemplate, /android:pathSuffix="\.pixorypack"/);
   assert.match(activityTemplate, /PixoryMediaModule\.dispatchIntent/);
   assert.match(moduleTemplate, /PixoryMediaIntentReceived/);

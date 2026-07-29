@@ -79,7 +79,7 @@ test('AI chat header shows the current model below the chat title', () => {
   assert.match(content, /getCurrentChatModelPresentation/);
   assert.match(content, /modelLabel/);
   assert.match(content, /modelRefreshKey/);
-  assert.match(content, /\[modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
+  assert.match(content, /\[isInitialMessageLoading,\s*modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
   assert.match(content, /styles\.modelSubtitle/);
   assert.match(service, /getCurrentChatModelPresentation/);
   assert.match(service, /provider\.displayName/);
@@ -126,7 +126,7 @@ test('AI chat relies on inverted native list positioning and scoped Android keyb
   assert.match(content, /ListFooterComponent=/);
   assert.match(content, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
   assert.match(content, /KeyboardAvoidingView/);
-  assert.match(content, /behavior=\{Platform\.OS === 'android' \? 'height' : undefined\}/);
+  assert.match(content, /behavior="padding"/);
   assert.doesNotMatch(content, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.doesNotMatch(content, /keyboardBottomInset/);
   assert.doesNotMatch(content, /scrollToEnd/);
@@ -306,8 +306,9 @@ test('AI custom top bars use safe status-bar spacing and compact workbench layou
   for (const content of [chatContent, scaffold]) {
     assert.match(content, /useSafeAreaInsets/);
     assert.match(content, /StatusBar\.currentHeight/);
-    assert.match(content, /layout\.pageTopOffset/);
   }
+  assert.match(chatContent, /statusBarHeight \+ spacing\[1\.5\]/);
+  assert.match(scaffold, /layout\.pageTopOffset/);
   assert.match(homeContent, /AiLightScaffold/);
   assert.match(homeContent, /rhythm\.screenSectionGap/);
   assert.match(homeContent, /rhythm\.inlineGap/);
@@ -705,7 +706,7 @@ test('AI chat keeps the header focused and moves search to session settings', ()
   assert.match(chat, /contentStyle=\{\[[\s\S]{0,120}styles\.drawerHost,[\s\S]{0,220}paddingBottom:\s*initialBottomInsetRef\.current/);
   assert.match(chat, /KeyboardAvoidingView/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
-  assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
+  assert.match(chat, /paddingTop:\s*statusBarHeight \+ spacing\[1\.5\]/);
   assert.match(chat, /<\/KeyboardAvoidingView>\s*<AiComprehensiveRecordDrawer/);
   assert.match(chat, /accessibilityLabel="打开综合记录"/);
   assert.match(chat, /menu-outline/);

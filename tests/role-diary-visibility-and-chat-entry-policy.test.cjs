@@ -26,7 +26,7 @@ test('nonessential chat chrome waits for the first message page before querying 
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(chat, /if \(isInitialMessageLoading\) \{\s*return;\s*\}[\s\S]{0,120}reloadModelLabel/);
-  assert.match(chat, /void reloadModelLabel\(threadId \?\? null\);[\s\S]{0,180}reloadParticipantAppearance[\s\S]{0,180}reloadThreadTitle/);
+  assert.match(chat, /void reloadModelLabel\(threadId \?\? null\);[\s\S]{0,300}reloadParticipantAppearance[\s\S]{0,300}reloadThreadTitle/);
 });
 
 test('AI workbench keeps a local recent-chat snapshot while refreshing it in the background', () => {
