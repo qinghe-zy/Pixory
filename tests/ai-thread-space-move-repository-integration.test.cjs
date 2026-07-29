@@ -59,6 +59,23 @@ function loadRoleCardRepository() {
   }
 }
 
+function loadSchemaModule() {
+  const filename = path.join(root, 'src/database/schema.ts');
+  const originalExtension = require.extensions['.ts'];
+  require.extensions['.ts'] = function compileTypeScript(module, sourcePath) {
+    const output = ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
+      compilerOptions: { esModuleInterop: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      fileName: sourcePath,
+    }).outputText;
+    module._compile(output, sourcePath);
+  };
+  try { delete require.cache[require.resolve(filename)]; return require(filename); }
+  finally {
+    if (originalExtension) require.extensions['.ts'] = originalExtension;
+    else delete require.extensions['.ts'];
+  }
+}
+
 class AsyncDatabase {
   constructor() {
     this.db = new DatabaseSync(':memory:');
@@ -112,7 +129,9 @@ function createSchema(db) {
     );
     CREATE TABLE ai_message_citations (
       id TEXT PRIMARY KEY, messageId TEXT, sourceType TEXT, sourceId TEXT, label TEXT,
-      locatorJson TEXT, createdAt TEXT
+      locatorJson TEXT, refId TEXT, claimStart INTEGER, claimEnd INTEGER,
+      sourceExcerptHash TEXT, documentVersion TEXT, validationStatus TEXT DEFAULT 'valid',
+      validationReason TEXT, usedAt TEXT, createdAt TEXT
     );
     CREATE TABLE ai_message_attachments (
       id TEXT PRIMARY KEY, messageId TEXT, threadId TEXT, kind TEXT, name TEXT,
@@ -156,7 +175,11 @@ function createSchema(db) {
     CREATE TABLE ai_thread_summary_segments (
       id TEXT PRIMARY KEY, threadId TEXT, space TEXT, kind TEXT, summaryText TEXT,
       startMessageId TEXT, endMessageId TEXT, startAt TEXT, endAt TEXT, roundCount INTEGER,
-      sourceSegmentIdsJson TEXT, continuityImportSessionId TEXT, createdAt TEXT, updatedAt TEXT
+      sourceSegmentIdsJson TEXT, continuityImportSessionId TEXT,
+      sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]', branchRouteHash TEXT NOT NULL DEFAULT '',
+      lineageVersion INTEGER NOT NULL DEFAULT 0, sourceMessageVersionHash TEXT NOT NULL DEFAULT '',
+      quality TEXT NOT NULL DEFAULT 'legacy', status TEXT NOT NULL DEFAULT 'stale',
+      createdAt TEXT, updatedAt TEXT
     );
     CREATE TABLE ai_continuity_import_sessions (
       id TEXT PRIMARY KEY, threadId TEXT, space TEXT, sourceKind TEXT, sourcePlatform TEXT,
@@ -191,6 +214,10 @@ function createSchema(db) {
       normalizedContent TEXT, assetSnapshotJson TEXT, updatedAt TEXT
     );
   `);
+  const schema = loadSchemaModule();
+  db.exec(schema.MIGRATION_STATEMENTS_V52);
+  db.exec(schema.MIGRATION_STATEMENTS_V53);
+  db.exec(schema.MIGRATION_STATEMENTS_V55);
 }
 
 function makeSnapshot(space) {
@@ -200,7 +227,7 @@ function makeSnapshot(space) {
       id: 'thread-1', space, contextType: 'normal', boundIpId: null, boundKnowledgeBaseId: null,
       includeIpDocuments: 0, title: '聊天', titleStatus: 'custom', modelTitleGeneratedAt: now,
       providerId: 'provider-1', modelId: 'model-1', sessionBaseUrl: null, sessionApiKeyRef: null,
-      modelSnapshotJson: '{}', roleCardId: null, roleSnapshotJson: '{}',
+      modelSnapshotJson: '{}', roleCardId: 'role-1', roleSnapshotJson: '{"id":"role-1"}',
       roleInstructionWeight: 'default', replyPreference: 'auto', contextHistoryRoundLimit: 30, thinkingDisabled: 0,
       systemPrompt: '', materialRulesSnapshot: null, boundaryMode: 'free', summary: '摘要',
       lastMessagePreview: '你好', currentBranchRootMessageId: null, currentBranchVersionIndex: null,
@@ -258,12 +285,129 @@ function makeSnapshot(space) {
       id: 'segment-1', threadId: 'thread-1', space, kind: 'compressed',
       summaryText: '压缩摘要', startMessageId: 'message-1', endMessageId: 'message-1',
       startAt: now, endAt: now, roundCount: 1, sourceSegmentIdsJson: '[]',
+      sourceMessageIdsJson: '["message-1"]', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceMessageVersionHash: 'version-hash', quality: 'model', status: 'active',
       continuityImportSessionId: null, createdAt: now, updatedAt: now,
     }],
     branchRouteMetadata: [],
     continuityImportSessions: [],
     continuityImportBlocks: [],
     userProfile: null,
+    companionEvents: [{
+      id: 'event-1', space, subjectType: 'thread', subjectId: 'thread-1', roleCardId: null,
+      threadId: 'thread-1', branchRootMessageId: null, branchVersionIndex: null,
+      branchRouteHash: 'route-main', lineageVersion: 0, sourceMessageId: 'message-1',
+      sourceMessageVersionHash: 'hash-1', category: 'interaction', subtype: 'gratitude',
+      speechMode: 'asserted', confidence: 0.8, intensity: 0.5, sincerity: 1,
+      payloadJson: '{}', evidenceSpanJson: '{}', extractorVersion: 'companion-observer-v1',
+      provenanceJson: '[]', idempotencyKey: 'event-idem-1', status: 'active', eventSequence: 1, createdAt: now,
+    }],
+    companionTemporalAnchors: [{
+      id: 'anchor-1', space, roleCardId: null, threadId: 'thread-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceEventId: 'event-1', sourceMessageId: 'message-1', rawText: '明天',
+      startAtUtc: now, endAtUtc: now, parseTimeZone: 'Asia/Shanghai', localDateKey: '2026-07-24',
+      precision: 'day', anchorType: 'point', recurrenceRule: null, status: 'active', confidence: 0.9,
+      parserVersion: 'companion-temporal-v1', idempotencyKey: 'anchor-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionOpenLoops: [{
+      id: 'loop-1', space, roleCardId: null, threadId: 'thread-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, sourceEventId: 'event-1', sourceMessageId: 'message-1', temporalAnchorId: 'anchor-1',
+      kind: 'deadline', topicText: '明天的结果', status: 'open', priority: 70, earliestMentionAt: now,
+      expiresAt: null, mentionCount: 0, lastMentionedAt: null, lastMentionedRound: null,
+      recurrenceRule: null, resolutionEvidenceMessageId: null, idempotencyKey: 'loop-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionRuntimeJobs: [{
+      id: 'job-1', space, threadId: 'thread-1', branchRouteHash: 'route-main', lineageVersion: 0,
+      sourceMessageId: 'message-1', jobType: 'event_enrichment', status: 'running', payloadJson: '{}',
+      idempotencyKey: 'job-idem-1', attemptCount: 1, nextRunAt: now, leaseOwner: 'old-worker', leaseUntil: now,
+      lastErrorCode: null, createdAt: now, updatedAt: now, completedAt: null,
+    }],
+    companionContextTraces: [{
+      id: 'trace-1', space, threadId: 'thread-1', sourceMessageId: 'message-1', branchRouteHash: 'route-main',
+      lineageVersion: 0, policyVersion: 'companion-event-policy-v1', eventCount: 1,
+      diagnosticCandidateCount: 0, optionalCandidateCount: 1, selectedTopicType: 'open_loop',
+      observerDurationMs: 1, compilerDurationMs: 1, reasonCodesJson: '[]', createdAt: now,
+    }],
+    companionProjectionSnapshots: [{
+      id: 'projection-1', space, scopeType: 'thread', roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, basedOnEventSequence: 1,
+      affection: 0.2, security: 0.1, arousal: 0.3, agency: 0.4,
+      relationshipJson: '{}', stanceJson: '{}', policyVersion: 'projection-v1',
+      status: 'active', createdAt: now, updatedAt: now,
+    }],
+    companionAffectiveObservations: [{
+      id: 'affect-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sourceEventId: 'event-1',
+      sourceMessageId: 'message-1', sourceMessageVersionHash: 'hash-1', label: 'warmth',
+      confidence: 0.8, expiresAt: now, expiresAfterRound: 8, status: 'active',
+      createdAt: now, updatedAt: now,
+    }],
+    companionRepairs: [{
+      id: 'repair-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sourceEventId: 'event-1',
+      sourceMessageId: 'message-1', sourceMessageVersionHash: 'hash-1', category: 'correction',
+      subtype: 'style', constraintText: '不要复述', forbiddenTermsJson: '[]', state: 'constrained',
+      passedRelevantTurns: 0, violationCount: 0, semanticReviewRequired: 0,
+      lastCheckedAssistantMessageId: null, resolutionEvidenceMessageId: null,
+      policyVersion: 'repair-v1', createdAt: now, updatedAt: now,
+    }],
+    companionDreamScenes: [{
+      id: 'dream-scene-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, semanticState: 'closed',
+      participantsJson: '[]', evidenceMessageIdsJson: '["message-1"]', sourceSnapshotHash: 'dream-hash',
+      status: 'closed', openedAt: now, closedAt: now, updatedAt: now,
+    }],
+    companionDreamSeeds: [{
+      id: 'dream-seed-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sceneId: 'dream-scene-1',
+      sourceMessageIdsJson: '["message-1"]', sourceMessageVersionHashesJson: '["hash-1"]',
+      sourceSnapshotHash: 'dream-hash', roll: 0.1, classificationJson: null,
+      classifiedProbability: null, decision: 'classifying', manual: 0,
+      policyVersion: 'dream-v1', idempotencyKey: 'dream-seed-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionDreamJobs: [{
+      id: 'dream-job-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sceneId: 'dream-scene-1', seedId: 'dream-seed-1',
+      phase: 'classifying', status: 'running', sourceSnapshotHash: 'dream-hash',
+      sourceMessageIdsJson: '["message-1"]', attemptCount: 1, maxAttempts: 3,
+      cancelRequested: 0, quotaReserved: 1, nextRunAt: now, leaseOwner: 'old-worker',
+      leaseUntil: now, lastErrorCode: null, idempotencyKey: 'dream-job-idem-1',
+      createdAt: now, updatedAt: now, completedAt: null,
+    }],
+    companionDreams: [],
+    companionRoleRoundReceipts: [{
+      id: 'round-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', userMessageId: 'message-1', assistantMessageId: 'message-1',
+      userMessageVersionHash: 'hash-1', assistantMessageVersionHash: 'hash-1', roundNumber: 1,
+      idempotencyKey: 'round-idem-1', createdAt: now,
+    }],
+    companionThoughtEvents: [{
+      id: 'thought-event-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sessionKey: 'session-1', eventType: 'praise',
+      priority: 70, userMessageId: 'message-1', assistantMessageId: 'message-1',
+      userMessageVersionHash: 'hash-1', assistantMessageVersionHash: 'hash-1',
+      sourceSnapshotHash: 'thought-hash', evidenceJson: '{}', status: 'batched',
+      idempotencyKey: 'thought-event-idem-1', createdAt: now, updatedAt: now,
+    }],
+    companionThoughtJobs: [{
+      id: 'thought-job-1', space, roleCardId: 'role-1', threadId: 'thread-1',
+      branchRouteHash: 'route-main', lineageVersion: 0, sessionKey: 'session-1',
+      eventIdsJson: '["thought-event-1"]', sourceSnapshotHash: 'thought-hash', roleSnapshotJson: '{}',
+      scheduledFor: now, status: 'running', attemptCount: 1, maxAttempts: 3,
+      quotaReservedCount: 1, nextRunAt: now, leaseOwner: 'old-worker', leaseUntil: now,
+      lastErrorCode: null, idempotencyKey: 'thought-job-idem-1', createdAt: now,
+      updatedAt: now, completedAt: null,
+    }],
+    companionThoughts: [{
+      id: 'thought-1', space, roleCardId: 'role-1', sourceThreadId: 'thread-1',
+      sourceBranchRouteHash: 'route-main', lineageVersion: 0, jobId: 'thought-job-1',
+      eventIdsJson: '["thought-event-1"]', sourceMessageIdsJson: '["message-1"]',
+      sourceSnapshotHash: 'thought-hash', priority: 70, body: '被夸奖以后，心里还暖着。',
+      status: 'active', deliveryStatus: 'reserved', reservationId: 'reservation-1',
+      reservationMessageId: 'message-1', reservedAt: now, deliveredAt: null,
+      deliveredMessageId: null, deletedAt: null, idempotencyKey: 'thought-idem-1',
+      createdAt: now, updatedAt: now,
+    }],
   };
 }
 
@@ -282,6 +426,11 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal(exported.favorites.length, 1);
     assert.equal(exported.threadMemories.length, 1);
     assert.equal(exported.summarySegments.length, 1);
+    assert.equal(exported.companionEvents.length, 1);
+    assert.equal(exported.companionOpenLoops.length, 1);
+    assert.equal(exported.companionProjectionSnapshots.length, 1);
+    assert.equal(exported.companionDreamJobs.length, 1);
+    assert.equal(exported.companionThoughts.length, 1);
 
     await repository.importThread(target, exported, 'personal');
     assert.equal((await target.getFirstAsync('SELECT space FROM ai_threads WHERE id = ?', 'thread-1')).space, 'personal');
@@ -294,6 +443,20 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_message_fts')).count, 1);
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_message_version_fts')).count, 1);
     assert.equal((await target.getFirstAsync('SELECT COUNT(*) AS count FROM ai_memory_fts')).count, 1);
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_events')).space, 'personal');
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_open_loops')).space, 'personal');
+    const movedJob = await target.getFirstAsync('SELECT space, status, leaseOwner FROM companion_runtime_jobs');
+    assert.equal(movedJob.space, 'personal');
+    assert.equal(movedJob.status, 'retry');
+    assert.equal(movedJob.leaseOwner, null);
+    const movedDreamJob = await target.getFirstAsync('SELECT space, status, leaseOwner, quotaReserved FROM companion_dream_jobs');
+    assert.deepEqual({ ...movedDreamJob }, { space: 'personal', status: 'retry', leaseOwner: null, quotaReserved: 0 });
+    const movedThoughtJob = await target.getFirstAsync('SELECT space, status, leaseOwner, quotaReservedCount FROM companion_thought_jobs');
+    assert.deepEqual({ ...movedThoughtJob }, { space: 'personal', status: 'retry', leaseOwner: null, quotaReservedCount: 0 });
+    const movedThought = await target.getFirstAsync('SELECT space, deliveryStatus, reservationId, reservationMessageId FROM companion_thoughts');
+    assert.deepEqual({ ...movedThought }, { space: 'personal', deliveryStatus: 'pending', reservationId: null, reservationMessageId: null });
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_repairs')).space, 'personal');
+    assert.equal((await target.getFirstAsync('SELECT space FROM companion_role_round_receipts')).space, 'personal');
 
     await target.runAsync(
       'INSERT INTO ai_documents (id, localUri) VALUES (?, ?)',
@@ -317,6 +480,8 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal((await source.getFirstAsync('SELECT COUNT(*) AS count FROM ai_message_version_fts')).count, 0);
     assert.equal((await source.getFirstAsync('SELECT COUNT(*) AS count FROM ai_memory_fts')).count, 0);
     assert.equal((await source.getFirstAsync('SELECT COUNT(*) AS count FROM ai_memories')).count, 0);
+    assert.equal((await source.getFirstAsync('SELECT COUNT(*) AS count FROM companion_dream_jobs')).count, 0);
+    assert.equal((await source.getFirstAsync('SELECT COUNT(*) AS count FROM companion_thoughts')).count, 0);
   } finally {
     source.close();
     target.close();

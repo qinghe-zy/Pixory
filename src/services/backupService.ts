@@ -33,6 +33,15 @@ import {
 } from './fileStorageService';
 import { verifyPersonalPassword } from './personalSystemService';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
+import {
+  createManagedBackupManifestV2,
+  mergeManagedDatabaseRecords,
+  resolveManagedBackupPath,
+  stageManagedAiFiles,
+  validateManagedBackupManifestV2,
+  type ManagedBackupFileEntry,
+  type ManagedBackupManifestV2,
+} from './managedBackupService';
 
 export type BackupScope = 'normal' | 'personal' | 'all';
 export type IpNameConflictStrategy = 'ask' | 'mergeExisting' | 'createRenamed' | 'cancelImport';
@@ -71,6 +80,11 @@ export interface ImportEncryptedPersonalPackParams {
 export interface ImportEncryptedPersonalPackResult {
   importedIpCount: number;
   importedImageCount: number;
+  restoredAiRecordCount: number;
+  preservedAiRecordCount: number;
+  remappedAiLogicalIdCount: number;
+  restoredManagedFileCount: number;
+  missingOptionalFileCount: number;
 }
 
 export interface ImportPlainBackupPackageParams {
@@ -79,11 +93,17 @@ export interface ImportPlainBackupPackageParams {
   extractedDirectoryUri?: string;
   mode: 'merge';
   ipNameConflictStrategy?: IpNameConflictStrategy;
+  taskToken?: PersonalTaskToken | null;
 }
 
 export interface ImportPlainBackupPackageResult {
   importedIpCount: number;
   importedImageCount: number;
+  restoredAiRecordCount: number;
+  preservedAiRecordCount: number;
+  remappedAiLogicalIdCount: number;
+  restoredManagedFileCount: number;
+  missingOptionalFileCount: number;
 }
 
 type ExportData = {
@@ -117,16 +137,6 @@ function toBase64(bytes: Uint8Array): string {
 
 function timestampForPath(value: string): string {
   return value.replace(/[-:.TZ]/g, '').slice(0, 14);
-}
-
-async function copyFileIfExists(sourceUri: string, destinationUri: string): Promise<boolean> {
-  const info = await FileSystem.getInfoAsync(sourceUri);
-  if (!info.exists || info.isDirectory) {
-    return false;
-  }
-
-  await copyLocalFile(sourceUri, destinationUri);
-  return true;
 }
 
 async function copyDirectoryIfExists(sourceDirUri: string, destinationDirUri: string): Promise<number> {
@@ -175,7 +185,20 @@ function getMimeType(fileName: string): string {
   return 'application/octet-stream';
 }
 
-function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageRepository.findAll>>) {
+function managedRelativePath(
+  files: ManagedBackupFileEntry[],
+  imageId: number,
+  category: ManagedBackupFileEntry['category'],
+): string | null {
+  return files.find((file) =>
+    file.ownerType === 'image_asset' && file.ownerId === String(imageId) && file.category === category
+  )?.relativePath ?? null;
+}
+
+function buildManifestImageEntries(
+  images: Awaited<ReturnType<typeof imageRepository.findAll>>,
+  files: ManagedBackupFileEntry[],
+) {
   return images.map((image) => ({
     id: image.id,
     mediaType: image.mediaType,
@@ -188,9 +211,26 @@ function buildManifestImageEntries(images: Awaited<ReturnType<typeof imageReposi
     mimeType: image.mimeType,
     fileSize: image.fileSize,
     durationMs: image.durationMs,
-    coverThumbnailFileUri: image.coverThumbnailFileUri,
+    coverThumbnailFileUri: managedRelativePath(files, image.id, 'asset_cover') ??
+      managedRelativePath(files, image.id, 'asset_thumbnail'),
     deletedAt: image.deletedAt,
   }));
+}
+
+function sanitizeExportDataForManifest(exportData: ExportData, files: ManagedBackupFileEntry[]): ExportData {
+  return {
+    ...exportData,
+    images: exportData.images.map((image) => ({
+      ...image,
+      originalFileUri: managedRelativePath(files, image.id, 'asset_original') ?? '',
+      thumbnailFileUri: managedRelativePath(files, image.id, 'asset_thumbnail'),
+      coverThumbnailFileUri: managedRelativePath(files, image.id, 'asset_cover') ??
+        managedRelativePath(files, image.id, 'asset_thumbnail'),
+    })),
+    importBatchItemsByBatchId: Object.fromEntries(Object.entries(exportData.importBatchItemsByBatchId).map(
+      ([batchId, items]) => [batchId, items.map((item) => ({ ...item, sourcePath: 'source-unavailable' }))],
+    )),
+  };
 }
 
 async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<ExportData> {
@@ -218,35 +258,6 @@ async function buildExportData(db: SQLiteDatabase, ipId?: number): Promise<Expor
   }
 
   return { ips: filteredIps, groups: filteredGroups, tags, images: imagesWithRelations, importBatches, importBatchItemsByBatchId };
-}
-
-async function buildMemoryBackupManifest(db: SQLiteDatabase, space: PixorySpace): Promise<Record<string, unknown>> {
-  const tableNames = [
-    'memory_events',
-    'memory_claims',
-    'memory_evidence',
-    'memory_current_turn_observations',
-    'memory_lineage_meta',
-    'memory_import_id_map',
-    'memory_deletion_certificates',
-    'memory_episodes',
-    'memory_relational_states',
-    'memory_profiles',
-  ];
-  const memory: Record<string, unknown> = {};
-  for (const table of tableNames) {
-    const where = table === 'memory_lineage_meta'
-      ? 'WHERE threadId IN (SELECT id FROM ai_threads WHERE space = ?)'
-      : table === 'memory_import_id_map'
-        ? ''
-        : 'WHERE space = ?';
-    const rows = await db.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM ${table} ${where}`,
-      ...(where ? [space] : [])
-    );
-    memory[table] = rows;
-  }
-  return memory;
 }
 
 async function calculateDirectorySize(directoryUri: string): Promise<number> {
@@ -315,40 +326,32 @@ async function writeDatabaseCopy(backupDir: string, space: PixorySpace = 'normal
   return databaseUri;
 }
 
+async function runBackupBuild<T>(backupDir: string, build: () => Promise<T>): Promise<T> {
+  try {
+    return await build();
+  } catch (error) {
+    await deleteLocalFile(backupDir);
+    throw error;
+  }
+}
+
 export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.space, taskToken?: PersonalTaskToken | null): Promise<BackupResult> {
   assertPersonalTaskActive(taskToken);
   return runWithDatabaseSpace(space, async (db) => {
     await checkpointDatabase(space);
     const { backupDir, createdAt } = await createBackupShell('full', space);
+    return runBackupBuild(backupDir, async () => {
     const databaseUri = await writeDatabaseCopy(backupDir, space);
     const images = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
-    let originalCount = 0;
-    let thumbnailCount = 0;
-
-    for (const image of images) {
-      assertPersonalTaskActive(taskToken);
-      const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${image.ipId}`)}/`;
-      const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${image.ipId}`)}/`;
-      await ensureLocalDirectory(originalDir);
-      await ensureLocalDirectory(thumbnailDir);
-
-      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
-        originalCount += 1;
-      }
-
-      if (image.thumbnailFileUri) {
-        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
-        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
-          thumbnailCount += 1;
-        }
-      }
-      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
-        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
-        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
-          thumbnailCount += 1;
-        }
-      }
-    }
+    const managed = await createManagedBackupManifestV2({
+      backupDir,
+      databaseRelativePath: `database/${space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME}`,
+      db,
+      space,
+      assertActive: () => assertPersonalTaskActive(taskToken),
+    });
+    const originalCount = managed.files.filter((file) => file.category === 'asset_original').length;
+    const thumbnailCount = managed.files.filter((file) => file.category === 'asset_thumbnail' || file.category === 'asset_cover').length;
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
     await writeTextFile(
@@ -357,18 +360,15 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
         {
           type: 'full',
           createdAt,
-          database: databaseUri,
+          ...managed,
           space,
-          originalRoot: getOriginalsDir(space),
-          thumbnailRoot: getThumbnailsDir(space),
           originalCount,
           thumbnailCount,
           assetCount: images.length,
           imageCount: images.filter((image) => image.mediaType === 'image').length,
           videoCount: images.filter((image) => image.mediaType === 'video').length,
-          images: buildManifestImageEntries(images),
-          exportData: await buildExportData(db),
-          memory: await buildMemoryBackupManifest(db, space),
+          images: buildManifestImageEntries(images, managed.files),
+          exportData: sanitizeExportDataForManifest(await buildExportData(db), managed.files),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -378,6 +378,7 @@ export async function createFullBackup(space: PixorySpace = NORMAL_BACKUP_SCOPE.
     await settingsRepository.setLastBackupAt(db, createdAt);
 
     return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+    });
   });
 }
 
@@ -391,34 +392,19 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
     }
 
     const { backupDir, createdAt } = await createBackupShell(`ip_${ipId}`, space);
+    return runBackupBuild(backupDir, async () => {
     const databaseUri = await writeDatabaseCopy(backupDir, space);
     const images = await imageRepository.findByIpId(db, ipId, { includeDeleted: true, mediaType: 'all' });
-    const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${ipId}`)}/`;
-    const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${ipId}`)}/`;
-    await ensureLocalDirectory(originalDir);
-    await ensureLocalDirectory(thumbnailDir);
-    let originalCount = 0;
-    let thumbnailCount = 0;
-
-    for (const image of images) {
-      assertPersonalTaskActive(taskToken);
-      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
-        originalCount += 1;
-      }
-
-      if (image.thumbnailFileUri) {
-        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
-        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
-          thumbnailCount += 1;
-        }
-      }
-      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
-        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
-        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
-          thumbnailCount += 1;
-        }
-      }
-    }
+    const managed = await createManagedBackupManifestV2({
+      backupDir,
+      databaseRelativePath: `database/${space === 'personal' ? PERSONAL_DATABASE_NAME : DATABASE_NAME}`,
+      db,
+      ipId,
+      space,
+      assertActive: () => assertPersonalTaskActive(taskToken),
+    });
+    const originalCount = managed.files.filter((file) => file.category === 'asset_original').length;
+    const thumbnailCount = managed.files.filter((file) => file.category === 'asset_thumbnail' || file.category === 'asset_cover').length;
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
     await writeTextFile(
@@ -429,15 +415,14 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
           space,
           ip,
           createdAt,
-          database: databaseUri,
+          ...managed,
           originalCount,
           thumbnailCount,
           assetCount: images.length,
           imageCount: images.filter((image) => image.mediaType === 'image').length,
           videoCount: images.filter((image) => image.mediaType === 'video').length,
-          images: buildManifestImageEntries(images),
-          exportData: await buildExportData(db, ipId),
-          memory: await buildMemoryBackupManifest(db, space),
+          images: buildManifestImageEntries(images, managed.files),
+          exportData: sanitizeExportDataForManifest(await buildExportData(db, ipId), managed.files),
           safety: 'Originals are copied as-is. Thumbnails are separate preview files. No compression or re-encoding is performed.',
         },
         null,
@@ -446,6 +431,7 @@ export async function createIpBackup(ipId: number, space: PixorySpace = NORMAL_B
     );
 
     return { backupDir, createdAt, databaseUri, manifestUri, originalCount, thumbnailCount, totalBytes: await calculateDirectorySize(backupDir) };
+    });
   });
 }
 
@@ -473,35 +459,18 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
     const space: PixorySpace = 'personal';
     await checkpointDatabase('personal');
     const { backupDir, createdAt } = await createBackupShell('personal', space);
+    return runBackupBuild(backupDir, async () => {
     const databaseUri = await writeDatabaseCopy(backupDir, space);
     const images = await imageRepository.findAll(db, { includeDeleted: true, mediaType: 'all' });
-    let originalCount = 0;
-    let thumbnailCount = 0;
-
-    for (const image of images) {
-      assertPersonalTaskActive(taskToken);
-      const originalDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'originals')}/`, `ip_${image.ipId}`)}/`;
-      const thumbnailDir = `${joinStoragePath(`${joinStoragePath(backupDir, 'thumbnails')}/`, `ip_${image.ipId}`)}/`;
-      await ensureLocalDirectory(originalDir);
-      await ensureLocalDirectory(thumbnailDir);
-
-      if (await copyFileIfExists(image.originalFileUri, joinStoragePath(originalDir, image.internalFilename))) {
-        originalCount += 1;
-      }
-
-      if (image.thumbnailFileUri) {
-        const thumbnailName = image.thumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_thumb`;
-        if (await copyFileIfExists(image.thumbnailFileUri, joinStoragePath(thumbnailDir, thumbnailName))) {
-          thumbnailCount += 1;
-        }
-      }
-      if (image.coverThumbnailFileUri && image.coverThumbnailFileUri !== image.thumbnailFileUri) {
-        const coverName = image.coverThumbnailFileUri.split('/').pop() ?? `${image.internalFilename}_cover`;
-        if (await copyFileIfExists(image.coverThumbnailFileUri, joinStoragePath(thumbnailDir, coverName))) {
-          thumbnailCount += 1;
-        }
-      }
-    }
+    const managed = await createManagedBackupManifestV2({
+      backupDir,
+      databaseRelativePath: `database/${PERSONAL_DATABASE_NAME}`,
+      db,
+      space,
+      assertActive: () => assertPersonalTaskActive(taskToken),
+    });
+    const originalCount = managed.files.filter((file) => file.category === 'asset_original').length;
+    const thumbnailCount = managed.files.filter((file) => file.category === 'asset_thumbnail' || file.category === 'asset_cover').length;
 
     const manifestUri = joinStoragePath(backupDir, 'manifest.json');
     await writeTextFile(
@@ -511,17 +480,14 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
           type: 'personal',
           space,
           createdAt,
-          database: databaseUri,
-          originalRoot: getOriginalsDir(space),
-          thumbnailRoot: getThumbnailsDir(space),
+          ...managed,
           originalCount,
           thumbnailCount,
           assetCount: images.length,
           imageCount: images.filter((image) => image.mediaType === 'image').length,
           videoCount: images.filter((image) => image.mediaType === 'video').length,
-          images: buildManifestImageEntries(images),
-          exportData: await buildExportData(db),
-          memory: await buildMemoryBackupManifest(db, space),
+          images: buildManifestImageEntries(images, managed.files),
+          exportData: sanitizeExportDataForManifest(await buildExportData(db), managed.files),
           plainExportWarning:
             'This is a plain personal export. If copied to a public directory, private names, metadata, originals, and thumbnails are visible.',
           safety:
@@ -541,18 +507,22 @@ export async function createPersonalPlainBackup(secret: string, taskToken?: Pers
       thumbnailCount,
       totalBytes: await calculateDirectorySize(backupDir),
     };
+    });
   });
 }
 
 async function createEncryptedPackFromBackup(backup: BackupResult, prefix: string, secret: string): Promise<EncryptedPackResult> {
   const createdAt = new Date().toISOString();
   const packUri = joinStoragePath(getExportsDir('personal'), `${prefix}_${timestampForPath(createdAt)}.pixorypack`);
-  await zipWithPassword(backup.backupDir, packUri, secret, EncryptionMethods.AES_256);
-  return {
-    packUri,
-    stagingDir: backup.backupDir,
-    createdAt,
-  };
+  try {
+    await zipWithPassword(backup.backupDir, packUri, secret, EncryptionMethods.AES_256);
+    return { packUri, stagingDir: backup.backupDir, createdAt };
+  } catch (error) {
+    await deleteLocalFile(packUri);
+    throw error;
+  } finally {
+    await deleteLocalFile(backup.backupDir);
+  }
 }
 
 export async function createEncryptedPersonalPack(secret: string, taskToken?: PersonalTaskToken | null): Promise<EncryptedPackResult> {
@@ -566,20 +536,34 @@ export async function createEncryptedPersonalPack(secret: string, taskToken?: Pe
 export async function createEncryptedAllPack(secret: string, taskToken?: PersonalTaskToken | null): Promise<EncryptedPackResult> {
   await requirePersonalVerification(secret);
   assertPersonalTaskActive(taskToken);
-  const normalBackup = await createFullBackup('normal');
-  const personalBackup = await createPersonalPlainBackup(secret, taskToken);
   const createdAt = new Date().toISOString();
   const stagingDir = `${joinStoragePath(getTempDir('personal'), `all_pack_${timestampForPath(createdAt)}`)}/`;
-  await ensureLocalDirectory(stagingDir);
-  await copyDirectoryIfExists(normalBackup.backupDir, `${joinStoragePath(stagingDir, 'normal')}/`);
-  await copyDirectoryIfExists(personalBackup.backupDir, `${joinStoragePath(stagingDir, 'personal')}/`);
-  await writeTextFile(
-    joinStoragePath(stagingDir, 'manifest.json'),
-    JSON.stringify({ type: 'all-encrypted', createdAt, spaces: ['normal', 'personal'] }, null, 2)
-  );
   const packUri = joinStoragePath(getExportsDir('personal'), `all_encrypted_${timestampForPath(createdAt)}.pixorypack`);
-  await zipWithPassword(stagingDir, packUri, secret, EncryptionMethods.AES_256);
-  return { packUri, stagingDir, createdAt };
+  let normalBackup: BackupResult | null = null;
+  let personalBackup: BackupResult | null = null;
+  try {
+    normalBackup = await createFullBackup('normal');
+    personalBackup = await createPersonalPlainBackup(secret, taskToken);
+    await ensureLocalDirectory(stagingDir);
+    await copyDirectoryIfExists(normalBackup.backupDir, `${joinStoragePath(stagingDir, 'normal')}/`);
+    await copyDirectoryIfExists(personalBackup.backupDir, `${joinStoragePath(stagingDir, 'personal')}/`);
+    await writeTextFile(
+      joinStoragePath(stagingDir, 'manifest.json'),
+      JSON.stringify({ type: 'all-encrypted', createdAt, spaces: ['normal', 'personal'] }, null, 2)
+    );
+    assertPersonalTaskActive(taskToken);
+    await zipWithPassword(stagingDir, packUri, secret, EncryptionMethods.AES_256);
+    return { packUri, stagingDir, createdAt };
+  } catch (error) {
+    await deleteLocalFile(packUri);
+    throw error;
+  } finally {
+    await Promise.allSettled([
+      deleteLocalFile(stagingDir),
+      ...(normalBackup ? [deleteLocalFile(normalBackup.backupDir)] : []),
+      ...(personalBackup ? [deleteLocalFile(personalBackup.backupDir)] : []),
+    ]);
+  }
 }
 
 async function findManifestUri(directoryUri: string): Promise<string> {
@@ -609,6 +593,22 @@ async function findManifestUri(directoryUri: string): Promise<string> {
 function resolveBackupRelativeFile(rootManifestUri: string, role: 'originals' | 'thumbnails', ipId: number, fileName: string): string {
   const backupDir = rootManifestUri.slice(0, rootManifestUri.lastIndexOf('/') + 1);
   return joinStoragePath(`${joinStoragePath(`${joinStoragePath(backupDir, role)}/`, `ip_${ipId}`)}/`, fileName);
+}
+
+function getBackupDirectoryFromManifest(manifestUri: string): string {
+  return manifestUri.slice(0, manifestUri.lastIndexOf('/') + 1);
+}
+
+function resolveManagedImageFile(
+  manifestUri: string,
+  files: ManagedBackupFileEntry[] | undefined,
+  imageId: number,
+  category: ManagedBackupFileEntry['category'],
+): string | null {
+  const entry = files?.find((file) =>
+    file.ownerType === 'image_asset' && file.ownerId === String(imageId) && file.category === category
+  );
+  return entry ? resolveManagedBackupPath(getBackupDirectoryFromManifest(manifestUri), entry.relativePath) : null;
 }
 
 async function createRenamedIp(db: SQLiteDatabase, name: string, input: { description?: string | null; isFavorite?: boolean }): Promise<Awaited<ReturnType<typeof ipRepository.create>>> {
@@ -653,6 +653,7 @@ async function resolveImportedIp(
 
 async function copyPlainBackupAssetFiles(params: {
   manifestUri: string;
+  managedFiles?: ManagedBackupFileEntry[];
   sourceImage: ExportData['images'][number];
   destinationSpace: PixorySpace;
   destinationIpId: number;
@@ -662,20 +663,25 @@ async function copyPlainBackupAssetFiles(params: {
   thumbnailDestinationUri: string | null;
   coverDestinationUri: string | null;
 }> {
-  const originalSourceUri = resolveBackupRelativeFile(
-    params.manifestUri,
-    'originals',
-    params.sourceImage.ipId,
-    params.sourceImage.internalFilename
-  );
+  const originalSourceUri = resolveManagedImageFile(
+    params.manifestUri, params.managedFiles, params.sourceImage.id, 'asset_original'
+  ) ?? resolveBackupRelativeFile(params.manifestUri, 'originals', params.sourceImage.ipId, params.sourceImage.internalFilename);
   const thumbnailName = params.sourceImage.thumbnailFileUri?.split('/').pop() ?? null;
-  const thumbnailSourceUri = thumbnailName
-    ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, thumbnailName)
-    : null;
+  let thumbnailSourceUri = resolveManagedImageFile(
+    params.manifestUri, params.managedFiles, params.sourceImage.id, 'asset_thumbnail'
+  ) ?? (thumbnailName ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, thumbnailName) : null);
   const coverName = params.sourceImage.coverThumbnailFileUri?.split('/').pop() ?? null;
-  const coverSourceUri = coverName
-    ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, coverName)
-    : null;
+  let coverSourceUri = resolveManagedImageFile(
+    params.manifestUri, params.managedFiles, params.sourceImage.id, 'asset_cover'
+  ) ?? (coverName ? resolveBackupRelativeFile(params.manifestUri, 'thumbnails', params.sourceImage.ipId, coverName) : null);
+  if (thumbnailSourceUri) {
+    const info = await FileSystem.getInfoAsync(thumbnailSourceUri);
+    if (!info.exists || info.isDirectory) thumbnailSourceUri = null;
+  }
+  if (coverSourceUri) {
+    const info = await FileSystem.getInfoAsync(coverSourceUri);
+    if (!info.exists || info.isDirectory) coverSourceUri = null;
+  }
   const originalDestinationDir = `${joinStoragePath(getOriginalsDir(params.destinationSpace), `ip_${params.destinationIpId}`)}/`;
   const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir(params.destinationSpace), `ip_${params.destinationIpId}`)}/`;
   await ensureLocalDirectory(originalDestinationDir);
@@ -709,6 +715,7 @@ export async function importPlainBackupPackage({
   mode,
   packageUri,
   space = 'normal',
+  taskToken,
 }: ImportPlainBackupPackageParams): Promise<ImportPlainBackupPackageResult> {
   if (mode !== 'merge') {
     throw new Error('Plain backup import only supports merge mode.');
@@ -722,8 +729,14 @@ export async function importPlainBackupPackage({
   const stagedDestinationUris: string[] = [];
   let importedIpCount = 0;
   let importedImageCount = 0;
+  let restoredAiRecordCount = 0;
+  let preservedAiRecordCount = 0;
+  let remappedAiLogicalIdCount = 0;
+  let restoredManagedFileCount = 0;
+  let missingOptionalFileCount = 0;
 
   try {
+    assertPersonalTaskActive(taskToken);
     if (!extractedDirectoryUri) {
       if (!packageUri) {
         throw new Error('缺少要导入的备份包。');
@@ -737,7 +750,7 @@ export async function importPlainBackupPackage({
       type?: string;
       space?: PixorySpace;
       exportData?: ExportData;
-    };
+    } & Partial<ManagedBackupManifestV2>;
 
     if (!manifest.exportData || !['full', 'ip', 'personal'].includes(manifest.type ?? '')) {
       throw new Error('这不是标准 Pixory 备份包。');
@@ -745,6 +758,27 @@ export async function importPlainBackupPackage({
 
     if (manifest.space === 'personal' && space !== 'personal') {
       throw new Error('隐私备份不能导入普通空间。');
+    }
+
+    const backupDir = getBackupDirectoryFromManifest(manifestUri);
+    let stagedManagedAi: Awaited<ReturnType<typeof stageManagedAiFiles>> | null = null;
+    if (manifest.manifestVersion === 2) {
+      const validation = await validateManagedBackupManifestV2({
+        assertActive: () => assertPersonalTaskActive(taskToken),
+        backupDir,
+        expectedSpace: space,
+        manifest: manifest as ManagedBackupManifestV2,
+      });
+      missingOptionalFileCount = validation.missingOptional.length;
+      assertPersonalTaskActive(taskToken);
+      stagedManagedAi = await stageManagedAiFiles({
+        assertActive: () => assertPersonalTaskActive(taskToken),
+        backupDir,
+        manifest: manifest as ManagedBackupManifestV2,
+        space,
+      });
+      restoredManagedFileCount = stagedManagedAi.uriByLogicalId.size;
+      stagedDestinationUris.push(...stagedManagedAi.stagedDestinationUris);
     }
 
     await runWithDatabaseSpace(space, async (db) => db.withTransactionAsync(async () => {
@@ -755,6 +789,7 @@ export async function importPlainBackupPackage({
       const imageIdMap = new Map<number, number>();
 
       for (const ip of exportData?.ips ?? []) {
+        assertPersonalTaskActive(taskToken);
         const resolvedIp = await resolveImportedIp(db, ip, ipNameConflictStrategy);
         ipIdMap.set(ip.id, resolvedIp.ipId);
         if (resolvedIp.created) {
@@ -763,6 +798,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const group of exportData?.groups ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(group.ipId);
         if (!nextIpId) continue;
         const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
@@ -778,6 +814,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const batch of exportData?.importBatches ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(batch.ipId);
         if (!nextIpId) continue;
         const createdBatch = await importBatchRepository.create(db, {
@@ -790,6 +827,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const image of exportData?.images ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(image.ipId);
         if (!nextIpId) continue;
         const groupIds = image.groupIds
@@ -801,8 +839,10 @@ export async function importPlainBackupPackage({
           destinationSpace: space,
           internalFilename: nextInternalFilename,
           manifestUri,
+          managedFiles: manifest.files,
           sourceImage: image,
         });
+        assertPersonalTaskActive(taskToken);
         stagedDestinationUris.push(
           copied.originalDestinationUri,
           ...(copied.thumbnailDestinationUri ? [copied.thumbnailDestinationUri] : []),
@@ -843,6 +883,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const ip of exportData?.ips ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(ip.id);
         if (!nextIpId) continue;
         await ipRepository.update(db, nextIpId, {
@@ -853,6 +894,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const group of exportData?.groups ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextGroupId = groupIdMap.get(group.id);
         if (!nextGroupId) continue;
         await groupRepository.update(db, nextGroupId, {
@@ -861,9 +903,11 @@ export async function importPlainBackupPackage({
       }
 
       for (const batch of exportData?.importBatches ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextBatchId = importBatchIdMap.get(batch.id);
         if (!nextBatchId) continue;
         for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
+          assertPersonalTaskActive(taskToken);
           await importBatchRepository.createItem(db, {
             importBatchId: nextBatchId,
             sourcePath: item.sourcePath,
@@ -875,9 +919,32 @@ export async function importPlainBackupPackage({
         }
         await importBatchRepository.complete(db, nextBatchId, batch.successCount, batch.failedCount);
       }
+
+      if (manifest.type !== 'ip' && manifest.manifestVersion === 2 && stagedManagedAi) {
+        const mergeReport = await mergeManagedDatabaseRecords({
+          assertActive: () => assertPersonalTaskActive(taskToken),
+          sourceDatabaseUri: resolveManagedBackupPath(backupDir, manifest.databaseRelativePath ?? ''),
+          targetDb: db,
+          space,
+          ipIdMap,
+          imageIdMap,
+          uriByLogicalId: stagedManagedAi.uriByLogicalId,
+        });
+        restoredAiRecordCount = mergeReport.insertedRecords;
+        preservedAiRecordCount = mergeReport.preservedRecords;
+        remappedAiLogicalIdCount = mergeReport.remappedLogicalIds;
+      }
     }));
 
-    return { importedIpCount, importedImageCount };
+    return {
+      importedIpCount,
+      importedImageCount,
+      restoredAiRecordCount,
+      preservedAiRecordCount,
+      remappedAiLogicalIdCount,
+      restoredManagedFileCount,
+      missingOptionalFileCount,
+    };
   } catch (error) {
     await Promise.allSettled([...new Set(stagedDestinationUris)].map((uri) => deleteLocalFile(uri)));
     throw error;
@@ -904,187 +971,19 @@ export async function importEncryptedPersonalPack({
   const createdAt = new Date().toISOString();
   const tempDir = `${joinStoragePath(getTempDir('personal'), `encrypted_import_${timestampForPath(createdAt)}`)}/`;
   const copiedPackUri = joinStoragePath(tempDir, 'source.pixorypack');
-  let importedIpCount = 0;
-  let importedImageCount = 0;
-  const stagedDestinationUris: string[] = [];
-
   try {
     await ensureLocalDirectory(tempDir);
     await copyLocalFile(packageUri, copiedPackUri);
     assertPersonalTaskActive(taskToken);
     await unzipWithPassword(copiedPackUri, tempDir, secret);
-    const manifestUri = await findManifestUri(tempDir);
-    const manifest = JSON.parse(await FileSystem.readAsStringAsync(manifestUri, { encoding: FileSystem.EncodingType.UTF8 })) as {
-      type?: string;
-      space?: PixorySpace;
-      exportData?: ExportData;
-    };
-
-    if (!manifest.exportData || (manifest.space !== 'personal' && manifest.type !== 'personal')) {
-      throw new Error('只能在 Personal System 内合并导入 personal 加密包。');
-    }
-
-    await runWithDatabaseSpace('personal', async (db) => db.withTransactionAsync(async () => {
-      assertPersonalTaskActive(taskToken);
-      const exportData = manifest.exportData;
-      const ipIdMap = new Map<number, number>();
-      const groupIdMap = new Map<number, number>();
-      const importBatchIdMap = new Map<number, number>();
-      const imageIdMap = new Map<number, number>();
-
-      for (const ip of exportData?.ips ?? []) {
-        assertPersonalTaskActive(taskToken);
-        const resolvedIp = await resolveImportedIp(db, ip, ipNameConflictStrategy);
-        ipIdMap.set(ip.id, resolvedIp.ipId);
-        if (resolvedIp.created) {
-          importedIpCount += 1;
-        }
-      }
-
-      for (const group of exportData?.groups ?? []) {
-        const nextIpId = ipIdMap.get(group.ipId);
-        if (!nextIpId) {
-          continue;
-        }
-        const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
-        const resolvedGroup = existingGroup ?? (await groupRepository.create(db, {
-          ipId: nextIpId,
-          name: group.name,
-          type: group.type,
-          sortOrder: group.sortOrder,
-          isPinned: group.isPinned,
-          description: group.description,
-        }));
-        groupIdMap.set(group.id, resolvedGroup.id);
-      }
-
-      for (const batch of exportData?.importBatches ?? []) {
-        const nextIpId = ipIdMap.get(batch.ipId);
-        if (!nextIpId) {
-          continue;
-        }
-        const createdBatch = await importBatchRepository.create(db, {
-          ipId: nextIpId,
-          name: batch.name,
-          templateKey: batch.templateKey,
-          totalCount: batch.totalCount,
-        });
-        importBatchIdMap.set(batch.id, createdBatch.id);
-      }
-
-      for (const image of exportData?.images ?? []) {
-        assertPersonalTaskActive(taskToken);
-        const nextIpId = ipIdMap.get(image.ipId);
-        if (!nextIpId) {
-          continue;
-        }
-        const nextImportBatchId =
-          image.importBatchId != null ? importBatchIdMap.get(image.importBatchId) ?? null : null;
-        const groupIds = image.groupIds
-          .map((groupId) => groupIdMap.get(groupId))
-          .filter((groupId): groupId is number => groupId != null);
-        const nextInternalFilename = generateInternalFilename(image.originalFilename);
-        const originalSourceUri = resolveBackupRelativeFile(manifestUri, 'originals', image.ipId, image.internalFilename);
-        const thumbnailName = image.thumbnailFileUri?.split('/').pop() ?? null;
-        const thumbnailSourceUri = thumbnailName ? resolveBackupRelativeFile(manifestUri, 'thumbnails', image.ipId, thumbnailName) : null;
-        const originalDestinationDir = `${joinStoragePath(getOriginalsDir('personal'), `ip_${nextIpId}`)}/`;
-        const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir('personal'), `ip_${nextIpId}`)}/`;
-        await ensureLocalDirectory(originalDestinationDir);
-        await ensureLocalDirectory(thumbnailDestinationDir);
-        const originalDestinationUri = joinStoragePath(originalDestinationDir, nextInternalFilename);
-        await copyLocalFile(originalSourceUri, originalDestinationUri);
-        stagedDestinationUris.push(originalDestinationUri);
-        const thumbnailDestinationUri = thumbnailSourceUri && thumbnailName ? joinStoragePath(thumbnailDestinationDir, thumbnailName) : null;
-        if (thumbnailSourceUri && thumbnailDestinationUri) {
-          await copyLocalFile(thumbnailSourceUri, thumbnailDestinationUri);
-          stagedDestinationUris.push(thumbnailDestinationUri);
-        }
-        const coverName = image.coverThumbnailFileUri?.split('/').pop() ?? null;
-        const coverSourceUri = coverName ? resolveBackupRelativeFile(manifestUri, 'thumbnails', image.ipId, coverName) : null;
-        const coverDestinationUri = coverSourceUri && coverName ? joinStoragePath(thumbnailDestinationDir, coverName) : null;
-        if (coverSourceUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
-          await copyLocalFile(coverSourceUri, coverDestinationUri);
-          stagedDestinationUris.push(coverDestinationUri);
-        }
-
-        const createdImage = await imageRepository.create(db, {
-          mediaType: image.mediaType ?? 'image',
-          ipId: nextIpId,
-          importBatchId: nextImportBatchId,
-          groupId: groupIds[0] ?? null,
-          groupIds,
-          originalFileUri: originalDestinationUri,
-          thumbnailFileUri: thumbnailDestinationUri,
-          coverThumbnailFileUri: coverDestinationUri ?? thumbnailDestinationUri,
-          originalFilename: image.originalFilename,
-          internalFilename: nextInternalFilename,
-          width: image.width,
-          height: image.height,
-          durationMs: image.durationMs ?? null,
-          mimeType: image.mimeType,
-          fileSize: image.fileSize,
-          isFavorite: image.isFavorite,
-          note: image.note,
-          previewStatus: image.previewStatus ?? 'ready',
-          contentHash: image.contentHash,
-          visualHash: image.visualHash,
-        });
-        imageIdMap.set(image.id, createdImage.id);
-        const tagIds = [];
-        for (const tagName of image.tagNames) {
-          const existingTag = await tagRepository.findByName(db, tagName);
-          const tag = existingTag ?? (await tagRepository.create(db, { name: tagName }));
-          tagIds.push(tag.id);
-        }
-        await tagRepository.replaceImageTags(db, createdImage.id, tagIds);
-        importedImageCount += 1;
-      }
-
-      for (const ip of exportData?.ips ?? []) {
-        const nextIpId = ipIdMap.get(ip.id);
-        if (!nextIpId) {
-          continue;
-        }
-        await ipRepository.update(db, nextIpId, {
-          coverImageAssetId: ip.coverImageAssetId != null ? imageIdMap.get(ip.coverImageAssetId) ?? null : null,
-          coverBlurEnabled: ip.coverBlurEnabled,
-          coverBlurRadius: ip.coverBlurRadius,
-        });
-      }
-
-      for (const group of exportData?.groups ?? []) {
-        const nextGroupId = groupIdMap.get(group.id);
-        if (!nextGroupId) {
-          continue;
-        }
-        await groupRepository.update(db, nextGroupId, {
-          coverImageAssetId: group.coverImageAssetId != null ? imageIdMap.get(group.coverImageAssetId) ?? null : null,
-        });
-      }
-
-      for (const batch of exportData?.importBatches ?? []) {
-        const nextBatchId = importBatchIdMap.get(batch.id);
-        if (!nextBatchId) {
-          continue;
-        }
-        for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
-          await importBatchRepository.createItem(db, {
-            importBatchId: nextBatchId,
-            sourcePath: item.sourcePath,
-            originalFilename: item.originalFilename,
-            status: item.status,
-            imageAssetId: item.imageAssetId != null ? imageIdMap.get(item.imageAssetId) ?? null : null,
-            reason: item.reason,
-          });
-        }
-        await importBatchRepository.complete(db, nextBatchId, batch.successCount, batch.failedCount);
-      }
-    }));
-
-    return { importedIpCount, importedImageCount };
-  } catch (error) {
-    await Promise.allSettled(stagedDestinationUris.map((uri) => deleteLocalFile(uri)));
-    throw error;
+    assertPersonalTaskActive(taskToken);
+    return await importPlainBackupPackage({
+      extractedDirectoryUri: tempDir,
+      ipNameConflictStrategy,
+      mode: 'merge',
+      space: 'personal',
+      taskToken,
+    });
   } finally {
     await deleteLocalFile(tempDir);
   }

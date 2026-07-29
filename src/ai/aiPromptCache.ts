@@ -14,6 +14,10 @@ export type AiPromptLayerName =
   | 'stable_tool_definitions'
   | 'memory_snapshot'
   | 'history_window'
+  | 'companion_runtime'
+  | 'temporal_open_loops'
+  | 'summary_bridge'
+  | 'user_observation'
   | 'dynamic_memory'
   | 'retrieval_context'
   | 'current_user_message';
@@ -23,6 +27,28 @@ export interface AiPromptBlock {
   text: string;
   stable: boolean;
   version: number;
+}
+
+export type AiDynamicContextSegmentType =
+  | 'companion_runtime'
+  | 'temporal_open_loops'
+  | 'summary_bridge'
+  | 'user_observation';
+
+export interface AiDynamicContextSegment {
+  id: string;
+  type: AiDynamicContextSegmentType;
+  source: string;
+  scope: string;
+  branchRouteHash: string;
+  trust: 'source' | 'confirmed' | 'derived' | 'uncertain';
+  priority: number;
+  tokenEstimate: number;
+  version: number;
+  privacy: PixorySpace;
+  expiresAt: string | null;
+  traceOnly: boolean;
+  text: string;
 }
 
 export interface AiPromptCacheMetadata {

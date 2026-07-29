@@ -23,7 +23,7 @@ import {
 } from '../services/backupService';
 import { formatDateTime, formatFileSize } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
-import type { PersonalTaskToken } from '../services/personalTaskToken';
+import { trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
 
 interface BackupScreenProps {
   space?: PixorySpace;
@@ -120,7 +120,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
 
     setIsBackingUp(true);
     try {
-      const result = await task();
+      const result = await trackPersonalTask(taskToken, task());
       setLastEncryptedPack(result);
       setLastBackup(null);
       showToast(successMessage);
@@ -147,13 +147,19 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
         return;
       }
       setIsBackingUp(true);
-      const result = await importEncryptedPersonalPack({
+      const result = await trackPersonalTask(taskToken, importEncryptedPersonalPack({
         packageUri: pickResult.assets[0].uri,
         secret: personalSecret,
         mode: 'merge',
         taskToken,
-      });
-      showToast(`已合并导入 ${result.importedIpCount} 个 IP，${result.importedImageCount} 张图片`);
+      }));
+      const optionalNotice = result.missingOptionalFileCount > 0
+        ? `，${result.missingOptionalFileCount} 个可选预览缺失`
+        : '';
+      showToast(
+        `已导入 ${result.importedIpCount} 个 IP、${result.importedImageCount} 个素材、` +
+        `${result.restoredManagedFileCount} 个 AI 文件和 ${result.restoredAiRecordCount} 条 AI 数据${result.remappedAiLogicalIdCount > 0 ? `，安全改写 ${result.remappedAiLogicalIdCount} 个冲突标识` : ''}${optionalNotice}`
+      );
       reload();
     } catch (error) {
       showToast(error instanceof Error ? `加密包导入失败：${error.message}` : '加密包导入失败');

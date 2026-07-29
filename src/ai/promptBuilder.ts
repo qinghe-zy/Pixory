@@ -4,6 +4,8 @@ import {
   AI_PROMPT_LAYER_VERSIONS,
   buildPromptCacheMetadata,
   type AiChatMode,
+  type AiDynamicContextSegment,
+  type AiDynamicContextSegmentType,
   type AiPromptBlock,
   type AiPromptCacheMetadata,
 } from './aiPromptCache';
@@ -235,6 +237,30 @@ function joinBlocks(blocks: Array<{ text: string }>): string {
   return blocks.map((item) => item.text).filter(Boolean).join('\n\n');
 }
 
+function compileDynamicSegments(
+  segments: AiDynamicContextSegment[] | undefined,
+  type: AiDynamicContextSegmentType,
+): string {
+  return (segments ?? [])
+    .filter((segment) => segment.type === type && !segment.traceOnly && segment.text.trim())
+    .slice()
+    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))
+    .map((segment) => segment.text.trim())
+    .join('\n\n');
+}
+
+function compileUserObservation(input: {
+  companionMemoryPrefix?: string | null;
+  userProfile?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
+}): string {
+  return [
+    input.companionMemoryPrefix,
+    input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
+    compileDynamicSegments(input.dynamicSegments, 'user_observation'),
+  ].filter(Boolean).join('\n\n');
+}
+
 function buildNextReplyNudge(input: {
   hasMaterialContext: boolean;
   postHistoryInstruction?: string | null;
@@ -257,14 +283,30 @@ function buildNextReplyNudge(input: {
   return lines.join('\n');
 }
 
+function buildCitationMaterialSection(title: string, snippets?: Array<{ refId: string; label: string; text: string }>): string {
+  if (!snippets?.length) return '';
+  return [
+    title,
+    '只有回答中的句子确实依据某个片段时，才在该句末尾紧跟隐藏标记 [[cite:S1]]；未使用的片段不要标记，不要输出不存在的引用 ID。',
+    ...snippets.map((snippet) => `[${snippet.refId}] ${snippet.label}\n${snippet.text}`),
+  ].join('\n\n');
+}
+
 function promptBlockPriority(name: AiPromptBlock['name']): 'dynamic' | 'protected' | 'required' | 'stable' {
-  if (name === 'current_user_message') {
+  if (name === 'current_user_message' || name === 'summary_bridge') {
     return 'required';
   }
   if (name === 'memory_snapshot') {
     return 'protected';
   }
-  if (name === 'dynamic_memory' || name === 'retrieval_context' || name === 'history_window') {
+  if (
+    name === 'companion_runtime'
+    || name === 'temporal_open_loops'
+    || name === 'user_observation'
+    || name === 'dynamic_memory'
+    || name === 'retrieval_context'
+    || name === 'history_window'
+  ) {
     return 'dynamic';
   }
   return 'stable';
@@ -348,24 +390,22 @@ export function buildNormalChatPrompt(input: {
   stableMemoryPrefix?: string | null;
   userProfile?: string | null;
   summarySegments?: string | null;
+  stableSummarySnapshot?: string | null;
   companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
   roleCardContext?: AiRolePromptContext | null;
   rolePrompt?: string | null;
-  materialSnippets?: Array<{ label: string; text: string }>;
+  materialSnippets?: Array<{ refId: string; label: string; text: string }>;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   const resolvedRoleContext = resolveRolePromptContext(input.roleCardContext);
   const useRoleplayFrame = shouldUseSillyTavernRoleplayFrame(input);
   const baseRolePrompt = stripStructuredSillyTavernSections(input.systemPrompt, input.roleCardContext);
-  const materialSection = input.materialSnippets?.length
-    ? [
-        '当前会话资料：',
-        ...input.materialSnippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
-      ].join('\n\n')
-    : '';
+  const materialSection = buildCitationMaterialSection('当前会话资料：', input.materialSnippets);
   const retrievalContext = [materialSection, input.attachmentPromptContext].filter(Boolean).join('\n\n');
+  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
 
   const stableBlocks = [
     block('stable_app_policy', '', true),
@@ -379,14 +419,16 @@ export function buildNormalChatPrompt(input: {
     block('stable_material_rules', '', true),
     block('stable_tool_definitions', '', true),
     block('memory_snapshot', [
-      input.companionMemoryPrefix,
-      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
-      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
       input.stableMemoryPrefix,
     ].filter(Boolean).join('\n\n'), true),
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
+    block('companion_runtime', compileDynamicSegments(input.dynamicSegments, 'companion_runtime'), false),
+    block('temporal_open_loops', compileDynamicSegments(input.dynamicSegments, 'temporal_open_loops'), false),
+    block('summary_bridge', compileDynamicSegments(input.dynamicSegments, 'summary_bridge'), false),
+    block('user_observation', compileUserObservation(input), false),
     block('dynamic_memory', input.dynamicMemoryContext, false),
     block('retrieval_context', retrievalContext, false),
     block('current_user_message', [
@@ -416,12 +458,14 @@ export function buildMaterialBoundPrompt(input: {
   stableMemoryPrefix?: string | null;
   userProfile?: string | null;
   summarySegments?: string | null;
+  stableSummarySnapshot?: string | null;
   companionMemoryPrefix?: string | null;
   dynamicMemoryContext?: string | null;
+  dynamicSegments?: AiDynamicContextSegment[];
   roleCardContext?: AiRolePromptContext | null;
   materialRules?: string;
   contextSummary: string;
-  snippets: Array<{ label: string; text: string }>;
+  snippets: Array<{ refId: string; label: string; text: string }>;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
@@ -431,10 +475,10 @@ export function buildMaterialBoundPrompt(input: {
   const materialRules = input.materialRules ?? MATERIAL_SESSION_RULES;
   const retrievalContext = [
     input.contextSummary,
-    '可引用资料片段：',
-    ...input.snippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
+    buildCitationMaterialSection('可引用资料片段：', input.snippets),
     input.attachmentPromptContext,
-  ].join('\n\n');
+  ].filter(Boolean).join('\n\n');
+  const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
   const stableBlocks = [
     block('stable_app_policy', '', true),
     block('stable_role', frameRoleInstruction([
@@ -446,14 +490,16 @@ export function buildMaterialBoundPrompt(input: {
     block('stable_material_rules', ['资料规则：', materialRules].join('\n'), true),
     block('stable_tool_definitions', '', true),
     block('memory_snapshot', [
-      input.companionMemoryPrefix,
-      input.userProfile ? `关于这个用户：\n${input.userProfile}\n不要为了展示记忆而主动提旧事。` : '',
-      input.summarySegments ? `过往记忆：\n${input.summarySegments}` : '',
+      stableSummarySnapshot ? `过往记忆：\n${stableSummarySnapshot}` : '',
       input.stableMemoryPrefix,
     ].filter(Boolean).join('\n\n'), true),
   ];
   const dynamicBlocks = [
     block('history_window', '', false),
+    block('companion_runtime', compileDynamicSegments(input.dynamicSegments, 'companion_runtime'), false),
+    block('temporal_open_loops', compileDynamicSegments(input.dynamicSegments, 'temporal_open_loops'), false),
+    block('summary_bridge', compileDynamicSegments(input.dynamicSegments, 'summary_bridge'), false),
+    block('user_observation', compileUserObservation(input), false),
     block('dynamic_memory', input.dynamicMemoryContext, false),
     block('retrieval_context', retrievalContext, false),
     block('current_user_message', [

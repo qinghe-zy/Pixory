@@ -229,6 +229,124 @@ test('post-history role instructions do not change stable prefix hash between tu
   assert.match(first.user, /Answer as the next beat of the scene\./);
 });
 
+test('companion observations and coverage bridges stay dynamic while stable summaries advance the cache frontier', () => {
+  const base = {
+    chatMode: 'roleplay',
+    memoryEpoch: 'thread:t1:summary:1',
+    stableSummarySnapshot: '第一版稳定摘要。',
+    systemPrompt: 'Stay in character.',
+    userMessage: '继续。',
+  };
+  const first = buildNormalChatPrompt({
+    ...base,
+    dynamicSegments: [
+      {
+        id: 'runtime-1',
+        type: 'companion_runtime',
+        source: 'projection',
+        scope: 'thread:t1',
+        branchRouteHash: 'route-a',
+        trust: 'derived',
+        priority: 80,
+        tokenEstimate: 12,
+        version: 1,
+        privacy: 'normal',
+        expiresAt: null,
+        traceOnly: false,
+        text: '关系正在变得更放松。',
+      },
+      {
+        id: 'bridge-1',
+        type: 'summary_bridge',
+        source: 'coverage',
+        scope: 'thread:t1',
+        branchRouteHash: 'route-a',
+        trust: 'source',
+        priority: 100,
+        tokenEstimate: 18,
+        version: 1,
+        privacy: 'normal',
+        expiresAt: null,
+        traceOnly: false,
+        text: '用户：不要忘记月台上的约定。',
+      },
+    ],
+  });
+  const second = buildNormalChatPrompt({
+    ...base,
+    dynamicSegments: [
+      {
+        id: 'runtime-2',
+        type: 'companion_runtime',
+        source: 'projection',
+        scope: 'thread:t1',
+        branchRouteHash: 'route-a',
+        trust: 'derived',
+        priority: 80,
+        tokenEstimate: 12,
+        version: 2,
+        privacy: 'normal',
+        expiresAt: null,
+        traceOnly: false,
+        text: '关系现在略显紧张。',
+      },
+    ],
+  });
+  const advanced = buildNormalChatPrompt({
+    ...base,
+    memoryEpoch: 'thread:t1:summary:2',
+    stableSummarySnapshot: '第二版稳定摘要。',
+  });
+
+  assert.equal(first.cacheMetadata.stablePrefixHash, second.cacheMetadata.stablePrefixHash);
+  assert.notEqual(first.cacheMetadata.stablePrefixHash, advanced.cacheMetadata.stablePrefixHash);
+  assert.match(first.user, /关系正在变得更放松/);
+  assert.match(first.user, /不要忘记月台上的约定/);
+  assert.doesNotMatch(first.system, /关系正在变得更放松|不要忘记月台上的约定/);
+  assert.match(first.system, /第一版稳定摘要/);
+  assert.ok(first.promptLayers.find((layer) => layer.name === 'summary_bridge' && !layer.stable));
+  assert.ok(first.promptLayers.find((layer) => layer.name === 'companion_runtime' && !layer.stable));
+});
+
+test('legacy companion profile content is treated as a dynamic user observation', () => {
+  const base = {
+    chatMode: 'companion',
+    memoryEpoch: 'thread:t1',
+    systemPrompt: 'Be present.',
+    userMessage: '你好。',
+  };
+  const first = buildNormalChatPrompt({ ...base, companionMemoryPrefix: '用户最近有些疲惫。' });
+  const second = buildNormalChatPrompt({ ...base, companionMemoryPrefix: '用户今天精神很好。' });
+  assert.equal(first.cacheMetadata.stablePrefixHash, second.cacheMetadata.stablePrefixHash);
+  assert.match(first.user, /用户最近有些疲惫/);
+  assert.doesNotMatch(first.system, /用户最近有些疲惫/);
+});
+
+test('trace-only dynamic segments are observable metadata but never injected into the prompt', () => {
+  const prompt = buildNormalChatPrompt({
+    chatMode: 'companion',
+    memoryEpoch: 'thread:t1',
+    systemPrompt: 'Be present.',
+    userMessage: '你好。',
+    dynamicSegments: [{
+      id: 'trace-1',
+      type: 'user_observation',
+      source: 'observer',
+      scope: 'thread:t1',
+      branchRouteHash: 'route-a',
+      trust: 'derived',
+      priority: 1,
+      tokenEstimate: 3,
+      version: 1,
+      privacy: 'normal',
+      expiresAt: null,
+      traceOnly: true,
+      text: '绝不能进入提示词的诊断内容。',
+    }],
+  });
+  assert.doesNotMatch(`${prompt.system}\n${prompt.user}`, /绝不能进入提示词/);
+});
+
 test('SillyTavern roleplay frame is not injected into non-roleplay prompts without role cards', () => {
   const prompt = buildNormalChatPrompt({
     chatMode: 'companion',

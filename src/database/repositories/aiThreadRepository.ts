@@ -223,6 +223,12 @@ export interface AiThreadSummarySegmentRecord {
   endAt: string | null;
   roundCount: number;
   sourceSegmentIdsJson: string;
+  sourceMessageIdsJson: string;
+  branchRouteHash: string;
+  lineageVersion: number;
+  sourceMessageVersionHash: string;
+  quality: 'legacy' | 'local' | 'model' | 'merged';
+  status: 'active' | 'stale';
   continuityImportSessionId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -609,6 +615,14 @@ export interface ReplaceCitationInput {
   sourceId: string;
   label: string;
   locator?: Record<string, unknown>;
+  refId?: string | null;
+  claimStart?: number | null;
+  claimEnd?: number | null;
+  sourceExcerptHash?: string | null;
+  documentVersion?: string | null;
+  validationStatus?: 'valid' | 'invalid';
+  validationReason?: string | null;
+  usedAt?: string | null;
 }
 
 export interface AiThreadExportSnapshot {
@@ -627,6 +641,41 @@ export interface AiThreadExportSnapshot {
   continuityImportSessions: AiContinuityImportSessionRecord[];
   continuityImportBlocks: AiContinuityImportBlockRecord[];
   userProfile: AiUserProfileRecord | null;
+  companionEvents?: CompanionSnapshotRow[];
+  companionTemporalAnchors?: CompanionSnapshotRow[];
+  companionOpenLoops?: CompanionSnapshotRow[];
+  companionRuntimeJobs?: CompanionSnapshotRow[];
+  companionContextTraces?: CompanionSnapshotRow[];
+  companionProjectionSnapshots?: CompanionSnapshotRow[];
+  companionAffectiveObservations?: CompanionSnapshotRow[];
+  companionRepairs?: CompanionSnapshotRow[];
+  companionDreamScenes?: CompanionSnapshotRow[];
+  companionDreamSeeds?: CompanionSnapshotRow[];
+  companionDreamJobs?: CompanionSnapshotRow[];
+  companionDreams?: CompanionSnapshotRow[];
+  companionRoleRoundReceipts?: CompanionSnapshotRow[];
+  companionThoughtEvents?: CompanionSnapshotRow[];
+  companionThoughtJobs?: CompanionSnapshotRow[];
+  companionThoughts?: CompanionSnapshotRow[];
+  generationJobs?: CompanionSnapshotRow[];
+  generationEvents?: CompanionSnapshotRow[];
+}
+
+type CompanionSnapshotRow = Record<string, string | number | null>;
+
+async function insertCompanionSnapshotRow(
+  db: SQLiteDatabase,
+  table: string,
+  row: CompanionSnapshotRow,
+  overrides: CompanionSnapshotRow = {},
+  conflict: 'error' | 'ignore' = 'error',
+): Promise<void> {
+  const imported = { ...row, ...overrides };
+  const columns = Object.keys(imported);
+  await db.runAsync(
+    `INSERT${conflict === 'ignore' ? ' OR IGNORE' : ''} INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    ...columns.map((column) => imported[column]),
+  );
 }
 
 function validateUserProfileScope(input: { boundIpId?: number | null; boundThreadId?: string | null }): void {
@@ -712,6 +761,14 @@ function mapCitationRow(row: AiCitationRow): AiCitationRecord {
     sourceId: row.sourceId,
     label: row.label,
     locator,
+    refId: row.refId ?? null,
+    claimStart: row.claimStart ?? null,
+    claimEnd: row.claimEnd ?? null,
+    sourceExcerptHash: row.sourceExcerptHash ?? null,
+    documentVersion: row.documentVersion ?? null,
+    validationStatus: row.validationStatus ?? 'valid',
+    validationReason: row.validationReason ?? null,
+    usedAt: row.usedAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -1490,6 +1547,86 @@ export const aiThreadRepository = {
        ORDER BY createdAt ASC, id ASC`,
       threadId
     );
+    const companionEvents = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_events WHERE threadId = ? ORDER BY eventSequence ASC, id ASC',
+      threadId
+    );
+    const companionTemporalAnchors = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_temporal_anchors WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionOpenLoops = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_open_loops WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRuntimeJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_runtime_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionContextTraces = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_context_traces WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionProjectionSnapshots = await db.getAllAsync<CompanionSnapshotRow>(
+      `SELECT * FROM companion_projection_snapshots
+       WHERE (threadId = ? AND scopeType IN ('branch_overlay', 'thread'))
+          OR (scopeType = 'role_base' AND roleCardId = ?)
+       ORDER BY createdAt ASC, id ASC`,
+      threadId,
+      thread.roleCardId ?? '',
+    );
+    const companionAffectiveObservations = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_affective_observations WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRepairs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_repairs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamScenes = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_scenes WHERE threadId = ? ORDER BY openedAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamSeeds = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_seeds WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreams = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dreams WHERE sourceThreadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRoleRoundReceipts = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_role_round_receipts WHERE threadId = ? ORDER BY roundNumber ASC, id ASC',
+      threadId
+    );
+    const companionThoughtEvents = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thought_events WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionThoughtJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thought_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionThoughts = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thoughts WHERE sourceThreadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const generationJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM ai_generation_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const generationEvents = generationJobs.length
+      ? await db.getAllAsync<CompanionSnapshotRow>(
+          `SELECT events.* FROM ai_generation_events events
+           INNER JOIN ai_generation_jobs jobs ON jobs.id = events.jobId
+           WHERE jobs.threadId = ? ORDER BY events.jobId ASC, events.sequence ASC`,
+          threadId
+        )
+      : [];
     const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
       `SELECT ai_continuity_import_blocks.*
        FROM ai_continuity_import_blocks
@@ -1508,9 +1645,27 @@ export const aiThreadRepository = {
       attachments,
       branchRouteMetadata,
       citations,
+      companionContextTraces,
+      companionAffectiveObservations,
+      companionDreamJobs,
+      companionDreamScenes,
+      companionDreamSeeds,
+      companionDreams,
+      companionEvents,
+      companionOpenLoops,
+      companionProjectionSnapshots,
+      companionRepairs,
+      companionRoleRoundReceipts,
+      companionRuntimeJobs,
+      companionTemporalAnchors,
+      companionThoughtEvents,
+      companionThoughtJobs,
+      companionThoughts,
       continuityImportBlocks,
       continuityImportSessions,
       favorites,
+      generationEvents,
+      generationJobs,
       memoryJob,
       memorySettings: memorySettingsRow ? mapMemorySettingsRow(memorySettingsRow) : null,
       messages,
@@ -1694,23 +1849,233 @@ export const aiThreadRepository = {
       await aiThreadRepository.syncMessageFts(db, message);
     }
 
+    for (const job of snapshot.generationJobs ?? []) {
+      const terminal = job.state === 'completed' || job.state === 'failed' || job.state === 'stopped';
+      await insertCompanionSnapshotRow(db, 'ai_generation_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        state: terminal ? job.state : 'recoverable_interrupted',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        remoteOutcomeUnknown: terminal ? job.remoteOutcomeUnknown : 1,
+      });
+    }
+    for (const event of snapshot.generationEvents ?? []) {
+      await insertCompanionSnapshotRow(db, 'ai_generation_events', event);
+    }
+
+    for (const event of snapshot.companionEvents ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_events (
+          id, space, subjectType, subjectId, roleCardId, threadId, branchRootMessageId,
+          branchVersionIndex, branchRouteHash, lineageVersion, sourceMessageId,
+          sourceMessageVersionHash, category, subtype, speechMode, confidence, intensity,
+          sincerity, payloadJson, evidenceSpanJson, extractorVersion, provenanceJson,
+          idempotencyKey, status, eventSequence, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        event.id, targetSpace, event.subjectType, event.subjectId, event.roleCardId ?? null,
+        snapshot.thread.id, event.branchRootMessageId ?? null, event.branchVersionIndex ?? null,
+        event.branchRouteHash, event.lineageVersion, event.sourceMessageId,
+        event.sourceMessageVersionHash, event.category, event.subtype, event.speechMode,
+        event.confidence, event.intensity, event.sincerity, event.payloadJson,
+        event.evidenceSpanJson, event.extractorVersion, event.provenanceJson,
+        event.idempotencyKey, event.status, event.eventSequence, event.createdAt
+      );
+    }
+
+    for (const anchor of snapshot.companionTemporalAnchors ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_temporal_anchors (
+          id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sourceEventId,
+          sourceMessageId, rawText, startAtUtc, endAtUtc, parseTimeZone, localDateKey,
+          precision, anchorType, recurrenceRule, mentionCount, lastMentionedAt, status,
+          confidence, parserVersion, idempotencyKey, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        anchor.id, targetSpace, anchor.roleCardId ?? null, snapshot.thread.id,
+        anchor.branchRouteHash, anchor.lineageVersion, anchor.sourceEventId,
+        anchor.sourceMessageId, anchor.rawText, anchor.startAtUtc ?? null, anchor.endAtUtc ?? null,
+        anchor.parseTimeZone, anchor.localDateKey, anchor.precision, anchor.anchorType,
+        anchor.recurrenceRule ?? null, anchor.mentionCount ?? 0, anchor.lastMentionedAt ?? null,
+        anchor.status, anchor.confidence, anchor.parserVersion,
+        anchor.idempotencyKey, anchor.createdAt, anchor.updatedAt
+      );
+    }
+
+    for (const loop of snapshot.companionOpenLoops ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_open_loops (
+          id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sourceEventId,
+          sourceMessageId, temporalAnchorId, kind, topicText, status, priority,
+          earliestMentionAt, expiresAt, mentionCount, lastMentionedAt, lastMentionedRound,
+          recurrenceRule, resolutionEvidenceMessageId, idempotencyKey, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        loop.id, targetSpace, loop.roleCardId ?? null, snapshot.thread.id, loop.branchRouteHash,
+        loop.lineageVersion, loop.sourceEventId, loop.sourceMessageId,
+        loop.temporalAnchorId ?? null, loop.kind, loop.topicText, loop.status, loop.priority,
+        loop.earliestMentionAt, loop.expiresAt ?? null, loop.mentionCount,
+        loop.lastMentionedAt ?? null, loop.lastMentionedRound ?? null, loop.recurrenceRule ?? null,
+        loop.resolutionEvidenceMessageId ?? null, loop.idempotencyKey, loop.createdAt, loop.updatedAt
+      );
+    }
+
+    for (const job of snapshot.companionRuntimeJobs ?? []) {
+      const importedStatus = job.status === 'running' ? 'retry' : job.status;
+      await db.runAsync(
+        `INSERT INTO companion_runtime_jobs (
+          id, space, threadId, branchRouteHash, lineageVersion, sourceMessageId, jobType,
+          status, payloadJson, idempotencyKey, attemptCount, nextRunAt, leaseOwner,
+          leaseUntil, lastErrorCode, createdAt, updatedAt, completedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+        job.id, targetSpace, snapshot.thread.id, job.branchRouteHash, job.lineageVersion,
+        job.sourceMessageId ?? null, job.jobType, importedStatus, job.payloadJson,
+        job.idempotencyKey, job.attemptCount, job.nextRunAt, job.lastErrorCode ?? null,
+        job.createdAt, job.updatedAt, job.completedAt ?? null
+      );
+    }
+
+    for (const trace of snapshot.companionContextTraces ?? []) {
+      await db.runAsync(
+        `INSERT INTO companion_context_traces (
+          id, space, threadId, sourceMessageId, branchRouteHash, lineageVersion,
+          policyVersion, eventCount, diagnosticCandidateCount, optionalCandidateCount,
+          selectedTopicType, observerDurationMs, compilerDurationMs, reasonCodesJson, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        trace.id, targetSpace, snapshot.thread.id, trace.sourceMessageId ?? null,
+        trace.branchRouteHash, trace.lineageVersion, trace.policyVersion, trace.eventCount,
+        trace.diagnosticCandidateCount, trace.optionalCandidateCount,
+        trace.selectedTopicType ?? null, trace.observerDurationMs, trace.compilerDurationMs,
+        trace.reasonCodesJson, trace.createdAt
+      );
+    }
+
+    for (const projection of snapshot.companionProjectionSnapshots ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_projection_snapshots', projection, {
+        space: targetSpace,
+        threadId: projection.scopeType === 'role_base' ? null : snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      }, 'ignore');
+    }
+
+    for (const observation of snapshot.companionAffectiveObservations ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_affective_observations', observation, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const repair of snapshot.companionRepairs ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_repairs', repair, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const scene of snapshot.companionDreamScenes ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dream_scenes', scene, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const seed of snapshot.companionDreamSeeds ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dream_seeds', seed, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const job of snapshot.companionDreamJobs ?? []) {
+      const importedStatus = job.status === 'running' || job.status === 'waiting_model'
+        ? 'retry'
+        : job.status;
+      await insertCompanionSnapshotRow(db, 'companion_dream_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        status: importedStatus,
+        leaseOwner: null,
+        leaseUntil: null,
+        quotaReserved: importedStatus === 'retry' ? 0 : job.quotaReserved,
+      });
+    }
+
+    for (const dream of snapshot.companionDreams ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dreams', dream, {
+        space: targetSpace,
+        sourceThreadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const receipt of snapshot.companionRoleRoundReceipts ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_role_round_receipts', receipt, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const event of snapshot.companionThoughtEvents ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_thought_events', event, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const job of snapshot.companionThoughtJobs ?? []) {
+      const importedStatus = job.status === 'running' || job.status === 'waiting_model'
+        ? 'retry'
+        : job.status;
+      await insertCompanionSnapshotRow(db, 'companion_thought_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        status: importedStatus,
+        leaseOwner: null,
+        leaseUntil: null,
+        quotaReservedCount: importedStatus === 'retry' ? 0 : job.quotaReservedCount,
+      });
+    }
+
+    for (const thought of snapshot.companionThoughts ?? []) {
+      const resetReservation = thought.deliveryStatus === 'reserved';
+      await insertCompanionSnapshotRow(db, 'companion_thoughts', thought, {
+        space: targetSpace,
+        sourceThreadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        deliveryStatus: resetReservation ? 'pending' : thought.deliveryStatus,
+        reservationId: resetReservation ? null : thought.reservationId,
+        reservationMessageId: resetReservation ? null : thought.reservationMessageId,
+        reservedAt: resetReservation ? null : thought.reservedAt,
+      });
+    }
+
     for (const citation of snapshot.citations) {
       await db.runAsync(
         `INSERT INTO ai_message_citations (
-          id,
-          messageId,
-          sourceType,
-          sourceId,
-          label,
-          locatorJson,
-          createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          id, messageId, sourceType, sourceId, label, locatorJson,
+          refId, claimStart, claimEnd, sourceExcerptHash, documentVersion,
+          validationStatus, validationReason, usedAt, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         citation.id,
         citation.messageId,
         citation.sourceType,
         citation.sourceId,
         citation.label,
         citation.locatorJson,
+        citation.refId ?? null,
+        citation.claimStart ?? null,
+        citation.claimEnd ?? null,
+        citation.sourceExcerptHash ?? null,
+        citation.documentVersion ?? null,
+        citation.validationStatus ?? 'valid',
+        citation.validationReason ?? null,
+        citation.usedAt ?? citation.createdAt,
         citation.createdAt
       );
     }
@@ -1901,8 +2266,9 @@ export const aiThreadRepository = {
         `INSERT INTO ai_thread_summary_segments (
           id, threadId, space, kind, summaryText, startMessageId, endMessageId,
           startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId,
-          createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          sourceMessageIdsJson, branchRouteHash, lineageVersion, sourceMessageVersionHash,
+          quality, status, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         segment.id,
         segment.threadId,
         targetSpace,
@@ -1915,6 +2281,12 @@ export const aiThreadRepository = {
         segment.roundCount,
         segment.sourceSegmentIdsJson,
         segment.continuityImportSessionId,
+        segment.sourceMessageIdsJson ?? '[]',
+        segment.branchRouteHash ?? '',
+        segment.lineageVersion ?? 0,
+        segment.sourceMessageVersionHash ?? '',
+        segment.quality ?? 'legacy',
+        segment.status ?? 'stale',
         segment.createdAt,
         segment.updatedAt
       );
@@ -3497,16 +3869,17 @@ export const aiThreadRepository = {
     return db.getFirstAsync<AiMessageRecord>('SELECT * FROM ai_messages WHERE id = ?', messageId);
   },
 
-  async findMessagesByIds(db: SQLiteDatabase, messageIds: string[]): Promise<AiMessageRecord[]> {
+  async findMessagesByIds(db: SQLiteDatabase, messageIds: string[], branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     if (messageIds.length === 0) {
       return [];
     }
-    return db.getAllAsync<AiMessageRecord>(
+    const rows = await db.getAllAsync<AiMessageRecord>(
       `SELECT * FROM ai_messages
        WHERE id IN (${makeInClause(messageIds)})
        ORDER BY createdAt ASC, rowid ASC`,
       ...messageIds
     );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
   async resolveBranchLineage(
@@ -3652,6 +4025,36 @@ export const aiThreadRepository = {
       threadId,
       ...visibleBranchClause.values,
       limit
+    );
+    return materializeMessagesForBranchScopes(db, rows, branchScopes);
+  },
+
+  async listCompletedNonSystemMessagesBefore(
+    db: SQLiteDatabase,
+    threadId: string,
+    beforeMessageId: string,
+    branchScopes?: AiBranchScope[]
+  ): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('candidate', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
+      `SELECT candidate.*
+       FROM ai_messages target
+       JOIN ai_messages candidate ON candidate.threadId = target.threadId
+       WHERE target.id = ?
+         AND target.threadId = ?
+         AND candidate.status = 'completed'
+         AND candidate.role <> 'system'
+         AND candidate.id <> target.id
+         ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('candidate')}
+         AND (
+           candidate.createdAt < target.createdAt
+           OR (candidate.createdAt = target.createdAt AND candidate.rowid < target.rowid)
+         )
+       ORDER BY candidate.createdAt ASC, candidate.rowid ASC`,
+      beforeMessageId,
+      threadId,
+      ...visibleBranchClause.values
     );
     return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
@@ -4026,20 +4429,24 @@ export const aiThreadRepository = {
     for (const citation of citations) {
       await db.runAsync(
         `INSERT INTO ai_message_citations (
-          id,
-          messageId,
-          sourceType,
-          sourceId,
-          label,
-          locatorJson,
-          createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          id, messageId, sourceType, sourceId, label, locatorJson,
+          refId, claimStart, claimEnd, sourceExcerptHash, documentVersion,
+          validationStatus, validationReason, usedAt, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         citation.id,
         messageId,
         citation.sourceType,
         citation.sourceId,
         citation.label,
         JSON.stringify(citation.locator ?? {}),
+        citation.refId ?? null,
+        citation.claimStart ?? null,
+        citation.claimEnd ?? null,
+        citation.sourceExcerptHash ?? null,
+        citation.documentVersion ?? null,
+        citation.validationStatus ?? 'valid',
+        citation.validationReason ?? null,
+        citation.usedAt ?? now,
         now
       );
     }
@@ -4048,8 +4455,8 @@ export const aiThreadRepository = {
   async listCitations(db: SQLiteDatabase, messageId: string): Promise<AiCitationRecord[]> {
     const rows = await db.getAllAsync<AiCitationRow>(
       `SELECT * FROM ai_message_citations
-       WHERE messageId = ?
-       ORDER BY createdAt ASC`,
+       WHERE messageId = ? AND validationStatus = 'valid'
+       ORDER BY claimStart ASC, createdAt ASC`,
       messageId
     );
     return rows.map(mapCitationRow);
@@ -4065,8 +4472,8 @@ export const aiThreadRepository = {
       rows.push(
         ...(await db.getAllAsync<AiCitationRow>(
           `SELECT * FROM ai_message_citations
-           WHERE messageId IN (${makeInClause(chunk)})
-           ORDER BY messageId ASC, createdAt ASC`,
+           WHERE messageId IN (${makeInClause(chunk)}) AND validationStatus = 'valid'
+           ORDER BY messageId ASC, claimStart ASC, createdAt ASC`,
           ...chunk
         ))
       );
@@ -4181,8 +4588,10 @@ export const aiThreadRepository = {
     await db.runAsync(
       `INSERT INTO ai_thread_summary_segments (
         id, threadId, space, kind, summaryText, startMessageId, endMessageId,
-        startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        startAt, endAt, roundCount, sourceSegmentIdsJson, continuityImportSessionId,
+        sourceMessageIdsJson, branchRouteHash, lineageVersion, sourceMessageVersionHash,
+        quality, status, createdAt, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.id,
       input.threadId,
       input.space,
@@ -4195,6 +4604,12 @@ export const aiThreadRepository = {
       input.roundCount,
       input.sourceSegmentIdsJson,
       input.continuityImportSessionId ?? null,
+      input.sourceMessageIdsJson,
+      input.branchRouteHash,
+      input.lineageVersion,
+      input.sourceMessageVersionHash,
+      input.quality,
+      input.status,
       now,
       now
     );
@@ -4210,6 +4625,7 @@ export const aiThreadRepository = {
     return db.getAllAsync<AiThreadSummarySegmentRecord>(
       `SELECT * FROM ai_thread_summary_segments
        WHERE threadId = ?
+         AND status = 'active'
          AND ${excludeRolledBackContinuityPayload('ai_thread_summary_segments')}
          ${visibilityClause.clause ? `AND ${visibilityClause.clause}` : ''}
        ORDER BY createdAt ASC, id ASC`,

@@ -46,6 +46,7 @@ import {
 } from "../components/ai/AiChatComposer";
 import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
 import { DiaryChatCard } from '../components/ai/DiaryChatCard';
+import { DreamChatCard } from '../components/ai/DreamChatCard';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
@@ -65,7 +66,13 @@ import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailM
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
 import { AppScreen } from "../components/AppScreen";
-import { recognizeSpeech } from "../native/pixoryMediaModule";
+import {
+  addNativeSpeechRecognitionListener,
+  cancelSpeechRecognition,
+  getSpeechRecognitionCapabilities,
+  startSpeechRecognition,
+  stopSpeechRecognition,
+} from "../native/pixoryMediaModule";
 import {
   deleteMemory,
   dismissMemoryCapture,
@@ -178,10 +185,16 @@ import {
   type PixorySpace,
 } from "../database";
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import { scheduleCompanionMaintenance } from '../ai/companion/companionMaintenanceQueue';
 import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/diaryGenerationManager';
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
 import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
 import { beijingDiaryDate, beijingDiaryDayBounds, decideDiaryTrigger } from '../ai/diary/diaryTypes';
+import { dreamRepository, type DreamRecord } from '../ai/dream/dreamRepository';
+import { confirmManualDream } from '../ai/dream/dreamService';
+import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
+import { getLatestDreamRuntimeNotice, loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
+import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import type {
   AiBranchScope,
   AiThreadContinuityMilestoneRecord,
@@ -189,6 +202,7 @@ import type {
 } from "../database/repositories/aiThreadRepository";
 import {
   layout,
+  metrics,
   radius,
   rhythm,
   shadows,
@@ -555,6 +569,11 @@ type VisibleMessageItem =
       type: 'diary';
       id: string;
       diary: RoleDiaryRecord;
+    }
+  | {
+      type: 'dream';
+      id: string;
+      dream: DreamRecord;
     };
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
@@ -701,6 +720,7 @@ interface AiChatScreenProps {
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onOpenDiary: (diaryId: string) => void;
+  onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onOpenSource: (
@@ -735,6 +755,7 @@ export function AiChatScreen({
   onOpenSessionConfig,
   onOpenMemoryBoard,
   onOpenDiary,
+  onOpenDream,
   onNewChat,
   onOpenThread,
   onOpenSource,
@@ -1295,6 +1316,10 @@ export function AiChatScreen({
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const voiceSessionActiveRef = useRef(false);
+  const voiceCancelledRef = useRef(false);
+  const voiceSessionTokenRef = useRef(0);
+  const voiceStopRequestedRef = useRef(false);
   const thinkingExpandedByMessageIdRef = useRef(new Map<string, boolean>());
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
   const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
@@ -1313,6 +1338,8 @@ export function AiChatScreen({
   );
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
+  const [roleDreams, setRoleDreams] = useState<DreamRecord[]>([]);
+  const [dreamNotice, setDreamNotice] = useState<DreamRuntimeNotice | null>(null);
   const [diaryManualHint, setDiaryManualHint] = useState(false);
   const [diaryCommandHint, setDiaryCommandHint] = useState(false);
   const [diaryGenerationStatus, setDiaryGenerationStatus] = useState<
@@ -1778,6 +1805,7 @@ export function AiChatScreen({
   >([]);
   const [voiceState, setVoiceState] = useState<AiVoiceInputState>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'on_device' | 'system' | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [composerPanelHeight, setComposerPanelHeight] = useState(0);
   const [composerShellHeight, setComposerShellHeight] = useState(0);
@@ -1825,11 +1853,58 @@ export function AiChatScreen({
     }
   }, [space]);
 
+  const reloadRoleDreams = useCallback(async () => {
+    const targetThreadId = activeThreadIdRef.current;
+    if (!targetThreadId) { setRoleDreams([]); return; }
+    const dreams = await runWithDatabaseSpace(space, async (db) => {
+      const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+      if (!thread?.roleCardId) return [];
+      const scopes = persistedCurrentBranchScopes.length > 0 ? persistedCurrentBranchScopes : activeMessageBranchScopesRef.current ?? [];
+      const route = hashBranchRoute(scopes);
+      return (await dreamRepository.listForRole(db, thread.roleCardId)).filter(dream => dream.sourceThreadId === targetThreadId && dream.sourceBranchRouteHash === route && dream.lineageVersion === (thread.lineageVersion ?? 0));
+    });
+    if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) setRoleDreams(dreams);
+  }, [persistedCurrentBranchScopes, space]);
+
+  useEffect(() => {
+    let disposed = false;
+    const targetThreadId = activeThreadIdRef.current;
+    const branchScopes = persistedCurrentBranchScopes.length > 0
+      ? persistedCurrentBranchScopes
+      : activeMessageBranchScopesRef.current ?? [];
+    if (targetThreadId) {
+      void runWithDatabaseSpace(space, async (db) => {
+        const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
+        if (!thread) return null;
+        return loadDreamRuntimeNotice(db, {
+          branchRouteHash: hashBranchRoute(branchScopes),
+          lineageVersion: thread.lineageVersion ?? 0,
+          threadId: targetThreadId,
+        });
+      }).then((notice) => {
+        if (!disposed && targetThreadId === activeThreadIdRef.current) {
+          setDreamNotice(notice ?? getLatestDreamRuntimeNotice(targetThreadId));
+        }
+      }).catch(() => {
+        if (!disposed) setDreamNotice(getLatestDreamRuntimeNotice(targetThreadId));
+      });
+    } else {
+      setDreamNotice(null);
+    }
+    const unsubscribe = subscribeDreamRuntimeNotices((notice) => {
+      if (notice.threadId !== activeThreadIdRef.current) return;
+      setDreamNotice(notice);
+      if (notice.type === 'completed') void reloadRoleDreams();
+    });
+    return () => { disposed = true; unsubscribe(); };
+  }, [activeThreadId, persistedCurrentBranchScopes, reloadRoleDreams, space]);
+
   useEffect(() => {
     if (!thinking && !isInitialMessageLoading) {
       void reloadRoleDiaries();
+      void reloadRoleDreams();
     }
-  }, [activeThreadId, isInitialMessageLoading, reloadRoleDiaries, thinking]);
+  }, [activeThreadId, isInitialMessageLoading, reloadRoleDiaries, reloadRoleDreams, thinking]);
 
   const evaluateDiaryTrigger = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
@@ -1837,6 +1912,7 @@ export function AiChatScreen({
       return;
     }
     return runDiaryTaskInBackground({
+      space,
       taskKey: `${space}:diary-trigger:${targetThreadId}`,
       task: async () => {
         const branchScopes = persistedCurrentBranchScopes.length > 0
@@ -1915,6 +1991,7 @@ export function AiChatScreen({
       return;
     }
     const task = runDiaryTaskInBackground({
+      space,
       taskKey: `${space}:manual-diary:${targetThreadId}`,
       task: async () => {
       setDiaryGenerationStatus('generating');
@@ -1973,6 +2050,8 @@ export function AiChatScreen({
 
   useEffect(() => {
     setRoleDiaries([]);
+    setRoleDreams([]);
+    setDreamNotice(null);
     setDiaryManualHint(false);
     setDiaryCommandHint(false);
     setDiaryGenerationStatus(null);
@@ -2152,8 +2231,15 @@ export function AiChatScreen({
     const visibleDiariesByDate = new Map(
       thinking ? [] : roleDiaries.map((diary) => [diary.diaryDate, diary] as const),
     );
+    const visibleDreamsByDate = new Map<string, DreamRecord[]>();
+    if (!thinking) roleDreams.forEach((dream) => {
+      const dateKey = beijingDiaryDate(new Date(dream.displayAt));
+      const entries = visibleDreamsByDate.get(dateKey) ?? [];
+      entries.push(dream);
+      visibleDreamsByDate.set(dateKey, entries);
+    });
     const calendarDates = Array.from(
-      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys()]),
+      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys(), ...visibleDreamsByDate.keys()]),
     ).sort();
     const nextVisibleMessageItems: VisibleMessageItem[] = [];
     let previousMessage: AiMessageWithCitations | undefined;
@@ -2193,6 +2279,9 @@ export function AiChatScreen({
           id: `diary-${diary.id}`,
           diary,
         });
+      }
+      for (const dream of visibleDreamsByDate.get(dateKey) ?? []) {
+        nextVisibleMessageItems.push({ type: 'dream', id: `dream-${dream.id}`, dream });
       }
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
@@ -2290,6 +2379,7 @@ export function AiChatScreen({
     singleBubbleTailReplayEnabled,
     streamingTailVersion,
     roleDiaries,
+    roleDreams,
     thinking,
   ]);
   const {
@@ -4594,19 +4684,63 @@ export function AiChatScreen({
   }, [hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages]);
 
   useEffect(() => {
+    const subscription = addNativeSpeechRecognitionListener((event) => {
+      if (event.type === 'ready' && voiceSessionActiveRef.current) {
+        setVoiceState('listening');
+        return;
+      }
+      if (event.type === 'end' && voiceSessionActiveRef.current) {
+        setVoiceState('recognizing');
+        return;
+      }
+      if (event.type === 'result') {
+        const recognizedText = event.text?.trim() ?? '';
+        if (voiceSessionActiveRef.current && !voiceCancelledRef.current && recognizedText) {
+          setComposerText((current) => !current.trim()
+            ? recognizedText
+            : `${current}${current.endsWith("\n") ? "" : "\n"}${recognizedText}`);
+          setErrorMessage(null);
+        }
+        voiceSessionActiveRef.current = false;
+        setVoiceState('idle');
+        return;
+      }
+      if (event.type === 'error') {
+        voiceSessionActiveRef.current = false;
+        const message = event.message ?? '语音识别失败。';
+        setVoiceState('error');
+        setVoiceError(message);
+        setErrorMessage(message);
+        return;
+      }
+      if (event.type === 'cancelled') {
+        voiceSessionActiveRef.current = false;
+        setVoiceState('cancelled');
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     // prettier-ignore
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
       if (state === 'active') {
         void reconcileDueDiaryJobsRef.current().catch(() => undefined);
+        scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
       if (state !== 'active') {
+        voiceSessionActiveRef.current = false;
+        voiceCancelledRef.current = true;
+        void cancelSpeechRecognition().catch(() => undefined);
         void flushActiveStreamingSnapshot();
+        scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
     });
     return () => {
       screenMountedRef.current = false;
       void flushActiveStreamingSnapshot();
+      scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       subscription.remove();
       clearComposerFocusVisibilityTimeouts();
       clearLatestJumpTimeouts();
@@ -4620,6 +4754,9 @@ export function AiChatScreen({
       clearActiveStreamingIdentity();
       activeStreamGenerationRef.current += 1;
       clearVoiceResetTimeout();
+      voiceSessionActiveRef.current = false;
+      voiceCancelledRef.current = true;
+      void cancelSpeechRecognition().catch(() => undefined);
       if (newChatFeedbackTimeoutRef.current) {
         clearTimeout(newChatFeedbackTimeoutRef.current);
         newChatFeedbackTimeoutRef.current = null;
@@ -5341,6 +5478,12 @@ export function AiChatScreen({
   ]);
 
   async function handleSend() {
+    if (voiceSessionActiveRef.current) {
+      voiceCancelledRef.current = true;
+      voiceSessionActiveRef.current = false;
+      await cancelSpeechRecognition().catch(() => false);
+      setVoiceState('idle');
+    }
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
     const diaryCommandRequested = isDiaryCreationRequest(typedText);
@@ -5880,40 +6023,46 @@ export function AiChatScreen({
     setEditingUserMessageId(null);
   }
 
-  async function handleVoiceInput() {
+  async function handleVoiceStart() {
+    if (voiceSessionActiveRef.current || generating) return;
+    const sessionToken = voiceSessionTokenRef.current + 1;
+    voiceSessionTokenRef.current = sessionToken;
+    voiceSessionActiveRef.current = true;
+    voiceCancelledRef.current = false;
+    voiceStopRequestedRef.current = false;
     try {
       clearVoiceResetTimeout();
-      setVoiceState("listening");
       setVoiceError(null);
       if (Platform.OS === "android") {
         const permission = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         );
         if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          const message = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+            ? "麦克风权限已被永久拒绝，请到系统设置中为 Pixory 开启。"
+            : "需要麦克风权限才能进行语音输入。";
           setVoiceState("error");
-          setVoiceError("需要麦克风权限才能进行语音输入。");
-          setErrorMessage("需要麦克风权限才能进行语音输入。");
+          setVoiceError(message);
+          setErrorMessage(message);
+          voiceSessionActiveRef.current = false;
           return;
         }
       }
-      setVoiceState("recognizing");
-      const result = await recognizeSpeech();
-      const recognizedText = result.text.trim();
-      if (!recognizedText) {
-        setVoiceState("error");
-        setVoiceError("没有识别到语音内容。");
-        setErrorMessage("没有识别到语音内容。");
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
+      const capabilities = await getSpeechRecognitionCapabilities();
+      if (!capabilities.available) throw new Error('当前设备没有可用的系统语音识别服务。');
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
+      setVoiceMode(capabilities.onDeviceAvailable ? 'on_device' : 'system');
+      setVoiceState("listening");
+      const started = await startSpeechRecognition();
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) {
+        await cancelSpeechRecognition().catch(() => false);
         return;
       }
-      setComposerText((current) => {
-        if (!current.trim()) {
-          return recognizedText;
-        }
-        return `${current}${current.endsWith("\n") ? "" : "\n"}${recognizedText}`;
-      });
-      setVoiceState("idle");
-      setErrorMessage(null);
+      setVoiceMode(started.onDevice ? 'on_device' : 'system');
+      if (voiceStopRequestedRef.current) await stopSpeechRecognition();
     } catch (error) {
+      voiceSessionActiveRef.current = false;
       const message = error instanceof Error ? error.message : "语音识别失败";
       setVoiceState("error");
       setVoiceError(message);
@@ -5921,7 +6070,33 @@ export function AiChatScreen({
     }
   }
 
+  async function handleVoiceStop() {
+    if (!voiceSessionActiveRef.current) return;
+    voiceStopRequestedRef.current = true;
+    setVoiceState('recognizing');
+    try {
+      await stopSpeechRecognition();
+    } catch (error) {
+      voiceSessionActiveRef.current = false;
+      const message = error instanceof Error ? error.message : '语音识别结束失败。';
+      setVoiceState('error');
+      setVoiceError(message);
+    }
+  }
+
+  async function handleVoiceInput() {
+    if (voiceSessionActiveRef.current) {
+      await handleVoiceStop();
+      return;
+    }
+    await handleVoiceStart();
+  }
+
   function handleCancelVoiceInput() {
+    voiceSessionTokenRef.current += 1;
+    voiceCancelledRef.current = true;
+    voiceSessionActiveRef.current = false;
+    void cancelSpeechRecognition().catch(() => undefined);
     setVoiceState("cancelled");
     clearVoiceResetTimeout();
     voiceResetTimeoutRef.current = setTimeout(() => {
@@ -6043,6 +6218,9 @@ export function AiChatScreen({
             themeKey={item.diary.themeKey}
           />
         );
+      }
+      if (item.type === 'dream') {
+        return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
@@ -6350,6 +6528,7 @@ export function AiChatScreen({
       space,
       scheduleStreamingTailReconcile,
       onOpenDiary,
+      onOpenDream,
       reloadRoleDiaries,
     ],
   );
@@ -6515,7 +6694,22 @@ export function AiChatScreen({
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
-              {diaryGenerationStatus ? (
+              {dreamNotice ? (
+                <View style={styles.diaryHint}>
+                  {dreamNotice.type === 'generating' ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" style={styles.diaryHintSpinner} /> : null}
+                  <Text style={styles.diaryHintText}>
+                    {dreamNotice.type === 'manual_confirmation' ? '是否触发梦境？' : dreamNotice.type === 'generating' ? '梦境制作中' : dreamNotice.type === 'completed' ? '梦境制作完成' : dreamNotice.type === 'failed' ? '梦境制作失败' : '已取消梦境制作'}
+                  </Text>
+                  {dreamNotice.type === 'manual_confirmation' ? <>
+                    <Pressable accessibilityRole="button" onPress={() => void confirmManualDream(space, dreamNotice.seedId, true)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>是</Text></Pressable>
+                    <Pressable accessibilityRole="button" onPress={() => { void confirmManualDream(space, dreamNotice.seedId, false); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>否</Text></Pressable>
+                  </> : null}
+                  {dreamNotice.type === 'generating' ? <Pressable accessibilityRole="button" onPress={() => void cancelDreamGeneration(space, dreamNotice.jobId)} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>取消</Text></Pressable> : null}
+                  {dreamNotice.type === 'completed' ? <Pressable accessibilityRole="button" onPress={() => { onOpenDream(dreamNotice.dreamId); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>查看梦境</Text></Pressable> : null}
+                  {dreamNotice.type === 'failed' ? <Pressable accessibilityRole="button" onPress={() => void retryDreamGeneration(space, dreamNotice.jobId)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>重试</Text></Pressable> : null}
+                  {dreamNotice.type === 'cancelled' ? <Pressable accessibilityRole="button" onPress={() => setDreamNotice(null)} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>知道了</Text></Pressable> : null}
+                </View>
+              ) : diaryGenerationStatus ? (
                 <View style={styles.diaryHint}>
                   {diaryGenerationStatus === 'generating' ? (
                     <ActivityIndicator color={aiLightColors.primaryActive} size="small" style={styles.diaryHintSpinner} />
@@ -6644,9 +6838,16 @@ export function AiChatScreen({
                 onVoiceInput={() => {
                   void handleVoiceInput();
                 }}
+                onVoiceStart={() => {
+                  void handleVoiceStart();
+                }}
+                onVoiceStop={() => {
+                  void handleVoiceStop();
+                }}
                 onCancelVoiceInput={handleCancelVoiceInput}
                 value={composerText}
                 voiceError={voiceError}
+                voiceMode={voiceMode}
                 voiceState={voiceState}
               />
               <Animated.View
@@ -6862,10 +7063,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing[1],
   },
-  diaryHintText: { ...typography.textStyles.micro, color: aiLightColors.muted },
+  diaryHintText: { ...typography.textStyles.caption, color: aiLightColors.muted },
   diaryHintSpinner: { marginRight: spacing[2] },
-  diaryHintAction: { ...typography.textStyles.micro, color: aiLightColors.primaryActive, marginLeft: spacing[2] },
-  diaryHintDismiss: { ...typography.textStyles.micro, color: aiLightColors.muted, marginLeft: spacing[3] },
+  diaryHintTouch: { alignItems: 'center', justifyContent: 'center', minHeight: metrics.minTouchSize },
+  diaryHintAction: { ...typography.textStyles.caption, color: aiLightColors.primaryActive, marginLeft: spacing[2] },
+  diaryHintDismiss: { ...typography.textStyles.caption, color: aiLightColors.muted, marginLeft: spacing[3] },
   header: {
     alignItems: "center",
     borderBottomColor: aiLightColors.hairline,

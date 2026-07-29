@@ -27,9 +27,11 @@ export interface ScheduleMemoryMaintenanceInput {
   assistantMessageId?: string;
   currentTurnExtractionDone?: boolean;
   allowRemoteModelForPersonal?: boolean;
+  signal?: AbortSignal;
 }
 
 interface ActiveMaintenanceTask {
+  controller: AbortController;
   currentInput: ScheduleMemoryMaintenanceInput;
   done: (error?: unknown) => void;
   pendingReason: MemoryMaintenanceReason | null;
@@ -50,11 +52,23 @@ interface MaintenancePassAccumulator {
 type ImportAwareMaintenanceContext = {
   reversibleImportSessionId?: string | null;
   allowIrreversibleImportEffects: boolean;
+  signal?: AbortSignal;
 };
 
 const activeMaintenanceTasks = new Map<string, ActiveMaintenanceTask>();
 const queuedMaintenanceTasks: ActiveMaintenanceTask[] = [];
+const suspendedMemorySpaces = new Set<PixorySpace>(['personal']);
 let globalMaintenanceRunnerActive = false;
+
+function assertMemoryMaintenanceActive(input: Pick<ScheduleMemoryMaintenanceInput, 'signal' | 'space'>): void {
+  if (suspendedMemorySpaces.has(input.space) || input.signal?.aborted) {
+    throw new Error('Memory maintenance space is suspended.');
+  }
+}
+
+export function resumeMemoryMaintenanceSpace(space: PixorySpace): void {
+  suspendedMemorySpaces.delete(space);
+}
 
 function maintenanceTaskKey(space: PixorySpace, threadId: string): string {
   return `${space}:${threadId}`;
@@ -125,6 +139,7 @@ async function loadLastUserMessage(space: PixorySpace, threadId: string, branchS
 }
 
 export async function runLocalCurrentTurnExtraction(input: ScheduleMemoryMaintenanceInput): Promise<void> {
+  assertMemoryMaintenanceActive(input);
   const branchScopes = input.branchScopes ?? [];
   const [reviewGateState, rollbackState] = await runWithDatabaseSpace(input.space, async (db) => {
     const gate = await aiThreadRepository.loadContinuityImportReviewGateState(
@@ -142,6 +157,7 @@ export async function runLocalCurrentTurnExtraction(input: ScheduleMemoryMainten
       : null;
     return [gate, session?.rollbackState ?? null] as const;
   });
+  assertMemoryMaintenanceActive(input);
   if (
     reviewGateState === 'pending_review'
     || reviewGateState === 'failed'
@@ -166,6 +182,7 @@ export async function runLocalCurrentTurnExtraction(input: ScheduleMemoryMainten
 }
 
 export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaintenanceInput): Promise<void> {
+  assertMemoryMaintenanceActive(input);
   const branchScopes = input.branchScopes ?? [];
   const accumulator: MaintenancePassAccumulator = {
     error: null,
@@ -180,6 +197,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   let rollbackState: 'available' | 'locked' | 'rolled_back' | null = null;
   const runStep = async (step: Promise<MemoryMaintenanceStepResult>) => {
     const result = await step;
+    assertMemoryMaintenanceActive(input);
     consumeStep(accumulator, result);
     if (result.usedRemote) {
       allowRemoteModel = false;
@@ -189,14 +207,17 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   let reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.loadContinuityImportReviewGateState(db, input.threadId, branchScopes)
   );
+  assertMemoryMaintenanceActive(input);
   const pendingImportSessionId = await runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.resolveContinuityImportSessionIdForBranchScopes(db, input.threadId, branchScopes)
   );
   if (reviewGateState === 'pending_review' && pendingImportSessionId) {
     await reviewContinuityImportSession({
       importSessionId: pendingImportSessionId,
+      signal: input.signal,
       space: input.space,
     });
+    assertMemoryMaintenanceActive(input);
     reviewGateState = await runWithDatabaseSpace(input.space, (db) =>
       aiThreadRepository.loadContinuityImportReviewGateState(db, input.threadId, branchScopes)
     );
@@ -210,9 +231,11 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
     const session = await aiThreadRepository.findContinuityImportSessionById(db, importSessionId);
     return session?.rollbackState ?? null;
   });
+  assertMemoryMaintenanceActive(input);
   const importAwareContext: ImportAwareMaintenanceContext = {
     allowIrreversibleImportEffects: true,
     reversibleImportSessionId,
+    signal: input.signal,
   };
   if ((reviewGateState === 'pending_review' || reviewGateState === 'failed') || rollbackState === 'available') {
     importAwareContext.allowIrreversibleImportEffects = false;
@@ -231,6 +254,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   } else {
     await runLocalCurrentTurnExtraction(input);
   }
+  assertMemoryMaintenanceActive(input);
   if (input.userMessage) {
     await recordRelationalSignals({
       messageContent: input.userMessage.content,
@@ -241,6 +265,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   }
   await runMemoryLifecycleMaintenance(input.space).catch(() => undefined);
   await drainMemoryIndexOutbox({ space: input.space }).catch(() => undefined);
+  assertMemoryMaintenanceActive(input);
 
   await runStep(compressOldestThreadRounds(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
   await runStep(maybeInitializeUserProfile(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
@@ -258,6 +283,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
       assistantMessageId: input.assistantMessageId,
       branchScopes,
       reversibleImportSessionId: importAwareContext.reversibleImportSessionId,
+      signal: input.signal,
       space: input.space,
       thread: input.thread,
       userMessage: input.userMessage,
@@ -265,6 +291,7 @@ export async function runUnifiedMemoryMaintenancePass(input: ScheduleMemoryMaint
   }
 
   await runStep(maybeMergeSummarySegments(input.space, input.threadId, { allowRemoteModel, branchScopes, ...importAwareContext }));
+  assertMemoryMaintenanceActive(input);
   await recordMaintenanceResult(input.space, input.threadId, accumulator);
 }
 
@@ -287,10 +314,13 @@ async function drainMaintenanceQueue(): Promise<void> {
       }
       let currentInput = entry.currentInput;
       while (true) {
+        currentInput = { ...currentInput, signal: entry.controller.signal };
         try {
           await runUnifiedMemoryMaintenancePass(currentInput);
         } catch (error) {
-          await recordMaintenanceFailure(currentInput.space, currentInput.threadId, error);
+          if (!suspendedMemorySpaces.has(currentInput.space) && !entry.controller.signal.aborted) {
+            await recordMaintenanceFailure(currentInput.space, currentInput.threadId, error);
+          }
         }
         const pendingReason = entry.pendingReason;
         const pendingInput = entry.pendingInput;
@@ -319,6 +349,7 @@ async function drainMaintenanceQueue(): Promise<void> {
 }
 
 export async function scheduleMemoryMaintenance(input: ScheduleMemoryMaintenanceInput): Promise<void> {
+  if (suspendedMemorySpaces.has(input.space)) return;
   const key = maintenanceTaskKey(input.space, input.threadId);
   const activeEntry = activeMaintenanceTasks.get(key);
   if (activeEntry) {
@@ -347,6 +378,7 @@ export async function scheduleMemoryMaintenance(input: ScheduleMemoryMaintenance
     };
   });
   const entry: ActiveMaintenanceTask = {
+    controller: new AbortController(),
     currentInput: input,
     done: finishTask,
     pendingInput: null,
@@ -366,4 +398,17 @@ export async function scheduleMemoryMaintenance(input: ScheduleMemoryMaintenance
 
 export function isThreadMemoryMaintenanceActive(space: PixorySpace, threadId: string): boolean {
   return activeMaintenanceTasks.has(maintenanceTaskKey(space, threadId));
+}
+
+export async function suspendMemoryMaintenanceSpace(space: PixorySpace): Promise<void> {
+  suspendedMemorySpaces.add(space);
+  const affected = [...activeMaintenanceTasks.values()].filter((entry) => entry.currentInput.space === space);
+  affected.forEach((entry) => entry.controller.abort());
+  for (let index = queuedMaintenanceTasks.length - 1; index >= 0; index -= 1) {
+    const entry = queuedMaintenanceTasks[index];
+    if (entry.currentInput.space !== space) continue;
+    queuedMaintenanceTasks.splice(index, 1);
+    entry.done(undefined);
+  }
+  await Promise.allSettled(affected.map((entry) => entry.promise));
 }

@@ -101,7 +101,7 @@ test('provider verification state is stored without API key plaintext', () => {
   const repository = fs.readFileSync(repositoryPath, 'utf8');
   const providerService = fs.readFileSync(providerServicePath, 'utf8');
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /keyUpdatedAt TEXT/);
   assert.match(schema, /lastVerifiedAt TEXT/);
   assert.match(schema, /lastVerifyStatus TEXT/);
@@ -299,7 +299,7 @@ test('AI memory maintenance model resolves status and reuses SecureStore keys', 
   assert.match(service, /MemoryMaintenanceModelCallResult/);
   assert.match(service, /streamError/);
   assert.match(service, /event\.type === 'error'/);
-  assert.match(service, /return \{ error: streamError, modelId: resolved\.modelId, providerId: resolved\.providerId, status: 'error', text: null, usedRemote: true \}/);
+  assert.match(service, /return \{ error: streamError, modelId: resolved\.modelId, providerId: resolved\.providerId,[^\n]*status: 'error', text: null, usedRemote: true \}/);
   assert.match(service, /测试通过/);
   assert.match(service, /点击“测试记忆模型”确认链路可用/);
   assert.match(screen, /记忆维护模型/);

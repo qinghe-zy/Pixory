@@ -54,6 +54,32 @@ export interface NativeZipEntry {
   size: number;
 }
 
+export interface NativeSpeechCapability {
+  available: boolean;
+  onDeviceAvailable: boolean;
+  mode: 'on_device' | 'system' | 'unavailable';
+}
+
+export type NativeSpeechErrorCode =
+  | 'activity_unavailable'
+  | 'audio'
+  | 'busy'
+  | 'cancelled'
+  | 'network'
+  | 'no_speech'
+  | 'permission_denied'
+  | 'service'
+  | 'timeout'
+  | 'unavailable';
+
+export interface NativeSpeechEvent {
+  type: 'ready' | 'partial' | 'result' | 'error' | 'end' | 'cancelled';
+  text?: string;
+  code?: NativeSpeechErrorCode;
+  message?: string;
+  onDevice: boolean;
+}
+
 interface PixoryMediaNativeModule {
   copyUriToFileWithProgress(
     sourceUri: string,
@@ -77,6 +103,10 @@ interface PixoryMediaNativeModule {
   computeFileSha256(sourceUri: string): Promise<string>;
   computeImageDHash(sourceUri: string): Promise<string>;
   recognizeSpeech(): Promise<{ text: string }>;
+  getSpeechRecognitionCapabilities(): Promise<NativeSpeechCapability>;
+  startSpeechRecognition(): Promise<{ onDevice: boolean }>;
+  stopSpeechRecognition(): Promise<boolean>;
+  cancelSpeechRecognition(): Promise<boolean>;
   getInitialExternalOpen(): Promise<NativeExternalOpen>;
   getInitialShareIntent(): Promise<NativeShareIntent>;
   finishShareActivity(): Promise<boolean>;
@@ -189,6 +219,29 @@ export function computeImageDHash(sourceUri: string): Promise<string> {
 
 export function recognizeSpeech(): Promise<{ text: string }> {
   return requireNativeModule().recognizeSpeech();
+}
+
+export function addNativeSpeechRecognitionListener(
+  listener: (event: NativeSpeechEvent) => void
+): { remove: () => void } {
+  if (!emitter) return { remove: () => undefined };
+  return emitter.addListener('PixorySpeechRecognition', listener);
+}
+
+export function getSpeechRecognitionCapabilities(): Promise<NativeSpeechCapability> {
+  return requireNativeModule().getSpeechRecognitionCapabilities();
+}
+
+export function startSpeechRecognition(): Promise<{ onDevice: boolean }> {
+  return requireNativeModule().startSpeechRecognition();
+}
+
+export function stopSpeechRecognition(): Promise<boolean> {
+  return requireNativeModule().stopSpeechRecognition();
+}
+
+export function cancelSpeechRecognition(): Promise<boolean> {
+  return requireNativeModule().cancelSpeechRecognition();
 }
 
 export function getInitialExternalOpen(): Promise<NativeExternalOpen> {

@@ -6,6 +6,7 @@ import {
   type PixorySpace,
 } from '../database';
 import type { AiThreadRecord } from './types';
+import type { AiProviderProtocol } from './types';
 import { ensureBuiltInProviders, getAdapterForProvider } from './aiProviderService';
 import { migrateDeprecatedDeepSeekModel } from './deepseekModelPolicy';
 import { getProviderApiKeyForSpace, getThreadProviderApiKey } from './secureAiSettingsService';
@@ -33,10 +34,18 @@ export interface MemoryMaintenanceModelCallResult {
   status: MemoryMaintenanceStatus;
   text: string | null;
   usedRemote: boolean;
+  rawUsage?: unknown;
+  providerProtocol?: AiProviderProtocol | null;
 }
 
 export function localMemoryMaintenanceResult(): MemoryMaintenanceModelCallResult {
-  return { error: null, modelId: null, providerId: null, status: 'local_fallback', text: null, usedRemote: false };
+  return { error: null, modelId: null, providerId: null, providerProtocol: null, status: 'local_fallback', text: null, usedRemote: false };
+}
+
+function mergeRawUsage(current: unknown, incoming: unknown): unknown {
+  if (!incoming || typeof incoming !== 'object') return current;
+  if (!current || typeof current !== 'object') return incoming;
+  return { ...(current as Record<string, unknown>), ...(incoming as Record<string, unknown>) };
 }
 
 export interface ResolvedMemoryMaintenanceModelWithProvider extends ResolvedMemoryMaintenanceModel {
@@ -255,6 +264,11 @@ export async function callMemoryMaintenanceModel(input: {
   thread?: AiThreadRecord | null;
   systemPrompt: string;
   userPrompt: string;
+  maxOutputTokens?: number;
+  responseFormat?: 'text' | 'json_object';
+  responseJsonSchema?: Record<string, unknown>;
+  thinkingDisabled?: boolean;
+  signal?: AbortSignal;
 }): Promise<MemoryMaintenanceModelCallResult> {
   try {
     const resolved = await resolveMemoryMaintenanceModel(input.space, input.thread);
@@ -263,12 +277,18 @@ export async function callMemoryMaintenanceModel(input: {
     }
     let text = '';
     let streamError: string | null = null;
+    let rawUsage: unknown;
     await getAdapterForProvider(resolved.provider).streamChat(
       {
         apiKey: resolved.apiKey,
         baseUrl: resolved.provider.baseUrl ?? '',
         history: [],
         modelId: resolved.modelId,
+        maxOutputTokens: input.maxOutputTokens,
+        responseFormat: input.responseFormat,
+        responseJsonSchema: input.responseJsonSchema,
+        thinkingDisabled: input.thinkingDisabled,
+        signal: input.signal,
         systemPrompt: input.systemPrompt,
         userPrompt: input.userPrompt,
       },
@@ -279,12 +299,13 @@ export async function callMemoryMaintenanceModel(input: {
         if (event.type === 'error') {
           streamError = event.message;
         }
+        if (event.type === 'provider_usage') rawUsage = mergeRawUsage(rawUsage, event.rawUsage);
       }
     );
     if (streamError) {
-      return { error: streamError, modelId: resolved.modelId, providerId: resolved.providerId, status: 'error', text: null, usedRemote: true };
+      return { error: streamError, modelId: resolved.modelId, providerId: resolved.providerId, providerProtocol: resolved.provider.protocol, rawUsage, status: 'error', text: null, usedRemote: true };
     }
-    return { error: null, modelId: resolved.modelId, providerId: resolved.providerId, status: resolved.status, text: text.trim() || null, usedRemote: true };
+    return { error: null, modelId: resolved.modelId, providerId: resolved.providerId, providerProtocol: resolved.provider.protocol, rawUsage, status: resolved.status, text: text.trim() || null, usedRemote: true };
   } catch (error) {
     return { error: errorMessageFromUnknown(error), modelId: null, providerId: null, status: 'error', text: null, usedRemote: false };
   }

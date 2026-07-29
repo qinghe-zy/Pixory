@@ -11,8 +11,16 @@ const TEMPLATE_FILES = [
     target: 'app/src/main/AndroidManifest.xml',
   },
   {
+    source: 'plugins/pixory-android-intents/templates/app/src/main/res/values/styles.xml',
+    target: 'app/src/main/res/values/styles.xml',
+  },
+  {
     source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/MainActivity.kt',
     target: 'app/src/main/java/com/pixory/app/MainActivity.kt',
+  },
+  {
+    source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/PixoryShareActivity.kt',
+    target: 'app/src/main/java/com/pixory/app/PixoryShareActivity.kt',
   },
   {
     source: 'plugins/pixory-android-intents/templates/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt',

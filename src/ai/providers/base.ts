@@ -38,6 +38,9 @@ export interface AiChatRequest {
   attachments?: AiChatAttachment[];
   providerCachePolicy?: AiProviderCachePolicy;
   thinkingDisabled?: boolean;
+  maxOutputTokens?: number;
+  responseFormat?: 'text' | 'json_object';
+  responseJsonSchema?: Record<string, unknown>;
   signal?: AbortSignal;
 }
 

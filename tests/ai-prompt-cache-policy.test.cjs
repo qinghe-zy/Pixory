@@ -121,6 +121,21 @@ test('material-bound prompt keeps fixed dynamic layer order before current reque
   assert.match(dynamicRegion, /block\('history_window'[\s\S]*block\('dynamic_memory'[\s\S]*block\('retrieval_context'[\s\S]*block\('current_user_message'/);
 });
 
+test('reply assist keeps automatic companion observations behind the stable cache boundary', () => {
+  const chat = read('src/ai/aiChatService.ts');
+  const start = chat.indexOf('export async function generateReplyAssistSuggestions');
+  const body = start >= 0 ? chat.slice(start) : '';
+  const stableBlockStart = body.indexOf('const stableBlocks');
+  const cacheMetadataStart = body.indexOf('const promptCacheMetadata', stableBlockStart);
+  const stableRegion = stableBlockStart >= 0 && cacheMetadataStart > stableBlockStart
+    ? body.slice(stableBlockStart, cacheMetadataStart)
+    : '';
+  const memorySnapshotBlock = /name:\s*'memory_snapshot'[\s\S]*?\n\s*},/.exec(stableRegion)?.[0] ?? '';
+  assert.doesNotMatch(memorySnapshotBlock, /memorySnapshot\.companionMemoryPrefix/);
+  assert.match(stableRegion, /name:\s*'user_observation'[\s\S]*stable:\s*false[\s\S]*memorySnapshot\.companionMemoryPrefix/);
+  assert.match(body, /hashPromptCacheText\(memorySnapshot\.stableMemoryPrefix/);
+});
+
 test('provider adapters keep cache metadata optional and provider-specific', () => {
   const base = read('src/ai/providers/base.ts');
   const openai = read('src/ai/providers/openAiCompatibleProvider.ts');

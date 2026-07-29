@@ -233,6 +233,7 @@ export async function captureDeepMemoryForExchange(input: {
   allowRemoteModel?: boolean;
   reversibleImportSessionId?: string | null;
   allowIrreversibleImportEffects?: boolean;
+  signal?: AbortSignal;
 }): Promise<MemoryMaintenanceStepResult> {
   if (input.allowIrreversibleImportEffects === false) {
     return emptyMaintenanceStepResult();
@@ -281,6 +282,7 @@ export async function captureDeepMemoryForExchange(input: {
   const modelResult = input.allowRemoteModel === false
     ? { error: null, modelId: null, providerId: null, text: null, usedRemote: false }
     : await callMemoryMaintenanceModel({
+      signal: input.signal,
       space: input.space,
       systemPrompt: '你是 Pixory 的后台记忆整理器。你只输出可解析 JSON。',
       thread: input.thread,

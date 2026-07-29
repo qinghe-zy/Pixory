@@ -203,7 +203,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   const gemini = read('src/ai/providers/geminiProvider.ts');
 
   assert.match(types, /thinkingDisabled: boolean/);
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /thinkingDisabled INTEGER NOT NULL DEFAULT 0/);
   assert.match(schema, /MIGRATION_STATEMENTS_V40/);
   assert.match(db, /MIGRATION_STATEMENTS_V40/);
@@ -227,7 +227,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   assert.doesNotMatch(openai, /if \(input\.thinkingDisabled\) \{[\s\S]*body\.thinking = \{ type: 'disabled' \}/);
   assert.match(gemini, /function shouldDisableGeminiThinking\(input: AiChatRequest\): boolean/);
   assert.match(gemini, /input\.thinkingDisabled && \/\^gemini-2\\\.5-flash\/i\.test\(input\.modelId\)/);
-  assert.match(gemini, /if \(shouldDisableGeminiThinking\(input\)\) \{[\s\S]*thinkingConfig: \{ thinkingBudget: 0 \}/);
+  assert.match(gemini, /if \(shouldDisableGeminiThinking\(input\)\)[\s\S]{0,80}thinkingConfig = \{ thinkingBudget: 0 \}/);
   assert.match(sessionConfig, /accessibilityRole="switch"/);
   assert.match(sessionConfig, /accessibilityState=\{\{ checked: thinkingDisabled \}\}/);
   assert.match(sessionConfig, /setThinkingDisabled\(\(current\) => !current\)/);
@@ -451,7 +451,7 @@ test('AI thread session endpoint overrides are thread scoped and do not store ke
   const types = read('src/ai/types.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
 
-  assert.match(schema, /DATABASE_VERSION = 50/);
+  assert.match(schema, /DATABASE_VERSION = 5[1-9]/);
   assert.match(schema, /MIGRATION_STATEMENTS_V38/);
   assert.match(schema, /sessionBaseUrl TEXT/);
   assert.match(schema, /sessionApiKeyRef TEXT/);

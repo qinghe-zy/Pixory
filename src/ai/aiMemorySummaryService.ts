@@ -6,12 +6,15 @@ import { buildCompressionPrompt, buildSummaryMergePrompt } from './aiMemoryPromp
 import { callMemoryMaintenanceModel } from './aiMemoryMaintenanceModelService';
 import type { AiThreadRecord } from './types';
 import { localMemoryMaintenanceResult, type MemoryMaintenanceModelCallResult } from './aiMemoryMaintenanceModelService';
+import {
+  hashBranchRoute,
+  hashCoverageMessageVersions,
+  summaryPrewarmRoundThreshold,
+} from './context/conversationCoverage';
 
-export const UNCOMPRESSED_ROUND_THRESHOLD = 50;
 export const COMPRESS_OLDEST_ROUND_COUNT = 20;
 export const SUMMARY_SEGMENT_LIMIT = 5;
 export const PRESERVE_LATEST_SEGMENT_COUNT = 2;
-const UNCOMPRESSED_MESSAGE_SCAN_LIMIT = (UNCOMPRESSED_ROUND_THRESHOLD + COMPRESS_OLDEST_ROUND_COUNT + 5) * 2;
 
 interface CompleteRound {
   user: AiMessageRecord;
@@ -86,6 +89,29 @@ function formatRounds(rounds: CompleteRound[]): string {
     .join('\n\n');
 }
 
+function mergeSourceMessageIds(sourceValues: string[]): string[] | null {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const sourceValue of sourceValues) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(sourceValue);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== 'string' || !value)) {
+      return null;
+    }
+    for (const value of parsed as string[]) {
+      if (!seen.has(value)) {
+        seen.add(value);
+        merged.push(value);
+      }
+    }
+  }
+  return merged.length > 0 ? merged : null;
+}
+
 async function loadThreadOrReturn(db: SQLiteDatabase, threadId: string): Promise<AiThreadRecord | null> {
   return aiThreadRepository.findThreadById(db, threadId);
 }
@@ -98,6 +124,7 @@ export async function compressOldestThreadRounds(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
@@ -112,16 +139,18 @@ export async function compressOldestThreadRounds(
     const job = await aiThreadRepository.getThreadMemoryJob(db, threadId);
     const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, options.branchScopes);
     const estimatedRoundCount = Math.floor(completedMessageCount / 2);
+    const prewarmRoundThreshold = summaryPrewarmRoundThreshold(thread.contextHistoryRoundLimit);
     await aiThreadRepository.updateThreadMemoryJob(db, {
       threadId,
       uncompressedRoundCount: estimatedRoundCount,
     });
-    if (estimatedRoundCount <= UNCOMPRESSED_ROUND_THRESHOLD) {
+    if (estimatedRoundCount <= prewarmRoundThreshold) {
       return null;
     }
-    const messages = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, UNCOMPRESSED_MESSAGE_SCAN_LIMIT, options.branchScopes);
+    const messageScanLimit = (prewarmRoundThreshold + COMPRESS_OLDEST_ROUND_COUNT + 5) * 2;
+    const messages = await aiThreadRepository.listCompletedNonSystemMessagesAfter(db, threadId, job.lastCompressedMessageId, messageScanLimit, options.branchScopes);
     const rounds = pairCompletedRounds(messages);
-    if (rounds.length <= UNCOMPRESSED_ROUND_THRESHOLD) {
+    if (rounds.length <= prewarmRoundThreshold) {
       return null;
     }
     const selectedRounds = rounds.slice(0, COMPRESS_OLDEST_ROUND_COUNT);
@@ -132,6 +161,7 @@ export async function compressOldestThreadRounds(
       endAt: last.assistant.completedAt ?? last.assistant.createdAt,
       endMessageId: last.assistant.id,
       roundCount: selectedRounds.length,
+      sourceMessages: selectedRounds.flatMap((round) => [round.user, round.assistant]),
       startAt: first.user.completedAt ?? first.user.createdAt,
       startMessageId: first.user.id,
       thread,
@@ -145,6 +175,7 @@ export async function compressOldestThreadRounds(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的后台对话记忆压缩器。只输出指定结构。',
       thread: prepared.thread,
@@ -160,13 +191,19 @@ export async function compressOldestThreadRounds(
         endMessageId: prepared.endMessageId,
         id: createAiMemoryId('aisum'),
         kind: 'compressed',
+        branchRouteHash: hashBranchRoute(options.branchScopes),
+        lineageVersion: prepared.thread.lineageVersion ?? 0,
+        quality: modelResult.text ? 'model' : 'local',
         roundCount: prepared.roundCount,
+        sourceMessageIdsJson: JSON.stringify(prepared.sourceMessages.map((message) => message.id)),
+        sourceMessageVersionHash: hashCoverageMessageVersions(prepared.sourceMessages),
         sourceSegmentIdsJson: '[]',
         space,
         startAt: prepared.startAt,
         startMessageId: prepared.startMessageId,
         summaryText,
         threadId,
+        status: 'active',
       });
       return;
     }
@@ -176,13 +213,19 @@ export async function compressOldestThreadRounds(
       endMessageId: prepared.endMessageId,
       id: createAiMemoryId('aisum'),
       kind: 'compressed',
+      branchRouteHash: hashBranchRoute(options.branchScopes),
+      lineageVersion: prepared.thread.lineageVersion ?? 0,
+      quality: modelResult.text ? 'model' : 'local',
       roundCount: prepared.roundCount,
+      sourceMessageIdsJson: JSON.stringify(prepared.sourceMessages.map((message) => message.id)),
+      sourceMessageVersionHash: hashCoverageMessageVersions(prepared.sourceMessages),
       sourceSegmentIdsJson: '[]',
       space,
       startAt: prepared.startAt,
       startMessageId: prepared.startMessageId,
       summaryText,
       threadId,
+      status: 'active',
     });
     await aiThreadRepository.updateThreadMemoryJob(db, {
       lastCompressedMessageId: prepared.endMessageId,
@@ -202,6 +245,7 @@ export async function maybeMergeSummarySegments(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   if (options.allowIrreversibleImportEffects === false) {
@@ -216,16 +260,36 @@ export async function maybeMergeSummarySegments(
     if (!settings.deepMemoryEnabled) {
       return null;
     }
-    const segments = await aiThreadRepository.listSummarySegments(db, threadId, options.branchScopes);
+    const branchRouteHash = hashBranchRoute(options.branchScopes);
+    const segments = (await aiThreadRepository.listSummarySegments(db, threadId, options.branchScopes))
+      .filter((segment) =>
+        segment.branchRouteHash === branchRouteHash
+        && segment.lineageVersion === (thread.lineageVersion ?? 0)
+      );
     if (segments.length <= SUMMARY_SEGMENT_LIMIT) {
       return null;
     }
     const mergeSegments = segments.slice(0, -PRESERVE_LATEST_SEGMENT_COUNT);
+    const sourceMessageIds = mergeSourceMessageIds(mergeSegments.map((segment) => segment.sourceMessageIdsJson));
+    if (!sourceMessageIds) {
+      return null;
+    }
+    const sourceMessagesUnordered = await aiThreadRepository.findMessagesByIds(db, sourceMessageIds, options.branchScopes);
+    const sourceMessageById = new Map(sourceMessagesUnordered.map((message) => [message.id, message]));
+    const sourceMessages = sourceMessageIds
+      .map((id) => sourceMessageById.get(id))
+      .filter((message): message is AiMessageRecord => Boolean(message));
+    if (sourceMessages.length !== sourceMessageIds.length) {
+      return null;
+    }
     return {
+      branchRouteHash,
       endAt: mergeSegments[mergeSegments.length - 1].endAt,
       endMessageId: mergeSegments[mergeSegments.length - 1].endMessageId,
       ids: mergeSegments.map((segment) => segment.id),
       roundCount: mergeSegments.reduce((sum, segment) => sum + segment.roundCount, 0),
+      sourceMessageIds,
+      sourceMessageVersionHash: hashCoverageMessageVersions(sourceMessages),
       startAt: mergeSegments[0].startAt,
       startMessageId: mergeSegments[0].startMessageId,
       summaries: mergeSegments.map((segment, index) => `摘要${index + 1}（${segment.startAt ?? ''} 至 ${segment.endAt ?? ''}）\n${segment.summaryText}`).join('\n\n'),
@@ -238,6 +302,7 @@ export async function maybeMergeSummarySegments(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
       thread: prepared.thread,
@@ -251,13 +316,19 @@ export async function maybeMergeSummarySegments(
       endMessageId: prepared.endMessageId,
       id: createAiMemoryId('aisum'),
       kind: 'merged',
+      branchRouteHash: prepared.branchRouteHash,
+      lineageVersion: prepared.thread.lineageVersion ?? 0,
+      quality: modelResult.text ? 'model' : 'merged',
       roundCount: prepared.roundCount,
+      sourceMessageIdsJson: JSON.stringify(prepared.sourceMessageIds),
+      sourceMessageVersionHash: prepared.sourceMessageVersionHash,
       sourceSegmentIdsJson: JSON.stringify(prepared.ids),
       space,
       startAt: prepared.startAt,
       startMessageId: prepared.startMessageId,
       summaryText,
       threadId,
+      status: 'active',
     });
     await aiThreadRepository.deleteSummarySegments(db, prepared.ids);
     await aiThreadRepository.updateThreadMemoryJob(db, {

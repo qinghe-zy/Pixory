@@ -52,11 +52,23 @@ test('the active chat schedules diary checks at the next relevant wake-up, not e
 
 test('explicit diary context choices survive newer unselected diary cards', () => {
   const repository = read('src/ai/diary/diaryRepository.ts');
-  const chatService = read('src/ai/aiChatService.ts');
+  const artifactService = read('src/ai/companion/companionArtifactService.ts');
 
   assert.match(repository, /listContextOptInDiaryVersionsForRole/);
   assert.match(repository, /contextOptIn = 1/);
-  assert.match(chatService, /listContextOptInDiaryVersionsForRole/);
-  assert.match(chatService, /角色日记（\$\{diary\.diaryDate\}/);
-  assert.doesNotMatch(chatService, /findCurrentDiaryForRole\(db, thread\.roleCardId\)/);
+  assert.match(artifactService, /listContextOptInDiaryVersionsForRole/);
+  assert.match(artifactService, /adaptDiaryArtifact/);
+  assert.doesNotMatch(artifactService, /findCurrentDiaryForRole/);
+});
+
+test('dream reader uses finite three-sheet pagination and thoughts expose confirmed permanent deletion', () => {
+  const pager = read('src/components/ai/DreamDeckPager.tsx');
+  const innerLife = read('src/screens/CompanionInnerLifeScreen.tsx');
+
+  assert.match(pager, /\[0, 1, 2\]/);
+  assert.match(pager, /Math\.min\(pages\.length - 1/);
+  assert.doesNotMatch(pager, /%\s*pages\.length/);
+  assert.match(innerLife, /Alert\.alert\('永久删除独白？'/);
+  assert.match(innerLife, /thoughtRepository\.permanentlyDelete/);
+  assert.match(innerLife, /accessibilityLabel="永久删除这条独白"/);
 });

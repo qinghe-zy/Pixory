@@ -30,7 +30,7 @@ interface GeminiChatContent {
 interface GeminiChatRequestBody {
   systemInstruction: { parts: Array<{ text: string }> };
   contents: GeminiChatContent[];
-  generationConfig?: { thinkingConfig: { thinkingBudget: number } };
+  generationConfig?: { thinkingConfig?: { thinkingBudget: number }; maxOutputTokens?: number; responseMimeType?: string; responseSchema?: Record<string, unknown> };
 }
 
 async function emitGeminiTextFromChunk(chunk: unknown, onEvent: AiStreamEventHandler): Promise<void> {
@@ -199,9 +199,14 @@ export const geminiProvider: AiProviderAdapter = {
         { role: 'user', parts: buildGeminiUserParts(input.userPrompt, input.attachments) },
       ],
     };
-    if (shouldDisableGeminiThinking(input)) {
-      requestBody.generationConfig = { thinkingConfig: { thinkingBudget: 0 } };
+    const generationConfig: NonNullable<GeminiChatRequestBody['generationConfig']> = {};
+    if (shouldDisableGeminiThinking(input)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    if (input.maxOutputTokens) generationConfig.maxOutputTokens = input.maxOutputTokens;
+    if (input.responseFormat === 'json_object') {
+      generationConfig.responseMimeType = 'application/json';
+      if (input.responseJsonSchema) generationConfig.responseSchema = input.responseJsonSchema;
     }
+    if (Object.keys(generationConfig).length > 0) requestBody.generationConfig = generationConfig;
 
     try {
       const response = await expoFetch(

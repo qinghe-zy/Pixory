@@ -400,6 +400,8 @@ export const openAiCompatibleProvider: AiProviderAdapter = {
       if (input.providerCachePolicy?.openAiPromptCacheKey) {
         body.prompt_cache_key = input.providerCachePolicy.openAiPromptCacheKey;
       }
+      if (input.maxOutputTokens) body.max_tokens = input.maxOutputTokens;
+      if (input.responseFormat === 'json_object') body.response_format = { type: 'json_object' };
       if (shouldDisableOpenAiReasoning(input)) {
         body.reasoning_effort = 'none';
       }

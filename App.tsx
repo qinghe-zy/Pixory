@@ -55,11 +55,17 @@ import { AiRoleCardDetailScreen } from './src/screens/AiRoleCardDetailScreen';
 import { AiRoleLibraryScreen } from './src/screens/AiRoleLibraryScreen';
 import { AiSessionConfigScreen } from './src/screens/AiSessionConfigScreen';
 import { DiaryReaderScreen } from './src/screens/DiaryReaderScreen';
+import { DreamReaderScreen } from './src/screens/DreamReaderScreen';
 import { CompanionInnerLifeScreen } from './src/screens/CompanionInnerLifeScreen';
+import { CompanionRuntimeManagerScreen } from './src/screens/CompanionRuntimeManagerScreen';
 import { applyRoleCardToThread, createNormalThreadFromRoleCard, type AiMessageFavoriteListItem } from './src/ai/aiChatService';
 import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
-import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
+import { resumeCompanionMemoryMaintenance, scheduleCompanionMemoryMaintenance, suspendCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
+import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
+import { resumeDiaryBackgroundTasks, suspendDiaryBackgroundTasks } from './src/ai/diary/diaryGenerationManager';
+import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
+import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -102,7 +108,7 @@ import {
   setPersonalPassword,
   verifyPersonalPassword,
 } from './src/services/personalSystemService';
-import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
+import { createPersonalTaskToken, invalidatePersonalTaskToken, waitForPersonalTasks, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
 import {
   addNativeIntentListener,
@@ -213,7 +219,9 @@ type AppRoute =
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'diary-reader'; space: PixorySpace; diaryId: string }
+  | { name: 'dream-reader'; space: PixorySpace; dreamId: string }
   | { name: 'companion-inner-life'; space: PixorySpace; threadId: string }
+  | { name: 'companion-runtime-manager'; space: PixorySpace; threadId: string }
   | { name: 'ai-memory-board'; space: PixorySpace; threadId: string }
   | { name: 'ai-provider-settings'; space: PixorySpace }
   | { name: 'ai-role-library'; space: PixorySpace; threadId?: string; mode?: 'library' | 'apply_to_thread' }
@@ -572,6 +580,13 @@ export default function App() {
     personalSessionStateRef.current = personalSessionState;
   }, [personalSessionState]);
 
+  function resumeCompanionRuntimes(): void {
+    void reconcileThoughtSessions('normal').then(() => runCompanionMaintenancePass({ space: 'normal' })).catch(() => undefined);
+    if (personalSessionStateRef.current === 'unlocked') {
+      void reconcileThoughtSessions('personal').then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' })).catch(() => undefined);
+    }
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -583,6 +598,9 @@ export default function App() {
       try {
         await ensureAppDirectories();
         await initDatabase();
+        void aiGenerationManager.reconcileInterruptedGenerations('normal').catch(() => undefined);
+        void reconcileThoughtSessions('normal').catch(() => undefined);
+        void runCompanionMaintenancePass({ space: 'normal' }).catch(() => undefined);
         void cleanupOldTempFiles('personal', 0).catch((error) => {
           console.warn('Pixory personal temp startup cleanup failed.', {
             message: error instanceof Error ? error.message : 'unknown personal temp cleanup error',
@@ -705,12 +723,14 @@ export default function App() {
         }
         setPrivacyShieldVisible(false);
         void checkRemoteNotices().catch(() => undefined);
+        resumeCompanionRuntimes();
         return;
       }
 
       personalBackgroundedAtRef.current = Date.now();
-      scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'app_background');
       schedulePersonalBackgroundLock();
+      void settleActiveThoughtSessions().catch(() => undefined);
+      scheduleAiChatMemoryMaintenanceForRoute(routeStackRef.current[routeStackRef.current.length - 1], 'app_background');
       scheduleBackgroundMemoryCacheCleanup();
     });
 
@@ -816,6 +836,14 @@ export default function App() {
       setPersonalSession(session);
       setPersonalSessionState('unlocked');
       personalSessionStateRef.current = 'unlocked';
+      aiGenerationManager.resumeSpace('personal');
+      resumePersonalCompanionMaintenance();
+      resumeCompanionMemoryMaintenance('personal');
+      resumeDiaryBackgroundTasks('personal');
+      void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
+      void reconcileThoughtSessions('personal')
+        .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))
+        .catch(() => undefined);
       setPersonalUnlockVisible(false);
       setLibraryRefreshToken((current) => current + 1);
       setTimeout(() => {
@@ -883,7 +911,22 @@ export default function App() {
     setPrivacyShieldVisible(true);
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
     personalSessionStateRef.current = 'locking';
-    invalidatePersonalTaskToken(personalTaskTokenRef.current);
+    const lockingTaskToken = personalTaskTokenRef.current;
+    invalidatePersonalTaskToken(lockingTaskToken);
+    const runtimeResults = await Promise.allSettled([
+      aiGenerationManager.suspendSpace('personal'),
+      suspendCompanionMaintenance('personal'),
+      suspendCompanionMemoryMaintenance('personal'),
+      suspendDiaryBackgroundTasks('personal'),
+      waitForPersonalTasks(lockingTaskToken),
+    ]);
+    for (const runtimeResult of runtimeResults) {
+      if (runtimeResult.status === 'rejected') {
+        console.warn('Pixory personal runtime suspension failed.', {
+          message: runtimeResult.reason instanceof Error ? runtimeResult.reason.message : 'unknown runtime suspension error',
+        });
+      }
+    }
     personalTaskTokenRef.current = null;
     personalGenerationRef.current += 1;
     setPersonalSession(null);
@@ -1745,6 +1788,7 @@ export default function App() {
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })}
+        onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
           openAiChatRoute({
@@ -1855,6 +1899,11 @@ export default function App() {
             ? () => pushRoute({ name: 'companion-inner-life', space: currentRoute.space, threadId: currentRoute.threadId as string })
             : undefined
         }
+        onOpenCompanionRuntime={
+          currentRoute.threadId
+            ? () => pushRoute({ name: 'companion-runtime-manager', space: currentRoute.space, threadId: currentRoute.threadId as string })
+            : undefined
+        }
         onStartChat={popRoute}
         space={currentRoute.space}
         threadId={currentRoute.threadId}
@@ -1862,8 +1911,12 @@ export default function App() {
     );
   } else if (currentRoute.name === 'ai-memory-board') {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
+  } else if (currentRoute.name === 'dream-reader') {
+    content = <DreamReaderScreen dreamId={currentRoute.dreamId} onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'companion-inner-life') {
-    content = <CompanionInnerLifeScreen onBack={popRoute} onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })} space={currentRoute.space} threadId={currentRoute.threadId} />;
+    content = <CompanionInnerLifeScreen onBack={popRoute} onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })} onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })} space={currentRoute.space} threadId={currentRoute.threadId} />;
+  } else if (currentRoute.name === 'companion-runtime-manager') {
+    content = <CompanionRuntimeManagerScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'milestones-detail') {
     content = <MilestonesDetailScreen onBack={popRoute} onPushRoute={pushRoute} space={currentRoute.space} preloadedMarkdown={currentRoute.preloadedMarkdown} />;
   } else if (currentRoute.name === 'product-doc') {

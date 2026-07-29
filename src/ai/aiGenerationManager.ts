@@ -1,4 +1,4 @@
-import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace, type PixorySpace } from '../database';
 import {
   type AiGenerationCreatedInfo,
   continueAssistantReply,
@@ -6,7 +6,9 @@ import {
   regenerateAssistantMessage,
   replyToAssistantMessage,
   rewriteUserMessage,
+  recoverInterruptedGeneration,
   sendUserMessage,
+  stopInterruptedGeneration,
   stopStreamingMessage,
   type AiStreamingMessagePatch,
   type ContinueAssistantReplyInput,
@@ -17,6 +19,13 @@ import {
   type SendUserMessageInput,
 } from './aiChatService';
 import type { StreamingVisibilityState } from './aiStreamingRuntime';
+import {
+  beginGenerationRecoveryAttempt,
+  claimGenerationRecovery,
+  listRecoverableGenerationJobs,
+  markInterruptedGenerationJobs,
+} from './generation/aiGenerationRepository';
+import { decideGenerationRecovery } from './generation/aiGenerationRecovery';
 
 export type AiGenerationSubscriber = {
   getStreamingVisibility?: () => StreamingVisibilityState;
@@ -84,6 +93,11 @@ export type ActiveAiGenerationTaskInfo = {
 
 const tasksByThreadId = new Map<string, ActiveGenerationTask>();
 const tasksByAssistantId = new Map<string, ActiveGenerationTask>();
+const reconciliationBySpace = new Map<PixorySpace, Promise<void>>();
+const runtimeEpochBySpace = new Map<PixorySpace, number>();
+const suspendedSpaces = new Set<PixorySpace>(['personal']);
+const RECOVERY_LEASE_MS = 2 * 60 * 1000;
+const RECOVERY_OWNER = `pixory_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
 function taskKey(space: PixorySpace, threadId: string): string {
   return `${space}:${threadId}`;
@@ -152,6 +166,7 @@ function finishTask(task: ActiveGenerationTask) {
 }
 
 function createTask(space: PixorySpace, threadId: string): ActiveGenerationTask {
+  if (suspendedSpaces.has(space)) throw new Error(`${space} generation runtime is suspended.`);
   const key = taskKey(space, threadId);
   const current = tasksByThreadId.get(key);
   if (current) {
@@ -357,15 +372,104 @@ async function stopGeneration({ assistantMessageId, reason = 'user', space, thre
   task?.controller.abort();
 }
 
+async function runGenerationReconciliation(space: PixorySpace): Promise<void> {
+  const runtimeEpoch = runtimeEpochBySpace.get(space) ?? 0;
+  const isActive = () => !suspendedSpaces.has(space) && (runtimeEpochBySpace.get(space) ?? 0) === runtimeEpoch;
+  if (!isActive()) return;
+  const jobs = await runWithDatabaseSpace(space, (db) => listRecoverableGenerationJobs(db, space));
+  if (!isActive()) return;
+  for (const candidate of jobs) {
+    if (!isActive()) return;
+    if (tasksByThreadId.has(taskKey(space, candidate.threadId))) continue;
+    const now = new Date();
+    const leaseExpiresAt = new Date(now.getTime() + RECOVERY_LEASE_MS).toISOString();
+    const claimed = await runWithDatabaseSpace(space, (db) => claimGenerationRecovery(db, {
+      jobId: candidate.id,
+      leaseExpiresAt,
+      leaseOwner: RECOVERY_OWNER,
+      now: now.toISOString(),
+    }));
+    if (!isActive()) return;
+    if (!claimed) continue;
+    const decision = decideGenerationRecovery(claimed);
+    if (decision === 'stop') {
+      await stopInterruptedGeneration(claimed, '生成恢复次数已用尽，请手动重试。');
+      continue;
+    }
+    const attempt = await runWithDatabaseSpace(space, (db) => beginGenerationRecoveryAttempt(db, {
+      attemptId: `recovery_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
+      decision,
+      generationId: claimed.generationId,
+      leaseExpiresAt,
+      leaseOwner: RECOVERY_OWNER,
+      now: new Date().toISOString(),
+    }));
+    if (!isActive()) return;
+    if (!attempt) continue;
+
+    const task = createTask(space, attempt.threadId);
+    task.generationId = attempt.generationId;
+    task.userMessageId = attempt.userMessageId;
+    rememberAssistantMessage(task, attempt.assistantMessageId);
+    task.promise = recoverInterruptedGeneration({
+      decision,
+      job: attempt,
+      signal: task.controller.signal,
+      onMessagePatch: (patch) => emitMessagePatch(task, patch),
+      onTimeout: () => {
+        void stopGeneration({ assistantMessageId: attempt.assistantMessageId, reason: 'timeout', space, threadId: attempt.threadId });
+      },
+      onUpdated: () => emitUpdated(task),
+    }).catch(async (error) => {
+      const message = error instanceof Error ? error.message : '生成恢复失败。';
+      await stopInterruptedGeneration(attempt, message);
+    }).finally(() => finishTask(task));
+    await task.promise;
+  }
+}
+
+function reconcileInterruptedGenerations(space: PixorySpace): Promise<void> {
+  const current = reconciliationBySpace.get(space);
+  if (current) return current;
+  const promise = runGenerationReconciliation(space).finally(() => {
+    if (reconciliationBySpace.get(space) === promise) reconciliationBySpace.delete(space);
+  });
+  reconciliationBySpace.set(space, promise);
+  return promise;
+}
+
+function resumeSpace(space: PixorySpace): void {
+  runtimeEpochBySpace.set(space, (runtimeEpochBySpace.get(space) ?? 0) + 1);
+  suspendedSpaces.delete(space);
+}
+
+async function suspendSpace(space: PixorySpace): Promise<void> {
+  suspendedSpaces.add(space);
+  runtimeEpochBySpace.set(space, (runtimeEpochBySpace.get(space) ?? 0) + 1);
+  const tasks = [...tasksByThreadId.values()].filter((task) => task.space === space);
+  tasks.forEach((task) => task.controller.abort());
+  await Promise.allSettled([
+    ...tasks.map((task) => task.promise),
+    ...(reconciliationBySpace.get(space) ? [reconciliationBySpace.get(space)!] : []),
+  ]);
+  await runWithDatabaseSpace(space, (db) => markInterruptedGenerationJobs(db, {
+    now: new Date().toISOString(),
+    space,
+  }));
+}
+
 export const aiGenerationManager = {
   startContinueAssistantReply,
   getActiveTaskForThread,
   hasActiveTask,
+  reconcileInterruptedGenerations,
+  resumeSpace,
   startContinueAssistantMessage,
   startReplyToAssistantMessage,
   startRegenerateAssistantMessage,
   startRewriteUserMessage,
   startSendUserMessage,
   stopGeneration,
+  suspendSpace,
   subscribeToThread,
 };

@@ -223,6 +223,7 @@ export async function maybeInitializeUserProfile(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   if (options.allowIrreversibleImportEffects === false) {
@@ -258,6 +259,7 @@ export async function maybeInitializeUserProfile(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的用户画像建档器。只输出 JSON。',
       thread: prepared.thread,
@@ -316,6 +318,7 @@ export async function maybeUpdateUserProfile(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   if (options.allowIrreversibleImportEffects === false) {
@@ -361,6 +364,7 @@ export async function maybeUpdateUserProfile(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的用户画像维护器。只输出 JSON。',
       thread: prepared.thread,

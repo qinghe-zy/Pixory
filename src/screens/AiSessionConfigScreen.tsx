@@ -50,6 +50,7 @@ import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
 import { PET_MODELS } from '../config/petModels';
 import { Live2DPetManagerModal } from '../components/ai/Live2DPetManagerModal';
 import { cancelPendingDiaryJobs } from '../ai/diary/diarySchedulerService';
+import { isCompanionAwarenessEnabled, setCompanionAwarenessEnabled } from '../ai/companion/companionSettingsService';
 
 interface AiSessionConfigScreenProps {
   space: PixorySpace;
@@ -64,6 +65,7 @@ interface AiSessionConfigScreenProps {
   onOpenBranchTree?: () => void;
   onOpenMemoryBoard?: () => void;
   onOpenInnerLife?: () => void;
+  onOpenCompanionRuntime?: () => void;
   onStartChat: () => void;
   onCurrentThreadDeleted?: () => void;
 }
@@ -172,6 +174,7 @@ export function AiSessionConfigScreen({
   onOpenBranchTree,
   onOpenMemoryBoard,
   onOpenInnerLife,
+  onOpenCompanionRuntime,
   onStartChat,
   onCurrentThreadDeleted,
 }: AiSessionConfigScreenProps) {
@@ -193,6 +196,7 @@ export function AiSessionConfigScreen({
   const [replyPreference, setReplyPreference] = useState<AiReplyPreference>('auto');
   const [thinkingDisabled, setThinkingDisabled] = useState(false);
   const [roleDiaryEnabled, setRoleDiaryEnabled] = useState(true);
+  const [companionAwarenessEnabled, setCompanionAwarenessEnabledState] = useState(true);
   const [deepMemoryEnabled, setDeepMemoryEnabled] = useState(true);
 
   useEffect(() => {
@@ -201,6 +205,8 @@ export function AiSessionConfigScreen({
       setRoleDiaryEnabled(stored !== 'false');
     });
   }, [space]);
+  useEffect(() => { void isCompanionAwarenessEnabled(space).then(setCompanionAwarenessEnabledState); }, [space]);
+  const updateCompanionAwareness = useCallback((enabled:boolean)=>{setCompanionAwarenessEnabledState(enabled);void setCompanionAwarenessEnabled(space,enabled).catch(()=>setCompanionAwarenessEnabledState(!enabled));},[space]);
   const updateRoleDiaryEnabled = useCallback((enabled: boolean) => {
     setRoleDiaryEnabled(enabled);
     void (async () => {
@@ -1045,6 +1051,22 @@ export function AiSessionConfigScreen({
                 updateRoleDiaryEnabled(next);
               }} />}
             />
+            <AiLightListItem
+              accessibilityRole="switch"
+              accessibilityState={{ checked: companionAwarenessEnabled }}
+              icon="heart-outline"
+              title="情感与时间感知"
+              subtitle="让角色在当前物理空间中延续关系、边界和未完话题"
+              showChevron={false}
+              onPress={() => updateCompanionAwareness(!companionAwarenessEnabled)}
+              action={<AiSwitch value={companionAwarenessEnabled} onValueChange={updateCompanionAwareness} />}
+            />
+            {onOpenCompanionRuntime ? <AiLightListItem
+              icon="time-outline"
+              title="管理情感与时间"
+              subtitle="查看或移除边界、待跟进话题和时间锚点"
+              onPress={onOpenCompanionRuntime}
+            /> : null}
             <AiLightListItem
               accessibilityRole="switch"
               icon="person-outline"
