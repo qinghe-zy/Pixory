@@ -4,7 +4,7 @@
     "slug": "pixory",
     "version": "2.7.1",
     "orientation": "portrait",
-    "icon": "./icons/04_右下_聊天图标.png",
+    "icon": "./icons/02_右上_蓝发女孩.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
@@ -43,7 +43,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FAFAF7",
+          "backgroundColor": "#BBCCF5",
           "image": "./icons/04_右下_聊天图标.png",
           "imageWidth": 192,
           "resizeMode": "contain"
