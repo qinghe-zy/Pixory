@@ -107,8 +107,9 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
 
   assert.doesNotMatch(chat, /keyboardResizeHost/);
   assert.match(chat, /KeyboardAvoidingView/);
-  // Both platforms use behavior='padding'; it cleanly adds/removes bottom padding
-  // and avoids the stuck-height bug that behavior='height' has on Android 14+ edge-to-edge.
+  // Uses react-native-keyboard-controller's KAV (WindowInsetsAnimationCompat on Android 14+)
+  // instead of the built-in RN KAV which has stuck-height bugs on edge-to-edge.
+  assert.match(chat, /from "react-native-keyboard-controller"/);
   assert.match(chat, /behavior="padding"/);
   assert.doesNotMatch(chat, /enabled=\{Platform\.OS === 'ios'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);

@@ -7,6 +7,7 @@ import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, InteractionManager, Linking, Platform, StyleSheet, Text, View, ScrollView, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -2159,6 +2160,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.gestureRoot}>
       <SafeAreaProvider>
+      <KeyboardProvider>
       <AppToastProvider>
         <AppUpdateAppliedNotice isReady={isReady} />
         <AppOtaUpdateFetchNotice isReady={isReady} />
@@ -2232,6 +2234,7 @@ export default function App() {
         ) : null}
         <StatusBar style="dark" />
       </AppToastProvider>
+      </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

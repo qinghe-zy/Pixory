@@ -18,7 +18,6 @@ import {
   AppState,
   Easing,
   FlatList,
-  KeyboardAvoidingView,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type NativeTouchEvent,
@@ -35,6 +34,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import {
   Live2DPetView,
@@ -6730,10 +6730,9 @@ export function AiChatScreen({
       ]}
     >
       {/* prettier-ignore */}
-      {/* behavior='padding' adds/removes bottom padding on keyboard show/hide.
-           This avoids the stuck-height bug that behavior='height' has on Android 14+
-           edge-to-edge mode. initialBottomInsetRef provides stable nav-bar clearance
-           without reacting to mid-session inset changes. */}
+      {/* Uses react-native-keyboard-controller's KeyboardAvoidingView which tracks
+           keyboard frames via WindowInsetsAnimationCompat on Android 14+ edge-to-edge,
+           eliminating the stuck-height / residual-padding bugs of the RN built-in KAV. */}
       <KeyboardAvoidingView
         behavior="padding"
         style={styles.keyboardAvoidingHost}
