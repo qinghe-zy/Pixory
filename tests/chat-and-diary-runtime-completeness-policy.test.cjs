@@ -52,11 +52,11 @@ test('the active chat schedules diary checks at the next relevant wake-up, not e
 
 test('explicit diary context choices survive newer unselected diary cards', () => {
   const repository = read('src/ai/diary/diaryRepository.ts');
-  const chatService = read('src/ai/aiChatService.ts');
+  const artifactService = read('src/ai/companion/companionArtifactService.ts');
 
   assert.match(repository, /listContextOptInDiaryVersionsForRole/);
   assert.match(repository, /contextOptIn = 1/);
-  assert.match(chatService, /listContextOptInDiaryVersionsForRole/);
-  assert.match(chatService, /角色日记（\$\{diary\.diaryDate\}/);
-  assert.doesNotMatch(chatService, /findCurrentDiaryForRole\(db, thread\.roleCardId\)/);
+  assert.match(artifactService, /listContextOptInDiaryVersionsForRole/);
+  assert.match(artifactService, /adaptDiaryArtifact/);
+  assert.doesNotMatch(artifactService, /findCurrentDiaryForRole/);
 });

@@ -135,7 +135,7 @@ function insertMessage(db, input) {
 test('V51 exact summary provenance remains declared and ordered before later migrations', () => {
   const schema = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.match(schema, /DATABASE_VERSION = 53/);
+  assert.match(schema, /DATABASE_VERSION = 5[4-9]/);
   assert.match(schema, /MIGRATION_STATEMENTS_V51/);
   for (const field of [
     'sourceMessageIdsJson',

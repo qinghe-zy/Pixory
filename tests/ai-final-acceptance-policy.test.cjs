@@ -224,7 +224,7 @@ test('AI session settings can disable model thinking for the current thread', ()
   assert.doesNotMatch(openai, /if \(input\.thinkingDisabled\) \{[\s\S]*body\.thinking = \{ type: 'disabled' \}/);
   assert.match(gemini, /function shouldDisableGeminiThinking\(input: AiChatRequest\): boolean/);
   assert.match(gemini, /input\.thinkingDisabled && \/\^gemini-2\\\.5-flash\/i\.test\(input\.modelId\)/);
-  assert.match(gemini, /if \(shouldDisableGeminiThinking\(input\)\) \{[\s\S]*thinkingConfig: \{ thinkingBudget: 0 \}/);
+  assert.match(gemini, /if \(shouldDisableGeminiThinking\(input\)\)[\s\S]{0,80}thinkingConfig = \{ thinkingBudget: 0 \}/);
   assert.match(sessionConfig, /accessibilityRole="switch"/);
   assert.match(sessionConfig, /accessibilityState=\{\{ checked: thinkingDisabled \}\}/);
   assert.match(sessionConfig, /setThinkingDisabled\(\(current\) => !current\)/);

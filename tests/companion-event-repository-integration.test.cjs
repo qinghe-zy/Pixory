@@ -88,7 +88,7 @@ function candidate(content = '明天下午告诉你结果。') {
 
 test('V52 declares the Stage B ledger and remains ordered before V53', () => {
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.equal(schema.DATABASE_VERSION, 53);
+  assert.ok(schema.DATABASE_VERSION >= 54);
   for (const table of ['companion_events', 'companion_temporal_anchors', 'companion_open_loops', 'companion_runtime_jobs', 'companion_context_traces']) {
     assert.match(schema.MIGRATION_STATEMENTS_V52, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }

@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   aiKnowledgeRepository,
+  ipRepository,
   aiProviderRepository,
   aiRoleCardRepository,
   aiThreadRepository,
@@ -42,7 +43,15 @@ import {
   rollbackThreadContinuityImport as rollbackThreadContinuityImportService,
 } from './aiContinuityImportService';
 import { buildMaterialBoundPrompt, buildNormalChatPrompt, fitBuiltPromptToContextBudget } from './promptBuilder';
-import { retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
+import { loadCurrentIpCitationSnippet, retrieveForThread, type RetrievalMode, type RetrievedSnippet } from './aiRetrievalService';
+import {
+  buildCitationRegistry,
+  CitationMarkerStreamParser,
+  hasCitationLexicalSupport,
+  hashCitationExcerpt,
+  type CitationRegistryEntry,
+  type ParsedCitationMarker,
+} from './aiCitationProtocol';
 import { cleanupDeletedMaterialFiles, importPickedDocumentsToThread, moveThreadOwnedMaterialsBetweenSpaces, removeMaterialsByOwner } from './aiDocumentService';
 import { estimatePromptTokens, trimMessagesToContextBudget } from './aiContextBudget';
 import { AI_CONTEXT_DEFAULTS, normalizeAiContextSettings } from './aiContextSettings';
@@ -380,7 +389,7 @@ function snippetTextNeedle(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 40);
 }
 
-function filterSnippetsPresentInPrompt(snippets: RetrievedSnippet[], prompt: { user: string }): RetrievedSnippet[] {
+function filterSnippetsPresentInPrompt<T extends RetrievedSnippet>(snippets: T[], prompt: { user: string }): T[] {
   if (snippets.length === 0) {
     return snippets;
   }
@@ -1939,6 +1948,91 @@ async function resolveStreamingBranchScopes(
   return [];
 }
 
+function citationOwnerIsVisible(thread: AiThreadRecord, ownerType: string, ownerId: string): boolean {
+  if (ownerType === 'thread') return ownerId === thread.id;
+  if (ownerType === 'knowledge_base') return thread.contextType === 'knowledge_base' && ownerId === thread.boundKnowledgeBaseId;
+  if (ownerType === 'ip') return thread.contextType === 'ip' && ownerId === String(thread.boundIpId ?? '') && thread.includeIpDocuments;
+  return false;
+}
+
+async function validateCitationRegistryEntry(db: SQLiteDatabase, thread: AiThreadRecord, entry: CitationRegistryEntry): Promise<string | null> {
+  if (entry.sourceType === 'document_chunk') {
+    const row = await db.getFirstAsync<{ text: string; documentVersion: string; ownerType: string; ownerId: string; space: PixorySpace }>(
+      `SELECT ai_chunks.text, ai_documents.updatedAt AS documentVersion,
+              ai_documents.ownerType, ai_documents.ownerId, ai_documents.space
+       FROM ai_chunks
+       INNER JOIN ai_documents ON ai_documents.id = ai_chunks.documentId
+       WHERE ai_chunks.id = ? AND ai_documents.id = ?`,
+      entry.chunkId,
+      entry.sourceId,
+    );
+    if (!row || row.space !== thread.space || !citationOwnerIsVisible(thread, row.ownerType, row.ownerId)) return 'source_not_visible';
+    if (entry.documentVersion && row.documentVersion !== entry.documentVersion) return 'document_version_changed';
+    if (hashCitationExcerpt(row.text) !== entry.sourceExcerptHash) return 'source_excerpt_changed';
+    return null;
+  }
+  if (thread.contextType !== 'ip' || String(thread.boundIpId ?? '') !== entry.locator.ipId?.toString()) return 'source_not_visible';
+  if (entry.sourceType === 'image_note') {
+    const image = await db.getFirstAsync<{ originalFilename: string; note: string | null; isFavorite: number; updatedAt: string; deletedAt: string | null }>(
+      'SELECT originalFilename, note, isFavorite, updatedAt, deletedAt FROM image_assets WHERE id = ? AND ipId = ?',
+      Number(entry.sourceId),
+      thread.boundIpId,
+    );
+    if (!image || image.deletedAt) return 'source_not_visible';
+    if (entry.documentVersion && image.updatedAt !== entry.documentVersion) return 'document_version_changed';
+    const excerpt = [`文件名：${image.originalFilename}`, image.note ? `备注：${image.note}` : null, image.isFavorite ? '收藏：是' : null].filter(Boolean).join('\n');
+    return hashCitationExcerpt(excerpt) === entry.sourceExcerptHash ? null : 'source_excerpt_changed';
+  }
+  if (thread.boundIpId == null) return 'source_not_visible';
+  const currentSnippet = await loadCurrentIpCitationSnippet({
+    chunkId: entry.chunkId,
+    ipId: thread.boundIpId,
+    space: thread.space,
+  });
+  if (!currentSnippet) return 'source_not_visible';
+  if (entry.documentVersion && currentSnippet.documentVersion !== entry.documentVersion) return 'document_version_changed';
+  return hashCitationExcerpt(currentSnippet.text) === entry.sourceExcerptHash ? null : 'source_excerpt_changed';
+}
+
+async function buildValidatedAnswerCitations(db: SQLiteDatabase, input: {
+  answerText: string;
+  markers: ParsedCitationMarker[];
+  registry: CitationRegistryEntry[];
+  thread: AiThreadRecord;
+  now: string;
+}) {
+  const byRefId = new Map(input.registry.map((entry) => [entry.refId, entry]));
+  const citations = [];
+  const seenMarkers = new Set<string>();
+  for (const marker of input.markers) {
+    const entry = byRefId.get(marker.refId);
+    if (!entry) continue;
+    if (marker.claimStart < 0 || marker.claimEnd <= marker.claimStart || marker.claimEnd > input.answerText.length) continue;
+    const markerKey = `${marker.refId}:${marker.claimStart}:${marker.claimEnd}`;
+    if (seenMarkers.has(markerKey)) continue;
+    seenMarkers.add(markerKey);
+    const claim = input.answerText.slice(marker.claimStart, marker.claimEnd);
+    const sourceReason = await validateCitationRegistryEntry(db, input.thread, entry);
+    const supportReason = sourceReason ?? (hasCitationLexicalSupport(claim, entry.excerpt) ? null : 'lexical_support_missing');
+    citations.push({
+      claimEnd: marker.claimEnd,
+      claimStart: marker.claimStart,
+      documentVersion: entry.documentVersion,
+      id: createAiId('aicite'),
+      label: entry.label,
+      locator: { ...entry.locator, chunkId: entry.chunkId },
+      refId: entry.refId,
+      sourceExcerptHash: entry.sourceExcerptHash,
+      sourceId: entry.sourceId,
+      sourceType: entry.sourceType,
+      usedAt: input.now,
+      validationReason: supportReason,
+      validationStatus: supportReason ? 'invalid' as const : 'valid' as const,
+    });
+  }
+  return citations;
+}
+
 async function buildPromptForThread(
   thread: AiThreadRecord,
   userMessage: string,
@@ -2161,6 +2255,7 @@ async function buildPromptForThread(
   ];
 
   if (thread.contextType === 'normal') {
+    const citationRegistry = buildCitationRegistry(threadMaterialSnippets);
     if (generationMetrics) {
       generationMetrics.context.memoryEpoch = memoryEpoch;
       generationMetrics.context.retrievalSnippetCount = threadMaterialSnippets.length;
@@ -2178,17 +2273,17 @@ async function buildPromptForThread(
         stableSummarySnapshot: coverage.stableSummaryText,
         roleCardContext,
         systemPrompt: thread.contextType === 'normal' ? thread.systemPrompt : thread.systemPrompt || DEFAULT_AI_ROLE_PROMPT,
-        materialSnippets: threadMaterialSnippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
+        materialSnippets: citationRegistry.map((snippet) => ({ label: snippet.label, refId: snippet.refId, text: snippet.text })),
         attachmentPromptContext: options?.attachmentPromptContext ?? null,
         userMessage,
       }),
-      snippets: threadMaterialSnippets,
+      snippets: citationRegistry,
       coverage,
       memoryContextPlan,
     };
   }
 
-  const snippets = [...threadMaterialSnippets, ...boundOwnerSnippets];
+  const snippets = buildCitationRegistry([...threadMaterialSnippets, ...boundOwnerSnippets]);
   if (generationMetrics) {
     generationMetrics.context.memoryEpoch = memoryEpoch;
     generationMetrics.context.retrievalSnippetCount = snippets.length;
@@ -2209,7 +2304,7 @@ async function buildPromptForThread(
       roleCardContext,
       materialRules: materialRulesForMode(thread.boundaryMode),
       contextSummary: thread.title,
-      snippets: snippets.map((snippet) => ({ label: snippet.label, text: snippet.text })),
+      snippets: snippets.map((snippet) => ({ label: snippet.label, refId: snippet.refId, text: snippet.text })),
       attachmentPromptContext: options?.attachmentPromptContext ?? null,
       userMessage,
     }),
@@ -3599,6 +3694,10 @@ async function streamAssistantReply(input: {
   const ignoreReasoningDeltas = Boolean(input.ignoreReasoningDeltas);
   let answerText = initialAnswerText;
   let reasoningText = initialReasoningText ?? '';
+  const citationMarkerParser = new CitationMarkerStreamParser(initialAnswerText);
+  let parsedCitationMarkers: ParsedCitationMarker[] = [];
+  let citationRegistry: CitationRegistryEntry[] = [];
+  let citationParserFinalized = false;
   const pendingAnswerChunks: string[] = [];
   const pendingReasoningChunks: string[] = [];
   let pendingAnswerChars = 0;
@@ -3614,6 +3713,32 @@ async function streamAssistantReply(input: {
       pendingReasoningChunks.length = 0;
       pendingReasoningChars = 0;
     }
+  }
+  function finalizeCitationParser(): void {
+    if (citationParserFinalized) return;
+    const result = citationMarkerParser.finish();
+    citationParserFinalized = true;
+    parsedCitationMarkers = result.markers;
+    if (result.visibleTail) {
+      if (mode === 'continue') answerText = appendContinuationAnswerDelta(answerText, result.visibleTail, initialAnswerText);
+      else pendingAnswerChunks.push(result.visibleTail);
+    }
+    flushStreamingTextChunks();
+  }
+  async function persistParsedCitations(completedAt: string): Promise<AiCitationRecord[]> {
+    return runWithDatabaseSpace(input.space, async (db) => {
+      const citations = citationRegistry.length && parsedCitationMarkers.length
+        ? await buildValidatedAnswerCitations(db, {
+            answerText,
+            markers: parsedCitationMarkers,
+            now: completedAt,
+            registry: citationRegistry,
+            thread: input.thread,
+          })
+        : [];
+      await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
+      return aiThreadRepository.listCitations(db, input.assistantMessageId);
+    });
   }
   let assistantReset = mode === 'continue';
   const generationMetrics = input.generationMetrics;
@@ -3663,6 +3788,7 @@ async function streamAssistantReply(input: {
       return false;
     }
     const stopReason = currentStopReason();
+    finalizeCitationParser();
     generationMetrics.context.stopReason = stopReason;
     if (stopReason === 'timeout_failed') {
       const errorMessage = '生成已中断';
@@ -3679,6 +3805,7 @@ async function streamAssistantReply(input: {
           stopReason,
         }),
       );
+      const citations = await persistParsedCitations(completedAt);
       emitMessagePatch({
         id: input.assistantMessageId,
         status: 'failed',
@@ -3686,6 +3813,7 @@ async function streamAssistantReply(input: {
         reasoningText: assistantReset ? reasoningText || null : null,
         errorMessage,
         completedAt,
+        citations,
       });
       input.onUpdated?.();
       return true;
@@ -3702,12 +3830,14 @@ async function streamAssistantReply(input: {
         stopReason,
       })
     );
+    const citations = await persistParsedCitations(completedAt);
     emitMessagePatch({
       id: input.assistantMessageId,
       status: 'stopped',
       content: assistantReset ? answerText : undefined,
       reasoningText: assistantReset ? reasoningText || null : undefined,
       completedAt,
+      citations,
     });
     input.onUpdated?.();
     return true;
@@ -3971,6 +4101,7 @@ async function streamAssistantReply(input: {
     }));
     prompt = fitBuiltPromptToContextBudget({ modelContextWindowTokens, prompt });
     snippets = filterSnippetsPresentInPrompt(snippets, prompt);
+    citationRegistry = snippets;
     generationMetrics.context.chatMode = prompt.cacheMetadata.chatMode;
     generationMetrics.context.memoryEpoch = prompt.cacheMetadata.memoryEpoch;
     generationMetrics.context.retrievalSnippetCount = snippets.length;
@@ -4341,11 +4472,12 @@ async function streamAssistantReply(input: {
             markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
           }
           markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
+          const visibleDelta = citationMarkerParser.push(event.text);
           if (mode === 'continue') {
-            answerText = appendContinuationAnswerDelta(answerText, event.text, initialAnswerText);
+            answerText = appendContinuationAnswerDelta(answerText, visibleDelta, initialAnswerText);
           } else {
-            pendingAnswerChunks.push(event.text);
-            pendingAnswerChars += event.text.length;
+            if (visibleDelta) pendingAnswerChunks.push(visibleDelta);
+            pendingAnswerChars += visibleDelta.length;
           }
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
@@ -4374,7 +4506,7 @@ async function streamAssistantReply(input: {
         }
         generationMetrics.counters.providerEventHandlerTotalMs += Date.now() - eventStartedAt;
         if (event.type === 'error') {
-          flushStreamingTextChunks();
+          finalizeCitationParser();
           streamFailed = true;
           if (pendingUiPatchTimer) {
             clearTimeout(pendingUiPatchTimer);
@@ -4382,8 +4514,9 @@ async function streamAssistantReply(input: {
           }
           const readableError = normalizeAiErrorMessage(event.message);
           const failureCode = setGenerationFailureReason(generationMetrics, event.message);
-          await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
-          emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
+          const completedAt = await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
+          const citations = await persistParsedCitations(completedAt);
+          emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt, citations });
           input.onUpdated?.();
         }
       }
@@ -4393,10 +4526,12 @@ async function streamAssistantReply(input: {
       return;
     }
     streamFailed = true;
+    finalizeCitationParser();
     const readableError = normalizeAiErrorMessage(error);
     const failureCode = setGenerationFailureReason(generationMetrics, error);
-    await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
-    emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt: new Date().toISOString() });
+    const completedAt = await markAssistantFailed(input.space, input.assistantMessageId, generationId, readableError, answerText, reasoningText || null, createPromptSnapshotJson({ failureReason: failureCode }));
+    const citations = await persistParsedCitations(completedAt);
+    emitMessagePatch({ id: input.assistantMessageId, status: 'failed', content: answerText, reasoningText: reasoningText || null, errorMessage: readableError, completedAt, citations });
     input.onUpdated?.();
   } finally {
     pressureProbeActive = false;
@@ -4406,6 +4541,8 @@ async function streamAssistantReply(input: {
     }
     clearProviderTimeout();
   }
+
+  finalizeCitationParser();
 
   if (streamFailed) {
     flushStreamingTextChunks();
@@ -4430,7 +4567,8 @@ async function streamAssistantReply(input: {
   if (stoppedMessageIds.has(stoppedGenerationKey(input.assistantMessageId, generationId))) {
     generationMetrics.context.stopReason = 'user_stopped';
     const completedAt = await markAssistantStopped(input.space, input.assistantMessageId, generationId, answerText, reasoningText || null, createPromptSnapshotJson({ stopReason: 'user_stopped' }));
-    emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt });
+    const citations = await persistParsedCitations(completedAt);
+    emitMessagePatch({ id: input.assistantMessageId, status: 'stopped', content: answerText, reasoningText: reasoningText || null, completedAt, citations });
     input.onUpdated?.();
     if (answerText) {
       await recordSuccessfulProviderModel(input.space, provider.id, modelId);
@@ -4538,13 +4676,13 @@ async function streamAssistantReply(input: {
           space: input.space,
           threadId: input.thread.id,
         });
-        const citations = snippets.map((snippet) => ({
-          id: createAiId('aicite'),
-          sourceType: snippet.sourceType ?? 'document_chunk',
-          sourceId: snippet.sourceId ?? snippet.chunkId,
-          label: snippet.label,
-          locator: snippet.locator,
-        }));
+        const citations = await buildValidatedAnswerCitations(db, {
+          answerText,
+          markers: parsedCitationMarkers,
+          now: completedAt,
+          registry: snippets,
+          thread: input.thread,
+        });
         if (await isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)) {
           await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
         }

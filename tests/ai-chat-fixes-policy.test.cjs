@@ -1630,7 +1630,7 @@ test('AI streaming timeout only stops when the provider stays silent for 60 seco
   assert.match(service, /scheduleProviderTimeout\(FIRST_PROVIDER_BYTE_TIMEOUT_MS\)/);
   assert.match(service, /async \(event: AiStreamEvent\) => \{[\s\S]*scheduleProviderTimeout\(PROVIDER_IDLE_TIMEOUT_MS\)/);
   assert.match(service, /if \(event\.type === 'provider_usage'\) \{[\s\S]*return;/);
-  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*appendContinuationAnswerDelta\(answerText, event\.text, initialAnswerText\)/);
+  assert.match(service, /if \(event\.type === 'answer_delta'\) \{[\s\S]*const visibleDelta = citationMarkerParser\.push\(event\.text\)[\s\S]*appendContinuationAnswerDelta\(answerText, visibleDelta, initialAnswerText\)/);
   assert.match(service, /if \(event\.type === 'reasoning_delta' && !input\.thread\.thinkingDisabled && !ignoreReasoningDeltas\) \{[\s\S]*pendingReasoningChunks\.push\(event\.text\)/);
   assert.match(manager, /reason: 'timeout'/);
 });

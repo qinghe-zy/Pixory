@@ -46,9 +46,9 @@ test('prompt assembly retrieves thread-owned materials for every chat type', () 
 
   assert.match(promptBody, /retrieveForThread\(\{\s*space:\s*thread\.space,\s*ownerType:\s*'thread',\s*ownerId:\s*thread\.id,\s*query:\s*userMessage/s);
   assertOccursBefore(promptBody, "ownerType: 'thread'", "thread.contextType === 'normal'");
-  assert.match(promptBody, /const\s+snippets\s*=\s*\[\s*\.\.\.threadMaterialSnippets,\s*\.\.\.boundOwnerSnippets\s*\]/);
-  assert.match(promptBody, /buildNormalChatPrompt\(\{[\s\S]*materialSnippets:\s*threadMaterialSnippets/);
-  assert.match(normalPromptBody, /materialSnippets\?:\s*Array<\{ label: string; text: string \}>/);
+  assert.match(promptBody, /const\s+snippets\s*=\s*buildCitationRegistry\(\[\.\.\.threadMaterialSnippets, \.\.\.boundOwnerSnippets\]\)/);
+  assert.match(promptBody, /buildNormalChatPrompt\(\{[\s\S]*materialSnippets:\s*citationRegistry\.map/);
+  assert.match(normalPromptBody, /materialSnippets\?:\s*Array<\{ refId: string; label: string; text: string \}>/);
   assert.match(promptBuilder, /当前会话资料/);
   assert.match(normalPromptSection, /`用户当前问题：\\n\$\{input\.userMessage\}`/);
   assert.doesNotMatch(normalPromptSection, /\.join\('\\n\\n用户当前问题：\\n'\)/);

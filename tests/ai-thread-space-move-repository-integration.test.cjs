@@ -129,7 +129,9 @@ function createSchema(db) {
     );
     CREATE TABLE ai_message_citations (
       id TEXT PRIMARY KEY, messageId TEXT, sourceType TEXT, sourceId TEXT, label TEXT,
-      locatorJson TEXT, createdAt TEXT
+      locatorJson TEXT, refId TEXT, claimStart INTEGER, claimEnd INTEGER,
+      sourceExcerptHash TEXT, documentVersion TEXT, validationStatus TEXT DEFAULT 'valid',
+      validationReason TEXT, usedAt TEXT, createdAt TEXT
     );
     CREATE TABLE ai_message_attachments (
       id TEXT PRIMARY KEY, messageId TEXT, threadId TEXT, kind TEXT, name TEXT,

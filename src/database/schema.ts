@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 53;
+export const DATABASE_VERSION = 54;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1974,6 +1974,20 @@ CREATE INDEX IF NOT EXISTS idx_companion_thoughts_role
   ON companion_thoughts(roleCardId, status, createdAt DESC);
 CREATE INDEX IF NOT EXISTS idx_companion_thoughts_delivery
   ON companion_thoughts(sourceThreadId, sourceBranchRouteHash, status, deliveryStatus, priority DESC, createdAt DESC);
+`;
+
+export const MIGRATION_STATEMENTS_V54 = `
+ALTER TABLE ai_message_citations ADD COLUMN refId TEXT;
+ALTER TABLE ai_message_citations ADD COLUMN claimStart INTEGER;
+ALTER TABLE ai_message_citations ADD COLUMN claimEnd INTEGER;
+ALTER TABLE ai_message_citations ADD COLUMN sourceExcerptHash TEXT;
+ALTER TABLE ai_message_citations ADD COLUMN documentVersion TEXT;
+ALTER TABLE ai_message_citations ADD COLUMN validationStatus TEXT NOT NULL DEFAULT 'valid'
+  CHECK (validationStatus IN ('valid', 'invalid'));
+ALTER TABLE ai_message_citations ADD COLUMN validationReason TEXT;
+ALTER TABLE ai_message_citations ADD COLUMN usedAt TEXT;
+CREATE INDEX IF NOT EXISTS idx_ai_citations_validation
+  ON ai_message_citations(messageId, validationStatus, claimStart);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

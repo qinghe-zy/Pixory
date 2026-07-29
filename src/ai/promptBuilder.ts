@@ -283,6 +283,15 @@ function buildNextReplyNudge(input: {
   return lines.join('\n');
 }
 
+function buildCitationMaterialSection(title: string, snippets?: Array<{ refId: string; label: string; text: string }>): string {
+  if (!snippets?.length) return '';
+  return [
+    title,
+    '只有回答中的句子确实依据某个片段时，才在该句末尾紧跟隐藏标记 [[cite:S1]]；未使用的片段不要标记，不要输出不存在的引用 ID。',
+    ...snippets.map((snippet) => `[${snippet.refId}] ${snippet.label}\n${snippet.text}`),
+  ].join('\n\n');
+}
+
 function promptBlockPriority(name: AiPromptBlock['name']): 'dynamic' | 'protected' | 'required' | 'stable' {
   if (name === 'current_user_message' || name === 'summary_bridge') {
     return 'required';
@@ -387,19 +396,14 @@ export function buildNormalChatPrompt(input: {
   dynamicSegments?: AiDynamicContextSegment[];
   roleCardContext?: AiRolePromptContext | null;
   rolePrompt?: string | null;
-  materialSnippets?: Array<{ label: string; text: string }>;
+  materialSnippets?: Array<{ refId: string; label: string; text: string }>;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
   const resolvedRoleContext = resolveRolePromptContext(input.roleCardContext);
   const useRoleplayFrame = shouldUseSillyTavernRoleplayFrame(input);
   const baseRolePrompt = stripStructuredSillyTavernSections(input.systemPrompt, input.roleCardContext);
-  const materialSection = input.materialSnippets?.length
-    ? [
-        '当前会话资料：',
-        ...input.materialSnippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
-      ].join('\n\n')
-    : '';
+  const materialSection = buildCitationMaterialSection('当前会话资料：', input.materialSnippets);
   const retrievalContext = [materialSection, input.attachmentPromptContext].filter(Boolean).join('\n\n');
   const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
 
@@ -461,7 +465,7 @@ export function buildMaterialBoundPrompt(input: {
   roleCardContext?: AiRolePromptContext | null;
   materialRules?: string;
   contextSummary: string;
-  snippets: Array<{ label: string; text: string }>;
+  snippets: Array<{ refId: string; label: string; text: string }>;
   attachmentPromptContext?: string | null;
   userMessage: string;
 }): BuiltPrompt {
@@ -471,10 +475,9 @@ export function buildMaterialBoundPrompt(input: {
   const materialRules = input.materialRules ?? MATERIAL_SESSION_RULES;
   const retrievalContext = [
     input.contextSummary,
-    '可引用资料片段：',
-    ...input.snippets.map((snippet, index) => `[${index + 1}] ${snippet.label}\n${snippet.text}`),
+    buildCitationMaterialSection('可引用资料片段：', input.snippets),
     input.attachmentPromptContext,
-  ].join('\n\n');
+  ].filter(Boolean).join('\n\n');
   const stableSummarySnapshot = input.stableSummarySnapshot ?? input.summarySegments ?? '';
   const stableBlocks = [
     block('stable_app_policy', '', true),

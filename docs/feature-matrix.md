@@ -48,7 +48,7 @@
 | 重复检测 | 已实现 | exact hash、visual hash、重复审查、跳过导入 | `DuplicateReviewScreen`, `duplicateDetectionService` |
 | 回收站 | 已实现 | 软删除、恢复、清空、过期清理 | `TrashScreen`, `trashService` |
 | 备份/导入导出 | 部分实现 | 已支持数据库、原图、缩略图备份，以及单 IP、隐私加密包和系统目录导出；AI 文档文件、聊天附件文件、角色头像尚未完整纳入备份包 | `BackupScreen`, `BackupExportManagerScreen`, `backupService` |
-| AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、引用和阅读；入口、术语、版本更新、跨资料搜索、备份恢复尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService` |
+| AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、答案级引用、阅读和带哈希校验的备份恢复；入口、术语、来源更新和跨资料搜索尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService`, `managedBackupService` |
 | Live2D 桌宠 | 实验/不上线 | 代码和会话配置入口存在，但因缺少合适且权属清晰的正式素材，当前版本不发布、不宣传 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
 | 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库 | `App.tsx`, `MeScreen`, `PersonalUnlockModal`, `personalSystemService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
@@ -83,9 +83,9 @@
 | 角色梦境 | 已实现，V1 核心 | 本地宽候选检测覆盖梦中、共同入睡、角色入睡、晚安与角色扮演睡眠场景；明确睡眠质量/产品讨论本地零成本排除，其余候选只进行一次结构化语义分类，再使用持久化确定性 roll 按 55%/40%/30%/10%/10% 概率决定。每角色至少间隔 50 个完整问答轮、北京时间每天最多两次；手动“做个梦”先确认。任务具备 lease、取消、重试、幂等、消息版本/分支/空间复核和 Personal 远程授权边界，分类与生成 token 仅记录数量。生成中/失败/完成轻提示可跨重启恢复；完成后聊天页显示横向入口，阅读器使用 9:13 纵向分页梦境卡，最后一页只有用户明确选择“是”才以低权限、非事实、非记忆、非预言材料进入同线程同分支后续上下文 | `src/ai/dream/`, `DreamChatCard`, `DreamDeckPager`, `DreamReaderScreen`, `companion_dream_*` |
 | 离线思绪 | 已实现，V1 核心 | 只在完整问答后由本地规则识别脆弱、受伤、和解、道歉、赞美与冷淡事件，十分钟会话窗口统一批量生成；每角色北京时间每天最多三条，允许模型返回零条。思绪是给 AI 的一次性低权限短念头，不在聊天页直接展示；选择时原子预留，生成失败可释放，同一回复重试复用，只有回复完成且来源消息/分支仍有效才消费，之后不再注入。任务具备 lease、退避、幂等、Personal 隔离和内容无关 token 计量，用户可在“内心独白”中查看、软删除和恢复 | `src/ai/thought/`, `companionArtifactService`, `CompanionInnerLifeScreen`, `companion_thought_*` |
 | 内心产物仲裁 | 已实现，V1 核心 | 每轮最多选择一个日记/梦境/思绪动态段；用户明确允许的同线程同分支梦境或日记优先于待消费思绪，全部使用统一 artifact contract，并标注为不可信、低权限、非事实/非指令内容。跨空间移动按依赖顺序保留投影、梦境、思绪、任务与来源版本，运行中任务清 lease 后恢复，源角色删除时清理孤立计数与角色投影 | `companionArtifactAdapter`, `companionArtifactService`, `aiThreadRepository`, `aiChatService` |
-| RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
+| RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval；每次请求按实际片段顺序分配 `S1...`，模型只有实际使用资料才输出隐藏引用标记，流式阶段不会闪现半截标记；完成、停止或失败时按回答句子位置落库并复核来源可见性、文档/素材版本、片段 SHA-256 和本地词面支撑，无标记不生成引用，失效引用不展示 | `aiDocumentService`, `aiRetrievalService`, `aiCitationProtocol`, `aiKnowledgeRepository`, `aiThreadRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
-| 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动和删除；尚无统一收件箱、全局跨资料搜索、内容 hash/版本、来源更新检测、同步状态和完整备份恢复 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen` |
+| 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动、删除和原文件备份恢复；尚无统一收件箱、全局跨资料搜索、来源更新检测和同步状态 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `managedBackupService` |
 | 产品帮助文档 | 关于页进入应用内 Markdown 阅读，官网图片后台预取并持久缓存；这是产品帮助链路，不会自动作为用户知识库或系统 RAG 材料 | `AboutScreen`, `ProductDocumentationScreen`, `productDocumentationService`, `productManualMarkdown` |
 | Live2D 桌宠 | 实验/不上线；保留现有代码用于未来评估，正式启用前必须解决素材授权、远程依赖、隐私说明和 Android 性能验证 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
 | 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线；创作路线树入口位于会话设置的当前会话模块；Android 路线树避免全画布 SVG/bitmap，长路线用局部连线、限量网格与可见区渲染降低卡顿和闪退风险 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen`, `BranchTreeCanvas`, `AiSessionConfigScreen` |
@@ -173,19 +173,19 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| 普通备份 | 部分实现：当前 normal space 备份包含数据库、原图和缩略图；不会复制 `ai_documents`、聊天附件文件或 `ai_role_avatars` | `backupService`, `BackupScreen`, `fileStorageService` |
-| 单 IP 备份 | 指定 IP 备份 | `backupService` |
+| 普通备份 | Manifest V2 包含空间 SQLite、原图/视频原件、缩略图、AI 文档原文件、聊天附件和角色头像；所有文件只使用相对路径，按内容 SHA-256 去重并在复制后复核大小与哈希，必需文件缺失时整次备份失败而不伪报成功 | `backupService`, `managedBackupService`, `backupManifestProtocol`, `BackupScreen`, `fileStorageService` |
+| 单 IP 备份 | 指定 IP 的数据库快照和素材文件使用 Manifest V2；恢复只导入该 IP 及素材，不意外合并快照中的其他 AI 数据 | `backupService`, `managedBackupService` |
 | 隐私备份 | personal plain、personal encrypted、all encrypted pack | `backupService`, `personalSystemService` |
-| 备份导入 | plain backup merge、同名 IP 处理、encrypted personal pack 导入 | `backupService` |
+| 备份导入 | 兼容旧 plain backup，并支持 Manifest V2 plain/personal encrypted merge：解包后先校验版本、空间、相对路径、大小和 SHA-256，再把文件写入受管目录；SQLite 事务按依赖合并 AI/记忆/陪伴记录、重写文档/附件/头像与 IP/图片引用，`INSERT OR IGNORE` 保留目标侧已有编辑，失败回滚数据库并清理本次新建文件；Personal 明文 staging 仅位于 Personal temp 且 finally 清理 | `backupService`, `managedBackupService`, `backupManifestProtocol` |
 | 系统目录导出 | SAF 目录选择、导出到系统文件夹、进度 | `BackupExportManagerScreen`, native media module |
 | 存储统计 | 原图、缩略图、缓存、备份、回收站、IP 存储明细 | `StorageUsageScreen`, `storageUsageService`, `IpStorageDetailScreen` |
 | 缓存清理 | image memory/disk cache、temp cache、daily startup cleanup | `cacheCleanupService` |
 
 当前备份边界必须按以下方式理解：
 
-- AI 线程、消息、记忆、角色卡和材料索引等数据库记录会随对应空间数据库进入备份。
-- 数据库记录引用的 AI 文档原文件、线程附件文件和角色头像文件目前没有被 `backupService` 复制；换机或重装恢复后可能出现记录仍在但文件 URI 失效。
-- 在文件覆盖补齐并完成真实设备“导出 → 清空/重装 → 导入 → 打开文档/附件/头像”验证前，不得对外承诺 AI 数据可以完整恢复。
+- 实现层已覆盖 AI 数据库记录、文档原文件、线程附件和角色头像，并在恢复时重新分配受管 URI，不复用旧设备绝对路径。
+- SecureStore 中的 Provider API Key 不进入备份；恢复后相关服务商密钥需要用户重新填写。
+- 自动化测试已覆盖 Manifest 结构、路径穿越拒绝、哈希/大小门禁、事务合并和 URI 重写策略；在真实 Android 设备完成“导出 → 清空/重装 → 导入 → 打开文档/附件/头像”验收前，能力矩阵只声明实现完成，不声明真机换机链路已验证。
 
 ---
 
@@ -227,7 +227,7 @@
 | 资产导入与重复检测 | `asset-duplicate-v1-policy.test.cjs`, `package-import-policy.test.cjs` |
 | 批量整理 | `batch-organize-ux-policy.test.cjs` |
 | 隐私系统 | `privacy-system-policy.test.cjs`, `final-personal-system-policy.test.cjs`, `route-space-policy.test.cjs` |
-| 备份 | `backup-export-ux-policy.test.cjs` |
+| 备份 | `backup-export-ux-policy.test.cjs`, `managed-backup-v2.test.cjs` |
 | 存储与回收站 | `storage-usage-policy.test.cjs`, `trash-clear-policy.test.cjs`, `cache-cleanup-policy.test.cjs` |
 | 媒体体验 | `mature-media-experience-policy.test.cjs`, `privacy-cover-viewer-policy.test.cjs` |
 | 更新与官网 | `update-check-policy.test.cjs`, `website-flow-policy.test.cjs` |

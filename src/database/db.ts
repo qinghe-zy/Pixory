@@ -58,6 +58,7 @@ import {
   MIGRATION_STATEMENTS_V51,
   MIGRATION_STATEMENTS_V52,
   MIGRATION_STATEMENTS_V53,
+  MIGRATION_STATEMENTS_V54,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -407,6 +408,9 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
 
     if (currentVersion < 53) {
       await database.execAsync(MIGRATION_STATEMENTS_V53);
+    }
+    if (currentVersion < 54) {
+      await database.execAsync(MIGRATION_STATEMENTS_V54);
     }
 
     await ensureImportTemplatesSchema(database);

@@ -135,5 +135,13 @@ export interface AiCitationRecord {
   sourceId: string;
   label: string;
   locator: Record<string, unknown>;
+  refId: string | null;
+  claimStart: number | null;
+  claimEnd: number | null;
+  sourceExcerptHash: string | null;
+  documentVersion: string | null;
+  validationStatus: 'valid' | 'invalid';
+  validationReason: string | null;
+  usedAt: string | null;
   createdAt: string;
 }

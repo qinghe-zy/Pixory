@@ -23,7 +23,7 @@ finally {
 
 test('V53 declares every Stage C projection dream and thought table', () => {
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.equal(schema.DATABASE_VERSION, 53);
+  assert.ok(schema.DATABASE_VERSION >= 53);
   for (const table of [
     'companion_projection_snapshots', 'companion_affective_observations', 'companion_repairs',
     'companion_dream_scenes', 'companion_dream_seeds', 'companion_dream_jobs', 'companion_dreams',

@@ -117,7 +117,7 @@ test('ordinary streaming accumulates provider chunks until display or persistenc
   assert.match(service, /const pendingAnswerChunks: string\[\] = \[\];/);
   assert.match(service, /const pendingReasoningChunks: string\[\] = \[\];/);
   assert.match(service, /function flushStreamingTextChunks\(\)/);
-  assert.match(service, /pendingAnswerChunks\.push\(event\.text\)/);
+  assert.match(service, /pendingAnswerChunks\.push\(visibleDelta\)/);
   assert.match(service, /pendingReasoningChunks\.push\(event\.text\)/);
   assert.match(service, /if \(!force && now - lastUiPatchAt < effectivePatchIntervalMs\)/);
   assert.match(service, /flushStreamingTextChunks\(\);/);

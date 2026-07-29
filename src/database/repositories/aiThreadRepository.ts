@@ -615,6 +615,14 @@ export interface ReplaceCitationInput {
   sourceId: string;
   label: string;
   locator?: Record<string, unknown>;
+  refId?: string | null;
+  claimStart?: number | null;
+  claimEnd?: number | null;
+  sourceExcerptHash?: string | null;
+  documentVersion?: string | null;
+  validationStatus?: 'valid' | 'invalid';
+  validationReason?: string | null;
+  usedAt?: string | null;
 }
 
 export interface AiThreadExportSnapshot {
@@ -751,6 +759,14 @@ function mapCitationRow(row: AiCitationRow): AiCitationRecord {
     sourceId: row.sourceId,
     label: row.label,
     locator,
+    refId: row.refId ?? null,
+    claimStart: row.claimStart ?? null,
+    claimEnd: row.claimEnd ?? null,
+    sourceExcerptHash: row.sourceExcerptHash ?? null,
+    documentVersion: row.documentVersion ?? null,
+    validationStatus: row.validationStatus ?? 'valid',
+    validationReason: row.validationReason ?? null,
+    usedAt: row.usedAt ?? null,
     createdAt: row.createdAt,
   };
 }
@@ -2011,20 +2027,24 @@ export const aiThreadRepository = {
     for (const citation of snapshot.citations) {
       await db.runAsync(
         `INSERT INTO ai_message_citations (
-          id,
-          messageId,
-          sourceType,
-          sourceId,
-          label,
-          locatorJson,
-          createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          id, messageId, sourceType, sourceId, label, locatorJson,
+          refId, claimStart, claimEnd, sourceExcerptHash, documentVersion,
+          validationStatus, validationReason, usedAt, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         citation.id,
         citation.messageId,
         citation.sourceType,
         citation.sourceId,
         citation.label,
         citation.locatorJson,
+        citation.refId ?? null,
+        citation.claimStart ?? null,
+        citation.claimEnd ?? null,
+        citation.sourceExcerptHash ?? null,
+        citation.documentVersion ?? null,
+        citation.validationStatus ?? 'valid',
+        citation.validationReason ?? null,
+        citation.usedAt ?? citation.createdAt,
         citation.createdAt
       );
     }
@@ -4378,20 +4398,24 @@ export const aiThreadRepository = {
     for (const citation of citations) {
       await db.runAsync(
         `INSERT INTO ai_message_citations (
-          id,
-          messageId,
-          sourceType,
-          sourceId,
-          label,
-          locatorJson,
-          createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          id, messageId, sourceType, sourceId, label, locatorJson,
+          refId, claimStart, claimEnd, sourceExcerptHash, documentVersion,
+          validationStatus, validationReason, usedAt, createdAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         citation.id,
         messageId,
         citation.sourceType,
         citation.sourceId,
         citation.label,
         JSON.stringify(citation.locator ?? {}),
+        citation.refId ?? null,
+        citation.claimStart ?? null,
+        citation.claimEnd ?? null,
+        citation.sourceExcerptHash ?? null,
+        citation.documentVersion ?? null,
+        citation.validationStatus ?? 'valid',
+        citation.validationReason ?? null,
+        citation.usedAt ?? now,
         now
       );
     }
@@ -4400,8 +4424,8 @@ export const aiThreadRepository = {
   async listCitations(db: SQLiteDatabase, messageId: string): Promise<AiCitationRecord[]> {
     const rows = await db.getAllAsync<AiCitationRow>(
       `SELECT * FROM ai_message_citations
-       WHERE messageId = ?
-       ORDER BY createdAt ASC`,
+       WHERE messageId = ? AND validationStatus = 'valid'
+       ORDER BY claimStart ASC, createdAt ASC`,
       messageId
     );
     return rows.map(mapCitationRow);
@@ -4417,8 +4441,8 @@ export const aiThreadRepository = {
       rows.push(
         ...(await db.getAllAsync<AiCitationRow>(
           `SELECT * FROM ai_message_citations
-           WHERE messageId IN (${makeInClause(chunk)})
-           ORDER BY messageId ASC, createdAt ASC`,
+           WHERE messageId IN (${makeInClause(chunk)}) AND validationStatus = 'valid'
+           ORDER BY messageId ASC, claimStart ASC, createdAt ASC`,
           ...chunk
         ))
       );

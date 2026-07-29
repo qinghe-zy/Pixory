@@ -17,6 +17,7 @@ export interface RetrievedSnippet {
   text: string;
   locator: Record<string, unknown>;
   score: number;
+  documentVersion?: string | null;
 }
 
 interface GroupNameRow {
@@ -67,6 +68,7 @@ interface ChunkSearchRow {
   normalizedText: string;
   sourceLabel: string;
   locatorJson: string;
+  documentVersion: string | null;
 }
 
 interface OwnerEmbeddingAvailabilityRow {
@@ -162,11 +164,13 @@ async function keywordSearch(input: RetrieveForThreadInput): Promise<RetrievedSn
     const likeTerms = terms.length > 0 ? terms : [normalizedQuery];
     const clauses = likeTerms.map(() => 'normalizedText LIKE ?');
     const rows = await db.getAllAsync<ChunkSearchRow>(
-      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
+      `SELECT ai_chunks.id, ai_chunks.documentId, ai_chunks.text, ai_chunks.normalizedText,
+              ai_chunks.sourceLabel, ai_chunks.locatorJson, ai_documents.updatedAt AS documentVersion
        FROM ai_chunks
-       WHERE space = ?
-         AND ownerType = ?
-         AND ownerId = ?
+       INNER JOIN ai_documents ON ai_documents.id = ai_chunks.documentId
+       WHERE ai_chunks.space = ?
+         AND ai_chunks.ownerType = ?
+         AND ai_chunks.ownerId = ?
          AND (${clauses.join(' OR ')})
        LIMIT 80`,
       input.space,
@@ -184,6 +188,7 @@ async function keywordSearch(input: RetrieveForThreadInput): Promise<RetrievedSn
         text: row.text,
         locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
         score: keywordScore(row, normalizedQuery, likeTerms),
+        documentVersion: row.documentVersion,
       }))
       .filter((snippet) => snippet.score > 0)
       .sort((left, right) => right.score - left.score)
@@ -203,12 +208,14 @@ async function loadChunkSnippetsByIds(
 
   return runWithDatabaseSpace(input.space, async (db) => {
     const rows = await db.getAllAsync<ChunkSearchRow>(
-      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
+      `SELECT ai_chunks.id, ai_chunks.documentId, ai_chunks.text, ai_chunks.normalizedText,
+              ai_chunks.sourceLabel, ai_chunks.locatorJson, ai_documents.updatedAt AS documentVersion
        FROM ai_chunks
-       WHERE space = ?
-         AND ownerType = ?
-         AND ownerId = ?
-         AND id IN (${chunkIds.map(() => '?').join(', ')})`,
+       INNER JOIN ai_documents ON ai_documents.id = ai_chunks.documentId
+       WHERE ai_chunks.space = ?
+         AND ai_chunks.ownerType = ?
+         AND ai_chunks.ownerId = ?
+         AND ai_chunks.id IN (${chunkIds.map(() => '?').join(', ')})`,
       input.space,
       input.ownerType,
       input.ownerId,
@@ -224,6 +231,7 @@ async function loadChunkSnippetsByIds(
         text: row.text,
         locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
         score: scoreByChunkId.get(row.id) ?? 0,
+        documentVersion: row.documentVersion,
       }))
       .sort((left, right) => right.score - left.score);
   });
@@ -232,11 +240,13 @@ async function loadChunkSnippetsByIds(
 async function ownerPreviewSearch(input: RetrieveForThreadInput): Promise<RetrievedSnippet[]> {
   return runWithDatabaseSpace(input.space, async (db) => {
     const rows = await db.getAllAsync<ChunkSearchRow>(
-      `SELECT id, documentId, text, normalizedText, sourceLabel, locatorJson
+      `SELECT ai_chunks.id, ai_chunks.documentId, ai_chunks.text, ai_chunks.normalizedText,
+              ai_chunks.sourceLabel, ai_chunks.locatorJson, ai_documents.updatedAt AS documentVersion
        FROM ai_chunks
-       WHERE space = ?
-         AND ownerType = ?
-         AND ownerId = ?
+       INNER JOIN ai_documents ON ai_documents.id = ai_chunks.documentId
+       WHERE ai_chunks.space = ?
+         AND ai_chunks.ownerType = ?
+         AND ai_chunks.ownerId = ?
        ORDER BY sourceLabel ASC, chunkIndex ASC
        LIMIT ?`,
       input.space,
@@ -253,6 +263,7 @@ async function ownerPreviewSearch(input: RetrieveForThreadInput): Promise<Retrie
       text: truncateText(row.text, 700),
       locator: { ...parseLocator(row.locatorJson), chunkId: row.id },
       score: 0.5 - index * 0.01,
+      documentVersion: row.documentVersion,
     }));
   });
 }
@@ -378,6 +389,7 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         ),
         locator: { ipId: ip.id, kind: 'summary' },
         score: 10,
+        documentVersion: ip.recentUpdatedAt,
       },
     ];
 
@@ -390,6 +402,7 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         text: truncateText(groups.map((group) => `${group.name}（${group.type}）`).join(' / ')),
         locator: { ipId: ip.id, kind: 'groups' },
         score: 8,
+        documentVersion: ip.recentUpdatedAt,
       });
     }
 
@@ -402,6 +415,7 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         text: truncateText(tags.map((tag) => `${tag.name} x${tag.count}`).join(' / ')),
         locator: { ipId: ip.id, kind: 'tags' },
         score: 9,
+        documentVersion: ip.recentUpdatedAt,
       });
     }
 
@@ -414,6 +428,7 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         text: truncateText([`文件名：${image.originalFilename}`, image.note ? `备注：${image.note}` : null, image.isFavorite ? '收藏：是' : null].filter(Boolean).join('\n')),
         locator: { ipId: ip.id, imageId: image.id, kind: 'image_note' },
         score: 7,
+        documentVersion: image.updatedAt,
       });
     }
 
@@ -426,6 +441,7 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         text: truncateText(filenameRows.map((row) => row.originalFilename).join('\n')),
         locator: { ipId: ip.id, kind: 'filenames' },
         score: 5,
+        documentVersion: ip.recentUpdatedAt,
       });
     }
 
@@ -442,11 +458,28 @@ async function collectIpContextSnippets(input: RetrieveForThreadInput): Promise<
         ),
         locator: { ipId: ip.id, kind: 'import_batches' },
         score: 4,
+        documentVersion: ip.recentUpdatedAt,
       });
     }
 
     return snippets.slice(0, input.limit ?? DEFAULT_RETRIEVAL_LIMIT);
   });
+}
+
+export async function loadCurrentIpCitationSnippet(input: {
+  chunkId: string;
+  ipId: number;
+  space: PixorySpace;
+}): Promise<RetrievedSnippet | null> {
+  const snippets = await collectIpContextSnippets({
+    includeDocumentChunks: false,
+    limit: 64,
+    ownerId: String(input.ipId),
+    ownerType: 'ip',
+    query: '',
+    space: input.space,
+  });
+  return snippets.find((snippet) => snippet.chunkId === input.chunkId) ?? null;
 }
 
 export async function retrieveForThread(input: RetrieveForThreadInput): Promise<{
