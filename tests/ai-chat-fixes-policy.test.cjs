@@ -107,9 +107,10 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
 
   assert.doesNotMatch(chat, /keyboardResizeHost/);
   assert.match(chat, /KeyboardAvoidingView/);
-  // Android relies on adjustResize from AndroidManifest; KAV is iOS-only
-  assert.match(chat, /behavior=\{Platform\.OS === 'ios' \? 'padding' : undefined\}/);
-  assert.match(chat, /enabled=\{Platform\.OS === 'ios'\}/);
+  // Android uses behavior='height' (adjustResize is deprecated in edge-to-edge / Android 14+)
+  // iOS uses behavior='padding'
+  assert.match(chat, /behavior=\{Platform\.OS === 'ios' \? 'padding' : 'height'\}/);
+  assert.doesNotMatch(chat, /enabled=\{Platform\.OS === 'ios'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
   assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
