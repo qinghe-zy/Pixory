@@ -1,8 +1,8 @@
 const fs = require('fs');
-const oldVersion = '2.6.9';
-const newVersion = '2.6.10';
-const oldVersionCode = '271';
-const newVersionCode = '272';
+const oldVersion = '2.6.10';
+const newVersion = '2.7.1';
+const oldVersionCode = '272';
+const newVersionCode = '273';
 
 const filesToUpdate = [
   'package.json',

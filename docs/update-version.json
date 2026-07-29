@@ -1,16 +1,16 @@
 {
-  "version": "2.6.10",
-  "versionCode": 272,
+  "version": "2.7.1",
+  "versionCode": 273,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.6.10 发布。新版记忆系统更稳、更省上下文，也更方便查看和纠正；可前往官网下载区获取最新版。",
+  "message": "Pixory 2.7.1 发布。陪伴内心运行时、角色日记与长聊天恢复进一步完善；可前往官网下载区获取最新版。",
   "detailLines": [
-    "🧠 新增可重建的三层记忆账本与低噪声检索，无 Embedding 也能正常聊天",
-    "✍️ 简化记忆看板，确认、编辑、删除和作用域修改会真实影响后续对话",
-    "🔒 完善 Personal、思考内容、外部导入和删除恢复的隔离与治理"
+    "🌙 陪伴内心运行时与角色日记完善，情绪、关系、梦境和思绪继续保持可控边界",
+    "💬 优化长聊天回到底部、上下文操作与中断后恢复，答案级引用更清晰",
+    "🔒 强化 Personal 恢复、受管备份与上下文隔离，并更新 Android 图标和启动屏"
   ],
-  "latestVersion": "2.6.10",
-  "latestVersionCode": 272,
+  "latestVersion": "2.7.1",
+  "latestVersionCode": 273,
   "downloadUrl": "https://mist01.com/#download",
-  "changelog": "1. 发布 Memory v1，补齐事件账本、ContextPlan、原生 v2 包导入导出和可控记忆看板。"
+  "changelog": "1. 发布陪伴内心运行时与角色日记增强，完善长聊天恢复、引用、备份隔离和 Android 启动体验。"
 }

@@ -8,21 +8,20 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 当前功能状态与实现边界以 [`docs/feature-matrix.md`](docs/feature-matrix.md) 为索引；2026-07-13 的源码级扫描证据、已知风险和后续增量复核方法保存在 [`docs/product-capability-baseline.md`](docs/product-capability-baseline.md)。
 
-[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.6.10.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.6.10`
+[访问官网](https://mist01.com/#download) · [服务器直下](https://mist01.com/downloads/Pixory-v2.7.1.apk) · [GitHub 备用](https://github.com/qinghe-zy/Pixory/releases/latest) · 当前版本 `2.7.1`
 
 ![Pixory preview](docs/assets/og-cover.png)
 
 ## 最新版本
 
-### Pixory 2.6.10
+### Pixory 2.7.1
 
-这一版重做长期记忆与陪伴运行时的底层链路，重点是让聊天更连贯、记忆更可控，同时避免普通聊天多花远程模型调用：
+这一版把陪伴内心运行时、角色日记和长聊天连续性进一步收口，重点是让陪伴自然延续、恢复可依赖，且始终保留清晰的隐私与上下文边界：
 
-- 新增可重建的 Memory v1 事件账本、Working/Confirmed/Archive 三层治理与低噪声检索；未配置 Embedding 也能正常聊天。
-- 简化记忆看板，确认、编辑、删除和作用域修改会真实影响后续对话；默认导出新版原生包，也兼容旧包导入。
-- 强化 Personal、本地轻抽取、思考内容隔离、外部迁移审核和删除恢复边界；普通聊天不为每句话额外调用远程记忆模型。
-- 陪伴内心运行时 V1 已接入：关系、情感、时间与事件状态仅作为内部上下文影响角色表达，不向用户展示分数；角色日记、离线思绪与梦境共享受控的 artifact 与话题仲裁边界。
-- 官方 DeepSeek V4 请求会读取原生缓存/用量字段并保持稳定提示词前缀；不替用户干预其他模型选择。
+- 陪伴内心运行时与角色日记增强：情绪、关系、梦境、离线思绪和日记会在受控边界内影响角色表达；Android 后台唤醒与前台协调让任务在中断后可恢复。
+- 长聊天体验继续优化：回到底部、消息上下文操作、生成恢复与直接发言更稳定，答案级引用更容易追溯资料来源。
+- 强化受管备份、Personal 恢复生命周期和上下文覆盖；敏感空间、思考内容和材料边界继续保持隔离。
+- 更新 Android 桌面图标与 Android 12+ 启动屏，发布包仍仅包含 ARM 真机 ABI。
 
 ### Pixory 2.6.4
 
@@ -73,7 +72,7 @@ Pixory 面向在 Android 上长期使用 AI 角色、整理 IP 资料、保存�
 
 下载地址：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.10.apk](https://mist01.com/downloads/Pixory-v2.6.10.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.7.1.apk](https://mist01.com/downloads/Pixory-v2.7.1.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 ## 产品定位
@@ -248,7 +247,7 @@ AppData/
 
 最新版 Android APK：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.10.apk](https://mist01.com/downloads/Pixory-v2.6.10.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.7.1.apk](https://mist01.com/downloads/Pixory-v2.7.1.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases/latest](https://github.com/qinghe-zy/Pixory/releases/latest)
 
 安装流程：
@@ -348,7 +347,7 @@ pnpm run doctor
 
 Android APK 的默认下载从 `mist01.com` 服务器直下最新版，服务器只保留当前最新 APK；GitHub Releases 保留备用下载和历史版本：
 
-- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.6.10.apk](https://mist01.com/downloads/Pixory-v2.6.10.apk)
+- 服务器直下（最新版 APK）：[https://mist01.com/downloads/Pixory-v2.7.1.apk](https://mist01.com/downloads/Pixory-v2.7.1.apk)
 - GitHub 备用与历史版本：[https://github.com/qinghe-zy/Pixory/releases](https://github.com/qinghe-zy/Pixory/releases)
 
 应用内更新读取：
@@ -363,7 +362,7 @@ docs/update-version.json
 docs/announcement.json
 ```
 
-维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。先运行 `pnpm release:android`，它会 clean、仅构建真机 ARM ABI 并拒绝含模拟器 ABI 的产物；部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.6.10.apk -Version 2.6.10` 上传最新版 APK，并清理服务器旧 APK。
+维护发布信息时，需要保持版本号、版本码、服务器 APK 文件名、Release 页面和远程 JSON 一致。先运行 `pnpm release:android`，它会 clean、仅构建真机 ARM ABI 并拒绝含模拟器 ABI 的产物；部署官网时可用 `scripts/deploy-docs-mist01.ps1 -ApkPath output/release/Pixory-v2.7.1.apk -Version 2.7.1` 上传最新版 APK，并清理服务器旧 APK。
 
 ## 产品原则
 
