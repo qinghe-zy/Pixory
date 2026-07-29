@@ -22,6 +22,10 @@ test('AI stopped or failed assistant replies can continue without replacing exis
   assert.match(service, /thinkingExpected:\s*false/);
   assert.match(service, /appendVisibleAssistantPartialToHistory/);
   assert.match(service, /CONTINUE_ASSISTANT_REPLY_INSTRUCTION/);
+  assert.match(service, /retainedCitations/);
+  assert.match(service, /mergeContinuationCitations/);
+  assert.match(service, /mode === 'continue'[\s\S]*listCitations/);
+  assert.doesNotMatch(service, /mode === 'continue'[\s\S]{0,220}replaceCitations\(db, input\.assistantMessageId, \[\]\)/);
   assert.doesNotMatch(continueBlock, /snapshotMessageVersion/);
 
   assert.match(manager, /continueAssistantMessage/);

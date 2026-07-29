@@ -6,6 +6,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import type { PixorySpace } from '../database';
 import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupManifestProtocol';
+import { createMappedLogicalId, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
 import {
   copyLocalFile,
   ensureLocalDirectory,
@@ -59,6 +60,7 @@ export interface StagedManagedAiFiles {
 export interface ManagedDatabaseMergeReport {
   insertedRecords: number;
   preservedRecords: number;
+  remappedLogicalIds: number;
   restoredTables: number;
   uriRewriteFailures: string[];
 }
@@ -344,10 +346,21 @@ function remapJsonIds(value: unknown, ipIdMap: Map<number, number>, imageIdMap: 
   return output;
 }
 
-function rewriteJsonColumn(value: unknown, ipIdMap: Map<number, number>, imageIdMap: Map<number, number>): unknown {
+function rewriteJsonColumn(input: {
+  column: string;
+  contextTable: string;
+  imageIdMap: Map<number, number>;
+  ipIdMap: Map<number, number>;
+  logicalIdMaps: ManagedLogicalIdMaps;
+  value: unknown;
+}): unknown {
+  const { value } = input;
   if (typeof value !== 'string' || !value.trim()) return value;
   try {
-    return JSON.stringify(remapJsonIds(JSON.parse(value), ipIdMap, imageIdMap));
+    const numericRemapped = remapJsonIds(JSON.parse(value), input.ipIdMap, input.imageIdMap);
+    const logicalKey = input.column.endsWith('Json') ? input.column.slice(0, -4) : input.column;
+    const wrapped = remapManagedLogicalReferences({ [logicalKey]: numericRemapped }, input.logicalIdMaps, input.contextTable) as Record<string, unknown>;
+    return JSON.stringify(wrapped[logicalKey]);
   } catch {
     return value;
   }
@@ -356,12 +369,15 @@ function rewriteJsonColumn(value: unknown, ipIdMap: Map<number, number>, imageId
 function rewriteManagedRow(input: {
   imageIdMap: Map<number, number>;
   ipIdMap: Map<number, number>;
+  logicalIdMaps: ManagedLogicalIdMaps;
+  foreignKeys: Map<string, string>;
   row: Record<string, unknown>;
   space: PixorySpace;
   table: string;
   uriByLogicalId: Map<string, string>;
 }): Record<string, unknown> | null {
-  const row = { ...input.row };
+  const sourceLogicalId = typeof input.row.id === 'string' ? input.row.id : null;
+  let row = { ...input.row };
   if (typeof row.space === 'string' && row.space !== input.space) return null;
   if ('apiKeyRef' in row) row.apiKeyRef = null;
   if ('sessionApiKeyRef' in row) row.sessionApiKeyRef = null;
@@ -380,22 +396,41 @@ function rewriteManagedRow(input: {
     const oldId = Number(row.sourceId);
     if (Number.isInteger(oldId)) row.sourceId = String(input.ipIdMap.get(oldId) ?? oldId);
   }
+  if (sourceLogicalId) row.id = input.logicalIdMaps.get(input.table)?.get(sourceLogicalId) ?? sourceLogicalId;
+  for (const [column, referencedTable] of input.foreignKeys) {
+    if (typeof row[column] === 'string') {
+      row[column] = input.logicalIdMaps.get(referencedTable)?.get(String(row[column])) ?? row[column];
+    }
+  }
+  row = remapManagedLogicalReferences(row, input.logicalIdMaps, input.table) as Record<string, unknown>;
+  if (sourceLogicalId && row.id !== sourceLogicalId) {
+    for (const column of ['canonicalClaimId', 'commandId', 'generationId', 'idempotencyKey', 'reservationId']) {
+      if (typeof row[column] === 'string') row[column] = `${row[column]}:managed-restore:${String(row.id).slice(-12)}`;
+    }
+  }
   for (const column of Object.keys(row)) {
-    if (column.endsWith('Json')) row[column] = rewriteJsonColumn(row[column], input.ipIdMap, input.imageIdMap);
+    if (column.endsWith('Json')) row[column] = rewriteJsonColumn({
+      column,
+      contextTable: input.table,
+      imageIdMap: input.imageIdMap,
+      ipIdMap: input.ipIdMap,
+      logicalIdMaps: input.logicalIdMaps,
+      value: row[column],
+    });
   }
-  if (input.table === 'ai_documents' && typeof row.id === 'string' && row.localUri) {
-    const uri = input.uriByLogicalId.get(`ai_document:${row.id}`);
-    if (!uri) throw new Error(`恢复文档缺少 URI 映射：${row.id}`);
+  if (input.table === 'ai_documents' && sourceLogicalId && row.localUri) {
+    const uri = input.uriByLogicalId.get(`ai_document:${sourceLogicalId}`);
+    if (!uri) throw new Error(`恢复文档缺少 URI 映射：${sourceLogicalId}`);
     row.localUri = uri;
   }
-  if (input.table === 'ai_message_attachments' && typeof row.id === 'string') {
-    const uri = input.uriByLogicalId.get(`message_attachment:${row.id}`);
-    if (!uri) throw new Error(`恢复附件缺少 URI 映射：${row.id}`);
+  if (input.table === 'ai_message_attachments' && sourceLogicalId) {
+    const uri = input.uriByLogicalId.get(`message_attachment:${sourceLogicalId}`);
+    if (!uri) throw new Error(`恢复附件缺少 URI 映射：${sourceLogicalId}`);
     row.localUri = uri;
   }
-  if (input.table === 'ai_role_cards' && typeof row.id === 'string' && row.avatarEnabled === 1 && row.avatarUri) {
-    const uri = input.uriByLogicalId.get(`role_card:${row.id}:avatar`);
-    if (!uri) throw new Error(`恢复角色头像缺少 URI 映射：${row.id}`);
+  if (input.table === 'ai_role_cards' && sourceLogicalId && row.avatarEnabled === 1 && row.avatarUri) {
+    const uri = input.uriByLogicalId.get(`role_card:${sourceLogicalId}:avatar`);
+    if (!uri) throw new Error(`恢复角色头像缺少 URI 映射：${sourceLogicalId}`);
     row.avatarUri = uri;
   }
   return row;
@@ -410,6 +445,8 @@ const RESTORE_TABLE_PRIORITY = [
 export async function mergeManagedDatabaseRecords(input: {
   imageIdMap: Map<number, number>;
   ipIdMap: Map<number, number>;
+  sourceDb?: SQLiteDatabase;
+  sourceDatabaseSha256?: string;
   sourceDatabaseUri: string;
   space: PixorySpace;
   targetDb: SQLiteDatabase;
@@ -418,9 +455,10 @@ export async function mergeManagedDatabaseRecords(input: {
   const slash = input.sourceDatabaseUri.lastIndexOf('/');
   const directory = input.sourceDatabaseUri.slice(0, slash + 1);
   const databaseName = input.sourceDatabaseUri.slice(slash + 1);
-  const sourceDb = await openDatabaseAsync(databaseName, { useNewConnection: true }, directory);
+  const ownsSourceDb = !input.sourceDb;
+  const sourceDb = input.sourceDb ?? await openDatabaseAsync(databaseName, { useNewConnection: true }, directory);
   const report: ManagedDatabaseMergeReport = {
-    insertedRecords: 0, preservedRecords: 0, restoredTables: 0, uriRewriteFailures: [],
+    insertedRecords: 0, preservedRecords: 0, remappedLogicalIds: 0, restoredTables: 0, uriRewriteFailures: [],
   };
   try {
     const tables = await sourceDb.getAllAsync<{ name: string }>(
@@ -430,25 +468,88 @@ export async function mergeManagedDatabaseRecords(input: {
     const targetTables = new Set((await input.targetDb.getAllAsync<{ name: string }>(
       `SELECT name FROM sqlite_master WHERE type = 'table'`,
     )).map((row) => row.name));
-    const ordered = tables.map((row) => row.name).filter((name) => targetTables.has(name)).sort((left, right) => {
+    const ordered = tables.map((row) => row.name).filter((name) => targetTables.has(name) && name !== 'memory_import_id_map').sort((left, right) => {
       const leftPriority = RESTORE_TABLE_PRIORITY.indexOf(left);
       const rightPriority = RESTORE_TABLE_PRIORITY.indexOf(right);
       return (leftPriority < 0 ? RESTORE_TABLE_PRIORITY.length : leftPriority) -
         (rightPriority < 0 ? RESTORE_TABLE_PRIORITY.length : rightPriority);
     });
-    await input.targetDb.execAsync('PRAGMA defer_foreign_keys = ON');
+    const rowsByTable = new Map<string, Record<string, unknown>[]>();
+    const columnsByTable = new Map<string, string[]>();
+    const foreignKeysByTable = new Map<string, Map<string, string>>();
     for (const table of ordered) {
       const sourceColumns = await sourceDb.getAllAsync<{ name: string }>(`PRAGMA table_info(${quoteIdentifier(table)})`);
       const targetColumnSet = new Set((await input.targetDb.getAllAsync<{ name: string }>(
         `PRAGMA table_info(${quoteIdentifier(table)})`,
       )).map((column) => column.name));
-      const columns = sourceColumns.map((column) => column.name).filter((name) => targetColumnSet.has(name));
+      columnsByTable.set(table, sourceColumns.map((column) => column.name).filter((name) => targetColumnSet.has(name)));
+      rowsByTable.set(table, await sourceDb.getAllAsync<Record<string, unknown>>(`SELECT * FROM ${quoteIdentifier(table)}`));
+      const foreignKeys = await input.targetDb.getAllAsync<{ from: string; table: string }>(`PRAGMA foreign_key_list(${quoteIdentifier(table)})`);
+      foreignKeysByTable.set(table, new Map(foreignKeys.map((foreignKey) => [foreignKey.from, foreignKey.table])));
+    }
+    const databaseHash = input.sourceDatabaseSha256
+      ? { sha256: input.sourceDatabaseSha256, size: 0 }
+      : await hashManagedFile(input.sourceDatabaseUri);
+    const packageId = `managed-backup:${databaseHash.sha256}`;
+    const logicalIdMaps: ManagedLogicalIdMaps = new Map();
+    const reservedTargetIds = new Map<string, Set<string>>();
+    const canPersistMappings = targetTables.has('memory_import_id_map');
+    for (const table of ordered) {
+      if (!columnsByTable.get(table)?.includes('id')) continue;
+      const tableMap = new Map<string, string>();
+      logicalIdMaps.set(table, tableMap);
+      const reserved = new Set<string>();
+      reservedTargetIds.set(table, reserved);
+      for (const row of rowsByTable.get(table) ?? []) {
+        if (typeof row.space === 'string' && row.space !== input.space) continue;
+        if (typeof row.id !== 'string') continue;
+        const persisted = canPersistMappings
+          ? await input.targetDb.getFirstAsync<{ targetId: string }>(
+              `SELECT targetId FROM memory_import_id_map WHERE packageId = ? AND sourceType = ? AND sourceId = ? AND targetType = ?`,
+              packageId, table, row.id, table,
+            )
+          : null;
+        let targetId = persisted?.targetId ?? row.id;
+        if (!persisted) {
+          const collision = await input.targetDb.getFirstAsync<{ present: number }>(
+            `SELECT 1 AS present FROM ${quoteIdentifier(table)} WHERE id = ? LIMIT 1`, row.id,
+          );
+          if (collision || reserved.has(targetId)) {
+            let salt = 0;
+            do {
+              targetId = createMappedLogicalId(packageId, table, row.id, salt++);
+            } while (reserved.has(targetId) || await input.targetDb.getFirstAsync(
+              `SELECT 1 AS present FROM ${quoteIdentifier(table)} WHERE id = ? LIMIT 1`, targetId,
+            ));
+          }
+          if (canPersistMappings) {
+            await input.targetDb.runAsync(
+              `INSERT OR IGNORE INTO memory_import_id_map (packageId, sourceType, sourceId, targetType, targetId, sourceHash, importedAt)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              packageId, table, row.id, table, targetId, databaseHash.sha256, new Date().toISOString(),
+            );
+          }
+        }
+        tableMap.set(row.id, targetId);
+        reserved.add(targetId);
+        if (targetId !== row.id) report.remappedLogicalIds += 1;
+      }
+    }
+    await input.targetDb.execAsync('PRAGMA defer_foreign_keys = ON');
+    for (const table of ordered) {
+      const columns = columnsByTable.get(table) ?? [];
       if (!columns.length) continue;
-      const rows = await sourceDb.getAllAsync<Record<string, unknown>>(`SELECT * FROM ${quoteIdentifier(table)}`);
+      const rows = rowsByTable.get(table) ?? [];
       for (const sourceRow of rows) {
         let row: Record<string, unknown> | null;
         try {
-          row = rewriteManagedRow({ ...input, row: sourceRow, table });
+          row = rewriteManagedRow({
+            ...input,
+            foreignKeys: foreignKeysByTable.get(table) ?? new Map(),
+            logicalIdMaps,
+            row: sourceRow,
+            table,
+          });
         } catch (error) {
           report.uriRewriteFailures.push(error instanceof Error ? error.message : String(error));
           continue;
@@ -469,6 +570,6 @@ export async function mergeManagedDatabaseRecords(input: {
     }
     return report;
   } finally {
-    await sourceDb.closeAsync();
+    if (ownsSourceDb) await sourceDb.closeAsync();
   }
 }

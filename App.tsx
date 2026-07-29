@@ -63,7 +63,7 @@ import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
-import { runCompanionMaintenancePass } from './src/ai/companion/companionMaintenanceQueue';
+import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
 import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
@@ -582,7 +582,7 @@ export default function App() {
   function resumeCompanionRuntimes(): void {
     void reconcileThoughtSessions('normal').then(() => runCompanionMaintenancePass({ space: 'normal' })).catch(() => undefined);
     if (personalSessionStateRef.current === 'unlocked') {
-      void reconcileThoughtSessions('personal').then(() => runCompanionMaintenancePass({ space: 'personal' })).catch(() => undefined);
+      void reconcileThoughtSessions('personal').then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' })).catch(() => undefined);
     }
   }
 
@@ -814,9 +814,6 @@ export default function App() {
       }
       await ensureAppDirectories('personal');
       const db = await initDatabase('personal');
-      void reconcileThoughtSessions('personal')
-        .then(() => runCompanionMaintenancePass({ space: 'personal' }))
-        .catch(() => undefined);
       const generation = personalGenerationRef.current + 1;
       personalGenerationRef.current = generation;
       const sessionId = `${Date.now()}-${generation}`;
@@ -838,7 +835,12 @@ export default function App() {
       setPersonalSession(session);
       setPersonalSessionState('unlocked');
       personalSessionStateRef.current = 'unlocked';
+      aiGenerationManager.resumeSpace('personal');
+      resumePersonalCompanionMaintenance();
       void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
+      void reconcileThoughtSessions('personal')
+        .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))
+        .catch(() => undefined);
       setPersonalUnlockVisible(false);
       setLibraryRefreshToken((current) => current + 1);
       setTimeout(() => {
@@ -906,6 +908,17 @@ export default function App() {
     setPrivacyShieldVisible(true);
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
     personalSessionStateRef.current = 'locking';
+    const runtimeResults = await Promise.allSettled([
+      aiGenerationManager.suspendSpace('personal'),
+      suspendCompanionMaintenance('personal'),
+    ]);
+    for (const runtimeResult of runtimeResults) {
+      if (runtimeResult.status === 'rejected') {
+        console.warn('Pixory personal runtime suspension failed.', {
+          message: runtimeResult.reason instanceof Error ? runtimeResult.reason.message : 'unknown runtime suspension error',
+        });
+      }
+    }
     invalidatePersonalTaskToken(personalTaskTokenRef.current);
     personalTaskTokenRef.current = null;
     personalGenerationRef.current += 1;

@@ -1,0 +1,105 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+
+export type ManagedLogicalIdMaps = Map<string, Map<string, string>>;
+
+const MESSAGE_KEYS = new Set([
+  'assistantMessageId', 'branchRootMessageId', 'deliveredMessageId', 'endMessageId',
+  'historyAnchorMessageId', 'lastCheckedAssistantMessageId', 'lastConsolidatedMessageId',
+  'lastMessageId', 'messageId', 'originalMessageId', 'parentMessageId',
+  'reservationMessageId', 'resolutionEvidenceMessageId', 'sourceEndMessageId',
+  'sourceMessageId', 'sourceStartMessageId', 'startMessageId', 'userMessageId',
+]);
+const THREAD_KEYS = new Set(['boundThreadId', 'sourceThreadId', 'targetThreadId', 'threadId']);
+const ROLE_KEYS = new Set(['roleCardId']);
+const DOCUMENT_KEYS = new Set(['documentId']);
+const CHUNK_KEYS = new Set(['chunkId']);
+const PROVIDER_KEYS = new Set(['providerId']);
+const KNOWLEDGE_BASE_KEYS = new Set(['boundKnowledgeBaseId', 'knowledgeBaseId']);
+
+function mapped(maps: ManagedLogicalIdMaps, table: string, value: unknown): unknown {
+  return typeof value === 'string' ? maps.get(table)?.get(value) ?? value : value;
+}
+
+function jobTable(contextTable: string): string | null {
+  if (contextTable === 'companion_dreams') return 'companion_dream_jobs';
+  if (contextTable === 'companion_thoughts') return 'companion_thought_jobs';
+  if (contextTable === 'ai_generation_events') return 'ai_generation_jobs';
+  return null;
+}
+
+function eventTable(contextTable: string): string | null {
+  if (contextTable.startsWith('companion_thought')) return 'companion_thought_events';
+  if (contextTable === 'memory_outbox') return 'memory_events';
+  return null;
+}
+
+function remapArray(value: unknown, maps: ManagedLogicalIdMaps, table: string): unknown {
+  return Array.isArray(value) ? value.map((item) => mapped(maps, table, item)) : value;
+}
+
+export function createMappedLogicalId(packageId: string, table: string, sourceId: string, salt = 0): string {
+  const digest = bytesToHex(sha256(utf8ToBytes(`${packageId}\u001F${table}\u001F${sourceId}\u001F${salt}`)));
+  return `mbk_${digest.slice(0, 32)}`;
+}
+
+export function remapManagedLogicalReferences(
+  value: unknown,
+  maps: ManagedLogicalIdMaps,
+  contextTable: string,
+): unknown {
+  if (Array.isArray(value)) return value.map((item) => remapManagedLogicalReferences(item, maps, contextTable));
+  if (!value || typeof value !== 'object') return value;
+  const source = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (MESSAGE_KEYS.has(key)) output[key] = mapped(maps, 'ai_messages', item);
+    else if (THREAD_KEYS.has(key)) output[key] = mapped(maps, 'ai_threads', item);
+    else if (ROLE_KEYS.has(key)) output[key] = mapped(maps, 'ai_role_cards', item);
+    else if (DOCUMENT_KEYS.has(key)) output[key] = mapped(maps, 'ai_documents', item);
+    else if (CHUNK_KEYS.has(key)) output[key] = mapped(maps, 'ai_chunks', item);
+    else if (PROVIDER_KEYS.has(key)) output[key] = mapped(maps, 'ai_providers', item);
+    else if (KNOWLEDGE_BASE_KEYS.has(key)) output[key] = mapped(maps, 'ai_knowledge_bases', item);
+    else if (key === 'claimId' || key === 'supersededByClaimId') output[key] = mapped(maps, 'memory_claims', item);
+    else if (key === 'repairId') output[key] = mapped(maps, 'companion_repairs', item);
+    else if (key === 'sceneId') output[key] = mapped(maps, 'companion_dream_scenes', item);
+    else if (key === 'seedId') output[key] = mapped(maps, 'companion_dream_seeds', item);
+    else if (key === 'diaryId') output[key] = mapped(maps, 'companion_diaries', item);
+    else if (key === 'jobId' && jobTable(contextTable)) output[key] = mapped(maps, jobTable(contextTable)!, item);
+    else if (key === 'eventId' && eventTable(contextTable)) output[key] = mapped(maps, eventTable(contextTable)!, item);
+    else if (key === 'sourceEventId') output[key] = mapped(maps, 'companion_events', item);
+    else if (key === 'sourceMessageIds' || key === 'evidenceMessageIds') output[key] = remapArray(item, maps, 'ai_messages');
+    else if (key === 'sourceClaimIds' || key === 'targetClaimIds') output[key] = remapArray(item, maps, 'memory_claims');
+    else if (key === 'eventIds' && eventTable(contextTable)) output[key] = remapArray(item, maps, eventTable(contextTable)!);
+    else output[key] = remapManagedLogicalReferences(item, maps, contextTable);
+  }
+  if (typeof source.scopeType === 'string' && typeof source.scopeId === 'string') {
+    const scopeTable = source.scopeType === 'role' ? 'ai_role_cards'
+      : source.scopeType === 'thread' || source.scopeType === 'branch' ? 'ai_threads'
+        : source.scopeType === 'knowledge_base' ? 'ai_knowledge_bases' : null;
+    if (scopeTable) output.scopeId = mapped(maps, scopeTable, source.scopeId);
+  }
+  if (typeof source.ownerType === 'string' && typeof source.ownerId === 'string') {
+    const ownerTable = source.ownerType === 'thread' ? 'ai_threads'
+      : source.ownerType === 'knowledge_base' ? 'ai_knowledge_bases' : null;
+    if (ownerTable) output.ownerId = mapped(maps, ownerTable, source.ownerId);
+  }
+  if (typeof source.subjectType === 'string' && typeof source.subjectId === 'string') {
+    const subjectTable = source.subjectType === 'role' ? 'ai_role_cards'
+      : source.subjectType === 'thread' ? 'ai_threads' : null;
+    if (subjectTable) output.subjectId = mapped(maps, subjectTable, source.subjectId);
+  }
+  if (typeof source.sourceType === 'string' && typeof source.sourceId === 'string') {
+    const sourceTable = source.sourceType === 'document_chunk' ? 'ai_chunks'
+      : source.sourceType === 'message' ? 'ai_messages'
+        : source.sourceType === 'attachment' ? 'ai_message_attachments' : null;
+    if (sourceTable) output.sourceId = mapped(maps, sourceTable, source.sourceId);
+  }
+  if (typeof source.aggregateType === 'string' && typeof source.aggregateId === 'string') {
+    const aggregateTable = source.aggregateType === 'claim' ? 'memory_claims'
+      : source.aggregateType === 'episode' ? 'memory_episodes'
+        : source.aggregateType === 'relation' ? 'memory_relational_states' : null;
+    if (aggregateTable) output.aggregateId = mapped(maps, aggregateTable, source.aggregateId);
+  }
+  return output;
+}

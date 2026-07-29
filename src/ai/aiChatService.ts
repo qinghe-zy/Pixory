@@ -2041,6 +2041,20 @@ async function buildValidatedAnswerCitations(db: SQLiteDatabase, input: {
   return citations;
 }
 
+function mergeContinuationCitations(
+  retained: AiCitationRecord[],
+  appended: Awaited<ReturnType<typeof buildValidatedAnswerCitations>>,
+) {
+  const merged = [...retained, ...appended];
+  const seen = new Set<string>();
+  return merged.filter((citation) => {
+    const key = [citation.refId, citation.claimStart, citation.claimEnd, citation.sourceType, citation.sourceId].join('\u001F');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function buildPromptForThread(
   thread: AiThreadRecord,
   userMessage: string,
@@ -3804,6 +3818,7 @@ async function streamAssistantReply(input: {
   const citationMarkerParser = new CitationMarkerStreamParser(initialAnswerText);
   let parsedCitationMarkers: ParsedCitationMarker[] = [];
   let citationRegistry: CitationRegistryEntry[] = [];
+  let retainedCitations: AiCitationRecord[] = [];
   let citationParserFinalized = false;
   const pendingAnswerChunks: string[] = [];
   const pendingReasoningChunks: string[] = [];
@@ -3834,7 +3849,10 @@ async function streamAssistantReply(input: {
   }
   async function persistParsedCitations(completedAt: string): Promise<AiCitationRecord[]> {
     return runWithDatabaseSpace(input.space, async (db) => {
-      const citations = citationRegistry.length && parsedCitationMarkers.length
+      if (mode === 'continue' && retainedCitations.length === 0) {
+        retainedCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
+      }
+      const appendedCitations = citationRegistry.length && parsedCitationMarkers.length
         ? await buildValidatedAnswerCitations(db, {
             answerText,
             markers: parsedCitationMarkers,
@@ -3843,6 +3861,9 @@ async function streamAssistantReply(input: {
             thread: input.thread,
           })
         : [];
+      const citations = mode === 'continue'
+        ? mergeContinuationCitations(retainedCitations, appendedCitations)
+        : appendedCitations;
       await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
       return aiThreadRepository.listCitations(db, input.assistantMessageId);
     });
@@ -3959,6 +3980,7 @@ async function streamAssistantReply(input: {
     markGenerationMetric(generationMetrics, 'assistantPlaceholderPersistStartAt');
   }
   await runWithDatabaseSpace(input.space, async (db) => {
+    if (mode === 'continue') retainedCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
     const resetPatch = mode === 'continue'
       ? {
           status: 'generating' as const,
@@ -3993,7 +4015,7 @@ async function streamAssistantReply(input: {
     if (!resetMessage) {
       return;
     }
-    await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
+    if (mode !== 'continue') await aiThreadRepository.replaceCitations(db, input.assistantMessageId, []);
   });
   if (!(await runWithDatabaseSpace(input.space, (db) => isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)))) {
     return;
@@ -4014,7 +4036,7 @@ async function streamAssistantReply(input: {
     promptSnapshotJson: '{}',
     createdAt: mode === 'continue' ? undefined : startedAt,
     completedAt: null,
-    citations: [],
+    citations: retainedCitations,
   });
   input.onUpdated?.();
 
@@ -4839,17 +4861,26 @@ async function streamAssistantReply(input: {
           space: input.space,
           threadId: input.thread.id,
         });
-        const citations = await buildValidatedAnswerCitations(db, {
+        const appendedCitations = await buildValidatedAnswerCitations(db, {
           answerText,
           markers: parsedCitationMarkers,
           now: completedAt,
           registry: snippets,
           thread: input.thread,
         });
+        const citations = mode === 'continue'
+          ? mergeContinuationCitations(retainedCitations, appendedCitations)
+          : appendedCitations;
         if (await isAssistantMessageCurrentGeneration(db, input.assistantMessageId, generationId)) {
           await aiThreadRepository.replaceCitations(db, input.assistantMessageId, citations);
         }
         finalCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
+        await deliverThoughtReservation(db, {
+          branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
+          messageId: input.assistantMessageId,
+          now: completedAt,
+          thread: input.thread,
+        });
       }
       if (current) {
         await settleGenerationJob(db, {
@@ -4879,16 +4910,6 @@ async function streamAssistantReply(input: {
     }
     return;
   }
-  await runWithDatabaseSpace(input.space, async (db) => {
-    await db.withTransactionAsync(async () => {
-      await deliverThoughtReservation(db, {
-        branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
-        messageId: input.assistantMessageId,
-        now: completedAt,
-        thread: input.thread,
-      });
-    });
-  });
   markGenerationMetric(generationMetrics, 'finalPersistEndAt');
   markGenerationMetric(generationMetrics, 'generationSettledAt');
   const finalPromptSnapshotJson = createPromptSnapshotJson({ failureReason: finalFailureReason });

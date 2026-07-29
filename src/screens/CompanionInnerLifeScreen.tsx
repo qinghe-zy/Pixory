@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
 import { beijingDiaryDate, beijingTimeLabel } from '../ai/diary/diaryTypes';
@@ -72,6 +72,17 @@ export function CompanionInnerLifeScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const confirmPermanentDeleteThought = (thought: ThoughtRecord) => {
+    Alert.alert('永久删除独白？', '删除后无法恢复。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '永久删除',
+        style: 'destructive',
+        onPress: () => void runWithDatabaseSpace(space, (db) => thoughtRepository.permanentlyDelete(db, thought.id)).then(load),
+      },
+    ]);
+  };
 
   const activeCount = activeKind === 'diary' ? diaries.length : activeKind === 'dream' ? dreams.length : thoughts.length;
   const emptyText = activeKind === 'diary'
@@ -162,16 +173,23 @@ export function CompanionInnerLifeScreen({
         <View key={thought.id} style={[styles.thought, thought.status === 'soft_deleted' && styles.deletedEntry]}>
           <Text style={styles.meta}>{timeLabel(thought.createdAt)}</Text>
           <Text style={styles.thoughtBody}>{thought.body}</Text>
-          <Pressable
-            accessibilityLabel={thought.status === 'soft_deleted' ? '恢复这条独白' : '删除这条独白'}
-            accessibilityRole="button"
-            onPress={() => void runWithDatabaseSpace(space, (db) => thought.status === 'soft_deleted'
-              ? thoughtRepository.restore(db, thought.id)
-              : thoughtRepository.softDelete(db, thought.id)).then(load)}
-            style={styles.thoughtActionTouch}
-          >
-            <Text style={styles.delete}>{thought.status === 'soft_deleted' ? '恢复' : '删除'}</Text>
-          </Pressable>
+          <View style={styles.thoughtActions}>
+            <Pressable
+              accessibilityLabel={thought.status === 'soft_deleted' ? '恢复这条独白' : '删除这条独白'}
+              accessibilityRole="button"
+              onPress={() => void runWithDatabaseSpace(space, (db) => thought.status === 'soft_deleted'
+                ? thoughtRepository.restore(db, thought.id)
+                : thoughtRepository.softDelete(db, thought.id)).then(load)}
+              style={styles.thoughtActionTouch}
+            >
+              <Text style={styles.delete}>{thought.status === 'soft_deleted' ? '恢复' : '删除'}</Text>
+            </Pressable>
+            {thought.status === 'soft_deleted' ? (
+              <Pressable accessibilityLabel="永久删除这条独白" accessibilityRole="button" onPress={() => confirmPermanentDeleteThought(thought)} style={styles.thoughtActionTouch}>
+                <Text style={styles.permanentDelete}>永久删除</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       )) : null}
 
@@ -214,9 +232,11 @@ const styles = StyleSheet.create({
   dreamOpen: { ...typography.textStyles.caption, color: dreamPalette.open, position: 'absolute', right: spacing[3], top: spacing[3] },
   deleteTouch: { alignSelf: 'flex-end', minHeight: metrics.minTouchSize, justifyContent: 'center', paddingHorizontal: spacing[2] },
   delete: { ...typography.textStyles.micro, color: colors.text.tertiary },
-  thought: { backgroundColor: colors.background.surface, borderColor: colors.border.default, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, marginBottom: spacing[3], padding: spacing[4], paddingRight: spacing[8] },
+  thought: { backgroundColor: colors.background.surface, borderColor: colors.border.default, borderRadius: radius.sm, borderWidth: StyleSheet.hairlineWidth, marginBottom: spacing[3], padding: spacing[4] },
   thoughtBody: { ...typography.textStyles.body, color: colors.text.primary, lineHeight: 24, marginTop: spacing[2] },
-  thoughtActionTouch: { alignItems: 'center', justifyContent: 'center', minHeight: metrics.minTouchSize, minWidth: metrics.minTouchSize, position: 'absolute', right: 0, top: 0 },
+  thoughtActions: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', gap: rhythm.microGap, marginTop: spacing[2] },
+  thoughtActionTouch: { alignItems: 'center', justifyContent: 'center', minHeight: metrics.minTouchSize, minWidth: metrics.minTouchSize, paddingHorizontal: spacing[2] },
+  permanentDelete: { ...typography.textStyles.micro, color: colors.semantic.danger },
   deletedEntry: { opacity: 0.48 },
   empty: { ...typography.textStyles.body, color: colors.text.tertiary, marginTop: spacing[7], textAlign: 'center' },
   errorState: { alignItems: 'center' },

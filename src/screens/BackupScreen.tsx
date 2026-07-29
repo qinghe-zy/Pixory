@@ -158,7 +158,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
         : '';
       showToast(
         `已导入 ${result.importedIpCount} 个 IP、${result.importedImageCount} 个素材、` +
-        `${result.restoredManagedFileCount} 个 AI 文件和 ${result.restoredAiRecordCount} 条 AI 数据${optionalNotice}`
+        `${result.restoredManagedFileCount} 个 AI 文件和 ${result.restoredAiRecordCount} 条 AI 数据${result.remappedAiLogicalIdCount > 0 ? `，安全改写 ${result.remappedAiLogicalIdCount} 个冲突标识` : ''}${optionalNotice}`
       );
       reload();
     } catch (error) {

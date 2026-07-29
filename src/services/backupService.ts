@@ -82,6 +82,7 @@ export interface ImportEncryptedPersonalPackResult {
   importedImageCount: number;
   restoredAiRecordCount: number;
   preservedAiRecordCount: number;
+  remappedAiLogicalIdCount: number;
   restoredManagedFileCount: number;
   missingOptionalFileCount: number;
 }
@@ -100,6 +101,7 @@ export interface ImportPlainBackupPackageResult {
   importedImageCount: number;
   restoredAiRecordCount: number;
   preservedAiRecordCount: number;
+  remappedAiLogicalIdCount: number;
   restoredManagedFileCount: number;
   missingOptionalFileCount: number;
 }
@@ -729,6 +731,7 @@ export async function importPlainBackupPackage({
   let importedImageCount = 0;
   let restoredAiRecordCount = 0;
   let preservedAiRecordCount = 0;
+  let remappedAiLogicalIdCount = 0;
   let restoredManagedFileCount = 0;
   let missingOptionalFileCount = 0;
 
@@ -919,6 +922,7 @@ export async function importPlainBackupPackage({
         });
         restoredAiRecordCount = mergeReport.insertedRecords;
         preservedAiRecordCount = mergeReport.preservedRecords;
+        remappedAiLogicalIdCount = mergeReport.remappedLogicalIds;
       }
     }));
 
@@ -927,6 +931,7 @@ export async function importPlainBackupPackage({
       importedImageCount,
       restoredAiRecordCount,
       preservedAiRecordCount,
+      remappedAiLogicalIdCount,
       restoredManagedFileCount,
       missingOptionalFileCount,
     };

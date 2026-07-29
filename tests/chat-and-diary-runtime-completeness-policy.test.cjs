@@ -60,3 +60,15 @@ test('explicit diary context choices survive newer unselected diary cards', () =
   assert.match(artifactService, /adaptDiaryArtifact/);
   assert.doesNotMatch(artifactService, /findCurrentDiaryForRole/);
 });
+
+test('dream reader uses finite three-sheet pagination and thoughts expose confirmed permanent deletion', () => {
+  const pager = read('src/components/ai/DreamDeckPager.tsx');
+  const innerLife = read('src/screens/CompanionInnerLifeScreen.tsx');
+
+  assert.match(pager, /\[0, 1, 2\]/);
+  assert.match(pager, /Math\.min\(pages\.length - 1/);
+  assert.doesNotMatch(pager, /%\s*pages\.length/);
+  assert.match(innerLife, /Alert\.alert\('永久删除独白？'/);
+  assert.match(innerLife, /thoughtRepository\.permanentlyDelete/);
+  assert.match(innerLife, /accessibilityLabel="永久删除这条独白"/);
+});

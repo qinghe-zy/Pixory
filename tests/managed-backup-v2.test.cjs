@@ -43,6 +43,11 @@ test('backup V2 covers AI files, validates before staging, and merges without ov
   assert.match(managed, /relativePathByHash/);
   assert.match(managed, /INSERT OR IGNORE INTO/);
   assert.match(managed, /PRAGMA defer_foreign_keys = ON/);
+  assert.match(managed, /managed-backup:/);
+  assert.match(managed, /memory_import_id_map/);
+  assert.match(managed, /logicalIdMaps/);
+  assert.match(managed, /foreign_key_list/);
+  assert.match(managed, /remapManagedLogicalReferences/);
   assert.match(managed, /row\.localUri = uri/);
   assert.match(managed, /row\.avatarUri = uri/);
   assert.match(backup, /await validateManagedBackupManifestV2\([\s\S]*await stageManagedAiFiles\(/);

@@ -137,6 +137,31 @@ test('runtime integration keeps observation local before dispatch and enrichment
   assert.ok(chat.indexOf('observeCompanionCurrentTurn') < chat.indexOf('adapter.streamChat'));
 });
 
+test('Personal companion work is authorized only after unlock and is suspended before database teardown', () => {
+  const app = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
+  const maintenance = fs.readFileSync(path.join(root, 'src/ai/companion/companionMaintenanceQueue.ts'), 'utf8');
+  const generation = fs.readFileSync(path.join(root, 'src/ai/aiGenerationManager.ts'), 'utf8');
+  const unlock = /async function unlockPersonalSpace[\s\S]*?async function setupPersonalSpace/.exec(app)?.[0] ?? '';
+  const lock = /async function lockPersonalSpace[\s\S]*?function pushRoute/.exec(app)?.[0] ?? '';
+
+  assert.ok(unlock.indexOf("setPersonalSessionState('unlocked')") < unlock.indexOf('resumePersonalCompanionMaintenance'));
+  assert.match(unlock, /resumePersonalCompanionMaintenance\(\)/);
+  assert.match(unlock, /runCompanionMaintenancePass\(\{[\s\S]*allowRemoteModelForPersonal:\s*true[\s\S]*space:\s*'personal'/);
+  assert.match(lock, /await Promise\.allSettled\(\[[\s\S]*aiGenerationManager\.suspendSpace\('personal'\)[\s\S]*suspendCompanionMaintenance\('personal'\)/);
+  assert.ok(lock.indexOf("suspendCompanionMaintenance('personal')") < lock.indexOf("resetDatabaseSpaceCache('personal')"));
+  assert.match(maintenance, /export async function suspendCompanionMaintenance/);
+  assert.match(maintenance, /personalRuntimeAuthorized/);
+  assert.match(generation, /async function suspendSpace/);
+  assert.match(generation, /function resumeSpace/);
+});
+
+test('thought delivery shares the assistant and generation terminal transaction', () => {
+  const chat = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const finalPersist = /markGenerationMetric\(generationMetrics, 'finalPersistStartAt'\)[\s\S]*?markGenerationMetric\(generationMetrics, 'finalPersistEndAt'\)/.exec(chat)?.[0] ?? '';
+  assert.equal((finalPersist.match(/deliverThoughtReservation\(/g) ?? []).length, 1);
+  assert.match(finalPersist, /db\.withTransactionAsync\([\s\S]*deliverThoughtReservation\([\s\S]*settleGenerationJob/);
+});
+
 test('enrichment validator rejects unknown evidence, invalid enums, low confidence and malformed JSON', () => {
   const valid = enrichment.parseAndValidateEnrichmentOutput(JSON.stringify({ events: [{
     category: 'relationship', subtype: 'closeness', confidence: 0.8, speechMode: 'asserted',

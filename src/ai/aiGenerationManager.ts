@@ -23,6 +23,7 @@ import {
   beginGenerationRecoveryAttempt,
   claimGenerationRecovery,
   listRecoverableGenerationJobs,
+  markInterruptedGenerationJobs,
 } from './generation/aiGenerationRepository';
 import { decideGenerationRecovery } from './generation/aiGenerationRecovery';
 
@@ -93,6 +94,8 @@ export type ActiveAiGenerationTaskInfo = {
 const tasksByThreadId = new Map<string, ActiveGenerationTask>();
 const tasksByAssistantId = new Map<string, ActiveGenerationTask>();
 const reconciliationBySpace = new Map<PixorySpace, Promise<void>>();
+const runtimeEpochBySpace = new Map<PixorySpace, number>();
+const suspendedSpaces = new Set<PixorySpace>(['personal']);
 const RECOVERY_LEASE_MS = 2 * 60 * 1000;
 const RECOVERY_OWNER = `pixory_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
@@ -163,6 +166,7 @@ function finishTask(task: ActiveGenerationTask) {
 }
 
 function createTask(space: PixorySpace, threadId: string): ActiveGenerationTask {
+  if (suspendedSpaces.has(space)) throw new Error(`${space} generation runtime is suspended.`);
   const key = taskKey(space, threadId);
   const current = tasksByThreadId.get(key);
   if (current) {
@@ -369,8 +373,13 @@ async function stopGeneration({ assistantMessageId, reason = 'user', space, thre
 }
 
 async function runGenerationReconciliation(space: PixorySpace): Promise<void> {
+  const runtimeEpoch = runtimeEpochBySpace.get(space) ?? 0;
+  const isActive = () => !suspendedSpaces.has(space) && (runtimeEpochBySpace.get(space) ?? 0) === runtimeEpoch;
+  if (!isActive()) return;
   const jobs = await runWithDatabaseSpace(space, (db) => listRecoverableGenerationJobs(db, space));
+  if (!isActive()) return;
   for (const candidate of jobs) {
+    if (!isActive()) return;
     if (tasksByThreadId.has(taskKey(space, candidate.threadId))) continue;
     const now = new Date();
     const leaseExpiresAt = new Date(now.getTime() + RECOVERY_LEASE_MS).toISOString();
@@ -380,6 +389,7 @@ async function runGenerationReconciliation(space: PixorySpace): Promise<void> {
       leaseOwner: RECOVERY_OWNER,
       now: now.toISOString(),
     }));
+    if (!isActive()) return;
     if (!claimed) continue;
     const decision = decideGenerationRecovery(claimed);
     if (decision === 'stop') {
@@ -394,6 +404,7 @@ async function runGenerationReconciliation(space: PixorySpace): Promise<void> {
       leaseOwner: RECOVERY_OWNER,
       now: new Date().toISOString(),
     }));
+    if (!isActive()) return;
     if (!attempt) continue;
 
     const task = createTask(space, attempt.threadId);
@@ -427,16 +438,38 @@ function reconcileInterruptedGenerations(space: PixorySpace): Promise<void> {
   return promise;
 }
 
+function resumeSpace(space: PixorySpace): void {
+  runtimeEpochBySpace.set(space, (runtimeEpochBySpace.get(space) ?? 0) + 1);
+  suspendedSpaces.delete(space);
+}
+
+async function suspendSpace(space: PixorySpace): Promise<void> {
+  suspendedSpaces.add(space);
+  runtimeEpochBySpace.set(space, (runtimeEpochBySpace.get(space) ?? 0) + 1);
+  const tasks = [...tasksByThreadId.values()].filter((task) => task.space === space);
+  tasks.forEach((task) => task.controller.abort());
+  await Promise.allSettled([
+    ...tasks.map((task) => task.promise),
+    ...(reconciliationBySpace.get(space) ? [reconciliationBySpace.get(space)!] : []),
+  ]);
+  await runWithDatabaseSpace(space, (db) => markInterruptedGenerationJobs(db, {
+    now: new Date().toISOString(),
+    space,
+  }));
+}
+
 export const aiGenerationManager = {
   startContinueAssistantReply,
   getActiveTaskForThread,
   hasActiveTask,
   reconcileInterruptedGenerations,
+  resumeSpace,
   startContinueAssistantMessage,
   startReplyToAssistantMessage,
   startRegenerateAssistantMessage,
   startRewriteUserMessage,
   startSendUserMessage,
   stopGeneration,
+  suspendSpace,
   subscribeToThread,
 };
