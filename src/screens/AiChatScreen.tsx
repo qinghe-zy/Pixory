@@ -4582,21 +4582,21 @@ export function AiChatScreen({
       return;
     }
     void reloadModelLabel(threadId ?? null);
-  }, [modelRefreshKey, reloadModelLabel, threadId]);
+  }, [isInitialMessageLoading, modelRefreshKey, reloadModelLabel, threadId]);
 
   useEffect(() => {
     if (isInitialMessageLoading) {
       return;
     }
     void reloadParticipantAppearance(threadId ?? null);
-  }, [reloadParticipantAppearance, threadId]);
+  }, [isInitialMessageLoading, reloadParticipantAppearance, threadId]);
 
   useEffect(() => {
     if (isInitialMessageLoading) {
       return;
     }
     void reloadThreadTitle(threadId ?? null);
-  }, [reloadThreadTitle, threadId]);
+  }, [isInitialMessageLoading, reloadThreadTitle, threadId]);
 
   useEffect(() => {
     if (isInitialMessageLoading) {
@@ -6730,9 +6730,12 @@ export function AiChatScreen({
       ]}
     >
       {/* prettier-ignore */}
+      {/* Android: adjustResize in AndroidManifest handles keyboard avoidance at the
+           system level; an additional KAV with behavior='height' would double-compensate
+           and shift content up by an extra insets.bottom when the keyboard opens. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'android' ? 'height' : undefined}
-        enabled={Platform.OS === 'android'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        enabled={Platform.OS === 'ios'}
         style={styles.keyboardAvoidingHost}
       >
         {/* prettier-ignore */}
@@ -7011,6 +7014,7 @@ export function AiChatScreen({
                 attachments={pendingAttachments}
                 generating={generating}
                 modelIconBrand={modelIconBrand}
+                voiceAvailable={false}
                 onAddDocumentAttachment={() => void pickChatDocuments()}
                 onAddImageAttachment={() => void pickChatImages()}
                 onChangeText={setComposerText}

@@ -30,6 +30,7 @@ interface AiChatComposerProps {
   attachments?: AiComposerAttachment[];
   modelIconBrand?: AiModelIconBrand;
   placeholder?: string;
+  voiceAvailable?: boolean;
   voiceState?: AiVoiceInputState;
   voiceError?: string | null;
   voiceMode?: 'on_device' | 'system' | null;
@@ -98,6 +99,7 @@ export function AiChatComposer({
   attachments = [],
   modelIconBrand = 'default',
   placeholder = '输入消息...',
+  voiceAvailable = true,
   voiceState = 'idle',
   voiceError = null,
   voiceMode = null,
@@ -276,51 +278,53 @@ export function AiChatComposer({
 
           {/* Right: attachment popover anchor + add button + send/stop */}
           <View style={styles.rightActions}>
-            <Pressable
-              accessibilityHint="点按切换；按住说话，松开结束，上滑取消"
-              accessibilityLabel={voiceActive ? '结束语音输入' : '语音输入'}
-              accessibilityRole="button"
-              disabled={generating}
-              hitSlop={spacing[2]}
-              onLongPress={() => {
-                voiceLongPressRef.current = true;
-                voiceCancelledRef.current = false;
-                onVoiceStart?.();
-              }}
-              onPress={() => {
-                if (suppressVoiceTapRef.current) {
-                  suppressVoiceTapRef.current = false;
-                  return;
-                }
-                onVoiceInput();
-              }}
-              onPressIn={(event) => {
-                voiceStartYRef.current = event.nativeEvent.pageY;
-                voiceLongPressRef.current = false;
-                voiceCancelledRef.current = false;
-              }}
-              onPressOut={() => {
-                if (!voiceLongPressRef.current) return;
-                suppressVoiceTapRef.current = true;
-                if (!voiceCancelledRef.current) onVoiceStop?.();
-                voiceLongPressRef.current = false;
-              }}
-              onTouchMove={(event) => {
-                if (!voiceLongPressRef.current || voiceCancelledRef.current) return;
-                if (event.nativeEvent.pageY <= voiceStartYRef.current - spacing[12]) {
-                  voiceCancelledRef.current = true;
-                  onCancelVoiceInput?.();
-                }
-              }}
-              style={({ pressed }) => [
-                styles.voiceButton,
-                voiceActive && styles.voiceButtonActive,
-                generating && styles.disabled,
-                pressed && !generating && styles.pressed,
-              ]}
-            >
-              <Ionicons color={voiceActive ? aiLightColors.primaryActive : aiLightColors.muted} name={voiceActive ? 'mic' : 'mic-outline'} size={spacing[5]} />
-            </Pressable>
+            {voiceAvailable ? (
+              <Pressable
+                accessibilityHint="点按切换；按住说话，松开结束，上滑取消"
+                accessibilityLabel={voiceActive ? '结束语音输入' : '语音输入'}
+                accessibilityRole="button"
+                disabled={generating}
+                hitSlop={spacing[2]}
+                onLongPress={() => {
+                  voiceLongPressRef.current = true;
+                  voiceCancelledRef.current = false;
+                  onVoiceStart?.();
+                }}
+                onPress={() => {
+                  if (suppressVoiceTapRef.current) {
+                    suppressVoiceTapRef.current = false;
+                    return;
+                  }
+                  onVoiceInput();
+                }}
+                onPressIn={(event) => {
+                  voiceStartYRef.current = event.nativeEvent.pageY;
+                  voiceLongPressRef.current = false;
+                  voiceCancelledRef.current = false;
+                }}
+                onPressOut={() => {
+                  if (!voiceLongPressRef.current) return;
+                  suppressVoiceTapRef.current = true;
+                  if (!voiceCancelledRef.current) onVoiceStop?.();
+                  voiceLongPressRef.current = false;
+                }}
+                onTouchMove={(event) => {
+                  if (!voiceLongPressRef.current || voiceCancelledRef.current) return;
+                  if (event.nativeEvent.pageY <= voiceStartYRef.current - spacing[12]) {
+                    voiceCancelledRef.current = true;
+                    onCancelVoiceInput?.();
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.voiceButton,
+                  voiceActive && styles.voiceButtonActive,
+                  generating && styles.disabled,
+                  pressed && !generating && styles.pressed,
+                ]}
+              >
+                <Ionicons color={voiceActive ? aiLightColors.primaryActive : aiLightColors.muted} name={voiceActive ? 'mic' : 'mic-outline'} size={spacing[5]} />
+              </Pressable>
+            ) : null}
             <View style={styles.addButtonWrap}>
               {attachmentPopoverVisible ? (
                 <View style={styles.attachmentPopover}>
