@@ -6,7 +6,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import type { PixorySpace } from '../database';
 import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupManifestProtocol';
-import { createMappedLogicalId, remapManagedJsonReferences, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
+import { appendManagedRestoreCollisionSuffix, createMappedLogicalId, remapManagedJsonReferences, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
 import {
   copyLocalFile,
   deleteLocalFile,
@@ -452,7 +452,9 @@ function rewriteManagedRow(input: {
   row = remapManagedLogicalReferences(row, input.logicalIdMaps, input.table) as Record<string, unknown>;
   if (sourceLogicalId && row.id !== sourceLogicalId) {
     for (const column of ['canonicalClaimId', 'commandId', 'idempotencyKey', 'reservationId']) {
-      if (typeof row[column] === 'string') row[column] = `${row[column]}:managed-restore:${String(row.id).slice(-12)}`;
+      if (typeof row[column] === 'string') {
+        row[column] = appendManagedRestoreCollisionSuffix(row[column], sourceLogicalId, String(row.id));
+      }
     }
   }
   for (const column of Object.keys(row)) {

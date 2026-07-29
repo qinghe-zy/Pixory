@@ -21,8 +21,12 @@ Module._load = function mockExpo(request, parent, isMain) {
   if (request.endsWith('pixoryMediaModule')) return { copyUriToFileWithProgress: async () => undefined };
   return originalLoad.call(this, request, parent, isMain);
 };
-let service;
-try { service = require(path.join(root, 'src/services/managedBackupService.ts')); }
+let memoryProjection, schemaModule, service;
+try {
+  schemaModule = require(path.join(root, 'src/database/schema.ts'));
+  memoryProjection = require(path.join(root, 'src/ai/memory/memoryProjectionService.ts'));
+  service = require(path.join(root, 'src/services/managedBackupService.ts'));
+}
 finally {
   Module._load = originalLoad;
   if (originalTs) require.extensions['.ts'] = originalTs; else delete require.extensions['.ts'];
@@ -175,6 +179,139 @@ test('Manifest V2 maps colliding role/thread/message/document/job IDs and reuses
     const second = await service.mergeManagedDatabaseRecords(input);
     assert.ok(second.preservedRecords > 0);
     assert.deepEqual(target.db.prepare('SELECT (SELECT COUNT(*) FROM ai_threads) threads, (SELECT COUNT(*) FROM ai_messages) messages, (SELECT COUNT(*) FROM companion_thoughts) thoughts').get(), countsBefore);
+  } finally {
+    await source.closeAsync(); await target.closeAsync();
+  }
+});
+
+function actualMemoryDb() {
+  const db = new DB();
+  db.db.exec(`
+    PRAGMA foreign_keys=ON;
+    CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL, title TEXT NOT NULL);
+    CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, space TEXT NOT NULL, content TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id));
+  `);
+  db.db.exec(schemaModule.MIGRATION_STATEMENTS_V47);
+  return db;
+}
+
+function memoryClaim(id, valueDisplay, projectionVersion) {
+  const now = '2026-07-29T08:00:00.000Z';
+  return {
+    id, space: 'normal', schemaVersion: 1, canonicalClaimId: 'canonical-shared', relatedClaimGroupId: null,
+    lane: 'confirmed', status: 'confirmed', kind: 'state', actor: 'user', subjectEntityId: 'user', subjectDisplay: '用户',
+    scopeType: 'global', scopeId: null, predicate: 'fact.identity', valueNormalized: valueDisplay, valueDisplay,
+    polarity: 'positive', speechMode: 'asserted', rawTimePhrase: null, validFrom: null, validTo: null, validPrecision: 'unknown',
+    confidenceRaw: 0.9, confidenceCalibrated: 0.9, confidenceBand: 'high', importance: 80, stability: 'long',
+    manualLocked: false, safetyState: 'none', sourceKind: 'message', sourceMessageId: null, extractorVersion: 'test-v1',
+    ontologyVersion: 'ontology-v1', projectionVersion, version: 1, createdAt: now, updatedAt: now, lastUsedAt: null,
+    supersededByClaimId: null, deletedAt: null,
+  };
+}
+
+function insertClaim(db, claim) {
+  db.db.prepare(`INSERT INTO memory_claims (
+    id, space, schemaVersion, canonicalClaimId, relatedClaimGroupId, lane, status, kind, actor, subjectEntityId, subjectDisplay,
+    scopeType, scopeId, predicate, valueNormalized, valueDisplay, polarity, speechMode, rawTimePhrase, validFrom, validTo,
+    validPrecision, confidenceRaw, confidenceCalibrated, confidenceBand, importance, stability, manualLocked, safetyState,
+    sourceKind, sourceMessageId, extractorVersion, ontologyVersion, projectionVersion, version, createdAt, updatedAt,
+    lastUsedAt, supersededByClaimId, deletedAt
+  ) VALUES (${Array.from({ length: 40 }, () => '?').join(',')})`).run(
+    claim.id, claim.space, claim.schemaVersion, claim.canonicalClaimId, claim.relatedClaimGroupId, claim.lane, claim.status,
+    claim.kind, claim.actor, claim.subjectEntityId, claim.subjectDisplay, claim.scopeType, claim.scopeId, claim.predicate,
+    claim.valueNormalized, claim.valueDisplay, claim.polarity, claim.speechMode, claim.rawTimePhrase, claim.validFrom, claim.validTo,
+    claim.validPrecision, claim.confidenceRaw, claim.confidenceCalibrated, claim.confidenceBand, claim.importance, claim.stability,
+    claim.manualLocked ? 1 : 0, claim.safetyState, claim.sourceKind, claim.sourceMessageId, claim.extractorVersion,
+    claim.ontologyVersion, claim.projectionVersion, claim.version, claim.createdAt, claim.updatedAt, claim.lastUsedAt,
+    claim.supersededByClaimId, claim.deletedAt,
+  );
+}
+
+function insertEvent(db, { id, aggregateType, aggregateId, eventType, payload, projectionVersion, evidenceIds = [] }) {
+  db.db.prepare(`INSERT INTO memory_events (
+    id, space, aggregateType, aggregateId, eventType, eventVersion, commandId, idempotencyKey, actorType, actorId,
+    source, payloadJson, evidenceIdsJson, createdAt, projectionVersion
+  ) VALUES (?, 'normal', ?, ?, ?, 1, ?, ?, 'system', NULL, 'test', ?, ?, '2026-07-29T08:00:00.000Z', ?)`)
+    .run(id, aggregateType, aggregateId, eventType, `command-${id}`, `key-${id}`, JSON.stringify(payload), JSON.stringify(evidenceIds), projectionVersion);
+}
+
+function seedReplayTarget(db) {
+  db.db.exec(`
+    INSERT INTO ai_threads VALUES('thread','normal','目标线程');
+    INSERT INTO ai_messages VALUES('message','thread','normal','目标消息');
+    INSERT INTO memory_evidence VALUES('evidence','normal','message','message','message','user','目标证据','target-hash',0,4,'target', '2026-07-29T08:00:00.000Z',NULL);
+    INSERT INTO memory_episodes VALUES('episode','normal','thread','thread','confirmed','active','目标片段','目标摘要','message','message',NULL,NULL,'["claim"]','["message"]','message',1,'high',80,1,'2026-07-29T08:00:00.000Z','2026-07-29T08:00:00.000Z',NULL,NULL);
+    INSERT INTO memory_relational_states VALUES('relation','normal','thread','thread','user','trust',0.5,1,30,'2026-07-29T08:00:00.000Z','["evidence"]',1,1,'2026-07-29T08:00:00.000Z','2026-07-29T08:00:00.000Z');
+    INSERT INTO memory_profiles VALUES('profile','normal','thread','thread','{}','目标画像','["claim"]','["message"]',1,1,'2026-07-29T08:00:00.000Z','2026-07-29T08:00:00.000Z');
+  `);
+  const claim = memoryClaim('claim', '目标 Claim', 1);
+  insertClaim(db, claim);
+  insertEvent(db, { id: 'target-claim-event', aggregateType: 'claim', aggregateId: 'claim', eventType: 'claim_created', payload: { claim }, projectionVersion: 1, evidenceIds: ['evidence'] });
+}
+
+function seedReplaySource(db) {
+  db.db.exec(`
+    INSERT INTO ai_threads VALUES('thread','normal','导入线程');
+    INSERT INTO ai_messages VALUES('message','thread','normal','导入消息');
+    INSERT INTO memory_evidence VALUES('evidence','normal','message','message','message','user','导入证据','source-hash',0,4,'source', '2026-07-29T08:00:00.000Z',NULL);
+  `);
+  const claim = memoryClaim('claim', '导入 Claim', 2);
+  insertClaim(db, claim);
+  const episode = {
+    id: 'episode', space: 'normal', scopeType: 'thread', scopeId: 'thread', lane: 'confirmed', status: 'active',
+    title: '导入片段', summaryText: '导入摘要', startMessageId: 'message', endMessageId: 'message', validFrom: null, validTo: null,
+    sourceClaimIdsJson: '["claim"]', sourceMessageIdsJson: '["message"]', branchRootMessageId: 'message', branchVersionIndex: 1,
+    confidenceBand: 'high', importance: 80, projectionVersion: 3, createdAt: '2026-07-29T08:00:00.000Z',
+    updatedAt: '2026-07-29T08:00:00.000Z', archivedAt: null, deletedAt: null,
+  };
+  const relation = {
+    id: 'relation', space: 'normal', scopeType: 'thread', scopeId: 'thread', subjectEntityId: 'user', metric: 'trust', value: 0.8,
+    signalWeight: 1, decayHalfLifeDays: 30, lastEvidenceAt: '2026-07-29T08:00:00.000Z', evidenceIdsJson: '["evidence"]',
+    projectionVersion: 4, version: 1, createdAt: '2026-07-29T08:00:00.000Z', updatedAt: '2026-07-29T08:00:00.000Z',
+  };
+  const profile = {
+    id: 'profile', space: 'normal', scopeType: 'thread', scopeId: 'thread', profileJson: '{}', profileText: '导入画像',
+    sourceClaimIdsJson: '["claim"]', sourceMessageIdsJson: '["message"]', version: 1, projectionVersion: 5,
+    createdAt: '2026-07-29T08:00:00.000Z', updatedAt: '2026-07-29T08:00:00.000Z',
+  };
+  db.db.prepare(`INSERT INTO memory_episodes VALUES (${Array.from({ length: 23 }, () => '?').join(',')})`).run(...Object.values(episode));
+  db.db.prepare(`INSERT INTO memory_relational_states VALUES (${Array.from({ length: 15 }, () => '?').join(',')})`).run(...Object.values(relation));
+  db.db.prepare(`INSERT INTO memory_profiles VALUES (${Array.from({ length: 12 }, () => '?').join(',')})`).run(...Object.values(profile));
+  insertEvent(db, { id: 'source-claim-event', aggregateType: 'claim', aggregateId: 'claim', eventType: 'claim_created', payload: { claim }, projectionVersion: 2, evidenceIds: ['evidence'] });
+  insertEvent(db, { id: 'source-episode-event', aggregateType: 'episode', aggregateId: 'episode', eventType: 'episode_upserted', payload: { episode }, projectionVersion: 3 });
+  insertEvent(db, { id: 'source-relation-event', aggregateType: 'relation', aggregateId: 'relation', eventType: 'relation_upserted', payload: { relation }, projectionVersion: 4, evidenceIds: ['evidence'] });
+  insertEvent(db, { id: 'source-profile-event', aggregateType: 'import', aggregateId: 'profile', eventType: 'profile_upserted', payload: { profile }, projectionVersion: 5 });
+}
+
+test('real V47 merge remains replay-safe after claim and provenance ID collisions', async () => {
+  const source = actualMemoryDb();
+  const target = actualMemoryDb();
+  seedReplaySource(source); seedReplayTarget(target);
+  try {
+    await service.mergeManagedDatabaseRecords({
+      imageIdMap: new Map(), ipIdMap: new Map(), sourceDb: source, sourceDatabaseSha256: 'b'.repeat(64),
+      sourceDatabaseUri: 'file:///memory-source.sqlite', space: 'normal', targetDb: target, uriByLogicalId: new Map(),
+    });
+    const importedMessage = target.db.prepare("SELECT * FROM ai_messages WHERE content='导入消息'").get();
+    const importedEvidence = target.db.prepare("SELECT * FROM memory_evidence WHERE quote='导入证据'").get();
+    let importedClaim = target.db.prepare("SELECT * FROM memory_claims WHERE valueDisplay='导入 Claim'").get();
+    assert.match(importedClaim.canonicalClaimId, /^canonical-shared:managed-restore:/);
+    const importedClaimId = importedClaim.id;
+    const sourceClaimEvent = target.db.prepare("SELECT * FROM memory_events WHERE id='source-claim-event'").get();
+    assert.equal(JSON.parse(sourceClaimEvent.payloadJson).claim.canonicalClaimId, importedClaim.canonicalClaimId);
+
+    await memoryProjection.rebuildMemoryProjections(target, 'normal');
+    assert.equal(target.db.prepare("SELECT COUNT(*) count FROM memory_claims WHERE valueDisplay IN ('目标 Claim','导入 Claim')").get().count, 2);
+    importedClaim = target.db.prepare("SELECT * FROM memory_claims WHERE valueDisplay='导入 Claim'").get();
+    assert.equal(importedClaim.id, importedClaimId);
+    const episode = target.db.prepare("SELECT * FROM memory_episodes WHERE summaryText='导入摘要'").get();
+    const relation = target.db.prepare("SELECT * FROM memory_relational_states WHERE value=0.8").get();
+    const profile = target.db.prepare("SELECT * FROM memory_profiles WHERE profileText='导入画像'").get();
+    assert.deepEqual(JSON.parse(episode.sourceClaimIdsJson), [importedClaim.id]);
+    assert.deepEqual(JSON.parse(episode.sourceMessageIdsJson), [importedMessage.id]);
+    assert.deepEqual(JSON.parse(relation.evidenceIdsJson), [importedEvidence.id]);
+    assert.deepEqual(JSON.parse(profile.sourceClaimIdsJson), [importedClaim.id]);
+    assert.deepEqual(JSON.parse(profile.sourceMessageIdsJson), [importedMessage.id]);
   } finally {
     await source.closeAsync(); await target.closeAsync();
   }

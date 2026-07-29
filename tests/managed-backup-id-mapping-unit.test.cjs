@@ -72,14 +72,28 @@ test('branch scopes and profile event aggregates use their real polymorphic targ
 test('declared JSON entity rules remap replay payload and continuity rollback snapshot IDs', () => {
   const maps = new Map([
     ['memory_claims', new Map([['claim-old', 'claim-new']])],
+    ['ai_messages', new Map([['message-old', 'message-new']])],
+    ['memory_evidence', new Map([['evidence-old', 'evidence-new']])],
     ['ai_user_profiles', new Map([['legacy-old', 'legacy-new']])],
   ]);
   const eventPayload = mapping.remapManagedJsonReferences(
-    { claim: { id: 'claim-old', sourceMessageId: 'unchanged' } },
+    { claim: { id: 'claim-old', canonicalClaimId: 'canonical-old', sourceMessageId: 'unchanged' } },
     maps,
     { column: 'payloadJson', row: { aggregateType: 'claim', eventType: 'claim_created' }, table: 'memory_events' },
   );
   assert.equal(eventPayload.claim.id, 'claim-new');
+  assert.equal(eventPayload.claim.canonicalClaimId, 'canonical-old:managed-restore:claim-new');
+
+  const provenancePayload = mapping.remapManagedJsonReferences({
+    episode: { id: 'episode', sourceClaimIdsJson: '["claim-old"]', sourceMessageIdsJson: '["message-old"]' },
+    profile: { id: 'profile', sourceClaimIdsJson: '["claim-old"]', sourceMessageIdsJson: '["message-old"]' },
+    relation: { id: 'relation', evidenceIdsJson: '["evidence-old"]' },
+  }, maps, { column: 'payloadJson', row: { aggregateType: 'episode' }, table: 'memory_events' });
+  assert.deepEqual(JSON.parse(provenancePayload.episode.sourceClaimIdsJson), ['claim-new']);
+  assert.deepEqual(JSON.parse(provenancePayload.episode.sourceMessageIdsJson), ['message-new']);
+  assert.deepEqual(JSON.parse(provenancePayload.profile.sourceClaimIdsJson), ['claim-new']);
+  assert.deepEqual(JSON.parse(provenancePayload.profile.sourceMessageIdsJson), ['message-new']);
+  assert.deepEqual(JSON.parse(provenancePayload.relation.evidenceIdsJson), ['evidence-new']);
 
   for (const column of ['beforeStateJson', 'afterStateJson']) {
     const snapshot = mapping.remapManagedJsonReferences(

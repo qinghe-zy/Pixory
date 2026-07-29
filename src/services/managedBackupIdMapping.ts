@@ -49,6 +49,21 @@ const DECLARED_JSON_ENTITY_TABLES: Record<string, Record<string, string>> = {
     relation: 'memory_relational_states',
   },
 };
+const DECLARED_JSON_ENTITY_STRING_ARRAY_TABLES: Record<string, Record<string, Record<string, string>>> = {
+  'memory_events.payloadJson': {
+    episode: {
+      sourceClaimIdsJson: 'memory_claims',
+      sourceMessageIdsJson: 'ai_messages',
+    },
+    profile: {
+      sourceClaimIdsJson: 'memory_claims',
+      sourceMessageIdsJson: 'ai_messages',
+    },
+    relation: {
+      evidenceIdsJson: 'memory_evidence',
+    },
+  },
+};
 
 function mapped(maps: ManagedLogicalIdMaps, table: string, value: unknown): unknown {
   return typeof value === 'string' ? maps.get(table)?.get(value) ?? value : value;
@@ -80,14 +95,33 @@ function remapBranchScopeId(value: string, maps: ManagedLogicalIdMaps): string {
 function remapEntityId(value: unknown, maps: ManagedLogicalIdMaps, table: string): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const entity = value as Record<string, unknown>;
-  return typeof entity.id === 'string'
-    ? { ...entity, id: mapped(maps, table, entity.id) }
-    : entity;
+  if (typeof entity.id !== 'string') return entity;
+  const sourceId = entity.id;
+  const targetId = String(mapped(maps, table, sourceId));
+  const output: Record<string, unknown> = { ...entity, id: targetId };
+  if (table === 'memory_claims' && typeof output.canonicalClaimId === 'string') {
+    output.canonicalClaimId = appendManagedRestoreCollisionSuffix(output.canonicalClaimId, sourceId, targetId);
+  }
+  return output;
+}
+
+function remapJsonStringArray(value: unknown, maps: ManagedLogicalIdMaps, table: string): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? JSON.stringify(remapArray(parsed, maps, table)) : value;
+  } catch {
+    return value;
+  }
 }
 
 export function createMappedLogicalId(packageId: string, table: string, sourceId: string, salt = 0): string {
   const digest = bytesToHex(sha256(utf8ToBytes(`${packageId}\u001F${table}\u001F${sourceId}\u001F${salt}`)));
   return `mbk_${digest.slice(0, 32)}`;
+}
+
+export function appendManagedRestoreCollisionSuffix(value: string, sourceId: string, targetId: string): string {
+  return sourceId === targetId ? value : `${value}:managed-restore:${targetId.slice(-12)}`;
 }
 
 export function remapManagedLogicalReferences(
@@ -176,7 +210,19 @@ export function remapManagedJsonReferences(
   const entityRules = DECLARED_JSON_ENTITY_TABLES[`${context.table}.${context.column}`];
   if (entityRules) {
     for (const [key, table] of Object.entries(entityRules)) {
-      if (key in output) output[key] = remapEntityId(output[key], maps, table);
+      if (!(key in output)) continue;
+      let entity = remapEntityId(output[key], maps, table);
+      if (entity && typeof entity === 'object' && !Array.isArray(entity)) {
+        const entityOutput = { ...(entity as Record<string, unknown>) };
+        const stringArrayRules = DECLARED_JSON_ENTITY_STRING_ARRAY_TABLES[`${context.table}.${context.column}`]?.[key] ?? {};
+        for (const [field, referencedTable] of Object.entries(stringArrayRules)) {
+          if (field in entityOutput) {
+            entityOutput[field] = remapJsonStringArray(entityOutput[field], maps, referencedTable);
+          }
+        }
+        entity = entityOutput;
+      }
+      output[key] = entity;
     }
     const aggregateTable = typeof context.row.aggregateType === 'string'
       ? MEMORY_AGGREGATE_TABLES[context.row.aggregateType]
