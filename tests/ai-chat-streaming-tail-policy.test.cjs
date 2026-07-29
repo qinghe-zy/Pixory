@@ -172,7 +172,7 @@ test('tail replay single-bubble path is guarded by a fail-safe remote JS flag', 
   assert.doesNotMatch(chat, /setSingleBubbleTailReplayEnabled/);
 });
 
-test('single-bubble tail replay uses message segments without duplicating the long-press action surface', () => {
+test('single-bubble tail replay uses message segments that share one context-menu action surface', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const contract = read('src/ai/aiStreamingTailRenderContract.ts');

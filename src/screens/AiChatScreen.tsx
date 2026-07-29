@@ -61,6 +61,7 @@ import {
   type AiMessageContextMenuAction,
 } from "../components/ai/AiMessageContextMenu";
 import { AiMessageTextSelectionModal } from "../components/ai/AiMessageTextSelectionModal";
+import { mergeBufferedStreamingPatchIntoContextMenuTarget } from "../components/ai/aiMessageContextMenuTarget";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
 import { AiStreamingTailContinuationBubble } from "../components/ai/AiStreamingTailContinuationBubble";
 import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailMessageSegment";
@@ -6044,8 +6045,14 @@ export function AiChatScreen({
     }
   }
 
-  const messageContextMenuTarget = messageContextMenuState
+  const baseMessageContextMenuTarget = messageContextMenuState
     ? (visibleMessagesById.get(messageContextMenuState.messageId) ?? null)
+    : null;
+  const messageContextMenuTarget = baseMessageContextMenuTarget
+    ? mergeBufferedStreamingPatchIntoContextMenuTarget(
+        baseMessageContextMenuTarget,
+        bufferedStreamingPatchRef.current,
+      )
     : null;
   const messageContextMenuPresentation = messageContextMenuTarget
     ? {
@@ -6233,10 +6240,16 @@ export function AiChatScreen({
         return <AiStreamingTailSpacer height={item.height} />;
       }
       if (item.type === "streamTailContinuation") {
+        const message = visibleMessagesById.get(item.group.messageId) ?? null;
         return (
           <AiStreamingTailContinuationBubble
             bubbleWidth={getStreamingBubbleWidth()}
             group={item.group}
+            onLongPress={
+              message
+                ? (pageX, pageY) => handleMessageLongPress(message, pageX, pageY)
+                : undefined
+            }
             onMeasured={handleMeasuredTailBlock}
           />
         );
@@ -6267,6 +6280,11 @@ export function AiChatScreen({
               ) : null
             }
             edge={item.edge}
+            onLongPress={
+              message
+                ? (pageX, pageY) => handleMessageLongPress(message, pageX, pageY)
+                : undefined
+            }
             onMeasured={handleMeasuredTailBlock}
           />
         );

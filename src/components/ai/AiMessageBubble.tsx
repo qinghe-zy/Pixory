@@ -463,6 +463,7 @@ function AiMessageBubbleComponent({
         {copyFeedbackVisible ? <AiInlineFeedback message="已复制" tone="success" /> : null}
         {shouldRenderBubble ? (
           <Pressable
+            accessibilityHint={editing ? undefined : '长按打开消息操作'}
             delayLongPress={500}
             onLongPress={
               editing || !onLongPress

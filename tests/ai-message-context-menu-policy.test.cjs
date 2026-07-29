@@ -29,7 +29,8 @@ test('message context menu is positioned from the finger with a 5px vertical gap
   assert.match(positioning, /gap = input\.gap \?\? 5/);
   assert.match(positioning, /input\.anchorY < input\.viewportHeight \/ 2/);
   assert.match(positioning, /input\.anchorY \+ gap/);
-  assert.match(positioning, /input\.anchorY - gap - input\.menuHeight/);
+  assert.match(positioning, /const constrainedMenuHeight = Math\.min\(input\.menuHeight, maxHeight\)/);
+  assert.match(positioning, /input\.anchorY - gap - constrainedMenuHeight/);
   assert.match(positioning, /Math\.min\(maxTop, Math\.max\(minTop, preferredTop\)\)/);
   assert.deepEqual(
     resolveAiMessageContextMenuPosition({
@@ -45,6 +46,7 @@ test('message context menu is positioned from the finger with a 5px vertical gap
     }),
     {
       left: 85,
+      maxHeight: 523,
       opensBelowFinger: true,
       top: 245,
     },
@@ -63,8 +65,54 @@ test('message context menu is positioned from the finger with a 5px vertical gap
     }),
     {
       left: 162,
+      maxHeight: 583,
       opensBelowFinger: false,
       top: 319,
+    },
+  );
+});
+
+test('message context menu preserves its 5px finger anchor in a constrained viewport', () => {
+  const { resolveAiMessageContextMenuPosition } = loadTypeScriptModule(
+    'src/components/ai/aiMessageContextMenuPosition.ts',
+  );
+
+  assert.deepEqual(
+    resolveAiMessageContextMenuPosition({
+      anchorX: 180,
+      anchorY: 240,
+      bottomInset: 24,
+      horizontalMargin: 8,
+      menuHeight: 296,
+      menuWidth: 190,
+      topInset: 24,
+      viewportHeight: 500,
+      viewportWidth: 360,
+    }),
+    {
+      left: 85,
+      maxHeight: 223,
+      opensBelowFinger: true,
+      top: 245,
+    },
+  );
+  assert.deepEqual(
+    resolveAiMessageContextMenuPosition({
+      anchorX: 180,
+      anchorY: 260,
+      bottomInset: 24,
+      horizontalMargin: 8,
+      menuHeight: 296,
+      menuWidth: 190,
+      topInset: 24,
+      viewportHeight: 500,
+      viewportWidth: 360,
+    }),
+    {
+      left: 85,
+      maxHeight: 223,
+      opensBelowFinger: false,
+      top: 32,
     },
   );
 });
@@ -78,6 +126,8 @@ test('message context menu has regular icons, dismiss handling, and a persistent
   assert.match(menu, /timeLabel/);
   assert.match(menu, /styles\.timeRow/);
   assert.match(menu, /onRequestClose=\{onClose\}/);
+  assert.match(menu, /ScrollView/);
+  assert.match(menu, /maxHeight: position\.maxHeight/);
 });
 
 test('select text opens a full-screen selectable message reader', () => {
@@ -93,17 +143,88 @@ test('select text opens a full-screen selectable message reader', () => {
 test('user and assistant long-press menus keep their distinct existing actions', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
+  const tail = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
 
   assert.match(bubble, /onLongPress\?: \(message: AiMessageWithCitations, pageX: number, pageY: number\) => void/);
   assert.match(bubble, /event\.nativeEvent\.pageX/);
   assert.match(bubble, /event\.nativeEvent\.pageY/);
+  assert.match(bubble, /accessibilityHint=\{editing \? undefined : ['"]长按打开消息操作['"]\}/);
+  assert.match(tail, /onLongPress\?: \(pageX: number, pageY: number\) => void/);
+  assert.match(tail, /delayLongPress=\{500\}/);
+  assert.match(tail, /event\.nativeEvent\.pageX/);
+  assert.match(tail, /event\.nativeEvent\.pageY/);
   assert.match(chat, /label: "复制"/);
   assert.match(chat, /label: "选择文本"/);
   assert.match(chat, /label: "修改"/);
   assert.match(chat, /label: "继续生成"/);
   assert.match(chat, /label: replyActionMode === "reply" \? "回复" : "续答"/);
   assert.match(chat, /label: "重新生成"/);
+  assert.match(
+    chat,
+    /onLongPress=\{\s*message\s*\?\s*\(pageX, pageY\)\s*=>\s*handleMessageLongPress\(message, pageX, pageY\)\s*:\s*undefined\s*\}/,
+  );
   assert.doesNotMatch(chat, /label: "分享"/);
+});
+
+test('detached streaming tails open the same menu with their latest text', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const segment = read('src/components/ai/AiStreamingTailMessageSegment.tsx');
+  const continuation = read('src/components/ai/AiStreamingTailContinuationBubble.tsx');
+
+  assert.match(chat, /mergeBufferedStreamingPatchIntoContextMenuTarget/);
+  assert.match(chat, /visibleMessagesById\.get\(item\.group\.messageId\)/);
+  assert.match(segment, /lane === "reasoning"[\s\S]*?<Pressable/);
+  assert.match(continuation, /onLongPress\?: \(pageX: number, pageY: number\) => void/);
+  assert.match(continuation, /delayLongPress=\{500\}/);
+  assert.match(continuation, /event\.nativeEvent\.pageX/);
+  assert.match(continuation, /event\.nativeEvent\.pageY/);
+});
+
+test('latest detached streaming patch overlays only the context-menu message fields', () => {
+  const { mergeBufferedStreamingPatchIntoContextMenuTarget } = loadTypeScriptModule(
+    'src/components/ai/aiMessageContextMenuTarget.ts',
+  );
+  const frozenMessage = {
+    citations: [{ id: 'frozen-citation' }],
+    completedAt: '2026-07-29T08:00:00.000Z',
+    content: '冻结前缀',
+    errorMessage: null,
+    id: 'assistant-message',
+    reasoningText: '冻结思考',
+    status: 'generating',
+    versionIndex: 1,
+    versionTotal: 1,
+  };
+  const patch = {
+    citations: [{ id: 'latest-citation' }],
+    completedAt: null,
+    content: '冻结前缀\n刚生成的尾段',
+    errorMessage: '已停止',
+    generationId: 'generation-1',
+    id: 'assistant-message',
+    reasoningText: '最新思考',
+    status: 'stopped',
+  };
+
+  assert.deepEqual(
+    mergeBufferedStreamingPatchIntoContextMenuTarget(frozenMessage, patch),
+    {
+      ...frozenMessage,
+      citations: patch.citations,
+      completedAt: null,
+      content: patch.content,
+      errorMessage: patch.errorMessage,
+      reasoningText: patch.reasoningText,
+      status: patch.status,
+    },
+  );
+  assert.strictEqual(
+    mergeBufferedStreamingPatchIntoContextMenuTarget(frozenMessage, {
+      generationId: 'generation-2',
+      id: 'other-message',
+    }),
+    frozenMessage,
+  );
 });
 
 test('only the latest visible assistant keeps actions while versions remain independent', () => {

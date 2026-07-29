@@ -2,6 +2,7 @@ import { type ComponentProps, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -79,6 +80,7 @@ export function AiMessageContextMenu({
       viewport.width,
     ],
   );
+  const actionListMaxHeight = Math.max(0, position.maxHeight - spacing[8]);
 
   return (
     <Modal
@@ -108,47 +110,53 @@ export function AiMessageContextMenu({
             styles.menu,
             {
               left: position.left,
+              maxHeight: position.maxHeight,
               opacity: menuSize.height > 0 ? 1 : 0,
               top: position.top,
             },
           ]}
         >
-          {actions.map((action, index) => (
-            <Pressable
-              accessibilityLabel={action.label}
-              accessibilityRole="menuitem"
-              accessibilityState={{
-                disabled: Boolean(action.disabled),
-                selected: Boolean(action.selected),
-              }}
-              disabled={action.disabled}
-              key={action.key}
-              onPress={() => {
-                onClose();
-                action.onPress();
-              }}
-              style={({ pressed }) => [
-                styles.actionRow,
-                index > 0 && styles.divider,
-                action.disabled && styles.disabled,
-                pressed && !action.disabled && styles.pressed,
-              ]}
-            >
-              <Ionicons
-                color={action.selected ? aiLightColors.primaryActive : aiLightColors.ink}
-                name={action.icon}
-                size={metrics.iconSizeMd}
-              />
-              <Text
-                style={[
-                  styles.actionLabel,
-                  action.selected && styles.selectedActionLabel,
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={[styles.actionList, { maxHeight: actionListMaxHeight }]}
+          >
+            {actions.map((action, index) => (
+              <Pressable
+                accessibilityLabel={action.label}
+                accessibilityRole="menuitem"
+                accessibilityState={{
+                  disabled: Boolean(action.disabled),
+                  selected: Boolean(action.selected),
+                }}
+                disabled={action.disabled}
+                key={action.key}
+                onPress={() => {
+                  onClose();
+                  action.onPress();
+                }}
+                style={({ pressed }) => [
+                  styles.actionRow,
+                  index > 0 && styles.divider,
+                  action.disabled && styles.disabled,
+                  pressed && !action.disabled && styles.pressed,
                 ]}
               >
-                {action.label}
-              </Text>
-            </Pressable>
-          ))}
+                <Ionicons
+                  color={action.selected ? aiLightColors.primaryActive : aiLightColors.ink}
+                  name={action.icon}
+                  size={metrics.iconSizeMd}
+                />
+                <Text
+                  style={[
+                    styles.actionLabel,
+                    action.selected && styles.selectedActionLabel,
+                  ]}
+                >
+                  {action.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
           <View accessibilityRole="text" style={[styles.timeRow, styles.divider]}>
             <Text style={styles.timeText}>{timeLabel}</Text>
           </View>
@@ -179,6 +187,9 @@ const styles = StyleSheet.create({
     gap: spacing[3],
     minHeight: metrics.minTouchSize,
     paddingHorizontal: spacing[4],
+  },
+  actionList: {
+    flexShrink: 1,
   },
   actionLabel: {
     ...typography.textStyles.body,

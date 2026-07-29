@@ -211,3 +211,21 @@ Expected: all applicable tests pass with zero failures.
 git add src/components/ai/AiMessageContextMenu.tsx src/components/ai/AiMessageTextSelectionModal.tsx src/components/ai/AiMessageBubble.tsx src/screens/AiChatScreen.tsx tests/ai-message-context-menu-policy.test.cjs docs/feature-matrix.md docs/superpowers/plans/2026-07-29-chat-message-context-menu-implementation.md
 git commit -m "feat: add chat message context menus"
 ```
+
+### Post-review repair: retain long-press behavior in constrained and streamed states
+
+**Files:**
+- Create: `src/components/ai/aiMessageContextMenuTarget.ts`
+- Modify: `src/components/ai/aiMessageContextMenuPosition.ts`
+- Modify: `src/components/ai/AiMessageContextMenu.tsx`
+- Modify: `src/components/ai/AiMessageBubble.tsx`
+- Modify: `src/components/ai/AiStreamingTailMessageSegment.tsx`
+- Modify: `src/components/ai/AiStreamingTailContinuationBubble.tsx`
+- Modify: `src/screens/AiChatScreen.tsx`
+- Modify: `tests/ai-message-context-menu-policy.test.cjs`
+- Modify: `docs/feature-matrix.md`
+
+- [x] Keep the `5px` finger anchor when the keyboard shortens the usable viewport by constraining the menu height and making its action list scrollable.
+- [x] Give both normal message bubbles and detached streaming tail segments, including the fallback continuation renderer, the same long-press entry and accessibility hint.
+- [x] Overlay the latest buffered streaming patch onto the long-press menu target so copy and text selection include visible tail content without changing branch/version action handlers.
+- [x] Add focused tests for constrained placement, both tail renderers, and buffered-patch overlay behavior.
