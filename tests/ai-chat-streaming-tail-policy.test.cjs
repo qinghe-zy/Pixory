@@ -148,7 +148,8 @@ test('AI chat screen rejects ratio reveal and uses real FlatList tail items', ()
   assert.match(screen, /promoteStreamingTailBlocks/);
   assert.match(screen, /resetStreamingTailOccupancy/);
   assert.match(screen, /getMessageItemIdAtIndex/);
-  assert.match(screen, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
+  assert.match(screen, /shouldShowScrollToLatest/);
+  assert.doesNotMatch(screen, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(screen, /revealedStreamingRatioRef/);
   assert.doesNotMatch(screen, /revealTextByRatio/);
   assert.doesNotMatch(screen, /revealBufferedStreamingStateForScroll/);
