@@ -113,7 +113,12 @@ export async function runDreamJob(input: { space: PixorySpace; jobId: string; no
       });
       return committed as unknown as DreamRecord | null;
     });
-    if (!dream) return 'failed'; emitDreamRuntimeNotice({ dreamId: dream.id, jobId: job.id, threadId: job.threadId, type: 'completed' }); return 'completed';
+    if (!dream) {
+      emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'failed' });
+      return 'failed';
+    }
+    emitDreamRuntimeNotice({ dreamId: dream.id, jobId: job.id, threadId: job.threadId, type: 'completed' });
+    return 'completed';
   } finally { activeControllers.delete(job.id); }
 }
 

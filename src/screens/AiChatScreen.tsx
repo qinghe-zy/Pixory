@@ -200,7 +200,7 @@ import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/d
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
 import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
 import { beijingDiaryDate, beijingDiaryDayBounds, decideDiaryTrigger } from '../ai/diary/diaryTypes';
-import { dreamRepository, type DreamRecord } from '../ai/dream/dreamRepository';
+import { dreamRepository, type DreamJobRecord, type DreamRecord } from '../ai/dream/dreamRepository';
 import { confirmManualDream } from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
 import { getLatestDreamRuntimeNotice, loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
@@ -605,6 +605,11 @@ type VisibleMessageItem =
       type: 'dream';
       id: string;
       dream: DreamRecord;
+    }
+  | {
+      type: 'dreamJob';
+      id: string;
+      job: DreamJobRecord;
     };
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
@@ -1374,6 +1379,7 @@ export function AiChatScreen({
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
   const [roleDreams, setRoleDreams] = useState<DreamRecord[]>([]);
+  const [roleDreamJobs, setRoleDreamJobs] = useState<DreamJobRecord[]>([]);
   const [dreamNotice, setDreamNotice] = useState<DreamRuntimeNotice | null>(null);
   const [diaryManualHint, setDiaryManualHint] = useState(false);
   const [diaryCommandHint, setDiaryCommandHint] = useState(false);
@@ -1894,15 +1900,25 @@ export function AiChatScreen({
 
   const reloadRoleDreams = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
-    if (!targetThreadId) { setRoleDreams([]); return; }
-    const dreams = await runWithDatabaseSpace(space, async (db) => {
+    if (!targetThreadId) { setRoleDreams([]); setRoleDreamJobs([]); return; }
+    const { dreams, jobs } = await runWithDatabaseSpace(space, async (db) => {
       const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      if (!thread?.roleCardId) return [];
+      if (!thread?.roleCardId) return { dreams: [], jobs: [] };
       const scopes = persistedCurrentBranchScopes.length > 0 ? persistedCurrentBranchScopes : activeMessageBranchScopesRef.current ?? [];
       const route = hashBranchRoute(scopes);
-      return (await dreamRepository.listForRole(db, thread.roleCardId)).filter(dream => dream.sourceThreadId === targetThreadId && dream.sourceBranchRouteHash === route && dream.lineageVersion === (thread.lineageVersion ?? 0));
+      const [allDreams, allJobs] = await Promise.all([
+        dreamRepository.listForRole(db, thread.roleCardId),
+        dreamRepository.listJobsForRole(db, thread.roleCardId),
+      ]);
+      return {
+        dreams: allDreams.filter(dream => dream.sourceThreadId === targetThreadId && dream.sourceBranchRouteHash === route && dream.lineageVersion === (thread.lineageVersion ?? 0)),
+        jobs: allJobs.filter(job => job.threadId === targetThreadId && job.branchRouteHash === route && job.lineageVersion === (thread.lineageVersion ?? 0)),
+      };
     });
-    if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) setRoleDreams(dreams);
+    if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
+      setRoleDreams(dreams);
+      setRoleDreamJobs(jobs);
+    }
   }, [persistedCurrentBranchScopes, space]);
 
   useEffect(() => {
@@ -2090,6 +2106,7 @@ export function AiChatScreen({
   useEffect(() => {
     setRoleDiaries([]);
     setRoleDreams([]);
+    setRoleDreamJobs([]);
     setDreamNotice(null);
     setDiaryManualHint(false);
     setDiaryCommandHint(false);
@@ -2277,8 +2294,15 @@ export function AiChatScreen({
       entries.push(dream);
       visibleDreamsByDate.set(dateKey, entries);
     });
+    const visibleDreamJobsByDate = new Map<string, DreamJobRecord[]>();
+    if (!thinking) roleDreamJobs.forEach((job) => {
+      const dateKey = beijingDiaryDate(job.createdAt);
+      const entries = visibleDreamJobsByDate.get(dateKey) ?? [];
+      entries.push(job);
+      visibleDreamJobsByDate.set(dateKey, entries);
+    });
     const calendarDates = Array.from(
-      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys(), ...visibleDreamsByDate.keys()]),
+      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys(), ...visibleDreamsByDate.keys(), ...visibleDreamJobsByDate.keys()]),
     ).sort();
     const nextVisibleMessageItems: VisibleMessageItem[] = [];
     let previousMessage: AiMessageWithCitations | undefined;
@@ -2291,26 +2315,44 @@ export function AiChatScreen({
         label: formatDateSeparator(dateKey),
         dateKey,
       });
-      dayMessages.forEach((sourceMessage, index) => {
-        const message = selectVisibleMessage({
-          message: sourceMessage,
-          tailOverride,
-        });
-        const startsNewDate = index === 0;
-        nextVisibleMessageItems.push({
-          id: message.id,
-          type: "message",
-          message,
-          showAvatar:
-            message.role === 'assistant' &&
-            (startsNewDate ||
-              previousMessage?.role !== 'assistant' ||
-              messageUsesStandaloneAssistantDisplay(message)),
-          showUserAvatar:
-            message.role === 'user' &&
-            (startsNewDate || previousMessage?.role !== 'user'),
-        });
-        previousMessage = message;
+      const dayDreams = visibleDreamsByDate.get(dateKey) ?? [];
+      const dayJobs = visibleDreamJobsByDate.get(dateKey) ?? [];
+      const mixedItems = [
+        ...dayMessages.map((m) => ({ type: 'msg' as const, time: new Date(m.createdAt).getTime(), data: m })),
+        ...dayDreams.map((d) => ({ type: 'drm' as const, time: new Date(d.displayAt).getTime(), data: d })),
+        ...dayJobs.map((j) => ({ type: 'job' as const, time: new Date(j.createdAt).getTime(), data: j }))
+      ].sort((a, b) => a.time - b.time);
+
+      let firstMessageSeen = false;
+      mixedItems.forEach((item) => {
+        if (item.type === 'msg') {
+          const message = selectVisibleMessage({
+            message: item.data as AiMessageWithCitations,
+            tailOverride,
+          });
+          const startsNewDate = !firstMessageSeen;
+          firstMessageSeen = true;
+          nextVisibleMessageItems.push({
+            id: message.id,
+            type: "message",
+            message,
+            showAvatar:
+              message.role === 'assistant' &&
+              (startsNewDate ||
+                previousMessage?.role !== 'assistant' ||
+                messageUsesStandaloneAssistantDisplay(message)),
+            showUserAvatar:
+              message.role === 'user' &&
+              (startsNewDate || previousMessage?.role !== 'user'),
+          });
+          previousMessage = message;
+        } else if (item.type === 'drm') {
+          const dream = item.data as DreamRecord;
+          nextVisibleMessageItems.push({ type: 'dream', id: `dream-${dream.id}`, dream });
+        } else if (item.type === 'job') {
+          const job = item.data as DreamJobRecord;
+          nextVisibleMessageItems.push({ type: 'dreamJob', id: `dreamJob-${job.id}`, job });
+        }
       });
       if (diary) {
         nextVisibleMessageItems.push({
@@ -2318,9 +2360,6 @@ export function AiChatScreen({
           id: `diary-${diary.id}`,
           diary,
         });
-      }
-      for (const dream of visibleDreamsByDate.get(dateKey) ?? []) {
-        nextVisibleMessageItems.push({ type: 'dream', id: `dream-${dream.id}`, dream });
       }
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
@@ -2419,6 +2458,7 @@ export function AiChatScreen({
     streamingTailVersion,
     roleDiaries,
     roleDreams,
+    roleDreamJobs,
     thinking,
   ]);
   const {
@@ -4425,6 +4465,7 @@ export function AiChatScreen({
     clearLatestJumpTimeouts();
     clearInlineEditVisibilityTimeouts();
     clearReplyTargetVisibilityTimeouts();
+    clearBranchTreeScrollTimeouts();
     clearSearchScrollTimeouts();
     clearSearchHighlightTimeout();
     inlineEditSafeVisibleMessageIdsRef.current = new Set();
@@ -6447,8 +6488,11 @@ export function AiChatScreen({
           />
         );
       }
-      if (item.type === 'dream') {
-        return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
+      switch (item.type) {
+        case 'dream':
+          return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
+        case 'dreamJob':
+          return <DreamChatCard createdAt={item.job.createdAt} title="未命名梦境" status={item.job.status === 'failed' ? 'failed' : 'generating'} onRetry={() => void retryDreamGeneration(space, item.job.id)} />;
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
@@ -6639,9 +6683,6 @@ export function AiChatScreen({
               onSelectVersion={handleSelectMessageVersion}
               onSubmitEdit={(messageId, content) => {
                 void handleSubmitInlineRewrite(messageId, content);
-              }}
-              onToggleFavorite={(targetMessage) => {
-                void handleToggleMessageFavorite(targetMessage);
               }}
               onThinkingExpandedChange={(messageId, expanded) => {
                 thinkingExpandedByMessageIdRef.current.set(messageId, expanded);
@@ -6897,22 +6938,15 @@ export function AiChatScreen({
 
           {inlineEditingActive ? null : (
             <Animated.View onLayout={(event) => setComposerPanelHeight(event.nativeEvent.layout.height)} style={[styles.composerPanel, composerEntranceStyle]}>
-              {dreamNotice ? (
+              {dreamNotice && dreamNotice.type === 'manual_confirmation' ? (
                 <View style={styles.diaryHint}>
-                  {dreamNotice.type === 'generating' ? <ActivityIndicator color={aiLightColors.primaryActive} size="small" style={styles.diaryHintSpinner} /> : null}
-                  <Text style={styles.diaryHintText}>
-                    {dreamNotice.type === 'manual_confirmation' ? '是否触发梦境？' : dreamNotice.type === 'generating' ? '梦境制作中' : dreamNotice.type === 'completed' ? '梦境制作完成' : dreamNotice.type === 'failed' ? '梦境制作失败' : '已取消梦境制作'}
-                  </Text>
-                  {dreamNotice.type === 'manual_confirmation' ? <>
-                    <Pressable accessibilityRole="button" onPress={() => void confirmManualDream(space, dreamNotice.seedId, true)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>是</Text></Pressable>
-                    <Pressable accessibilityRole="button" onPress={() => { void confirmManualDream(space, dreamNotice.seedId, false); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>否</Text></Pressable>
-                  </> : null}
-                  {dreamNotice.type === 'generating' ? <Pressable accessibilityRole="button" onPress={() => void cancelDreamGeneration(space, dreamNotice.jobId)} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>取消</Text></Pressable> : null}
-                  {dreamNotice.type === 'completed' ? <Pressable accessibilityRole="button" onPress={() => { onOpenDream(dreamNotice.dreamId); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>查看梦境</Text></Pressable> : null}
-                  {dreamNotice.type === 'failed' ? <Pressable accessibilityRole="button" onPress={() => void retryDreamGeneration(space, dreamNotice.jobId)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>重试</Text></Pressable> : null}
-                  {dreamNotice.type === 'cancelled' ? <Pressable accessibilityRole="button" onPress={() => setDreamNotice(null)} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>知道了</Text></Pressable> : null}
+                  <Ionicons color={aiLightColors.primaryActive} name="moon" size={metrics.iconSizeSm} />
+                  <Text style={styles.diaryHintText}>是否触发梦境？</Text>
+                  <Pressable accessibilityRole="button" onPress={() => void confirmManualDream(space, dreamNotice.seedId, true)} style={styles.diaryHintTouch}><Text style={styles.diaryHintAction}>是</Text></Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => { void confirmManualDream(space, dreamNotice.seedId, false); setDreamNotice(null); }} style={styles.diaryHintTouch}><Text style={styles.diaryHintDismiss}>否</Text></Pressable>
                 </View>
-              ) : diaryGenerationStatus ? (
+              ) : null}
+              {diaryGenerationStatus ? (
                 <View style={styles.diaryHint}>
                   {diaryGenerationStatus === 'generating' ? (
                     <ActivityIndicator color={aiLightColors.primaryActive} size="small" style={styles.diaryHintSpinner} />

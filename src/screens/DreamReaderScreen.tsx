@@ -8,6 +8,7 @@ import { clearDreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { DreamDeckPager } from '../components/ai/DreamDeckPager';
 import { AppScreen } from '../components/AppScreen';
 import { runWithDatabaseSpace, type PixorySpace } from '../database';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, metrics, spacing, typography } from '../design/tokens';
 
 interface DreamReaderScreenProps {
@@ -19,6 +20,7 @@ interface DreamReaderScreenProps {
 export function DreamReaderScreen({ space, dreamId, onBack }: DreamReaderScreenProps) {
   const [dream, setDream] = useState<DreamRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -40,7 +42,7 @@ export function DreamReaderScreen({ space, dreamId, onBack }: DreamReaderScreenP
 
   return (
     <AppScreen contentStyle={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(spacing[3], insets.top + spacing[2]) }]}>
         <Pressable accessibilityLabel="返回聊天" accessibilityRole="button" onPress={onBack} style={styles.back}>
           <Ionicons color={colors.text.primary} name="chevron-back" size={metrics.iconSizeMd} />
         </Pressable>
@@ -76,7 +78,7 @@ const dreamPalette = { background: '#E7EAF2', title: '#4D5872' } as const;
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: dreamPalette.background, flex: 1 },
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing[4], paddingTop: spacing[3] },
+  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing[4] },
   back: { alignItems: 'center', height: metrics.iconButtonSize, justifyContent: 'center', width: metrics.iconButtonSize },
   title: { ...typography.textStyles.sectionTitle, color: dreamPalette.title, fontFamily: typography.family.serif },
   empty: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing[6] },
