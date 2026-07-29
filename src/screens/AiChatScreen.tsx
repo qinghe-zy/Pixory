@@ -21,6 +21,7 @@ import {
   KeyboardAvoidingView,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type NativeTouchEvent,
   PermissionsAndroid,
   Platform,
   PanResponder,
@@ -106,6 +107,12 @@ import {
   messageMatchesSelectedBranchPath,
 } from "../ai/aiBranching";
 import { buildBranchSelectionMap } from "../ai/aiBranchTreeService";
+import {
+  resolveScrollToLatestGestureDirection,
+  shouldReattachToLatest,
+  shouldShowScrollToLatest,
+  type ScrollToLatestGestureDirection,
+} from "../ai/aiScrollToLatestPolicy";
 import {
   createComposerEntranceRun,
   isCurrentComposerEntranceRun,
@@ -197,7 +204,6 @@ import {
 } from "../design/tokens";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
-const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
 const STICK_TO_BOTTOM_OFFSET_PX = 70;
 const USER_SCROLL_IDLE_TIMEOUT_MS = 150;
@@ -1138,6 +1144,9 @@ export function AiChatScreen({
   const lastUserScrollAtRef = useRef(0);
   const showScrollToLatestRef = useRef(false);
   const messageScrollOffsetRef = useRef(0);
+  const messageTouchStartYRef = useRef<number | null>(null);
+  const messageTouchDirectionRef =
+    useRef<ScrollToLatestGestureDirection>('undetermined');
   const streamingReadBufferActiveRef = useRef(false);
   const bufferedStreamingPatchRef = useRef<AiStreamingMessagePatch | null>(
     null,
@@ -2782,7 +2791,7 @@ export function AiChatScreen({
   }
 
   function syncScrollToLatestVisibility(offsetY = messageScrollOffsetRef.current) {
-    const nextShowScrollToLatest = offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD;
+    const nextShowScrollToLatest = shouldShowScrollToLatest(offsetY);
     setScrollToLatestVisible(nextShowScrollToLatest);
   }
 
@@ -2972,23 +2981,6 @@ export function AiChatScreen({
     [],
   );
 
-  // prettier-ignore
-  const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset } = event.nativeEvent;
-    nativeMessageScrollOffsetRef.current = contentOffset.y;
-    scrollingTowardLatestRef.current =
-      contentOffset.y <= previousMessageScrollOffsetRef.current;
-    previousMessageScrollOffsetRef.current = contentOffset.y;
-    messageScrollOffsetRef.current = contentOffset.y;
-    lastUserScrollAtRef.current = Date.now();
-    updateStreamingLockStateSnapshot(contentOffset.y);
-    syncTailViewportPolicyForCurrentTailState();
-    userScrolledAwayFromBottomRef.current = !isNearBottomRef.current;
-    const nextShowScrollToLatest = contentOffset.y > MESSAGE_SCROLL_BUTTON_THRESHOLD;
-    setScrollToLatestVisible(nextShowScrollToLatest);
-    scheduleStreamingTailReconcile("scroll");
-  }, [scheduleStreamingTailReconcile, syncTailViewportPolicyForCurrentTailState, updateStreamingLockStateSnapshot]);
-
   const followLatestMessage = useCallback(
     (animated = true) => {
       userScrolledAwayFromBottomRef.current = false;
@@ -3004,6 +2996,53 @@ export function AiChatScreen({
     },
     [scrollToLatestMessage, syncTailViewportPolicyForCurrentTailState],
   );
+
+  const handleMessageTouchStart = useCallback(
+    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      messageTouchStartYRef.current = event.nativeEvent.pageY;
+      messageTouchDirectionRef.current = 'undetermined';
+    },
+    [],
+  );
+
+  const handleMessageTouchMove = useCallback(
+    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      const startY = messageTouchStartYRef.current;
+      if (startY == null) return;
+      messageTouchDirectionRef.current = resolveScrollToLatestGestureDirection(
+        messageTouchDirectionRef.current,
+        event.nativeEvent.pageY - startY,
+      );
+    },
+    [],
+  );
+
+  const resetMessageTouchGesture = useCallback(() => {
+    messageTouchStartYRef.current = null;
+    messageTouchDirectionRef.current = 'undetermined';
+  }, []);
+
+  // prettier-ignore
+  const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset } = event.nativeEvent;
+    nativeMessageScrollOffsetRef.current = contentOffset.y;
+    scrollingTowardLatestRef.current =
+      contentOffset.y <= previousMessageScrollOffsetRef.current;
+    previousMessageScrollOffsetRef.current = contentOffset.y;
+    messageScrollOffsetRef.current = contentOffset.y;
+    lastUserScrollAtRef.current = Date.now();
+    updateStreamingLockStateSnapshot(contentOffset.y);
+    syncTailViewportPolicyForCurrentTailState();
+    userScrolledAwayFromBottomRef.current = !isNearBottomRef.current;
+    if (shouldReattachToLatest({ direction: messageTouchDirectionRef.current, offsetY: contentOffset.y })) {
+      resetMessageTouchGesture();
+      followLatestMessage(false);
+      return;
+    }
+    const nextShowScrollToLatest = shouldShowScrollToLatest(contentOffset.y);
+    setScrollToLatestVisible(nextShowScrollToLatest);
+    scheduleStreamingTailReconcile("scroll");
+  }, [followLatestMessage, resetMessageTouchGesture, scheduleStreamingTailReconcile, syncTailViewportPolicyForCurrentTailState, updateStreamingLockStateSnapshot]);
 
   const queueFollowLatestMessageAfterLayout = useCallback(
     (animated = false) => {
@@ -6499,6 +6538,10 @@ export function AiChatScreen({
               onMomentumScrollEnd={handleMessageMomentumScrollEnd}
               onScrollEndDrag={handleMessageScrollEnd}
               onScrollToIndexFailed={handleMessageScrollToIndexFailed}
+              onTouchCancel={resetMessageTouchGesture}
+              onTouchEnd={resetMessageTouchGesture}
+              onTouchMove={handleMessageTouchMove}
+              onTouchStart={handleMessageTouchStart}
               renderItem={renderMessageItem}
               scrollEventThrottle={16}
               showsVerticalScrollIndicator={false}
@@ -6657,6 +6700,7 @@ export function AiChatScreen({
           )}
           <AiScrollToLatestButton
             bottomOffset={composerShellHeight + spacing[3] + spacing[1.5]}
+            generating={generating}
             visible={showScrollToLatest && !inlineEditingActive}
             onPress={handleReturnToLatestPress}
           />

@@ -211,17 +211,20 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /ListFooterComponent=/);
   assert.match(chat, /scrollToOffset\(\{\s*animated,\s*offset:\s*0\s*\}\)/);
   assert.match(chat, /const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48/);
-  assert.match(chat, /const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
+  assert.doesNotMatch(chat, /MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400/);
   assert.doesNotMatch(chat, /MESSAGE_STREAMING_BUTTON_THRESHOLD/);
   assert.match(chat, /const MESSAGE_SAFE_FLUSH_OFFSET = 32/);
   assert.match(chat, /const STICK_TO_BOTTOM_OFFSET_PX = 70/);
+  assert.match(chat, /shouldShowScrollToLatest/);
+  assert.match(chat, /shouldReattachToLatest/);
+  assert.match(chat, /resolveScrollToLatestGestureDirection/);
   assert.match(chat, /const MESSAGE_LIST_ANCHOR_CONFIG = \{ minIndexForVisible: 0 \}/);
   assert.match(chat, /const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = \[80, 260, 520\]/);
   assert.match(chat, /updateStreamingLockStateSnapshot/);
-  assert.match(chat, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(chat, /const nextShowScrollToLatest = shouldShowScrollToLatest\(contentOffset\.y\)/);
   assert.doesNotMatch(chat, /const nextShowScrollToLatest = hasUnseenStreamingUpdate \|\|/);
   const latestVisibilityBody = /function syncScrollToLatestVisibility\(offsetY = messageScrollOffsetRef\.current\) \{[\s\S]*?\n  \}/.exec(chat)?.[0] ?? '';
-  assert.match(latestVisibilityBody, /offsetY > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(latestVisibilityBody, /shouldShowScrollToLatest\(offsetY\)/);
   assert.doesNotMatch(latestVisibilityBody, /hasBufferedStreamingUpdateRef|pendingFinalReloadRef|hasPendingStreamingReadBuffer/);
   assert.match(chat, /userScrolledAwayFromBottomRef\.current = !isNearBottomRef\.current/);
   assert.match(chat, /maintainVisibleContentPosition=\{MESSAGE_LIST_ANCHOR_CONFIG\}/);
@@ -229,7 +232,11 @@ test('AI chat uses an inverted list pinned to offset zero without forced scrollT
   assert.match(chat, /onMomentumScrollBegin=\{handleMessageMomentumScrollBegin\}/);
   assert.match(chat, /onMomentumScrollEnd=\{handleMessageMomentumScrollEnd\}/);
   assert.match(chat, /onScrollEndDrag=\{handleMessageScrollEnd\}/);
-  assert.match(chat, /<AiScrollToLatestButton\s+bottomOffset=\{composerShellHeight \+ spacing\[3\] \+ spacing\[1\.5\]\}\s+visible=\{showScrollToLatest && !inlineEditingActive\}\s+onPress=\{handleReturnToLatestPress\}/);
+  assert.match(chat, /onTouchStart=\{handleMessageTouchStart\}/);
+  assert.match(chat, /onTouchMove=\{handleMessageTouchMove\}/);
+  assert.match(chat, /onTouchEnd=\{resetMessageTouchGesture\}/);
+  assert.match(chat, /onTouchCancel=\{resetMessageTouchGesture\}/);
+  assert.match(chat, /<AiScrollToLatestButton\s+bottomOffset=\{composerShellHeight \+ spacing\[3\] \+ spacing\[1\.5\]\}\s+generating=\{generating\}\s+visible=\{showScrollToLatest && !inlineEditingActive\}\s+onPress=\{handleReturnToLatestPress\}/);
   assert.doesNotMatch(chat, /const \[latestVisible, setLatestVisible\]/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
   assert.doesNotMatch(chat, /<Animated\.View style=\{\[styles\.composerPanel, composerEntranceStyle\]\}>[\s\S]{0,220}<AiScrollToLatestButton/);
@@ -1473,8 +1480,8 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   const latestButton = read('src/components/ai/AiScrollToLatestButton.tsx');
 
   assert.match(chat, /showScrollToLatestRef/);
-  assert.match(chat, /const nextShowScrollToLatest = contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
-  assert.doesNotMatch(chat, /hasUnseenStreamingUpdate \|\| contentOffset\.y > MESSAGE_SCROLL_BUTTON_THRESHOLD/);
+  assert.match(chat, /const nextShowScrollToLatest = shouldShowScrollToLatest\(contentOffset\.y\)/);
+  assert.doesNotMatch(chat, /hasUnseenStreamingUpdate \|\| shouldShowScrollToLatest\(contentOffset\.y\)/);
   assert.match(chat, /if \(showScrollToLatestRef\.current === nextValue\)/);
   assert.match(chat, /showScrollToLatestRef\.current = nextValue/);
   assert.doesNotMatch(chat, /latestVisibleRef/);
@@ -1490,9 +1497,10 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
   assert.match(latestButton, /Animated/);
   assert.match(latestButton, /Animated\.timing/);
   assert.match(latestButton, /useNativeDriver:\s*true/);
-  assert.match(latestButton, /BlurView/);
-  assert.match(latestButton, /rgba\(248,\s*248,\s*250,\s*0\.8[0-9]\)/);
-  assert.match(latestButton, /color=\{aiLightColors\.primaryActive\}/);
+  assert.doesNotMatch(latestButton, /BlurView/);
+  assert.match(latestButton, /metrics\.scrollToLatestVisualSize/);
+  assert.match(latestButton, /metrics\.minTouchSize/);
+  assert.match(latestButton, /color=\{aiLightColors\.ink\}/);
 
   assert.match(chat, /voiceResetTimeoutRef/);
   assert.match(chat, /clearVoiceResetTimeout/);

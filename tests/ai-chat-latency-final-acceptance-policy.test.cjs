@@ -49,9 +49,15 @@ test('streaming output modernization acceptance contract is implemented', () => 
   assert.match(screen, /pendingFinalReloadRef/);
   assert.match(store, /useSyncExternalStore/);
   assert.doesNotMatch(button, /AI 正在回复/);
-  assert.match(button, /accessibilityLabel="回到最新"/);
-  assert.match(button, /BlurView/);
+  assert.match(button, /generating: boolean/);
+  assert.match(button, /accessibilityLabel=\{generating \? 'AI 正在生成，回到最新' : '回到最新'\}/);
+  assert.match(button, /useReducedMotion/);
+  assert.match(button, /withRepeat/);
+  assert.match(button, /Math\.sin/);
+  assert.match(button, /metrics\.scrollToLatestVisualSize/);
+  assert.match(button, /metrics\.minTouchSize/);
+  assert.match(button, /right: spacing\[4\]/);
   assert.match(button, /name="arrow-down"/);
-  assert.match(button, /color=\{aiLightColors\.primaryActive\}/);
+  assert.doesNotMatch(button, /BlurView/);
   assert.doesNotMatch(button, />回到最新</);
 });
