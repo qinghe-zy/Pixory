@@ -6723,19 +6723,19 @@ export function AiChatScreen({
         styles.drawerHost,
         {
           paddingBottom:
+            initialBottomInsetRef.current +
             layout.pageBottomOffset -
             spacing[2],
         },
       ]}
     >
       {/* prettier-ignore */}
-      {/* KAV handles keyboard avoidance on both platforms.
-           On Android, adjustResize is deprecated in edge-to-edge mode (Android 14+),
-           so we use behavior='height' here instead. The insets.bottom safe area is
-           intentionally excluded from AppScreen paddingBottom above to avoid
-           double-compensation (KAV already accounts for the bottom inset). */}
+      {/* behavior='padding' adds/removes bottom padding on keyboard show/hide.
+           This avoids the stuck-height bug that behavior='height' has on Android 14+
+           edge-to-edge mode. initialBottomInsetRef provides stable nav-bar clearance
+           without reacting to mid-session inset changes. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         style={styles.keyboardAvoidingHost}
       >
         {/* prettier-ignore */}
