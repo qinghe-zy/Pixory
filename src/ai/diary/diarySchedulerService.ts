@@ -199,6 +199,7 @@ export async function reconcileDiaryJobs(space: PixorySpace): Promise<RoleDiaryJ
 }
 
 export async function runDueDiaryJobs(space: PixorySpace): Promise<void> {
+  if (suspendedDiarySpaces.has(space)) return;
   const existing = dueRunsBySpace.get(space);
   if (existing) {
     return existing;
@@ -254,8 +255,18 @@ function parseSnapshotMessages(value: string): AiMessageRecord[] {
   }
 }
 
-export async function runDiaryJob(space: PixorySpace, jobId: string): Promise<void> {
+const suspendedDiarySpaces = new Set<PixorySpace>(['personal']);
+const diaryRuntimeTasks = new Map<PixorySpace, Set<Promise<void>>>();
+const diaryRuntimeControllers = new Map<PixorySpace, Set<AbortController>>();
+
+function assertDiaryRuntimeActive(space: PixorySpace, signal?: AbortSignal): void {
+  if (suspendedDiarySpaces.has(space) || signal?.aborted) throw new Error('Diary runtime is suspended.');
+}
+
+async function executeDiaryJob(space: PixorySpace, jobId: string, signal: AbortSignal): Promise<void> {
+  assertDiaryRuntimeActive(space, signal);
   const db = await getDatabase(space);
+  assertDiaryRuntimeActive(space, signal);
   const job = await diaryRepository.claimJobForRun(db, jobId);
   if (!job) {
     return;
@@ -266,6 +277,7 @@ export async function runDiaryJob(space: PixorySpace, jobId: string): Promise<vo
   }
   if (job.triggerKind === 'wake') {
     try {
+      assertDiaryRuntimeActive(space, signal);
       const thread = await aiThreadRepository.findThreadById(db, job.sourceThreadId);
       if (!thread?.roleCardId) {
         throw new Error('日记来源会话已不存在。');
@@ -313,7 +325,7 @@ export async function runDiaryJob(space: PixorySpace, jobId: string): Promise<vo
           scheduledFor: now.toISOString(),
           branchScopes,
         });
-        await runDiaryJob(space, generation.id);
+        await runDiaryJob(space, generation.id, signal);
       }
       await diaryRepository.updateJobStatus(db, jobId, { status: 'completed' });
       const needsLateFollowUp = decision.kind === 'none'
@@ -348,9 +360,19 @@ export async function runDiaryJob(space: PixorySpace, jobId: string): Promise<vo
       sourceMessages: parseSnapshotMessages(job.sourceMessagesJson),
       roleSnapshotJson: job.roleSnapshotJson,
       roleCardId: job.roleCardId,
+      signal,
     });
+    assertDiaryRuntimeActive(space, signal);
     await diaryRepository.updateJobStatus(db, jobId, { status: 'completed' });
   } catch (error) {
+    if (signal.aborted || suspendedDiarySpaces.has(space)) {
+      await diaryRepository.updateJobStatus(db, jobId, {
+        status: 'failed',
+        errorMessage: 'Diary generation was suspended.',
+        nextRunAt: new Date().toISOString(),
+      });
+      return;
+    }
     const latest = await diaryRepository.findJobById(db, jobId);
     const exhausted = (latest?.attemptCount ?? job.attemptCount + 1) >= 3;
     const message = error instanceof Error ? error.message : '角色日记生成失败。';
@@ -360,6 +382,41 @@ export async function runDiaryJob(space: PixorySpace, jobId: string): Promise<vo
       nextRunAt: exhausted ? null : new Date(Date.now() + 15 * 60 * 1_000).toISOString(),
     });
   }
+}
+
+export function runDiaryJob(space: PixorySpace, jobId: string, parentSignal?: AbortSignal): Promise<void> {
+  if (suspendedDiarySpaces.has(space)) return Promise.resolve();
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  const controllers = diaryRuntimeControllers.get(space) ?? new Set<AbortController>();
+  controllers.add(controller);
+  diaryRuntimeControllers.set(space, controllers);
+  const task = executeDiaryJob(space, jobId, controller.signal);
+  const tasks = diaryRuntimeTasks.get(space) ?? new Set<Promise<void>>();
+  tasks.add(task);
+  diaryRuntimeTasks.set(space, tasks);
+  void task.finally(() => {
+    parentSignal?.removeEventListener('abort', abortFromParent);
+    controllers.delete(controller);
+    tasks.delete(task);
+    if (controllers.size === 0) diaryRuntimeControllers.delete(space);
+    if (tasks.size === 0) diaryRuntimeTasks.delete(space);
+  }).catch(() => undefined);
+  return task;
+}
+
+export function resumeDiaryRuntime(space: PixorySpace): void {
+  suspendedDiarySpaces.delete(space);
+}
+
+export async function suspendDiaryRuntime(space: PixorySpace): Promise<void> {
+  suspendedDiarySpaces.add(space);
+  for (const controller of diaryRuntimeControllers.get(space) ?? []) controller.abort();
+  await Promise.allSettled([
+    ...(diaryRuntimeTasks.get(space) ?? []),
+    ...(dueRunsBySpace.get(space) ? [dueRunsBySpace.get(space)!] : []),
+  ]);
 }
 
 function isLateNightContinuation(now: Date, sessionStartedAt: string | null): boolean {

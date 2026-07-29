@@ -50,6 +50,7 @@ function sanitizeDiaryBody(value: string): string {
 }
 
 export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<RoleDiaryVersionRecord> {
+  if (input.signal?.aborted) throw new Error('Diary generation was suspended.');
   const roleCardId = input.roleCardId ?? input.thread.roleCardId;
   if (!roleCardId) {
     throw new Error('当前会话没有角色卡，无法生成角色日记。');
@@ -97,11 +98,14 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
       }
     },
   );
+  if (input.signal?.aborted) throw new Error('Diary generation was suspended.');
   if (streamError) {
     throw new Error(normalizeAiErrorMessage(new Error(streamError)));
   }
 
-  return runWithDatabaseSpace(input.space, (db) =>
+  return runWithDatabaseSpace(input.space, (db) => {
+    if (input.signal?.aborted) throw new Error('Diary generation was suspended.');
+    return (
     diaryRepository.saveDiaryVersion(db, {
       roleCardId,
       diaryDate: input.diaryDate,
@@ -115,6 +119,6 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
       sourceThreadId: input.thread.id,
       status: input.deferPresentation ? 'ready_pending_presentation' : 'ready',
       themeKey: resolveDiaryTheme(input.space, roleCardId, input.diaryDate),
-    }),
-  );
+    }));
+  });
 }

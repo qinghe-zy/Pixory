@@ -61,8 +61,9 @@ import { CompanionRuntimeManagerScreen } from './src/screens/CompanionRuntimeMan
 import { applyRoleCardToThread, createNormalThreadFromRoleCard, type AiMessageFavoriteListItem } from './src/ai/aiChatService';
 import { adoptBranchSelection } from './src/ai/aiBranchTreeService';
 import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
-import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
+import { resumeCompanionMemoryMaintenance, scheduleCompanionMemoryMaintenance, suspendCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
+import { resumeDiaryBackgroundTasks, suspendDiaryBackgroundTasks } from './src/ai/diary/diaryGenerationManager';
 import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
 import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
@@ -107,7 +108,7 @@ import {
   setPersonalPassword,
   verifyPersonalPassword,
 } from './src/services/personalSystemService';
-import { createPersonalTaskToken, invalidatePersonalTaskToken, type PersonalTaskToken } from './src/services/personalTaskToken';
+import { createPersonalTaskToken, invalidatePersonalTaskToken, waitForPersonalTasks, type PersonalTaskToken } from './src/services/personalTaskToken';
 import { isDevToolsEnabled } from './src/utils/dev';
 import {
   addNativeIntentListener,
@@ -837,6 +838,8 @@ export default function App() {
       personalSessionStateRef.current = 'unlocked';
       aiGenerationManager.resumeSpace('personal');
       resumePersonalCompanionMaintenance();
+      resumeCompanionMemoryMaintenance('personal');
+      resumeDiaryBackgroundTasks('personal');
       void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
       void reconcileThoughtSessions('personal')
         .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))
@@ -908,9 +911,14 @@ export default function App() {
     setPrivacyShieldVisible(true);
     setPersonalSessionState((current) => (current === 'locked' ? 'locked' : 'locking'));
     personalSessionStateRef.current = 'locking';
+    const lockingTaskToken = personalTaskTokenRef.current;
+    invalidatePersonalTaskToken(lockingTaskToken);
     const runtimeResults = await Promise.allSettled([
       aiGenerationManager.suspendSpace('personal'),
       suspendCompanionMaintenance('personal'),
+      suspendCompanionMemoryMaintenance('personal'),
+      suspendDiaryBackgroundTasks('personal'),
+      waitForPersonalTasks(lockingTaskToken),
     ]);
     for (const runtimeResult of runtimeResults) {
       if (runtimeResult.status === 'rejected') {
@@ -919,7 +927,6 @@ export default function App() {
         });
       }
     }
-    invalidatePersonalTaskToken(personalTaskTokenRef.current);
     personalTaskTokenRef.current = null;
     personalGenerationRef.current += 1;
     setPersonalSession(null);

@@ -48,9 +48,14 @@ test('backup V2 covers AI files, validates before staging, and merges without ov
   assert.match(managed, /logicalIdMaps/);
   assert.match(managed, /foreign_key_list/);
   assert.match(managed, /remapManagedLogicalReferences/);
+  assert.match(managed, /isManagedCanonicalTable/);
+  assert.match(managed, /MANAGED_DERIVED_TABLE_PREFIXES/);
+  assert.match(managed, /rebuildManagedSearchIndexes/);
+  assert.match(managed, /DELETE FROM ai_message_fts[\s\S]*INSERT INTO ai_message_fts/);
   assert.match(managed, /row\.localUri = uri/);
   assert.match(managed, /row\.avatarUri = uri/);
   assert.match(backup, /await validateManagedBackupManifestV2\([\s\S]*await stageManagedAiFiles\(/);
+  assert.match(backup, /assertActive:\s*\(\) => assertPersonalTaskActive\(taskToken\)/);
   assert.match(backup, /stagedDestinationUris[\s\S]*deleteLocalFile/);
   assert.match(backup, /runBackupBuild[\s\S]*deleteLocalFile\(backupDir\)/);
   assert.match(backup, /createEncryptedPackFromBackup[\s\S]*finally \{[\s\S]*deleteLocalFile\(backup\.backupDir\)/);

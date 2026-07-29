@@ -141,18 +141,34 @@ test('Personal companion work is authorized only after unlock and is suspended b
   const app = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
   const maintenance = fs.readFileSync(path.join(root, 'src/ai/companion/companionMaintenanceQueue.ts'), 'utf8');
   const generation = fs.readFileSync(path.join(root, 'src/ai/aiGenerationManager.ts'), 'utf8');
+  const memoryService = fs.readFileSync(path.join(root, 'src/ai/aiMemoryMaintenanceService.ts'), 'utf8');
+  const memoryQueue = fs.readFileSync(path.join(root, 'src/ai/aiMemoryMaintenanceQueue.ts'), 'utf8');
+  const diaryManager = fs.readFileSync(path.join(root, 'src/ai/diary/diaryGenerationManager.ts'), 'utf8');
+  const diaryScheduler = fs.readFileSync(path.join(root, 'src/ai/diary/diarySchedulerService.ts'), 'utf8');
+  const personalTasks = fs.readFileSync(path.join(root, 'src/services/personalTaskToken.ts'), 'utf8');
   const unlock = /async function unlockPersonalSpace[\s\S]*?async function setupPersonalSpace/.exec(app)?.[0] ?? '';
   const lock = /async function lockPersonalSpace[\s\S]*?function pushRoute/.exec(app)?.[0] ?? '';
 
   assert.ok(unlock.indexOf("setPersonalSessionState('unlocked')") < unlock.indexOf('resumePersonalCompanionMaintenance'));
   assert.match(unlock, /resumePersonalCompanionMaintenance\(\)/);
   assert.match(unlock, /runCompanionMaintenancePass\(\{[\s\S]*allowRemoteModelForPersonal:\s*true[\s\S]*space:\s*'personal'/);
-  assert.match(lock, /await Promise\.allSettled\(\[[\s\S]*aiGenerationManager\.suspendSpace\('personal'\)[\s\S]*suspendCompanionMaintenance\('personal'\)/);
+  assert.match(lock, /await Promise\.allSettled\(\[[\s\S]*aiGenerationManager\.suspendSpace\('personal'\)[\s\S]*suspendCompanionMaintenance\('personal'\)[\s\S]*suspendCompanionMemoryMaintenance\('personal'\)/);
   assert.ok(lock.indexOf("suspendCompanionMaintenance('personal')") < lock.indexOf("resetDatabaseSpaceCache('personal')"));
   assert.match(maintenance, /export async function suspendCompanionMaintenance/);
   assert.match(maintenance, /personalRuntimeAuthorized/);
   assert.match(generation, /async function suspendSpace/);
   assert.match(generation, /function resumeSpace/);
+  assert.match(unlock, /resumeCompanionMemoryMaintenance\('personal'\)/);
+  assert.match(memoryService, /export async function suspendCompanionMemoryMaintenance/);
+  assert.match(memoryService, /deferredReplyMaintenanceTimers/);
+  assert.match(memoryQueue, /export async function suspendMemoryMaintenanceSpace/);
+  assert.match(memoryQueue, /suspendedMemorySpaces/);
+  assert.match(memoryQueue, /controller\.abort\(\)/);
+  assert.match(unlock, /resumeDiaryBackgroundTasks\('personal'\)/);
+  assert.match(lock, /invalidatePersonalTaskToken\(lockingTaskToken\)[\s\S]*suspendDiaryBackgroundTasks\('personal'\)[\s\S]*waitForPersonalTasks\(lockingTaskToken\)/);
+  assert.match(diaryManager, /export async function suspendDiaryBackgroundTasks/);
+  assert.match(diaryScheduler, /export async function suspendDiaryRuntime[\s\S]*controller\.abort\(\)/);
+  assert.match(personalTasks, /export async function waitForPersonalTasks/);
 });
 
 test('thought delivery shares the assistant and generation terminal transaction', () => {
@@ -160,6 +176,18 @@ test('thought delivery shares the assistant and generation terminal transaction'
   const finalPersist = /markGenerationMetric\(generationMetrics, 'finalPersistStartAt'\)[\s\S]*?markGenerationMetric\(generationMetrics, 'finalPersistEndAt'\)/.exec(chat)?.[0] ?? '';
   assert.equal((finalPersist.match(/deliverThoughtReservation\(/g) ?? []).length, 1);
   assert.match(finalPersist, /db\.withTransactionAsync\([\s\S]*deliverThoughtReservation\([\s\S]*settleGenerationJob/);
+});
+
+test('continuation citations are revalidated and stranded thought reservations are reconciled', () => {
+  const chat = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const artifacts = fs.readFileSync(path.join(root, 'src/ai/companion/companionArtifactService.ts'), 'utf8');
+  const maintenance = fs.readFileSync(path.join(root, 'src/ai/companion/companionMaintenanceQueue.ts'), 'utf8');
+  assert.match(chat, /async function revalidateRetainedCitations/);
+  assert.match(chat, /revalidateRetainedCitations\([\s\S]*validateCitationRegistryEntry/);
+  assert.match(chat, /mode === 'continue'[\s\S]*revalidateRetainedCitations[\s\S]*mergeContinuationCitations/);
+  assert.match(artifacts, /hashBranchRoute\(scopes\)[\s\S]*releaseThoughtReservationForMessage/);
+  assert.match(artifacts, /export async function reconcileStrandedThoughtReservations/);
+  assert.match(maintenance, /reconcileStrandedThoughtReservations/);
 });
 
 test('enrichment validator rejects unknown evidence, invalid enums, low confidence and malformed JSON', () => {

@@ -23,7 +23,7 @@ import {
 } from '../services/backupService';
 import { formatDateTime, formatFileSize } from '../utils/formatters';
 import { useToast } from '../components/AppToast';
-import type { PersonalTaskToken } from '../services/personalTaskToken';
+import { trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
 
 interface BackupScreenProps {
   space?: PixorySpace;
@@ -120,7 +120,7 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
 
     setIsBackingUp(true);
     try {
-      const result = await task();
+      const result = await trackPersonalTask(taskToken, task());
       setLastEncryptedPack(result);
       setLastBackup(null);
       showToast(successMessage);
@@ -147,12 +147,12 @@ export function BackupScreen({ space = 'normal', taskToken = null, refreshToken,
         return;
       }
       setIsBackingUp(true);
-      const result = await importEncryptedPersonalPack({
+      const result = await trackPersonalTask(taskToken, importEncryptedPersonalPack({
         packageUri: pickResult.assets[0].uri,
         secret: personalSecret,
         mode: 'merge',
         taskToken,
-      });
+      }));
       const optionalNotice = result.missingOptionalFileCount > 0
         ? `，${result.missingOptionalFileCount} 个可选预览缺失`
         : '';

@@ -1912,6 +1912,7 @@ export function AiChatScreen({
       return;
     }
     return runDiaryTaskInBackground({
+      space,
       taskKey: `${space}:diary-trigger:${targetThreadId}`,
       task: async () => {
         const branchScopes = persistedCurrentBranchScopes.length > 0
@@ -1990,6 +1991,7 @@ export function AiChatScreen({
       return;
     }
     const task = runDiaryTaskInBackground({
+      space,
       taskKey: `${space}:manual-diary:${targetThreadId}`,
       task: async () => {
       setDiaryGenerationStatus('generating');

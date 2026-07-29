@@ -1,9 +1,11 @@
 import type { PixorySpace } from '../database';
 import {
   isThreadMemoryMaintenanceActive,
+  resumeMemoryMaintenanceSpace,
   runLocalCurrentTurnExtraction,
   runUnifiedMemoryMaintenancePass,
   scheduleMemoryMaintenance,
+  suspendMemoryMaintenanceSpace,
 } from './aiMemoryMaintenanceQueue';
 
 export type CompanionMaintenanceReason = 'reply_completed' | 'leave_chat' | 'app_background';
@@ -24,8 +26,19 @@ const deferredReplyMaintenanceTimers = new Map<string, {
   resolvers: Array<() => void>;
   timeout: ReturnType<typeof setTimeout>;
 }>();
+const activeLocalExtractions = new Map<PixorySpace, Set<Promise<void>>>();
 
 export { isThreadMemoryMaintenanceActive, runUnifiedMemoryMaintenancePass, scheduleMemoryMaintenance };
+
+function trackLocalExtraction(space: PixorySpace, task: Promise<void>): void {
+  const tasks = activeLocalExtractions.get(space) ?? new Set<Promise<void>>();
+  tasks.add(task);
+  activeLocalExtractions.set(space, tasks);
+  void task.finally(() => {
+    tasks.delete(task);
+    if (tasks.size === 0) activeLocalExtractions.delete(space);
+  }).catch(() => undefined);
+}
 
 function deferredReplyMaintenanceKey(space: PixorySpace, threadId: string): string {
   return `${space}:${threadId}`;
@@ -63,7 +76,8 @@ export function scheduleCompanionMemoryMaintenance(input: {
 
 export function scheduleDeferredCompanionMemoryMaintenance(input: DeferredReplyMaintenanceInput): Promise<void> {
   const key = deferredReplyMaintenanceKey(input.space, input.threadId);
-  void runLocalCurrentTurnExtraction(input).catch(() => undefined);
+  const localExtraction = runLocalCurrentTurnExtraction(input).catch(() => undefined);
+  trackLocalExtraction(input.space, localExtraction);
   const maintenanceInput = { ...input, currentTurnExtractionDone: true };
   const existing = deferredReplyMaintenanceTimers.get(key);
   return new Promise((resolve, reject) => {
@@ -84,4 +98,20 @@ export function scheduleDeferredCompanionMemoryMaintenance(input: DeferredReplyM
     entry.timeout = scheduleDeferredReplyMaintenanceTimeout(key, entry);
     deferredReplyMaintenanceTimers.set(key, entry);
   });
+}
+
+export function resumeCompanionMemoryMaintenance(space: PixorySpace): void {
+  resumeMemoryMaintenanceSpace(space);
+}
+
+export async function suspendCompanionMemoryMaintenance(space: PixorySpace): Promise<void> {
+  const queueSuspension = suspendMemoryMaintenanceSpace(space);
+  for (const [key, entry] of deferredReplyMaintenanceTimers) {
+    if (entry.input.space !== space) continue;
+    clearTimeout(entry.timeout);
+    deferredReplyMaintenanceTimers.delete(key);
+    entry.resolvers.forEach((resolve) => resolve());
+  }
+  await queueSuspension;
+  await Promise.allSettled([...(activeLocalExtractions.get(space) ?? [])]);
 }

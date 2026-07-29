@@ -764,6 +764,7 @@ export async function importPlainBackupPackage({
     let stagedManagedAi: Awaited<ReturnType<typeof stageManagedAiFiles>> | null = null;
     if (manifest.manifestVersion === 2) {
       const validation = await validateManagedBackupManifestV2({
+        assertActive: () => assertPersonalTaskActive(taskToken),
         backupDir,
         expectedSpace: space,
         manifest: manifest as ManagedBackupManifestV2,
@@ -771,6 +772,7 @@ export async function importPlainBackupPackage({
       missingOptionalFileCount = validation.missingOptional.length;
       assertPersonalTaskActive(taskToken);
       stagedManagedAi = await stageManagedAiFiles({
+        assertActive: () => assertPersonalTaskActive(taskToken),
         backupDir,
         manifest: manifest as ManagedBackupManifestV2,
         space,
@@ -796,6 +798,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const group of exportData?.groups ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(group.ipId);
         if (!nextIpId) continue;
         const existingGroup = await groupRepository.findByIpIdAndName(db, nextIpId, group.name);
@@ -811,6 +814,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const batch of exportData?.importBatches ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(batch.ipId);
         if (!nextIpId) continue;
         const createdBatch = await importBatchRepository.create(db, {
@@ -838,6 +842,7 @@ export async function importPlainBackupPackage({
           managedFiles: manifest.files,
           sourceImage: image,
         });
+        assertPersonalTaskActive(taskToken);
         stagedDestinationUris.push(
           copied.originalDestinationUri,
           ...(copied.thumbnailDestinationUri ? [copied.thumbnailDestinationUri] : []),
@@ -878,6 +883,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const ip of exportData?.ips ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextIpId = ipIdMap.get(ip.id);
         if (!nextIpId) continue;
         await ipRepository.update(db, nextIpId, {
@@ -888,6 +894,7 @@ export async function importPlainBackupPackage({
       }
 
       for (const group of exportData?.groups ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextGroupId = groupIdMap.get(group.id);
         if (!nextGroupId) continue;
         await groupRepository.update(db, nextGroupId, {
@@ -896,9 +903,11 @@ export async function importPlainBackupPackage({
       }
 
       for (const batch of exportData?.importBatches ?? []) {
+        assertPersonalTaskActive(taskToken);
         const nextBatchId = importBatchIdMap.get(batch.id);
         if (!nextBatchId) continue;
         for (const item of exportData?.importBatchItemsByBatchId[String(batch.id)] ?? []) {
+          assertPersonalTaskActive(taskToken);
           await importBatchRepository.createItem(db, {
             importBatchId: nextBatchId,
             sourcePath: item.sourcePath,
@@ -913,6 +922,7 @@ export async function importPlainBackupPackage({
 
       if (manifest.type !== 'ip' && manifest.manifestVersion === 2 && stagedManagedAi) {
         const mergeReport = await mergeManagedDatabaseRecords({
+          assertActive: () => assertPersonalTaskActive(taskToken),
           sourceDatabaseUri: resolveManagedBackupPath(backupDir, manifest.databaseRelativePath ?? ''),
           targetDb: db,
           space,

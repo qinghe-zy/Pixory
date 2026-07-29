@@ -5,6 +5,8 @@ import { dreamRepository } from '../dream/dreamRepository';
 import { abortDreamJobsForSpace, runDreamJob } from '../dream/dreamWorker';
 import { thoughtRepository } from '../thought/thoughtRepository';
 import { abortThoughtJobsForSpace, runThoughtJob } from '../thought/thoughtWorker';
+import { resumeThoughtSessions, suspendThoughtSessions } from '../thought/thoughtSessionCoordinator';
+import { reconcileStrandedThoughtReservations } from './companionArtifactService';
 
 const activePasses = new Map<PixorySpace, Promise<void>>();
 const scheduledTimers = new Map<PixorySpace, Set<ReturnType<typeof setTimeout>>>();
@@ -22,6 +24,7 @@ function assertRuntimeActive(space: PixorySpace, epoch: number): void {
 export function resumePersonalCompanionMaintenance(): void {
   personalRuntimeEpoch += 1;
   personalRuntimeAuthorized = true;
+  resumeThoughtSessions('personal');
 }
 
 async function scheduleNextReadyPass(input: {
@@ -59,6 +62,8 @@ export async function runCompanionMaintenancePass(input: {
   const pass = (async () => {
     assertRuntimeActive(input.space, runtimeEpoch);
     const now = input.now ?? new Date().toISOString();
+    await runWithDatabaseSpace(input.space, (db) => reconcileStrandedThoughtReservations(db, input.space, now));
+    assertRuntimeActive(input.space, runtimeEpoch);
     // A maintenance pass deliberately performs at most one optional model call.
     // This keeps enrichment sparse even if several local observations queue while offline.
     const [jobs, dreamJobs, thoughtJobs] = await runWithDatabaseSpace(input.space, async (db) => Promise.all([
@@ -129,6 +134,7 @@ export async function suspendCompanionMaintenance(space: PixorySpace): Promise<v
   abortDreamJobsForSpace(space);
   abortThoughtJobsForSpace(space);
   abortCompanionEnrichmentForSpace(space);
+  await suspendThoughtSessions(space);
   await activePasses.get(space)?.catch(() => undefined);
   const now = new Date().toISOString();
   await runWithDatabaseSpace(space, async (db) => {

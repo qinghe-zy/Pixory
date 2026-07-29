@@ -29,13 +29,33 @@ test('logical references in nested JSON follow role, thread, message, document a
     ['ai_messages', new Map([['message-a', 'message-b']])],
     ['ai_documents', new Map([['document-a', 'document-b']])],
     ['companion_thought_jobs', new Map([['job-a', 'job-b']])],
+    ['companion_diary_versions', new Map([['version-a', 'version-b']])],
+    ['ai_thread_summary_segments', new Map([['segment-a', 'segment-b']])],
+    ['memory_evidence', new Map([['evidence-a', 'evidence-b']])],
+    ['ai_generation_ids', new Map([['generation-a', 'generation-b']])],
+    ['ai_memories', new Map([['memory-a', 'memory-b']])],
   ]);
   const value = mapping.remapManagedLogicalReferences({
     roleCardId: 'role-a', threadId: 'thread-a', sourceMessageIds: ['message-a'],
-    documentId: 'document-a', jobId: 'job-a', nested: { deliveredMessageId: 'message-a' },
-  }, maps, 'companion_thoughts');
+    documentId: 'document-a', jobId: 'job-a', currentVersionId: 'version-a',
+    sourceSegmentIds: ['segment-a'], evidenceIds: ['evidence-a'], generationId: 'generation-a',
+    preImportBranchRootMessageId: 'message-a', importAnchorMessageId: 'message-a',
+    effectType: 'memory_update', targetRecordId: 'memory-a', nested: { deliveredMessageId: 'message-a' },
+  }, maps, 'ai_continuity_import_effects');
   assert.deepEqual(value, {
     roleCardId: 'role-b', threadId: 'thread-b', sourceMessageIds: ['message-b'],
-    documentId: 'document-b', jobId: 'job-b', nested: { deliveredMessageId: 'message-b' },
+    documentId: 'document-b', jobId: 'job-a', currentVersionId: 'version-a',
+    sourceSegmentIds: ['segment-b'], evidenceIds: ['evidence-b'], generationId: 'generation-b',
+    preImportBranchRootMessageId: 'message-b', importAnchorMessageId: 'message-b',
+    effectType: 'memory_update', targetRecordId: 'memory-b', nested: { deliveredMessageId: 'message-b' },
   });
+});
+
+test('table-specific diary version and thought job references use their canonical maps', () => {
+  const maps = new Map([
+    ['companion_diary_versions', new Map([['version-a', 'version-b']])],
+    ['companion_thought_jobs', new Map([['job-a', 'job-b']])],
+  ]);
+  assert.equal(mapping.remapManagedLogicalReferences({ currentVersionId: 'version-a' }, maps, 'companion_diaries').currentVersionId, 'version-b');
+  assert.equal(mapping.remapManagedLogicalReferences({ jobId: 'job-a' }, maps, 'companion_thoughts').jobId, 'job-b');
 });

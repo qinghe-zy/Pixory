@@ -264,6 +264,7 @@ export async function createManagedBackupManifestV2(input: {
 }
 
 export async function validateManagedBackupManifestV2(input: {
+  assertActive?: () => void;
   backupDir: string;
   expectedSpace: PixorySpace;
   manifest: ManagedBackupManifestV2;
@@ -274,6 +275,7 @@ export async function validateManagedBackupManifestV2(input: {
   };
   const verified = new Map<string, { sha256: string; size: number }>();
   for (const entry of input.manifest.files) {
+    input.assertActive?.();
     if (entry.space !== input.expectedSpace || !isSafeBackupRelativePath(entry.relativePath)) {
       throw new Error(`备份文件作用域或路径无效：${entry.logicalId}`);
     }
@@ -286,6 +288,7 @@ export async function validateManagedBackupManifestV2(input: {
     let digest = verified.get(entry.relativePath);
     if (!digest) {
       digest = await hashManagedFile(uri);
+      input.assertActive?.();
       verified.set(entry.relativePath, digest);
     }
     report.checked += 1;
@@ -299,6 +302,7 @@ export async function validateManagedBackupManifestV2(input: {
 }
 
 export async function stageManagedAiFiles(input: {
+  assertActive?: () => void;
   backupDir: string;
   manifest: ManagedBackupManifestV2;
   space: PixorySpace;
@@ -307,15 +311,18 @@ export async function stageManagedAiFiles(input: {
   const stagedDestinationUris: string[] = [];
   const copiedByHash = new Map<string, string>();
   for (const entry of input.manifest.files) {
+    input.assertActive?.();
     if (!['ai_document', 'message_attachment', 'role_avatar'].includes(entry.category)) continue;
     let destinationUri = copiedByHash.get(entry.sha256);
     if (!destinationUri) {
       const root = entry.category === 'role_avatar' ? getAiRoleAvatarsDir(input.space) : getAiDocumentsDir(input.space);
       await ensureLocalDirectory(root);
+      input.assertActive?.();
       destinationUri = joinStoragePath(root, `restored_${entry.sha256}${safeExtension(entry.relativePath)}`);
       const existing = await FileSystem.getInfoAsync(destinationUri);
       if (!existing.exists) {
         await copyLocalFile(resolveManagedBackupPath(input.backupDir, entry.relativePath), destinationUri);
+        input.assertActive?.();
         stagedDestinationUris.push(destinationUri);
       } else {
         const digest = await hashManagedFile(destinationUri);
@@ -328,6 +335,36 @@ export async function stageManagedAiFiles(input: {
     uriByLogicalId.set(entry.logicalId, destinationUri);
   }
   return { uriByLogicalId, stagedDestinationUris };
+}
+
+const MANAGED_DERIVED_TABLE_PREFIXES = ['ai_message_fts', 'ai_memory_fts', 'ai_message_version_fts'] as const;
+
+function isManagedCanonicalTable(name: string): boolean {
+  return !MANAGED_DERIVED_TABLE_PREFIXES.some((prefix) => name === prefix || name.startsWith(`${prefix}_`));
+}
+
+async function rebuildManagedSearchIndexes(db: SQLiteDatabase, targetTables: Set<string>): Promise<void> {
+  if (targetTables.has('ai_message_fts') && targetTables.has('ai_messages')) {
+    await db.execAsync(`DELETE FROM ai_message_fts;
+      INSERT INTO ai_message_fts (id, threadId, role, content, updatedAt)
+      SELECT id, threadId, role, content, updatedAt FROM ai_messages
+      WHERE status = 'completed' AND role <> 'system' AND content <> '';`);
+    await db.runAsync("INSERT INTO ai_message_fts(ai_message_fts) VALUES('integrity-check')");
+  }
+  if (targetTables.has('ai_message_version_fts') && targetTables.has('ai_message_versions')) {
+    await db.execAsync(`DELETE FROM ai_message_version_fts;
+      INSERT INTO ai_message_version_fts (id, originalMessageId, threadId, role, content, updatedAt)
+      SELECT id, originalMessageId, threadId, role, content, messageUpdatedAt FROM ai_message_versions
+      WHERE status = 'completed' AND role <> 'system' AND content <> '';`);
+    await db.runAsync("INSERT INTO ai_message_version_fts(ai_message_version_fts) VALUES('integrity-check')");
+  }
+  if (targetTables.has('ai_memory_fts') && targetTables.has('ai_memories')) {
+    await db.execAsync(`DELETE FROM ai_memory_fts;
+      INSERT INTO ai_memory_fts (id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt)
+      SELECT id, space, scope, scopeId, content, normalizedContent, assetSnapshotJson, updatedAt FROM ai_memories
+      WHERE status = 'active' AND supersededByMemoryId IS NULL;`);
+    await db.runAsync("INSERT INTO ai_memory_fts(ai_memory_fts) VALUES('integrity-check')");
+  }
 }
 
 function quoteIdentifier(value: string): string {
@@ -404,7 +441,7 @@ function rewriteManagedRow(input: {
   }
   row = remapManagedLogicalReferences(row, input.logicalIdMaps, input.table) as Record<string, unknown>;
   if (sourceLogicalId && row.id !== sourceLogicalId) {
-    for (const column of ['canonicalClaimId', 'commandId', 'generationId', 'idempotencyKey', 'reservationId']) {
+    for (const column of ['canonicalClaimId', 'commandId', 'idempotencyKey', 'reservationId']) {
       if (typeof row[column] === 'string') row[column] = `${row[column]}:managed-restore:${String(row.id).slice(-12)}`;
     }
   }
@@ -443,6 +480,7 @@ const RESTORE_TABLE_PRIORITY = [
 ];
 
 export async function mergeManagedDatabaseRecords(input: {
+  assertActive?: () => void;
   imageIdMap: Map<number, number>;
   ipIdMap: Map<number, number>;
   sourceDb?: SQLiteDatabase;
@@ -461,6 +499,7 @@ export async function mergeManagedDatabaseRecords(input: {
     insertedRecords: 0, preservedRecords: 0, remappedLogicalIds: 0, restoredTables: 0, uriRewriteFailures: [],
   };
   try {
+    input.assertActive?.();
     const tables = await sourceDb.getAllAsync<{ name: string }>(
       `SELECT name FROM sqlite_master
         WHERE type = 'table' AND (name LIKE 'ai_%' OR name LIKE 'memory_%' OR name LIKE 'companion_%')`,
@@ -468,7 +507,7 @@ export async function mergeManagedDatabaseRecords(input: {
     const targetTables = new Set((await input.targetDb.getAllAsync<{ name: string }>(
       `SELECT name FROM sqlite_master WHERE type = 'table'`,
     )).map((row) => row.name));
-    const ordered = tables.map((row) => row.name).filter((name) => targetTables.has(name) && name !== 'memory_import_id_map').sort((left, right) => {
+    const ordered = tables.map((row) => row.name).filter((name) => targetTables.has(name) && name !== 'memory_import_id_map' && isManagedCanonicalTable(name)).sort((left, right) => {
       const leftPriority = RESTORE_TABLE_PRIORITY.indexOf(left);
       const rightPriority = RESTORE_TABLE_PRIORITY.indexOf(right);
       return (leftPriority < 0 ? RESTORE_TABLE_PRIORITY.length : leftPriority) -
@@ -478,6 +517,7 @@ export async function mergeManagedDatabaseRecords(input: {
     const columnsByTable = new Map<string, string[]>();
     const foreignKeysByTable = new Map<string, Map<string, string>>();
     for (const table of ordered) {
+      input.assertActive?.();
       const sourceColumns = await sourceDb.getAllAsync<{ name: string }>(`PRAGMA table_info(${quoteIdentifier(table)})`);
       const targetColumnSet = new Set((await input.targetDb.getAllAsync<{ name: string }>(
         `PRAGMA table_info(${quoteIdentifier(table)})`,
@@ -495,12 +535,14 @@ export async function mergeManagedDatabaseRecords(input: {
     const reservedTargetIds = new Map<string, Set<string>>();
     const canPersistMappings = targetTables.has('memory_import_id_map');
     for (const table of ordered) {
+      input.assertActive?.();
       if (!columnsByTable.get(table)?.includes('id')) continue;
       const tableMap = new Map<string, string>();
       logicalIdMaps.set(table, tableMap);
       const reserved = new Set<string>();
       reservedTargetIds.set(table, reserved);
       for (const row of rowsByTable.get(table) ?? []) {
+        input.assertActive?.();
         if (typeof row.space === 'string' && row.space !== input.space) continue;
         if (typeof row.id !== 'string') continue;
         const persisted = canPersistMappings
@@ -535,12 +577,41 @@ export async function mergeManagedDatabaseRecords(input: {
         if (targetId !== row.id) report.remappedLogicalIds += 1;
       }
     }
+    const generationIdMap = new Map<string, string>();
+    for (const row of rowsByTable.get('ai_generation_jobs') ?? []) {
+      if (typeof row.id !== 'string' || typeof row.generationId !== 'string') continue;
+      const persisted = canPersistMappings
+        ? await input.targetDb.getFirstAsync<{ targetId: string }>(
+            `SELECT targetId FROM memory_import_id_map WHERE packageId = ? AND sourceType = 'ai_generation_ids' AND sourceId = ? AND targetType = 'ai_generation_ids'`,
+            packageId, row.generationId,
+          )
+        : null;
+      let targetGenerationId = persisted?.targetId ?? row.generationId;
+      if (!persisted) {
+        const collision = await input.targetDb.getFirstAsync<{ present: number }>(
+          'SELECT 1 AS present FROM ai_generation_jobs WHERE generationId = ? LIMIT 1', row.generationId,
+        );
+        if (collision) targetGenerationId = createMappedLogicalId(packageId, 'ai_generation_ids', row.generationId);
+        if (canPersistMappings) {
+          await input.targetDb.runAsync(
+            `INSERT OR IGNORE INTO memory_import_id_map (packageId, sourceType, sourceId, targetType, targetId, sourceHash, importedAt)
+             VALUES (?, 'ai_generation_ids', ?, 'ai_generation_ids', ?, ?, ?)`,
+            packageId, row.generationId, targetGenerationId, databaseHash.sha256, new Date().toISOString(),
+          );
+        }
+      }
+      generationIdMap.set(row.generationId, targetGenerationId);
+      if (targetGenerationId !== row.generationId) report.remappedLogicalIds += 1;
+    }
+    logicalIdMaps.set('ai_generation_ids', generationIdMap);
     await input.targetDb.execAsync('PRAGMA defer_foreign_keys = ON');
     for (const table of ordered) {
+      input.assertActive?.();
       const columns = columnsByTable.get(table) ?? [];
       if (!columns.length) continue;
       const rows = rowsByTable.get(table) ?? [];
       for (const sourceRow of rows) {
+        input.assertActive?.();
         let row: Record<string, unknown> | null;
         try {
           row = rewriteManagedRow({
@@ -565,6 +636,9 @@ export async function mergeManagedDatabaseRecords(input: {
       }
       report.restoredTables += 1;
     }
+    input.assertActive?.();
+    await rebuildManagedSearchIndexes(input.targetDb, targetTables);
+    input.assertActive?.();
     if (report.uriRewriteFailures.length) {
       throw new Error(`AI 文件 URI 重写失败：${report.uriRewriteFailures.join('；')}`);
     }

@@ -124,6 +124,7 @@ export async function compressOldestThreadRounds(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   const prepared = await runWithDatabaseSpace(space, async (db) => {
@@ -174,6 +175,7 @@ export async function compressOldestThreadRounds(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的后台对话记忆压缩器。只输出指定结构。',
       thread: prepared.thread,
@@ -243,6 +245,7 @@ export async function maybeMergeSummarySegments(
     branchScopes?: AiBranchScope[];
     reversibleImportSessionId?: string | null;
     allowIrreversibleImportEffects?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<MemoryMaintenanceStepResult> {
   if (options.allowIrreversibleImportEffects === false) {
@@ -299,6 +302,7 @@ export async function maybeMergeSummarySegments(
   const modelResult = options.allowRemoteModel === false
     ? localMemoryMaintenanceResult()
     : await callMemoryMaintenanceModel({
+      signal: options.signal,
       space,
       systemPrompt: '你是 Pixory 的后台摘要整合器。只输出指定结构。',
       thread: prepared.thread,

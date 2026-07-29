@@ -4,10 +4,12 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 export type ManagedLogicalIdMaps = Map<string, Map<string, string>>;
 
 const MESSAGE_KEYS = new Set([
-  'assistantMessageId', 'branchRootMessageId', 'deliveredMessageId', 'endMessageId',
+  'assistantMessageId', 'branchRootMessageId', 'currentBranchRootMessageId', 'currentRootMessageId', 'deliveredMessageId', 'endMessageId',
+  'evidenceMessageId',
   'historyAnchorMessageId', 'lastCheckedAssistantMessageId', 'lastConsolidatedMessageId',
-  'lastMessageId', 'messageId', 'originalMessageId', 'parentMessageId',
-  'reservationMessageId', 'resolutionEvidenceMessageId', 'sourceEndMessageId',
+  'importAnchorMessageId', 'importedBranchRootMessageId', 'lastCompressedMessageId', 'lastMessageId', 'messageId', 'originalMessageId', 'parentMessageId',
+  'preImportBranchRootMessageId',
+  'reconcileSourceMessageId', 'reservationMessageId', 'resolutionEvidenceMessageId', 'sourceEndMessageId',
   'sourceMessageId', 'sourceStartMessageId', 'startMessageId', 'userMessageId',
 ]);
 const THREAD_KEYS = new Set(['boundThreadId', 'sourceThreadId', 'targetThreadId', 'threadId']);
@@ -16,6 +18,23 @@ const DOCUMENT_KEYS = new Set(['documentId']);
 const CHUNK_KEYS = new Set(['chunkId']);
 const PROVIDER_KEYS = new Set(['providerId']);
 const KNOWLEDGE_BASE_KEYS = new Set(['boundKnowledgeBaseId', 'knowledgeBaseId']);
+const DECLARED_REFERENCE_TABLES: Record<string, string> = {
+  'ai_generation_jobs.generationId': 'ai_generation_ids',
+  'ai_thread_memory_jobs.lastCompressedMessageId': 'ai_messages',
+  'ai_threads.currentBranchRootMessageId': 'ai_messages',
+  'companion_diaries.currentVersionId': 'companion_diary_versions',
+  'memory_lineage_meta.currentRootMessageId': 'ai_messages',
+  'ai_memories.reconcileSourceMessageId': 'ai_messages',
+  'ai_memories.supersededByMemoryId': 'ai_memories',
+  'ai_continuity_import_sessions.preImportBranchRootMessageId': 'ai_messages',
+  'ai_continuity_import_sessions.importedBranchRootMessageId': 'ai_messages',
+  'ai_continuity_import_sessions.importAnchorMessageId': 'ai_messages',
+};
+const DECLARED_ARRAY_REFERENCE_TABLES: Record<string, string> = {
+  'ai_thread_summary_segments.sourceSegmentIds': 'ai_thread_summary_segments',
+  'memory_events.evidenceIds': 'memory_evidence',
+  'memory_relational_states.evidenceIds': 'memory_evidence',
+};
 
 function mapped(maps: ManagedLogicalIdMaps, table: string, value: unknown): unknown {
   return typeof value === 'string' ? maps.get(table)?.get(value) ?? value : value;
@@ -53,7 +72,11 @@ export function remapManagedLogicalReferences(
   const source = value as Record<string, unknown>;
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(source)) {
-    if (MESSAGE_KEYS.has(key)) output[key] = mapped(maps, 'ai_messages', item);
+    const declaredReferenceTable = DECLARED_REFERENCE_TABLES[`${contextTable}.${key}`];
+    const declaredArrayReferenceTable = DECLARED_ARRAY_REFERENCE_TABLES[`${contextTable}.${key}`];
+    if (declaredReferenceTable) output[key] = mapped(maps, declaredReferenceTable, item);
+    else if (declaredArrayReferenceTable) output[key] = remapArray(item, maps, declaredArrayReferenceTable);
+    else if (MESSAGE_KEYS.has(key)) output[key] = mapped(maps, 'ai_messages', item);
     else if (THREAD_KEYS.has(key)) output[key] = mapped(maps, 'ai_threads', item);
     else if (ROLE_KEYS.has(key)) output[key] = mapped(maps, 'ai_role_cards', item);
     else if (DOCUMENT_KEYS.has(key)) output[key] = mapped(maps, 'ai_documents', item);
@@ -61,16 +84,25 @@ export function remapManagedLogicalReferences(
     else if (PROVIDER_KEYS.has(key)) output[key] = mapped(maps, 'ai_providers', item);
     else if (KNOWLEDGE_BASE_KEYS.has(key)) output[key] = mapped(maps, 'ai_knowledge_bases', item);
     else if (key === 'claimId' || key === 'supersededByClaimId') output[key] = mapped(maps, 'memory_claims', item);
+    else if (key === 'supersededByMemoryId') output[key] = mapped(maps, 'ai_memories', item);
     else if (key === 'repairId') output[key] = mapped(maps, 'companion_repairs', item);
     else if (key === 'sceneId') output[key] = mapped(maps, 'companion_dream_scenes', item);
     else if (key === 'seedId') output[key] = mapped(maps, 'companion_dream_seeds', item);
     else if (key === 'diaryId') output[key] = mapped(maps, 'companion_diaries', item);
+    else if (key === 'generationId') output[key] = mapped(maps, 'ai_generation_ids', item);
     else if (key === 'jobId' && jobTable(contextTable)) output[key] = mapped(maps, jobTable(contextTable)!, item);
     else if (key === 'eventId' && eventTable(contextTable)) output[key] = mapped(maps, eventTable(contextTable)!, item);
     else if (key === 'sourceEventId') output[key] = mapped(maps, 'companion_events', item);
     else if (key === 'sourceMessageIds' || key === 'evidenceMessageIds') output[key] = remapArray(item, maps, 'ai_messages');
+    else if (key === 'sourceSegmentIds') output[key] = remapArray(item, maps, 'ai_thread_summary_segments');
+    else if (key === 'evidenceIds') output[key] = remapArray(item, maps, 'memory_evidence');
     else if (key === 'sourceClaimIds' || key === 'targetClaimIds') output[key] = remapArray(item, maps, 'memory_claims');
     else if (key === 'eventIds' && eventTable(contextTable)) output[key] = remapArray(item, maps, eventTable(contextTable)!);
+    else if (key === 'targetRecordId' && contextTable === 'ai_continuity_import_effects') {
+      const targetTable = source.effectType === 'profile_upsert' ? 'ai_user_profiles'
+        : typeof source.effectType === 'string' && source.effectType.startsWith('memory_') ? 'ai_memories' : null;
+      output[key] = targetTable ? mapped(maps, targetTable, item) : item;
+    }
     else output[key] = remapManagedLogicalReferences(item, maps, contextTable);
   }
   if (typeof source.scopeType === 'string' && typeof source.scopeId === 'string') {
