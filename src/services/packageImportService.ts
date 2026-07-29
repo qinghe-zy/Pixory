@@ -16,6 +16,7 @@ import {
 import { importSingleImage, type ImportedImageResult, type PickedImageAsset } from './imageImportService';
 import { importPlainBackupPackage, type ImportPlainBackupPackageResult, type IpNameConflictStrategy } from './backupService';
 import { importVideosToIp, type ImportedVideoResult, type PickedVideoAsset } from './videoImportService';
+import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 
 export const MAX_PACKAGE_BYTES = 200 * 1024 * 1024;
 export const MAX_UNCOMPRESSED_BYTES = 800 * 1024 * 1024;
@@ -247,7 +248,9 @@ async function importSingleVideoFromPackage(params: {
   isFavorite?: boolean;
   file: ExtractedPackageFile;
   videoType: SupportedPackageVideoType;
+  taskToken?: PersonalTaskToken | null;
 }): Promise<ImportedVideoResult> {
+  assertPersonalTaskActive(params.taskToken);
   const fileName = params.file.name.includes('.') ? params.file.name : `${params.file.name}.${params.videoType.extension}`;
   const pickedAsset: PickedVideoAsset = {
     uri: params.file.uri,
@@ -264,7 +267,9 @@ async function importSingleVideoFromPackage(params: {
     isFavorite: params.isFavorite,
     pickedAssets: [pickedAsset],
     title: '资源包视频导入',
+    taskToken: params.taskToken,
   });
+  assertPersonalTaskActive(params.taskToken);
   const importedVideo = result.importedVideos[0];
   if (!importedVideo) {
     throw new Error(result.errors[0]?.message ?? '视频导入失败。');
@@ -358,26 +363,36 @@ export async function importPackageToIp(params: {
   note?: string | null;
   isFavorite?: boolean;
   ipNameConflictStrategy?: IpNameConflictStrategy;
+  taskToken?: PersonalTaskToken | null;
 }): Promise<PackageImportResult> {
   const space = params.space ?? 'normal';
+  assertPersonalTaskActive(params.taskToken);
   await ensureAppDirectories(space);
+  assertPersonalTaskActive(params.taskToken);
 
   return runWithDatabaseSpace(space, async (db) => {
+    assertPersonalTaskActive(params.taskToken);
     let copiedPackageUri: string | null = null;
     let extractDir: string | null = null;
 
     try {
       copiedPackageUri = await copyPackageToPrivateTemp(params.packageUri, params.packageName, space);
+      assertPersonalTaskActive(params.taskToken);
       await validatePackageFile(copiedPackageUri, params.packageName);
+      assertPersonalTaskActive(params.taskToken);
       extractDir = await unzipPackageToPrivateTemp(copiedPackageUri, space);
+      assertPersonalTaskActive(params.taskToken);
       const files = await scanExtractedFiles(extractDir);
+      assertPersonalTaskActive(params.taskToken);
       if (looksLikePixoryManifest(files)) {
         const plainBackupImport = await importPlainBackupPackage({
           space,
           extractedDirectoryUri: extractDir,
           mode: 'merge',
           ipNameConflictStrategy: params.ipNameConflictStrategy ?? 'ask',
+          taskToken: params.taskToken,
         });
+        assertPersonalTaskActive(params.taskToken);
         return {
           importBatchId: null,
           successCount: plainBackupImport.importedImageCount,
@@ -396,6 +411,7 @@ export async function importPackageToIp(params: {
           items: [],
         };
       }
+      assertPersonalTaskActive(params.taskToken);
       const importBatch = await importBatchRepository.create(db, {
         ipId: params.ipId,
         name: `${params.packageName} 资源包导入`,
@@ -412,9 +428,11 @@ export async function importPackageToIp(params: {
       let videoFailedCount = 0;
 
       for (const file of files) {
+        assertPersonalTaskActive(params.taskToken);
         try {
           const imageType = await detectImageTypeFromMagicBytes(file.uri);
           const videoType = imageType ? null : await detectVideoTypeFromMagicBytes(file.uri);
+          assertPersonalTaskActive(params.taskToken);
           if (!imageType && !videoType) {
             skippedCount += 1;
             imageSkippedCount += 1;
@@ -430,7 +448,9 @@ export async function importPackageToIp(params: {
             continue;
           }
 
+          assertPersonalTaskActive(params.taskToken);
           const group = await getOrCreatePackageGroup(db, params.ipId, resolvePackageGroupName(file.relativePath));
+          assertPersonalTaskActive(params.taskToken);
           const groupIds = mergePackageGroupIds(params.groupIds, group?.id ?? null);
           if (videoType) {
             const importedVideo = await importSingleVideoFromPackage({
@@ -442,7 +462,9 @@ export async function importPackageToIp(params: {
               isFavorite: params.isFavorite,
               file,
               videoType,
+              taskToken: params.taskToken,
             });
+            assertPersonalTaskActive(params.taskToken);
             importedVideos.push(importedVideo);
             items.push(
               await importBatchRepository.createItem(db, {
@@ -481,8 +503,10 @@ export async function importPackageToIp(params: {
               tagNames: params.tagNames,
               note: params.note,
               isFavorite: params.isFavorite,
+              taskToken: params.taskToken,
             })
           );
+          assertPersonalTaskActive(params.taskToken);
           const importedImage = importedImages[importedImages.length - 1];
           if (importedImage) {
             items.push(
@@ -496,6 +520,7 @@ export async function importPackageToIp(params: {
             );
           }
         } catch (error) {
+          assertPersonalTaskActive(params.taskToken);
           const importError = {
             sourcePath: file.relativePath,
             originalFilename: file.name,
@@ -519,7 +544,9 @@ export async function importPackageToIp(params: {
         }
       }
 
+      assertPersonalTaskActive(params.taskToken);
       await importBatchRepository.complete(db, importBatch.id, importedImages.length + importedVideos.length, errors.length);
+      assertPersonalTaskActive(params.taskToken);
 
       return {
         importBatchId: importBatch.id,

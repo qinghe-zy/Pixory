@@ -62,3 +62,16 @@ test('import screen exposes resource package import alongside gallery import', (
   assert.match(source, /packageImportResult/);
 });
 
+test('personal resource package imports are tracked and propagate the lock token through backup and media paths', () => {
+  const screen = readProjectFile('src/screens/ImportImagesScreen.tsx');
+  const service = readProjectFile('src/services/packageImportService.ts');
+
+  assert.match(screen, /trackPersonalTask\(taskToken,\s*importPackageToIp\(\{/);
+  assert.match(screen, /ipNameConflictStrategy:\s*'ask',[\s\S]{0,100}taskToken/);
+  assert.match(service, /taskToken\?:\s*PersonalTaskToken \| null/);
+  assert.match(service, /importPlainBackupPackage\(\{[\s\S]{0,220}taskToken:\s*params\.taskToken/);
+  assert.match(service, /importVideosToIp\(\{[\s\S]{0,300}taskToken:\s*params\.taskToken/);
+  assert.match(service, /importSingleImage\(\{[\s\S]{0,500}taskToken:\s*params\.taskToken/);
+  assert.match(service, /catch \(error\) \{\s*assertPersonalTaskActive\(params\.taskToken\)/);
+});
+

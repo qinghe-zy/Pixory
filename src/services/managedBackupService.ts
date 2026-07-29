@@ -9,6 +9,7 @@ import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupMa
 import { createMappedLogicalId, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
 import {
   copyLocalFile,
+  deleteLocalFile,
   ensureLocalDirectory,
   getAiDocumentsDir,
   getAiRoleAvatarsDir,
@@ -310,31 +311,36 @@ export async function stageManagedAiFiles(input: {
   const uriByLogicalId = new Map<string, string>();
   const stagedDestinationUris: string[] = [];
   const copiedByHash = new Map<string, string>();
-  for (const entry of input.manifest.files) {
-    input.assertActive?.();
-    if (!['ai_document', 'message_attachment', 'role_avatar'].includes(entry.category)) continue;
-    let destinationUri = copiedByHash.get(entry.sha256);
-    if (!destinationUri) {
-      const root = entry.category === 'role_avatar' ? getAiRoleAvatarsDir(input.space) : getAiDocumentsDir(input.space);
-      await ensureLocalDirectory(root);
+  try {
+    for (const entry of input.manifest.files) {
       input.assertActive?.();
-      destinationUri = joinStoragePath(root, `restored_${entry.sha256}${safeExtension(entry.relativePath)}`);
-      const existing = await FileSystem.getInfoAsync(destinationUri);
-      if (!existing.exists) {
-        await copyLocalFile(resolveManagedBackupPath(input.backupDir, entry.relativePath), destinationUri);
+      if (!['ai_document', 'message_attachment', 'role_avatar'].includes(entry.category)) continue;
+      let destinationUri = copiedByHash.get(entry.sha256);
+      if (!destinationUri) {
+        const root = entry.category === 'role_avatar' ? getAiRoleAvatarsDir(input.space) : getAiDocumentsDir(input.space);
+        await ensureLocalDirectory(root);
         input.assertActive?.();
-        stagedDestinationUris.push(destinationUri);
-      } else {
-        const digest = await hashManagedFile(destinationUri);
-        if (digest.sha256 !== entry.sha256 || digest.size !== entry.size) {
-          throw new Error(`恢复目标存在不同内容：${entry.logicalId}`);
+        destinationUri = joinStoragePath(root, `restored_${entry.sha256}${safeExtension(entry.relativePath)}`);
+        const existing = await FileSystem.getInfoAsync(destinationUri);
+        if (!existing.exists) {
+          await copyLocalFile(resolveManagedBackupPath(input.backupDir, entry.relativePath), destinationUri);
+          stagedDestinationUris.push(destinationUri);
+          input.assertActive?.();
+        } else {
+          const digest = await hashManagedFile(destinationUri);
+          if (digest.sha256 !== entry.sha256 || digest.size !== entry.size) {
+            throw new Error(`恢复目标存在不同内容：${entry.logicalId}`);
+          }
         }
+        copiedByHash.set(entry.sha256, destinationUri);
       }
-      copiedByHash.set(entry.sha256, destinationUri);
+      uriByLogicalId.set(entry.logicalId, destinationUri);
     }
-    uriByLogicalId.set(entry.logicalId, destinationUri);
+    return { uriByLogicalId, stagedDestinationUris };
+  } catch (error) {
+    await Promise.allSettled(stagedDestinationUris.map((uri) => deleteLocalFile(uri)));
+    throw error;
   }
-  return { uriByLogicalId, stagedDestinationUris };
 }
 
 const MANAGED_DERIVED_TABLE_PREFIXES = ['ai_message_fts', 'ai_memory_fts', 'ai_message_version_fts'] as const;

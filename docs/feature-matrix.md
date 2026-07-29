@@ -124,7 +124,7 @@
 | 导入批次 | 批次记录、批次复盘、当前批次 duplicate review | `ImportBatchHistoryScreen`, `ImportBatchReviewScreen`, `importBatchRepository` |
 | 导入模板 | 管理导入模板，复用分组/标签等导入配置 | `importTemplateRepository` |
 | 素材来源与移动 | 图片和视频分别记忆“相册/文件”来源，文件入口支持批量选择且始终复制；相册移动在全部成功素材完成 Pixory 本地持久化后，合并图片/视频 assetId 发起一次 Android 系统删除确认，取消、assetId 缺失或删除失败时保留导入结果并明确提示；说明弹窗提供“知道了”和“知道了，下次不再弹出”两个直接动作 | `ImportImagesScreen`, `mediaFilePickerService`, `mediaSourceDeletionService`, `imageImportService`, `videoImportService` |
-| 资源包导入 | zip/cbz 包选择、zip-slip 防护、图片识别、按文件夹映射分组 | `packageImportService`, `ArchiveReaderScreen` |
+| 资源包导入 | zip/cbz 包选择、zip-slip 防护、图片识别、按文件夹映射分组；Personal 入口将整个资源包任务注册到锁定屏障，并把会话 token 贯通普通素材导入及识别出的 Pixory 备份恢复路径 | `ImportImagesScreen`, `packageImportService`, `ArchiveReaderScreen` |
 | 分享接入导入 | Android 分享图片/视频/文件到 Pixory | `ShareCollectScreen`, native media module |
 
 ---
@@ -178,7 +178,7 @@
 | 普通备份 | Manifest V2 包含空间 SQLite、原图/视频原件、缩略图、AI 文档原文件、聊天附件和角色头像；所有文件只使用相对路径，按内容 SHA-256 去重并在复制后复核大小与哈希，必需文件缺失时整次备份失败而不伪报成功 | `backupService`, `managedBackupService`, `backupManifestProtocol`, `BackupScreen`, `fileStorageService` |
 | 单 IP 备份 | 指定 IP 的数据库快照和素材文件使用 Manifest V2；恢复只导入该 IP 及素材，不意外合并快照中的其他 AI 数据 | `backupService`, `managedBackupService` |
 | 隐私备份 | personal plain、personal encrypted、all encrypted pack | `backupService`, `personalSystemService` |
-| 备份导入 | 兼容旧 plain backup，并支持 Manifest V2 plain/personal encrypted merge：解包后先校验版本、空间、相对路径、大小和 SHA-256，再把文件写入受管目录；SQLite 事务按依赖合并 AI/记忆/陪伴记录、重写文档/附件/头像与 IP/图片引用。角色、线程、消息、文档、日记版本、摘要 provenance、continuity anchor、memory evidence、generation alternate ID 与任务等 logical ID 冲突时按数据库内容哈希建立持久导入会话映射，递归重写外键、声明式无外键引用和 JSON 引用，既不覆盖目标编辑也不把导入子记录误接到目标对象；FTS virtual/shadow 表不直接导入，canonical 行完成映射后统一重建三个 FTS 并执行完整性检查；失败回滚数据库并清理本次新建文件；Personal 明文 staging 仅位于 Personal temp 且 finally 清理，锁定会中止 checkpoint 并等待恢复任务退出 | `backupService`, `managedBackupService`, `managedBackupIdMapping`, `backupManifestProtocol` |
+| 备份导入 | 兼容旧 plain backup，并支持 Manifest V2 plain/personal encrypted merge：解包后先校验版本、空间、相对路径、大小和 SHA-256，再把文件写入受管目录；SQLite 事务按依赖合并 AI/记忆/陪伴记录、重写文档/附件/头像与 IP/图片引用。角色、线程、消息、文档、日记版本、摘要 provenance、continuity anchor、memory evidence、generation alternate ID 与任务等 logical ID 冲突时按数据库内容哈希建立持久导入会话映射，递归重写外键、声明式无外键引用和 JSON 引用，既不覆盖目标编辑也不把导入子记录误接到目标对象；FTS virtual/shadow 表不直接导入，canonical 行完成映射后统一重建三个 FTS 并执行完整性检查；失败、取消或锁定均回滚数据库并清理本次新建文件（包括尚未返回给外层的 AI staging 文件）；Personal 明文 staging 仅位于 Personal temp 且 finally 清理，从资源包入口识别出的备份同样注册统一任务屏障并贯通 token，锁定会中止 checkpoint 并等待恢复任务退出 | `ImportImagesScreen`, `packageImportService`, `backupService`, `managedBackupService`, `managedBackupIdMapping`, `backupManifestProtocol` |
 | 系统目录导出 | SAF 目录选择、导出到系统文件夹、进度 | `BackupExportManagerScreen`, native media module |
 | 存储统计 | 原图、缩略图、缓存、备份、回收站、IP 存储明细 | `StorageUsageScreen`, `storageUsageService`, `IpStorageDetailScreen` |
 | 缓存清理 | image memory/disk cache、temp cache、daily startup cleanup | `cacheCleanupService` |

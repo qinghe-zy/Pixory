@@ -32,7 +32,7 @@ import { deleteMediaStoreAssetsWithConfirmation } from '../services/mediaSourceD
 import { mergeDelimitedDraftTagNames, mergeDraftTagNames } from '../utils/tagDrafts';
 import { devLog } from '../utils/dev';
 import { useToast } from '../components/AppToast';
-import type { PersonalTaskToken } from '../services/personalTaskToken';
+import { trackPersonalTask, type PersonalTaskToken } from '../services/personalTaskToken';
 import type { ImageImportSourceMode, MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 
 const PICKED_IMAGE_PREVIEW_LIMIT = 5;
@@ -652,7 +652,7 @@ export function ImportImagesScreen({
       }
 
       const preparedTags = mergeDraftTagNames(tags, tagInput);
-      const result = await importPackageToIp({
+      const result = await trackPersonalTask(taskToken, importPackageToIp({
         space,
         ipId,
         packageUri: packagePick.packageUri,
@@ -662,7 +662,8 @@ export function ImportImagesScreen({
         note: note.trim(),
         isFavorite,
         ipNameConflictStrategy: 'ask',
-      });
+        taskToken,
+      }));
       setPackageImportResult(result);
 
       if (result.successCount === 0) {

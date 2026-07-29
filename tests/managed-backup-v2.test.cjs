@@ -51,6 +51,7 @@ test('backup V2 covers AI files, validates before staging, and merges without ov
   assert.match(managed, /isManagedCanonicalTable/);
   assert.match(managed, /MANAGED_DERIVED_TABLE_PREFIXES/);
   assert.match(managed, /rebuildManagedSearchIndexes/);
+  assert.match(managed, /catch \(error\) \{[\s\S]{0,180}stagedDestinationUris\.map\(\(uri\) => deleteLocalFile\(uri\)\)/);
   assert.match(managed, /DELETE FROM ai_message_fts[\s\S]*INSERT INTO ai_message_fts/);
   assert.match(managed, /row\.localUri = uri/);
   assert.match(managed, /row\.avatarUri = uri/);
