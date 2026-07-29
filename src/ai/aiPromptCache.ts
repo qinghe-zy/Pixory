@@ -3,6 +3,7 @@ import { bytesToHex } from '@noble/hashes/utils.js';
 
 import type { AiProviderProtocol, AiProviderRecord, AiThreadRecord, PixorySpace } from '../database';
 import { estimatePromptTokens } from './aiContextBudget';
+import { isOfficialDeepSeekV4Model } from './deepseekModelPolicy';
 
 export type AiChatMode = 'companion' | 'roleplay' | 'knowledge' | 'personal';
 
@@ -53,7 +54,7 @@ export interface AiPromptCacheSettings {
 
 export interface AiProviderCachePolicy {
   requested: boolean;
-  strategy: 'none' | 'openai_prompt_cache_key' | 'anthropic_ephemeral' | 'gemini_implicit';
+  strategy: 'none' | 'deepseek_native' | 'openai_prompt_cache_key' | 'anthropic_ephemeral' | 'gemini_implicit';
   openAiIncludeUsage?: boolean;
   openAiPromptCacheKey?: string;
   anthropicSystemBlocks?: Array<{ text: string; cacheControl?: boolean }>;
@@ -232,6 +233,20 @@ export function buildPromptCacheMetadata(input: {
 
 export function buildProviderCachePolicy(input: AiProviderCacheDecisionInput): AiProviderCachePolicy {
   const ttlMs = providerTtlMs(input.provider, input.settings);
+  const isDeepSeekNative = input.provider.protocol === 'openai_compatible'
+    && isOfficialDeepSeekV4Model({
+      baseUrl: input.provider.baseUrl,
+      modelId: input.modelId,
+      providerType: input.provider.providerType,
+    });
+  if (isDeepSeekNative) {
+    return {
+      openAiIncludeUsage: true,
+      requested: input.settings.enabled && !input.settings.disabledProviderIds.includes(input.provider.id),
+      strategy: 'deepseek_native',
+      ttlMs,
+    };
+  }
   if (!input.settings.enabled || input.settings.disabledProviderIds.includes(input.provider.id)) {
     return { requested: false, strategy: 'none', ttlMs };
   }

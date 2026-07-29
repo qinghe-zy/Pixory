@@ -93,9 +93,10 @@ test('session model resolver falls back to another chat-capable provider model a
   const repository = read('src/database/repositories/aiProviderRepository.ts');
 
   assert.match(repository, /defaultChatModelId = CASE WHEN defaultChatModelId = \? THEN NULL ELSE defaultChatModelId END/);
-  assert.match(service, /const defaultModel = provider\.defaultChatModelId/);
+  assert.match(service, /const defaultMigration = migrateDeprecatedDeepSeekModel\(provider\.defaultChatModelId, effectiveBaseUrl\)/);
+  assert.match(service, /const effectiveDefaultModelId = defaultMigration\?\.modelId \?\? provider\.defaultChatModelId/);
   assert.match(service, /if \(provider\.defaultChatModelId && !defaultModel && !explicitModel\)/);
-  assert.match(service, /const resolvedModel = explicitModel \?\? defaultModel \?\? models\.find\(\(model\) => model\.supportsChat\) \?\? null/);
+  assert.match(service, /const resolvedModel = explicitModel[\s\S]*defaultModel[\s\S]*models\.find/);
   assert.match(service, /return resolveProviderModel\(provider, thread\.modelId, thread\.modelId \? 'thread_model' : 'provider_default'\)/);
 });
 

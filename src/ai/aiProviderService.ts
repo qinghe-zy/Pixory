@@ -23,9 +23,21 @@ import { geminiProvider } from './providers/geminiProvider';
 import { openAiCompatibleProvider } from './providers/openAiCompatibleProvider';
 import { classifyAiProviderError, toUserProviderErrorMessage } from './aiProviderErrorClassifier';
 import type { AiProviderProtocol, AiProviderType } from './types';
+import {
+  isAllowedOfficialDeepSeekModel,
+  isOfficialDeepSeekProvider,
+  migrateDeprecatedDeepSeekModel,
+} from './deepseekModelPolicy';
 
 function createTimestamp(): string {
   return new Date().toISOString();
+}
+
+function effectiveProviderChatModelId(
+  provider: AiProviderRecord,
+  modelId: string | null | undefined,
+): string | null {
+  return migrateDeprecatedDeepSeekModel(modelId, provider.baseUrl)?.modelId ?? modelId ?? null;
 }
 
 function adapterForProtocol(protocol: AiProviderProtocol): AiProviderAdapter {
@@ -282,6 +294,9 @@ export async function saveManualChatModel(space: PixorySpace, providerId: string
     throw new Error('请输入模型 ID。');
   }
   const { existingModel, provider } = await loadProviderAndModel(space, providerId, trimmedModelId);
+  if (isOfficialDeepSeekProvider(provider) && !isAllowedOfficialDeepSeekModel(trimmedModelId)) {
+    throw new Error('官方 DeepSeek 当前仅支持 deepseek-v4-flash 或 deepseek-v4-pro。');
+  }
   if (existingModel && !existingModel.supportsChat) {
     throw new Error('该模型已存在，但当前没有标记为聊天模型。');
   }
@@ -299,6 +314,9 @@ export async function saveManualChatModelCandidate(space: PixorySpace, providerI
     throw new Error('请输入模型 ID。');
   }
   const { existingModel, provider } = await loadProviderAndModel(space, providerId, trimmedModelId);
+  if (isOfficialDeepSeekProvider(provider) && !isAllowedOfficialDeepSeekModel(trimmedModelId)) {
+    throw new Error('官方 DeepSeek 当前仅支持 deepseek-v4-flash 或 deepseek-v4-pro。');
+  }
   if (existingModel) {
     if (!existingModel.supportsChat) {
       throw new Error('该模型已存在，但当前没有标记为聊天模型。');
@@ -398,12 +416,13 @@ export async function verifyCurrentProviderModel(providerId: string, space: Pixo
   if (!apiKey) {
     throw new Error('请先填写 API key。');
   }
-  if (!provider.defaultChatModelId) {
+  const effectiveModelId = effectiveProviderChatModelId(provider, provider.defaultChatModelId);
+  if (!effectiveModelId) {
     throw new Error('请先填写或选择模型 ID。');
   }
   const fingerprint = buildProviderVerifyFingerprint({
     keyUpdatedAt: provider.keyUpdatedAt,
-    modelId: provider.defaultChatModelId,
+    modelId: effectiveModelId,
     normalizedBaseUrl: normalizeBaseUrl(provider.baseUrl ?? ''),
     providerId: provider.id,
   });
@@ -412,7 +431,7 @@ export async function verifyCurrentProviderModel(providerId: string, space: Pixo
     await adapterForProtocol(provider.protocol).verifyChatCompletion({
       apiKey,
       baseUrl: provider.baseUrl ?? '',
-      modelId: provider.defaultChatModelId,
+      modelId: effectiveModelId,
       signal: timeout.signal,
     });
     const now = createTimestamp();
@@ -424,7 +443,7 @@ export async function verifyCurrentProviderModel(providerId: string, space: Pixo
         verifyFingerprint: fingerprint,
       })
     );
-    await recordSuccessfulProviderModel(space, provider.id, provider.defaultChatModelId);
+    await recordSuccessfulProviderModel(space, provider.id, effectiveModelId);
   } catch (error) {
     const reason = classifyAiProviderError({ error, fallbackKind: 'unknown' });
     const message = toUserProviderErrorMessage(reason);
@@ -466,7 +485,9 @@ export async function syncProviderModels(providerId: string, space: PixorySpace 
     } finally {
       timeout.cancel();
     }
-    const syncedModels = modelIds.map((modelId) => syncedModelRecord(provider, modelId));
+    const syncedModels = modelIds
+      .filter((modelId) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(modelId))
+      .map((modelId) => syncedModelRecord(provider, modelId));
     await runWithDatabaseSpace(space, (db) =>
       aiProviderRepository.upsertModels(db, provider.id, syncedModels.length > 0 ? syncedModels : fallbackModels)
     );
@@ -486,11 +507,18 @@ export async function listProviderCards(space: PixorySpace): Promise<
   return runWithDatabaseSpace(space, async (db) => {
     const providers = await aiProviderRepository.listProviders(db);
     return Promise.all(
-      providers.map(async (provider) => ({
-        provider: { ...provider, lastVerifyStatus: providerVerifyStatus(provider) },
-        hasApiKey: await hasProviderApiKeyForSpace(space, provider.id),
-        models: await aiProviderRepository.listModels(db, provider.id),
-      }))
+      providers.map(async (provider) => {
+        const effectiveDefaultChatModelId = effectiveProviderChatModelId(provider, provider.defaultChatModelId);
+        const compatibleProvider = effectiveDefaultChatModelId === provider.defaultChatModelId
+          ? provider
+          : { ...provider, defaultChatModelId: effectiveDefaultChatModelId };
+        return {
+          provider: { ...compatibleProvider, lastVerifyStatus: providerVerifyStatus(compatibleProvider) },
+          hasApiKey: await hasProviderApiKeyForSpace(space, provider.id),
+          models: (await aiProviderRepository.listModels(db, provider.id))
+            .filter((model) => !isOfficialDeepSeekProvider(provider) || isAllowedOfficialDeepSeekModel(model.modelId)),
+        };
+      })
     );
   });
 }

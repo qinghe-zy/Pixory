@@ -70,6 +70,11 @@ import {
   ttlLikelyExpired,
   type AiPromptCacheSettings,
 } from './aiPromptCache';
+import {
+  isAllowedOfficialDeepSeekModel,
+  isOfficialDeepSeekProvider,
+  migrateDeprecatedDeepSeekModel,
+} from './deepseekModelPolicy';
 import { normalizeProviderUsage, type NormalizedProviderUsage } from './aiProviderUsage';
 import {
   STREAMING_PRESSURE_RECOVERY_MS,
@@ -385,6 +390,7 @@ export type ResolvedThreadChatModel =
       model: AiProviderModelRecord;
       provider: AiProviderRecord;
       source: ThreadModelSource;
+      thinkingDisabledOverride?: boolean;
     }
   | { status: 'invalid_global_default'; message: string; providerId?: string | null; modelId?: string | null }
   | { status: 'invalid_thread_model'; message: string; providerId?: string | null; modelId?: string | null };
@@ -1125,12 +1131,16 @@ function buildProviderCacheObservation(input: {
     promptTokens: usage?.promptTokens ?? null,
     completionTokens: usage?.completionTokens ?? null,
     cachedInputTokens: usage?.cachedInputTokens ?? null,
+    cacheMissInputTokens: usage?.cacheMissInputTokens ?? null,
     cachedTokenRatio: usage?.cachedTokenRatio ?? null,
     cacheCreationInputTokens: usage?.cacheCreationInputTokens ?? null,
     cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
+    cacheFieldsObserved: usage?.cacheFieldsObserved ?? false,
     estimatedCostSaved: null,
     estimatedCostDelta: null,
-    missReason: usage?.cachedInputTokens === 0 ? 'provider_reported_no_cached_tokens' : null,
+    missReason: usage?.cacheFieldsObserved && usage.cachedInputTokens === 0
+      ? 'provider_reported_no_cached_tokens'
+      : null,
   };
 }
 
@@ -1826,29 +1836,51 @@ export async function resolveThreadChatModel(space: PixorySpace, thread: ThreadM
 
     async function resolveProviderModel(provider: AiProviderRecord, modelId: string | null, source: ThreadModelSource): Promise<ResolvedThreadChatModel> {
       const models = await aiProviderRepository.listModels(db, provider.id);
-      const explicitModel = modelId ? models.find((model) => model.modelId === modelId && model.supportsChat) ?? null : null;
+      const effectiveBaseUrl = thread.sessionBaseUrl ?? provider.baseUrl;
+      const isOfficialDeepSeek = isOfficialDeepSeekProvider({
+        baseUrl: effectiveBaseUrl,
+        providerType: provider.providerType,
+      });
+      const findChatModel = (candidateModelId: string | null | undefined) =>
+        candidateModelId
+          ? models.find((model) =>
+            model.modelId === candidateModelId
+              && model.supportsChat
+              && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId))
+          ) ?? null
+          : null;
+      const explicitMigration = migrateDeprecatedDeepSeekModel(modelId, effectiveBaseUrl);
+      const effectiveModelId = explicitMigration?.modelId ?? modelId;
+      const explicitModel = findChatModel(effectiveModelId);
       if (modelId && !explicitModel) {
         const message = modelInvalidMessage(source);
         return source === 'global_default'
           ? invalidGlobalDefault(message, provider.id, modelId)
           : invalidThreadModel(message, provider.id, modelId);
       }
-      const defaultModel = provider.defaultChatModelId
-        ? models.find((model) => model.modelId === provider.defaultChatModelId && model.supportsChat) ?? null
-        : null;
+      const defaultMigration = migrateDeprecatedDeepSeekModel(provider.defaultChatModelId, effectiveBaseUrl);
+      const effectiveDefaultModelId = defaultMigration?.modelId ?? provider.defaultChatModelId;
+      const defaultModel = findChatModel(effectiveDefaultModelId);
       if (provider.defaultChatModelId && !defaultModel && !explicitModel) {
         const message = modelInvalidMessage(source);
         return source === 'global_default'
           ? invalidGlobalDefault(message, provider.id, provider.defaultChatModelId)
           : invalidThreadModel(message, provider.id, provider.defaultChatModelId);
       }
-      const resolvedModel = explicitModel ?? defaultModel ?? models.find((model) => model.supportsChat) ?? null;
+      const resolvedModel = explicitModel
+        ?? defaultModel
+        ?? models.find((model) =>
+          model.supportsChat
+            && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(model.modelId))
+        )
+        ?? null;
       if (!resolvedModel) {
         const message = modelInvalidMessage(source);
         return source === 'global_default'
           ? invalidGlobalDefault(message, provider.id, modelId)
           : invalidThreadModel(message, provider.id, modelId);
       }
+      const selectedMigration = explicitModel ? explicitMigration : defaultModel ? defaultMigration : null;
       return {
         apiKey: thread.sessionApiKeyRef ? await getThreadProviderApiKey(space, thread.id, provider.id) : await getProviderApiKeyForSpace(space, provider.id),
         model: resolvedModel,
@@ -1860,6 +1892,7 @@ export async function resolveThreadChatModel(space: PixorySpace, thread: ThreadM
         },
         source,
         status: 'ready',
+        thinkingDisabledOverride: selectedMigration?.thinkingDisabled,
       };
     }
 
@@ -1898,12 +1931,43 @@ async function resolveDefaultThreadProvider(space: PixorySpace, providerId?: str
     return { provider: null, model: null };
   }
   const models = await runWithDatabaseSpace(space, (db) => aiProviderRepository.listModels(db, provider.id));
-  const model = (
-    modelId ? models.find((item) => item.modelId === modelId && item.supportsChat) : null
-  ) ?? (
-    provider.defaultChatModelId ? models.find((item) => item.modelId === provider.defaultChatModelId && item.supportsChat) : null
-  ) ?? models.find((item) => item.supportsChat) ?? null;
-  return { provider, model };
+  const isOfficialDeepSeek = isOfficialDeepSeekProvider({
+    baseUrl: provider.baseUrl,
+    providerType: provider.providerType,
+  });
+  const findChatModel = (candidateModelId: string | null | undefined) =>
+    candidateModelId
+      ? models.find((item) =>
+        item.modelId === candidateModelId
+          && item.supportsChat
+          && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(item.modelId))
+      ) ?? null
+      : null;
+  const migratedModel = migrateDeprecatedDeepSeekModel(modelId, provider.baseUrl);
+  const migratedDefaultModel = migrateDeprecatedDeepSeekModel(provider.defaultChatModelId, provider.baseUrl);
+  const explicitModel = (
+    migratedModel
+      ? findChatModel(migratedModel.modelId)
+      : findChatModel(modelId)
+  ) ?? null;
+  const defaultModel = (
+    migratedDefaultModel
+      ? findChatModel(migratedDefaultModel.modelId)
+      : findChatModel(provider.defaultChatModelId)
+  ) ?? null;
+  const model = explicitModel
+    ?? defaultModel
+    ?? models.find((item) =>
+      item.supportsChat
+        && (!isOfficialDeepSeek || isAllowedOfficialDeepSeekModel(item.modelId))
+    )
+    ?? null;
+  const selectedMigration = explicitModel ? migratedModel : defaultModel ? migratedDefaultModel : null;
+  return {
+    model,
+    provider,
+    thinkingDisabledOverride: selectedMigration?.thinkingDisabled,
+  };
 }
 
 async function resolveStreamingBranchScopes(
@@ -2143,9 +2207,9 @@ async function buildPromptForThread(
 export async function createThreadFromContext(input: CreateThreadFromContextInput): Promise<AiThreadRecord> {
   await ensureBuiltInProviders(input.space);
   const shouldUseFixedModel = Boolean(input.providerId || input.modelId);
-  const { provider, model } = shouldUseFixedModel
+  const { provider, model, thinkingDisabledOverride } = shouldUseFixedModel
     ? await resolveDefaultThreadProvider(input.space, input.providerId, input.modelId)
-    : { provider: null, model: null };
+    : { provider: null, model: null, thinkingDisabledOverride: undefined };
 
   return runWithDatabaseSpace(input.space, (db) =>
     aiThreadRepository.createThread(db, {
@@ -2162,7 +2226,7 @@ export async function createThreadFromContext(input: CreateThreadFromContextInpu
       modelSnapshotJson: shouldUseFixedModel ? JSON.stringify(model ?? {}) : '{}',
       roleInstructionWeight: input.roleInstructionWeight ?? 'default',
       replyPreference: input.replyPreference ?? 'auto',
-      thinkingDisabled: input.thinkingDisabled ?? false,
+      thinkingDisabled: input.thinkingDisabled ?? thinkingDisabledOverride ?? false,
       systemPrompt: input.systemPrompt ?? getDefaultThreadSystemPrompt(input.contextType),
       materialRulesSnapshot: input.contextType === 'normal' ? null : materialRulesForMode(input.boundaryMode ?? 'free'),
       boundaryMode: input.boundaryMode ?? 'free',
@@ -3474,6 +3538,7 @@ async function streamAssistantReply(input: {
   continuationInstruction?: string;
   signal?: AbortSignal;
   getStreamingVisibility?: () => StreamingVisibilityState;
+  onCreated?: (ids: AiGenerationCreatedInfo) => void;
   onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
   onTimeout?: () => void;
   onUpdated?: () => void;
@@ -3699,6 +3764,7 @@ async function streamAssistantReply(input: {
   let memoryContextPlan: MemoryContextPlan;
   let provider: AiProviderRecord;
   let providerCachePolicy: ReturnType<typeof buildProviderCachePolicy>;
+  let legacyThinkingDisabled = false;
   let snippets: Awaited<ReturnType<typeof buildPromptForThread>>['snippets'] = [];
   let userPrompt = '';
   const requestedAt = startedAt;
@@ -3730,6 +3796,15 @@ async function streamAssistantReply(input: {
       return;
     }
     ({ apiKey, modelContextWindowTokens, modelId, provider } = resolvedModel);
+    legacyThinkingDisabled = resolvedModel.thinkingDisabledOverride ?? false;
+    if (legacyThinkingDisabled && !input.thread.thinkingDisabled) {
+      input.onCreated?.({
+        assistantMessageId: input.assistantMessageId,
+        generationId,
+        thinkingExpected: false,
+        userMessageId: input.userMessage.id,
+      });
+    }
     generationMetrics.context.providerId = provider.id;
     generationMetrics.context.modelId = modelId;
     generationMetrics.context.modelContextWindowTokens = resolvedModel.modelContextWindowTokens;
@@ -3855,7 +3930,7 @@ async function streamAssistantReply(input: {
       branchRouteHash: buildBranchRouteHash(branchScopes),
       generationParamsHash: buildGenerationParamsHash({
         historyRoundLimit,
-        thinkingDisabled: input.thread.thinkingDisabled,
+        thinkingDisabled: input.thread.thinkingDisabled || legacyThinkingDisabled,
       }),
       metadata: prompt.cacheMetadata,
       modelId,
@@ -3926,7 +4001,9 @@ async function streamAssistantReply(input: {
       materialRules: prompt.materialRules ?? null,
       memoryContextPlan,
       messageDisplayKind,
-      normalizedUsage: providerUsageRaw ? normalizeProviderUsage(provider.protocol, providerUsageRaw) : null,
+      normalizedUsage: providerUsageRaw
+        ? normalizeProviderUsage(provider.protocol, providerUsageRaw, provider.providerType, provider.baseUrl)
+        : null,
       providerCachePolicy,
       space: input.space,
       stopReason: snapshotOptions?.stopReason ?? null,
@@ -4132,7 +4209,7 @@ async function streamAssistantReply(input: {
         attachments: outgoingAttachments,
         history,
         providerCachePolicy,
-        thinkingDisabled: input.thread.thinkingDisabled || ignoreReasoningDeltas,
+        thinkingDisabled: input.thread.thinkingDisabled || legacyThinkingDisabled || ignoreReasoningDeltas,
         signal: input.signal,
       },
       async (event: AiStreamEvent) => {
@@ -4143,7 +4220,12 @@ async function streamAssistantReply(input: {
         scheduleProviderTimeout(PROVIDER_IDLE_TIMEOUT_MS);
         if (event.type === 'provider_usage') {
           providerUsageRaw = mergeProviderUsage(providerUsageRaw, event.rawUsage);
-          const normalizedUsage = normalizeProviderUsage(provider.protocol, providerUsageRaw);
+          const normalizedUsage = normalizeProviderUsage(
+            provider.protocol,
+            providerUsageRaw,
+            provider.providerType,
+            provider.baseUrl,
+          );
           generationMetrics.context.totalPromptTokens = normalizedUsage?.totalPromptTokens ?? null;
           generationMetrics.context.cachedInputTokens = normalizedUsage?.cachedInputTokens ?? null;
           generationMetrics.context.cachedTokenRatio = normalizedUsage?.cachedTokenRatio ?? null;
@@ -4165,28 +4247,32 @@ async function streamAssistantReply(input: {
           }
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
-          recordStreamingProviderDelta(event);
-          generationMetrics.counters.providerDeltaCount += 1;
-          generationMetrics.counters.reasoningDeltaCount += 1;
-          if (!generationMetrics.timestamps.firstProviderDeltaAt) {
-            markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+          if (!legacyThinkingDisabled) {
+            recordStreamingProviderDelta(event);
+            generationMetrics.counters.providerDeltaCount += 1;
+            generationMetrics.counters.reasoningDeltaCount += 1;
+            if (!generationMetrics.timestamps.firstProviderDeltaAt) {
+              markGenerationMetric(generationMetrics, 'firstProviderDeltaAt');
+            }
+            markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
+            pendingReasoningChunks.push(event.text);
+            pendingReasoningChars += event.text.length;
           }
-          markGenerationMetric(generationMetrics, 'lastProviderDeltaAt');
-          pendingReasoningChunks.push(event.text);
-          pendingReasoningChars += event.text.length;
         }
         generationMetrics.counters.maxBufferedChars = Math.max(
           generationMetrics.counters.maxBufferedChars,
           generationMetrics.counters.providerAnswerChars + generationMetrics.counters.providerReasoningChars
         );
         if (event.type === 'answer_delta' || (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas)) {
-          emitStreamingPatch();
-          scheduleStreamingPatch();
-          generationMetrics.counters.streamMergedDeltaCount = Math.max(
-            0,
-            generationMetrics.counters.providerDeltaCount - generationMetrics.counters.streamUiPatchCount
-          );
-          schedulePersistStreamingSnapshot();
+          if (event.type !== 'reasoning_delta' || !legacyThinkingDisabled) {
+            emitStreamingPatch();
+            scheduleStreamingPatch();
+            generationMetrics.counters.streamMergedDeltaCount = Math.max(
+              0,
+              generationMetrics.counters.providerDeltaCount - generationMetrics.counters.streamUiPatchCount
+            );
+            schedulePersistStreamingSnapshot();
+          }
         }
         generationMetrics.counters.providerEventHandlerTotalMs += Date.now() - eventStartedAt;
         if (event.type === 'error') {
@@ -4644,6 +4730,7 @@ export async function sendUserMessage(
     assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
@@ -4727,6 +4814,7 @@ export async function regenerateAssistantMessage(input: RetryAssistantMessageInp
     assistantMessageId: input.assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
@@ -4822,6 +4910,7 @@ export async function continueAssistantMessage(input: ContinueAssistantMessageIn
     initialAnswerText: continuation.initialAnswerText,
     initialReasoningText: continuation.initialReasoningText,
     mode: 'continue',
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
@@ -4923,6 +5012,7 @@ export async function continueAssistantReply(input: ContinueAssistantReplyInput)
     getStreamingVisibility: input.getStreamingVisibility,
     historyAnchorMessageId: input.assistantMessageId,
     mode: 'followup',
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
@@ -5069,6 +5159,7 @@ export async function replyToAssistantMessage(
     assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,
@@ -5159,6 +5250,7 @@ export async function rewriteUserMessage(input: RewriteUserMessageInput): Promis
     assistantMessageId,
     generationMetrics,
     getStreamingVisibility: input.getStreamingVisibility,
+    onCreated: input.onCreated,
     onMessagePatch: input.onMessagePatch,
     onTimeout: input.onTimeout,
     onUpdated: input.onUpdated,

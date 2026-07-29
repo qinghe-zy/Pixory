@@ -105,8 +105,10 @@ function requestPersonalExternalImportConsent(): Promise<boolean> {
 }
 
 const EMPTY_THREAD_USAGE: AiUsageAggregate = {
+  cacheObservedRequestCount: 0,
+  cacheUnobservedPromptTokens: 0,
   cachedInputTokens: 0,
-  cachedTokenRatio: 0,
+  cachedTokenRatio: null,
   completionTokens: 0,
   modelBreakdown: [],
   nonCachedInputTokens: 0,

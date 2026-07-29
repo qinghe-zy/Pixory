@@ -52,8 +52,6 @@ export function builtInModelsForProvider(providerId: string, providerType: AiPro
     return [
       build('deepseek-v4-flash', 'DeepSeek V4 Flash', { contextWindowTokens: 1_000_000, supportsThinking: true }),
       build('deepseek-v4-pro', 'DeepSeek V4 Pro', { contextWindowTokens: 1_000_000, supportsThinking: true }),
-      build('deepseek-chat', 'DeepSeek Chat', { supportsThinking: false }),
-      build('deepseek-reasoner', 'DeepSeek Reasoner', { supportsThinking: true }),
     ];
   }
 

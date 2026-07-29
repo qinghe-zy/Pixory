@@ -212,7 +212,10 @@ test('AI session settings can disable model thinking for the current thread', ()
   assert.match(repository, /booleanToSqlite\(input\.thinkingDisabled \?\? false\)/);
   assert.match(repository, /thinkingDisabled: patch\.thinkingDisabled === undefined \? undefined : booleanToSqlite\(patch\.thinkingDisabled\)/);
   assert.match(sessionConfig, /setThinkingDisabled\(config\.thread\.thinkingDisabled\)/);
-  assert.match(chatService, /thinkingDisabled: input\.thinkingDisabled \?\? false/);
+  assert.match(
+    chatService,
+    /thinkingDisabled: input\.thinkingDisabled \?\? thinkingDisabledOverride \?\? false/,
+  );
   assert.match(chatService, /thinkingDisabled: input\.thread\.thinkingDisabled/);
   assert.match(providerBase, /thinkingDisabled\?: boolean/);
   assert.match(openai, /function shouldDisableOpenAiReasoning\(input: AiChatRequest\): boolean/);

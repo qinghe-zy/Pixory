@@ -7,7 +7,8 @@ import {
 } from '../database';
 import type { AiThreadRecord } from './types';
 import { ensureBuiltInProviders, getAdapterForProvider } from './aiProviderService';
-import { getProviderApiKeyForSpace } from './secureAiSettingsService';
+import { migrateDeprecatedDeepSeekModel } from './deepseekModelPolicy';
+import { getProviderApiKeyForSpace, getThreadProviderApiKey } from './secureAiSettingsService';
 
 export type MemoryMaintenanceStatus = 'ready' | 'follow_chat' | 'local_fallback' | 'error';
 
@@ -152,8 +153,15 @@ async function resolveFollowChat(space: PixorySpace, thread?: AiThreadRecord | n
   if (!provider) {
     return null;
   }
-  const modelId = thread?.modelId ?? provider.defaultChatModelId;
-  const apiKey = await getProviderApiKeyForSpace(space, provider.id);
+  const configuredModelId = thread?.modelId ?? provider.defaultChatModelId;
+  const effectiveBaseUrl = thread?.sessionBaseUrl ?? provider.baseUrl;
+  const effectiveProvider = effectiveBaseUrl === provider.baseUrl
+    ? provider
+    : { ...provider, baseUrl: effectiveBaseUrl };
+  const modelId = migrateDeprecatedDeepSeekModel(configuredModelId, effectiveBaseUrl)?.modelId ?? configuredModelId;
+  const apiKey = thread?.sessionApiKeyRef
+    ? await getThreadProviderApiKey(space, thread.id, provider.id)
+    : await getProviderApiKeyForSpace(space, provider.id);
   return {
     apiKey,
     hasApiKey: Boolean(apiKey),
@@ -163,7 +171,7 @@ async function resolveFollowChat(space: PixorySpace, thread?: AiThreadRecord | n
     mode: 'follow_chat',
     modelId,
     modelName: modelId ?? '跟随聊天模型',
-    provider,
+    provider: effectiveProvider,
     providerId: provider.id,
     providerName: provider.displayName,
     status: apiKey && modelId ? 'follow_chat' : 'local_fallback',
@@ -180,6 +188,10 @@ export async function resolveMemoryMaintenanceModel(
   if (settings.memoryMaintenanceMode === 'custom') {
     const provider = await resolveProvider(space, settings.memoryMaintenanceProviderId);
     const apiKey = provider ? await getProviderApiKeyForSpace(space, provider.id) : null;
+    const modelId = migrateDeprecatedDeepSeekModel(
+      settings.memoryMaintenanceModelId,
+      provider?.baseUrl,
+    )?.modelId ?? settings.memoryMaintenanceModelId;
     return appendLastTestState({
       apiKey,
       hasApiKey: Boolean(apiKey),
@@ -187,13 +199,13 @@ export async function resolveMemoryMaintenanceModel(
       lastTestMessage: null,
       lastTestStatus: null,
       mode: 'custom',
-      modelId: settings.memoryMaintenanceModelId,
-      modelName: settings.memoryMaintenanceModelId ?? '自定义',
+      modelId,
+      modelName: modelId ?? '自定义',
       provider,
       providerId: provider?.id ?? null,
       providerName: provider?.displayName ?? '未选择模型商',
-      status: provider && settings.memoryMaintenanceModelId && apiKey ? 'ready' : 'error',
-      statusText: provider && settings.memoryMaintenanceModelId && apiKey ? '已保存配置，点击“测试记忆模型”确认链路可用' : '缺少模型商、模型 ID 或 API Key',
+      status: provider && modelId && apiKey ? 'ready' : 'error',
+      statusText: provider && modelId && apiKey ? '已保存配置，点击“测试记忆模型”确认链路可用' : '缺少模型商、模型 ID 或 API Key',
     }, settings);
   }
   if (settings.memoryMaintenanceMode === 'deepseek_flash') {

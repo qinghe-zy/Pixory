@@ -54,8 +54,10 @@ const MEMORY_MAINTENANCE_MODES: Array<{ value: MemoryMaintenanceMode; label: str
 ];
 
 const EMPTY_USAGE_OVERVIEW: AiUsageAggregate = {
+  cacheObservedRequestCount: 0,
+  cacheUnobservedPromptTokens: 0,
   cachedInputTokens: 0,
-  cachedTokenRatio: 0,
+  cachedTokenRatio: null,
   completionTokens: 0,
   modelBreakdown: [],
   nonCachedInputTokens: 0,

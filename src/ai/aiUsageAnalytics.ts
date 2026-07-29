@@ -18,7 +18,8 @@ export interface AiUsageRound {
   cachedInputTokens: number;
   nonCachedInputTokens: number;
   totalTokens: number;
-  cachedTokenRatio: number;
+  cacheObserved: boolean;
+  cachedTokenRatio: number | null;
 }
 
 export interface AiUsageModelBreakdown {
@@ -35,12 +36,14 @@ export interface AiUsageModelBreakdown {
 export interface AiUsageAggregate {
   requestCount: number;
   observedRequestCount: number;
+  cacheObservedRequestCount: number;
   totalPromptTokens: number;
   completionTokens: number;
   cachedInputTokens: number;
+  cacheUnobservedPromptTokens: number;
   nonCachedInputTokens: number;
   totalTokens: number;
-  cachedTokenRatio: number;
+  cachedTokenRatio: number | null;
   modelBreakdown: AiUsageModelBreakdown[];
   recentRounds: AiUsageRound[];
 }
@@ -50,8 +53,10 @@ interface CacheObservationUsage {
   promptTokens?: unknown;
   completionTokens?: unknown;
   cachedInputTokens?: unknown;
+  cacheMissInputTokens?: unknown;
   cacheCreationInputTokens?: unknown;
   cacheReadInputTokens?: unknown;
+  cacheFieldsObserved?: unknown;
 }
 
 function finiteNumber(value: unknown): number {
@@ -60,6 +65,18 @@ function finiteNumber(value: unknown): number {
 
 function clampRatio(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+function hasObservedCacheFields(usage: CacheObservationUsage): boolean {
+  if (typeof usage.cacheFieldsObserved === 'boolean') {
+    return usage.cacheFieldsObserved;
+  }
+  return [
+    usage.cachedInputTokens,
+    usage.cacheMissInputTokens,
+    usage.cacheCreationInputTokens,
+    usage.cacheReadInputTokens,
+  ].some((value) => finiteNumber(value) > 0);
 }
 
 function hasObservedUsageTokens(usage: CacheObservationUsage): boolean {
@@ -108,13 +125,19 @@ export function aggregateAiUsageObservations(input: {
     const totalPromptTokens = finiteNumber(usage.totalPromptTokens);
     const completionTokens = finiteNumber(usage.completionTokens);
     const cachedInputTokens = Math.min(finiteNumber(usage.cachedInputTokens), totalPromptTokens);
-    const nonCachedInputTokens = Math.max(totalPromptTokens - cachedInputTokens, 0);
+    const cacheObserved = hasObservedCacheFields(usage);
+    const nonCachedInputTokens = cacheObserved
+      ? Math.max(totalPromptTokens - cachedInputTokens, 0)
+      : 0;
     const totalTokens = totalPromptTokens + completionTokens;
     const providerId = observation.providerId || 'Unknown';
     const modelId = observation.modelId || 'Unknown';
     const round: AiUsageRound = {
+      cacheObserved,
       cachedInputTokens,
-      cachedTokenRatio: totalPromptTokens > 0 ? clampRatio(cachedInputTokens / totalPromptTokens) : 0,
+      cachedTokenRatio: cacheObserved && totalPromptTokens > 0
+        ? clampRatio(cachedInputTokens / totalPromptTokens)
+        : null,
       completionTokens,
       createdAt: observation.completedAt ?? observation.createdAt,
       id: observation.id,
@@ -148,14 +171,25 @@ export function aggregateAiUsageObservations(input: {
   const totalPromptTokens = rounds.reduce((sum, round) => sum + round.totalPromptTokens, 0);
   const completionTokens = rounds.reduce((sum, round) => sum + round.completionTokens, 0);
   const cachedInputTokens = rounds.reduce((sum, round) => sum + round.cachedInputTokens, 0);
+  const nonCachedInputTokens = rounds.reduce((sum, round) => sum + round.nonCachedInputTokens, 0);
   const totalTokens = totalPromptTokens + completionTokens;
+  const cacheObservedRounds = rounds.filter((round) => round.cacheObserved);
+  const cacheUnobservedPromptTokens = rounds
+    .filter((round) => !round.cacheObserved)
+    .reduce((sum, round) => sum + round.totalPromptTokens, 0);
+  const cacheObservedPromptTokens = cacheObservedRounds.reduce((sum, round) => sum + round.totalPromptTokens, 0);
+  const cacheObservedInputTokens = cacheObservedRounds.reduce((sum, round) => sum + round.cachedInputTokens, 0);
 
   return {
     cachedInputTokens,
-    cachedTokenRatio: totalPromptTokens > 0 ? clampRatio(cachedInputTokens / totalPromptTokens) : 0,
+    cachedTokenRatio: cacheObservedPromptTokens > 0
+      ? clampRatio(cacheObservedInputTokens / cacheObservedPromptTokens)
+      : null,
+    cacheObservedRequestCount: cacheObservedRounds.length,
+    cacheUnobservedPromptTokens,
     completionTokens,
     modelBreakdown: Array.from(breakdown.values()).sort((left, right) => right.totalTokens - left.totalTokens),
-    nonCachedInputTokens: Math.max(totalPromptTokens - cachedInputTokens, 0),
+    nonCachedInputTokens,
     observedRequestCount: rounds.length,
     recentRounds: rounds.slice(0, recentLimit),
     requestCount: input.observations.length,

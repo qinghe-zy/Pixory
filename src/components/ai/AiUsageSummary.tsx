@@ -20,8 +20,8 @@ function formatTokenCount(value: number): string {
   return String(Math.round(value));
 }
 
-function formatPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
+function formatPercent(value: number | null): string {
+  return value === null ? '未观测' : `${Math.round(value * 100)}%`;
 }
 
 function formatRoundTime(value: string): string {
@@ -35,7 +35,12 @@ function formatRoundTime(value: string): string {
 function metricCells(usage: AiUsageAggregate) {
   return [
     { label: '总量', value: formatTokenCount(usage.totalTokens) },
-    { label: '缓存', value: formatTokenCount(usage.cachedInputTokens) },
+    {
+      label: '缓存',
+      value: usage.cacheObservedRequestCount > 0
+        ? formatTokenCount(usage.cachedInputTokens)
+        : '未观测',
+    },
     { label: '命中率', value: formatPercent(usage.cachedTokenRatio) },
     { label: '请求', value: String(usage.observedRequestCount) },
   ];
@@ -45,12 +50,14 @@ function AiTokenStackBar({
   cached,
   input,
   output,
+  unobserved,
 }: {
   cached: number;
   input: number;
   output: number;
+  unobserved: number;
 }) {
-  const total = cached + input + output;
+  const total = cached + input + output + unobserved;
   if (total <= 0) {
     return <View style={[styles.tokenBarTrack, styles.emptyTokenBar]} />;
   }
@@ -58,6 +65,7 @@ function AiTokenStackBar({
     <View style={styles.tokenBarTrack}>
       {cached > 0 ? <View style={[styles.tokenBarSegment, styles.cachedSegment, { flex: cached }]} /> : null}
       {input > 0 ? <View style={[styles.tokenBarSegment, styles.inputSegment, { flex: input }]} /> : null}
+      {unobserved > 0 ? <View style={[styles.tokenBarSegment, styles.unobservedSegment, { flex: unobserved }]} /> : null}
       {output > 0 ? <View style={[styles.tokenBarSegment, styles.outputSegment, { flex: output }]} /> : null}
     </View>
   );
@@ -102,10 +110,18 @@ export function AiUsageSummary({ usage, recentTitle = '最近', showRecent = tru
           cached={usage.cachedInputTokens}
           input={usage.nonCachedInputTokens}
           output={usage.completionTokens}
+          unobserved={usage.cacheUnobservedPromptTokens}
         />
         <View style={styles.legendRow}>
-          <Text style={styles.legendCached}>缓存 {formatTokenCount(usage.cachedInputTokens)}</Text>
-          <Text style={styles.legendInput}>输入 {formatTokenCount(usage.nonCachedInputTokens)}</Text>
+          {usage.cacheObservedRequestCount > 0 ? (
+            <Text style={styles.legendCached}>缓存 {formatTokenCount(usage.cachedInputTokens)}</Text>
+          ) : null}
+          <Text style={styles.legendInput}>未缓存 {formatTokenCount(usage.nonCachedInputTokens)}</Text>
+          {usage.cacheUnobservedPromptTokens > 0 ? (
+            <Text style={styles.legendUnobserved}>
+              未观测输入 {formatTokenCount(usage.cacheUnobservedPromptTokens)}
+            </Text>
+          ) : null}
           <Text style={styles.legendOutput}>输出 {formatTokenCount(usage.completionTokens)}</Text>
         </View>
       </View>
@@ -177,6 +193,9 @@ const styles = StyleSheet.create({
   inputSegment: {
     backgroundColor: aiLightColors.primarySoft,
   },
+  unobservedSegment: {
+    backgroundColor: aiLightColors.mutedSoft,
+  },
   outputSegment: {
     backgroundColor: aiLightColors.dark,
   },
@@ -192,6 +211,10 @@ const styles = StyleSheet.create({
   legendInput: {
     ...typography.textStyles.micro,
     color: aiLightColors.muted,
+  },
+  legendUnobserved: {
+    ...typography.textStyles.micro,
+    color: aiLightColors.mutedReadable,
   },
   legendOutput: {
     ...typography.textStyles.micro,
