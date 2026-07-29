@@ -68,7 +68,12 @@ import { markCompanionOpenLoopMentioned, markCompanionTemporalAnchorMentioned, r
 import { deriveCompanionTraceId } from './companion/companionDiagnostics';
 import { scheduleCompanionMaintenance } from './companion/companionMaintenanceQueue';
 import { observeCompanionCurrentTurn } from './companion/companionRuntimeService';
-import { diaryRepository } from './diary/diaryRepository';
+import { processCompanionAssistantRepairTurns } from './companion/companionProjectionEngine';
+import { detectAndCreateManualDreamRequest, registerCompanionDreamRound } from './dream/dreamService';
+import { dreamRepository } from './dream/dreamRepository';
+import { activateThoughtSession, observeThoughtScope, recordCompanionThoughtRound } from './thought/thoughtSessionCoordinator';
+import { hashBranchRoute } from './context/conversationCoverage';
+import { deliverThoughtReservation, releaseThoughtReservationForMessage, selectCompanionArtifactForTurn } from './companion/companionArtifactService';
 import {
   buildPromptCacheMetadata,
   buildProviderCachePolicy,
@@ -348,6 +353,8 @@ type BuildPromptForThreadOptions = {
   historyAnchorMessageId: string;
   historyRoundLimit: number;
   companionDynamicSegments?: AiDynamicContextSegment[];
+  assistantMessageId: string;
+  allowCompanionArtifact?: boolean;
 };
 
 type ThreadRetrievalResult = {
@@ -1995,18 +2002,19 @@ async function buildPromptForThread(
           query: memorySettings.deepMemoryEnabled ? userMessage : '',
           thread,
         });
-        const optedInDiaries = thread.roleCardId
-          ? await diaryRepository.listContextOptInDiaryVersionsForRole(db, thread.roleCardId)
-          : [];
-        const diaryContext = optedInDiaries
-          .map(({ diary, version }) =>
-            `[角色日记（${diary.diaryDate}，仅作角色内心状态参考，不是用户说过的话）]\n${version.body}`,
-          )
-          .join('\n\n');
+        const artifactSelection = await selectCompanionArtifactForTurn(db, {
+          allowArtifact: options.allowCompanionArtifact !== false,
+          assistantMessageId: options.assistantMessageId,
+          branchRouteHash: coverage.plan.branchRouteHash,
+          branchScopes: branchScopes ?? [],
+          now: new Date().toISOString(),
+          thread,
+        });
         return {
           companionMemoryPrefix: await buildCompanionMemoryPrefix(db, thread, { branchScopes, settings: memorySettings }),
           coverage,
-          dynamicMemoryContext: [compiledMemory.context, diaryContext].filter(Boolean).join('\n\n'),
+          artifactSelection,
+          dynamicMemoryContext: compiledMemory.context,
           memoryContextPlan: compiledMemory.plan,
           memorySettings,
           stableMemoryPrefix: await buildStableMemoryPrefix(db, thread, { branchScopes, excludedClaimIds, settings: memorySettings }),
@@ -2070,7 +2078,7 @@ async function buildPromptForThread(
     }
   })();
   const [
-    { companionMemoryPrefix, coverage, dynamicMemoryContext, memoryContextPlan, memorySettings, stableMemoryPrefix },
+    { artifactSelection, companionMemoryPrefix, coverage, dynamicMemoryContext, memoryContextPlan, memorySettings, stableMemoryPrefix },
     { boundOwnerSnippets, threadMaterialRetrieval, threadMaterialSnippets },
   ] = await Promise.all([memoryPromise, retrievalPromise]);
   const finalFastPath = classifyAiChatFastPath({
@@ -2119,6 +2127,7 @@ async function buildPromptForThread(
   const roleCardContext = buildRolePromptContextFromThread(thread);
   const dynamicSegments: AiDynamicContextSegment[] = [
     ...(options?.companionDynamicSegments ?? []),
+    ...(artifactSelection ? [artifactSelection.segment] : []),
     ...(companionMemoryPrefix ? [{
       branchRouteHash: coverage.plan.branchRouteHash,
       expiresAt: null,
@@ -2858,6 +2867,11 @@ export async function permanentlyDeleteAiThreads(space: PixorySpace, threadIds: 
   const deletedFileUris: string[] = [];
   return runWithDatabaseSpace(space, async (db) => {
     let deletedCount = 0;
+    const roleRows = await db.getAllAsync<{ roleCardId: string }>(
+      `SELECT DISTINCT roleCardId FROM ai_threads
+       WHERE id IN (${uniqueThreadIds.map(() => '?').join(', ')}) AND roleCardId IS NOT NULL`,
+      ...uniqueThreadIds,
+    );
     await db.withTransactionAsync(async () => {
       await removeMaterialsByOwner({
         db,
@@ -2867,6 +2881,9 @@ export async function permanentlyDeleteAiThreads(space: PixorySpace, threadIds: 
         ownerIds: uniqueThreadIds,
       });
       deletedCount = await aiThreadRepository.deleteThreads(db, uniqueThreadIds);
+      for (const { roleCardId } of roleRows) {
+        await dreamRepository.rebuildRoleRoundCounter(db, { roleCardId, space });
+      }
     });
     await cleanupDeletedMaterialFiles(deletedFileUris);
     return deletedCount;
@@ -3068,6 +3085,12 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
           await aiThreadRepository.importThread(db, snapshot, input.targetSpace);
         }
         await aiThreadRepository.importRoleMemoriesForSpaceMove(db, copiedRoles.memories);
+        for (const roleCardId of roleCards.map((roleCard) => roleCard.id)) {
+          await dreamRepository.rebuildRoleRoundCounter(db, {
+            roleCardId: roleIdMap.get(roleCardId) ?? roleCardId,
+            space: input.targetSpace,
+          });
+        }
       });
     });
     targetImported = true;
@@ -3099,6 +3122,12 @@ export async function moveAiThreadsBetweenSpaces(input: MoveAiThreadsInput): Pro
           ownerIds: movedThreadIds,
         });
         await aiThreadRepository.deleteThreads(db, movedThreadIds);
+        for (const roleCardId of roleCards.map((roleCard) => roleCard.id)) {
+          await dreamRepository.rebuildRoleRoundCounter(db, {
+            roleCardId,
+            space: input.sourceSpace,
+          });
+        }
         const deletedRoleCards =
           await aiRoleCardRepository.deleteUnreferencedRoleCardsAfterThreadMove(
             db,
@@ -3195,16 +3224,17 @@ async function markAssistantFailed(
   promptSnapshotJson?: string
 ): Promise<string> {
   const completedAt = new Date().toISOString();
-  await runWithDatabaseSpace(space, (db) =>
-    updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
+  await runWithDatabaseSpace(space, async (db) => {
+    await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
       status: 'failed',
       content: partialContent,
       reasoningText: partialReasoningText,
       errorMessage: message,
       ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
       completedAt,
-    })
-  );
+    });
+    await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
+  });
   stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   stoppedTimeoutGenerationIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   return completedAt;
@@ -3219,15 +3249,16 @@ async function markAssistantStopped(
   promptSnapshotJson?: string
 ): Promise<string> {
   const completedAt = new Date().toISOString();
-  await runWithDatabaseSpace(space, (db) =>
-    updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
+  await runWithDatabaseSpace(space, async (db) => {
+    await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
       status: 'stopped',
       content: partialContent,
       reasoningText: partialReasoningText,
       ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
       completedAt,
-    })
-  );
+    });
+    await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
+  });
   stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   return completedAt;
 }
@@ -3757,6 +3788,7 @@ async function streamAssistantReply(input: {
   let apiKey: string | null = '';
   let branchScopes: AiBranchScope[] = [];
   let companionContextPlan: CompanionContextPlan | null = null;
+  let companionBranchRouteHash = '';
   let cacheObservationBase: ReturnType<typeof buildCacheObservationBase>;
   let contextTrimmed = false;
   let contextTrimmedByBudget = false;
@@ -3785,6 +3817,21 @@ async function streamAssistantReply(input: {
     );
     generationMetrics.context.branchScopeCount = branchScopes.length;
     markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    observeThoughtScope(input.space, { branchRouteHash: hashBranchRoute(branchScopes), roleCardId: input.thread.roleCardId, threadId: input.thread.id });
+    if (input.thread.roleCardId) {
+      try {
+        const recentMessages = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listMessages(db, input.thread.id, 20, branchScopes));
+        await detectAndCreateManualDreamRequest({
+          branchRouteHash: hashBranchRoute(branchScopes),
+          recentMessages,
+          space: input.space,
+          threadId: input.thread.id,
+          userMessageId: input.userMessage.id,
+        });
+      } catch {
+        // Manual dream affordance is recoverable and must not block chat generation.
+      }
+    }
     try {
       const observed = await observeCompanionCurrentTurn({
         branchScopes,
@@ -3792,6 +3839,7 @@ async function streamAssistantReply(input: {
         thread: input.thread,
         userMessageId: input.userMessage.id,
       });
+      companionBranchRouteHash = observed.branchRouteHash;
       const compilerStartedAt = Date.now();
       const compiledPlan = await runWithDatabaseSpace(input.space, async (db) => {
         const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessages(
@@ -3801,10 +3849,12 @@ async function streamAssistantReply(input: {
         );
         return compileCompanionContext(db, {
           branchRouteHash: observed.branchRouteHash,
+          awarenessEnabled: observed.awarenessEnabled,
           currentMessageId: input.userMessage.id,
           currentRound: Math.floor(completedMessageCount / 2),
           lineageVersion: input.thread.lineageVersion ?? 0,
           now: requestedAt,
+          roleCardId: input.thread.roleCardId,
           space: input.space,
           threadId: input.thread.id,
         });
@@ -3816,6 +3866,8 @@ async function streamAssistantReply(input: {
       generationMetrics.context.companionCompilerDurationMs = Date.now() - compilerStartedAt;
       generationMetrics.context.companionOptionalCandidateCount = compiledPlan.optionalCandidateCount;
       generationMetrics.context.companionPolicyVersion = compiledPlan.policyVersion;
+      generationMetrics.context.companionProjectionVersion = compiledPlan.projectionVersion;
+      generationMetrics.context.companionStanceLabel = compiledPlan.stanceLabel;
       generationMetrics.context.companionSelectedTopicType = compiledPlan.selectedTopicType;
       await runWithDatabaseSpace(input.space, (db) => recordCompanionContextTrace(db, {
         branchRouteHash: observed.branchRouteHash,
@@ -3909,6 +3961,8 @@ async function streamAssistantReply(input: {
     }).historyRoundLimit;
     markGenerationMetric(generationMetrics, 'promptBuildStartAt');
     ({ coverage, prompt, snippets, memoryContextPlan } = await buildPromptForThread(input.thread, requestContent, branchScopes, {
+      allowCompanionArtifact: !companionContextPlan?.selectedRepairId && !companionContextPlan?.selectedOpenLoopId && !companionContextPlan?.selectedTemporalAnchorId,
+      assistantMessageId: input.assistantMessageId,
       attachmentPromptContext,
       companionDynamicSegments: companionContextPlan?.dynamicSegments,
       generationMetrics,
@@ -4395,6 +4449,8 @@ async function streamAssistantReply(input: {
   markGenerationMetric(generationMetrics, 'finalPersistStartAt');
   const promptSnapshotJson = createPromptSnapshotJson();
   let finalMessagePersisted = false;
+  let queuedDreamJobId: string | null = null;
+  let completedThoughtSession: Awaited<ReturnType<typeof recordCompanionThoughtRound>> = null;
   await runWithDatabaseSpace(input.space, async (db) => {
     await db.withTransactionAsync(async () => {
       const current = await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
@@ -4422,6 +4478,51 @@ async function streamAssistantReply(input: {
             id: companionContextPlan.selectedTemporalAnchorId,
             mentionedAt: completedAt,
           });
+        }
+        if (companionContextPlan) {
+          try {
+            await processCompanionAssistantRepairTurns(db, {
+              assistantMessageId: input.assistantMessageId,
+              branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
+              currentRound: companionContextPlan.currentRound,
+              lineageVersion: input.thread.lineageVersion ?? 0,
+              now: completedAt,
+              space: input.space,
+              thread: input.thread,
+            });
+          } catch {
+            // Companion repair projection is recoverable maintenance and must not roll back a valid reply.
+          }
+        }
+        if (input.thread.roleCardId) {
+          try {
+            const [userRecord, recentMessages] = await Promise.all([
+              aiThreadRepository.findMessageById(db, input.userMessage.id),
+              aiThreadRepository.listMessages(db, input.thread.id, 20, branchScopes),
+            ]);
+            if (userRecord) {
+              const dream = await registerCompanionDreamRound(db, {
+                assistantMessage: current,
+                branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
+                now: completedAt,
+                recentMessages,
+                space: input.space,
+                thread: input.thread,
+                userMessage: userRecord,
+              });
+              queuedDreamJobId = dream.jobId;
+              completedThoughtSession = await recordCompanionThoughtRound(db, {
+                assistantMessage: current,
+                branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
+                now: completedAt,
+                space: input.space,
+                thread: input.thread,
+                userMessage: userRecord,
+              });
+            }
+          } catch {
+            // Dream detection is recoverable and must never roll back a completed reply.
+          }
         }
         const memoryIntent = detectMemoryIntent(input.userMessage.content);
         await writeCurrentTurnObservation(db, {
@@ -4466,6 +4567,16 @@ async function streamAssistantReply(input: {
     }
     return;
   }
+  await runWithDatabaseSpace(input.space, async (db) => {
+    await db.withTransactionAsync(async () => {
+      await deliverThoughtReservation(db, {
+        branchRouteHash: companionBranchRouteHash || hashBranchRoute(branchScopes),
+        messageId: input.assistantMessageId,
+        now: completedAt,
+        thread: input.thread,
+      });
+    });
+  });
   markGenerationMetric(generationMetrics, 'finalPersistEndAt');
   markGenerationMetric(generationMetrics, 'generationSettledAt');
   const finalPromptSnapshotJson = createPromptSnapshotJson({ failureReason: finalFailureReason });
@@ -4519,8 +4630,18 @@ async function streamAssistantReply(input: {
       threadId: input.thread.id,
       userMessage: input.userMessage,
     });
-    scheduleCompanionMaintenance({ space: input.space });
+    if (input.space === 'personal') {
+      const resumeAt = new Date().toISOString();
+      await runWithDatabaseSpace(input.space, async (db) => {
+        await db.runAsync(`UPDATE companion_runtime_jobs SET nextRunAt = ?, updatedAt = ? WHERE status = 'waiting_model' AND lastErrorCode = 'personal_remote_not_authorized'`, resumeAt, resumeAt);
+        await db.runAsync(`UPDATE companion_dream_jobs SET nextRunAt = ?, updatedAt = ? WHERE status = 'waiting_model' AND lastErrorCode = 'personal_remote_not_authorized'`, resumeAt, resumeAt);
+        await db.runAsync(`UPDATE companion_thought_jobs SET nextRunAt = ?, updatedAt = ? WHERE status = 'waiting_model' AND lastErrorCode = 'personal_remote_not_authorized'`, resumeAt, resumeAt);
+      });
+    }
+    scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', space: input.space });
   }
+  if (queuedDreamJobId) scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', delayMs: 250, space: input.space });
+  activateThoughtSession(completedThoughtSession);
   input.onUpdated?.();
 }
 

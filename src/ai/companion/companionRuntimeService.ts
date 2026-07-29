@@ -21,6 +21,8 @@ import { buildOpenLoopDraft } from './companionOpenLoopService';
 import { parseTemporalPhrases, resolveCompanionTimeZone } from './companionTemporalService';
 import type { CompanionEventRecord, CompanionObservedMessage, CompanionOpenLoopKind } from './companionTypes';
 import { isCompanionAwarenessEnabled } from './companionSettingsService';
+import { rebuildCompanionProjection } from './companionProjectionEngine';
+import type { CompanionProjectionSnapshotRecord } from './companionProjectionRepository';
 
 export interface ObserveCompanionCurrentTurnResult {
   branchRouteHash: string;
@@ -30,6 +32,8 @@ export interface ObserveCompanionCurrentTurnResult {
   diagnosticCandidateCount: number;
   observerDurationMs: number;
   enrichmentQueued: boolean;
+  projection: CompanionProjectionSnapshotRecord | null;
+  awarenessEnabled: boolean;
 }
 
 function toObservedMessage(message: Awaited<ReturnType<typeof aiThreadRepository.findMessageById>>): CompanionObservedMessage | null {
@@ -70,26 +74,30 @@ export async function observeCompanionCurrentTurn(input: {
 }): Promise<ObserveCompanionCurrentTurnResult> {
   const branchRouteHash = hashBranchRoute(input.branchScopes);
   const startedAt = Date.now();
-  if (!(await isCompanionAwarenessEnabled(input.space))) {
-    return { branchRouteHash, diagnosticCandidateCount: 0, enrichmentQueued: false, events: [], observerDurationMs: Date.now() - startedAt, openLoops: [], temporalAnchors: [] };
-  }
+  const awarenessEnabled = await isCompanionAwarenessEnabled(input.space);
   const message = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.findMessageById(db, input.userMessageId));
   const observed = toObservedMessage(message);
   if (!observed || observed.role !== 'user' || observed.status !== 'completed' || message?.threadId !== input.thread.id) {
-    return { branchRouteHash, diagnosticCandidateCount: 0, enrichmentQueued: false, events: [], observerDurationMs: Date.now() - startedAt, openLoops: [], temporalAnchors: [] };
+    return { awarenessEnabled, branchRouteHash, diagnosticCandidateCount: 0, enrichmentQueued: false, events: [], observerDurationMs: Date.now() - startedAt, openLoops: [], projection: null, temporalAnchors: [] };
   }
-  const observation = observeCompanionEvents({
+  const observedSignals = observeCompanionEvents({
     branchRouteHash,
     lineageVersion: input.thread.lineageVersion ?? 0,
     message: observed,
   });
+  const observation = awarenessEnabled ? observedSignals : {
+    accepted: observedSignals.accepted.filter((candidate) => candidate.category === 'boundary' || candidate.category === 'correction'),
+    diagnostic: [],
+    speechMode: observedSignals.speechMode,
+  };
   const now = input.now ?? new Date().toISOString();
   const timeZone = resolveCompanionTimeZone(input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const subject = roleSubject(input.thread);
   const events: CompanionEventRecord[] = [];
   const temporalAnchors: CompanionTemporalAnchorRecord[] = [];
   const openLoops: CompanionOpenLoopRecord[] = [];
-  const enrichmentQueued = shouldQueueEnrichment(observation);
+  const enrichmentQueued = awarenessEnabled && shouldQueueEnrichment(observation);
+  let projection: CompanionProjectionSnapshotRecord | null = null;
 
   await runWithDatabaseSpace(input.space, async (db) => {
     await db.withTransactionAsync(async () => {
@@ -207,6 +215,18 @@ export async function observeCompanionCurrentTurn(input: {
           threadId: input.thread.id,
         });
       }
+      if (awarenessEnabled) {
+        const completedMessageCount = await aiThreadRepository.countCompletedNonSystemMessages(db, input.thread.id, input.branchScopes);
+        projection = await rebuildCompanionProjection(db, {
+          branchRouteHash,
+          currentMessageId: observed.id,
+          currentRound: Math.floor(completedMessageCount / 2),
+          lineageVersion: input.thread.lineageVersion ?? 0,
+          now,
+          space: input.space,
+          thread: input.thread,
+        });
+      }
       await recordCompanionContextTrace(db, {
         branchRouteHash,
         createdAt: now,
@@ -225,12 +245,14 @@ export async function observeCompanionCurrentTurn(input: {
     });
   });
   return {
+    awarenessEnabled,
     branchRouteHash,
     diagnosticCandidateCount: observation.diagnostic.length,
     enrichmentQueued,
     events,
     observerDurationMs: Date.now() - startedAt,
     openLoops,
+    projection,
     temporalAnchors,
   };
 }

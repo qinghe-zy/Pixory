@@ -89,6 +89,14 @@ test('conservative affect and interaction signals meet category thresholds witho
   assert.equal(JSON.stringify(interaction).includes('MemoryClaim'), false);
 });
 
+test('relationship disclosure conflict rejection and reconciliation require direct asserted language', () => {
+  assert.ok(observe('我其实一直很害怕被丢下，这件事只敢告诉你。').accepted.some((event) => event.category === 'relationship' && event.subtype === 'vulnerable_disclosure'));
+  assert.ok(observe('你刚才那句话真的让我很受伤。').accepted.some((event) => event.category === 'relationship' && event.subtype === 'conflict'));
+  assert.ok(observe('我们就到这里吧，别再靠近我。').accepted.some((event) => event.category === 'relationship' && event.subtype === 'rejection'));
+  assert.ok(observe('没关系了，我原谅你，我们和好吧。').accepted.some((event) => event.category === 'relationship' && event.subtype === 'reconciliation'));
+  assert.equal(observe('小说里她说“你让我很受伤”。').accepted.some((event) => event.category === 'relationship'), false);
+});
+
 test('explicit future commitments expose temporal phrases and deterministic semantic keys', () => {
   const first = observe('等面试结果出来，我明天下午告诉你。');
   const second = observe('等面试结果出来，我明天下午告诉你。');

@@ -77,6 +77,8 @@ export interface AiGenerationMetricsDraft {
     companionObserverDurationMs: number;
     companionCompilerDurationMs: number;
     companionPolicyVersion: string | null;
+    companionProjectionVersion: string | null;
+    companionStanceLabel: string | null;
     dynamicContextTokenCount: number;
     retrievalSnippetCount: number;
     memoryEpoch: string | null;
@@ -199,6 +201,8 @@ export function createGenerationMetricsDraft(input: {
       companionObserverDurationMs: 0,
       companionCompilerDurationMs: 0,
       companionPolicyVersion: null,
+      companionProjectionVersion: null,
+      companionStanceLabel: null,
       dynamicContextTokenCount: 0,
       retrievalSnippetCount: 0,
       memoryEpoch: null,

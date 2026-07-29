@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 52;
+export const DATABASE_VERSION = 53;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1647,6 +1647,333 @@ CREATE TABLE IF NOT EXISTS companion_context_traces (
 );
 CREATE INDEX IF NOT EXISTS idx_companion_context_traces_thread
   ON companion_context_traces(threadId, createdAt DESC);
+`;
+
+export const MIGRATION_STATEMENTS_V53 = `
+CREATE TABLE IF NOT EXISTS companion_projection_snapshots (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  scopeType TEXT NOT NULL CHECK (scopeType IN ('role_base', 'branch_overlay', 'thread')),
+  roleCardId TEXT,
+  threadId TEXT,
+  branchRouteHash TEXT NOT NULL DEFAULT '',
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  basedOnEventSequence INTEGER NOT NULL DEFAULT 0,
+  affection REAL NOT NULL DEFAULT 0,
+  security REAL NOT NULL DEFAULT 0,
+  arousal REAL NOT NULL DEFAULT 0,
+  agency REAL NOT NULL DEFAULT 0,
+  relationshipJson TEXT NOT NULL,
+  stanceJson TEXT NOT NULL,
+  policyVersion TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'stale', 'rebuilding')),
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(space, scopeType, roleCardId, threadId, branchRouteHash, lineageVersion),
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_projection_scope
+  ON companion_projection_snapshots(space, roleCardId, threadId, branchRouteHash, lineageVersion, status);
+
+CREATE TABLE IF NOT EXISTS companion_affective_observations (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sourceEventId TEXT NOT NULL UNIQUE,
+  sourceMessageId TEXT NOT NULL,
+  sourceMessageVersionHash TEXT NOT NULL,
+  label TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  expiresAt TEXT NOT NULL,
+  expiresAfterRound INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'source_changed')),
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sourceEventId) REFERENCES companion_events(id) ON DELETE CASCADE,
+  FOREIGN KEY (sourceMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_affective_visible
+  ON companion_affective_observations(threadId, branchRouteHash, lineageVersion, status, expiresAt);
+
+CREATE TABLE IF NOT EXISTS companion_repairs (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sourceEventId TEXT NOT NULL UNIQUE,
+  sourceMessageId TEXT NOT NULL,
+  sourceMessageVersionHash TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('boundary', 'correction')),
+  subtype TEXT NOT NULL,
+  constraintText TEXT NOT NULL,
+  forbiddenTermsJson TEXT NOT NULL DEFAULT '[]',
+  state TEXT NOT NULL CHECK (state IN ('detected', 'constrained', 'acknowledged', 'observing', 'verified', 'violated', 'dismissed')),
+  passedRelevantTurns INTEGER NOT NULL DEFAULT 0,
+  violationCount INTEGER NOT NULL DEFAULT 0,
+  semanticReviewRequired INTEGER NOT NULL DEFAULT 0,
+  lastCheckedAssistantMessageId TEXT,
+  resolutionEvidenceMessageId TEXT,
+  policyVersion TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sourceEventId) REFERENCES companion_events(id) ON DELETE CASCADE,
+  FOREIGN KEY (sourceMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (lastCheckedAssistantMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (resolutionEvidenceMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_companion_repairs_active
+  ON companion_repairs(threadId, branchRouteHash, lineageVersion, state, updatedAt DESC);
+
+CREATE TABLE IF NOT EXISTS companion_dream_scenes (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  semanticState TEXT NOT NULL CHECK (semanticState IN ('approaching_sleep', 'sleep_established', 'dream_active', 'closing', 'closed')),
+  participantsJson TEXT NOT NULL DEFAULT '[]',
+  evidenceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+  sourceSnapshotHash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed', 'source_changed')),
+  openedAt TEXT NOT NULL,
+  closedAt TEXT,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_dream_scene_active
+  ON companion_dream_scenes(space, roleCardId, threadId, branchRouteHash, lineageVersion)
+  WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS companion_dream_seeds (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sceneId TEXT NOT NULL,
+  sourceMessageIdsJson TEXT NOT NULL,
+  sourceMessageVersionHashesJson TEXT NOT NULL,
+  sourceSnapshotHash TEXT NOT NULL,
+  roll REAL NOT NULL CHECK (roll >= 0 AND roll < 1),
+  classificationJson TEXT,
+  classifiedProbability REAL,
+  decision TEXT NOT NULL CHECK (decision IN ('awaiting_confirmation', 'prepruned', 'frequency_blocked', 'classifying', 'selected', 'rejected', 'cancelled', 'failed')),
+  manual INTEGER NOT NULL DEFAULT 0,
+  policyVersion TEXT NOT NULL,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sceneId) REFERENCES companion_dream_scenes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_dream_seeds_scope
+  ON companion_dream_seeds(roleCardId, threadId, branchRouteHash, decision, createdAt DESC);
+
+CREATE TABLE IF NOT EXISTS companion_dream_jobs (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sceneId TEXT NOT NULL,
+  seedId TEXT NOT NULL UNIQUE,
+  phase TEXT NOT NULL CHECK (phase IN ('classifying', 'generating')),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'retry', 'waiting_model', 'completed', 'failed', 'cancelled')),
+  sourceSnapshotHash TEXT NOT NULL,
+  sourceMessageIdsJson TEXT NOT NULL,
+  attemptCount INTEGER NOT NULL DEFAULT 0,
+  maxAttempts INTEGER NOT NULL DEFAULT 3,
+  cancelRequested INTEGER NOT NULL DEFAULT 0,
+  quotaReserved INTEGER NOT NULL DEFAULT 0,
+  nextRunAt TEXT NOT NULL,
+  leaseOwner TEXT,
+  leaseUntil TEXT,
+  lastErrorCode TEXT,
+  classifierPromptTokens INTEGER,
+  classifierCompletionTokens INTEGER,
+  generationPromptTokens INTEGER,
+  generationCompletionTokens INTEGER,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sceneId) REFERENCES companion_dream_scenes(id) ON DELETE CASCADE,
+  FOREIGN KEY (seedId) REFERENCES companion_dream_seeds(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_dream_jobs_ready
+  ON companion_dream_jobs(space, status, nextRunAt, leaseUntil);
+CREATE INDEX IF NOT EXISTS idx_companion_dream_jobs_thread
+  ON companion_dream_jobs(threadId, branchRouteHash, status, createdAt DESC);
+
+CREATE TABLE IF NOT EXISTS companion_dreams (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  sourceThreadId TEXT NOT NULL,
+  sourceBranchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sceneId TEXT NOT NULL,
+  seedId TEXT NOT NULL UNIQUE,
+  jobId TEXT NOT NULL UNIQUE,
+  sourceMessageIdsJson TEXT NOT NULL,
+  sourceSnapshotHash TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  displayAt TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'stale_source', 'soft_deleted')),
+  contextOptIn INTEGER CHECK (contextOptIn IN (0, 1)),
+  viewedAt TEXT,
+  deletedAt TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (sourceThreadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sceneId) REFERENCES companion_dream_scenes(id) ON DELETE CASCADE,
+  FOREIGN KEY (seedId) REFERENCES companion_dream_seeds(id) ON DELETE CASCADE,
+  FOREIGN KEY (jobId) REFERENCES companion_dream_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_dreams_role
+  ON companion_dreams(roleCardId, status, displayAt DESC);
+CREATE INDEX IF NOT EXISTS idx_companion_dreams_context
+  ON companion_dreams(sourceThreadId, sourceBranchRouteHash, contextOptIn, status, displayAt DESC);
+
+CREATE TABLE IF NOT EXISTS companion_role_round_counters (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  totalRounds INTEGER NOT NULL DEFAULT 0,
+  lastDreamSuccessRound INTEGER,
+  beijingDateKey TEXT NOT NULL,
+  dailyDreamSuccessCount INTEGER NOT NULL DEFAULT 0,
+  dailyDreamReservedCount INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  UNIQUE(space, roleCardId)
+);
+
+CREATE TABLE IF NOT EXISTS companion_role_round_receipts (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  userMessageId TEXT NOT NULL,
+  assistantMessageId TEXT NOT NULL,
+  userMessageVersionHash TEXT NOT NULL,
+  assistantMessageVersionHash TEXT NOT NULL,
+  roundNumber INTEGER NOT NULL,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (userMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (assistantMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_role_round_receipts_role
+  ON companion_role_round_receipts(roleCardId, roundNumber DESC);
+
+CREATE TABLE IF NOT EXISTS companion_thought_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sessionKey TEXT NOT NULL,
+  eventType TEXT NOT NULL CHECK (eventType IN ('vulnerable', 'hurtful', 'reconciliation', 'apology', 'praise', 'cold')),
+  priority INTEGER NOT NULL,
+  userMessageId TEXT NOT NULL,
+  assistantMessageId TEXT NOT NULL,
+  userMessageVersionHash TEXT NOT NULL,
+  assistantMessageVersionHash TEXT NOT NULL,
+  sourceSnapshotHash TEXT NOT NULL,
+  evidenceJson TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'batched', 'discarded', 'source_changed')),
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (userMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (assistantMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_thought_events_session
+  ON companion_thought_events(threadId, branchRouteHash, sessionKey, status, priority DESC, createdAt ASC);
+
+CREATE TABLE IF NOT EXISTS companion_thought_jobs (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  sessionKey TEXT NOT NULL,
+  eventIdsJson TEXT NOT NULL,
+  sourceSnapshotHash TEXT NOT NULL,
+  roleSnapshotJson TEXT NOT NULL,
+  scheduledFor TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'retry', 'waiting_model', 'completed', 'failed', 'cancelled')),
+  attemptCount INTEGER NOT NULL DEFAULT 0,
+  maxAttempts INTEGER NOT NULL DEFAULT 3,
+  quotaReservedCount INTEGER NOT NULL DEFAULT 0,
+  nextRunAt TEXT NOT NULL,
+  leaseOwner TEXT,
+  leaseUntil TEXT,
+  lastErrorCode TEXT,
+  promptTokens INTEGER,
+  completionTokens INTEGER,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  completedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_thought_jobs_session
+  ON companion_thought_jobs(space, roleCardId, threadId, branchRouteHash, sessionKey);
+CREATE INDEX IF NOT EXISTS idx_companion_thought_jobs_ready
+  ON companion_thought_jobs(space, status, nextRunAt, leaseUntil);
+
+CREATE TABLE IF NOT EXISTS companion_thoughts (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  roleCardId TEXT NOT NULL,
+  sourceThreadId TEXT NOT NULL,
+  sourceBranchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  jobId TEXT NOT NULL,
+  eventIdsJson TEXT NOT NULL,
+  sourceMessageIdsJson TEXT NOT NULL,
+  sourceSnapshotHash TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'stale_source', 'soft_deleted')),
+  deliveryStatus TEXT NOT NULL DEFAULT 'pending' CHECK (deliveryStatus IN ('pending', 'reserved', 'delivered')),
+  reservationId TEXT,
+  reservationMessageId TEXT,
+  reservedAt TEXT,
+  deliveredAt TEXT,
+  deliveredMessageId TEXT,
+  deletedAt TEXT,
+  idempotencyKey TEXT NOT NULL UNIQUE,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  FOREIGN KEY (sourceThreadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (jobId) REFERENCES companion_thought_jobs(id) ON DELETE CASCADE,
+  FOREIGN KEY (reservationMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL,
+  FOREIGN KEY (deliveredMessageId) REFERENCES ai_messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_companion_thoughts_role
+  ON companion_thoughts(roleCardId, status, createdAt DESC);
+CREATE INDEX IF NOT EXISTS idx_companion_thoughts_delivery
+  ON companion_thoughts(sourceThreadId, sourceBranchRouteHash, status, deliveryStatus, priority DESC, createdAt DESC);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

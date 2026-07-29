@@ -79,6 +79,10 @@
 | 记忆导入/导出 | 默认导出 Pixory Memory Package v2（JSON，确定性导入；兼容旧版 Markdown/v1 与外部文本审查）；包只包含当前会话可见 scope 的 Claim、关联账本事件与证据，避免带出其他线程记忆；原生导入先 pending、失败可复用原分支幂等续跑，导入消息 ID 映射后保留 Claim 证据引用并跳过悬空消息引用，已删除/抑制 Claim 由本地投影、删除证书和包内墓碑共同拦截，Claim/episode/关系/profile 随会话一起完整回滚；外部审核画像也同步进入 v1 profile 账本，外部回滚按 import session 精确隔离 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `src/ai/memory/nativeMemoryPackage*` |
 | 深度记忆 | v1 事件账本 + Working/Confirmed/Archive 三车道；每条消息即时写 current-turn observation，回答落盘后本地轻抽取，重维护异步批处理；Claim/episode/关系/profile 可从账本重建；无 Embedding 时 FTS/词面检索可用且无相关证据不注入，Confirmed 容量回收、冲突/安全边界、用户确认锁定和 ContextPlan 可追溯；稳定提示仅注入 Confirmed，当前轮 forget/correction 会排除目标 Claim，分支 Claim 仅在当前祖先 lineage 可见；看板仅展示长期记住/最近对话并支持真实编辑、确认、删除、作用域修改 | `aiMemory*`, `src/ai/memory/*`, `AiMemoryBoardScreen` |
 | 陪伴事件与时间连续性 | 已实现，V1 核心 | 当前完成的用户消息先经无网络本地观察器生成追加式 Companion Event，保存精确消息版本、证据跨度、speech mode、置信度、分支路线和幂等键；引用、否定、假设、玩笑、角色扮演与第三方转述不会形成高影响事件；明确边界/纠正当前轮进入动态约束。时间短语按原时区保存 UTC 范围和本地 date key，共同约定形成 branch-scoped OpenLoop；完成、取消、“别再问”及默认期限可结算，每项最多主动提及两次且未回应后静默七天；每轮最多一个旧事项作为可选动态话题，不发送主动消息或通知。含混强信号才创建带 SQLite lease 的后台丰富任务，无模型、离线或 Personal 未授权时本地路径继续工作 | `src/ai/companion/`, `aiChatService`, `companion_events`, `companion_temporal_anchors`, `companion_open_loops`, `companion_runtime_jobs` |
+| 关系投影与修复 | 已实现，V1 核心 | 以追加式事件重建线程/角色双层投影，内部维护好感、信任、紧张、亲密和交往阶段，但不向用户暴露数值；明确边界和事实纠正即时生效，高影响的接受、冲突、越界、伤害、道歉与修复采用证据门禁、幅度上限和冷却，修复后的行为约束会进入动态提示。设置页可查看来源、忽略误判、执行可审计重置或明确清空；重置事件之后的投影才能继续参与上下文 | `companionProjection*`, `companionAffectPolicy`, `companionRelationshipPolicy`, `companionRepair*`, `CompanionRuntimeManagerScreen` |
+| 角色梦境 | 已实现，V1 核心 | 本地宽候选检测覆盖梦中、共同入睡、角色入睡、晚安与角色扮演睡眠场景；明确睡眠质量/产品讨论本地零成本排除，其余候选只进行一次结构化语义分类，再使用持久化确定性 roll 按 55%/40%/30%/10%/10% 概率决定。每角色至少间隔 50 个完整问答轮、北京时间每天最多两次；手动“做个梦”先确认。任务具备 lease、取消、重试、幂等、消息版本/分支/空间复核和 Personal 远程授权边界，分类与生成 token 仅记录数量。生成中/失败/完成轻提示可跨重启恢复；完成后聊天页显示横向入口，阅读器使用 9:13 纵向分页梦境卡，最后一页只有用户明确选择“是”才以低权限、非事实、非记忆、非预言材料进入同线程同分支后续上下文 | `src/ai/dream/`, `DreamChatCard`, `DreamDeckPager`, `DreamReaderScreen`, `companion_dream_*` |
+| 离线思绪 | 已实现，V1 核心 | 只在完整问答后由本地规则识别脆弱、受伤、和解、道歉、赞美与冷淡事件，十分钟会话窗口统一批量生成；每角色北京时间每天最多三条，允许模型返回零条。思绪是给 AI 的一次性低权限短念头，不在聊天页直接展示；选择时原子预留，生成失败可释放，同一回复重试复用，只有回复完成且来源消息/分支仍有效才消费，之后不再注入。任务具备 lease、退避、幂等、Personal 隔离和内容无关 token 计量，用户可在“内心独白”中查看、软删除和恢复 | `src/ai/thought/`, `companionArtifactService`, `CompanionInnerLifeScreen`, `companion_thought_*` |
+| 内心产物仲裁 | 已实现，V1 核心 | 每轮最多选择一个日记/梦境/思绪动态段；用户明确允许的同线程同分支梦境或日记优先于待消费思绪，全部使用统一 artifact contract，并标注为不可信、低权限、非事实/非指令内容。跨空间移动按依赖顺序保留投影、梦境、思绪、任务与来源版本，运行中任务清 lease 后恢复，源角色删除时清理孤立计数与角色投影 | `companionArtifactAdapter`, `companionArtifactService`, `aiThreadRepository`, `aiChatService` |
 | RAG/材料 | thread material、IP snapshot、knowledge base、keyword/hybrid retrieval、citation 对齐 | `aiDocumentService`, `aiRetrievalService`, `aiKnowledgeRepository` |
 | 文档解析 | manual text、txt、markdown、pdf、docx；chunking、reader | `documentParsers/`, `AiDocumentReaderScreen` |
 | 文档生命周期 | 已支持手动文本/TXT/MD/PDF/DOCX 导入、受管目录复制、解析重试、切片、embedding、线程/IP/知识库归属、检索引用、阅读、跨空间移动和删除；尚无统一收件箱、全局跨资料搜索、内容 hash/版本、来源更新检测、同步状态和完整备份恢复 | `aiDocumentService`, `aiDocumentRepository`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen` |
@@ -87,7 +91,7 @@
 | 分支 | edit/regenerate 分支、message versions、branch route metadata、分支树、采用主线；创作路线树入口位于会话设置的当前会话模块；Android 路线树避免全画布 SVG/bitmap，长路线用局部连线、限量网格与可见区渲染降低卡顿和闪退风险 | `aiBranching`, `aiBranchTreeService`, `AiBranchTreeScreen`, `BranchTreeCanvas`, `AiSessionConfigScreen` |
 | 聊天搜索 | 当前路线 local exact/fuzzy 搜索，定位回聊天 | `AiChatSearchScreen`, `aiThreadRepository` |
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
-| Usage | provider usage 归一化、cached token ratio、线程/总览用量 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary` |
+| Usage | provider usage 归一化、cached token ratio、线程/总览用量；梦境分类/生成和思绪生成分别保存 content-free prompt/completion token 数，不落库 prompt 或模型正文副本 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary`, `companion_dream_jobs`, `companion_thought_jobs` |
 | 消息渲染 | Markdown (全新标记解析器防注入)、代码块、表格、原生图片附件画廊展示、HTML/CSS WebView、数学块、citation、thinking block、render cache | `AiMessageContent`, `AiMessageBubble`, `AiMarkdownReader` |
 | AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；聊天消息与日记按北京时间自然日插入独立 `dateSeparator` 列表项，当天/前一天显示“今天/昨天”，每个自然日只出现一次且不会进入 reasoning 或正文节点；聊天首屏将消息页与非关键模型/外观/记录读取分阶段加载，并合并模型图标与名称查询，返回工作台优先显示内存快照再后台刷新；聊天页支持左侧菜单按钮和全屏右滑打开综合记录抽屉，顶部搜索靠近抽屉入口，右侧提供会话设置与聊天气泡形态的新会话入口；输入框左下角模型图标右侧提供小灯泡 `AI 帮答` 入口，弹出固定高度的底部阅读器式候选面板，支持短句/长句切换、刷新保留历史页与左右翻页；聊天输入区首次进入时以 420ms 淡入并从下方轻移 20px，动画层使用页面同色合成底以避免 Android elevation 阴影产生黑色中间帧；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
 
@@ -219,6 +223,7 @@
 | 领域 | 代表测试 |
 | --- | --- |
 | AI 聊天/Prompt/缓存/RAG/记忆/角色卡 | `tests/ai-*.test.cjs`, `tests/ai-chat-streaming-tail-policy.test.cjs`, `tests/ai-chat-streaming-tail-contract.test.cjs`, `tests/ai-chat-streaming-tail-render-contract.test.cjs`, `tests/ai-chat-streaming-runtime-policy.test.cjs` |
+| 陪伴运行时/关系/梦境/思绪 | `tests/companion-*.test.cjs`, `tests/ai-conversation-coverage-repository-integration.test.cjs`, `tests/ai-thread-space-move-repository-integration.test.cjs` |
 | 资产导入与重复检测 | `asset-duplicate-v1-policy.test.cjs`, `package-import-policy.test.cjs` |
 | 批量整理 | `batch-organize-ux-policy.test.cjs` |
 | 隐私系统 | `privacy-system-policy.test.cjs`, `final-personal-system-policy.test.cjs`, `route-space-policy.test.cjs` |

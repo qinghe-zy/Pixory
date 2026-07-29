@@ -86,9 +86,9 @@ function candidate(content = '明天下午告诉你结果。') {
   }).accepted.find((item) => item.category === 'commitment');
 }
 
-test('V52 declares the Stage B ledger and is applied after V51', () => {
+test('V52 declares the Stage B ledger and remains ordered before V53', () => {
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.equal(schema.DATABASE_VERSION, 52);
+  assert.equal(schema.DATABASE_VERSION, 53);
   for (const table of ['companion_events', 'companion_temporal_anchors', 'companion_open_loops', 'companion_runtime_jobs', 'companion_context_traces']) {
     assert.match(schema.MIGRATION_STATEMENTS_V52, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
@@ -96,6 +96,7 @@ test('V52 declares the Stage B ledger and is applied after V51', () => {
   assert.match(schema.MIGRATION_STATEMENTS_V52, /idx_companion_events_visible/);
   assert.match(schema.MIGRATION_STATEMENTS_V52, /idx_companion_runtime_jobs_ready/);
   assert.ok(dbSource.indexOf('MIGRATION_STATEMENTS_V52') > dbSource.indexOf('MIGRATION_STATEMENTS_V51'));
+  assert.ok(dbSource.indexOf('MIGRATION_STATEMENTS_V53') > dbSource.indexOf('MIGRATION_STATEMENTS_V52'));
 });
 
 test('event append is idempotent and selected-route reads invalidate edited source versions', async () => {

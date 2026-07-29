@@ -77,6 +77,32 @@ test('current-turn commitments are not immediately echoed as an optional reminde
   assert.equal(plan.dynamicSegments.some((segment) => segment.type === 'temporal_open_loops'), false);
 });
 
+test('an unresolved prior repair suppresses optional old topics and emits only behavioral stance', () => {
+  const projection = {
+    id: 'projection-a', space: 'normal', scopeType: 'branch_overlay', roleCardId: 'role-a', threadId: 'thread-a',
+    branchRouteHash: 'route-a', lineageVersion: 4, basedOnEventSequence: 9,
+    affect: { affection: 12, security: -5, arousal: 3, agency: -8 }, relationship: {},
+    stance: { warmth: 'medium', reassurance: 'light', energy: 'steady', assertiveness: 'low', playfulness: 'off', intimacy: 'familiar', proximity: 'neutral', responseLength: 'short', primaryIntent: 'repair', optionalTopicId: null, label: 'repairing' },
+    policyVersion: 'affect-policy-v1+relationship-policy-v1', status: 'active', createdAt: '2026-07-29T08:00:00Z', updatedAt: '2026-07-29T08:00:00Z',
+  };
+  const repair = {
+    id: 'repair-a', sourceMessageId: 'message-old', sourceEventId: 'event-old', constraintText: '别再叫我小朋友',
+    state: 'observing', updatedAt: '2026-07-29T08:00:00Z',
+  };
+  const plan = compiler.buildCompanionContextPlan({
+    branchRouteHash: 'route-a', currentMessageId: 'message-current', currentRound: 22,
+    events: [], lineageVersion: 4, now: '2026-07-29T09:00:00.000Z', openLoops: [loop()],
+    projection, repairs: [repair], space: 'normal', threadId: 'thread-a',
+  });
+  assert.equal(plan.selectedRepairId, 'repair-a');
+  assert.equal(plan.selectedOpenLoopId, null);
+  assert.equal(plan.stanceLabel, 'repairing');
+  assert.equal(plan.dynamicSegments.filter((segment) => segment.type === 'temporal_open_loops').length, 0);
+  const runtime = plan.dynamicSegments.find((segment) => segment.type === 'companion_runtime').text;
+  assert.match(runtime, /未完成修复/);
+  assert.doesNotMatch(runtime, /affection|security|arousal|agency|12|-5/);
+});
+
 test('companion event and loop changes do not alter stable prefix hash or memory epoch', () => {
   const base = {
     memoryEpoch: 'memory-epoch-1', systemPrompt: '你是稳定角色。', userMessage: '今天怎么样？', stableMemoryPrefix: '用户确认偏好：简洁。',
@@ -136,4 +162,29 @@ test('enrichment commit guard rejects expired or taken leases and edited sources
   assert.equal(enrichment.validateEnrichmentCommitGuard({ ...base, workerId: 'worker-b' }), 'lease_lost');
   assert.equal(enrichment.validateEnrichmentCommitGuard({ ...base, commitAt: '2026-07-29T08:05:00.000Z' }), 'lease_lost');
   assert.equal(enrichment.validateEnrichmentCommitGuard({ ...base, message: { ...base.message, versionHash: 'edited' } }), 'source_invalid');
+});
+
+test('semantic repair verifier accepts only the exact boolean envelope', () => {
+  const repair = require(path.join(root, 'src/ai/companion/companionRepairVerification.ts'));
+  assert.deepEqual(repair.parseCompanionRepairVerification('{"violated":false}'), { violated: false });
+  assert.deepEqual(repair.parseCompanionRepairVerification('{"violated":true}'), { violated: true });
+  assert.equal(repair.parseCompanionRepairVerification('{"violated":"false"}'), null);
+  assert.equal(repair.parseCompanionRepairVerification('{"violated":false,"reason":"x"}'), null);
+  assert.equal(repair.parseCompanionRepairVerification('not-json'), null);
+});
+
+test('awareness off excludes historical projections while preserving explicit current boundary', () => {
+  const plan = compiler.buildCompanionContextPlan({
+    awarenessEnabled: false,
+    branchRouteHash: 'route-a', currentMessageId: 'message-current', currentRound: 20,
+    events: [event()], lineageVersion: 4, now: '2026-07-29T08:00:00.000Z', openLoops: [loop()],
+    projection: { stance: { label: 'repairing' }, policyVersion: 'v' },
+    repairs: [{ id: 'repair-old', sourceMessageId: 'old', state: 'observing', constraintText: 'old constraint' }],
+    space: 'normal', threadId: 'thread-a',
+  });
+  const text = plan.dynamicSegments.map((segment) => segment.text).join('\n');
+  assert.match(text, /不得再使用冲突称呼或表达/);
+  assert.doesNotMatch(text, /old constraint|当前回应姿态|待跟进话题/);
+  assert.equal(plan.projectionVersion, null);
+  assert.equal(plan.stanceLabel, null);
 });

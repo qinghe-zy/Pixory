@@ -180,7 +180,15 @@ export const claudeProvider: AiProviderAdapter = {
         signal: input.signal,
         body: JSON.stringify({
           model: input.modelId,
-          max_tokens: 2048,
+          max_tokens: input.maxOutputTokens ?? 2048,
+          ...(input.responseFormat === 'json_object' ? {
+            output_config: {
+              format: {
+                type: 'json_schema',
+                schema: input.responseJsonSchema ?? { type: 'object' },
+              },
+            },
+          } : {}),
           stream: true,
           system: buildClaudeSystem(input),
           messages: [

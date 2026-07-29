@@ -638,9 +638,35 @@ export interface AiThreadExportSnapshot {
   companionOpenLoops?: CompanionSnapshotRow[];
   companionRuntimeJobs?: CompanionSnapshotRow[];
   companionContextTraces?: CompanionSnapshotRow[];
+  companionProjectionSnapshots?: CompanionSnapshotRow[];
+  companionAffectiveObservations?: CompanionSnapshotRow[];
+  companionRepairs?: CompanionSnapshotRow[];
+  companionDreamScenes?: CompanionSnapshotRow[];
+  companionDreamSeeds?: CompanionSnapshotRow[];
+  companionDreamJobs?: CompanionSnapshotRow[];
+  companionDreams?: CompanionSnapshotRow[];
+  companionRoleRoundReceipts?: CompanionSnapshotRow[];
+  companionThoughtEvents?: CompanionSnapshotRow[];
+  companionThoughtJobs?: CompanionSnapshotRow[];
+  companionThoughts?: CompanionSnapshotRow[];
 }
 
 type CompanionSnapshotRow = Record<string, string | number | null>;
+
+async function insertCompanionSnapshotRow(
+  db: SQLiteDatabase,
+  table: string,
+  row: CompanionSnapshotRow,
+  overrides: CompanionSnapshotRow = {},
+  conflict: 'error' | 'ignore' = 'error',
+): Promise<void> {
+  const imported = { ...row, ...overrides };
+  const columns = Object.keys(imported);
+  await db.runAsync(
+    `INSERT${conflict === 'ignore' ? ' OR IGNORE' : ''} INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+    ...columns.map((column) => imported[column]),
+  );
+}
 
 function validateUserProfileScope(input: { boundIpId?: number | null; boundThreadId?: string | null }): void {
   if (input.boundIpId != null && input.boundThreadId != null) {
@@ -1523,6 +1549,54 @@ export const aiThreadRepository = {
       'SELECT * FROM companion_context_traces WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
       threadId
     );
+    const companionProjectionSnapshots = await db.getAllAsync<CompanionSnapshotRow>(
+      `SELECT * FROM companion_projection_snapshots
+       WHERE (threadId = ? AND scopeType IN ('branch_overlay', 'thread'))
+          OR (scopeType = 'role_base' AND roleCardId = ?)
+       ORDER BY createdAt ASC, id ASC`,
+      threadId,
+      thread.roleCardId ?? '',
+    );
+    const companionAffectiveObservations = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_affective_observations WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRepairs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_repairs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamScenes = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_scenes WHERE threadId = ? ORDER BY openedAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamSeeds = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_seeds WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreamJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dream_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionDreams = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_dreams WHERE sourceThreadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionRoleRoundReceipts = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_role_round_receipts WHERE threadId = ? ORDER BY roundNumber ASC, id ASC',
+      threadId
+    );
+    const companionThoughtEvents = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thought_events WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionThoughtJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thought_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const companionThoughts = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM companion_thoughts WHERE sourceThreadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
     const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
       `SELECT ai_continuity_import_blocks.*
        FROM ai_continuity_import_blocks
@@ -1542,10 +1616,21 @@ export const aiThreadRepository = {
       branchRouteMetadata,
       citations,
       companionContextTraces,
+      companionAffectiveObservations,
+      companionDreamJobs,
+      companionDreamScenes,
+      companionDreamSeeds,
+      companionDreams,
       companionEvents,
       companionOpenLoops,
+      companionProjectionSnapshots,
+      companionRepairs,
+      companionRoleRoundReceipts,
       companionRuntimeJobs,
       companionTemporalAnchors,
+      companionThoughtEvents,
+      companionThoughtJobs,
+      companionThoughts,
       continuityImportBlocks,
       continuityImportSessions,
       favorites,
@@ -1814,6 +1899,113 @@ export const aiThreadRepository = {
         trace.selectedTopicType ?? null, trace.observerDurationMs, trace.compilerDurationMs,
         trace.reasonCodesJson, trace.createdAt
       );
+    }
+
+    for (const projection of snapshot.companionProjectionSnapshots ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_projection_snapshots', projection, {
+        space: targetSpace,
+        threadId: projection.scopeType === 'role_base' ? null : snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      }, 'ignore');
+    }
+
+    for (const observation of snapshot.companionAffectiveObservations ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_affective_observations', observation, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const repair of snapshot.companionRepairs ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_repairs', repair, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const scene of snapshot.companionDreamScenes ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dream_scenes', scene, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const seed of snapshot.companionDreamSeeds ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dream_seeds', seed, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const job of snapshot.companionDreamJobs ?? []) {
+      const importedStatus = job.status === 'running' || job.status === 'waiting_model'
+        ? 'retry'
+        : job.status;
+      await insertCompanionSnapshotRow(db, 'companion_dream_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        status: importedStatus,
+        leaseOwner: null,
+        leaseUntil: null,
+        quotaReserved: importedStatus === 'retry' ? 0 : job.quotaReserved,
+      });
+    }
+
+    for (const dream of snapshot.companionDreams ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_dreams', dream, {
+        space: targetSpace,
+        sourceThreadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const receipt of snapshot.companionRoleRoundReceipts ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_role_round_receipts', receipt, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const event of snapshot.companionThoughtEvents ?? []) {
+      await insertCompanionSnapshotRow(db, 'companion_thought_events', event, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+      });
+    }
+
+    for (const job of snapshot.companionThoughtJobs ?? []) {
+      const importedStatus = job.status === 'running' || job.status === 'waiting_model'
+        ? 'retry'
+        : job.status;
+      await insertCompanionSnapshotRow(db, 'companion_thought_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        status: importedStatus,
+        leaseOwner: null,
+        leaseUntil: null,
+        quotaReservedCount: importedStatus === 'retry' ? 0 : job.quotaReservedCount,
+      });
+    }
+
+    for (const thought of snapshot.companionThoughts ?? []) {
+      const resetReservation = thought.deliveryStatus === 'reserved';
+      await insertCompanionSnapshotRow(db, 'companion_thoughts', thought, {
+        space: targetSpace,
+        sourceThreadId: snapshot.thread.id,
+        roleCardId: snapshot.thread.roleCardId,
+        deliveryStatus: resetReservation ? 'pending' : thought.deliveryStatus,
+        reservationId: resetReservation ? null : thought.reservationId,
+        reservationMessageId: resetReservation ? null : thought.reservationMessageId,
+        reservedAt: resetReservation ? null : thought.reservedAt,
+      });
     }
 
     for (const citation of snapshot.citations) {

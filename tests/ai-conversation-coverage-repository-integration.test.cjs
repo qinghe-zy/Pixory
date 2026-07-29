@@ -135,7 +135,7 @@ function insertMessage(db, input) {
 test('V51 exact summary provenance remains declared and ordered before later migrations', () => {
   const schema = fs.readFileSync(path.join(root, 'src/database/schema.ts'), 'utf8');
   const dbSource = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
-  assert.match(schema, /DATABASE_VERSION = 52/);
+  assert.match(schema, /DATABASE_VERSION = 53/);
   assert.match(schema, /MIGRATION_STATEMENTS_V51/);
   for (const field of [
     'sourceMessageIdsJson',
@@ -163,7 +163,7 @@ test('summary repository round-trips provenance and excludes stale or sibling-br
     role: 'assistant',
     branchRootMessageId: 'branch-root',
     branchVersionIndex: 2,
-    createdAt: '2026-07-29T00:00:02.000Z',
+    createdAt: '2099-07-29T00:00:02.000Z',
   });
 
   const created = await repository.createSummarySegment(db, {
@@ -204,7 +204,7 @@ test('summary repository round-trips provenance and excludes stale or sibling-br
     sourceSegmentIdsJson, sourceMessageIdsJson, branchRouteHash, lineageVersion,
     sourceMessageVersionHash, quality, status, createdAt, updatedAt
   ) VALUES (?, 'thread-1', 'normal', 'compressed', ?, ?, 1, '[]', '["m1","branch-root"]', ?, 7, 'hash', 'model', 'active', ?, ?)`)
-    .run('summary-sibling', 'sibling', 'branch-root', 'route-sibling', '2026-07-29T00:00:02.000Z', '2026-07-29T00:00:02.000Z');
+    .run('summary-sibling', 'sibling', 'branch-root', 'route-sibling', '2099-07-29T00:00:02.000Z', '2099-07-29T00:00:02.000Z');
 
   const main = await repository.listSummarySegments(db, 'thread-1', []);
   assert.deepEqual(main.map((item) => item.id), ['summary-active']);

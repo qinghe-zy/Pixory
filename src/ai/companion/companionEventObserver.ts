@@ -148,6 +148,14 @@ function collectMatches(text: string): EventMatch[] {
     const match = firstMatch(text, pattern);
     if (match) matches.push({ category: 'interaction', confidence, match, subtype, payload: {} });
   }
+  const vulnerableDisclosure = firstMatch(text, /我[^。！？]{0,36}(?:害怕|恐惧|撑不住|很孤独|压力很大|秘密|只敢告诉你|没告诉过别人)[^。！？]{0,36}/u);
+  if (vulnerableDisclosure) matches.push({ category: 'relationship', confidence: 0.82, intensity: 0.85, match: vulnerableDisclosure, subtype: 'vulnerable_disclosure', payload: {} });
+  const conflict = firstMatch(text, /你[^。！？]{0,24}(?:让我|令我)[^。！？]{0,18}(?:受伤|伤心|很难过|生气)|(?:我们|刚才)[^。！？]{0,20}(?:吵架|争执|闹翻)/u);
+  if (conflict) matches.push({ category: 'relationship', confidence: 0.86, intensity: 0.9, match: conflict, subtype: 'conflict', payload: {} });
+  const rejection = firstMatch(text, /(?:我们就到这里|别再靠近我|不想再见你|不要再联系我|离我远点)/u);
+  if (rejection) matches.push({ category: 'relationship', confidence: 0.9, intensity: 0.9, match: rejection, subtype: 'rejection', payload: {} });
+  const reconciliation = firstMatch(text, /(?:我原谅你|我们和好|没关系了|不生你的气了|重新开始)/u);
+  if (reconciliation) matches.push({ category: 'relationship', confidence: 0.86, intensity: 0.85, match: reconciliation, subtype: 'reconciliation', payload: {} });
   const apology = firstMatch(text, /(?:对不起|抱歉|是我不好|sorry)/iu);
   if (apology) matches.push({ category: 'relationship', confidence: 0.82, match: apology, subtype: 'apology', payload: {} });
   return matches.slice(0, 12);

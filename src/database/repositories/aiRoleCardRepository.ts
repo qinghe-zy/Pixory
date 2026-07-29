@@ -300,6 +300,17 @@ export const aiRoleCardRepository = {
         roleCardId
       );
       await db.runAsync(
+        `DELETE FROM companion_projection_snapshots
+         WHERE space = ? AND roleCardId = ? AND scopeType = 'role_base'`,
+        space,
+        roleCardId,
+      );
+      await db.runAsync(
+        'DELETE FROM companion_role_round_counters WHERE space = ? AND roleCardId = ?',
+        space,
+        roleCardId,
+      );
+      await db.runAsync(
         'DELETE FROM ai_role_cards WHERE id = ? AND space = ?',
         roleCardId,
         space
