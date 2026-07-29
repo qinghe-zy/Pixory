@@ -10,8 +10,8 @@ import Reanimated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-
 import { metrics, radius, shadows, spacing } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
@@ -54,25 +54,34 @@ export function AiScrollToLatestButton({
   visible,
   onPress,
 }: AiScrollToLatestButtonProps) {
-  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const opacity = useRef(new Animated.Value(visible ? 0.85 : 0)).current;
   const [mounted, setMounted] = useState(visible);
   const phase = useSharedValue(0);
+  const rotation = useSharedValue(0);
+  const arrowBounce = useSharedValue(0);
   const modeProgress = useSharedValue(generating ? 1 : 0);
   const reducedMotion = useReducedMotion();
 
   const arrowStyle = useAnimatedStyle(() => ({
     opacity: 1 - modeProgress.value,
+    transform: [{ translateY: arrowBounce.value * 2.5 }],
   }));
   const dotsStyle = useAnimatedStyle(() => ({
     opacity: modeProgress.value,
   }));
+  const haloStyle = useAnimatedStyle(() => {
+    return {
+      opacity: modeProgress.value * 0.7,
+      transform: [{ rotateZ: `${rotation.value}deg` }],
+    };
+  });
 
   useEffect(() => {
     if (visible) {
       setMounted(true);
     }
     const animation = Animated.timing(opacity, {
-      toValue: visible ? 1 : 0,
+      toValue: visible ? 0.85 : 0,
       duration: visible ? 180 : 150,
       easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
       useNativeDriver: true,
@@ -96,19 +105,52 @@ export function AiScrollToLatestButton({
 
   useEffect(() => {
     cancelAnimation(phase);
+    cancelAnimation(rotation);
+    cancelAnimation(arrowBounce);
     phase.value = 0;
-    if (generating && visible && !reducedMotion) {
-      phase.value = withRepeat(
-        withTiming(FULL_DOT_CYCLE, {
-          duration: 960,
-          easing: ReanimatedEasing.linear,
-        }),
-        -1,
-        false,
-      );
+    rotation.value = 0;
+    
+    if (visible && !reducedMotion) {
+      if (generating) {
+        // generating animations
+        arrowBounce.value = withTiming(0, { duration: 150 });
+        phase.value = withRepeat(
+          withTiming(FULL_DOT_CYCLE, {
+            duration: 960,
+            easing: ReanimatedEasing.linear,
+          }),
+          -1,
+          false,
+        );
+        rotation.value = withRepeat(
+          withTiming(360, {
+            duration: 3000,
+            easing: ReanimatedEasing.linear,
+          }),
+          -1,
+          false,
+        );
+      } else {
+        // idle arrow bounce
+        arrowBounce.value = withRepeat(
+          withTiming(1, {
+            duration: 1000,
+            easing: ReanimatedEasing.inOut(ReanimatedEasing.sin),
+          }),
+          -1,
+          true,
+        );
+      }
+    } else {
+      arrowBounce.value = withTiming(0, { duration: 150 });
     }
-    return () => cancelAnimation(phase);
-  }, [generating, phase, reducedMotion, visible]);
+    
+    return () => {
+      cancelAnimation(phase);
+      cancelAnimation(rotation);
+      cancelAnimation(arrowBounce);
+    };
+  }, [generating, phase, rotation, arrowBounce, reducedMotion, visible]);
 
   if (!mounted) {
     return null;
@@ -121,6 +163,14 @@ export function AiScrollToLatestButton({
         onPress={onPress}
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       >
+        <Reanimated.View pointerEvents="none" style={[styles.haloContainer, haloStyle]}>
+          <LinearGradient
+            colors={['#FF57B9', '#A704FD', '#33D0FF', '#FF57B9']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Reanimated.View>
         <View style={styles.surface}>
           <Reanimated.View pointerEvents="none" style={[styles.iconLayer, arrowStyle]}>
             <Ionicons
@@ -148,8 +198,9 @@ export function AiScrollToLatestButton({
 const styles = StyleSheet.create({
   fadeWrap: {
     position: 'absolute',
-    right: spacing[4],
+    right: spacing[1.5],
     zIndex: 5,
+    opacity: 0.85,
   },
   button: {
     alignItems: 'center',
@@ -158,8 +209,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: metrics.minTouchSize,
   },
+  haloContainer: {
+    borderRadius: radius.pill,
+    height: metrics.scrollToLatestVisualSize + 4,
+    left: (metrics.minTouchSize - metrics.scrollToLatestVisualSize) / 2 - 2,
+    overflow: 'hidden',
+    position: 'absolute',
+    top: (metrics.minTouchSize - metrics.scrollToLatestVisualSize) / 2 - 2,
+    width: metrics.scrollToLatestVisualSize + 4,
+  },
   surface: {
-    ...shadows.xs,
+    ...shadows.floating,
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
     borderColor: aiLightColors.hairline,

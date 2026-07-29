@@ -6743,7 +6743,7 @@ export function AiChatScreen({
             styles.screenContent,
             {
               paddingTop:
-                statusBarHeight + layout.pageTopOffset - spacing[2],
+                statusBarHeight + spacing[1.5],
             },
           ]}
           {...swipeDrawerPanResponder.panHandlers}
@@ -7420,7 +7420,7 @@ const styles = StyleSheet.create({
   messageScrollContent: {
     flexGrow: 1,
     gap: spacing[2],
-    paddingBottom: spacing[4],
+    paddingBottom: spacing[2],
     paddingTop: spacing[3],
   },
   starterOverlay: {
