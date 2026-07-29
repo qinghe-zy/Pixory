@@ -111,7 +111,7 @@ test('AI chat keeps the composer above Android keyboard with a scoped avoiding h
   assert.match(chat, /enabled=\{Platform\.OS === 'android'\}/);
   assert.match(chat, /style=\{styles\.keyboardAvoidingHost\}/);
   assert.match(chat, /keyboardAvoidingHost:\s*\{[\s\S]{0,80}flex:\s*1/);
-  assert.match(chat, /<View\s+style=\{\[styles\.screenContent,\s*\{ paddingTop: statusBarHeight \+ layout\.pageTopOffset \}\]\}[\s\S]{0,140}\{\.\.\.swipeDrawerPanResponder\.panHandlers\}/);
+  assert.match(chat, /paddingTop:\s*statusBarHeight \+ layout\.pageTopOffset - spacing\[2\]/);
   assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /editingUserMessageIdRef/);
   assert.doesNotMatch(chat, /Keyboard\.addListener\('keyboardDidShow'/);
@@ -461,8 +461,10 @@ test('AI regenerate switches back to the newest generated message version', () =
   assert.match(regenerateBlock, /showLatestMessageVersion\(targetMessageId\)/);
 });
 
-test('AI message header shows participant identity and keeps action ordering intact', () => {
+test('AI message header keeps participant identity while menu owns the compact time', () => {
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const contextMenu = read('src/components/ai/AiMessageContextMenu.tsx');
   const actionRow = /<View style=\{\[styles\.actionRow[\s\S]*?<\/View>/m.exec(bubble)?.[0] ?? '';
   const copyIndex = actionRow.indexOf('accessibilityLabel="复制消息"');
   const editIndex = actionRow.indexOf('accessibilityLabel="重写消息"');
@@ -479,14 +481,12 @@ test('AI message header shows participant identity and keeps action ordering int
   assert.match(bubble, /formatAiFullMinute/);
   assert.match(bubble, /const headerTime = formatAiFullMinute/);
   assert.match(bubble, /const messageTimestamp = message\.completedAt \?\? message\.updatedAt \?\? message\.createdAt/);
-  assert.match(bubble, /const footerTime = headerVisible/);
-  assert.match(bubble, /isUser[\s\S]{0,80}formatAiMessageMinute\(message\.completedAt \?\? message\.updatedAt\)[\s\S]{0,80}formatAiFullMinute\(messageTimestamp\)/);
   assert.match(bubble, /styles\.headerRow/);
   assert.match(bubble, /styles\.headerName/);
   assert.match(bubble, /styles\.headerTime/);
-  assert.match(bubble, /formatAiMessageMinute/);
   assert.match(bubble, /messageTimestamp/);
-  assert.match(bubble, /styles\.messageTime/);
+  assert.match(chat, /timeLabel: formatAiMessageMinute/);
+  assert.match(contextMenu, /styles\.timeRow/);
 });
 
 test('AI failed streaming state is not overwritten by a final generating patch', () => {
@@ -1509,12 +1509,14 @@ test('AI chat polish avoids redundant scroll state updates and clears transient 
 test('AI screens use shared time formatting helpers', () => {
   const formatter = read('src/utils/aiTimeFormatters.ts');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
+  const chat = read('src/screens/AiChatScreen.tsx');
   const board = read('src/screens/AiMemoryBoardScreen.tsx');
 
   assert.match(formatter, /formatAiMessageMinute/);
   assert.match(formatter, /formatAiFullMinute/);
   assert.match(formatter, /formatAiHistoryMinute/);
-  assert.match(bubble, /formatAiMessageMinute/);
+  assert.match(chat, /formatAiMessageMinute/);
+  assert.match(bubble, /formatAiFullMinute/);
   assert.doesNotMatch(bubble, /function formatMessageMinute/);
   assert.doesNotMatch(board, /formatAiFullMinute/);
   assert.doesNotMatch(board, /function formatMinute/);

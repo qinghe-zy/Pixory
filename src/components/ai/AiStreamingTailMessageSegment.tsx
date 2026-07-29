@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import type { AiStreamBlock } from "../../ai/aiStreamingBlockSplitter";
 import {
@@ -16,6 +16,7 @@ type AiStreamingTailMessageSegmentProps = {
   citations?: ReactNode;
   edge: AiTailSegmentEdge;
   footer?: ReactNode;
+  onLongPress?: (pageX: number, pageY: number) => void;
   onMeasured: (blockId: string, height: number) => void;
 };
 
@@ -40,12 +41,26 @@ export function AiStreamingTailMessageSegment({
   citations,
   edge,
   footer,
+  onLongPress,
   onMeasured,
 }: AiStreamingTailMessageSegmentProps) {
   const lane = blocks[0]?.lane ?? "content";
   if (lane === "reasoning") {
     return (
-      <View style={styles.reasoningRow}>
+      <Pressable
+        accessibilityHint={onLongPress ? "长按打开消息操作" : undefined}
+        delayLongPress={500}
+        onLongPress={
+          onLongPress
+            ? (event) =>
+                onLongPress(
+                  event.nativeEvent.pageX,
+                  event.nativeEvent.pageY,
+                )
+            : undefined
+        }
+        style={styles.reasoningRow}
+      >
         {blocks.map((block) => (
           <AiMeasuredStreamBlock
             block={block}
@@ -55,7 +70,7 @@ export function AiStreamingTailMessageSegment({
             onMeasured={onMeasured}
           />
         ))}
-      </View>
+      </Pressable>
     );
   }
 
@@ -63,7 +78,18 @@ export function AiStreamingTailMessageSegment({
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantStack}>
-        <View
+        <Pressable
+          accessibilityHint={onLongPress ? "长按打开消息操作" : undefined}
+          delayLongPress={500}
+          onLongPress={
+            onLongPress
+              ? (event) =>
+                  onLongPress(
+                    event.nativeEvent.pageX,
+                    event.nativeEvent.pageY,
+                  )
+              : undefined
+          }
           style={[
             styles.assistantBubble,
             !chrome.borderTopClosed && styles.openTop,
@@ -80,7 +106,7 @@ export function AiStreamingTailMessageSegment({
             />
           ))}
           {chrome.drawsCitations ? citations : null}
-        </View>
+        </Pressable>
         {chrome.drawsFooter ? footer : null}
       </View>
     </View>

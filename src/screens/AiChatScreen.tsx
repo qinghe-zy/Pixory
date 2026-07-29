@@ -56,10 +56,13 @@ import {
 import { AiMemoryCaptureNotice } from "../components/ai/AiMemoryCaptureNotice";
 import { AiCitationList } from "../components/ai/AiCitationList";
 import { AiReplyAssistModal } from "../components/ai/AiReplyAssistModal";
+import { AiMessageBubble } from "../components/ai/AiMessageBubble";
 import {
-  AiMessageBubble,
-  AiMessageFooterActions,
-} from "../components/ai/AiMessageBubble";
+  AiMessageContextMenu,
+  type AiMessageContextMenuAction,
+} from "../components/ai/AiMessageContextMenu";
+import { AiMessageTextSelectionModal } from "../components/ai/AiMessageTextSelectionModal";
+import { mergeBufferedStreamingPatchIntoContextMenuTarget } from "../components/ai/aiMessageContextMenuTarget";
 import { AiStreamingTailSpacer } from "../components/ai/AiStreamingTailSpacer";
 import { AiStreamingTailContinuationBubble } from "../components/ai/AiStreamingTailContinuationBubble";
 import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailMessageSegment";
@@ -209,6 +212,7 @@ import {
   spacing,
   typography,
 } from "../design/tokens";
+import { formatAiMessageMinute } from "../utils/aiTimeFormatters";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SCROLL_BUTTON_THRESHOLD = 2400;
@@ -234,6 +238,12 @@ const DRAWER_SWIPE_HORIZONTAL_RATIO = 1.2;
 // Pixel-level badge alignment; spacing tokens are too coarse for this small overlay.
 const NEW_CHAT_BADGE_OFFSET = 1;
 // Scroll affordance copy: 回到最新.
+
+type MessageContextMenuState = {
+  anchorX: number;
+  anchorY: number;
+  messageId: string;
+};
 
 const CHAT_DOCUMENT_TYPES = [
   "application/pdf",
@@ -277,6 +287,21 @@ function buildChatMessageContent(
     "[附件]",
     ...attachmentLines,
   ].join("\n");
+}
+
+function getSelectableMessageContent(
+  message: AiMessageWithCitations,
+): string {
+  const content = message.content || message.errorMessage || "";
+  if (message.role !== "user") {
+    return content;
+  }
+  const attachmentMarkerIndex = content.indexOf("\n\n[附件]");
+  const visibleContent =
+    attachmentMarkerIndex >= 0
+      ? content.slice(0, attachmentMarkerIndex)
+      : content;
+  return visibleContent === "请根据以下附件继续对话。" ? "" : visibleContent;
 }
 
 function createStreamingAssistantMessage(
@@ -765,6 +790,7 @@ export function AiChatScreen({
   onThreadTitleChange,
 }: AiChatScreenProps) {
   const insets = useSafeAreaInsets();
+  const initialBottomInsetRef = useRef(insets.bottom);
   const statusBarHeight =
     Platform.OS === "android"
       ? Math.max(StatusBar.currentHeight ?? 0, insets.top)
@@ -1779,6 +1805,10 @@ export function AiChatScreen({
   const [favoriteStateByKey, setFavoriteStateByKey] = useState<
     Record<string, boolean>
   >({});
+  const [messageContextMenuState, setMessageContextMenuState] =
+    useState<MessageContextMenuState | null>(null);
+  const [messageTextSelectionContent, setMessageTextSelectionContent] =
+    useState<string | null>(null);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [favoritePendingByKey, setFavoritePendingByKey] = useState<
     Record<string, boolean>
@@ -2390,6 +2420,8 @@ export function AiChatScreen({
     visibleMessageItems,
     visibleMessages,
   } = visibleMessageState;
+  const latestVisibleMessageId =
+    visibleMessages[visibleMessages.length - 1]?.id ?? null;
   const latestVisibleBranchRootMessageId = useMemo(
     () => findLatestVisibleBranchRootMessageId(visibleMessages),
     [visibleMessages],
@@ -6188,6 +6220,163 @@ export function AiChatScreen({
     }
   }
 
+  const baseMessageContextMenuTarget = messageContextMenuState
+    ? (visibleMessagesById.get(messageContextMenuState.messageId) ?? null)
+    : null;
+  const messageContextMenuTarget = baseMessageContextMenuTarget
+    ? mergeBufferedStreamingPatchIntoContextMenuTarget(
+        baseMessageContextMenuTarget,
+        bufferedStreamingPatchRef.current,
+      )
+    : null;
+  const messageContextMenuPresentation = messageContextMenuTarget
+    ? {
+        anchorX: messageContextMenuState?.anchorX ?? 0,
+        anchorY: messageContextMenuState?.anchorY ?? 0,
+        timeLabel: formatAiMessageMinute(
+          messageContextMenuTarget.completedAt ??
+            messageContextMenuTarget.updatedAt ??
+            messageContextMenuTarget.createdAt,
+        ),
+      }
+    : null;
+
+  useEffect(() => {
+    if (messageContextMenuState && !messageContextMenuTarget) {
+      setMessageContextMenuState(null);
+    }
+  }, [messageContextMenuState, messageContextMenuTarget]);
+
+  const handleMessageLongPress = useCallback(
+    (
+      message: AiMessageWithCitations,
+      pageX: number,
+      pageY: number,
+    ) => {
+      setMessageContextMenuState({
+        anchorX: pageX,
+        anchorY: pageY,
+        messageId: message.id,
+      });
+    },
+    [],
+  );
+
+  const messageContextMenuActions: AiMessageContextMenuAction[] = [];
+  if (messageContextMenuTarget) {
+    const message = messageContextMenuTarget;
+    const content = message.content || message.errorMessage || "";
+    const hasContent = Boolean(content.trim());
+    const selectableContent = getSelectableMessageContent(message);
+    const actionPending = pendingMessageActionId === message.id;
+    const targetsLatestVersion =
+      message.versionIndex === message.versionTotal;
+
+    messageContextMenuActions.push(
+      {
+        disabled: !hasContent,
+        icon: "copy-outline",
+        key: "copy",
+        label: "复制",
+        onPress: () => {
+          void copyMessageContent(message);
+        },
+      },
+      {
+        disabled: !selectableContent.trim(),
+        icon: "text-outline",
+        key: "select-text",
+        label: "选择文本",
+        onPress: () => setMessageTextSelectionContent(selectableContent),
+      },
+    );
+
+    if (message.role === "user") {
+      messageContextMenuActions.push({
+        disabled: generating || actionPending || !targetsLatestVersion,
+        icon: "create-outline",
+        key: "edit",
+        label: "修改",
+        onPress: () => handleEditUserMessage(message.id, message.content),
+      });
+    } else {
+      const favoriteIdentity =
+        favoriteIdentityByMessageId.get(message.id) ?? null;
+      const favorited = favoriteIdentity
+        ? Boolean(favoriteStateByKey[favoriteIdentity.key])
+        : false;
+      const favoritePending = favoriteIdentity
+        ? Boolean(favoritePendingByKey[favoriteIdentity.key])
+        : false;
+      const replyActionMode =
+        replyActionModeByMessageId.get(message.id) ?? "continue";
+      const canContinueGeneration =
+        targetsLatestVersion &&
+        !generating &&
+        !actionPending &&
+        hasContent &&
+        (message.status === "failed" || message.status === "stopped");
+      const canContinueOrReply =
+        targetsLatestVersion &&
+        !generating &&
+        !actionPending &&
+        hasContent &&
+        message.status === "completed";
+      const canRegenerate =
+        !generating &&
+        !actionPending &&
+        (message.status === "completed" ||
+          message.status === "failed" ||
+          message.status === "stopped");
+
+      messageContextMenuActions.push(
+        {
+          disabled:
+            !favoriteIdentity ||
+            favoritePending ||
+            actionPending ||
+            (generating && message.id === activeAssistantId),
+          icon: favorited ? "star" : "star-outline",
+          key: "favorite",
+          label: favorited ? "取消收藏" : "收藏",
+          onPress: () => {
+            void handleToggleMessageFavorite(message);
+          },
+          selected: favorited,
+        },
+        {
+          disabled: !canContinueGeneration,
+          icon: "play-forward-outline",
+          key: "continue-generation",
+          label: "继续生成",
+          onPress: () => handleContinueAssistantMessage(message.id),
+        },
+        {
+          disabled: !canContinueOrReply,
+          icon: "chatbubble-ellipses-outline",
+          key: "continue-or-reply",
+          label: replyActionMode === "reply" ? "回复" : "续答",
+          onPress: () => {
+            if (replyActionMode === "reply") {
+              handleReplyToAssistant(message.id);
+              return;
+            }
+            handleContinueAssistantReply(message.id);
+          },
+        },
+        {
+          disabled: !canRegenerate,
+          icon: "refresh-outline",
+          key: "regenerate",
+          label: "重新生成",
+          onPress: () => {
+            void handleRegenerate(message.id);
+          },
+        },
+      );
+    }
+  }
+
   const messageKeyExtractor = useCallback(
     (item: VisibleMessageItem) =>
       item.type === "messageSegment" || item.type === "tailDebtSpacer"
@@ -6229,10 +6418,16 @@ export function AiChatScreen({
         return <AiStreamingTailSpacer height={item.height} />;
       }
       if (item.type === "streamTailContinuation") {
+        const message = visibleMessagesById.get(item.group.messageId) ?? null;
         return (
           <AiStreamingTailContinuationBubble
             bubbleWidth={getStreamingBubbleWidth()}
             group={item.group}
+            onLongPress={
+              message
+                ? (pageX, pageY) => handleMessageLongPress(message, pageX, pageY)
+                : undefined
+            }
             onMeasured={handleMeasuredTailBlock}
           />
         );
@@ -6250,29 +6445,6 @@ export function AiChatScreen({
           return null;
         }
         const message = visibleMessagesById.get(item.messageId) ?? null;
-        const isThinkingExpanded = Boolean(
-          thinkingExpandedByMessageIdRef.current.get(item.messageId),
-        );
-        const activeLanes: ("content" | "reasoning")[] = isThinkingExpanded
-          ? ["content", "reasoning"]
-          : ["content"];
-        const hasPendingTail =
-          calculateRemainingStreamingTailHeight(tailState, activeLanes) > 0;
-        const terminalState =
-          tailState.messageId === item.messageId && tailState.status === "completed"
-            ? "completed"
-            : message?.status === "completed" ||
-                message?.status === "failed" ||
-                message?.status === "stopped"
-              ? message.status
-            : "streaming";
-        const segmentFavoriteIdentity =
-          message?.role === "assistant"
-            ? (favoriteIdentityByMessageId.get(message.id) ?? null)
-            : null;
-        const shouldShowFooter =
-          Boolean(message) &&
-          footerVisible({ hasPendingTail, terminalState }, item.edge);
         return (
           <AiStreamingTailMessageSegment
             blocks={blocks}
@@ -6286,42 +6458,10 @@ export function AiChatScreen({
               ) : null
             }
             edge={item.edge}
-            footer={
-              shouldShowFooter && message ? (
-                <AiMessageFooterActions
-                  favoriteDisabledByGeneration={
-                    generating && message.id === activeAssistantId
-                  }
-                  favorited={
-                    segmentFavoriteIdentity
-                      ? Boolean(favoriteStateByKey[segmentFavoriteIdentity.key])
-                      : false
-                  }
-                  favoritePending={
-                    segmentFavoriteIdentity
-                      ? Boolean(favoritePendingByKey[segmentFavoriteIdentity.key])
-                      : false
-                  }
-                  generating={generating}
-                  message={message}
-                  pendingActionMessageId={pendingMessageActionId}
-                  onCopy={(targetMessage) => {
-                    void copyMessageContent(targetMessage);
-                  }}
-                  onContinue={handleContinueAssistantMessage}
-                  onContinueReply={handleContinueAssistantReply}
-                  onReplyToAssistant={handleReplyToAssistant}
-                  onEditUser={handleEditUserMessage}
-                  onRegenerate={(messageId) => {
-                    void handleRegenerate(messageId);
-                  }}
-                  replyActionMode={replyActionModeByMessageId.get(message.id)}
-                  onSelectVersion={handleSelectMessageVersion}
-                  onToggleFavorite={(targetMessage) => {
-                    void handleToggleMessageFavorite(targetMessage);
-                  }}
-                />
-              ) : null
+            onLongPress={
+              message
+                ? (pageX, pageY) => handleMessageLongPress(message, pageX, pageY)
+                : undefined
             }
             onMeasured={handleMeasuredTailBlock}
           />
@@ -6436,6 +6576,7 @@ export function AiChatScreen({
               pendingActionMessageId={pendingMessageActionId}
               replyActionMode={replyActionModeByMessageId.get(message.id)}
               showAvatar={item.showAvatar}
+              showActionButtons={message.role === "assistant" && message.id === latestVisibleMessageId}
               showUserAvatar={item.showUserAvatar}
               space={space}
               streaming={streamingRendererActive}
@@ -6452,6 +6593,7 @@ export function AiChatScreen({
               onReplyToAssistant={handleReplyToAssistant}
               onEditUser={handleEditUserMessage}
               onOpenCitation={openCitation}
+              onLongPress={handleMessageLongPress}
               onRegenerate={(messageId) => {
                 void handleRegenerate(messageId);
               }}
@@ -6512,6 +6654,7 @@ export function AiChatScreen({
       favoriteIdentityByMessageId,
       generating,
       handleEditUserMessage,
+      handleMessageLongPress,
       handleContinueAssistantMessage,
       handleContinueAssistantReply,
       handleReplyToAssistant,
@@ -6519,6 +6662,7 @@ export function AiChatScreen({
       handleSubmitInlineRewrite,
       handleSelectMessageVersion,
       handleToggleMessageFavorite,
+      latestVisibleMessageId,
       memoryCapturesBySourceMessageId,
       openCitation,
       pendingMessageActionId,
@@ -6536,7 +6680,15 @@ export function AiChatScreen({
   return (
     <AppScreen
       backgroundColor={aiLightColors.canvas}
-      contentStyle={styles.drawerHost}
+      contentStyle={[
+        styles.drawerHost,
+        {
+          paddingBottom:
+            initialBottomInsetRef.current +
+            layout.pageBottomOffset -
+            spacing[2],
+        },
+      ]}
     >
       {/* prettier-ignore */}
       <KeyboardAvoidingView
@@ -6546,7 +6698,13 @@ export function AiChatScreen({
       >
         {/* prettier-ignore */}
         <View
-          style={[styles.screenContent, { paddingTop: statusBarHeight + layout.pageTopOffset }]}
+          style={[
+            styles.screenContent,
+            {
+              paddingTop:
+                statusBarHeight + layout.pageTopOffset - spacing[2],
+            },
+          ]}
           {...swipeDrawerPanResponder.panHandlers}
         >
           <View style={styles.header}>
@@ -6926,6 +7084,19 @@ export function AiChatScreen({
         pages={replyAssistPagesByMode[replyAssistMode]}
         visible={replyAssistVisible}
       />
+      <AiMessageContextMenu
+        actions={messageContextMenuActions}
+        anchorX={messageContextMenuPresentation?.anchorX ?? 0}
+        anchorY={messageContextMenuPresentation?.anchorY ?? 0}
+        onClose={() => setMessageContextMenuState(null)}
+        timeLabel={messageContextMenuPresentation?.timeLabel ?? ""}
+        visible={Boolean(messageContextMenuPresentation)}
+      />
+      <AiMessageTextSelectionModal
+        content={messageTextSelectionContent ?? ""}
+        onClose={() => setMessageTextSelectionContent(null)}
+        visible={messageTextSelectionContent !== null}
+      />
       <Modal
         animationType="fade"
         onRequestClose={() => setPreviewImageUri(null)}
@@ -7124,12 +7295,10 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
   },
   title: {
-    ...typography.textStyles.navTitle,
     color: aiLightColors.ink,
-    fontFamily: aiLightDisplayFont,
-    fontSize: 20,
-    fontWeight: '400',
-    lineHeight: 26,
+    fontSize: typography.textStyles.body.fontSize,
+    fontWeight: typography.textStyles.body.fontWeight,
+    lineHeight: typography.textStyles.body.lineHeight,
     maxWidth: "90%",
   },
   modelSubtitle: {
@@ -7203,7 +7372,7 @@ const styles = StyleSheet.create({
   },
   messageScrollContent: {
     flexGrow: 1,
-    gap: rhythm.listCardGap,
+    gap: spacing[2],
     paddingBottom: spacing[4],
     paddingTop: spacing[3],
   },

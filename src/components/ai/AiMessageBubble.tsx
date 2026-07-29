@@ -15,7 +15,7 @@ import { AiMessageContent } from './AiMessageContent';
 import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
-import { formatAiFullMinute, formatAiMessageMinute } from '../../utils/aiTimeFormatters';
+import { formatAiFullMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
 import type { AiTailSegmentEdge } from '../../ai/aiStreamingTailRenderContract';
@@ -48,6 +48,7 @@ interface AiMessageBubbleProps {
   favoritePending?: boolean;
   hideCitations?: boolean;
   hideFooterActions?: boolean;
+  showActionButtons?: boolean;
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
   onEditUser: (messageId: string, content: string) => void;
@@ -60,6 +61,7 @@ interface AiMessageBubbleProps {
   onRegenerate: (messageId: string) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
+  onLongPress?: (message: AiMessageWithCitations, pageX: number, pageY: number) => void;
   onThinkingExpandedChange?: (messageId: string, expanded: boolean) => void;
   onOpenCitation: (citation: AiCitationRecord) => void;
   onAttachmentPress?: (attachment: AiMessageAttachmentRecord) => void;
@@ -83,8 +85,8 @@ type AiMessageFooterActionsProps = {
   favoriteDisabledByGeneration?: boolean;
   favoritePending?: boolean;
   generating?: boolean;
-  headerVisible?: boolean;
   pendingActionMessageId?: string | null;
+  showActionButtons?: boolean;
   onCopy: (message: AiMessageWithCitations) => void;
   onContinue: (messageId: string) => void;
   onContinueReply: (messageId: string) => void;
@@ -100,10 +102,10 @@ export function AiMessageFooterActions({
   favorited = false,
   favoritePending = false,
   generating = false,
-  headerVisible = false,
   message,
   replyActionMode = 'continue',
   pendingActionMessageId = null,
+  showActionButtons = true,
   onCopy,
   onContinue,
   onContinueReply,
@@ -123,13 +125,7 @@ export function AiMessageFooterActions({
   const canReplyToAssistant = !isUser && assistantActionTargetsLatestVersion && !generating && !actionPending && replyActionMode === 'reply' && Boolean(message.content.trim()) && message.status === 'completed';
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
   const canFavorite = !isUser && !favoriteDisabledByGeneration && !favoritePending && !actionPending && Boolean(onToggleFavorite);
-  const messageTimestamp = message.completedAt ?? message.updatedAt ?? message.createdAt;
   const textReplyActionLabel = replyActionMode === 'reply' ? '回复' : '续答';
-  const footerTime = headerVisible
-    ? ''
-    : isUser
-      ? formatAiMessageMinute(message.completedAt ?? message.updatedAt)
-      : formatAiFullMinute(messageTimestamp);
 
   function selectVersion(offset: -1 | 1) {
     const nextVersionIndex = Math.min(message.versionTotal, Math.max(1, message.versionIndex + offset));
@@ -140,17 +136,19 @@ export function AiMessageFooterActions({
 
   return (
     <View style={[styles.actionRow, isUser ? styles.userActionRow : styles.assistantActionRow]}>
-      <Pressable
-        accessibilityLabel="复制消息"
-        accessibilityRole="button"
-        disabled={!canCopy}
-        hitSlop={8}
-        onPress={() => onCopy(message)}
-        style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
-      >
-        <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
-      </Pressable>
-      {!isUser ? (
+      {showActionButtons ? (
+        <Pressable
+          accessibilityLabel="复制消息"
+          accessibilityRole="button"
+          disabled={!canCopy}
+          hitSlop={8}
+          onPress={() => onCopy(message)}
+          style={({ pressed }) => [styles.messageActionButton, !canCopy && styles.disabledAction, pressed && canCopy && styles.pressed]}
+        >
+          <Ionicons color={aiLightColors.muted} name="copy-outline" size={15} />
+        </Pressable>
+      ) : null}
+      {showActionButtons && !isUser ? (
         <Pressable
           accessibilityLabel={favorited ? '取消收藏 AI 消息' : '收藏 AI 消息'}
           accessibilityRole="button"
@@ -163,7 +161,7 @@ export function AiMessageFooterActions({
           <Ionicons color={favorited ? aiLightColors.primaryActive : aiLightColors.muted} name={favorited ? 'star' : 'star-outline'} size={15} />
         </Pressable>
       ) : null}
-      {!isUser ? (
+      {showActionButtons && !isUser ? (
         <Pressable
           accessibilityLabel="继续生成回复"
           accessibilityRole="button"
@@ -175,7 +173,7 @@ export function AiMessageFooterActions({
           <Ionicons color={aiLightColors.muted} name="play-forward-outline" size={15} />
         </Pressable>
       ) : null}
-      {!isUser ? (
+      {showActionButtons && !isUser ? (
         <Pressable
           accessibilityLabel={textReplyActionLabel}
           accessibilityRole="button"
@@ -197,7 +195,7 @@ export function AiMessageFooterActions({
           <Text style={styles.continueReplyActionText}>{textReplyActionLabel}</Text>
         </Pressable>
       ) : null}
-      {isUser ? (
+      {showActionButtons && isUser ? (
         <Pressable
           accessibilityLabel="重写消息"
           accessibilityRole="button"
@@ -208,7 +206,7 @@ export function AiMessageFooterActions({
         >
           <Ionicons color={aiLightColors.muted} name="create-outline" size={15} />
         </Pressable>
-      ) : (
+      ) : showActionButtons ? (
         <Pressable
           accessibilityLabel="重新生成回复"
           accessibilityRole="button"
@@ -219,7 +217,7 @@ export function AiMessageFooterActions({
         >
           <Ionicons color={aiLightColors.muted} name="refresh-outline" size={15} />
         </Pressable>
-      )}
+      ) : null}
       {message.versionTotal > 1 ? (
         <View style={styles.versionControl}>
           <Pressable
@@ -245,7 +243,6 @@ export function AiMessageFooterActions({
           </Pressable>
         </View>
       ) : null}
-      {footerTime ? <Text style={styles.messageTime}>{footerTime}</Text> : null}
     </View>
   );
 }
@@ -269,6 +266,7 @@ function AiMessageBubbleComponent({
   favoritePending = false,
   hideCitations = false,
   hideFooterActions = false,
+  showActionButtons = false,
   pendingActionMessageId = null,
   thinkingExpected = false,
   thinkingDefaultExpanded = false,
@@ -283,6 +281,7 @@ function AiMessageBubbleComponent({
   onRegenerate,
   onSelectVersion,
   onToggleFavorite,
+  onLongPress,
   onThinkingExpandedChange,
   onSubmitEdit,
   onAttachmentPress,
@@ -294,7 +293,6 @@ function AiMessageBubbleComponent({
   const showUserAvatarHeader = isUser && showUserAvatar && userProfile?.avatarEnabled;
   const assistantHeaderVisible = !isUser && showAvatar && assistantAvatar?.avatarEnabled;
   const userHeaderVisible = isUser && showUserAvatar && userProfile?.avatarEnabled;
-  const headerVisible = assistantHeaderVisible || userHeaderVisible;
   const editing = editingMessageId === message.id;
   const actionPending = pendingActionMessageId === message.id;
   const canRegenerate = !isUser && !generating && !actionPending && (message.status === 'completed' || message.status === 'failed' || message.status === 'stopped');
@@ -319,7 +317,9 @@ function AiMessageBubbleComponent({
         (thinkingExpected ||
           (message.status !== 'generating' && message.status !== 'queued'))));
   const footerActionsVisible =
-    !hideFooterActions && (isUser || assistantTerminal);
+    !hideFooterActions &&
+    ((showActionButtons && !isUser && assistantTerminal) ||
+      message.versionTotal > 1);
   const assistantHasBody =
     !isUser &&
     (editing ||
@@ -462,7 +462,19 @@ function AiMessageBubbleComponent({
         ) : null}
         {copyFeedbackVisible ? <AiInlineFeedback message="已复制" tone="success" /> : null}
         {shouldRenderBubble ? (
-          <View
+          <Pressable
+            accessibilityHint={editing ? undefined : '长按打开消息操作'}
+            delayLongPress={500}
+            onLongPress={
+              editing || !onLongPress
+                ? undefined
+                : (event) =>
+                    onLongPress(
+                      message,
+                      event.nativeEvent.pageX,
+                      event.nativeEvent.pageY,
+                    )
+            }
             style={[
               styles.bubble,
               isUser
@@ -536,7 +548,7 @@ function AiMessageBubbleComponent({
             {!isUser && !hideCitations ? (
               <AiCitationList citations={message.citations} onOpenCitation={onOpenCitation} />
             ) : null}
-          </View>
+          </Pressable>
         ) : null}
         {footerActionsVisible ? (
           <AiMessageFooterActions
@@ -544,9 +556,9 @@ function AiMessageBubbleComponent({
             favorited={favorited}
             favoritePending={favoritePending}
             generating={generating}
-            headerVisible={headerVisible}
             message={message}
             pendingActionMessageId={pendingActionMessageId}
+            showActionButtons={showActionButtons}
             onCopy={(targetMessage) => {
               onCopy(targetMessage);
               setCopyFeedbackVisible(true);
@@ -590,6 +602,7 @@ function areAiMessageBubblePropsEqual(previous: AiMessageBubbleProps, next: AiMe
     previous.favoritePending === next.favoritePending &&
     previous.hideCitations === next.hideCitations &&
     previous.hideFooterActions === next.hideFooterActions &&
+    previous.showActionButtons === next.showActionButtons &&
     previous.pendingActionMessageId === next.pendingActionMessageId &&
     previous.showAvatar === next.showAvatar &&
     previous.showUserAvatar === next.showUserAvatar &&
@@ -812,13 +825,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     minWidth: 28,
     textAlign: 'center',
-  },
-  messageTime: {
-    ...typography.textStyles.micro,
-    color: aiLightColors.muted,
-    minHeight: 28,
-    paddingHorizontal: spacing[1],
-    textAlignVertical: 'center',
   },
   inlineEditor: {
     gap: rhythm.microGap,

@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { AiStreamingTailContinuationGroup } from '../../ai/aiStreamingTailContinuation';
 import { colors, radius, rhythm, spacing } from '../../design/tokens';
@@ -7,17 +7,32 @@ import { AiMeasuredStreamBlock } from './AiMeasuredStreamBlock';
 type AiStreamingTailContinuationBubbleProps = {
   bubbleWidth: number;
   group: AiStreamingTailContinuationGroup;
+  onLongPress?: (pageX: number, pageY: number) => void;
   onMeasured: (blockId: string, height: number) => void;
 };
 
 export function AiStreamingTailContinuationBubble({
   bubbleWidth,
   group,
+  onLongPress,
   onMeasured,
 }: AiStreamingTailContinuationBubbleProps) {
   if (group.lane === 'reasoning') {
     return (
-      <View style={styles.reasoningRow}>
+      <Pressable
+        accessibilityHint={onLongPress ? '长按打开消息操作' : undefined}
+        delayLongPress={500}
+        onLongPress={
+          onLongPress
+            ? (event) =>
+                onLongPress(
+                  event.nativeEvent.pageX,
+                  event.nativeEvent.pageY,
+                )
+            : undefined
+        }
+        style={styles.reasoningRow}
+      >
         {group.blocks.map((block) => (
           <AiMeasuredStreamBlock
             block={block}
@@ -27,14 +42,27 @@ export function AiStreamingTailContinuationBubble({
             onMeasured={onMeasured}
           />
         ))}
-      </View>
+      </Pressable>
     );
   }
 
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantStack}>
-        <View style={styles.assistantBubble}>
+        <Pressable
+          accessibilityHint={onLongPress ? '长按打开消息操作' : undefined}
+          delayLongPress={500}
+          onLongPress={
+            onLongPress
+              ? (event) =>
+                  onLongPress(
+                    event.nativeEvent.pageX,
+                    event.nativeEvent.pageY,
+                  )
+              : undefined
+          }
+          style={styles.assistantBubble}
+        >
           {group.blocks.map((block, index) => (
             <AiMeasuredStreamBlock
               block={block}
@@ -52,7 +80,7 @@ export function AiStreamingTailContinuationBubble({
               }
             />
           ))}
-        </View>
+        </Pressable>
       </View>
     </View>
   );
