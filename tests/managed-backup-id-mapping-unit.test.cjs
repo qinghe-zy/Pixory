@@ -59,3 +59,34 @@ test('table-specific diary version and thought job references use their canonica
   assert.equal(mapping.remapManagedLogicalReferences({ currentVersionId: 'version-a' }, maps, 'companion_diaries').currentVersionId, 'version-b');
   assert.equal(mapping.remapManagedLogicalReferences({ jobId: 'job-a' }, maps, 'companion_thoughts').jobId, 'job-b');
 });
+
+test('branch scopes and profile event aggregates use their real polymorphic targets', () => {
+  const maps = new Map([
+    ['ai_messages', new Map([['root-old', 'root-new']])],
+    ['memory_profiles', new Map([['profile-old', 'profile-new']])],
+  ]);
+  assert.equal(mapping.remapManagedLogicalReferences({ scopeType: 'branch', scopeId: 'root-old:2' }, maps, 'memory_claims').scopeId, 'root-new:2');
+  assert.equal(mapping.remapManagedLogicalReferences({ aggregateType: 'import', aggregateId: 'profile-old' }, maps, 'memory_events').aggregateId, 'profile-new');
+});
+
+test('declared JSON entity rules remap replay payload and continuity rollback snapshot IDs', () => {
+  const maps = new Map([
+    ['memory_claims', new Map([['claim-old', 'claim-new']])],
+    ['ai_user_profiles', new Map([['legacy-old', 'legacy-new']])],
+  ]);
+  const eventPayload = mapping.remapManagedJsonReferences(
+    { claim: { id: 'claim-old', sourceMessageId: 'unchanged' } },
+    maps,
+    { column: 'payloadJson', row: { aggregateType: 'claim', eventType: 'claim_created' }, table: 'memory_events' },
+  );
+  assert.equal(eventPayload.claim.id, 'claim-new');
+
+  for (const column of ['beforeStateJson', 'afterStateJson']) {
+    const snapshot = mapping.remapManagedJsonReferences(
+      { id: 'legacy-old', profileText: 'snapshot' },
+      maps,
+      { column, row: { effectType: 'profile_upsert' }, table: 'ai_continuity_import_effects' },
+    );
+    assert.equal(snapshot.id, 'legacy-new');
+  }
+});

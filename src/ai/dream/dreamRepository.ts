@@ -83,9 +83,10 @@ export async function rebuildRoleRoundCounter(
     input.roleCardId,
   );
   const dreams = await db.getAllAsync<{ displayAt: string }>(
-    `SELECT displayAt FROM companion_dreams
-     WHERE space = ? AND roleCardId = ?
-     ORDER BY displayAt ASC, id ASC`,
+    `SELECT dream.displayAt FROM companion_dreams dream
+     INNER JOIN companion_dream_seeds seed ON seed.id = dream.seedId
+     WHERE dream.space = ? AND dream.roleCardId = ? AND seed.manual = 0
+     ORDER BY dream.displayAt ASC, dream.id ASC`,
     input.space,
     input.roleCardId,
   );

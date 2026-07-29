@@ -35,6 +35,20 @@ const DECLARED_ARRAY_REFERENCE_TABLES: Record<string, string> = {
   'memory_events.evidenceIds': 'memory_evidence',
   'memory_relational_states.evidenceIds': 'memory_evidence',
 };
+const MEMORY_AGGREGATE_TABLES: Record<string, string> = {
+  claim: 'memory_claims',
+  episode: 'memory_episodes',
+  import: 'memory_profiles',
+  relation: 'memory_relational_states',
+};
+const DECLARED_JSON_ENTITY_TABLES: Record<string, Record<string, string>> = {
+  'memory_events.payloadJson': {
+    claim: 'memory_claims',
+    episode: 'memory_episodes',
+    profile: 'memory_profiles',
+    relation: 'memory_relational_states',
+  },
+};
 
 function mapped(maps: ManagedLogicalIdMaps, table: string, value: unknown): unknown {
   return typeof value === 'string' ? maps.get(table)?.get(value) ?? value : value;
@@ -55,6 +69,20 @@ function eventTable(contextTable: string): string | null {
 
 function remapArray(value: unknown, maps: ManagedLogicalIdMaps, table: string): unknown {
   return Array.isArray(value) ? value.map((item) => mapped(maps, table, item)) : value;
+}
+
+function remapBranchScopeId(value: string, maps: ManagedLogicalIdMaps): string {
+  const match = /^(.*):(\d+)$/.exec(value);
+  if (!match || !match[1]) return value;
+  return `${String(mapped(maps, 'ai_messages', match[1]))}:${match[2]}`;
+}
+
+function remapEntityId(value: unknown, maps: ManagedLogicalIdMaps, table: string): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const entity = value as Record<string, unknown>;
+  return typeof entity.id === 'string'
+    ? { ...entity, id: mapped(maps, table, entity.id) }
+    : entity;
 }
 
 export function createMappedLogicalId(packageId: string, table: string, sourceId: string, salt = 0): string {
@@ -83,7 +111,7 @@ export function remapManagedLogicalReferences(
     else if (CHUNK_KEYS.has(key)) output[key] = mapped(maps, 'ai_chunks', item);
     else if (PROVIDER_KEYS.has(key)) output[key] = mapped(maps, 'ai_providers', item);
     else if (KNOWLEDGE_BASE_KEYS.has(key)) output[key] = mapped(maps, 'ai_knowledge_bases', item);
-    else if (key === 'claimId' || key === 'supersededByClaimId') output[key] = mapped(maps, 'memory_claims', item);
+    else if (key === 'claimId' || key === 'supersededByClaimId' || key === 'supersedesClaimId') output[key] = mapped(maps, 'memory_claims', item);
     else if (key === 'supersededByMemoryId') output[key] = mapped(maps, 'ai_memories', item);
     else if (key === 'repairId') output[key] = mapped(maps, 'companion_repairs', item);
     else if (key === 'sceneId') output[key] = mapped(maps, 'companion_dream_scenes', item);
@@ -107,9 +135,10 @@ export function remapManagedLogicalReferences(
   }
   if (typeof source.scopeType === 'string' && typeof source.scopeId === 'string') {
     const scopeTable = source.scopeType === 'role' ? 'ai_role_cards'
-      : source.scopeType === 'thread' || source.scopeType === 'branch' ? 'ai_threads'
+      : source.scopeType === 'thread' ? 'ai_threads'
         : source.scopeType === 'knowledge_base' ? 'ai_knowledge_bases' : null;
-    if (scopeTable) output.scopeId = mapped(maps, scopeTable, source.scopeId);
+    if (source.scopeType === 'branch') output.scopeId = remapBranchScopeId(source.scopeId, maps);
+    else if (scopeTable) output.scopeId = mapped(maps, scopeTable, source.scopeId);
   }
   if (typeof source.ownerType === 'string' && typeof source.ownerId === 'string') {
     const ownerTable = source.ownerType === 'thread' ? 'ai_threads'
@@ -128,10 +157,44 @@ export function remapManagedLogicalReferences(
     if (sourceTable) output.sourceId = mapped(maps, sourceTable, source.sourceId);
   }
   if (typeof source.aggregateType === 'string' && typeof source.aggregateId === 'string') {
-    const aggregateTable = source.aggregateType === 'claim' ? 'memory_claims'
-      : source.aggregateType === 'episode' ? 'memory_episodes'
-        : source.aggregateType === 'relation' ? 'memory_relational_states' : null;
+    const aggregateTable = MEMORY_AGGREGATE_TABLES[source.aggregateType] ?? null;
     if (aggregateTable) output.aggregateId = mapped(maps, aggregateTable, source.aggregateId);
+  }
+  return output;
+}
+
+export function remapManagedJsonReferences(
+  value: unknown,
+  maps: ManagedLogicalIdMaps,
+  context: { column: string; row: Record<string, unknown>; table: string },
+): unknown {
+  const logicalKey = context.column.endsWith('Json') ? context.column.slice(0, -4) : context.column;
+  const wrapped = remapManagedLogicalReferences({ [logicalKey]: value }, maps, context.table) as Record<string, unknown>;
+  const remapped = wrapped[logicalKey];
+  if (!remapped || typeof remapped !== 'object' || Array.isArray(remapped)) return remapped;
+  let output = { ...(remapped as Record<string, unknown>) };
+  const entityRules = DECLARED_JSON_ENTITY_TABLES[`${context.table}.${context.column}`];
+  if (entityRules) {
+    for (const [key, table] of Object.entries(entityRules)) {
+      if (key in output) output[key] = remapEntityId(output[key], maps, table);
+    }
+    const aggregateTable = typeof context.row.aggregateType === 'string'
+      ? MEMORY_AGGREGATE_TABLES[context.row.aggregateType]
+      : null;
+    if (aggregateTable && typeof output.id === 'string') {
+      output = remapEntityId(output, maps, aggregateTable) as Record<string, unknown>;
+    }
+  }
+  if (
+    context.table === 'ai_continuity_import_effects'
+    && (context.column === 'beforeStateJson' || context.column === 'afterStateJson')
+  ) {
+    const targetTable = context.row.effectType === 'profile_upsert'
+      ? 'ai_user_profiles'
+      : typeof context.row.effectType === 'string' && context.row.effectType.startsWith('memory_')
+        ? 'ai_memories'
+        : null;
+    if (targetTable) output = remapEntityId(output, maps, targetTable) as Record<string, unknown>;
   }
   return output;
 }

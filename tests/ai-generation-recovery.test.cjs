@@ -57,3 +57,13 @@ test('V55 schema and chat integration persist jobs before provider requests and 
   assert.match(chat, /settleGenerationJob/);
   assert.match(manager, /reconcileInterruptedGenerations/);
 });
+
+test('recovery hard-stop atomically releases any reserved thought with the message and job', () => {
+  const chat = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
+  const start = chat.indexOf('export async function stopInterruptedGeneration');
+  const end = chat.indexOf('\nasync function loadThreadForGeneration', start);
+  const body = chat.slice(start, end);
+  assert.match(body, /withTransactionAsync/);
+  assert.match(body, /releaseThoughtReservationForMessage\(db,\s*job\.assistantMessageId,\s*now\)/);
+  assert.ok(body.indexOf('releaseThoughtReservationForMessage') < body.indexOf('settleGenerationJob'));
+});

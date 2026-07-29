@@ -6,7 +6,7 @@ import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
 import type { PixorySpace } from '../database';
 import { assertManagedManifestShape, isSafeBackupRelativePath } from './backupManifestProtocol';
-import { createMappedLogicalId, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
+import { createMappedLogicalId, remapManagedJsonReferences, remapManagedLogicalReferences, type ManagedLogicalIdMaps } from './managedBackupIdMapping';
 import {
   copyLocalFile,
   deleteLocalFile,
@@ -395,15 +395,19 @@ function rewriteJsonColumn(input: {
   imageIdMap: Map<number, number>;
   ipIdMap: Map<number, number>;
   logicalIdMaps: ManagedLogicalIdMaps;
+  row: Record<string, unknown>;
   value: unknown;
 }): unknown {
   const { value } = input;
   if (typeof value !== 'string' || !value.trim()) return value;
   try {
     const numericRemapped = remapJsonIds(JSON.parse(value), input.ipIdMap, input.imageIdMap);
-    const logicalKey = input.column.endsWith('Json') ? input.column.slice(0, -4) : input.column;
-    const wrapped = remapManagedLogicalReferences({ [logicalKey]: numericRemapped }, input.logicalIdMaps, input.contextTable) as Record<string, unknown>;
-    return JSON.stringify(wrapped[logicalKey]);
+    const remapped = remapManagedJsonReferences(numericRemapped, input.logicalIdMaps, {
+      column: input.column,
+      row: input.row,
+      table: input.contextTable,
+    });
+    return JSON.stringify(remapped);
   } catch {
     return value;
   }
@@ -458,6 +462,7 @@ function rewriteManagedRow(input: {
       imageIdMap: input.imageIdMap,
       ipIdMap: input.ipIdMap,
       logicalIdMaps: input.logicalIdMaps,
+      row,
       value: row[column],
     });
   }

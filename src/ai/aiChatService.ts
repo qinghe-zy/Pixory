@@ -5121,6 +5121,7 @@ export async function stopInterruptedGeneration(job: AiGenerationJobRecord, reas
           WHERE id = ? AND threadId = ? AND status = 'generating'`,
         reason, now, now, job.assistantMessageId, job.threadId,
       );
+      await releaseThoughtReservationForMessage(db, job.assistantMessageId, now);
       await settleGenerationJob(db, {
         completionReason: 'recovery_stopped', content: job.partialContent,
         errorCode: 'recovery_stopped', generationId: job.generationId, now,
