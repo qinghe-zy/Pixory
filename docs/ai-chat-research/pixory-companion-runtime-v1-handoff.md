@@ -5,8 +5,9 @@
 > 当前总规格：`docs/ai-chat-research/pixory-companion-runtime-v1-spec.md`
 > 初始运行时规格提交：`b0dddd3 docs: specify companion cognitive runtime`（当前内容以后续总规格提交为准）
 > 交接日期：2026-07-29
+> 当前状态（2026-07-29）：V1 已由合并提交 `a51229c Merge companion inner life runtime into main` 进入 `main`。本文件保留为历史交接与验收记录；后续工作应以当前源码、总规格和 `docs/feature-matrix.md` 为准，不能再将其中的阶段清单视为待实施任务。
 
-## 1. 新窗口应先做什么
+## 1. 后续窗口应先做什么
 
 按以下顺序开始，不需要重新进行产品方向讨论：
 
@@ -15,7 +16,7 @@
 3. 读取本交接说明，确认并行工作、明确后置项和共享工作区状态。
 4. 读取 `docs/feature-matrix.md` 与 `docs/product-capability-baseline.md`，但以当前源码和主规格为准；旧基线中部分记忆缺陷已经修复。
 5. 检查 `git status --short --branch`，不得覆盖、回退或顺手提交其他工程的工作。
-6. 先为 Stage A 编写独立实施计划，再开始代码；后续 Stage B 至 E 分别制定计划、实施、验证和提交。
+6. 若继续扩展或修复本能力，先核对已合入实现、测试和 `docs/feature-matrix.md`；只为新的未完成范围制定实施计划。
 
 交接后不应直接一次性修改全部子系统，也不应把情感逻辑继续堆进 `AiChatScreen.tsx` 或 `aiChatService.ts`。
 
@@ -44,7 +45,7 @@ Pixory 当前以 Android-first 的陪伴式 AI 聊天为中心。用户希望吸
 当前状态已经调整：
 
 - 角色日记已经实现并经过多轮 review、修复和性能加固。
-- 离线思绪与梦境的独立产品设计已完成，并已完整并入当前总规格；当前接手任务负责代码闭环。
+- 离线思绪与梦境的独立产品设计已完成，并已完整并入当前总规格；其 V1 代码闭环已随 companion runtime 合入 `main`。
 - 多气泡和 `ResponsePresentationPlan` 暂时不做。
 - 本窗口负责认知运行时、上下文连续覆盖和剩余可靠性能力。
 - 记忆 Embedding 暂时不启用。
@@ -76,21 +77,21 @@ Pixory 当前以 Android-first 的陪伴式 AI 聊天为中心。用户希望吸
 
 不要重写日记数据表或调度。认知运行时只能通过 adapter 和 event reference 与日记集成，并继续尊重日记 `contextOptIn`。
 
-### 4.2 已完成设计、待实现：离线思绪与梦境
+### 4.2 已实现：离线思绪与梦境
 
-角色梦境和离线思绪已分别完成设计，并合并进总规格第 16 节。当前基线没有对应产品代码；开始每一个 Stage 前仍要重新检查工作区和最近提交，防止其他工程在共享 main 合入同名 artifact、screen、schema、prompt、job 或测试文件。
+角色梦境和离线思绪已分别完成设计，并合并进总规格第 16 节；V1 的 artifact、schema、prompt、job、仲裁和 UI 已随 `a51229c` 合入 `main`。后续修改前仍要重新检查工作区和最近提交，防止与其他工程的并行改动冲突。
 
 梦境独立设计提交为 `4788ab9 docs: define role dream experience`，离线思绪独立设计提交为 `f98e0f2 docs: define role offline thoughts`。两份设计的完整约束现已统一进入总规格；独立文档保留为设计审计记录，不再与总规格竞争事实源。
 
-实现要求：
+已实现边界：
 
 - 最少提供统一 adapter：`artifactId/kind/roleCardId/sourceThreadId/sourceBranchRoute/sourceEventIds/status/createdAt`。
 - 每轮最多只有日记、思绪、梦境中的一项进入话题仲裁。
 - 不要为整合目的覆盖其他工程正在写的文档或代码。
 
-## 5. 当前必须完成的范围
+## 5. 历史实施范围（V1 已完成）
 
-所有详细契约、阈值、状态机和验收要求都在主规格。实现范围是：
+所有详细契约、阈值、状态机和验收要求都在主规格。以下是本次 V1 合入的范围记录，不是后续窗口的默认待办：
 
 1. 修复 31 至 50 轮以及用户缩小 history limit 后的摘要覆盖空洞。
 2. `ConversationCoveragePlan`、raw bridge 和 provisional local summary。

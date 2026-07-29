@@ -1,6 +1,6 @@
 # 角色内在生活：分阶段产品规划
 
-**状态：** 设计讨论中，尚未进入代码实施。
+**状态：** 历史规划记录。V1 已随 `a51229c Merge companion inner life runtime into main` 合入 `main`；当前能力、入口与边界以 `docs/feature-matrix.md` 和 `pixory-companion-runtime-v1-spec.md` 为准。
 
 **目标：** 分三轮建设角色内在生活、沉浸式回复表达与情感感知系统。第一轮把日记、离线思绪与梦境碎片作为同一个角色内在生活系统一起落地，而不是把三者拆成三次独立实施。
 
