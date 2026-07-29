@@ -9,16 +9,17 @@ export type AiVoiceInputState = 'idle' | 'listening' | 'recognizing' | 'error' |
 interface AiVoiceInputStatusProps {
   state: AiVoiceInputState;
   error?: string | null;
+  mode?: 'on_device' | 'system' | null;
   onCancel?: () => void;
 }
 
-export function AiVoiceInputStatus({ state, error, onCancel }: AiVoiceInputStatusProps) {
+export function AiVoiceInputStatus({ state, error, mode, onCancel }: AiVoiceInputStatusProps) {
   if (state === 'idle') {
     return null;
   }
   const text =
     state === 'listening'
-      ? '正在听...'
+      ? mode === 'on_device' ? '正在听（设备端）...' : '正在听（系统识别）...'
       : state === 'recognizing'
         ? '正在识别...'
         : state === 'cancelled'

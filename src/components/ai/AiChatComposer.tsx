@@ -32,6 +32,7 @@ interface AiChatComposerProps {
   placeholder?: string;
   voiceState?: AiVoiceInputState;
   voiceError?: string | null;
+  voiceMode?: 'on_device' | 'system' | null;
   onAddImageAttachment: () => void;
   onAddDocumentAttachment: () => void;
   onChangeText: (value: string) => void;
@@ -43,6 +44,8 @@ interface AiChatComposerProps {
   onReplyAssist: () => void;
   replyAssistDisabled?: boolean;
   onVoiceInput: () => void;
+  onVoiceStart?: () => void;
+  onVoiceStop?: () => void;
   onCancelVoiceInput?: () => void;
   onSend: () => void;
   onStop: () => void;
@@ -97,6 +100,7 @@ export function AiChatComposer({
   placeholder = '输入消息...',
   voiceState = 'idle',
   voiceError = null,
+  voiceMode = null,
   onAddImageAttachment,
   onAddDocumentAttachment,
   onChangeText,
@@ -108,6 +112,8 @@ export function AiChatComposer({
   onReplyAssist,
   replyAssistDisabled = false,
   onVoiceInput,
+  onVoiceStart,
+  onVoiceStop,
   onCancelVoiceInput,
   onSend,
   onStop,
@@ -118,6 +124,11 @@ export function AiChatComposer({
   const inputHeightRef = useRef(COMPOSER_INPUT_MIN_HEIGHT);
   const [inputHeight, setInputHeight] = useState<number>(COMPOSER_INPUT_MIN_HEIGHT);
   const [attachmentPopoverVisible, setAttachmentPopoverVisible] = useState(false);
+  const voiceStartYRef = useRef(0);
+  const voiceLongPressRef = useRef(false);
+  const voiceCancelledRef = useRef(false);
+  const suppressVoiceTapRef = useRef(false);
+  const voiceActive = voiceState === 'listening' || voiceState === 'recognizing';
 
   const updateInputHeight = useCallback((measuredHeight: number) => {
     const nextHeight = Math.min(
@@ -159,7 +170,7 @@ export function AiChatComposer({
 
   return (
     <View style={styles.container}>
-      <AiVoiceInputStatus error={voiceError} onCancel={onCancelVoiceInput} state={voiceState} />
+      <AiVoiceInputStatus error={voiceError} mode={voiceMode} onCancel={onCancelVoiceInput} state={voiceState} />
       <View
         onLayout={(event) =>
           onComposerShellHeightChange?.(event.nativeEvent.layout.height)
@@ -265,6 +276,51 @@ export function AiChatComposer({
 
           {/* Right: attachment popover anchor + add button + send/stop */}
           <View style={styles.rightActions}>
+            <Pressable
+              accessibilityHint="点按切换；按住说话，松开结束，上滑取消"
+              accessibilityLabel={voiceActive ? '结束语音输入' : '语音输入'}
+              accessibilityRole="button"
+              disabled={generating}
+              hitSlop={spacing[2]}
+              onLongPress={() => {
+                voiceLongPressRef.current = true;
+                voiceCancelledRef.current = false;
+                onVoiceStart?.();
+              }}
+              onPress={() => {
+                if (suppressVoiceTapRef.current) {
+                  suppressVoiceTapRef.current = false;
+                  return;
+                }
+                onVoiceInput();
+              }}
+              onPressIn={(event) => {
+                voiceStartYRef.current = event.nativeEvent.pageY;
+                voiceLongPressRef.current = false;
+                voiceCancelledRef.current = false;
+              }}
+              onPressOut={() => {
+                if (!voiceLongPressRef.current) return;
+                suppressVoiceTapRef.current = true;
+                if (!voiceCancelledRef.current) onVoiceStop?.();
+                voiceLongPressRef.current = false;
+              }}
+              onTouchMove={(event) => {
+                if (!voiceLongPressRef.current || voiceCancelledRef.current) return;
+                if (event.nativeEvent.pageY <= voiceStartYRef.current - spacing[12]) {
+                  voiceCancelledRef.current = true;
+                  onCancelVoiceInput?.();
+                }
+              }}
+              style={({ pressed }) => [
+                styles.voiceButton,
+                voiceActive && styles.voiceButtonActive,
+                generating && styles.disabled,
+                pressed && !generating && styles.pressed,
+              ]}
+            >
+              <Ionicons color={voiceActive ? aiLightColors.primaryActive : aiLightColors.muted} name={voiceActive ? 'mic' : 'mic-outline'} size={spacing[5]} />
+            </Pressable>
             <View style={styles.addButtonWrap}>
               {attachmentPopoverVisible ? (
                 <View style={styles.attachmentPopover}>
@@ -440,6 +496,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing[2],
+  },
+  voiceButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: spacing[8],
+    justifyContent: 'center',
+    width: spacing[8],
+  },
+  voiceButtonActive: {
+    backgroundColor: aiLightColors.primarySoft,
   },
   addButtonWrap: {
     position: 'relative',

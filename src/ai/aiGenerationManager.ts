@@ -1,4 +1,4 @@
-import type { PixorySpace } from '../database';
+import { runWithDatabaseSpace, type PixorySpace } from '../database';
 import {
   type AiGenerationCreatedInfo,
   continueAssistantReply,
@@ -6,7 +6,9 @@ import {
   regenerateAssistantMessage,
   replyToAssistantMessage,
   rewriteUserMessage,
+  recoverInterruptedGeneration,
   sendUserMessage,
+  stopInterruptedGeneration,
   stopStreamingMessage,
   type AiStreamingMessagePatch,
   type ContinueAssistantReplyInput,
@@ -17,6 +19,12 @@ import {
   type SendUserMessageInput,
 } from './aiChatService';
 import type { StreamingVisibilityState } from './aiStreamingRuntime';
+import {
+  beginGenerationRecoveryAttempt,
+  claimGenerationRecovery,
+  listRecoverableGenerationJobs,
+} from './generation/aiGenerationRepository';
+import { decideGenerationRecovery } from './generation/aiGenerationRecovery';
 
 export type AiGenerationSubscriber = {
   getStreamingVisibility?: () => StreamingVisibilityState;
@@ -84,6 +92,9 @@ export type ActiveAiGenerationTaskInfo = {
 
 const tasksByThreadId = new Map<string, ActiveGenerationTask>();
 const tasksByAssistantId = new Map<string, ActiveGenerationTask>();
+const reconciliationBySpace = new Map<PixorySpace, Promise<void>>();
+const RECOVERY_LEASE_MS = 2 * 60 * 1000;
+const RECOVERY_OWNER = `pixory_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 
 function taskKey(space: PixorySpace, threadId: string): string {
   return `${space}:${threadId}`;
@@ -357,10 +368,70 @@ async function stopGeneration({ assistantMessageId, reason = 'user', space, thre
   task?.controller.abort();
 }
 
+async function runGenerationReconciliation(space: PixorySpace): Promise<void> {
+  const jobs = await runWithDatabaseSpace(space, (db) => listRecoverableGenerationJobs(db, space));
+  for (const candidate of jobs) {
+    if (tasksByThreadId.has(taskKey(space, candidate.threadId))) continue;
+    const now = new Date();
+    const leaseExpiresAt = new Date(now.getTime() + RECOVERY_LEASE_MS).toISOString();
+    const claimed = await runWithDatabaseSpace(space, (db) => claimGenerationRecovery(db, {
+      jobId: candidate.id,
+      leaseExpiresAt,
+      leaseOwner: RECOVERY_OWNER,
+      now: now.toISOString(),
+    }));
+    if (!claimed) continue;
+    const decision = decideGenerationRecovery(claimed);
+    if (decision === 'stop') {
+      await stopInterruptedGeneration(claimed, '生成恢复次数已用尽，请手动重试。');
+      continue;
+    }
+    const attempt = await runWithDatabaseSpace(space, (db) => beginGenerationRecoveryAttempt(db, {
+      attemptId: `recovery_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`,
+      decision,
+      generationId: claimed.generationId,
+      leaseExpiresAt,
+      leaseOwner: RECOVERY_OWNER,
+      now: new Date().toISOString(),
+    }));
+    if (!attempt) continue;
+
+    const task = createTask(space, attempt.threadId);
+    task.generationId = attempt.generationId;
+    task.userMessageId = attempt.userMessageId;
+    rememberAssistantMessage(task, attempt.assistantMessageId);
+    task.promise = recoverInterruptedGeneration({
+      decision,
+      job: attempt,
+      signal: task.controller.signal,
+      onMessagePatch: (patch) => emitMessagePatch(task, patch),
+      onTimeout: () => {
+        void stopGeneration({ assistantMessageId: attempt.assistantMessageId, reason: 'timeout', space, threadId: attempt.threadId });
+      },
+      onUpdated: () => emitUpdated(task),
+    }).catch(async (error) => {
+      const message = error instanceof Error ? error.message : '生成恢复失败。';
+      await stopInterruptedGeneration(attempt, message);
+    }).finally(() => finishTask(task));
+    await task.promise;
+  }
+}
+
+function reconcileInterruptedGenerations(space: PixorySpace): Promise<void> {
+  const current = reconciliationBySpace.get(space);
+  if (current) return current;
+  const promise = runGenerationReconciliation(space).finally(() => {
+    if (reconciliationBySpace.get(space) === promise) reconciliationBySpace.delete(space);
+  });
+  reconciliationBySpace.set(space, promise);
+  return promise;
+}
+
 export const aiGenerationManager = {
   startContinueAssistantReply,
   getActiveTaskForThread,
   hasActiveTask,
+  reconcileInterruptedGenerations,
   startContinueAssistantMessage,
   startReplyToAssistantMessage,
   startRegenerateAssistantMessage,

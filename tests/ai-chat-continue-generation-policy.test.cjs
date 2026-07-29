@@ -43,6 +43,8 @@ test('AI completed assistant replies can either continue downward or branch into
   const chat = read('src/screens/AiChatScreen.tsx');
   const bubble = read('src/components/ai/AiMessageBubble.tsx');
   const replyAssistUserPromptBlock = /function buildReplyAssistUserPrompt[\s\S]*?\r?\n}\r?\n\r?\nfunction extractReplyAssistJson/.exec(service)?.[0] ?? '';
+  const continueAssistantReplyBlock = /export async function continueAssistantReply[\s\S]*?\r?\n}\r?\n\r?\nexport async function/.exec(service)?.[0] ?? '';
+  const startContinueAssistantReplyBlock = /function startContinueAssistantReply[\s\S]*?\r?\n}\r?\n\r?\nfunction startReplyToAssistantMessage/.exec(manager)?.[0] ?? '';
 
   assert.match(service, /export interface ContinueAssistantReplyInput/);
   assert.match(service, /export async function continueAssistantReply/);
@@ -56,7 +58,7 @@ test('AI completed assistant replies can either continue downward or branch into
   assert.match(service, /markVisibleMessagesAfterAsBranch/);
   assert.match(service, /userHistoryContent:\s*input\.userMessage\.content/);
   assert.match(service, /thinkingExpected:\s*!latestThread\.thinkingDisabled/);
-  assert.doesNotMatch(service, /continueAssistantReply[\s\S]*ignoreReasoningDeltas:\s*true/);
+  assert.doesNotMatch(continueAssistantReplyBlock, /ignoreReasoningDeltas:\s*true/);
   assert.doesNotMatch(service, /requestContentOverride:\s*CONTINUE_ASSISTANT_NEW_REPLY_INSTRUCTION/);
   assert.doesNotMatch(replyAssistUserPromptBlock, /buildReplyAssistRoleContext/);
   assert.doesNotMatch(replyAssistUserPromptBlock, /stableMemoryPrefix|companionMemoryPrefix/);
@@ -65,7 +67,7 @@ test('AI completed assistant replies can either continue downward or branch into
   assert.match(manager, /startContinueAssistantReply/);
   assert.match(manager, /replyToAssistantMessage/);
   assert.match(manager, /startReplyToAssistantMessage/);
-  assert.doesNotMatch(manager, /startContinueAssistantReply[\s\S]*rememberAssistantMessage/);
+  assert.doesNotMatch(startContinueAssistantReplyBlock, /rememberAssistantMessage/);
 
   assert.match(bubble, /replyActionMode\?: 'continue' \| 'reply'/);
   assert.match(bubble, /const assistantActionTargetsLatestVersion = message\.versionIndex === message\.versionTotal;/);

@@ -217,6 +217,7 @@ function createSchema(db) {
   const schema = loadSchemaModule();
   db.exec(schema.MIGRATION_STATEMENTS_V52);
   db.exec(schema.MIGRATION_STATEMENTS_V53);
+  db.exec(schema.MIGRATION_STATEMENTS_V55);
 }
 
 function makeSnapshot(space) {

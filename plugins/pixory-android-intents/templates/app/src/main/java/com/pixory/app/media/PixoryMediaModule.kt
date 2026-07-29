@@ -3,6 +3,7 @@ package com.pixory.app.media
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.Manifest
 import android.content.Context
 import android.content.ContentResolver
 import android.content.ContentValues
@@ -14,6 +15,7 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
@@ -21,6 +23,7 @@ import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
 import android.webkit.MimeTypeMap
 import com.facebook.react.bridge.Arguments
@@ -30,7 +33,10 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -45,15 +51,20 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.zip.ZipFile
 
-class PixoryMediaModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class PixoryMediaModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), LifecycleEventListener {
   init {
     latestInstance = this
+    reactContext.addLifecycleEventListener(this)
   }
 
   override fun getName(): String = "PixoryMediaModule"
 
   private val ioExecutor = Executors.newFixedThreadPool(2)
   private var speechRecognitionPromise: Promise? = null
+  private var directSpeechRecognizer: SpeechRecognizer? = null
+  private var directSpeechListening = false
+  private var directSpeechOnDevice = false
+  private var directSpeechCancelling = false
   private val speechActivityListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
       if (requestCode != SPEECH_RECOGNITION_REQUEST_CODE) {
@@ -108,6 +119,165 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
       speechRecognitionPromise = null
       promise.reject("PIXORY_SPEECH_FAILED", error.message ?: "语音识别启动失败。")
     }
+  }
+
+  @ReactMethod
+  fun getSpeechRecognitionCapabilities(promise: Promise) {
+    val available = SpeechRecognizer.isRecognitionAvailable(reactContext)
+    val onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+      SpeechRecognizer.isOnDeviceRecognitionAvailable(reactContext)
+    promise.resolve(Arguments.createMap().apply {
+      putBoolean("available", available)
+      putBoolean("onDeviceAvailable", onDevice)
+      putString("mode", if (onDevice) "on_device" else if (available) "system" else "unavailable")
+    })
+  }
+
+  @ReactMethod
+  fun startSpeechRecognition(promise: Promise) {
+    if (reactContext.currentActivity == null) {
+      promise.reject("PIXORY_SPEECH_NO_ACTIVITY", "当前页面无法启动语音识别。")
+      return
+    }
+    if (ContextCompat.checkSelfPermission(reactContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      promise.reject("PIXORY_SPEECH_PERMISSION_DENIED", "需要麦克风权限才能进行语音输入。")
+      return
+    }
+    if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
+      promise.reject("PIXORY_SPEECH_UNAVAILABLE", "当前设备没有可用的系统语音识别服务。")
+      return
+    }
+    if (directSpeechListening || directSpeechRecognizer != null) {
+      promise.reject("PIXORY_SPEECH_BUSY", "语音识别正在进行中。")
+      return
+    }
+    reactContext.runOnUiQueueThread {
+      try {
+        directSpeechOnDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+          SpeechRecognizer.isOnDeviceRecognitionAvailable(reactContext)
+        directSpeechCancelling = false
+        directSpeechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && directSpeechOnDevice) {
+          SpeechRecognizer.createOnDeviceSpeechRecognizer(reactContext)
+        } else {
+          SpeechRecognizer.createSpeechRecognizer(reactContext)
+        }
+        directSpeechListening = true
+        directSpeechRecognizer?.setRecognitionListener(directSpeechListener)
+        directSpeechRecognizer?.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+          putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+          putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+          putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+          putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+          putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        })
+        promise.resolve(Arguments.createMap().apply { putBoolean("onDevice", directSpeechOnDevice) })
+      } catch (error: Exception) {
+        destroyDirectSpeechRecognizer()
+        promise.reject("PIXORY_SPEECH_FAILED", error.message ?: "语音识别启动失败。", error)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun stopSpeechRecognition(promise: Promise) {
+    reactContext.runOnUiQueueThread {
+      val recognizer = directSpeechRecognizer
+      if (recognizer == null || !directSpeechListening) {
+        promise.resolve(false)
+      } else {
+        recognizer.stopListening()
+        promise.resolve(true)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun cancelSpeechRecognition(promise: Promise) {
+    reactContext.runOnUiQueueThread {
+      val hadSession = directSpeechRecognizer != null
+      cancelDirectSpeechRecognizer(true)
+      promise.resolve(hadSession)
+    }
+  }
+
+  private val directSpeechListener = object : RecognitionListener {
+    override fun onReadyForSpeech(params: Bundle?) = emitSpeechEvent("ready")
+    override fun onBeginningOfSpeech() = Unit
+    override fun onRmsChanged(rmsdB: Float) = Unit
+    override fun onBufferReceived(buffer: ByteArray?) = Unit
+    override fun onEndOfSpeech() = emitSpeechEvent("end")
+    override fun onPartialResults(results: Bundle?) {
+      val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+      if (text.isNotEmpty()) emitSpeechEvent("partial", text = text)
+    }
+    override fun onResults(results: Bundle?) {
+      if (directSpeechCancelling) return
+      val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+      if (text.isEmpty()) {
+        emitSpeechEvent("error", code = "no_speech", message = "没有识别到语音内容。")
+      } else {
+        emitSpeechEvent("result", text = text)
+      }
+      destroyDirectSpeechRecognizer()
+    }
+    override fun onError(error: Int) {
+      if (directSpeechCancelling) return
+      val mapped = speechError(error)
+      emitSpeechEvent("error", code = mapped.first, message = mapped.second)
+      destroyDirectSpeechRecognizer()
+    }
+    override fun onEvent(eventType: Int, params: Bundle?) = Unit
+  }
+
+  private fun speechError(error: Int): Pair<String, String> = when (error) {
+    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "permission_denied" to "麦克风权限不可用。"
+    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "busy" to "系统语音识别正忙，请稍后重试。"
+    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "timeout" to "没有听到语音，请重试。"
+    SpeechRecognizer.ERROR_NO_MATCH -> "no_speech" to "没有识别到语音内容。"
+    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network" to "系统语音服务暂时无法联网识别。"
+    SpeechRecognizer.ERROR_AUDIO -> "audio" to "无法读取麦克风音频。"
+    else -> "service" to "系统语音识别暂时不可用。"
+  }
+
+  private fun emitSpeechEvent(type: String, text: String? = null, code: String? = null, message: String? = null) {
+    if (!reactContext.hasActiveReactInstance()) return
+    val payload = Arguments.createMap().apply {
+      putString("type", type)
+      putBoolean("onDevice", directSpeechOnDevice)
+      text?.let { putString("text", it) }
+      code?.let { putString("code", it) }
+      message?.let { putString("message", it) }
+    }
+    reactContext.runOnJSQueueThread {
+      reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("PixorySpeechRecognition", payload)
+    }
+  }
+
+  private fun cancelDirectSpeechRecognizer(emitCancelled: Boolean) {
+    directSpeechCancelling = true
+    if (emitCancelled && directSpeechRecognizer != null) emitSpeechEvent("cancelled", code = "cancelled")
+    directSpeechRecognizer?.cancel()
+    destroyDirectSpeechRecognizer()
+  }
+
+  private fun destroyDirectSpeechRecognizer() {
+    directSpeechRecognizer?.destroy()
+    directSpeechRecognizer = null
+    directSpeechListening = false
+    directSpeechOnDevice = false
+  }
+
+  override fun onHostResume() = Unit
+  override fun onHostPause() = cancelDirectSpeechRecognizer(false)
+  override fun onHostDestroy() = cancelDirectSpeechRecognizer(false)
+
+  override fun invalidate() {
+    cancelDirectSpeechRecognizer(false)
+    reactContext.removeLifecycleEventListener(this)
+    ioExecutor.shutdownNow()
+    if (latestInstance === this) latestInstance = null
+    super.invalidate()
   }
 
   @ReactMethod

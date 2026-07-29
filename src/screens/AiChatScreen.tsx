@@ -66,7 +66,13 @@ import { AiStreamingTailMessageSegment } from "../components/ai/AiStreamingTailM
 import { SecureImage } from "../components/SecureImage";
 import { AiScrollToLatestButton } from "../components/ai/AiScrollToLatestButton";
 import { AppScreen } from "../components/AppScreen";
-import { recognizeSpeech } from "../native/pixoryMediaModule";
+import {
+  addNativeSpeechRecognitionListener,
+  cancelSpeechRecognition,
+  getSpeechRecognitionCapabilities,
+  startSpeechRecognition,
+  stopSpeechRecognition,
+} from "../native/pixoryMediaModule";
 import {
   deleteMemory,
   dismissMemoryCapture,
@@ -1310,6 +1316,10 @@ export function AiChatScreen({
   const voiceResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const voiceSessionActiveRef = useRef(false);
+  const voiceCancelledRef = useRef(false);
+  const voiceSessionTokenRef = useRef(0);
+  const voiceStopRequestedRef = useRef(false);
   const thinkingExpandedByMessageIdRef = useRef(new Map<string, boolean>());
   const playedComposerEntranceKeysRef = useRef(new Set<string>());
   const previousComposerEntranceKeyRef = useRef<string | undefined>(undefined);
@@ -1795,6 +1805,7 @@ export function AiChatScreen({
   >([]);
   const [voiceState, setVoiceState] = useState<AiVoiceInputState>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'on_device' | 'system' | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [composerPanelHeight, setComposerPanelHeight] = useState(0);
   const [composerShellHeight, setComposerShellHeight] = useState(0);
@@ -4671,6 +4682,44 @@ export function AiChatScreen({
   }, [hasEarlierMessages, invertedMessageIndexById, loadEarlierMessages]);
 
   useEffect(() => {
+    const subscription = addNativeSpeechRecognitionListener((event) => {
+      if (event.type === 'ready' && voiceSessionActiveRef.current) {
+        setVoiceState('listening');
+        return;
+      }
+      if (event.type === 'end' && voiceSessionActiveRef.current) {
+        setVoiceState('recognizing');
+        return;
+      }
+      if (event.type === 'result') {
+        const recognizedText = event.text?.trim() ?? '';
+        if (voiceSessionActiveRef.current && !voiceCancelledRef.current && recognizedText) {
+          setComposerText((current) => !current.trim()
+            ? recognizedText
+            : `${current}${current.endsWith("\n") ? "" : "\n"}${recognizedText}`);
+          setErrorMessage(null);
+        }
+        voiceSessionActiveRef.current = false;
+        setVoiceState('idle');
+        return;
+      }
+      if (event.type === 'error') {
+        voiceSessionActiveRef.current = false;
+        const message = event.message ?? '语音识别失败。';
+        setVoiceState('error');
+        setVoiceError(message);
+        setErrorMessage(message);
+        return;
+      }
+      if (event.type === 'cancelled') {
+        voiceSessionActiveRef.current = false;
+        setVoiceState('cancelled');
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     // prettier-ignore
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
@@ -4679,6 +4728,9 @@ export function AiChatScreen({
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
       if (state !== 'active') {
+        voiceSessionActiveRef.current = false;
+        voiceCancelledRef.current = true;
+        void cancelSpeechRecognition().catch(() => undefined);
         void flushActiveStreamingSnapshot();
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
@@ -4700,6 +4752,9 @@ export function AiChatScreen({
       clearActiveStreamingIdentity();
       activeStreamGenerationRef.current += 1;
       clearVoiceResetTimeout();
+      voiceSessionActiveRef.current = false;
+      voiceCancelledRef.current = true;
+      void cancelSpeechRecognition().catch(() => undefined);
       if (newChatFeedbackTimeoutRef.current) {
         clearTimeout(newChatFeedbackTimeoutRef.current);
         newChatFeedbackTimeoutRef.current = null;
@@ -5421,6 +5476,12 @@ export function AiChatScreen({
   ]);
 
   async function handleSend() {
+    if (voiceSessionActiveRef.current) {
+      voiceCancelledRef.current = true;
+      voiceSessionActiveRef.current = false;
+      await cancelSpeechRecognition().catch(() => false);
+      setVoiceState('idle');
+    }
     const sendPressedAt = new Date().toISOString();
     const typedText = composerText.trim();
     const diaryCommandRequested = isDiaryCreationRequest(typedText);
@@ -5960,40 +6021,46 @@ export function AiChatScreen({
     setEditingUserMessageId(null);
   }
 
-  async function handleVoiceInput() {
+  async function handleVoiceStart() {
+    if (voiceSessionActiveRef.current || generating) return;
+    const sessionToken = voiceSessionTokenRef.current + 1;
+    voiceSessionTokenRef.current = sessionToken;
+    voiceSessionActiveRef.current = true;
+    voiceCancelledRef.current = false;
+    voiceStopRequestedRef.current = false;
     try {
       clearVoiceResetTimeout();
-      setVoiceState("listening");
       setVoiceError(null);
       if (Platform.OS === "android") {
         const permission = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         );
         if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          const message = permission === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+            ? "麦克风权限已被永久拒绝，请到系统设置中为 Pixory 开启。"
+            : "需要麦克风权限才能进行语音输入。";
           setVoiceState("error");
-          setVoiceError("需要麦克风权限才能进行语音输入。");
-          setErrorMessage("需要麦克风权限才能进行语音输入。");
+          setVoiceError(message);
+          setErrorMessage(message);
+          voiceSessionActiveRef.current = false;
           return;
         }
       }
-      setVoiceState("recognizing");
-      const result = await recognizeSpeech();
-      const recognizedText = result.text.trim();
-      if (!recognizedText) {
-        setVoiceState("error");
-        setVoiceError("没有识别到语音内容。");
-        setErrorMessage("没有识别到语音内容。");
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
+      const capabilities = await getSpeechRecognitionCapabilities();
+      if (!capabilities.available) throw new Error('当前设备没有可用的系统语音识别服务。');
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) return;
+      setVoiceMode(capabilities.onDeviceAvailable ? 'on_device' : 'system');
+      setVoiceState("listening");
+      const started = await startSpeechRecognition();
+      if (voiceSessionTokenRef.current !== sessionToken || voiceCancelledRef.current) {
+        await cancelSpeechRecognition().catch(() => false);
         return;
       }
-      setComposerText((current) => {
-        if (!current.trim()) {
-          return recognizedText;
-        }
-        return `${current}${current.endsWith("\n") ? "" : "\n"}${recognizedText}`;
-      });
-      setVoiceState("idle");
-      setErrorMessage(null);
+      setVoiceMode(started.onDevice ? 'on_device' : 'system');
+      if (voiceStopRequestedRef.current) await stopSpeechRecognition();
     } catch (error) {
+      voiceSessionActiveRef.current = false;
       const message = error instanceof Error ? error.message : "语音识别失败";
       setVoiceState("error");
       setVoiceError(message);
@@ -6001,7 +6068,33 @@ export function AiChatScreen({
     }
   }
 
+  async function handleVoiceStop() {
+    if (!voiceSessionActiveRef.current) return;
+    voiceStopRequestedRef.current = true;
+    setVoiceState('recognizing');
+    try {
+      await stopSpeechRecognition();
+    } catch (error) {
+      voiceSessionActiveRef.current = false;
+      const message = error instanceof Error ? error.message : '语音识别结束失败。';
+      setVoiceState('error');
+      setVoiceError(message);
+    }
+  }
+
+  async function handleVoiceInput() {
+    if (voiceSessionActiveRef.current) {
+      await handleVoiceStop();
+      return;
+    }
+    await handleVoiceStart();
+  }
+
   function handleCancelVoiceInput() {
+    voiceSessionTokenRef.current += 1;
+    voiceCancelledRef.current = true;
+    voiceSessionActiveRef.current = false;
+    void cancelSpeechRecognition().catch(() => undefined);
     setVoiceState("cancelled");
     clearVoiceResetTimeout();
     voiceResetTimeoutRef.current = setTimeout(() => {
@@ -6743,9 +6836,16 @@ export function AiChatScreen({
                 onVoiceInput={() => {
                   void handleVoiceInput();
                 }}
+                onVoiceStart={() => {
+                  void handleVoiceStart();
+                }}
+                onVoiceStop={() => {
+                  void handleVoiceStop();
+                }}
                 onCancelVoiceInput={handleCancelVoiceInput}
                 value={composerText}
                 voiceError={voiceError}
+                voiceMode={voiceMode}
                 voiceState={voiceState}
               />
               <Animated.View

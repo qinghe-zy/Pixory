@@ -73,7 +73,7 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   assert.match(bubble, /chevron-forward/);
 });
 
-test('AI chat hides the voice input entry while keeping Android speech recognition code available', () => {
+test('AI chat exposes direct cancellable Android speech recognition', () => {
   const composer = read('src/components/ai/AiChatComposer.tsx');
   const chat = read('src/screens/AiChatScreen.tsx');
   const nativeTs = read('src/native/pixoryMediaModule.ts');
@@ -82,12 +82,15 @@ test('AI chat hides the voice input entry while keeping Android speech recogniti
   const manifest = read('android/app/src/main/AndroidManifest.xml');
   const pluginManifest = read('plugins/pixory-android-intents/templates/app/src/main/AndroidManifest.xml');
 
-  assert.doesNotMatch(composer, /accessibilityLabel="语音输入"/);
-  assert.doesNotMatch(composer, /name="mic-outline"/);
+  assert.match(composer, /语音输入/);
+  assert.match(composer, /mic-outline/);
+  assert.match(composer, /onLongPress/);
   assert.match(composer, /onVoiceInput/);
   assert.doesNotMatch(composer, /refresh-outline/);
   assert.doesNotMatch(composer, /retryAvailable/);
-  assert.match(chat, /recognizeSpeech/);
+  assert.match(chat, /startSpeechRecognition/);
+  assert.match(chat, /stopSpeechRecognition/);
+  assert.match(chat, /cancelSpeechRecognition/);
   assert.match(nativeTs, /recognizeSpeech\(\): Promise<\{ text: string \}>/);
   assert.match(nativeKt, /RecognizerIntent/);
   assert.match(nativeKt, /SpeechRecognizer/);
@@ -1044,12 +1047,14 @@ test('AI background generation is owned by a runtime manager instead of chat scr
   assert.doesNotMatch(unmountCleanup, /abort\(/);
 });
 
-test('AI startup cleanup stops interrupted generating messages in SQLite', () => {
+test('AI startup cleanup preserves recoverable generation jobs and stops only orphan placeholders', () => {
   const db = read('src/database/db.ts');
 
   assert.match(db, /cleanupInterruptedAiGenerations/);
+  assert.match(db, /markInterruptedGenerationJobs/);
   assert.match(db, /UPDATE ai_messages[\s\S]*status = 'stopped'[\s\S]*completedAt = \?[\s\S]*errorMessage = '生成被系统中断。'[\s\S]*WHERE status = 'generating'/);
-  assert.match(db, /await cleanupInterruptedAiGenerations\(db\)/);
+  assert.match(db, /NOT EXISTS[\s\S]*ai_generation_jobs/);
+  assert.match(db, /await cleanupInterruptedAiGenerations\(db, space\)/);
 });
 
 test('AI paged chat loads branch root messages before recursive visibility filtering', () => {

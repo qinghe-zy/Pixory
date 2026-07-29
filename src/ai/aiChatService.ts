@@ -140,6 +140,14 @@ import {
 import { normalizeBaseUrl, type AiChatAttachment, type AiStreamEvent } from './providers/base';
 import type { AiMessageFavoriteListItem as AiMessageFavoriteRepositoryListItem } from '../database/repositories/aiThreadRepository';
 import { resolveModelIconBrand, type AiModelIconBrand } from './aiModelIconService';
+import {
+  createPreparedGenerationJob,
+  persistGenerationPartial,
+  settleGenerationJob,
+  transitionGenerationJob,
+  type AiGenerationJobRecord,
+} from './generation/aiGenerationRepository';
+import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
 
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
@@ -3320,15 +3328,21 @@ async function markAssistantFailed(
 ): Promise<string> {
   const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(space, async (db) => {
-    await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
-      status: 'failed',
-      content: partialContent,
-      reasoningText: partialReasoningText,
-      errorMessage: message,
-      ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
-      completedAt,
+    await db.withTransactionAsync(async () => {
+      await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
+        status: 'failed',
+        content: partialContent,
+        reasoningText: partialReasoningText,
+        errorMessage: message,
+        ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
+        completedAt,
+      });
+      await settleGenerationJob(db, {
+        completionReason: 'failed', content: partialContent, errorCode: 'generation_failed',
+        generationId, now: completedAt, reasoning: partialReasoningText, state: 'failed',
+      });
+      await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
     });
-    await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
   });
   stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   stoppedTimeoutGenerationIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
@@ -3345,14 +3359,20 @@ async function markAssistantStopped(
 ): Promise<string> {
   const completedAt = new Date().toISOString();
   await runWithDatabaseSpace(space, async (db) => {
-    await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
-      status: 'stopped',
-      content: partialContent,
-      reasoningText: partialReasoningText,
-      ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
-      completedAt,
+    await db.withTransactionAsync(async () => {
+      await updateAssistantMessageForGeneration(db, assistantMessageId, generationId, {
+        status: 'stopped',
+        content: partialContent,
+        reasoningText: partialReasoningText,
+        ...(promptSnapshotJson ? { promptSnapshotJson } : {}),
+        completedAt,
+      });
+      await settleGenerationJob(db, {
+        completionReason: 'stopped', content: partialContent ?? '', generationId,
+        now: completedAt, reasoning: partialReasoningText ?? null, state: 'stopped',
+      });
+      await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
     });
-    await releaseThoughtReservationForMessage(db, assistantMessageId, completedAt);
   });
   stoppedMessageIds.delete(stoppedGenerationKey(assistantMessageId, generationId));
   return completedAt;
@@ -3497,17 +3517,104 @@ function appendVisibleAssistantPartialToHistory(
 }
 
 function appendContinuationAnswerDelta(currentText: string, delta: string, initialAnswerText: string): string {
-  if (!delta || currentText !== initialAnswerText || !initialAnswerText) {
-    return currentText + delta;
+  return mergeContinuationDelta(initialAnswerText, currentText, delta);
+}
+
+type RecoverableThreadSnapshot = Pick<AiThreadRecord,
+  | 'boundaryMode'
+  | 'boundIpId'
+  | 'boundKnowledgeBaseId'
+  | 'contextHistoryRoundLimit'
+  | 'contextType'
+  | 'includeIpDocuments'
+  | 'materialRulesSnapshot'
+  | 'modelId'
+  | 'modelSnapshotJson'
+  | 'providerId'
+  | 'replyPreference'
+  | 'roleCardId'
+  | 'roleInstructionWeight'
+  | 'roleSnapshotJson'
+  | 'sessionApiKeyRef'
+  | 'sessionBaseUrl'
+  | 'systemPrompt'
+  | 'thinkingDisabled'
+>;
+
+interface PersistedGenerationRequestSnapshot {
+  version: 1;
+  thread: RecoverableThreadSnapshot;
+  attachments: AiOutgoingAttachment[];
+  continuationContext: { answerText: string; reasoningText?: string | null } | null;
+  continuationInstruction: string | null;
+  historyAnchorMessageId: string | null;
+  requestContentOverride: string | null;
+}
+
+function buildGenerationRequestSnapshot(input: Parameters<typeof streamAssistantReply>[0]): PersistedGenerationRequestSnapshot {
+  const thread = input.thread;
+  return {
+    version: 1,
+    thread: {
+      boundaryMode: thread.boundaryMode,
+      boundIpId: thread.boundIpId,
+      boundKnowledgeBaseId: thread.boundKnowledgeBaseId,
+      contextHistoryRoundLimit: thread.contextHistoryRoundLimit,
+      contextType: thread.contextType,
+      includeIpDocuments: thread.includeIpDocuments,
+      materialRulesSnapshot: thread.materialRulesSnapshot,
+      modelId: thread.modelId,
+      modelSnapshotJson: thread.modelSnapshotJson,
+      providerId: thread.providerId,
+      replyPreference: thread.replyPreference,
+      roleCardId: thread.roleCardId,
+      roleInstructionWeight: thread.roleInstructionWeight,
+      roleSnapshotJson: thread.roleSnapshotJson,
+      sessionApiKeyRef: thread.sessionApiKeyRef,
+      sessionBaseUrl: thread.sessionBaseUrl,
+      systemPrompt: thread.systemPrompt,
+      thinkingDisabled: thread.thinkingDisabled,
+    },
+    attachments: input.attachments ?? [],
+    continuationContext: input.continuationContext ?? null,
+    continuationInstruction: input.continuationInstruction ?? null,
+    historyAnchorMessageId: input.historyAnchorMessageId ?? null,
+    requestContentOverride: input.requestContentOverride ?? null,
+  };
+}
+
+function parseGenerationRequestSnapshot(value: string): PersistedGenerationRequestSnapshot | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<PersistedGenerationRequestSnapshot>;
+    return parsed.version === 1 && parsed.thread && Array.isArray(parsed.attachments)
+      ? parsed as PersistedGenerationRequestSnapshot
+      : null;
+  } catch {
+    return null;
   }
-  const tail = initialAnswerText.slice(-240);
-  const maxOverlap = Math.min(tail.length, delta.length);
-  for (let overlap = maxOverlap; overlap >= 8; overlap -= 1) {
-    if (tail.endsWith(delta.slice(0, overlap))) {
-      return currentText + delta.slice(overlap);
-    }
-  }
-  return currentText + delta;
+}
+
+async function transitionGenerationToRequesting(input: {
+  cacheMetadataJson: string;
+  generationId: string;
+  modelId: string;
+  promptSnapshotHash: string;
+  protocol: string;
+  providerId: string;
+  space: PixorySpace;
+}): Promise<void> {
+  await runWithDatabaseSpace(input.space, (db) => transitionGenerationJob(db, {
+    cacheMetadataJson: input.cacheMetadataJson,
+    generationId: input.generationId,
+    modelId: input.modelId,
+    now: new Date().toISOString(),
+    promptSnapshotHash: input.promptSnapshotHash,
+    protocol: input.protocol,
+    providerId: input.providerId,
+    state: 'requesting',
+  })).then((job) => {
+    if (!job) throw new Error('Generation recovery record is missing before the provider request.');
+  });
 }
 
 async function finalizeThreadTitleAfterReply(input: {
@@ -3947,6 +4054,25 @@ async function streamAssistantReply(input: {
     );
     generationMetrics.context.branchScopeCount = branchScopes.length;
     markGenerationMetric(generationMetrics, 'branchResolveEndAt');
+    await runWithDatabaseSpace(input.space, async (db) => {
+      await db.withTransactionAsync(async () => {
+        await createPreparedGenerationJob(db, {
+          assistantMessageId: input.assistantMessageId,
+          attemptId: createAiId('aiattempt'),
+          branchRouteHash: hashBranchRoute(branchScopes),
+          generationId,
+          lineageVersion: input.thread.lineageVersion ?? 0,
+          now: startedAt,
+          partialContent: initialAnswerText,
+          partialReasoning: initialReasoningText,
+          requestMode: mode,
+          requestSnapshotJson: JSON.stringify(buildGenerationRequestSnapshot(input)),
+          space: input.space,
+          threadId: input.thread.id,
+          userMessageId: input.userMessage.id,
+        });
+      });
+    });
     observeThoughtScope(input.space, { branchRouteHash: hashBranchRoute(branchScopes), roleCardId: input.thread.roleCardId, threadId: input.thread.id });
     if (input.thread.roleCardId) {
       try {
@@ -4392,12 +4518,20 @@ async function streamAssistantReply(input: {
     lastPersistedReasoningChars = reasoningChars;
     generationMetrics.counters.streamPersistCount += 1;
     const persistStartedAt = Date.now();
-    await runWithDatabaseSpace(input.space, (db) =>
-      updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
-        content: answerText,
-        reasoningText: reasoningText || null,
-      }, { syncFts: false })
-    );
+    await runWithDatabaseSpace(input.space, async (db) => {
+      await db.withTransactionAsync(async () => {
+        await updateAssistantMessageForGeneration(db, input.assistantMessageId, generationId, {
+          content: answerText,
+          reasoningText: reasoningText || null,
+        }, { syncFts: false });
+        await persistGenerationPartial(db, {
+          content: answerText,
+          generationId,
+          now: new Date().toISOString(),
+          reasoning: reasoningText || null,
+        });
+      });
+    });
     recordStreamingPersistence(Date.now() - persistStartedAt);
   };
   let persistInFlight = false;
@@ -4434,6 +4568,33 @@ async function streamAssistantReply(input: {
     }
   };
 
+  await transitionGenerationToRequesting({
+    cacheMetadataJson: JSON.stringify({
+      chatMode: prompt.cacheMetadata.chatMode,
+      memoryEpoch: prompt.cacheMetadata.memoryEpoch,
+      providerCachePolicy,
+    }),
+    generationId,
+    modelId,
+    promptSnapshotHash: hashPromptCacheText(JSON.stringify({ history, system: prompt.system, userPrompt })),
+    protocol: provider.protocol,
+    providerId: provider.id,
+    space: input.space,
+  });
+  let streamingTransition: Promise<void> | null = null;
+  const ensureGenerationStreaming = async () => {
+    if (!streamingTransition) {
+      streamingTransition = runWithDatabaseSpace(input.space, (db) => transitionGenerationJob(db, {
+        generationId,
+        now: new Date().toISOString(),
+        state: 'streaming',
+      })).then((job) => {
+        if (!job) throw new Error('Generation recovery record disappeared while streaming.');
+      });
+    }
+    await streamingTransition;
+  };
+
   try {
     markGenerationMetric(generationMetrics, 'providerRequestSentAt');
     scheduleProviderTimeout(FIRST_PROVIDER_BYTE_TIMEOUT_MS);
@@ -4465,6 +4626,7 @@ async function streamAssistantReply(input: {
           return;
         }
         if (event.type === 'answer_delta') {
+          await ensureGenerationStreaming();
           recordStreamingProviderDelta(event);
           generationMetrics.counters.providerDeltaCount += 1;
           generationMetrics.counters.answerDeltaCount += 1;
@@ -4481,6 +4643,7 @@ async function streamAssistantReply(input: {
           }
         }
         if (event.type === 'reasoning_delta' && !input.thread.thinkingDisabled && !ignoreReasoningDeltas) {
+          await ensureGenerationStreaming();
           recordStreamingProviderDelta(event);
           generationMetrics.counters.providerDeltaCount += 1;
           generationMetrics.counters.reasoningDeltaCount += 1;
@@ -4688,6 +4851,17 @@ async function streamAssistantReply(input: {
         }
         finalCitations = await aiThreadRepository.listCitations(db, input.assistantMessageId);
       }
+      if (current) {
+        await settleGenerationJob(db, {
+          completionReason: answerText ? 'completed' : 'empty_response',
+          content: answerText,
+          errorCode: answerText ? null : 'empty_response',
+          generationId,
+          now: completedAt,
+          reasoning: reasoningText || null,
+          state: answerText ? 'completed' : 'failed',
+        });
+      }
     });
   });
   if (!finalMessagePersisted) {
@@ -4781,6 +4955,104 @@ async function streamAssistantReply(input: {
   if (queuedDreamJobId) scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', delayMs: 250, space: input.space });
   activateThoughtSession(completedThoughtSession);
   input.onUpdated?.();
+}
+
+export async function recoverInterruptedGeneration(input: {
+  decision: 'continue' | 'retry';
+  job: AiGenerationJobRecord;
+  signal?: AbortSignal;
+  onMessagePatch?: (patch: AiStreamingMessagePatch) => void;
+  onTimeout?: () => void;
+  onUpdated?: () => void;
+}): Promise<void> {
+  const snapshot = parseGenerationRequestSnapshot(input.job.requestSnapshotJson);
+  if (!snapshot) throw new Error('生成恢复快照无效。');
+  const loaded = await runWithDatabaseSpace(input.job.space, async (db) => Promise.all([
+    aiThreadRepository.findThreadById(db, input.job.threadId),
+    aiThreadRepository.findMessageById(db, input.job.userMessageId),
+    aiThreadRepository.findMessageById(db, input.job.assistantMessageId),
+  ]));
+  const [currentThread, userMessage, assistantMessage] = loaded;
+  if (!currentThread || currentThread.space !== input.job.space || currentThread.lineageVersion !== input.job.lineageVersion) {
+    throw new Error('会话分支已变化，无法安全恢复生成。');
+  }
+  if (!userMessage || userMessage.role !== 'user' || userMessage.threadId !== currentThread.id) {
+    throw new Error('生成恢复所需的用户消息不存在。');
+  }
+  if (!assistantMessage || assistantMessage.role !== 'assistant' || assistantMessage.threadId !== currentThread.id) {
+    throw new Error('生成恢复所需的回复占位不存在。');
+  }
+  const recoveryBranchScopes = await runWithDatabaseSpace(input.job.space, (db) =>
+    resolveStreamingBranchScopes(db, {
+      assistantMessageId: input.job.assistantMessageId,
+      userMessageId: input.job.userMessageId,
+    })
+  );
+  if (hashBranchRoute(recoveryBranchScopes) !== input.job.branchRouteHash) {
+    throw new Error('会话分支已变化，无法安全恢复生成。');
+  }
+  if (assistantMessage.status !== 'generating') {
+    const terminalState = assistantMessage.status === 'completed'
+      ? 'completed'
+      : assistantMessage.status === 'failed' ? 'failed' : 'stopped';
+    await runWithDatabaseSpace(input.job.space, (db) => settleGenerationJob(db, {
+      completionReason: 'message_already_terminal',
+      content: assistantMessage.content,
+      errorCode: assistantMessage.status === 'failed' ? 'message_already_failed' : null,
+      generationId: input.job.generationId,
+      now: assistantMessage.completedAt ?? new Date().toISOString(),
+      reasoning: assistantMessage.reasoningText,
+      state: terminalState,
+    }));
+    return;
+  }
+
+  const frozenThread: AiThreadRecord = { ...currentThread, ...snapshot.thread };
+  const generationMetrics = createGenerationMetricsDraft({
+    contextType: frozenThread.contextType,
+    generationId: input.job.generationId,
+    messageId: input.job.assistantMessageId,
+    space: input.job.space,
+    threadId: input.job.threadId,
+  });
+  await streamAssistantReply({
+    attachments: snapshot.attachments,
+    assistantMessageId: input.job.assistantMessageId,
+    continuationContext: snapshot.continuationContext ?? undefined,
+    continuationInstruction: snapshot.continuationInstruction ?? undefined,
+    generationMetrics,
+    historyAnchorMessageId: snapshot.historyAnchorMessageId ?? undefined,
+    ignoreReasoningDeltas: input.decision === 'continue',
+    initialAnswerText: input.decision === 'continue' ? input.job.partialContent : '',
+    initialReasoningText: input.decision === 'continue' ? input.job.partialReasoning : null,
+    mode: input.decision === 'continue' ? 'continue' : 'replace',
+    onMessagePatch: input.onMessagePatch,
+    onTimeout: input.onTimeout,
+    onUpdated: input.onUpdated,
+    requestContentOverride: snapshot.requestContentOverride ?? undefined,
+    signal: input.signal,
+    space: input.job.space,
+    thread: frozenThread,
+    userMessage: { id: userMessage.id, content: userMessage.content },
+  });
+}
+
+export async function stopInterruptedGeneration(job: AiGenerationJobRecord, reason: string): Promise<void> {
+  const now = new Date().toISOString();
+  await runWithDatabaseSpace(job.space, async (db) => {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        `UPDATE ai_messages SET status = 'stopped', errorMessage = ?, completedAt = ?, updatedAt = ?
+          WHERE id = ? AND threadId = ? AND status = 'generating'`,
+        reason, now, now, job.assistantMessageId, job.threadId,
+      );
+      await settleGenerationJob(db, {
+        completionReason: 'recovery_stopped', content: job.partialContent,
+        errorCode: 'recovery_stopped', generationId: job.generationId, now,
+        reasoning: job.partialReasoning, state: 'stopped',
+      });
+    });
+  });
 }
 
 async function loadThreadForGeneration(space: PixorySpace, threadId: string): Promise<AiThreadRecord> {

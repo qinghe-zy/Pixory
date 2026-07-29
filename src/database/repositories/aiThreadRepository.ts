@@ -657,6 +657,8 @@ export interface AiThreadExportSnapshot {
   companionThoughtEvents?: CompanionSnapshotRow[];
   companionThoughtJobs?: CompanionSnapshotRow[];
   companionThoughts?: CompanionSnapshotRow[];
+  generationJobs?: CompanionSnapshotRow[];
+  generationEvents?: CompanionSnapshotRow[];
 }
 
 type CompanionSnapshotRow = Record<string, string | number | null>;
@@ -1613,6 +1615,18 @@ export const aiThreadRepository = {
       'SELECT * FROM companion_thoughts WHERE sourceThreadId = ? ORDER BY createdAt ASC, id ASC',
       threadId
     );
+    const generationJobs = await db.getAllAsync<CompanionSnapshotRow>(
+      'SELECT * FROM ai_generation_jobs WHERE threadId = ? ORDER BY createdAt ASC, id ASC',
+      threadId
+    );
+    const generationEvents = generationJobs.length
+      ? await db.getAllAsync<CompanionSnapshotRow>(
+          `SELECT events.* FROM ai_generation_events events
+           INNER JOIN ai_generation_jobs jobs ON jobs.id = events.jobId
+           WHERE jobs.threadId = ? ORDER BY events.jobId ASC, events.sequence ASC`,
+          threadId
+        )
+      : [];
     const continuityImportBlocks = await db.getAllAsync<AiContinuityImportBlockRecord>(
       `SELECT ai_continuity_import_blocks.*
        FROM ai_continuity_import_blocks
@@ -1650,6 +1664,8 @@ export const aiThreadRepository = {
       continuityImportBlocks,
       continuityImportSessions,
       favorites,
+      generationEvents,
+      generationJobs,
       memoryJob,
       memorySettings: memorySettingsRow ? mapMemorySettingsRow(memorySettingsRow) : null,
       messages,
@@ -1831,6 +1847,21 @@ export const aiThreadRepository = {
         message.completedAt
       );
       await aiThreadRepository.syncMessageFts(db, message);
+    }
+
+    for (const job of snapshot.generationJobs ?? []) {
+      const terminal = job.state === 'completed' || job.state === 'failed' || job.state === 'stopped';
+      await insertCompanionSnapshotRow(db, 'ai_generation_jobs', job, {
+        space: targetSpace,
+        threadId: snapshot.thread.id,
+        state: terminal ? job.state : 'recoverable_interrupted',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        remoteOutcomeUnknown: terminal ? job.remoteOutcomeUnknown : 1,
+      });
+    }
+    for (const event of snapshot.generationEvents ?? []) {
+      await insertCompanionSnapshotRow(db, 'ai_generation_events', event);
     }
 
     for (const event of snapshot.companionEvents ?? []) {

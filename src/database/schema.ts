@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 54;
+export const DATABASE_VERSION = 55;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -1988,6 +1988,68 @@ ALTER TABLE ai_message_citations ADD COLUMN validationReason TEXT;
 ALTER TABLE ai_message_citations ADD COLUMN usedAt TEXT;
 CREATE INDEX IF NOT EXISTS idx_ai_citations_validation
   ON ai_message_citations(messageId, validationStatus, claimStart);
+`;
+
+export const MIGRATION_STATEMENTS_V55 = `
+CREATE TABLE IF NOT EXISTS ai_generation_jobs (
+  id TEXT PRIMARY KEY NOT NULL,
+  space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+  threadId TEXT NOT NULL,
+  userMessageId TEXT NOT NULL,
+  assistantMessageId TEXT NOT NULL,
+  generationId TEXT NOT NULL UNIQUE,
+  attemptId TEXT NOT NULL,
+  requestMode TEXT NOT NULL CHECK (requestMode IN ('replace', 'continue', 'followup')),
+  state TEXT NOT NULL CHECK (state IN ('prepared', 'requesting', 'streaming', 'reconciling', 'recoverable_interrupted', 'retrying', 'continuing', 'completed', 'failed', 'stopped')),
+  providerId TEXT,
+  modelId TEXT,
+  protocol TEXT,
+  requestSnapshotJson TEXT NOT NULL DEFAULT '{}',
+  promptSnapshotHash TEXT,
+  cacheMetadataJson TEXT NOT NULL DEFAULT '{}',
+  branchRouteHash TEXT NOT NULL,
+  lineageVersion INTEGER NOT NULL DEFAULT 0,
+  partialContent TEXT NOT NULL DEFAULT '',
+  partialReasoning TEXT,
+  lastPersistSequence INTEGER NOT NULL DEFAULT 0,
+  completionReason TEXT,
+  providerRequestId TEXT,
+  providerCursor TEXT,
+  retryCount INTEGER NOT NULL DEFAULT 0 CHECK (retryCount BETWEEN 0 AND 1),
+  continuationCount INTEGER NOT NULL DEFAULT 0 CHECK (continuationCount BETWEEN 0 AND 1),
+  leaseOwner TEXT,
+  leaseExpiresAt TEXT,
+  heartbeatAt TEXT,
+  lastErrorCode TEXT,
+  remoteOutcomeUnknown INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  startedAt TEXT,
+  completedAt TEXT,
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (userMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (assistantMessageId) REFERENCES ai_messages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_generation_jobs_reconcile
+  ON ai_generation_jobs(space, state, leaseExpiresAt, updatedAt);
+CREATE INDEX IF NOT EXISTS idx_ai_generation_jobs_assistant
+  ON ai_generation_jobs(assistantMessageId, createdAt DESC);
+
+CREATE TABLE IF NOT EXISTS ai_generation_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  jobId TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  eventType TEXT NOT NULL,
+  fromState TEXT,
+  toState TEXT,
+  payloadJson TEXT NOT NULL DEFAULT '{}',
+  partialContentHash TEXT,
+  createdAt TEXT NOT NULL,
+  UNIQUE (jobId, sequence),
+  FOREIGN KEY (jobId) REFERENCES ai_generation_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_generation_events_job
+  ON ai_generation_events(jobId, sequence ASC);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

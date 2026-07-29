@@ -1,5 +1,7 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
+import { markInterruptedGenerationJobs } from '../ai/generation/aiGenerationRepository';
+
 import {
   DATABASE_NAME,
   DATABASE_VERSION,
@@ -59,6 +61,7 @@ import {
   MIGRATION_STATEMENTS_V52,
   MIGRATION_STATEMENTS_V53,
   MIGRATION_STATEMENTS_V54,
+  MIGRATION_STATEMENTS_V55,
   PERSONAL_DATABASE_NAME,
 } from './schema';
 
@@ -180,14 +183,21 @@ async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
   );
 }
 
-async function cleanupInterruptedAiGenerations(db: SQLiteDatabase): Promise<void> {
+async function cleanupInterruptedAiGenerations(db: SQLiteDatabase, space: PixorySpace): Promise<void> {
+  const now = new Date().toISOString();
+  await markInterruptedGenerationJobs(db, { now, space });
   await db.runAsync(
     `UPDATE ai_messages
      SET status = 'stopped',
          completedAt = ?,
          errorMessage = '生成被系统中断。'
-     WHERE status = 'generating'`,
-    new Date().toISOString()
+     WHERE status = 'generating'
+       AND NOT EXISTS (
+         SELECT 1 FROM ai_generation_jobs j
+          WHERE j.assistantMessageId = ai_messages.id
+            AND j.state NOT IN ('completed', 'failed', 'stopped')
+       )`,
+    now
   );
 }
 
@@ -412,6 +422,9 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     if (currentVersion < 54) {
       await database.execAsync(MIGRATION_STATEMENTS_V54);
     }
+    if (currentVersion < 55) {
+      await database.execAsync(MIGRATION_STATEMENTS_V55);
+    }
 
     await ensureImportTemplatesSchema(database);
     await ensureAiBranchSchema(database);
@@ -432,7 +445,7 @@ export async function initDatabase(space: PixorySpace = 'normal'): Promise<SQLit
       const db = await openPixoryDatabase(space);
       await configureDatabase(db);
       await runMigrations(db, space);
-      await cleanupInterruptedAiGenerations(db);
+      await cleanupInterruptedAiGenerations(db, space);
       return db;
     })().catch((error) => {
       initializationPromises[space] = undefined;

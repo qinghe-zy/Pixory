@@ -64,6 +64,7 @@ import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { scheduleCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
 import { runCompanionMaintenancePass } from './src/ai/companion/companionMaintenanceQueue';
+import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
 import { ImageDetailScreen } from './src/screens/ImageDetailScreen';
 import { ImageViewerScreen } from './src/screens/ImageViewerScreen';
@@ -596,6 +597,7 @@ export default function App() {
       try {
         await ensureAppDirectories();
         await initDatabase();
+        void aiGenerationManager.reconcileInterruptedGenerations('normal').catch(() => undefined);
         void reconcileThoughtSessions('normal').catch(() => undefined);
         void runCompanionMaintenancePass({ space: 'normal' }).catch(() => undefined);
         void cleanupOldTempFiles('personal', 0).catch((error) => {
@@ -836,6 +838,7 @@ export default function App() {
       setPersonalSession(session);
       setPersonalSessionState('unlocked');
       personalSessionStateRef.current = 'unlocked';
+      void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
       setPersonalUnlockVisible(false);
       setLibraryRefreshToken((current) => current + 1);
       setTimeout(() => {
