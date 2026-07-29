@@ -29,6 +29,7 @@
 | src/ai/aiStreamingBlockSplitter.ts | Keep height estimate/cache contract for stable blocks. |
 | src/ai/aiStreamingTailModel.ts | Consume supplied block deltas without re-splitting whole text; retain monotonic reservation/debt behavior. |
 | src/ai/aiStreamingTailFeatureFlags.ts | Add isolated aiBlockStreamingRendererEnabled remote flag. |
+| src/components/ai/aiChatBubbleRail.ts | New shared composerShell/message horizontal rail token; owns no rendering or runtime measurement. |
 | src/components/ai/AiLiveStreamingMessage.tsx | New attached renderer using measured block segments as one continuous bubble. |
 | src/components/ai/AiMessageBubble.tsx | Route active generation to live block renderer only when flag is enabled. |
 | src/screens/AiChatScreen.tsx | Coordinate attached/detached transitions and preserve historical layout. |
@@ -333,6 +334,87 @@ git add src/components/ai/AiLiveStreamingMessage.tsx src/components/ai/AiMessage
 git commit -m "feat: render live chat as semantic blocks"
 ~~~
 
+## Task 4A: Align message maximum widths to the composer rail
+
+**Files:**
+- Create: src/components/ai/aiChatBubbleRail.ts
+- Modify: src/components/ai/AiChatComposer.tsx
+- Modify: src/components/ai/AiMessageBubble.tsx
+- Modify: src/components/ai/AiLiveStreamingMessage.tsx
+- Modify: src/components/ai/AiStreamingTailMessageSegment.tsx
+- Modify: src/components/ai/AiThinkingBlock.tsx
+- Modify: src/components/ai/AiStreamingMessageText.tsx
+- Test: tests/ai-streaming-block-rendering-policy.test.cjs
+
+- [ ] **Step 1: Write a failing rail contract test.**
+
+~~~
+assert.match(railSource, /composerShell/);
+assert.match(messageBubble, /aiChatBubbleRail/);
+assert.match(liveRenderer, /aiChatBubbleRail/);
+assert.match(tailRenderer, /aiChatBubbleRail/);
+assert.match(thinkingBlock, /aiChatBubbleRail/);
+assert.doesNotMatch(messageBubble, /maxWidth:\s*'94%'/);
+assert.doesNotMatch(tailRenderer, /width:\s*"94%"/);
+assert.doesNotMatch(messageBubble, /thinkingWrap:[\s\S]{0,80}maxWidth:\s*'98%'/);
+~~~
+
+- [ ] **Step 2: Extract one shared rail token from the existing page/composer layout token.**
+
+~~~
+export const aiChatBubbleRail = {
+  // composerShell and message content both consume this token.
+  horizontalInset: layout.pagePaddingHorizontal,
+  maxWidth: '100%' as const,
+};
+~~~
+
+The source of truth is the visible outer edge of composerShell. Do not use TextInput padding, `Dimensions`, onLayout coordinates, or a separately maintained percentage.
+
+- [ ] **Step 3: Apply rail styles to the composer and message containers.**
+
+~~~
+composerShell: {
+  marginHorizontal: aiChatBubbleRail.horizontalInset,
+}
+
+userStack: {
+  alignSelf: 'flex-end',
+  maxWidth: aiChatBubbleRail.maxWidth,
+}
+
+assistantStack: {
+  alignSelf: 'flex-start',
+  maxWidth: aiChatBubbleRail.maxWidth,
+}
+~~~
+
+The implementation must preserve natural width for short messages. The user bubble reaches the rail left edge only at max width; the assistant bubble reaches the rail right edge only at max width.
+
+- [ ] **Step 4: Apply the same rail to live and detached block renderers.**
+
+~~~
+<View style={[styles.assistantStack, aiChatBubbleRail.assistantStack]}>
+  <AiMeasuredStreamBlock ... />
+</View>
+~~~
+
+No tail-specific 94% override may remain. Thinking must consume the same rail for both normal and streaming `AiThinkingBlock` paths; a short thinking surface stays left aligned, while a long one reaches the rail right edge. Action rows, citations and date separators keep their existing independent geometry.
+
+- [ ] **Step 5: Verify with focused tests and Android screenshots.**
+
+Run: node --test tests/ai-streaming-block-rendering-policy.test.cjs
+Expected: PASS.
+
+On Android, capture a long user message, long assistant reply, attached streaming reply and detached tail reply. At maximum width, use a screenshot ruler or Inspector to verify each required composer-edge alignment is within 1dp.
+
+- [ ] **Step 6: Commit rail alignment separately.**
+
+~~~
+git add src/components/ai/aiChatBubbleRail.ts src/components/ai/AiChatComposer.tsx src/components/ai/AiMessageBubble.tsx src/components/ai/AiLiveStreamingMessage.tsx src/components/ai/AiStreamingTailMessageSegment.tsx src/components/ai/AiThinkingBlock.tsx src/components/ai/AiStreamingMessageText.tsx tests/ai-streaming-block-rendering-policy.test.cjs
+git commit -m "style: align chat bubbles with composer rail"
+~~~
+
 ## Task 5: Unify detached tail with the same block contract
 
 **Files:**
@@ -492,6 +574,7 @@ Report baseline/after metrics separately from Provider latency, declare every un
 | Spec requirement | Covered by |
 | --- | --- |
 | Semantic blocks and no text fade | Tasks 1, 2, 4 |
+| Composer-aligned maximum bubble widths | Task 4A |
 | Known-block-only reservation and debt | Tasks 1, 2, 5 |
 | Attached speed and detached scroll stability | Tasks 3, 4, 5 |
 | Stop/error/background/recovery/branch correctness | Tasks 3, 5, 7 |

@@ -48,6 +48,16 @@ Pixory 应从“字符步进式显示”切换为“流式到达、语义块原�
 - 不让梦境、思绪、记忆、分支或 citation 改变显示调度决策。
 - 不新增“打字机/块级”的用户设置；首版仅用远程 feature flag 灰度。
 
+### 3.3 气泡与输入框的水平对齐契约
+
+本规格中的“输入框边缘”统一指聊天底部 `composerShell` 的可见外轮廓左右边缘，不是内部 `TextInput` 的字符起点，也不是屏幕安全区边缘。消息区与 composer 必须共享同一个水平 rail，不能分别用 `94%`、页面 padding 或局部 magic number 猜测宽度。
+
+- 发送气泡在达到最大宽度时，其左侧外边缘必须与 `composerShell` 左边缘重合；其右侧仍按用户消息的右对齐规则落在同一 rail 右边缘。
+- AI 回复气泡在达到最大宽度时，其右侧外边缘必须与 `composerShell` 右边缘重合；短回复仍保持左对齐，不会为了右边缘对齐而把短消息挪到右侧。
+- 该 rail 同时适用于普通历史气泡、attached live block 气泡、detached tail 气泡、续答和停止/失败后的最终气泡，以及思考模块。长思考模块的右侧外边缘同样对齐 `composerShell` 右边缘；短思考保持左对齐。操作行、日期分隔线和引用列表不强制套用此最大宽度。
+- 屏幕旋转（当前产品锁定竖屏）、字体缩放、键盘、safe area、附件栏高度和 composer 高度变化不得改变 rail 的左右来源；它只能随页面的共享横向 layout token 改变。
+- 不通过运行时测量 input 的 x/y 再异步修正气泡宽度。首帧必须由同一 layout token 得到正确 rail，避免初始错位后跳动。
+
 ## 4. 设计备选
 
 ### A. 仅调大字符步进参数：拒绝
@@ -172,6 +182,7 @@ shrinkDebt = nextReservedHeight - measuredHeight
 | runtime policy | 集中配置 latency、visual line/block/viewport 上限、device-pressure 降级。 | 修改 src/ai/aiStreamingRuntime.ts |
 | stream service adapter | authoritative text/persistence 不变，把 scheduler 输出作为 UI patch 发出；记录指标。 | 修改 src/ai/aiChatService.ts |
 | stream store | 保存不可变 display-session blocks 和 reservation metadata，按 lane 精确通知订阅者。 | 修改 src/ai/aiStreamingMessageStore.ts |
+| bubble rail | 唯一维护 composerShell 外轮廓与消息最大宽度的共享横向 token，禁止 94% 或重复 gutter。 | 新建 src/components/ai/aiChatBubbleRail.ts |
 | attached renderer | 用 measured block/segment chrome 渲染连续气泡，不重渲历史。 | 新建 src/components/ai/AiLiveStreamingMessage.tsx |
 | detached adapter | 复用 tail model；接收同一 block contract，而非从全文重新分割。 | 修改 aiStreamingTailModel 与 AiChatScreen |
 | diagnostics | 只记录内容无关的 block/reservation/flush/measurement 指标。 | 修改 aiGenerationMetrics 与已有 diagnostics |
@@ -195,6 +206,7 @@ AiChatScreen 保留路由、scroll 状态和 attached/detached 切换协调；�
 | 上滑阅读 | 生成中任意停留 10 秒，当前可见历史项的视觉坐标不变；无自动跳到底部。 |
 | 回到底部 | 无未测 block、未清 debt 或重复内容后才提交回主消息；无闪白/闪旧文本。 |
 | 终态 | stop/error/complete/route blur/background 不丢失 display buffer，最终数据库正文完整。 |
+| 水平几何 | 长用户气泡左边缘与 composerShell 左边缘相差不超过 1dp；长 AI 气泡和长思考模块右边缘与 composerShell 右边缘相差不超过 1dp；普通、attached、detached 三种状态一致。 |
 
 ## 10. 可观测性、安全和回滚
 
