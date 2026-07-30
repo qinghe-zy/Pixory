@@ -2285,17 +2285,17 @@ export function AiChatScreen({
       messagesByDate.set(dateKey, dayMessages);
     });
     const visibleDiariesByDate = new Map(
-      thinking ? [] : roleDiaries.map((diary) => [diary.diaryDate, diary] as const),
+      roleDiaries.map((diary) => [diary.diaryDate, diary] as const),
     );
     const visibleDreamsByDate = new Map<string, DreamRecord[]>();
-    if (!thinking) roleDreams.forEach((dream) => {
+    roleDreams.forEach((dream) => {
       const dateKey = beijingDiaryDate(new Date(dream.displayAt));
       const entries = visibleDreamsByDate.get(dateKey) ?? [];
       entries.push(dream);
       visibleDreamsByDate.set(dateKey, entries);
     });
     const visibleDreamJobsByDate = new Map<string, DreamJobRecord[]>();
-    if (!thinking) roleDreamJobs.forEach((job) => {
+    roleDreamJobs.forEach((job) => {
       const dateKey = beijingDiaryDate(job.createdAt);
       const entries = visibleDreamJobsByDate.get(dateKey) ?? [];
       entries.push(job);
