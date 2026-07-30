@@ -35,6 +35,8 @@ function getCachedHomeRoleCards(space: PixorySpace): AiRoleCardRecord[] {
 interface AiHomeScreenProps {
   footer?: ReactNode;
   space: PixorySpace;
+  /** Increment to trigger a fresh data reload without unmounting the screen. */
+  refreshToken?: number;
   onStartNormalChat: () => void;
   onOpenRoleLibrary: () => void;
   onOpenProviderSettings: () => void;
@@ -55,6 +57,7 @@ interface RoleShortcut {
 export function AiHomeScreen({
   footer,
   space,
+  refreshToken,
   onStartNormalChat,
   onOpenRoleLibrary,
   onOpenProviderSettings,
@@ -96,7 +99,7 @@ export function AiHomeScreen({
     return () => {
       isMounted = false;
     };
-  }, [space]);
+  }, [space, refreshToken]);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,7 +119,7 @@ export function AiHomeScreen({
     return () => {
       isMounted = false;
     };
-  }, [space]);
+  }, [space, refreshToken]);
 
   const roleShortcuts = useMemo(() => buildRoleLibraryShortcuts(roleCards), [roleCards]);
 

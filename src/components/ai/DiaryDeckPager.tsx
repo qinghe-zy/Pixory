@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   sheet: { bottom: 0, elevation: 2, left: 0, position: 'absolute', right: 0, shadowColor: '#39443B', shadowOffset: { height: 5, width: 0 }, shadowOpacity: 0.12, shadowRadius: 10 },
   paper: { aspectRatio: 9 / 13, borderRadius: radius.xs, overflow: 'hidden', paddingBottom: spacing[6], paddingHorizontal: spacing[6], paddingTop: spacing[7] },
   paperImage: { borderRadius: radius.xs },
-  header: { ...typography.textStyles.caption, color: colors.text.secondary, fontWeight: '600', letterSpacing: 0 },
+  header: { ...typography.textStyles.caption, color: colors.text.secondary, fontWeight: '600', letterSpacing: 0, textAlign: 'right' },
   body: { ...typography.textStyles.body, color: '#1F2420', flex: 1, fontSize: 15, lineHeight: 28, marginTop: spacing[7] },
   footer: { ...typography.textStyles.caption, color: colors.text.secondary },
   pageCount: { ...typography.textStyles.bodyStrong, color: colors.text.secondary, letterSpacing: 0 },
