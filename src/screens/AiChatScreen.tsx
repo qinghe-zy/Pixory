@@ -2320,7 +2320,10 @@ export function AiChatScreen({
       const mixedItems = [
         ...dayMessages.map((m) => ({ type: 'msg' as const, time: new Date(m.createdAt).getTime(), data: m })),
         ...dayDreams.map((d) => ({ type: 'drm' as const, time: new Date(d.displayAt).getTime(), data: d })),
-        ...dayJobs.map((j) => ({ type: 'job' as const, time: new Date(j.createdAt).getTime(), data: j }))
+        ...dayJobs.map((j) => ({ type: 'job' as const, time: new Date(j.createdAt).getTime(), data: j })),
+        // Diary is inserted at its generation time so the card anchors to that
+        // moment rather than always floating after the latest message of the day.
+        ...(diary ? [{ type: 'diary' as const, time: new Date(diary.updatedAt).getTime(), data: diary }] : []),
       ].sort((a, b) => a.time - b.time);
 
       let firstMessageSeen = false;
@@ -2352,15 +2355,11 @@ export function AiChatScreen({
         } else if (item.type === 'job') {
           const job = item.data as DreamJobRecord;
           nextVisibleMessageItems.push({ type: 'dreamJob', id: `dreamJob-${job.id}`, job });
+        } else if (item.type === 'diary') {
+          const diaryRecord = item.data as RoleDiaryRecord;
+          nextVisibleMessageItems.push({ type: 'diary', id: `diary-${diaryRecord.id}`, diary: diaryRecord });
         }
       });
-      if (diary) {
-        nextVisibleMessageItems.push({
-          type: 'diary',
-          id: `diary-${diary.id}`,
-          diary,
-        });
-      }
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
     nextVisibleMessageItems.forEach((item) => {
@@ -6477,6 +6476,11 @@ export function AiChatScreen({
             createdAt={item.diary.updatedAt}
             diaryDate={item.diary.diaryDate}
             onContextChoice={(accepted) => {
+              // Optimistic update: reflect the choice immediately in the UI
+              // without waiting for the async DB write to complete.
+              setRoleDiaries((prev) =>
+                prev.map((d) => d.id === item.diary.id ? { ...d, contextOptIn: accepted } : d),
+              );
               void runWithDatabaseSpace(space, (db) =>
                 diaryRepository.setContextOptIn(db, item.diary.id, accepted),
               )
@@ -6812,11 +6816,7 @@ export function AiChatScreen({
                 </Text>
                 {thinking ? <View style={styles.liveDot} /> : null}
               </View>
-              {modelLabel ? (
-                <Text numberOfLines={1} style={styles.modelSubtitle}>
-                  {modelLabel}
-                </Text>
-              ) : null}
+
             </View>
             {/* Right: session settings + new chat */}
             <View style={styles.headerSide}>
@@ -7325,7 +7325,7 @@ const styles = StyleSheet.create({
     borderBottomColor: aiLightColors.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    minHeight: spacing[12],
+    minHeight: spacing[10],
   },
   headerSide: {
     alignItems: "center",
