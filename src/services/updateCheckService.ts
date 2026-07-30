@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const FALLBACK_CURRENT_VERSION = '2.7.2';
-const FALLBACK_CURRENT_VERSION_CODE = 274;
+const FALLBACK_CURRENT_VERSION = '2.7.3';
+const FALLBACK_CURRENT_VERSION_CODE = 275;
 
 export interface AppUpdateInfo {
   version: string;
@@ -225,3 +225,5 @@ export async function checkForAppUpdate(): Promise<AppUpdateInfo | null> {
 
   return null;
 }
+
+

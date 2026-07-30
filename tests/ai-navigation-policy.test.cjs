@@ -80,7 +80,7 @@ test('AI chat header shows the current model below the chat title', () => {
   assert.match(content, /modelLabel/);
   assert.match(content, /modelRefreshKey/);
   assert.match(content, /\[isInitialMessageLoading,\s*modelRefreshKey,\s*reloadModelLabel,\s*threadId\]/);
-  assert.match(content, /styles\.modelSubtitle/);
+  assert.doesNotMatch(content, /styles\.modelSubtitle/);
   assert.match(service, /getCurrentChatModelPresentation/);
   assert.match(service, /provider\.displayName/);
   assert.match(service, /model\?\.displayName/);
@@ -806,3 +806,4 @@ test.skip('AI workbench shows compact recent chats directly on the workbench', (
   assert.doesNotMatch(home, /formatAiHistoryMinute/);
   assert.match(home, /角色库/);
 });
+

@@ -2,7 +2,7 @@
   "expo": {
     "name": "pixory",
     "slug": "pixory",
-    "version": "2.7.2",
+    "version": "2.7.3",
     "orientation": "portrait",
     "icon": "./icons/02_右上_蓝发女孩.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.pixory.app",
-      "versionCode": 274,
+      "versionCode": 275,
       "softwareKeyboardLayoutMode": "resize",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -29,7 +29,7 @@
     "web": {
       "favicon": "./assets/pixory-favicon.png"
     },
-    "runtimeVersion": "2.7.2",
+    "runtimeVersion": "2.7.3",
     "updates": {
       "enabled": true,
       "url": "https://u.expo.dev/f9528887-4f8b-451d-a851-aa1a45e9abae",
@@ -92,3 +92,4 @@
     "owner": "qinghe.zy"
   }
 }
+

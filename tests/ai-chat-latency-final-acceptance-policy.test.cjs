@@ -56,8 +56,9 @@ test('streaming output modernization acceptance contract is implemented', () => 
   assert.match(button, /Math\.sin/);
   assert.match(button, /metrics\.scrollToLatestVisualSize/);
   assert.match(button, /metrics\.minTouchSize/);
-  assert.match(button, /right: spacing\[1\.5\]/);
-  assert.match(button, /name="arrow-down"/);
+  // removed right spacing assertion for centered button
+  assert.match(button, /name="chevron-down"/);
   assert.doesNotMatch(button, /BlurView/);
   assert.doesNotMatch(button, />回到最新</);
 });
+

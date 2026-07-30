@@ -14,9 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { metrics, radius, shadows, spacing } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
-const BUTTON_SIZE = 32;
-const ICON_SIZE = 16;
-const DOT_SIZE = 3;
+const BUTTON_SIZE = metrics.scrollToLatestVisualSize;
+const ICON_SIZE = metrics.scrollToLatestGlyphSize;
+const DOT_SIZE = metrics.scrollToLatestDotSize;
 
 interface AiScrollToLatestButtonProps {
   bottomOffset: number;
@@ -151,7 +151,7 @@ export function AiScrollToLatestButton({
         <View style={styles.surface}>
           <Reanimated.View pointerEvents="none" style={[styles.iconLayer, arrowStyle]}>
             <Ionicons
-              color={aiLightColors.mutedReadable}
+              color={aiLightColors.ink}
               name="chevron-down"
               size={ICON_SIZE}
               style={{ marginTop: 1, marginLeft: 0.5 }}
@@ -176,7 +176,9 @@ export function AiScrollToLatestButton({
 const styles = StyleSheet.create({
   fadeWrap: {
     position: 'absolute',
-    right: spacing[4],
+    left: 0,
+    right: 0,
+    alignItems: 'center',
     zIndex: 5,
   },
   button: {
@@ -217,3 +219,8 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
 });
+
+
+
+
+

@@ -9,14 +9,14 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-test('website release-facing files reference the current 2.7.2 release', () => {
-  assert.match(read('docs/index.html'), /当前版本：2\.7\.2/);
-  assert.match(read('docs/update-version.json'), /"version": "2.7.2"/);
+test('website release-facing files reference the current 2.7.3 release', () => {
+  assert.match(read('docs/index.html'), /当前版本：2\.7\.3/);
+  assert.match(read('docs/update-version.json'), /"version": "2.7.3"/);
   assert.match(read('docs/index.html'), /SQLite/);
-  assert.match(read('README.md'), /当前版本 `2\.7\.2`/);
-  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.7\.2/);
-  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.7\.2\.apk/);
-  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.7\.2\.apk/);
+  assert.match(read('README.md'), /当前版本 `2\.7\.3`/);
+  assert.match(read('docs/pixory-product-bid-handbook.md'), /适用版本：Pixory 2\.7\.3/);
+  assert.match(read('README.md'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.7\.3\.apk/);
+  assert.match(read('docs/index.html'), /https:\/\/mist01\.com\/downloads\/Pixory-v2\.7\.3\.apk/);
   assert.match(read('README.md'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /https:\/\/github\.com\/qinghe-zy\/Pixory\/releases\/latest/);
   assert.match(read('docs/index.html'), /直接下载[\s\S]{0,140}最新版 Android APK/);
@@ -79,5 +79,6 @@ test('website sitemap lastmod is synchronized with the release update date', () 
   const matches = sitemap.match(/<lastmod>2026-07-30<\/lastmod>/g) ?? [];
   assert.equal(matches.length, 6);
 });
+
 
 
