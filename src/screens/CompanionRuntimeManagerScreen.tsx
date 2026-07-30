@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   clearCompanionRoleRuntime,
@@ -19,6 +20,9 @@ interface CompanionRuntimeManagerScreenProps {
 }
 
 export function CompanionRuntimeManagerScreen({ space, threadId, onBack }: CompanionRuntimeManagerScreenProps) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+
   const [items, setItems] = useState<CompanionManagementItem[]>([]);
   const [roleId, setRoleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +47,7 @@ export function CompanionRuntimeManagerScreen({ space, threadId, onBack }: Compa
   }, [load]);
 
   return (
-    <AppScreen contentStyle={styles.screen} scrollable>
+    <AppScreen contentStyle={[styles.screen, { paddingTop: statusBarHeight }]} scrollable>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" onPress={onBack} style={styles.headerTouch}>
           <Text style={styles.back}>返回</Text>

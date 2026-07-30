@@ -15,6 +15,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { metrics, radius, shadows, spacing } from '../../design/tokens';
 import { aiLightColors } from './aiLightTheme';
 
+const BUTTON_SIZE = 32;
+const ICON_SIZE = 16;
+const DOT_SIZE = 3;
+
 interface AiScrollToLatestButtonProps {
   bottomOffset: number;
   generating: boolean;
@@ -41,7 +45,7 @@ function JumpingDot({
     const wave = (Math.sin(phase.value - index * DOT_PHASE_OFFSET) + 1) / 2;
     return {
       opacity: 0.48 + wave * 0.42,
-      transform: [{ translateY: -wave * metrics.scrollToLatestDotSize }],
+      transform: [{ translateY: -wave * DOT_SIZE }],
     };
   }, [index, reducedMotion]);
 
@@ -54,7 +58,7 @@ export function AiScrollToLatestButton({
   visible,
   onPress,
 }: AiScrollToLatestButtonProps) {
-  const opacity = useRef(new Animated.Value(visible ? 0.85 : 0)).current;
+  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const [mounted, setMounted] = useState(visible);
   const phase = useSharedValue(0);
   const rotation = useSharedValue(0);
@@ -81,7 +85,7 @@ export function AiScrollToLatestButton({
       setMounted(true);
     }
     const animation = Animated.timing(opacity, {
-      toValue: visible ? 0.85 : 0,
+      toValue: visible ? 1 : 0,
       duration: visible ? 180 : 150,
       easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
       useNativeDriver: true,
@@ -174,9 +178,10 @@ export function AiScrollToLatestButton({
         <View style={styles.surface}>
           <Reanimated.View pointerEvents="none" style={[styles.iconLayer, arrowStyle]}>
             <Ionicons
-              color={aiLightColors.ink}
-              name="arrow-down"
-              size={metrics.scrollToLatestGlyphSize}
+              color={aiLightColors.mutedReadable}
+              name="chevron-down"
+              size={ICON_SIZE}
+              style={{ marginTop: 1, marginLeft: 0.5 }}
             />
           </Reanimated.View>
           <Reanimated.View pointerEvents="none" style={[styles.dots, dotsStyle]}>
@@ -198,9 +203,8 @@ export function AiScrollToLatestButton({
 const styles = StyleSheet.create({
   fadeWrap: {
     position: 'absolute',
-    right: spacing[1.5],
+    right: spacing[4],
     zIndex: 5,
-    opacity: 0.85,
   },
   button: {
     alignItems: 'center',
@@ -211,23 +215,21 @@ const styles = StyleSheet.create({
   },
   haloContainer: {
     borderRadius: radius.pill,
-    height: metrics.scrollToLatestVisualSize + 4,
-    left: (metrics.minTouchSize - metrics.scrollToLatestVisualSize) / 2 - 2,
+    height: BUTTON_SIZE + 4,
+    left: (metrics.minTouchSize - BUTTON_SIZE) / 2 - 2,
     overflow: 'hidden',
     position: 'absolute',
-    top: (metrics.minTouchSize - metrics.scrollToLatestVisualSize) / 2 - 2,
-    width: metrics.scrollToLatestVisualSize + 4,
+    top: (metrics.minTouchSize - BUTTON_SIZE) / 2 - 2,
+    width: BUTTON_SIZE + 4,
   },
   surface: {
-    ...shadows.floating,
+    ...shadows.sm,
     alignItems: 'center',
     backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
     borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: metrics.scrollToLatestVisualSize,
+    height: BUTTON_SIZE,
     justifyContent: 'center',
-    width: metrics.scrollToLatestVisualSize,
+    width: BUTTON_SIZE,
   },
   iconLayer: {
     alignItems: 'center',
@@ -238,14 +240,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
-    gap: metrics.scrollToLatestDotSize,
+    gap: DOT_SIZE,
     justifyContent: 'center',
   },
   dot: {
-    backgroundColor: aiLightColors.ink,
+    backgroundColor: aiLightColors.mutedReadable,
     borderRadius: radius.pill,
-    height: metrics.scrollToLatestDotSize,
-    width: metrics.scrollToLatestDotSize,
+    height: DOT_SIZE,
+    width: DOT_SIZE,
   },
   pressed: {
     opacity: 0.78,

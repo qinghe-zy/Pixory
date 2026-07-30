@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, ImageBackground, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
 import { beijingDiaryDate, beijingTimeLabel } from '../ai/diary/diaryTypes';
@@ -34,6 +35,9 @@ export function CompanionInnerLifeScreen({
   onOpenDiary,
   onOpenDream,
 }: CompanionInnerLifeScreenProps) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android' ? Math.max(StatusBar.currentHeight ?? 0, insets.top) : insets.top;
+
   const [activeKind, setActiveKind] = useState<InnerLifeKind>('diary');
   const [diaries, setDiaries] = useState<RoleDiaryRecord[]>([]);
   const [dreams, setDreams] = useState<DreamRecord[]>([]);
@@ -92,7 +96,7 @@ export function CompanionInnerLifeScreen({
       : '还没有形成未说出口的念头。';
 
   return (
-    <AppScreen contentStyle={styles.screen} scrollable>
+    <AppScreen contentStyle={[styles.screen, { paddingTop: statusBarHeight }]} scrollable>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" onPress={onBack} style={styles.headerTouch}>
           <Text style={styles.back}>返回</Text>
