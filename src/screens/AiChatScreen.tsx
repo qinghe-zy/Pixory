@@ -2321,9 +2321,10 @@ export function AiChatScreen({
         ...dayMessages.map((m) => ({ type: 'msg' as const, time: new Date(m.createdAt).getTime(), data: m })),
         ...dayDreams.map((d) => ({ type: 'drm' as const, time: new Date(d.displayAt).getTime(), data: d })),
         ...dayJobs.map((j) => ({ type: 'job' as const, time: new Date(j.createdAt).getTime(), data: j })),
-        // Diary is inserted at its generation time so the card anchors to that
-        // moment rather than always floating after the latest message of the day.
-        ...(diary ? [{ type: 'diary' as const, time: new Date(diary.updatedAt).getTime(), data: diary }] : []),
+        // Diary is inserted at its CREATED time (not updatedAt) so the card anchors
+        // permanently. updatedAt changes on contextOptIn writes and would cause the
+        // card to re-sort to the bottom of the list after the user taps 是/否.
+        ...(diary ? [{ type: 'diary' as const, time: new Date(diary.createdAt).getTime(), data: diary }] : []),
       ].sort((a, b) => a.time - b.time);
 
       let firstMessageSeen = false;

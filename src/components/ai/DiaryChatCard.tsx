@@ -48,6 +48,6 @@ const styles = StyleSheet.create({
   open: { ...typography.textStyles.caption, color: colors.primary.default, position: 'absolute', right: spacing[3], top: spacing[3] },
   contextRow: { alignItems: 'center', flexDirection: 'row', gap: spacing[2], paddingHorizontal: spacing[1] },
   contextHint: { ...typography.textStyles.micro, color: colors.text.tertiary },
-  contextAction: { ...typography.textStyles.micro, color: colors.primary.default },
-  contextSelected: { color: colors.text.secondary, fontWeight: '600' },
+  contextAction: { ...typography.textStyles.micro, color: colors.text.tertiary },
+  contextSelected: { color: colors.primary.default, fontWeight: '600' },
 });
