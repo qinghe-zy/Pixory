@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { paginateDiaryText } from '../ai/diary/diaryPaginationService';
 import { diaryRepository, type RoleDiaryRecord, type RoleDiaryVersionRecord } from '../ai/diary/diaryRepository';
 import { DiaryDeckPager } from '../components/ai/DiaryDeckPager';
@@ -17,6 +19,7 @@ interface DiaryReaderScreenProps {
 }
 
 export function DiaryReaderScreen({ space, diaryId, onBack }: DiaryReaderScreenProps) {
+  const insets = useSafeAreaInsets();
   const [entry, setEntry] = useState<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -32,7 +35,7 @@ export function DiaryReaderScreen({ space, diaryId, onBack }: DiaryReaderScreenP
 
   return (
     <AppScreen backgroundColor={aiLightColors.canvas} contentStyle={styles.screen}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(spacing[3], insets.top + spacing[2]) }]}>
         <Pressable accessibilityLabel="返回聊天" accessibilityRole="button" onPress={onBack} style={styles.backButton}>
           <Ionicons color={colors.text.primary} name="chevron-back" size={metrics.iconSizeMd} />
         </Pressable>

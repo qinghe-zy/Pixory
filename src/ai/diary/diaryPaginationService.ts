@@ -17,7 +17,7 @@ function splitLongParagraph(paragraph: string, maxCharacters: number): string[] 
   return chunks;
 }
 
-export function paginateDiaryText(body: string, maxCharactersPerPage = 300): DiaryPageContent[] {
+export function paginateDiaryText(body: string, maxCharactersPerPage = 220): DiaryPageContent[] {
   const paragraphs = body.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
   const units = paragraphs.flatMap((paragraph) => splitLongParagraph(paragraph, maxCharactersPerPage));
   const pages: string[] = [];
