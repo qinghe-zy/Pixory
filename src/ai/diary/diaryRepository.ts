@@ -174,12 +174,15 @@ export const diaryRepository = {
     const now = createTimestamp();
     let version: RoleDiaryVersionRecord | null = null;
 
-    await db.withTransactionAsync(async () => {
-      const existing = await db.getFirstAsync<RoleDiaryRecord>(
+    // Use withExclusiveTransactionAsync to get a dedicated connection, preventing
+    // "cannot rollback · no transaction is active" errors caused by concurrent
+    // withTransactionAsync calls (e.g. memory writes) racing on the shared connection.
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      const existing = await txn.getFirstAsync<RoleDiaryRecord>(
         'SELECT * FROM companion_diaries WHERE id = ?',
         id,
       );
-      const count = await db.getFirstAsync<{ count: number }>(
+      const count = await txn.getFirstAsync<{ count: number }>(
         'SELECT COUNT(*) AS count FROM companion_diary_versions WHERE diaryId = ?',
         id,
       );
@@ -187,13 +190,13 @@ export const diaryRepository = {
       const versionId = `${id}:v${versionNumber}`;
 
       if (existing?.currentVersionId) {
-        await db.runAsync(
+        await txn.runAsync(
           `UPDATE companion_diary_versions SET status = 'superseded', supersededAt = ? WHERE id = ?`,
           now,
           existing.currentVersionId,
         );
       }
-      await db.runAsync(
+      await txn.runAsync(
         `INSERT INTO companion_diary_versions (
           id, diaryId, versionNumber, body, pageLayoutJson, generationModelSnapshotJson,
           sourceMessageIdsJson, sourceSummarySnapshot, sourceSnapshotHash, status, createdAt, supersededAt
@@ -202,7 +205,7 @@ export const diaryRepository = {
         input.generationModelSnapshotJson ?? '{}', input.sourceMessageIdsJson ?? '[]',
         input.sourceSummarySnapshot ?? null, input.sourceSnapshotHash, now,
       );
-      await db.runAsync(
+      await txn.runAsync(
         `INSERT INTO companion_diaries (
           id, roleCardId, diaryDate, currentVersionId, themeKey, bodyFontKey, status,
           sourceThreadId, sourceBranchRouteJson, sourceSnapshotHash, contextOptIn, createdAt, updatedAt
@@ -215,7 +218,7 @@ export const diaryRepository = {
         id, input.roleCardId, input.diaryDate, versionId, input.themeKey, input.bodyFontKey,
         input.status, input.sourceThreadId, input.sourceBranchRouteJson, input.sourceSnapshotHash, now, now,
       );
-      version = await db.getFirstAsync<RoleDiaryVersionRecord>(
+      version = await txn.getFirstAsync<RoleDiaryVersionRecord>(
         'SELECT * FROM companion_diary_versions WHERE id = ?',
         versionId,
       );
