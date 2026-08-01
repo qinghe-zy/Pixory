@@ -77,6 +77,14 @@ function buildOrderByClause(orderBy?: ImageListQueryOptions['orderBy']): string 
     return 'ORDER BY image_assets.lastViewedAt ASC, image_assets.id ASC';
   }
 
+  if (orderBy === 'sourceOrderAsc') {
+    return 'ORDER BY image_assets.sourceOrder ASC, image_assets.createdAt ASC, image_assets.id ASC';
+  }
+
+  if (orderBy === 'sourceOrderDesc') {
+    return 'ORDER BY image_assets.sourceOrder DESC, image_assets.createdAt DESC, image_assets.id DESC';
+  }
+
   if (orderBy === 'deletedAtDesc') {
     return 'ORDER BY image_assets.deletedAt DESC, image_assets.id DESC';
   }
@@ -284,7 +292,7 @@ function buildImageListQueryParts(
   return {
     whereClause: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
     values,
-    orderByClause: buildOrderByClause(options?.orderBy),
+    orderByClause: buildOrderByClause(options?.orderBy ?? (options?.importBatchId != null ? 'sourceOrderAsc' : undefined)),
   };
 }
 
@@ -544,6 +552,7 @@ export const imageRepository = {
       `INSERT INTO image_assets (
         ipId,
         importBatchId,
+        sourceOrder,
         groupId,
         mediaType,
         originalFileUri,
@@ -566,9 +575,10 @@ export const imageRepository = {
         previewStatus,
         contentHash,
         visualHash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.ipId,
       input.importBatchId ?? null,
+      input.sourceOrder ?? null,
       primaryGroupId,
       input.mediaType ?? 'image',
       requireNonEmptyText(input.originalFileUri, 'Original file URI'),
@@ -644,6 +654,7 @@ export const imageRepository = {
     const updates = buildUpdateStatement({
       ipId: input.ipId,
       importBatchId: input.importBatchId,
+      sourceOrder: input.sourceOrder,
       groupId: nextPrimaryGroupId,
       mediaType: input.mediaType,
       originalFileUri:
@@ -1009,11 +1020,14 @@ export const imageRepository = {
       clauses.push('image_assets.importBatchId = ?');
       values.push(normalizedScope.importBatchId);
     }
+    const orderByClause = normalizedScope?.importBatchId != null
+      ? 'ORDER BY image_assets.sourceOrder ASC, image_assets.createdAt ASC, image_assets.id ASC'
+      : 'ORDER BY image_assets.createdAt ASC, image_assets.id ASC';
     const rows = await db.getAllAsync<ImageListItemRow>(
       `${IMAGE_LIST_SELECT}
        WHERE ${clauses.join(' AND ')}
        GROUP BY image_assets.id
-       ORDER BY image_assets.createdAt ASC, image_assets.id ASC`,
+       ${orderByClause}`,
       ...values
     );
 

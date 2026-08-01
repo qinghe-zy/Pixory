@@ -8,6 +8,8 @@ import { colors, radius, shadows, spacing, typography } from '../design/tokens';
 export const IMAGE_SORT_OPTIONS: Array<{ value: ImageSortOrder; label: string }> = [
   { value: 'lastViewedAtDesc', label: '最近查看' },
   { value: 'lastViewedAtAsc', label: '最早查看' },
+  { value: 'sourceOrderAsc', label: '来源顺序' },
+  { value: 'sourceOrderDesc', label: '来源逆序' },
   { value: 'createdAtDesc', label: '最新导入' },
   { value: 'createdAtAsc', label: '最早导入' },
   { value: 'updatedAtDesc', label: '最近更新' },

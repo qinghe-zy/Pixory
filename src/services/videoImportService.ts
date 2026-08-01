@@ -1,6 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Platform } from 'react-native';
 
@@ -39,6 +38,8 @@ import {
   computeFileSha256,
   type NativeCopyProgressEvent,
 } from '../native/pixoryMediaModule';
+import { deleteMediaStoreAssetsWithConfirmation } from './mediaSourceDeletionService';
+import { sortPickedAssetsByCreationTime } from './mediaImportOrderService';
 import type { MediaPickerSource, VideoImportNamingMode } from '../database/repositories/settingsRepository';
 import type { DuplicateImportDecision } from './imageImportService';
 import type { ImageImportSourceMode } from '../database/repositories/settingsRepository';
@@ -58,6 +59,7 @@ export interface PickedVideoAsset {
   mimeType: string | null;
   fileSize: number | null;
   sourceKind?: MediaPickerSource;
+  sourceOrder?: number | null;
 }
 
 export interface PickVideosForImportResult {
@@ -276,7 +278,7 @@ async function deleteImportedSourceVideoAsset(pickedAsset: PickedVideoAsset): Pr
     return false;
   }
 
-  return MediaLibrary.deleteAssetsAsync([sourceAssetId]);
+  return deleteMediaStoreAssetsWithConfirmation([sourceAssetId]);
 }
 
 async function buildVideoPaths(space: PixorySpace, ipId: number, internalFilename: string) {
@@ -382,6 +384,7 @@ async function importSingleVideo({
     const createdVideo = await assetRepository.createVideo(db, {
       ipId,
       importBatchId,
+      sourceOrder: pickedAsset.sourceOrder ?? null,
       groupId: groupIds[0] ?? null,
       groupIds,
       originalFileUri: originalUri,
@@ -465,15 +468,17 @@ export async function pickVideosForImport(
     };
   }
 
+  const orderedAssets = await sortPickedAssetsByCreationTime(result.assets);
   return {
     canceled: false,
-    pickedAssets: result.assets.map((asset) => ({
+    pickedAssets: orderedAssets.map((asset, index) => ({
       assetId: asset.assetId ?? null,
       uri: asset.uri,
       fileName: asset.fileName ?? getFileNameFromUri(asset.uri),
       mimeType: asset.mimeType ?? 'video/mp4',
       fileSize: asset.fileSize ?? null,
       sourceKind: 'album',
+      sourceOrder: index + 1,
     })),
   };
 }

@@ -110,6 +110,7 @@ export function GroupImagesScreen({
         return `读取分组图片失败：${message}`;
       },
       initialData: { group: null, images: [], ip: null, tags: [] },
+      deferUntilInteractions: true,
     }
   );
 

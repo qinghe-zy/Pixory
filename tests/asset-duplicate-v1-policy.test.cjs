@@ -76,7 +76,7 @@ test('import flow supports duplicate review skip modes and source move preferenc
   assert.match(imageImportSource, /deleteImportedSourceAsset/);
   assert.match(videoImportSource, /videoImportNamingMode/);
   assert.match(videoImportSource, /deleteImportedSourceVideoAsset/);
-  assert.match(videoImportSource, /MediaLibrary\.deleteAssetsAsync/);
+  assert.match(videoImportSource, /deleteMediaStoreAssetsWithConfirmation/);
   assert.match(videoImportSource, /imageImportSourceMode === 'move'/);
   assert.match(videoImportSource, /contentHash/);
   assert.match(importScreenSource, /重复素材/);
@@ -181,14 +181,14 @@ test('backup import asks how to handle same-name IPs before merging', () => {
   assert.match(importScreenSource, /合并到已有 IP/);
 });
 
-test('batch panel can move videos only to another existing IP and preserves group names', () => {
+test('batch panel can move mixed assets to another existing IP and preserves group names', () => {
   const panelSource = readProjectFile('src/components/BatchImageOrganizePanel.tsx');
   const serviceSource = readProjectFile('src/services/videoMoveService.ts');
 
   assert.match(panelSource, /移动到 IP/);
   assert.match(panelSource, /targetIpId/);
-  assert.match(serviceSource, /moveVideosToIp/);
-  assert.match(serviceSource, /targetIpId !== sourceVideo\.ipId/);
+  assert.match(serviceSource, /moveAssetsToIp/);
+  assert.match(serviceSource, /targetIpId === sourceAsset\.ipId/);
   assert.match(serviceSource, /findByIpIdAndName/);
   assert.match(serviceSource, /softDeleteMany/);
 });

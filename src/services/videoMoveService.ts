@@ -19,9 +19,21 @@ import {
   joinStoragePath,
 } from './fileStorageService';
 
+export interface MoveAssetsToIpParams {
+  space?: PixorySpace;
+  assetIds: number[];
+  targetIpId: number;
+}
+
 export interface MoveVideosToIpParams {
   space?: PixorySpace;
   videoIds: number[];
+  targetIpId: number;
+}
+
+export interface MoveImagesToIpParams {
+  space?: PixorySpace;
+  imageIds: number[];
   targetIpId: number;
 }
 
@@ -45,10 +57,14 @@ function buildDestinationPath(baseDir: string, ipId: number, internalFilename: s
   return joinStoragePath(`${joinStoragePath(baseDir, `ip_${ipId}`)}/`, internalFilename);
 }
 
-export async function moveVideosToIp({ space = 'normal', targetIpId, videoIds }: MoveVideosToIpParams): Promise<{ movedCount: number; createdVideoIds: number[] }> {
-  const uniqueVideoIds = [...new Set(videoIds.filter((videoId) => Number.isInteger(videoId) && videoId > 0))];
-  if (uniqueVideoIds.length === 0) {
-    return { movedCount: 0, createdVideoIds: [] };
+async function moveAssetsToIpInternal({
+  space = 'normal',
+  targetIpId,
+  assetIds,
+}: MoveAssetsToIpParams): Promise<{ movedCount: number; createdAssetIds: number[] }> {
+  const uniqueAssetIds = [...new Set(assetIds.filter((assetId) => Number.isInteger(assetId) && assetId > 0))];
+  if (uniqueAssetIds.length === 0) {
+    return { movedCount: 0, createdAssetIds: [] };
   }
 
   return runWithDatabaseSpace(space, async (db) => {
@@ -57,48 +73,47 @@ export async function moveVideosToIp({ space = 'normal', targetIpId, videoIds }:
       throw new Error('只能移动到另一个已有 IP。');
     }
 
-    const createdVideoIds: number[] = [];
-    const sourceVideoIds: number[] = [];
+    const createdAssetIds: number[] = [];
+    const sourceAssetIds: number[] = [];
 
     await db.withTransactionAsync(async () => {
-      for (const videoId of uniqueVideoIds) {
-        const sourceVideo = await imageRepository.findById(db, videoId, { includeDeleted: false, mediaType: 'video' });
-        if (!sourceVideo) {
+      for (const assetId of uniqueAssetIds) {
+        const sourceAsset = await imageRepository.findById(db, assetId, { includeDeleted: false, mediaType: 'all' });
+        if (!sourceAsset) {
           continue;
         }
-        if (targetIpId !== sourceVideo.ipId) {
-          // ok
-        } else {
+        if (targetIpId === sourceAsset.ipId) {
           throw new Error('目标 IP 必须是另一个已有 IP。');
         }
 
-        const sourceGroups = await imageRepository.findGroupsByImageId(db, sourceVideo.id);
+        const sourceGroups = await imageRepository.findGroupsByImageId(db, sourceAsset.id);
         const targetGroups = await Promise.all(sourceGroups.map((group) => resolveTargetGroup(db, targetIpId, group)));
-        const tagNames = (await tagRepository.findByImageId(db, sourceVideo.id)).map((tag) => tag.name);
-        const internalFilename = generateInternalFilename(sourceVideo.originalFilename);
-        const coverFilename = sourceVideo.coverThumbnailFileUri?.split('/').pop() ?? `${internalFilename.replace(/\.[A-Za-z0-9]+$/, '')}_cover.jpg`;
+        const tagNames = (await tagRepository.findByImageId(db, sourceAsset.id)).map((tag) => tag.name);
+        const internalFilename = generateInternalFilename(sourceAsset.originalFilename);
         const originalDestinationDir = `${joinStoragePath(getOriginalsDir(space), `ip_${targetIpId}`)}/`;
         const thumbnailDestinationDir = `${joinStoragePath(getThumbnailsDir(space), `ip_${targetIpId}`)}/`;
         await ensureLocalDirectory(originalDestinationDir);
         await ensureLocalDirectory(thumbnailDestinationDir);
         const originalDestinationUri = buildDestinationPath(getOriginalsDir(space), targetIpId, internalFilename);
-        const thumbnailDestinationUri = sourceVideo.thumbnailFileUri
-          ? buildDestinationPath(getThumbnailsDir(space), targetIpId, coverFilename)
+        const thumbnailFilename = sourceAsset.thumbnailFileUri?.split('/').pop() ?? null;
+        const coverFilename = sourceAsset.coverThumbnailFileUri?.split('/').pop() ?? `${internalFilename.replace(/\.[A-Za-z0-9]+$/, '')}_cover.jpg`;
+        const thumbnailDestinationUri = thumbnailFilename
+          ? buildDestinationPath(getThumbnailsDir(space), targetIpId, thumbnailFilename)
           : null;
-        const coverDestinationUri = sourceVideo.coverThumbnailFileUri
+        const coverDestinationUri = sourceAsset.coverThumbnailFileUri
           ? buildDestinationPath(getThumbnailsDir(space), targetIpId, coverFilename)
           : thumbnailDestinationUri;
 
-        await copyLocalFile(sourceVideo.originalFileUri, originalDestinationUri);
-        if (sourceVideo.thumbnailFileUri && thumbnailDestinationUri) {
-          await copyLocalFile(sourceVideo.thumbnailFileUri, thumbnailDestinationUri);
+        await copyLocalFile(sourceAsset.originalFileUri, originalDestinationUri);
+        if (sourceAsset.thumbnailFileUri && thumbnailDestinationUri) {
+          await copyLocalFile(sourceAsset.thumbnailFileUri, thumbnailDestinationUri);
         }
-        if (sourceVideo.coverThumbnailFileUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
-          await copyLocalFile(sourceVideo.coverThumbnailFileUri, coverDestinationUri);
+        if (sourceAsset.coverThumbnailFileUri && coverDestinationUri && coverDestinationUri !== thumbnailDestinationUri) {
+          await copyLocalFile(sourceAsset.coverThumbnailFileUri, coverDestinationUri);
         }
 
-        const createdVideo: ImageAssetRecord = await imageRepository.create(db, {
-          ...sourceVideo,
+        const createdAsset: ImageAssetRecord = await imageRepository.create(db, {
+          ...sourceAsset,
           ipId: targetIpId,
           importBatchId: null,
           groupId: targetGroups[0]?.id ?? null,
@@ -108,15 +123,30 @@ export async function moveVideosToIp({ space = 'normal', targetIpId, videoIds }:
           coverThumbnailFileUri: coverDestinationUri,
           internalFilename,
           deletedAt: null,
+          sourceOrder: sourceAsset.sourceOrder,
         });
-        await tagRepository.setImageTags(db, createdVideo.id, tagNames);
-        createdVideoIds.push(createdVideo.id);
-        sourceVideoIds.push(sourceVideo.id);
+        await tagRepository.setImageTags(db, createdAsset.id, tagNames);
+        createdAssetIds.push(createdAsset.id);
+        sourceAssetIds.push(sourceAsset.id);
       }
 
-      await imageRepository.softDeleteMany(db, sourceVideoIds);
+      await imageRepository.softDeleteMany(db, sourceAssetIds);
     });
 
-    return { movedCount: sourceVideoIds.length, createdVideoIds };
+    return { movedCount: sourceAssetIds.length, createdAssetIds };
   });
+}
+
+export async function moveAssetsToIp(params: MoveAssetsToIpParams): Promise<{ movedCount: number; createdAssetIds: number[] }> {
+  return moveAssetsToIpInternal(params);
+}
+
+export async function moveVideosToIp({ space = 'normal', targetIpId, videoIds }: MoveVideosToIpParams): Promise<{ movedCount: number; createdVideoIds: number[] }> {
+  const result = await moveAssetsToIpInternal({ space, targetIpId, assetIds: videoIds });
+  return { movedCount: result.movedCount, createdVideoIds: result.createdAssetIds };
+}
+
+export async function moveImagesToIp({ space = 'normal', targetIpId, imageIds }: MoveImagesToIpParams): Promise<{ movedCount: number; createdImageIds: number[] }> {
+  const result = await moveAssetsToIpInternal({ space, targetIpId, assetIds: imageIds });
+  return { movedCount: result.movedCount, createdImageIds: result.createdAssetIds };
 }

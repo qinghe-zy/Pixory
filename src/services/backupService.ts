@@ -853,6 +853,7 @@ export async function importPlainBackupPackage({
           mediaType: image.mediaType ?? 'image',
           ipId: nextIpId,
           importBatchId: image.importBatchId != null ? importBatchIdMap.get(image.importBatchId) ?? null : null,
+          sourceOrder: image.sourceOrder ?? null,
           groupId: groupIds[0] ?? null,
           groupIds,
           originalFileUri: copied.originalDestinationUri,

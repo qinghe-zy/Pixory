@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 55;
+export const DATABASE_VERSION = 56;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2050,6 +2050,11 @@ CREATE TABLE IF NOT EXISTS ai_generation_events (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_generation_events_job
   ON ai_generation_events(jobId, sequence ASC);
+`;
+
+export const MIGRATION_STATEMENTS_V56 = `
+ALTER TABLE image_assets ADD COLUMN sourceOrder INTEGER;
+CREATE INDEX IF NOT EXISTS idx_image_assets_import_batch_source_order ON image_assets(importBatchId, sourceOrder, id);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

@@ -6,7 +6,7 @@ import { GROUP_TYPE_OPTIONS, getGroupTypeLabel, type GroupTypeValue } from '../c
 import { GROUP_NAME_MAX_LENGTH } from '../constants/limits';
 import { groupRepository, imageRepository, ipRepository, runWithDatabaseSpace, tagRepository, type GroupRecord, type ImageListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, radius, spacing, typography } from '../design/tokens';
-import { moveVideosToIp } from '../services/videoMoveService';
+import { moveAssetsToIp } from '../services/videoMoveService';
 import { mergeDraftTagNames } from '../utils/tagDrafts';
 import { AppDialog } from './AppDialog';
 import { AlbumSaveDialog } from './AlbumSaveDialog';
@@ -16,7 +16,7 @@ import { PrimaryButton } from './PrimaryButton';
 import { TagMultiSelectPanel } from './TagMultiSelectPanel';
 import { useToast } from './AppToast';
 
-type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'move-video-ip';
+type OrganizeMode = 'idle' | 'replace-group' | 'add-group' | 'remove-group' | 'add-tags' | 'move-asset-ip';
 
 interface BatchImageOrganizePanelProps {
   selectedImages: ImageListItem[];
@@ -56,12 +56,11 @@ export function BatchImageOrganizePanel({
   const [targetIpId, setTargetIpId] = useState<number | null>(null);
   const selectedImageIds = useMemo(() => selectedImages.map((image) => image.id), [selectedImages]);
   const selectedCount = selectedImages.length;
-  const selectedVideoCount = useMemo(() => selectedImages.filter((image) => image.mediaType === 'video').length, [selectedImages]);
-  const hasSelectedVideos = selectedVideoCount > 0;
   const selectedIpIds = useMemo(() => [...new Set(selectedImages.map((image) => image.ipId))], [selectedImages]);
   const singleIpId = selectedIpIds.length === 1 ? selectedIpIds[0] : null;
   const canUseGroupActions = singleIpId != null;
   const allFavorite = selectedCount > 0 && selectedImages.every((image) => image.isFavorite);
+  const moveTargetIps = useMemo(() => ips.filter((ip) => !selectedIpIds.includes(ip.id)), [ips, selectedIpIds]);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,7 +96,7 @@ export function BatchImageOrganizePanel({
 
   useEffect(() => {
     let isMounted = true;
-    if (!hasSelectedVideos) {
+    if (selectedCount === 0) {
       setIps([]);
       return () => {
         isMounted = false;
@@ -119,7 +118,7 @@ export function BatchImageOrganizePanel({
     return () => {
       isMounted = false;
     };
-  }, [hasSelectedVideos, space]);
+  }, [selectedCount, space]);
 
   useEffect(() => {
     if (selectedCount === 0) {
@@ -137,7 +136,7 @@ export function BatchImageOrganizePanel({
     if (!isGroupMode(nextMode)) {
       setSelectedGroupId(currentGroupId);
     }
-    if (nextMode !== 'move-video-ip') {
+    if (nextMode !== 'move-asset-ip') {
       setTargetIpId(null);
     }
   }
@@ -147,7 +146,7 @@ export function BatchImageOrganizePanel({
       showToast('请先选择至少一个素材');
       return;
     }
-    if (hasSelectedVideos) {
+    if (selectedImages.some((image) => image.mediaType === 'video')) {
       showToast('当前选择包含视频，暂只支持保存图片到相册');
       return;
     }
@@ -284,16 +283,15 @@ export function BatchImageOrganizePanel({
     });
   }
 
-  function handleMoveVideosToIp() {
+  function handleMoveAssetsToIp() {
     void runAction(
       async () => {
         if (targetIpId == null) {
           throw new Error('请选择目标 IP。');
         }
-        const videoIds = selectedImages.filter((image) => image.mediaType === 'video').map((image) => image.id);
-        const result = await moveVideosToIp({ space, videoIds, targetIpId });
+        const result = await moveAssetsToIp({ space, assetIds: selectedImageIds, targetIpId });
         if (result.movedCount === 0) {
-          throw new Error('没有可移动的视频。');
+          throw new Error('没有可移动的素材。');
         }
         return '已移动到目标 IP';
       },
@@ -409,26 +407,24 @@ export function BatchImageOrganizePanel({
               <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
           </View>
-        ) : mode === 'move-video-ip' ? (
+        ) : mode === 'move-asset-ip' ? (
           <View style={styles.inlinePanel}>
             <LightFormSection title="移动到 IP" hint="目标必须是另一个已有 IP；分组会按名称自动映射或创建。">
               <View style={styles.optionList}>
-                {ips
-                  .filter((ip) => !selectedIpIds.includes(ip.id))
-                  .map((ip) => (
-                    <OptionSelectRow
-                      key={ip.id}
-                      label={ip.name}
-                      meta="已有 IP"
-                      onPress={() => setTargetIpId(ip.id)}
-                      selected={targetIpId === ip.id}
-                    />
-                  ))}
+                {moveTargetIps.map((ip) => (
+                  <OptionSelectRow
+                    key={ip.id}
+                    label={ip.name}
+                    meta="已有 IP"
+                    onPress={() => setTargetIpId(ip.id)}
+                    selected={targetIpId === ip.id}
+                  />
+                ))}
               </View>
             </LightFormSection>
             <View style={styles.inlineActions}>
               <View style={styles.primaryGrow}>
-                <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动视频" loading={isSubmitting} onPress={handleMoveVideosToIp} />
+                <PrimaryButton disabled={isSubmitting || targetIpId == null} label="确认移动素材" loading={isSubmitting} onPress={handleMoveAssetsToIp} />
               </View>
               <PrimaryButton label="取消" onPress={() => resetMode()} variant="ghost" />
             </View>
@@ -445,8 +441,13 @@ export function BatchImageOrganizePanel({
               label={allFavorite ? '取消收藏' : '收藏'}
               onPress={() => handleFavoriteUpdate(!allFavorite)}
             />
-            <PanelAction disabled={isSubmitting || isSavingToAlbum || hasSelectedVideos} icon="download-outline" label={hasSelectedVideos ? '仅图片可保存' : isSavingToAlbum ? '保存中' : '保存相册'} onPress={handleSaveToAlbum} />
-            <PanelAction disabled={isSubmitting || !hasSelectedVideos || ips.filter((ip) => !selectedIpIds.includes(ip.id)).length === 0} icon="trail-sign-outline" label="移动到 IP" onPress={() => resetMode('move-video-ip')} />
+            <PanelAction
+              disabled={isSubmitting || isSavingToAlbum || selectedImages.some((image) => image.mediaType === 'video')}
+              icon="download-outline"
+              label={selectedImages.some((image) => image.mediaType === 'video') ? '仅图片可保存' : isSavingToAlbum ? '保存中' : '保存相册'}
+              onPress={handleSaveToAlbum}
+            />
+            <PanelAction disabled={isSubmitting || moveTargetIps.length === 0} icon="trail-sign-outline" label="移动到 IP" onPress={() => resetMode('move-asset-ip')} />
             <PanelAction danger disabled={isSubmitting} icon="trash-outline" label="删除到回收站" onPress={() => setIsDeleteDialogVisible(true)} />
           </View>
         )}

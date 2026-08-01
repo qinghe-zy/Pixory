@@ -7,6 +7,7 @@ import android.Manifest
 import android.content.Context
 import android.content.ContentResolver
 import android.content.ContentValues
+import android.content.ContentUris
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -33,6 +34,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import androidx.core.content.ContextCompat
@@ -61,12 +63,19 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
 
   private val ioExecutor = Executors.newFixedThreadPool(2)
   private var speechRecognitionPromise: Promise? = null
+  private var mediaDeletePromise: Promise? = null
   private var directSpeechRecognizer: SpeechRecognizer? = null
   private var directSpeechListening = false
   private var directSpeechOnDevice = false
   private var directSpeechCancelling = false
   private val speechActivityListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode == MEDIA_DELETE_REQUEST_CODE) {
+        val promise = mediaDeletePromise ?: return
+        mediaDeletePromise = null
+        promise.resolve(resultCode == Activity.RESULT_OK)
+        return
+      }
       if (requestCode != SPEECH_RECOGNITION_REQUEST_CODE) {
         return
       }
@@ -604,6 +613,59 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
   }
 
   @ReactMethod
+  fun deleteMediaStoreAssetsWithConfirmation(assetIds: ReadableArray, promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+      promise.reject("PIXORY_MEDIA_DELETE_UNSUPPORTED", "Android 11 及以上才支持系统删除确认。")
+      return
+    }
+
+    val uris = mutableListOf<Uri>()
+    val filesUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+    for (index in 0 until assetIds.size()) {
+      val assetId = assetIds.getString(index)?.trim().orEmpty()
+      if (assetId.isEmpty()) continue
+      val uri = if (assetId.startsWith("content://")) {
+        Uri.parse(assetId)
+      } else {
+        val mediaId = assetId.toLongOrNull() ?: continue
+        ContentUris.withAppendedId(filesUri, mediaId)
+      }
+      uris.add(uri)
+    }
+
+    if (uris.isEmpty()) {
+      promise.resolve(false)
+      return
+    }
+
+    val activity = reactApplicationContext.currentActivity
+    if (activity == null) {
+      promise.reject("PIXORY_MEDIA_DELETE_NO_ACTIVITY", "当前页面无法请求删除确认。")
+      return
+    }
+    if (mediaDeletePromise != null) {
+      promise.reject("PIXORY_MEDIA_DELETE_BUSY", "删除确认正在进行中。")
+      return
+    }
+
+    try {
+      val request = MediaStore.createDeleteRequest(reactApplicationContext.contentResolver, uris)
+      mediaDeletePromise = promise
+      activity.startIntentSenderForResult(
+        request.intentSender,
+        MEDIA_DELETE_REQUEST_CODE,
+        null,
+        0,
+        0,
+        0
+      )
+    } catch (error: Exception) {
+      mediaDeletePromise = null
+      promise.reject("PIXORY_MEDIA_DELETE_FAILED", error.message, error)
+    }
+  }
+
+  @ReactMethod
   fun listZipImageEntries(zipUri: String, promise: Promise) {
     runOnIo(promise, "PIXORY_ZIP_LIST_FAILED") {
       val zipFile = ZipFile(fileFromUri(zipUri))
@@ -614,7 +676,6 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
         zip.entries().asSequence()
           .filter { !it.isDirectory }
           .filter { isSupportedImageName(it.name) }
-          .sortedBy { it.name.lowercase(Locale.ROOT) }
           .forEach { entry ->
             count += 1
             if (count > MAX_ZIP_IMAGE_ENTRIES) {
@@ -627,6 +688,40 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
               declaredBytes += entry.size
               if (declaredBytes > MAX_ZIP_DECLARED_BYTES) {
                 throw SecurityException("Zip declared image size is too large.")
+              }
+            }
+            val item = Arguments.createMap()
+            item.putString("name", entry.name)
+            item.putDouble("size", entry.size.toDouble())
+            entries.pushMap(item)
+          }
+        promise.resolve(entries)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun listZipEntries(zipUri: String, promise: Promise) {
+    runOnIo(promise, "PIXORY_ZIP_LIST_FAILED") {
+      val zipFile = ZipFile(fileFromUri(zipUri))
+      zipFile.use { zip ->
+        val entries = Arguments.createArray()
+        var count = 0
+        var declaredBytes = 0L
+        zip.entries().asSequence()
+          .filter { !it.isDirectory }
+          .forEach { entry ->
+            count += 1
+            if (count > MAX_ZIP_IMAGE_ENTRIES) {
+              throw SecurityException("Zip contains too many entries.")
+            }
+            if (entry.size > MAX_ZIP_ENTRY_BYTES) {
+              throw SecurityException("Zip entry is too large.")
+            }
+            if (entry.size > 0) {
+              declaredBytes += entry.size
+              if (declaredBytes > MAX_ZIP_DECLARED_BYTES) {
+                throw SecurityException("Zip declared size is too large.")
               }
             }
             val item = Arguments.createMap()
@@ -1093,6 +1188,7 @@ class PixoryMediaModule(private val reactContext: ReactApplicationContext) : Rea
     private const val MAX_ZIP_IMAGE_ENTRIES = 2000
     private const val MAX_ZIP_ENTRY_BYTES = 256L * 1024L * 1024L
     private const val MAX_ZIP_DECLARED_BYTES = 4L * 1024L * 1024L * 1024L
+    private const val MEDIA_DELETE_REQUEST_CODE = 7305
     private const val SPEECH_RECOGNITION_REQUEST_CODE = 7304
   }
 }

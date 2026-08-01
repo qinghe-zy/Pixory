@@ -73,6 +73,7 @@ export function mapImageAssetRow(row: ImageAssetRow): ImageAssetRecord {
     mediaType: normalizeMediaType(row.mediaType),
     coverThumbnailFileUri: row.coverThumbnailFileUri ?? null,
     durationMs: row.durationMs ?? null,
+    sourceOrder: row.sourceOrder ?? null,
     isFavorite: sqliteToBoolean(row.isFavorite),
     lastPlaybackPositionMs: row.lastPlaybackPositionMs ?? null,
     previewStatus: normalizePreviewStatus(row.previewStatus),
