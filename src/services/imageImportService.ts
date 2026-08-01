@@ -1,5 +1,4 @@
 import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { Image, Platform } from 'react-native';
 
@@ -18,6 +17,8 @@ import { devLog } from '../utils/dev';
 import { assertPersonalTaskActive, type PersonalTaskToken } from './personalTaskToken';
 import { computeFileSha256, computeImageDHash } from '../native/pixoryMediaModule';
 import type { ImageImportSourceMode, MediaPickerSource } from '../database/repositories/settingsRepository';
+import { deleteMediaStoreAssetsWithConfirmation } from './mediaSourceDeletionService';
+import { sortPickedAssetsByCreationTime } from './mediaImportOrderService';
 import {
   resolvePickedAssetImportMode,
   toMoveDeletionNotice,
@@ -26,6 +27,7 @@ import {
 
 export interface PickedImageAsset extends ImagePicker.ImagePickerAsset {
   sourceKind?: MediaPickerSource;
+  sourceOrder?: number | null;
 }
 export type DuplicateImportDecision = 'importAll' | 'skipExact' | 'skipSimilar' | 'cancelImport';
 
@@ -85,6 +87,7 @@ export interface PendingImageAssetImport {
   space: PixorySpace;
   ipId: number;
   importBatchId: number | null;
+  sourceOrder: number | null;
   groupId: number | null;
   groupIds: number[];
   sourceUri: string;
@@ -413,6 +416,7 @@ async function performSingleImageImport(
     const createdImage = await imageRepository.create(db, {
       ipId: pendingImageAsset.ipId,
       importBatchId: pendingImageAsset.importBatchId,
+      sourceOrder: pendingImageAsset.sourceOrder,
       groupId: pendingImageAsset.groupId,
       groupIds: pendingImageAsset.groupIds,
       originalFileUri,
@@ -513,7 +517,7 @@ export async function deleteImportedSourceAsset(pendingImageAsset: PendingImageA
     return false;
   }
 
-  return MediaLibrary.deleteAssetsAsync([pendingImageAsset.sourceAssetId]);
+  return deleteMediaStoreAssetsWithConfirmation([pendingImageAsset.sourceAssetId]);
 }
 
 export async function pickImagesForImport(
@@ -540,11 +544,12 @@ export async function pickImagesForImport(
     };
   }
 
+  const orderedAssets = await sortPickedAssetsByCreationTime(result.assets);
   return {
     canceled: false,
-    pickedAssets: result.assets
+    pickedAssets: orderedAssets
       .filter((asset) => asset.type === 'image' || asset.type == null)
-      .map((asset) => ({ ...asset, sourceKind: 'album' })),
+      .map((asset, index) => ({ ...asset, sourceKind: 'album', sourceOrder: index + 1 })),
   };
 }
 
@@ -575,6 +580,7 @@ export async function buildImageAssetFromPickedFile(
     space: params.space ?? 'normal',
     ipId,
     importBatchId: params.importBatchId ?? null,
+    sourceOrder: pickedAsset.sourceOrder ?? null,
     groupId: normalizedGroupIds[0] ?? null,
     groupIds: normalizedGroupIds,
     sourceUri: pickedAsset.uri,

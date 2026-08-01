@@ -1,8 +1,10 @@
+import { InteractionManager } from 'react-native';
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 
 interface UseScreenLoadOptions<T> {
   formatError?: (error: unknown) => string;
   initialData?: T;
+  deferUntilInteractions?: boolean;
 }
 
 export function useScreenLoad<T>(
@@ -37,7 +39,13 @@ export function useScreenLoad<T>(
     setErrorMessage(null);
 
     try {
-      const nextData = await loaderRef.current();
+      const nextData = options?.deferUntilInteractions
+        ? await new Promise<T>((resolve, reject) => {
+            InteractionManager.runAfterInteractions(() => {
+              loaderRef.current().then(resolve).catch(reject);
+            });
+          })
+        : await loaderRef.current();
       if (isMountedRef.current) {
         setData(nextData);
       }

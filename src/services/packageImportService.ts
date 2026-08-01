@@ -4,6 +4,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { getUncompressedSize, unzip } from 'react-native-zip-archive';
 
 import { groupRepository, importBatchRepository, runWithDatabaseSpace, type GroupRecord, type ImportBatchItemRecord, type PixorySpace } from '../database';
+import { listNativeZipEntries, type NativeZipEntry } from '../native/pixoryMediaModule';
 import {
   copyLocalFile,
   deleteLocalFile,
@@ -40,8 +41,6 @@ export interface PickPackageForImportResult {
   packageUri: string | null;
   packageName: string | null;
 }
-
-
 export interface PackageImportError {
   sourcePath: string;
   originalFilename: string;
@@ -187,6 +186,33 @@ async function scanExtractedFiles(rootDir: string): Promise<ExtractedPackageFile
   return files;
 }
 
+function normalizeArchiveEntryName(name: string): string {
+  return name.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/^\/+/, '');
+}
+
+function sortFilesByArchiveOrder(files: ExtractedPackageFile[], archiveEntries: NativeZipEntry[]): ExtractedPackageFile[] {
+  const orderMap = new Map<string, number>();
+  archiveEntries.forEach((entry, index) => {
+    orderMap.set(normalizeArchiveEntryName(entry.name), index);
+  });
+
+  return [...files].sort((left, right) => {
+    const leftOrder = orderMap.get(normalizeArchiveEntryName(left.relativePath));
+    const rightOrder = orderMap.get(normalizeArchiveEntryName(right.relativePath));
+
+    if (leftOrder != null && rightOrder != null && leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    if (leftOrder != null) {
+      return -1;
+    }
+    if (rightOrder != null) {
+      return 1;
+    }
+    return left.relativePath.localeCompare(right.relativePath);
+  });
+}
+
 async function detectImageTypeFromMagicBytes(fileUri: string): Promise<SupportedPackageImageType | null> {
   const base64Header = await FileSystem.readAsStringAsync(fileUri, {
     encoding: FileSystem.EncodingType.Base64,
@@ -248,6 +274,7 @@ async function importSingleVideoFromPackage(params: {
   isFavorite?: boolean;
   file: ExtractedPackageFile;
   videoType: SupportedPackageVideoType;
+  sourceOrder?: number | null;
   taskToken?: PersonalTaskToken | null;
 }): Promise<ImportedVideoResult> {
   assertPersonalTaskActive(params.taskToken);
@@ -257,6 +284,7 @@ async function importSingleVideoFromPackage(params: {
     fileName,
     mimeType: params.videoType.mimeType,
     fileSize: (await getFileInfo(params.file.uri)).size ?? null,
+    sourceOrder: params.sourceOrder ?? null,
   };
   const result = await importVideosToIp({
     space: params.space,
@@ -380,9 +408,16 @@ export async function importPackageToIp(params: {
       assertPersonalTaskActive(params.taskToken);
       await validatePackageFile(copiedPackageUri, params.packageName);
       assertPersonalTaskActive(params.taskToken);
+      let archiveEntries: NativeZipEntry[] = [];
+      try {
+        archiveEntries = await listNativeZipEntries(copiedPackageUri);
+      } catch {
+        // Non-Android builds may not include the native ZIP indexer; extraction order remains the fallback.
+      }
+      assertPersonalTaskActive(params.taskToken);
       extractDir = await unzipPackageToPrivateTemp(copiedPackageUri, space);
       assertPersonalTaskActive(params.taskToken);
-      const files = await scanExtractedFiles(extractDir);
+      const files = sortFilesByArchiveOrder(await scanExtractedFiles(extractDir), archiveEntries);
       assertPersonalTaskActive(params.taskToken);
       if (looksLikePixoryManifest(files)) {
         const plainBackupImport = await importPlainBackupPackage({
@@ -427,7 +462,7 @@ export async function importPackageToIp(params: {
       let imageFailedCount = 0;
       let videoFailedCount = 0;
 
-      for (const file of files) {
+      for (const [fileIndex, file] of files.entries()) {
         assertPersonalTaskActive(params.taskToken);
         try {
           const imageType = await detectImageTypeFromMagicBytes(file.uri);
@@ -462,6 +497,7 @@ export async function importPackageToIp(params: {
               isFavorite: params.isFavorite,
               file,
               videoType,
+              sourceOrder: fileIndex + 1,
               taskToken: params.taskToken,
             });
             assertPersonalTaskActive(params.taskToken);
@@ -490,6 +526,7 @@ export async function importPackageToIp(params: {
             type: 'image',
             width: 0,
             height: 0,
+            sourceOrder: fileIndex + 1,
           };
 
           importedImages.push(

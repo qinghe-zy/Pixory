@@ -100,6 +100,7 @@ interface PixoryMediaNativeModule {
   extractPdfText(sourceUri: string): Promise<{ text: string; pageCount: number }>;
   saveImageToMediaStore(sourceUri: string, displayName: string, albumName?: string | null): Promise<string>;
   saveVideoToMediaStore(sourceUri: string, displayName: string): Promise<string>;
+  deleteMediaStoreAssetsWithConfirmation(assetIds: string[]): Promise<boolean>;
   computeFileSha256(sourceUri: string): Promise<string>;
   computeImageDHash(sourceUri: string): Promise<string>;
   recognizeSpeech(): Promise<{ text: string }>;
@@ -110,6 +111,7 @@ interface PixoryMediaNativeModule {
   getInitialExternalOpen(): Promise<NativeExternalOpen>;
   getInitialShareIntent(): Promise<NativeShareIntent>;
   finishShareActivity(): Promise<boolean>;
+  listZipEntries(zipUri: string): Promise<NativeZipEntry[]>;
   listZipImageEntries(zipUri: string): Promise<NativeZipEntry[]>;
   extractZipEntryToTemp(zipUri: string, entryName: string, destinationUri: string): Promise<string>;
   cleanupTempSession(tempDirUri: string): Promise<boolean>;
@@ -209,6 +211,10 @@ export function saveNativeVideoToMediaStore(sourceUri: string, displayName: stri
   return requireNativeModule().saveVideoToMediaStore(sourceUri, displayName);
 }
 
+export function deleteNativeMediaStoreAssetsWithConfirmation(assetIds: string[]): Promise<boolean> {
+  return requireNativeModule().deleteMediaStoreAssetsWithConfirmation(assetIds);
+}
+
 export function computeFileSha256(sourceUri: string): Promise<string> {
   return requireNativeModule().computeFileSha256(sourceUri);
 }
@@ -258,6 +264,10 @@ export function finishNativeShareActivity(): Promise<boolean> {
 
 export function listNativeZipImageEntries(zipUri: string): Promise<NativeZipEntry[]> {
   return requireNativeModule().listZipImageEntries(zipUri);
+}
+
+export function listNativeZipEntries(zipUri: string): Promise<NativeZipEntry[]> {
+  return requireNativeModule().listZipEntries(zipUri);
 }
 
 export function extractNativeZipEntryToTemp(

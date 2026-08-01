@@ -189,6 +189,7 @@ export interface ImageAssetRecord {
   id: number;
   ipId: number;
   importBatchId: number | null;
+  sourceOrder: number | null;
   groupId: number | null;
   mediaType: AssetMediaType;
   originalFileUri: string;
@@ -220,6 +221,7 @@ export type AssetMediaTypeFilter = AssetMediaType | 'all';
 export interface CreateImageAssetInput {
   ipId: number;
   importBatchId?: number | null;
+  sourceOrder?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   mediaType?: AssetMediaType;
@@ -246,6 +248,7 @@ export interface CreateImageAssetInput {
 export interface UpdateImageAssetInput {
   ipId?: number;
   importBatchId?: number | null;
+  sourceOrder?: number | null;
   groupId?: number | null;
   groupIds?: number[];
   mediaType?: AssetMediaType;
@@ -314,6 +317,8 @@ export type ImageSortOrder =
   | 'updatedAtAsc'
   | 'lastViewedAtDesc'
   | 'lastViewedAtAsc'
+  | 'sourceOrderAsc'
+  | 'sourceOrderDesc'
   | 'deletedAtDesc'
   | 'filenameAsc'
   | 'filenameDesc'

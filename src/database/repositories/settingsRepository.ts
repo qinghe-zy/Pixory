@@ -64,6 +64,8 @@ const VALID_SORT_ORDERS: ImageSortOrder[] = [
   'updatedAtAsc',
   'lastViewedAtDesc',
   'lastViewedAtAsc',
+  'sourceOrderAsc',
+  'sourceOrderDesc',
   'filenameAsc',
   'filenameDesc',
   'fileSizeDesc',

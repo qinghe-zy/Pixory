@@ -120,6 +120,7 @@ export function AllImagesScreen({
         return `读取图片库失败：${message}`;
       },
       initialData: { ip: null, images: [], groups: [], tags: [] },
+      deferUntilInteractions: true,
     }
   );
 

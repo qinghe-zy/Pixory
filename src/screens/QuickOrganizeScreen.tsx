@@ -48,6 +48,7 @@ export function QuickOrganizeScreen({ ipId, importBatchId = null, space = 'norma
         return `读取待整理队列失败：${message}`;
       },
       initialData: { images: [], groups: [], tags: [] },
+      deferUntilInteractions: true,
     }
   );
   const images = data?.images ?? [];

@@ -72,6 +72,7 @@ export function HomeLibraryScreen({
         return `读取 IP 资产失败：${message}`;
       },
       initialData: { items: [], needsOrganizingCount: 0 },
+      deferUntilInteractions: true,
     }
   );
   const items = data?.items ?? [];

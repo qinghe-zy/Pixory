@@ -75,7 +75,7 @@ export function BatchManageImagesScreen({
 }: BatchManageImagesScreenProps) {
   const { showToast, showUndoSnackbar } = useToast();
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const [sortOrder, setSortOrder] = useState<ImageSortOrder>('createdAtDesc');
+  const [sortOrder, setSortOrder] = useState<ImageSortOrder>(() => (importBatchId != null ? 'sourceOrderAsc' : 'createdAtDesc'));
   const { data, isLoading, errorMessage, reload } = useScreenLoad<{
     ip: IpRecord | null;
     groups: GroupRecord[];
@@ -109,6 +109,7 @@ export function BatchManageImagesScreen({
         return `读取批量管理数据失败：${message}`;
       },
       initialData: { ip: null, groups: [], images: [], importTemplates: [], tags: [] },
+      deferUntilInteractions: true,
     }
   );
   const { isSubmitting, submitError, clearSubmitError, runSubmit } = useSubmitState();
