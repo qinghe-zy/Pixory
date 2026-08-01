@@ -4,7 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
-const chatIcon = './icons/04_右下_聊天图标.png';
+const splashBackground = '#4a7bf7';
+const splashIcon = './icons/551977a0-2e08-4e2e-95cf-7644f680767d.png';
 const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
 
 function readJson(file) {
@@ -50,8 +51,8 @@ test('configures Android 12 splash from the chat artwork', () => {
   assert.deepEqual(splashPlugin, [
     'expo-splash-screen',
     {
-      backgroundColor: '#BBCCF5',
-      image: './icons/04_右下_聊天图标.png',
+      backgroundColor: splashBackground,
+      image: splashIcon,
       imageWidth: 192,
       resizeMode: 'contain',
     },
