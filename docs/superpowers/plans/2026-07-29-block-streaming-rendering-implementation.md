@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Replace character-step live chat rendering with a measured semantic-block renderer that remains stable while users read history.
+**Goal:** Replace character-step live chat rendering with an append-only, measured render-unit renderer that remains stable while users read history. Semantic blocks are preferred, but the implementation must not wait for sentence punctuation.
 
-**Architecture:** Keep aiChatService authoritative for Provider text, citation parsing and persistence. Add a pure display scheduler that turns buffered deltas into stable blocks; both attached live rendering and detached tail replay consume that same block contract, while existing height measurement and shrink-debt logic preserves list geometry.
+**Architecture:** Keep aiChatService authoritative for Provider text, citation parsing and persistence. Add a pure display scheduler that turns buffered deltas into append-only semantic blocks plus one active tail; both attached live rendering and detached tail replay consume that same block contract, while existing height measurement and shrink-debt logic preserves list geometry. Pacing is a measured QoE profile (TTFT/TDS/TDT), not a hard-coded 120/180ms rule.
 
 **Tech Stack:** Expo 54, React Native 0.81, React 19, TypeScript, FlatList, useSyncExternalStore, existing aiStreaming runtime and Node test suite.
 
@@ -30,6 +30,7 @@
 | src/ai/aiStreamingTailModel.ts | Consume supplied block deltas without re-splitting whole text; retain monotonic reservation/debt behavior. |
 | src/ai/aiStreamingTailFeatureFlags.ts | Add isolated aiBlockStreamingRendererEnabled remote flag. |
 | src/components/ai/aiChatBubbleRail.ts | New shared composerShell/message horizontal rail token; owns no rendering or runtime measurement. |
+| src/ai/aiStreamingBubbleWidthRegistry.ts | Remove natural short-message width as the estimate source; retain only compatibility/diagnostic bridge if needed. |
 | src/components/ai/AiLiveStreamingMessage.tsx | New attached renderer using measured block segments as one continuous bubble. |
 | src/components/ai/AiMessageBubble.tsx | Route active generation to live block renderer only when flag is enabled. |
 | src/screens/AiChatScreen.tsx | Coordinate attached/detached transitions and preserve historical layout. |
@@ -58,11 +59,11 @@ test('flushes a complete CJK sentence as one block without character stepping', 
 - [ ] **Step 2: Write the failing max-latency test.**
 
 ~~~
-test('forces a readable block after max latency when a provider never sends punctuation', () => {
+test('does not wait for punctuation and appends a grapheme-safe active tail', () => {
   const state = appendStreamingDisplayDelta(createStreamingDisplayState(), '没有标点但已经足够长的连续文字'.repeat(8));
-  const result = planStreamingDisplayFlush({ attached: true, nowMs: 121, state, viewportHeight: 720 });
-  assert.equal(result.reason, 'max_latency');
-  assert.ok(result.blocks[0].raw.length > 0);
+  const result = planStreamingDisplayFlush({ attached: true, nowMs: 0, state, viewportHeight: 720, pacingProfile: profile });
+  assert.ok(result.blocks.length > 0 || result.activeTail.length > 0);
+  assert.equal(result.mutatedExistingBlock, false);
 });
 ~~~
 
@@ -98,7 +99,7 @@ Expected: FAIL because src/ai/aiStreamingDisplayScheduler.ts does not exist.
 
 ~~~
 assert.match(service, /planStreamingDisplayFlush/);
-assert.match(runtime, /STREAMING_DISPLAY_MAX_LATENCY_MS/);
+assert.match(runtime, /pacingProfile|TDS|TTFT/);
 assert.match(flagSource, /aiBlockStreamingRendererEnabled/);
 ~~~
 
@@ -121,7 +122,7 @@ git commit -m "test: define block streaming display contract"
 ~~~
 export type StreamingDisplayFlushReason =
   | 'boundary'
-  | 'max_latency'
+  | 'pacing_profile'
   | 'terminal'
   | 'viewport_budget';
 
@@ -141,6 +142,7 @@ export type StreamingDisplayState = {
   pendingReasoning: string;
   blocks: StreamingDisplayBlock[];
   pendingShrinkHeight: number;
+  activeTail: string;
 };
 ~~~
 
@@ -152,24 +154,34 @@ export function planStreamingDisplayFlush(input: {
   nowMs: number;
   state: StreamingDisplayState;
   viewportHeight: number;
+  pacingProfile: StreamingDisplayPacingProfile;
 }): {
   blocks: StreamingDisplayBlock[];
+  activeTail: string;
   reason: StreamingDisplayFlushReason | null;
   totalPromotedHeight: number;
+  mutatedExistingBlock: boolean;
 } {
   // Prefer paragraph, complete Markdown line and terminal punctuation.
-  // Force a block after the policy max latency.
+  // Otherwise append grapheme-safe text according to the measured pacing profile.
   // In attached mode, promote only blocks within the viewport budget.
-  // Never split a grapheme or mutate a finalized block.
+  // Never split a grapheme or mutate an already appended block.
 }
 ~~~
 
-- [ ] **Step 3: Put all tuning constants in aiStreamingRuntime.**
+- [ ] **Step 3: Define the measured pacing profile; do not invent a fixed sentence wait.**
 
 ~~~
-export const STREAMING_DISPLAY_FIRST_READABLE_MAX_LATENCY_MS = 120;
-export const STREAMING_DISPLAY_MAX_LATENCY_MS = 180;
-export const STREAMING_DISPLAY_MIN_CJK_CHARS = 80;
+export type StreamingDisplayPacingProfile = {
+  targetTtftMs: number;
+  targetTdsCharsPerSecond: number;
+  maxPendingUnits: number;
+  devicePressureMode: 'normal' | 'throttled';
+};
+
+// Values are supplied by the Android baseline/QoE calibration; keep them out of
+// the product contract until the profile is measured on representative devices.
+export const STREAMING_DISPLAY_PACING_PROFILE_VERSION = 1;
 export const STREAMING_DISPLAY_MAX_BLOCK_VIEWPORT_RATIO = 0.36;
 export const STREAMING_DISPLAY_MAX_FLUSH_VIEWPORT_RATIO = 0.70;
 export const STREAMING_DISPLAY_MAX_BLOCKS_PER_FLUSH = 3;

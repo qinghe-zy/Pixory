@@ -1,7 +1,7 @@
 # Android 聊天块级流式渲染设计
 
 日期：2026-07-29
-状态：已定稿，等待按配套实施计划执行。
+状态：修订定稿，已完成 rail 对齐、可见更新等待和 reservation 风险审计；等待按配套实施计划执行。
 范围：只改 AI 聊天的流式显示层；不改变 Provider 请求、消息持久化、梦境、思绪、记忆、分支、日记或 Prompt/缓存语义。
 
 ## 1. 结论
@@ -11,8 +11,9 @@ Pixory 应从“字符步进式显示”切换为“流式到达、语义块原�
 最终视觉效果：
 
 - 首个可读文本到达后立即出现；文字本身不做逐字动画，也不对每一行做淡入动画。
-- 后续内容以完整句子、完整换行或完整段落一次出现；快模型会在极短时间连续出现多个块，视觉上可以铺满半屏到一屏。
+- 后续内容优先以完整句子、完整换行或完整段落一次出现；快模型会在极短时间连续出现多个块，视觉上可以铺满半屏到一屏。
 - 单个内部 block 不应大到触发昂贵的全屏 Text/Markdown 重排；“一屏出现”由 2 至 3 个已经收到并已预留的 block 在同一 UI flush 中组成，而不是把一整屏未知高度文本当成一个 block。
+- “每次可见更新至少一个完整可读单元”不能解释为“必须等待语法句号”。Provider 可能长时间不发标点、只发极小 delta 或出现网络间隙；严格等待会把 UI 等待拉到秒级。产品契约改为“语义边界优先、时间有上限”：有边界时提升完整 semantic block；无边界达到 deadline 时提升一个不可拆 grapheme 的 bounded fragment（能凑成一视觉行就凑一视觉行，否则显示当前已收到内容），该片段仍是独立可读的视觉单元，但不宣称是完整语法句。
 - 气泡保持一个连续的 assistant 气泡，而不是把每段做成独立对话气泡。仅保留一个低调的生成指示/光标，提示流仍在继续。
 - 用户上滑阅读时，已读历史的可见位置不得因后续生成而移动；新增内容在不可见的 tail 区积累，用户返回底部后再平滑接入。
 
@@ -33,7 +34,7 @@ Pixory 应从“字符步进式显示”切换为“流式到达、语义块原�
 
 ### 3.1 必达目标
 
-1. 普通回复不再出现逐字打字机效果；每次可见更新至少包含一个完整可读单元。
+1. 普通回复不再出现逐字打字机效果；每次可见更新至少包含一个完整 semantic block，或在 deadline 触发时包含一个 grapheme-safe bounded fragment；不得因等待句号而无限延迟。
 2. 首个可读单元在收到首个 Provider delta 后 p95 不超过 150ms；此目标不包含 Provider 首 token 网络时间。
 3. 用户在底部时，新增块被自动跟随；用户离开底部时，已显示历史在生成过程中的视觉坐标不改变。
 4. 已收到但尚未被 UI 提升的文本必须先拥有保守的高度 reservation；未知未来文本不得制造空白预留。
@@ -50,13 +51,28 @@ Pixory 应从“字符步进式显示”切换为“流式到达、语义块原�
 
 ### 3.3 气泡与输入框的水平对齐契约
 
-本规格中的“输入框边缘”统一指聊天底部 `composerShell` 的可见外轮廓左右边缘，不是内部 `TextInput` 的字符起点，也不是屏幕安全区边缘。消息区与 composer 必须共享同一个水平 rail，不能分别用 `94%`、页面 padding 或局部 magic number 猜测宽度。
+本规格中的“输入框边缘”统一指聊天底部 `composerShell` 的可见外轮廓左右边缘，不是内部 `TextInput` 的字符起点，也不是屏幕安全区边缘。当前组件树中 `screenContent` 已经提供 `layout.pagePaddingHorizontal`，`composerShell` 与消息列表是同一父级下的兄弟；因此 rail 的外宽就是该父级的 content width，不能再给 composer 追加一次同样的水平 margin。
 
-- 发送气泡在达到最大宽度时，其左侧外边缘必须与 `composerShell` 左边缘重合；其右侧仍按用户消息的右对齐规则落在同一 rail 右边缘。
-- AI 回复气泡在达到最大宽度时，其右侧外边缘必须与 `composerShell` 右边缘重合；短回复仍保持左对齐，不会为了右边缘对齐而把短消息挪到右侧。
+- 发送气泡在达到最大宽度时，左右两个外边缘都必须与 `composerShell` 的左右外边缘重合；短发送消息仍保持右对齐的自然宽度。
+- AI 回复气泡在达到最大宽度时，左右两个外边缘都必须与 `composerShell` 的左右外边缘重合；短回复仍保持左对齐，不会为了右边缘对齐而把短消息挪到右侧。
 - 该 rail 同时适用于普通历史气泡、attached live block 气泡、detached tail 气泡、续答和停止/失败后的最终气泡，以及思考模块。长思考模块的右侧外边缘同样对齐 `composerShell` 右边缘；短思考保持左对齐。操作行、日期分隔线和引用列表不强制套用此最大宽度。
-- 屏幕旋转（当前产品锁定竖屏）、字体缩放、键盘、safe area、附件栏高度和 composer 高度变化不得改变 rail 的左右来源；它只能随页面的共享横向 layout token 改变。
+- 屏幕旋转（当前产品锁定竖屏）、字体缩放、键盘、safe area、附件栏高度和 composer 高度变化不得改变 rail 的左右来源；它只能随页面的共享横向 layout token 改变。字体缩放只影响 content height，不得通过旧的 assistant 气泡测量值反推 rail 宽度。
 - 不通过运行时测量 input 的 x/y 再异步修正气泡宽度。首帧必须由同一 layout token 得到正确 rail，避免初始错位后跳动。
+
+实现约束：rail 只提供 `outerWidth`/`maxWidth: '100%'` 和按 lane/bubble padding 换算出的 `contentWidth`；不要在 `AiChatComposer` 内添加额外 `marginHorizontal`，不要把 `Dimensions` 的屏幕宽直接当成气泡 content width，也不要把测量短消息得到的自然宽度写入全局 registry。
+
+### 3.4 可见更新的等待契约（以成熟方案为准）
+
+公开的 OpenAI/Gemini 流式 API 和 Google Chrome 的官方渲染指南都采用“增量到达、追加已有输出”的模型，没有公开证据表明 ChatGPT 或 Gemini 会为了等句号而阻塞显示。Andes 论文进一步把体验定义为首 token 时间（TTFT）和用户可消化的 token delivery timeline（TDT），并允许客户端短暂缓冲突发 token 后按可消化节奏释放。
+
+因此 Pixory 的硬契约不是“每次必须完整语法句”，而是：
+
+1. 每次可见提交必须追加至少一个非空、不可重复的 render unit；已追加 unit 的 key 和正文不回写。
+2. 优先把空行段落、完整 Markdown 行/闭合块、句末标点组织成 semantic block；尚未确定的 Markdown 片段暂存在 active tail，确定后追加新 renderer 节点。
+3. 如果模型连续输出没有边界，不等待句号、不人为制造数秒空白；按已验证的 pacing profile 追加 grapheme-safe 文本单元。极短 delta 可以并入下一次提交，但不得无限等待。
+4. 终态必须立即 append/flush 剩余 active tail，再由完整 renderer 接管；Provider 没有新数据时不人为刷新。
+
+节奏不在 Spec 中硬编码 120/180ms。验收使用有依据的两级指标：本地已有 Provider delta 时，首个可见响应以“接近即时”的 100ms 级目标观测；首个可读内容以 HCI 研究中“少于 1 秒维持交互连续性”的目标观测。后续 TDS/flush 间隔由 Android 基线、设备压力和 Andes 式用户可消化速度 profile 校准，不得凭经验写死一个数。
 
 ## 4. 设计备选
 
@@ -70,9 +86,9 @@ Provider 文本保持权威全文；显示层单独把“新收到、尚未展�
 
 这复用现有 tail 机制，最小化业务影响，并在不牺牲恢复能力的前提下消除打字机效果。
 
-### C. 等完整回复再渲染：拒绝
+### C. 严格等语法完整单元再渲染：拒绝
 
-布局最稳定，但失去流式首段反馈、停止感知与陪伴聊天的在场感。
+布局最稳定，但当模型不发标点或只发慢速小 delta 时会出现 0.5 至数秒的本地等待；这与陪伴聊天的在场感和首段反馈冲突。采用 B 的 append-only active tail，保留流式感，同时将未确定语法限制在一个可继续追加的渲染单元内。
 
 ## 5. 术语与不变量
 
@@ -113,14 +129,14 @@ stateDiagram-v2
 ### 6.1 接收和切块
 
 1. Provider delta 仅追加到 authoritative text 与 display buffer，不能直接触发整个消息列表刷新。
-2. 调度器按优先级切块：空行段落边界 > Markdown 完整行/闭合块 > 句末标点 > 强制时间边界。
-3. 未闭合 code fence、表格表头/分隔行、HTML 和数学块保持在 buffer；超时只能以 plain streaming block 显示，结构闭合后才升级为 rich renderer。
+2. 调度器按优先级切块：空行段落边界 > Markdown 完整行/闭合块 > 句末标点 > 弱标点/空格 > 强制时间边界。
+3. 未闭合 code fence、表格表头/分隔行、HTML 和数学块优先留在 active tail；结构闭合后追加 rich renderer，不能重置已显示 block 的 key。不得为了等闭合而让整个消息空白。
 4. 每个 block 使用 messageId + generationId + lane + startOffset 作为稳定 identity。完成块不可因后续 delta 改写内容或 key。
 
 ### 6.2 attached：用户在底部
 
-- 第一个可读单元走 leading edge：满足安全边界立即 flush；连续小 delta 未形成边界时，首 delta 后最多等待 120ms。
-- 后续 flush 间隔目标为 120 至 180ms；每次最多一个 requestAnimationFrame 提交，绝不按 Provider delta 次数更新。
+- 第一个可读单元走 leading edge：满足 semantic/安全弱边界立即追加；连续小 delta 未形成边界时按 pacing profile 合并，不得继续等句号。
+- 后续提交只追加新的 render unit；每次最多一个 requestAnimationFrame 提交，绝不按 Provider delta 次数更新。profile 的目标是让用户感觉连续、可消化，而不是追求 Provider token 速率。
 - 单 block 最大为 8 至 12 个视觉行（基线设备约 180 至 260dp）。若 Provider 一次送来大量文本，可在同一 flush 提升 2 至 3 个 block，合计最多约 0.70 个可视区域高度。
 - 文本立即出现，不做 opacity、translate、scale 或逐字动画。最后一个未闭合 block 后保留轻量生成指示；它不参与文本高度估算。
 - requestAnimationFrame 后校准 auto-follow；若用户在更新前离开底部，本批次转入 detached，不再强制滚动。
@@ -147,7 +163,7 @@ stateDiagram-v2
 ~~~
 reservation(block) =
   cachedMeasuredHeight
-  ?? estimate(block.raw, currentBubbleWidth, fontScale, lineHeight)
+  ?? estimate(block.raw, currentBubbleContentWidth, fontScale, lineHeight)
   + safetyMargin(block.type)
 ~~~
 
@@ -165,13 +181,33 @@ shrinkDebt = nextReservedHeight - measuredHeight
 - debt 只在列表空闲、非拖动/非惯性、稳定至少 200ms，且位于底部或 spacer 离屏时偿还。
 - terminal flush 前仍有未测 block 时，保持 reservation，不允许用猜测的减高换取“干净列表”。
 
-### 7.3 极端大 delta
+### 7.3 Rail 变化与高度测量边界
+
+- `currentBubbleContentWidth` 必须由共享 rail 的 outer width 减去实际 renderer 的 horizontal padding/border 得到；assistant、user、reasoning lane 分别使用自己的 content inset。不能把 composer 的 outer width、TextInput 的 inner width 或自然宽度短消息的 `onLayout` 值混用。
+- 宽度、字体缩放或 renderer 版本变化创建新的 geometry epoch/cache key。旧宽度的 measured height 不能直接复用；在 detached/拖动期间仍遵守 `max(previousReservedHeight, nextEstimate, measuredHeight)`，因此变宽导致的真实高度变小会暂时表现为 shrink debt，而不是立即缩短 spacer。
+- 首帧对齐使用共享 layout token；`onLayout`/`measure` 只用于 block 高度校准和诊断，不用于异步修正 rail 的 x/y。RN 官方说明 `onLayout` 回调发生在布局计算后、状态更新可能产生中间态；`measure` 通过异步回调返回，不适合作为首帧 rail 来源。
+- 任何 rail 宽度改变都必须先使旧 reservation 标记为 geometry-stale，再按新宽度为尚未挂载 block 建立估高；否则旧的窄 rail 估高会在新宽度下形成错误 blank spacer 或提前暴露列表项。
+
+### 7.4 Reservation 风险登记
+
+| 风险 | 触发条件 | 影响 | 必须的缓解/验收 |
+| --- | --- | --- | --- |
+| 双重水平 inset（高） | 在已有 `screenContent` padding 上再给 composer 加 page margin | 输入框和气泡整体错开，无法达到 1dp 边缘契约 | rail 只消费父级 content width；Android 长 user/assistant/thinking 截图两侧误差 <= 1dp |
+| outer/content width 混用（高） | 用 composer 外宽估 Text/Markdown 内容行宽 | 行数、reservation 和实际高度不一致，出现 blank 或二次跳高 | 估高 API 明确接收 `currentBubbleContentWidth`，按 lane inset 单测 |
+| 全局短消息宽度污染（高） | assistant `onLayout` 写入自然宽度 registry，下一次 tail 复用 | 长回复被按窄宽度估高，用户上滑时 spacer 失真 | 删除/禁用自然宽度作为 source of truth；用 rail geometry epoch |
+| rail/字体变化（高） | 旋转、分屏、字体缩放、主题 renderer 变化 | 旧 measured height 不能复用；单调 reservation 会暂时积累 debt | cache key 带 width/font/renderer epoch；无拖动且稳定 200ms 后再回收 |
+| rich fallback 低估（中） | code/table/image/html 实际布局比 fallback 高 | 首次挂载时补高，可能推动底部或 tail | type-specific safety margin；`streamBlockUnderReserveCount` 必须可观测 |
+| pacing 下语法不完整（中） | Provider 长时间无标点或网络小 burst | 若严格等待则卡顿；若粗暴截断则 Markdown 破坏 | active tail 使用 grapheme-safe 增量 renderer；结构闭合后追加 rich renderer；终态完整 renderer 接管 |
+| FlatList 批次空白/阻塞（中） | 一次提升过多 block 或 batching period 不匹配 | 空白区、触摸响应变慢、掉帧 | 每帧最多 2–3 block/0.70 viewport；按设备压力记录 frame delay，不能盲调窗口 |
+| MVCP 重排（高） | detached 时替换历史 item、重置 key 或重排数组 | 官方警告可能 jump/jank | 冻结历史 item；只追加 tail/spacer；坐标 10 秒保持不变 |
+
+### 7.5 极端大 delta
 
 若单个 Provider event 带来 1000+ 字符：
 
 1. 切成不超过 8 至 12 视觉行的内部 block；绝不把一整屏作为单一 Text 节点一次替换。
 2. 为全部已收到 block 建立 reservation；detached 时它们全部位于不可见 spacer。
-3. attached 时一帧最多提升 2 至 3 块，超过 viewport 预算的 block 留到下一调度周期；用户在数百毫秒内看到接近整屏的自然文字，而不是逐字追赶。
+3. attached 时一帧最多提升 2 至 3 块，超过 viewport 预算的 block 留到下一调度周期；用户在数百毫秒内看到接近整屏的自然文字，而不是逐字追赶。若文本没有任何语义边界，按 pacing profile 追加 active tail，不等待完整回答。
 4. Markdown 结构闭合后不得重置前一 block 的 key；只能升级 renderer，必要时增加 reservation/debt。
 
 ## 8. 组件边界
@@ -200,13 +236,13 @@ AiChatScreen 保留路由、scroll 状态和 attached/detached 切换协调；�
 
 | 场景 | 硬指标 |
 | --- | --- |
-| 普通短回复 | 首个完整可读单元 p95 <= 150ms；无逐字视觉。 |
+| 普通短回复 | 本地已有 delta 时首个可见响应按 100ms 级“接近即时”目标观测；首个可读内容 p95 < 1s；无逐字视觉。 |
 | 快速 Provider burst | 1000 字 burst 不产生整条历史重渲；一帧提升不超过 0.70 viewport。 |
-| 长回复 | 10,000 字中不出现持续超过 250ms 的 JS frame delay；UI flush 维持 6 至 8/s 或记录 pressure 降级。 |
+| 长回复 | 10,000 字中不出现持续超过 250ms 的 JS frame delay；TDS/flush 使用已验证 pacing profile，不能用未经实测的固定频率宣称达标。 |
 | 上滑阅读 | 生成中任意停留 10 秒，当前可见历史项的视觉坐标不变；无自动跳到底部。 |
 | 回到底部 | 无未测 block、未清 debt 或重复内容后才提交回主消息；无闪白/闪旧文本。 |
 | 终态 | stop/error/complete/route blur/background 不丢失 display buffer，最终数据库正文完整。 |
-| 水平几何 | 长用户气泡左边缘与 composerShell 左边缘相差不超过 1dp；长 AI 气泡和长思考模块右边缘与 composerShell 右边缘相差不超过 1dp；普通、attached、detached 三种状态一致。 |
+| 水平几何 | 长用户、长 AI、长思考气泡的左右两个外边缘都与 composerShell 对齐，误差 <= 1dp；短消息仍保留各自自然对齐；普通、attached、detached、terminal 四种状态一致。 |
 
 ## 10. 可观测性、安全和回滚
 
@@ -215,7 +251,7 @@ AiChatScreen 保留路由、scroll 状态和 attached/detached 切换协调；�
 - streamSemanticFlushCount、streamSemanticMergedDeltaCount、streamFirstReadableBlockMs。
 - streamAttachedBlockCount、streamDetachedBlockCount、streamMaxReservationHeight、streamMaxShrinkDebtHeight。
 - streamBlockMeasureCount、streamBlockUnderReserveCount、streamBlockRendererFallbackCount。
-- streamFlushReason：boundary、max_latency、viewport_budget、terminal。
+- streamFlushReason：boundary、pacing_profile、viewport_budget、terminal。
 
 这些字段只能包含数量、时间、布尔值、枚举和不可逆 generation identity；不得保存正文、token、文本 hash、dream/thought 内容、记忆内容、citation 内容或 Personal 原文。
 
@@ -225,8 +261,22 @@ AiChatScreen 保留路由、scroll 状态和 attached/detached 切换协调；�
 
 ## 11. 研究依据
 
-- React Native 官方 VirtualizedList 文档说明 updateCellsBatchingPeriod 和 maxToRenderPerBatch 存在 fill-rate/响应性取舍。本设计只在已测量的 tail 区调整这些参数，不盲目放大窗口。
+- OpenAI 官方 Streaming API 说明输出可在完整回答结束前开始处理；Gemini 官方 Streaming API 同样以增量 chunk 返回内容，适合交互式应用。
+  https://developers.openai.com/api/docs/guides/streaming-responses
+  https://ai.google.dev/api/generate-content
+- Google Chrome 官方指南以 Gemini/ChatGPT 为例，建议 append-only 渲染；Markdown 需要增量 parser，避免每个 chunk 重新解析和替换全文。
+  https://developer.chrome.com/docs/ai/render-llm-responses
+- Andes 论文定义 TTFT/TDS/TDT，并提出客户端 token buffer 按用户可消化速度平滑释放；本设计借用 QoE 指标思想，不照搬其服务端调度实现。
+  https://arxiv.org/abs/2404.16283
+- Shneiderman 的 ACM 综述指出用户通常偏好低于一秒的响应，同时过快或过慢都可能影响错误率；因此本设计用 100ms 级即时反馈和 <1s 连续性作为观测目标，而不是臆造固定 chunk 毫秒值。
+  https://www.cs.umd.edu/~ben/papers/Shneiderman1984Response.pdf
+- React Native 官方 FlatList 文档说明 updateCellsBatchingPeriod 和 maxToRenderPerBatch 存在 fill-rate/响应性取舍。本设计只在已测量的 tail 区调整这些参数，不盲目放大窗口。
   https://reactnative.dev/docs/optimizing-flatlist-configuration
+- React Native 官方测量文档和 LayoutEvent 文档说明 `onLayout`/`measure` 的时序与异步边界；它们只用于高度校准，不作为 rail 首帧 x/y 来源。
+  https://reactnative.dev/docs/the-new-architecture/layout-measurements
+  https://reactnative.dev/docs/layoutevent
+- React Native 官方 ScrollView 文档说明 `maintainVisibleContentPosition` 适用于聊天，但重排子项会造成 jumpiness/jank；因此 detached 只允许稳定历史 item + tail/spacer 增长。
+  https://reactnative.dev/docs/scrollview
 - React 官方 useSyncExternalStore 文档说明外部 store 更新不能依赖 concurrent transition 掩盖高频更新成本。因此应先合并 Provider delta 为有限 flush，而不是逐 delta publish。
   https://react.dev/reference/react/useSyncExternalStore
 - 项目既有性能规格：
