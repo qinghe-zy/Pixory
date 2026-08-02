@@ -1,18 +1,20 @@
 {
-  "version": "2.7.3",
-  "versionCode": 275,
+  "version": "2.7.4",
+  "versionCode": 276,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.7.3 发布。全新的图标设计与界面细节优化；可前往官网下载区获取最新版。",
+  "message": "Pixory 2.7.4 发布。全新的图标设计与界面细节优化；可前往官网下载区获取最新版。",
   "detailLines": [
     "🌙 陪伴内心运行时与角色日记完善，情绪、关系、梦境和思绪继续保持可控边界",
     "💬 优化长聊天回到底部、上下文操作与中断后恢复，答案级引用更清晰",
     "🔒 强化 Personal 恢复、受管备份与上下文隔离，并更新 Android 图标和启动屏"
   ],
-  "latestVersion": "2.7.3",
-  "latestVersionCode": 275,
+  "latestVersion": "2.7.4",
+  "latestVersionCode": 276,
   "downloadUrl": "https://mist01.com/#download",
   "changelog": "1. 发布陪伴内心运行时与角色日记增强，完善长聊天恢复、引用、备份隔离和 Android 启动体验。"
 }
+
+
 
 

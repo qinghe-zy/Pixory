@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "id": "pixory-2.7.3-release-20260730",
-  "title": "Pixory 2.7.3 已发布",
+  "id": "pixory-2.7.4-release-20260803",
+  "title": "Pixory 2.7.4 已发布",
   "message": "这次更新让陪伴的连续性更完整：角色日记、内心运行时与长聊天恢复都更可靠。",
   "detailLines": [
     "角色日记可在 Android 后台持续完成；情绪、关系、梦境与思绪仍保持清晰的用户控制边界。",
@@ -10,3 +10,5 @@
   ],
   "actionLabel": "知道了"
 }
+
+

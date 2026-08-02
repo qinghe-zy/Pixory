@@ -33,7 +33,7 @@ function formatBytes(bytes: number): string {
 
 export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
-  const version = Constants.expoConfig?.version ?? '2.7.3';
+  const version = Constants.expoConfig?.version ?? '2.7.4';
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
 
   const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
@@ -545,4 +545,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 });
+
 

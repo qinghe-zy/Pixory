@@ -1,7 +1,7 @@
 # Pixory 功能矩阵
 
 最后更新：2026-08-01（素材来源顺序、Android 删除确认、ZIP 条目顺序、隐私入口延迟加载与图片/视频跨 IP 批量移动）
-适用版本：Pixory 2.7.3
+适用版本：Pixory 2.7.4
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
 ---
@@ -280,3 +280,4 @@
    `generateMilestonesDetailMarkdown` 可继续扩展图表输出；在实现渲染器、移动端性能和可访问性验证前，不应把热力图或情感图表列为现有能力。
 3. **沉浸式深链分发机制 (Deep Link Interception)**
    当前 WebView `onLinkPress` 已支持 `pixory://ip/...` 和 `pixory://thread/...`。未来可扩展 Memory/Image 深链，但仍需补充路由权限、隐私空间隔离和失效目标处理。
+

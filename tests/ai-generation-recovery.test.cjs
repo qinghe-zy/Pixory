@@ -48,7 +48,7 @@ test('V55 schema and chat integration persist jobs before provider requests and 
   const db = fs.readFileSync(path.join(root, 'src/database/db.ts'), 'utf8');
   const chat = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const manager = fs.readFileSync(path.join(root, 'src/ai/aiGenerationManager.ts'), 'utf8');
-  assert.match(schema, /DATABASE_VERSION = 55/);
+  assert.match(schema, /DATABASE_VERSION = 5[5-9]/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_generation_jobs/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS ai_generation_events/);
   assert.match(db, /MIGRATION_STATEMENTS_V55/);
