@@ -1871,15 +1871,16 @@ export function AiChatScreen({
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
-  // Fade-in only – avoids jitter caused by translateY competing with
-  // the concurrent scroll-to-latest retries during page entry.
-  const composerEntranceOpacity = composerEntranceProgress.interpolate({
+  // Keep the outer panel at opacity=1 so Android elevation/shadow renders
+  // correctly. Instead, fade out a canvas-colored reveal mask on top of the
+  // content (opacity 1 → 0) which avoids the shadow artifact caused by
+  // animating the container opacity directly.
+  const composerRevealMaskOpacity = composerEntranceProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 1],
+    outputRange: [1, 0],
   });
-  const composerEntranceStyle = {
-    opacity: composerEntranceOpacity,
-  };
+  // composerEntranceStyle left empty – outer panel stays at full opacity.
+  const composerEntranceStyle = {};
   const latestAssistantMessage = useMemo(
     () => findLatestAssistantMessage(messages),
     [messages],
@@ -7156,7 +7157,10 @@ export function AiChatScreen({
                 voiceMode={voiceMode}
                 voiceState={voiceState}
               />
-              {/* composerRevealMask removed: opacity fade-in on the panel itself is sufficient */}
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}
+              />
             </Animated.View>
           )}
           <AiScrollToLatestButton
