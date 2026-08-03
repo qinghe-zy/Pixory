@@ -777,11 +777,11 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
   }, []);
 
   if (variant === 'user') {
-    return <Text selectable style={[styles.body, styles.userText]}>{content}</Text>;
+    return <Text selectable={false} style={[styles.body, styles.userText]}>{content}</Text>;
   }
 
   if (streaming) {
-    return <Text selectable style={[styles.body, styles.assistantText]}>{content}{trailingInline ?? null}</Text>;
+    return <Text selectable={false} style={[styles.body, styles.assistantText]}>{content}{trailingInline ?? null}</Text>;
   }
   if (renderWholeRichHtml) {
     return (

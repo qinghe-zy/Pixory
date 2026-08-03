@@ -1812,6 +1812,9 @@ export function AiChatScreen({
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
   >(null);
+  const [editingUserMessageInitialDraft, setEditingUserMessageInitialDraft] = useState<
+    string | null
+  >(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<
     AiComposerAttachment[]
@@ -1827,8 +1830,9 @@ export function AiChatScreen({
   >({});
   const [messageContextMenuState, setMessageContextMenuState] =
     useState<MessageContextMenuState | null>(null);
-  const [messageTextSelectionContent, setMessageTextSelectionContent] =
-    useState<string | null>(null);
+  const [messageTextSelectionContent, setMessageTextSelectionContent] = useState<{
+    messageId: string; content: string; role: string;
+  } | null>(null);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [favoritePendingByKey, setFavoritePendingByKey] = useState<
     Record<string, boolean>
@@ -6184,12 +6188,13 @@ export function AiChatScreen({
     scheduleReplyTargetVisibility(messageId);
   }
 
-  function handleEditUserMessage(messageId: string, content: string) {
+  function handleEditUserMessage(messageId: string, customDraft?: string) {
     if (generating) {
       return;
     }
     editingUserMessageIdRef.current = messageId;
     setEditingUserMessageId(messageId);
+    setEditingUserMessageInitialDraft(customDraft ?? null);
     setErrorMessage(null);
     scheduleInlineEditVisibility(messageId);
   }
@@ -6198,6 +6203,7 @@ export function AiChatScreen({
     clearInlineEditVisibilityTimeouts();
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
+    setEditingUserMessageInitialDraft(null);
   }
 
   async function handleVoiceStart() {
@@ -6432,7 +6438,11 @@ export function AiChatScreen({
         icon: "text-outline",
         key: "select-text",
         label: "选择文本",
-        onPress: () => setMessageTextSelectionContent(selectableContent),
+        onPress: () => setMessageTextSelectionContent({
+          messageId: message.id,
+          content: selectableContent,
+          role: message.role,
+        }),
       },
     );
 
@@ -6442,7 +6452,7 @@ export function AiChatScreen({
         icon: "create-outline",
         key: "edit",
         label: "修改",
-        onPress: () => handleEditUserMessage(message.id, message.content),
+        onPress: () => handleEditUserMessage(message.id),
       });
     } else {
       const favoriteIdentity =
@@ -6699,6 +6709,7 @@ export function AiChatScreen({
               }}
               assistantDisplayName={participantAppearance.assistantName}
               editingMessageId={editingUserMessageId}
+              initialEditDraft={editingUserMessageId === message.id ? editingUserMessageInitialDraft : null}
               favorited={
                 favoriteIdentity
                   ? Boolean(favoriteStateByKey[favoriteIdentity.key])
@@ -7250,8 +7261,18 @@ export function AiChatScreen({
         visible={Boolean(messageContextMenuPresentation)}
       />
       <AiMessageTextSelectionModal
-        content={messageTextSelectionContent ?? ""}
-        onClose={() => setMessageTextSelectionContent(null)}
+        content={messageTextSelectionContent?.content ?? ""}
+        onClose={(editedText) => {
+          const selection = messageTextSelectionContent;
+          setMessageTextSelectionContent(null);
+          if (selection && editedText !== undefined && editedText !== selection.content) {
+            if (selection.role === "user") {
+              handleEditUserMessage(selection.messageId, editedText);
+            } else {
+              setComposerText(editedText);
+            }
+          }
+        }}
         visible={messageTextSelectionContent !== null}
       />
       <Modal

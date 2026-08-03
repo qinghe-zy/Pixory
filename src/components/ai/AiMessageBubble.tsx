@@ -42,7 +42,10 @@ interface AiMessageBubbleProps {
   generating?: boolean;
   thinkingExpected?: boolean;
   thinkingDefaultExpanded?: boolean;
+  disableShadow?: boolean;
+  displayName?: string;
   editingMessageId?: string | null;
+  initialEditDraft?: string | null;
   favorited?: boolean;
   favoriteDisabledByGeneration?: boolean;
   favoritePending?: boolean;
@@ -51,7 +54,7 @@ interface AiMessageBubbleProps {
   showActionButtons?: boolean;
   pendingActionMessageId?: string | null;
   onCopy: (message: AiMessageWithCitations) => void;
-  onEditUser: (messageId: string, content: string) => void;
+  onEditUser: (messageId: string, customDraft?: string) => void;
   onChangeEditDraft?: (content: string) => void;
   onSubmitEdit: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
@@ -91,8 +94,9 @@ type AiMessageFooterActionsProps = {
   onContinue: (messageId: string) => void;
   onContinueReply: (messageId: string) => void;
   onReplyToAssistant: (messageId: string) => void;
-  onEditUser: (messageId: string, content: string) => void;
+  onEditUser: (messageId: string, customDraft?: string) => void;
   onRegenerate: (messageId: string) => void;
+  onOpenCitation: (citation: AiCitationRecord) => void;
   onSelectVersion: (messageId: string, versionIndex: number) => void;
   onToggleFavorite?: (message: AiMessageWithCitations) => void;
 };
@@ -201,7 +205,7 @@ export function AiMessageFooterActions({
           accessibilityRole="button"
           disabled={!canEdit}
           hitSlop={8}
-          onPress={() => onEditUser(message.id, message.content)}
+          onPress={() => onEditUser(message.id)}
           style={({ pressed }) => [styles.messageActionButton, !canEdit && styles.disabledAction, pressed && canEdit && styles.pressed]}
         >
           <Ionicons color={aiLightColors.muted} name="create-outline" size={15} />
@@ -260,7 +264,10 @@ function AiMessageBubbleComponent({
   streaming = false,
   streamingIdentity = null,
   userProfile,
+  disableShadow = false,
+  displayName,
   editingMessageId = null,
+  initialEditDraft = null,
   favorited = false,
   favoriteDisabledByGeneration = false,
   favoritePending = false,
@@ -346,9 +353,9 @@ function AiMessageBubbleComponent({
 
   useEffect(() => {
     if (editing) {
-      setEditDraft(displayContent);
+      setEditDraft(initialEditDraft ?? displayContent);
     }
-  }, [editing, displayContent]);
+  }, [editing, displayContent, initialEditDraft]);
 
   useEffect(() => {
     return () => {
@@ -516,7 +523,7 @@ function AiMessageBubbleComponent({
               </View>
             ) : isUser ? (
               <View style={styles.userContentWrap}>
-                {displayContent ? <Text selectable style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
+                {displayContent ? <Text selectable={false} style={[styles.content, styles.userText]}>{displayContent}</Text> : null}
               </View>
             ) : (
               <View
@@ -575,6 +582,7 @@ function AiMessageBubbleComponent({
             onReplyToAssistant={onReplyToAssistant}
             onEditUser={onEditUser}
             onRegenerate={onRegenerate}
+            onOpenCitation={onOpenCitation}
             replyActionMode={replyActionMode}
             onSelectVersion={onSelectVersion}
             onToggleFavorite={onToggleFavorite}
