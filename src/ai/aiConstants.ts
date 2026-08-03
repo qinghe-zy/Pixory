@@ -78,6 +78,9 @@ export const BUILT_IN_PROVIDERS: BuiltInProvider[] = [
   },
 ];
 
+/** Number of messages pre-loaded while the navigation animation plays. */
+export const CHAT_PREFETCH_PAGE_SIZE = 60;
+
 export function secureStoreKeyForProvider(providerId: string): string {
   return `pixory.ai.provider.${providerId}.apiKey`;
 }

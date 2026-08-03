@@ -12,6 +12,7 @@ import type { AiThreadHistoryFilter, AiThreadHistoryItem } from '../database/rep
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import type { PixorySpace } from '../database';
 import { formatAiHistoryMinute } from '../utils/aiTimeFormatters';
+import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 
 interface AiHistoryScreenProps {
   space: PixorySpace;
@@ -240,6 +241,7 @@ export function AiHistoryScreen({
       setSwipedThreadId(null);
       return;
     }
+    prefetchThreadMessages(space, thread.id);
     onOpenThread(thread);
   }
 

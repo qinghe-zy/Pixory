@@ -126,34 +126,34 @@ export async function buildNativeMemoryPackage(
       )
       : Promise.resolve([]),
     db.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM memory_claims
-       WHERE space = ? AND ${claimScope.clause}
-         AND status NOT IN ('deleted', 'suppressed') AND deletedAt IS NULL
-         ${input.thread ? 'AND (sourceMessageId IS NULL OR sourceMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?))' : ''}
-       ORDER BY updatedAt ASC`,
+      `SELECT * FROM memory_claims c
+       WHERE c.space = ? AND ${claimScope.clause}
+         AND c.status NOT IN ('deleted', 'suppressed') AND c.deletedAt IS NULL
+         ${input.thread ? 'AND (c.sourceMessageId IS NULL OR c.sourceMessageId IN (SELECT id FROM ai_messages WHERE threadId = ?))' : ''}
+       ORDER BY c.updatedAt ASC`,
       input.space,
       ...claimScope.values,
       ...(input.thread ? [input.thread.id] : [])
     ),
     db.getAllAsync<Record<string, unknown>>(
-      `SELECT id, status FROM memory_claims WHERE space = ? AND ${claimScope.clause}`,
+      `SELECT c.id, c.status FROM memory_claims c WHERE c.space = ? AND ${claimScope.clause}`,
       input.space,
       ...claimScope.values
     ),
     db.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM memory_episodes
-       WHERE space = ? AND ${aggregateScope.clause} AND status <> 'deleted' AND deletedAt IS NULL
-       ORDER BY updatedAt ASC`,
+      `SELECT * FROM memory_episodes a
+       WHERE a.space = ? AND ${aggregateScope.clause} AND a.status <> 'deleted' AND a.deletedAt IS NULL
+       ORDER BY a.updatedAt ASC`,
       input.space,
       ...aggregateScope.values
     ),
     db.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM memory_relational_states WHERE space = ? AND ${aggregateScope.clause} ORDER BY updatedAt ASC`,
+      `SELECT * FROM memory_relational_states a WHERE a.space = ? AND ${aggregateScope.clause} ORDER BY a.updatedAt ASC`,
       input.space,
       ...aggregateScope.values
     ),
     db.getAllAsync<Record<string, unknown>>(
-      `SELECT * FROM memory_profiles WHERE space = ? AND ${aggregateScope.clause} ORDER BY updatedAt ASC`,
+      `SELECT * FROM memory_profiles a WHERE a.space = ? AND ${aggregateScope.clause} ORDER BY a.updatedAt ASC`,
       input.space,
       ...aggregateScope.values
     ),

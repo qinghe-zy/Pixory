@@ -164,6 +164,98 @@ async function ensureAiPerformanceIndexes(db: SQLiteDatabase): Promise<void> {
   `);
 }
 
+/**
+ * memory_episodes / memory_relational_states / memory_profiles were added to
+ * MIGRATION_STATEMENTS_V47 after some devices had already applied that
+ * migration version.  Create the tables if absent and add the scopeType column
+ * if it is missing so that export / package queries don't crash.
+ */
+async function ensureMemoryAggregateSchema(db: SQLiteDatabase): Promise<void> {
+  // memory_episodes
+  if (!(await hasTable(db, 'memory_episodes'))) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS memory_episodes (
+        id TEXT PRIMARY KEY NOT NULL,
+        space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+        scopeType TEXT NOT NULL,
+        scopeId TEXT,
+        lane TEXT NOT NULL CHECK (lane IN ('confirmed', 'working', 'archive')),
+        status TEXT NOT NULL CHECK (status IN ('active', 'closed', 'archived', 'deleted')),
+        title TEXT NOT NULL,
+        summaryText TEXT NOT NULL,
+        startMessageId TEXT,
+        endMessageId TEXT,
+        validFrom TEXT,
+        validTo TEXT,
+        sourceClaimIdsJson TEXT NOT NULL DEFAULT '[]',
+        sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+        branchRootMessageId TEXT,
+        branchVersionIndex INTEGER,
+        confidenceBand TEXT NOT NULL CHECK (confidenceBand IN ('high', 'medium', 'low')),
+        importance INTEGER NOT NULL CHECK (importance BETWEEN 0 AND 100),
+        projectionVersion INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        archivedAt TEXT,
+        deletedAt TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_episodes_scope
+        ON memory_episodes(space, scopeType, scopeId, lane, status, updatedAt);
+    `);
+  } else if (!(await hasColumn(db, 'memory_episodes', 'scopeType'))) {
+    await db.execAsync(`ALTER TABLE memory_episodes ADD COLUMN scopeType TEXT NOT NULL DEFAULT 'thread';`);
+  }
+
+  // memory_relational_states
+  if (!(await hasTable(db, 'memory_relational_states'))) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS memory_relational_states (
+        id TEXT PRIMARY KEY NOT NULL,
+        space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+        scopeType TEXT NOT NULL,
+        scopeId TEXT,
+        subjectEntityId TEXT NOT NULL,
+        metric TEXT NOT NULL CHECK (metric IN ('affinity', 'trust', 'tension', 'familiarity')),
+        value REAL NOT NULL CHECK (value BETWEEN -1.0 AND 1.0),
+        signalWeight REAL NOT NULL CHECK (signalWeight >= 0),
+        decayHalfLifeDays REAL NOT NULL CHECK (decayHalfLifeDays > 0),
+        lastEvidenceAt TEXT,
+        evidenceIdsJson TEXT NOT NULL DEFAULT '[]',
+        projectionVersion INTEGER NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(space, scopeType, scopeId, subjectEntityId, metric)
+      );
+    `);
+  } else if (!(await hasColumn(db, 'memory_relational_states', 'scopeType'))) {
+    await db.execAsync(`ALTER TABLE memory_relational_states ADD COLUMN scopeType TEXT NOT NULL DEFAULT 'thread';`);
+  }
+
+  // memory_profiles
+  if (!(await hasTable(db, 'memory_profiles'))) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS memory_profiles (
+        id TEXT PRIMARY KEY NOT NULL,
+        space TEXT NOT NULL CHECK (space IN ('normal', 'personal')),
+        scopeType TEXT NOT NULL,
+        scopeId TEXT,
+        profileJson TEXT NOT NULL,
+        profileText TEXT NOT NULL,
+        sourceClaimIdsJson TEXT NOT NULL DEFAULT '[]',
+        sourceMessageIdsJson TEXT NOT NULL DEFAULT '[]',
+        version INTEGER NOT NULL DEFAULT 1,
+        projectionVersion INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        UNIQUE(space, scopeType, scopeId)
+      );
+    `);
+  } else if (!(await hasColumn(db, 'memory_profiles', 'scopeType'))) {
+    await db.execAsync(`ALTER TABLE memory_profiles ADD COLUMN scopeType TEXT NOT NULL DEFAULT 'thread';`);
+  }
+}
+
 async function ensureMemoryScopeGovernance(db: SQLiteDatabase): Promise<void> {
   const applied = await db.getFirstAsync<{ value: string | null }>(
     'SELECT value FROM app_settings WHERE key = ?',
@@ -435,6 +527,7 @@ export async function runMigrations(db?: SQLiteDatabase, space: PixorySpace = 'n
     await ensureAiMemoryLineageSchema(database);
     await ensureAiContinuityImportConsentSchema(database);
     await ensureAiPerformanceIndexes(database);
+    await ensureMemoryAggregateSchema(database);
     await ensureMemoryScopeGovernance(database);
 
     if (currentVersion !== DATABASE_VERSION) {

@@ -5,6 +5,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
+import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { LinearGradient } from 'expo-linear-gradient';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
@@ -202,7 +203,7 @@ export function AiHomeScreen({
                   accessibilityLabel={`打开最近聊天 ${thread.title}`}
                   accessibilityRole="button"
                   key={thread.id}
-                  onPress={() => onOpenThread(thread)}
+                  onPress={() => { prefetchThreadMessages(space, thread.id); onOpenThread(thread); }}
                   style={({ pressed }) => [styles.threadRow, index > 0 && styles.threadDivider, pressed && styles.pressed]}
                 >
                   <ThreadAvatar thread={thread} space={space} />

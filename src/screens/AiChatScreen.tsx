@@ -220,6 +220,8 @@ import {
   typography,
 } from "../design/tokens";
 import { formatAiMessageMinute } from "../utils/aiTimeFormatters";
+import { AiChatMessageSkeleton } from "../components/ai/AiChatMessageSkeleton";
+import { consumeThreadMessagePrefetch } from "../ai/aiThreadMessagePrefetch";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -1373,6 +1375,9 @@ export function AiChatScreen({
   const composerEntranceProgress = useRef(
     new Animated.Value(shouldPrimeComposerEntrance ? 0 : 1),
   ).current;
+  // Fades the message list in from 0→1 once initial data is ready, hiding
+  // any layout repositioning that happens before the first paint.
+  const messageAreaFadeAnim = useRef(new Animated.Value(0)).current;
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     threadId ?? null,
   );
@@ -3143,6 +3148,25 @@ export function AiChatScreen({
     [],
   );
 
+  /** Fade the message area in from transparent to opaque. */
+  const fadeInMessageArea = useCallback(
+    (delay = 0) => {
+      const run = () =>
+        Animated.timing(messageAreaFadeAnim, {
+          toValue: 1,
+          duration: 200,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      if (delay > 0) {
+        setTimeout(run, delay);
+      } else {
+        run();
+      }
+    },
+    [messageAreaFadeAnim],
+  );
+
   const followLatestMessage = useCallback(
     (animated = true) => {
       userScrolledAwayFromBottomRef.current = false;
@@ -4493,6 +4517,7 @@ export function AiChatScreen({
     bottomLockedRef.current = true;
     setScrollToLatestVisible(false);
     setIsInitialMessageLoading(true);
+    messageAreaFadeAnim.setValue(0);
     applyDisplayTitle(nextDisplayTitle);
   }, [applyDisplayTitle, contextTitle, contextType, threadId]);
 
@@ -4503,11 +4528,42 @@ export function AiChatScreen({
       scrollToLatestMessage(false, true);
       void reloadMessages(null, true);
       setIsInitialMessageLoading(false);
+      fadeInMessageArea();
       return;
     }
     let cancelled = false;
     const hasSearchTarget = Boolean(searchTargetMessageId);
     void (async () => {
+      // ── Prefetch fast path ──────────────────────────────────────────────
+      // If the user tapped this thread from the home/history screen, its
+      // messages were pre-loaded during the navigation animation.  Try to
+      // consume that cached result before touching the database again.
+      if (!hasSearchTarget) {
+        const prefetched = await consumeThreadMessagePrefetch(space, targetThreadId);
+        if (prefetched && !cancelled) {
+          // Apply data while the FlatList is still opacity-0 so the user
+          // never sees the layout repositioning.
+          userScrolledAwayFromBottomRef.current = false;
+          bottomLockedRef.current = true;
+          messageScrollOffsetRef.current = 0;
+          previousMessageScrollOffsetRef.current = 0;
+          scrollingTowardLatestRef.current = true;
+          setScrollToLatestVisible(false);
+          setHasEarlierMessages(prefetched.length >= CHAT_MESSAGE_PAGE_SIZE);
+          replaceMessages(prefetched);
+          setIsInitialMessageLoading(false);
+          // Give the FlatList one frame to position itself at offset 0.
+          // scheduleIntentionalLatestJump retries the scroll at 80/260/520ms;
+          // fade in at 150ms so the 80ms retry has settled before reveal.
+          scheduleIntentionalLatestJump(false);
+          fadeInMessageArea(150);
+          // Silently refresh in the background in case new messages arrived
+          // between the prefetch and now.
+          void reloadMessages(targetThreadId, { forceToLatest: true });
+          return;
+        }
+      }
+      // ── Normal path (no prefetch hit) ───────────────────────────────────
       let currentBranchScopes: AiBranchScope[] = [];
       try {
         currentBranchScopes = searchTargetBranchScopes ?? await loadPersistedCurrentBranchScopes(targetThreadId);
@@ -4529,16 +4585,19 @@ export function AiChatScreen({
       if (!cancelled) {
         setIsInitialMessageLoading(false);
         if (hasSearchTarget) {
+          fadeInMessageArea();
           return;
         }
         scrollToLatestMessage(false, true);
+        fadeInMessageArea(150);
         scheduleIntentionalLatestJump(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, threadId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fadeInMessageArea, reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, space, threadId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -6867,69 +6926,79 @@ export function AiChatScreen({
             }}
             style={styles.messageArea}
           >
-            <FlatList
-              ref={messageListRef}
-              data={invertedMessageItems}
-              inverted
-              initialNumToRender={10}
-              keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-              keyboardShouldPersistTaps="handled"
-              keyExtractor={messageKeyExtractor}
-              maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
-              maxToRenderPerBatch={tailListMaxToRenderPerBatch}
-              removeClippedSubviews={tailListRemoveClippedSubviews}
-              updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
-              windowSize={tailListWindowSize}
-              ListFooterComponent={
-                <>
-                  {errorMessage ? (
-                    <AiChatErrorBanner
-                      message={errorMessage}
-                      onRetry={
-                        latestAssistantMessage?.status === "failed"
-                          ? () =>
-                              void handleRegenerate(latestAssistantMessage.id)
-                          : undefined
-                      }
-                    />
-                  ) : null}
-                  {hasEarlierMessages ? (
-                    <Pressable
-                      accessibilityLabel="加载更早消息"
-                      accessibilityRole="button"
-                      onPress={loadEarlierMessages}
-                      style={({ pressed }) => [
-                        styles.loadEarlierButton,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Ionicons
-                        color={aiLightColors.muted}
-                        name="chevron-up"
-                        size={15}
+            <Animated.View style={[styles.messageListFade, { opacity: messageAreaFadeAnim }]}>
+              <FlatList
+                ref={messageListRef}
+                data={invertedMessageItems}
+                inverted
+                initialNumToRender={10}
+                keyboardDismissMode={inlineEditingActive ? 'none' : Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={messageKeyExtractor}
+                maintainVisibleContentPosition={MESSAGE_LIST_ANCHOR_CONFIG}
+                maxToRenderPerBatch={tailListMaxToRenderPerBatch}
+                removeClippedSubviews={tailListRemoveClippedSubviews}
+                updateCellsBatchingPeriod={tailListUpdateCellsBatchingPeriod}
+                windowSize={tailListWindowSize}
+                ListFooterComponent={
+                  <>
+                    {errorMessage ? (
+                      <AiChatErrorBanner
+                        message={errorMessage}
+                        onRetry={
+                          latestAssistantMessage?.status === "failed"
+                            ? () =>
+                                void handleRegenerate(latestAssistantMessage.id)
+                            : undefined
+                        }
                       />
-                      <Text style={styles.loadEarlierText}>加载更早消息</Text>
-                    </Pressable>
-                  ) : null}
-                </>
-              }
-              onScrollBeginDrag={handleMessageScrollBeginDrag}
-              onScroll={handleMessageScroll}
-              onMomentumScrollBegin={handleMessageMomentumScrollBegin}
-              onMomentumScrollEnd={handleMessageMomentumScrollEnd}
-              onScrollEndDrag={handleMessageScrollEnd}
-              onScrollToIndexFailed={handleMessageScrollToIndexFailed}
-              onTouchCancel={resetMessageTouchGesture}
-              onTouchEnd={resetMessageTouchGesture}
-              onTouchMove={handleMessageTouchMove}
-              onTouchStart={handleMessageTouchStart}
-              renderItem={renderMessageItem}
-              scrollEventThrottle={16}
-              showsVerticalScrollIndicator={false}
-              style={styles.messageScroller}
-              contentContainerStyle={styles.messageScrollContent}
-              viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
-            />
+                    ) : null}
+                    {hasEarlierMessages ? (
+                      <Pressable
+                        accessibilityLabel="加载更早消息"
+                        accessibilityRole="button"
+                        onPress={loadEarlierMessages}
+                        style={({ pressed }) => [
+                          styles.loadEarlierButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Ionicons
+                          color={aiLightColors.muted}
+                          name="chevron-up"
+                          size={15}
+                        />
+                        <Text style={styles.loadEarlierText}>加载更早消息</Text>
+                      </Pressable>
+                    ) : null}
+                  </>
+                }
+                onScrollBeginDrag={handleMessageScrollBeginDrag}
+                onScroll={handleMessageScroll}
+                onMomentumScrollBegin={handleMessageMomentumScrollBegin}
+                onMomentumScrollEnd={handleMessageMomentumScrollEnd}
+                onScrollEndDrag={handleMessageScrollEnd}
+                onScrollToIndexFailed={handleMessageScrollToIndexFailed}
+                onTouchCancel={resetMessageTouchGesture}
+                onTouchEnd={resetMessageTouchGesture}
+                onTouchMove={handleMessageTouchMove}
+                onTouchStart={handleMessageTouchStart}
+                renderItem={renderMessageItem}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+                style={styles.messageScroller}
+                contentContainerStyle={styles.messageScrollContent}
+                viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairsRef.current}
+              />
+            </Animated.View>
+            {/* Skeleton — visible while data is loading, hidden once the
+                FlatList fades in.  Sits in the same slot as the list so
+                layout doesn't shift. */}
+            {isInitialMessageLoading ? (
+              <View style={styles.skeletonOverlay} pointerEvents="none">
+                <AiChatMessageSkeleton />
+              </View>
+            ) : null}
             {invertedMessageItems.length === 0 && !isInitialMessageLoading && !errorMessage ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
@@ -7459,6 +7528,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
   },
   starterOverlay: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  messageListFade: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  skeletonOverlay: {
     bottom: 0,
     left: 0,
     position: 'absolute',
