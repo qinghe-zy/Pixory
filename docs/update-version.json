@@ -1,18 +1,18 @@
 {
-  "version": "2.7.4",
-  "versionCode": 276,
+  "version": "2.7.5",
+  "versionCode": 277,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.7.4 发布。全新的图标设计与界面细节优化；可前往官网下载区获取最新版。",
+  "message": "Pixory 2.7.5 发布。支持选择文本编辑后自动进入修改气泡，以及界面交互优化；可前往官网下载区获取最新版。",
   "detailLines": [
-    "🌙 陪伴内心运行时与角色日记完善，情绪、关系、梦境和思绪继续保持可控边界",
-    "💬 优化长聊天回到底部、上下文操作与中断后恢复，答案级引用更清晰",
-    "🔒 强化 Personal 恢复、受管备份与上下文隔离，并更新 Android 图标和启动屏"
+    "💬 支持长按文本选择编辑，自动转入内联气泡修改",
+    "✨ 优化消息文本选中体验，避免冲突",
+    "🔒 修复了输入框在动画过程中的闪烁与阴影伪影"
   ],
-  "latestVersion": "2.7.4",
-  "latestVersionCode": 276,
+  "latestVersion": "2.7.5",
+  "latestVersionCode": 277,
   "downloadUrl": "https://mist01.com/#download",
-  "changelog": "1. 发布陪伴内心运行时与角色日记增强，完善长聊天恢复、引用、备份隔离和 Android 启动体验。"
+  "changelog": "1. 支持选择文本编辑后自动进入修改气泡；2. 修复输入框动画闪烁阴影；3. 优化文本交互体验。"
 }
 
 

@@ -103,7 +103,7 @@ test('native role continuity export only includes the active context scopes and 
   const exporter = read('src/ai/memory/nativeMemoryPackage.ts');
   const roleExporter = read('src/ai/aiRoleCardContinuityExportService.ts');
   assert.match(exporter, /buildPackageScopeFilter/);
-  assert.match(exporter, /sourceMessageId IS NULL OR sourceMessageId IN/);
+  assert.match(exporter, /c\.sourceMessageId IS NULL OR c\.sourceMessageId IN/);
   assert.match(exporter, /aggregateType = \? AND aggregateId IN/);
   assert.match(exporter, /memory_evidence WHERE space = \? AND id IN/);
   assert.match(roleExporter, /roleCardId: roleCard\.id/);

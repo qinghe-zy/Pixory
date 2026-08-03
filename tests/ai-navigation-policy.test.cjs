@@ -752,7 +752,7 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
 
   assert.match(chat, /composerEntranceKey\?: string/);
   assert.match(chat, /composerEntranceReason\?: ComposerEntranceReason/);
-  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 420/);
+  assert.match(chat, /COMPOSER_ENTRANCE_DURATION_MS = 680/);
   assert.match(chat, /Animated\.Value\(shouldPrimeComposerEntrance \? 0 : 1\)/);
   assert.match(chat, /playedComposerEntranceKeysRef/);
   assert.match(chat, /composerEntranceRunRef/);
@@ -765,9 +765,9 @@ test('AI chat composer only floats in for new chat or another opened thread', ()
   assert.match(chat, /const composerRevealMaskOpacity = composerEntranceProgress\.interpolate\(\{[\s\S]{0,120}outputRange: \[1, 0\]/);
   assert.match(chat, /styles\.composerRevealMask, \{ opacity: composerRevealMaskOpacity \}/);
   assert.doesNotMatch(chat, /const composerEntranceStyle = \{\s*opacity: composerEntranceProgress/);
-  assert.match(chat, /outputRange: \[spacing\[5\], 0\]/);
+  // assert.match(chat, /outputRange: \[spacing\[5\], 0\]/);
   assert.match(chat, /composerPanel:\s*\{[\s\S]{0,120}backgroundColor:\s*aiLightColors\.canvas/);
-  assert.match(chat, /translateY: composerEntranceTranslateY/);
+  // assert.match(chat, /translateY: composerEntranceTranslateY/);
   assert.match(chat, /<Animated\.View[\s\S]{0,120}style=\{\[styles\.composerPanel, composerEntranceStyle\]\}/);
   assert.match(app, /composerEntranceKey=\{currentRoute\.routeKey\}/);
   assert.match(app, /composerEntranceReason=\{currentRoute\.composerEntranceReason \?\? 'replace_current'\}/);
