@@ -1871,16 +1871,14 @@ export function AiChatScreen({
   const editingUserMessageIdRef = useRef<string | null>(null);
   const thinking = generating;
   const inlineEditingActive = Boolean(editingUserMessageId);
-  const composerEntranceTranslateY = composerEntranceProgress.interpolate({
+  // Fade-in only – avoids jitter caused by translateY competing with
+  // the concurrent scroll-to-latest retries during page entry.
+  const composerEntranceOpacity = composerEntranceProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [spacing[5], 0],
-  });
-  const composerRevealMaskOpacity = composerEntranceProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0],
+    outputRange: [0, 1],
   });
   const composerEntranceStyle = {
-    transform: [{ translateY: composerEntranceTranslateY }],
+    opacity: composerEntranceOpacity,
   };
   const latestAssistantMessage = useMemo(
     () => findLatestAssistantMessage(messages),
@@ -7158,10 +7156,7 @@ export function AiChatScreen({
                 voiceMode={voiceMode}
                 voiceState={voiceState}
               />
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.composerRevealMask, { opacity: composerRevealMaskOpacity }]}
-              />
+              {/* composerRevealMask removed: opacity fade-in on the panel itself is sufficient */}
             </Animated.View>
           )}
           <AiScrollToLatestButton
