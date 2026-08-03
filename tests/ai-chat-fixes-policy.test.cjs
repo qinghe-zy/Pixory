@@ -406,7 +406,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
 
 test('AI chat route reloads do not fall back to stale active thread state', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages, scrollToLatestMessage, searchTargetBranchScopes, searchTargetMessageId, threadId\]\);/.exec(chat)?.[0] ?? '';
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[fadeInMessageArea, reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
@@ -1273,8 +1273,8 @@ test('AI user text supports selection while assistant markdown stays Android lay
   const content = read('src/components/ai/AiMessageContent.tsx');
   const assistantRender = /const trailingTargetIndex[\s\S]*?return \([\s\S]*?\n  \);/m.exec(content)?.[0] ?? '';
 
-  assert.match(bubble, /<Text selectable style=\{\[styles\.content, styles\.userText\]\}/);
-  assert.match(content, /return <Text selectable style=\{\[styles\.body, styles\.userText\]\}>\{content\}<\/Text>/);
+  assert.match(bubble, /<Text selectable=\{false\} style=\{\[styles\.content, styles\.userText\]\}/);
+  assert.match(content, /return <Text selectable=\{false\} style=\{\[styles\.body, styles\.userText\]\}>\{content\}<\/Text>/);
   assert.doesNotMatch(assistantRender, /<Text selectable/);
   assert.match(content, /type: 'hr'/);
   assert.match(content, /isHorizontalRule/);

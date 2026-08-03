@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 const splashBackground = '#4a7bf7';
-const splashIcon = './icons/551977a0-2e08-4e2e-95cf-7644f680767d.png';
+const splashIcon = './icons/splash_padded.png';
 const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
 
 function readJson(file) {

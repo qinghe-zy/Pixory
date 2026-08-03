@@ -1,9 +1,9 @@
 {
-  "version": "2.7.5",
-  "versionCode": 277,
+  "version": "2.7.6",
+  "versionCode": 278,
   "enabled": true,
   "forceUpdate": false,
-  "message": "Pixory 2.7.5 发布。支持选择文本编辑后自动进入修改气泡，以及界面交互优化；可前往官网下载区获取最新版。",
+  "message": "Pixory 2.7.6 发布。支持选择文本编辑后自动进入修改气泡，以及界面交互优化；可前往官网下载区获取最新版。",
   "detailLines": [
     "💬 支持长按文本选择编辑，自动转入内联气泡修改",
     "✨ 优化消息文本选中体验，避免冲突",

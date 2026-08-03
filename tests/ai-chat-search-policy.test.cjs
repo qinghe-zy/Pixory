@@ -89,12 +89,12 @@ test('AI chat search result selection returns to chat and scrolls to target', ()
 
 test('AI chat search target scroll is not overwritten by latest-message jumps', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
+  const routeReloadEffect = /  useEffect\(\(\) => \{\r?\n    const targetThreadId = threadId \?\? null;[\s\S]*?\r?\n  \}, \[fadeInMessageArea, reloadMessages[\s\S]*?threadId\]\);/.exec(chat)?.[0] ?? '';
   const composerHeightHandler = /  const handleComposerHeightChange = useCallback\(\(\) => \{\r?\n[\s\S]*?\r?\n  \}, \[[^\]]*\]\);/.exec(chat)?.[0] ?? '';
   const viewableHandler = /const handleInlineEditViewableItemsChangedRef = useRef\(\([\s\S]*?\n  \}\);/.exec(chat)?.[0] ?? '';
   const searchRetryHandler = /  function retrySearchScrollToIndex\(info: \{ averageItemLength: number; index: number \}\) \{\r?\n[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
   const branchTreeRetryHandler = /  function retryBranchTreeScrollToIndex\(info: \{ averageItemLength: number; index: number \}\) \{\r?\n[\s\S]*?\r?\n  \}/.exec(chat)?.[0] ?? '';
-  const searchTargetGuard = /if \(hasSearchTarget\) \{\s*return;\s*\}/.exec(routeReloadEffect)?.[0] ?? '';
+  const searchTargetGuard = /if \(hasSearchTarget\) \{\s*fadeInMessageArea\(\);\s*return;\s*\}/.exec(routeReloadEffect)?.[0] ?? '';
   const pendingSearchGuard = /if \(pendingSearchScrollMessageIdRef\.current\) \{\s*return;\s*\}/.exec(composerHeightHandler)?.[0] ?? '';
   const pendingClearByTimeout = /setTimeout\(\(\) => \{\s*if \(pendingSearchScrollMessageIdRef\.current === targetMessageId\) \{\s*pendingSearchScrollMessageIdRef\.current = null;/;
 

@@ -81,7 +81,7 @@ test('composer entrance runtime ignores stale async completions', () => {
 test('composer entrance does not bind to keyboard scroll streaming or layout work', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
-  const entranceEffect = /useEffect\(\(\) => \{\s*const shouldStart = shouldStartComposerEntrance[\s\S]*?\n  \}, \[composerEntranceKey, composerEntranceProgress, composerEntranceReason\]\);/.exec(chat)?.[0] ?? '';
+  const entranceEffect = /useEffect\(\(\) => \{[\s\S]{0,300}const shouldStart = shouldStartComposerEntrance[\s\S]*?\n  \}, \[composerEntranceKey, composerEntranceProgress, composerEntranceReason, isInitialMessageLoading\]\);/.exec(chat)?.[0] ?? '';
 
   assert.match(app, /composerEntranceReason:\s*'new_chat'/);
   assert.match(app, /composerEntranceReason:\s*'open_thread'/);
