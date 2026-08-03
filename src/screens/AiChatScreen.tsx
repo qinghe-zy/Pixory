@@ -232,7 +232,7 @@ const SHRINK_STABLE_DELAY_MS = 200;
 const RETAIN_RECONCILE_WINDOW_MS = 350;
 const MESSAGE_LIST_ANCHOR_CONFIG = { minIndexForVisible: 0 };
 const CHAT_MESSAGE_PAGE_SIZE = 60;
-const COMPOSER_ENTRANCE_DURATION_MS = 420;
+const COMPOSER_ENTRANCE_DURATION_MS = 680;
 const COMPOSER_FOCUS_VISIBILITY_DELAYS_MS = [80, 260];
 const ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS = [80, 260, 520];
 const BRANCH_TREE_SCROLL_RETRY_DELAYS_MS = [80, 260, 520];
@@ -4935,6 +4935,13 @@ export function AiChatScreen({
   }, []);
 
   useEffect(() => {
+    // Wait until message loading is settled before playing the entrance
+    // animation.  Starting the mask fade while the FlatList is still being
+    // populated causes the composer to flicker/jump on re-render.
+    if (isInitialMessageLoading) {
+      return;
+    }
+
     const shouldStart = shouldStartComposerEntrance({
       nextRouteKey: composerEntranceKey,
       playedRouteKeys: playedComposerEntranceKeysRef.current,
@@ -4985,7 +4992,7 @@ export function AiChatScreen({
       composerEntranceRunRef.current = null;
       composerEntranceProgress.stopAnimation();
     };
-  }, [composerEntranceKey, composerEntranceProgress, composerEntranceReason]);
+  }, [composerEntranceKey, composerEntranceProgress, composerEntranceReason, isInitialMessageLoading]);
 
   function showNewChatFeedback() {
     if (newChatFeedbackTimeoutRef.current) {
