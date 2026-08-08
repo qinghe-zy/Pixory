@@ -4176,6 +4176,30 @@ export const aiThreadRepository = {
     return materializeMessagesForBranchScopes(db, rows, branchScopes);
   },
 
+  async listSnapshotCandidateMessages(db: SQLiteDatabase, threadId: string, roundLimit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
+    const candidateLimit = Math.max(96, roundLimit * 4);
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    const rows = await db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM (
+         SELECT *, rowid AS rowOrder
+         FROM ai_messages
+         WHERE threadId = ?
+           AND status = 'completed'
+           AND role <> 'system'
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+         ORDER BY createdAt DESC, rowid DESC
+         LIMIT ?
+       )
+       ORDER BY createdAt ASC, rowOrder ASC`,
+      threadId,
+      ...visibleBranchClause.values,
+      candidateLimit
+    );
+    const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
+    return materialized.filter((message) => message.status === 'completed' && message.role !== 'system');
+  },
+
   async listCompletedMessagesInDateRange(
     db: SQLiteDatabase,
     threadId: string,
