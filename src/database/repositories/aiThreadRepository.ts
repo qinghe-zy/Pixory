@@ -4201,44 +4201,38 @@ export const aiThreadRepository = {
       eligible.push(...materializedRoots.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')));
     }
 
-    const scanBatchSize = candidateLimit;
-    let scannedEligibleCount = 0;
-    let cursor: { createdAt: string; rowOrder: number } | null = null;
-    while (scannedEligibleCount < candidateLimit) {
-      const cursorClause = cursor
-        ? 'AND (createdAt < ? OR (createdAt = ? AND rowid < ?))'
-        : '';
-      const rootExclusionClause = scopedRootIds.length > 0
-        ? `AND id NOT IN (${makeInClause(scopedRootIds)})`
-        : '';
-      const rows: Array<AiMessageRecord & { rowOrder: number }> = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
-        `SELECT *, rowid AS rowOrder
-         FROM ai_messages
-         WHERE threadId = ?
-           ${visibleBranchClause.clause}
-           AND ${excludeRolledBackContinuityPayload('ai_messages')}
-           ${rootExclusionClause}
-           ${cursorClause}
-         ORDER BY createdAt DESC, rowid DESC
-         LIMIT ?`,
-        threadId,
-        ...visibleBranchClause.values,
-        ...scopedRootIds,
-        ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.rowOrder] : []),
-        scanBatchSize,
-      );
-      if (rows.length === 0) break;
-      for (const row of rows) rowOrderByMessageId.set(row.id, row.rowOrder);
-      const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
-      const eligibleBatch = materialized.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'));
-      eligible.push(...eligibleBatch);
-      scannedEligibleCount += eligibleBatch.length;
-      const oldest: AiMessageRecord & { rowOrder: number } = rows[rows.length - 1];
-      cursor = { createdAt: oldest.createdAt, rowOrder: oldest.rowOrder };
-      if (rows.length < scanBatchSize) break;
+    const rootExclusionClause = scopedRootIds.length > 0
+      ? `AND id NOT IN (${makeInClause(scopedRootIds)})`
+      : '';
+    const ordinaryRows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
+      `SELECT *, rowid AS rowOrder
+       FROM ai_messages
+       WHERE threadId = ?
+         AND status = 'completed'
+         AND role IN ('user', 'assistant')
+         ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('ai_messages')}
+         ${rootExclusionClause}
+       ORDER BY createdAt DESC, rowid DESC
+       LIMIT ?`,
+      threadId,
+      ...visibleBranchClause.values,
+      ...scopedRootIds,
+      candidateLimit,
+    );
+    for (const row of ordinaryRows) rowOrderByMessageId.set(row.id, row.rowOrder);
+    const materializedOrdinary = await materializeMessagesForBranchScopes(db, ordinaryRows, branchScopes);
+    const eligibleById = new Map<string, AiMessageRecord>();
+    for (const message of materializedOrdinary) {
+      if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')) {
+        eligibleById.set(message.id, message);
+      }
     }
+    // Selected versions win defensively if malformed legacy data ever exposes
+    // the same branch root through both paths.
+    for (const message of eligible) eligibleById.set(message.id, message);
 
-    return eligible
+    return [...eligibleById.values()]
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
         || (rowOrderByMessageId.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rowOrderByMessageId.get(right.id) ?? Number.MAX_SAFE_INTEGER)
         || left.id.localeCompare(right.id))
