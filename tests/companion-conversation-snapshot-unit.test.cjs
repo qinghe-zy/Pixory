@@ -189,6 +189,62 @@ test('dream respects an exact 20-round automatic-trigger focus limit without bac
   assert.equal(snapshot.roundCount, 20);
 });
 
+test('an automatic trigger round remains protected when its complete round exceeds the source budget', () => {
+  const triggerRound = round(1, '2026-08-08', '-protected').map((item) => ({ ...item, content: 'x'.repeat(200) }));
+  const snapshot = snapshots.buildDreamConversationSnapshot({
+    maxSourceCharacters: 0,
+    messages: triggerRound,
+    triggerMessageIds: [triggerRound[0].id],
+  });
+
+  assert.deepEqual(snapshot.sourceMessageIds, triggerRound.map((item) => item.id));
+  assert.equal(snapshot.anchorMessageId, triggerRound[1].id);
+  assert.equal(snapshot.focusRoundCount, 1);
+});
+
+test('equal timestamps preserve user-before-assistant semantic ordering and assistant anchors', () => {
+  const createdAt = '2026-08-08T08:00:00.000Z';
+  const user = message('u1', 'user', createdAt);
+  const assistants = [message('a2', 'assistant', createdAt), message('a1', 'assistant', createdAt)];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08',
+    maxSourceCharacters: 100_000,
+    messages: [...assistants, user],
+  });
+
+  assert.equal(snapshot.roundCount, 1);
+  assert.deepEqual(snapshot.sourceMessageIds, ['u1', 'a1', 'a2']);
+  assert.equal(snapshot.anchorMessageId, 'a2');
+});
+
+test('dream caps trigger-containing focus rounds and does not restore omitted-round triggers', () => {
+  const focusRounds = Array.from({ length: 21 }, (_, index) => round(index + 1, '2026-08-08', '-cap'));
+  const snapshot = snapshots.buildDreamConversationSnapshot({
+    maxSourceCharacters: 100_000,
+    messages: focusRounds.flat(),
+    triggerMessageIds: focusRounds.map((items) => items[0].id),
+  });
+
+  assert.equal(snapshot.focusRoundCount, 20);
+  assert.equal(snapshot.roundCount, 20);
+  assert.equal(snapshot.sourceMessageIds.includes(focusRounds[0][0].id), false);
+  assert.equal(snapshot.sourceMessageIds.includes(focusRounds.at(-1)[0].id), true);
+});
+
+test('dream treats zero and negative round limits as zero without splitting completed triggers into focus evidence', () => {
+  const triggerRound = round(1, '2026-08-08', '-zero');
+  for (const roundLimit of [0, -1]) {
+    const snapshot = snapshots.buildDreamConversationSnapshot({
+      maxSourceCharacters: 100_000,
+      messages: triggerRound,
+      roundLimit,
+      triggerMessageIds: [triggerRound[0].id],
+    });
+    assert.equal(snapshot.roundCount, 0);
+    assert.deepEqual(snapshot.sourceMessageIds, []);
+  }
+});
+
 test('trimming removes whole oldest background rounds before focus rounds', () => {
   const focus = round(1, '2026-08-08', '-focus').map((item) => ({ ...item, content: 'focus' }));
   const oldBackground = round(1, '2026-08-07', '-old').map((item) => ({ ...item, content: 'background-old' }));
@@ -216,6 +272,36 @@ test('an oversized unpaired trigger remains protected when its formatted message
   assert.deepEqual(snapshot.sourceMessageIds, [manual.id]);
 });
 
+test('diary uses valid createdAt when completedAt is malformed and excludes records without any valid timestamp', () => {
+  const fallbackRound = [
+    message('fallback-user', 'user', '2026-08-08T08:00:00.000Z'),
+    message('fallback-assistant', 'assistant', '2026-08-08T08:01:00.000Z', 'reply', { completedAt: 'not-a-timestamp' }),
+  ];
+  const invalidMessages = [
+    message('invalid-user', 'user', 'not-a-timestamp'),
+    message('invalid-assistant', 'assistant', 'not-a-timestamp'),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08',
+    maxSourceCharacters: 100_000,
+    messages: [...fallbackRound, ...invalidMessages],
+  });
+
+  assert.deepEqual(snapshot.sourceMessageIds, fallbackRound.map((item) => item.id));
+  assert.equal(snapshot.anchorMessageId, 'fallback-assistant');
+});
+
+test('an invalid diary date does not classify messages using raw timestamp prefixes', () => {
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: 'not-a-date',
+    maxSourceCharacters: 100_000,
+    messages: round(1, '2026-08-08'),
+  });
+
+  assert.equal(snapshot.roundCount, 0);
+  assert.deepEqual(snapshot.sourceMessageIds, []);
+});
+
 test('source ordering and hashes are stable, and Beijing timestamps use Asia/Shanghai', () => {
   const first = message('a', 'user', '2026-08-08T08:00:00.000Z', 'first', { updatedAt: '2026-08-08T08:01:00.000Z' });
   const second = message('b', 'assistant', '2026-08-08T08:00:00.000Z', 'second');
@@ -227,6 +313,19 @@ test('source ordering and hashes are stable, and Beijing timestamps use Asia/Sha
   assert.deepEqual(snapshot.sourceMessageIds, ['a', 'b']);
   assert.deepEqual(snapshot.sourceMessageVersionHashes, expectedHashes);
   assert.equal(snapshot.sourceSnapshotHash, expectedSnapshotHash);
+});
+
+test('conflicting duplicate IDs select the same canonical message regardless of input order', () => {
+  const earlier = message('duplicate-user', 'user', '2026-08-08T08:00:00.000Z', 'earlier', { updatedAt: '2026-08-08T08:01:00.000Z' });
+  const later = message('duplicate-user', 'user', '2026-08-08T08:00:00.000Z', 'later', { updatedAt: '2026-08-08T08:02:00.000Z' });
+  const assistant = message('duplicate-assistant', 'assistant', '2026-08-08T08:03:00.000Z');
+  const first = snapshots.buildDreamConversationSnapshot({ maxSourceCharacters: 100_000, messages: [earlier, later, assistant], triggerMessageIds: [later.id] });
+  const reversed = snapshots.buildDreamConversationSnapshot({ maxSourceCharacters: 100_000, messages: [assistant, later, earlier], triggerMessageIds: [later.id] });
+
+  assert.deepEqual(first.sourceMessageIds, reversed.sourceMessageIds);
+  assert.deepEqual(first.sourceMessageVersionHashes, reversed.sourceMessageVersionHashes);
+  assert.equal(first.sourceSnapshotHash, reversed.sourceSnapshotHash);
+  assert.equal(first.sourceMessages[0].content, 'later');
 });
 
 test('snapshot candidate loading includes completed selected versions and reorders their materialized timestamps', async () => {
