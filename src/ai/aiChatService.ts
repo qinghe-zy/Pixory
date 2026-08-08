@@ -4215,7 +4215,8 @@ async function streamAssistantReply(input: {
     observeThoughtScope(input.space, { branchRouteHash: hashBranchRoute(branchScopes), roleCardId: input.thread.roleCardId, threadId: input.thread.id });
     if (input.thread.roleCardId) {
       try {
-        const recentMessages = await runWithDatabaseSpace(input.space, (db) => aiThreadRepository.listMessages(db, input.thread.id, 20, branchScopes));
+        const recentMessages = await runWithDatabaseSpace(input.space, (db) =>
+          aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes));
         await detectAndCreateManualDreamRequest({
           branchRouteHash: hashBranchRoute(branchScopes),
           recentMessages,
@@ -4958,7 +4959,7 @@ async function streamAssistantReply(input: {
           try {
             const [userRecord, recentMessages] = await Promise.all([
               aiThreadRepository.findMessageById(db, input.userMessage.id),
-              aiThreadRepository.listMessages(db, input.thread.id, 20, branchScopes),
+              aiThreadRepository.listSnapshotCandidateMessages(db, input.thread.id, 20, branchScopes),
             ]);
             if (userRecord) {
               const dream = await registerCompanionDreamRound(db, {

@@ -34,7 +34,7 @@ export async function loadDreamRuntimeNotice(
   const active = await db.getFirstAsync<{ id: string }>(
     `SELECT id FROM companion_dream_jobs
      WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ?
-       AND cancelRequested = 0 AND status IN ('pending', 'running', 'retry', 'waiting_model')
+       AND cancelRequested = 0 AND status IN ('pending', 'running', 'retry')
      ORDER BY createdAt DESC LIMIT 1`,
     input.threadId,
     input.branchRouteHash,
@@ -53,7 +53,8 @@ export async function loadDreamRuntimeNotice(
   if (dream) return { dreamId: dream.id, jobId: dream.jobId, threadId: input.threadId, type: 'completed' };
   const failed = await db.getFirstAsync<{ id: string }>(
     `SELECT id FROM companion_dream_jobs
-     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ? AND status = 'failed'
+     WHERE threadId = ? AND branchRouteHash = ? AND lineageVersion = ?
+       AND status IN ('failed', 'waiting_model')
      ORDER BY updatedAt DESC LIMIT 1`,
     input.threadId,
     input.branchRouteHash,

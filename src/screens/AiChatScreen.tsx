@@ -207,8 +207,9 @@ import { prepareAndScheduleDiaryJob } from '../ai/diary/diarySchedulerService';
 import { beijingDiaryDate } from '../ai/diary/diaryTypes';
 import { subscribeDiaryRuntimeNotices } from '../ai/diary/diaryRuntimeEvents';
 import { dreamRepository, type DreamJobRecord, type DreamRecord } from '../ai/dream/dreamRepository';
-import { confirmManualDream } from '../ai/dream/dreamService';
+import { confirmManualDream, regenerateDreamFromCurrentConversation } from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
+import { presentDreamFailure } from '../ai/dream/dreamPolicy';
 import { getLatestDreamRuntimeNotice, loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import type {
@@ -1977,10 +1978,20 @@ export function AiChatScreen({
     const unsubscribe = subscribeDreamRuntimeNotices((notice) => {
       if (notice.threadId !== activeThreadIdRef.current) return;
       setDreamNotice(notice);
-      if (notice.type === 'completed') void reloadRoleDreams();
+      void reloadRoleDreams();
     });
     return () => { disposed = true; unsubscribe(); };
   }, [activeThreadId, persistedCurrentBranchScopes, reloadRoleDreams, space]);
+
+  const handleDreamJobRetry = useCallback(async (job: DreamJobRecord) => {
+    const failure = presentDreamFailure(job.lastErrorCode);
+    if (failure.retryMode === 'regenerate_current') {
+      await regenerateDreamFromCurrentConversation({ failedJobId: job.id, space });
+    } else {
+      await retryDreamGeneration(space, job.id);
+    }
+    await reloadRoleDreams();
+  }, [reloadRoleDreams, space]);
 
   useEffect(() => {
     if (!thinking && !isInitialMessageLoading) {
@@ -6453,7 +6464,8 @@ export function AiChatScreen({
         case 'dream':
           return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
         case 'dreamJob':
-          return <DreamChatCard createdAt={item.job.createdAt} title="未命名梦境" status={item.job.status === 'failed' ? 'failed' : 'generating'} onRetry={() => void retryDreamGeneration(space, item.job.id)} />;
+          const failure = presentDreamFailure(item.job.lastErrorCode);
+          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onRetry={() => void handleDreamJobRetry(item.job)} />;
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
@@ -6716,6 +6728,8 @@ export function AiChatScreen({
       onOpenDiary,
       onOpenDream,
       reloadRoleDiaries,
+      reloadRoleDreams,
+      handleDreamJobRetry,
     ],
   );
 

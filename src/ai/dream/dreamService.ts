@@ -3,19 +3,35 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../../database';
 import type { AiMessageRecord } from '../../database/repositories/aiThreadRepository';
 import type { AiThreadRecord } from '../types';
-import { hashCompanionMessageVersion, hashCompanionText } from '../companion/companionRuntimeValidation';
+import { hashCompanionMessageVersion } from '../companion/companionRuntimeValidation';
 import { DREAM_POLICY_VERSION, detectDreamIntent, detectManualDreamRequest, deterministicDreamRoll, dreamFrequencyAllowed, shouldPrepruneDream } from './dreamPolicy';
 import { dreamRepository, type DreamSeedRecord } from './dreamRepository';
 import { emitDreamRuntimeNotice } from './dreamRuntimeEvents';
 import { scheduleCompanionMaintenance } from '../companion/companionMaintenanceQueue';
+import { buildDreamConversationSnapshot, pairCompletedConversationRounds } from '../companion/companionConversationSnapshotService';
+import { hashBranchRoute } from '../context/conversationCoverage';
 
 function versionHash(message: AiMessageRecord): string {
   return hashCompanionMessageVersion({ branchRootMessageId: message.branchRootMessageId, branchVersionIndex: message.branchVersionIndex, completedAt: message.completedAt, content: message.content, id: message.id, role: message.role, status: message.status, updatedAt: message.updatedAt });
 }
-function snapshot(messages: AiMessageRecord[]): { ids: string[]; hashes: string[]; hash: string } {
-  const eligible = messages.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')).slice(-20);
-  const ids = eligible.map((message) => message.id); const hashes = eligible.map(versionHash);
-  return { hash: hashCompanionText(ids.map((id, index) => `${id}:${hashes[index]}`).join('\u001F')), hashes, ids };
+function snapshot(messages: AiMessageRecord[], triggerMessageIds: string[]): {
+  focusIds: string[];
+  ids: string[];
+  hashes: string[];
+  hash: string;
+} {
+  const frozen = buildDreamConversationSnapshot({
+    maxSourceCharacters: 18_000,
+    messages,
+    roundLimit: 20,
+    triggerMessageIds,
+  });
+  return {
+    focusIds: frozen.focusMessages.map((message) => message.id),
+    hash: frozen.sourceSnapshotHash,
+    hashes: frozen.sourceMessageVersionHashes,
+    ids: frozen.sourceMessageIds,
+  };
 }
 
 export async function registerCompanionDreamRound(db: SQLiteDatabase, input: {
@@ -30,8 +46,8 @@ export async function registerCompanionDreamRound(db: SQLiteDatabase, input: {
   const active = await dreamRepository.findActiveScene(db, { branchRouteHash: input.branchRouteHash, lineageVersion: input.thread.lineageVersion ?? 0, roleCardId: input.thread.roleCardId, space: input.space, threadId: input.thread.id });
   if (detected.closing) { if (active) await dreamRepository.closeScene(db, active.id, input.now); return { jobId: null, seed: null }; }
   if (!detected.candidate) return { jobId: null, seed: null };
-  const source = snapshot(input.recentMessages);
-  const scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.ids, lineageVersion: input.thread.lineageVersion ?? 0, now: input.now, roleCardId: input.thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: detected.sceneState, threadId: input.thread.id });
+  const source = snapshot(input.recentMessages, [input.userMessage.id, input.assistantMessage.id]);
+  const scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: input.thread.lineageVersion ?? 0, now: input.now, roleCardId: input.thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: detected.sceneState, threadId: input.thread.id });
   if (await dreamRepository.findSeedForScene(db, scene.id)) return { jobId: null, seed: null };
   const key = `dream-seed:${input.space}:${input.thread.roleCardId}:${scene.id}`; const roll = deterministicDreamRoll(key);
   // A clear sleep-quality/product topic has a proven zero trigger probability, so it never spends a classifier call.
@@ -49,13 +65,13 @@ export async function detectAndCreateManualDreamRequest(input: { space: PixorySp
   return runWithDatabaseSpace(input.space, async (db) => {
     const [thread, message] = await Promise.all([aiThreadRepository.findThreadById(db, input.threadId), aiThreadRepository.findMessageById(db, input.userMessageId)]);
     if (!thread?.roleCardId || !message || message.role !== 'user' || message.status !== 'completed' || !detectManualDreamRequest(message.content)) return null;
-    const source = snapshot(input.recentMessages);
-    let scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.ids, lineageVersion: thread.lineageVersion ?? 0, now, roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
+    const source = snapshot([...input.recentMessages, message], [message.id]);
+    let scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now, roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
     const existing = await dreamRepository.findSeedForScene(db, scene.id);
     if (existing?.manual) return existing;
     if (existing) {
       await dreamRepository.closeScene(db, scene.id, now);
-      scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.ids, lineageVersion: thread.lineageVersion ?? 0, now: new Date(new Date(now).getTime() + 1).toISOString(), roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
+      scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now: new Date(new Date(now).getTime() + 1).toISOString(), roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
     }
     const key = `manual-dream:${input.space}:${thread.id}:${message.id}:${versionHash(message)}`;
     const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision: 'awaiting_confirmation', idempotencyKey: key, lineageVersion: thread.lineageVersion ?? 0, manual: true, policyVersion: DREAM_POLICY_VERSION, roleCardId: thread.roleCardId, roll: deterministicDreamRoll(key), sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: thread.id, now });
@@ -76,4 +92,68 @@ export async function confirmManualDream(space: PixorySpace, seedId: string, acc
   });
 }
 
-export const dreamService = { confirmManual: confirmManualDream, detectManualRequest: detectAndCreateManualDreamRequest, registerRound: registerCompanionDreamRound };
+export async function regenerateDreamFromCurrentConversation(input: {
+  space: PixorySpace;
+  failedJobId: string;
+}): Promise<string | null> {
+  const now = new Date().toISOString();
+  const replacement = await runWithDatabaseSpace(input.space, async (db) => {
+    const failedJob = await dreamRepository.findJob(db, input.failedJobId);
+    if (!failedJob || failedJob.status !== 'failed' || failedJob.lastErrorCode !== 'source_changed') return null;
+    const thread = await aiThreadRepository.findThreadById(db, failedJob.threadId);
+    if (!thread?.roleCardId || thread.roleCardId !== failedJob.roleCardId) return null;
+    const branchScopes = thread.currentBranchRootMessageId && thread.currentBranchVersionIndex != null
+      ? await aiThreadRepository.resolveBranchLineage(db, thread.currentBranchRootMessageId, thread.currentBranchVersionIndex)
+      : [];
+    const candidates = await aiThreadRepository.listSnapshotCandidateMessages(db, thread.id, 20, branchScopes);
+    const latestRound = pairCompletedConversationRounds(candidates).at(-1);
+    if (!latestRound) return null;
+    const source = snapshot(candidates, latestRound.messages.map((message) => message.id));
+    const staleScene = await dreamRepository.findScene(db, failedJob.sceneId);
+    if (staleScene?.status === 'active') await dreamRepository.closeScene(db, staleScene.id, now);
+    const branchRouteHash = hashBranchRoute(branchScopes);
+    const scene = await dreamRepository.upsertScene(db, {
+      branchRouteHash,
+      evidenceMessageIds: source.focusIds,
+      lineageVersion: thread.lineageVersion ?? 0,
+      now,
+      roleCardId: thread.roleCardId,
+      sourceSnapshotHash: source.hash,
+      space: input.space,
+      state: staleScene?.semanticState === 'closed' ? 'dream_active' : staleScene?.semanticState ?? 'dream_active',
+      threadId: thread.id,
+    });
+    const key = `dream-recover:${input.failedJobId}:${source.hash}`;
+    const seed = await dreamRepository.createSeed(db, {
+      branchRouteHash,
+      decision: 'selected',
+      idempotencyKey: key,
+      lineageVersion: thread.lineageVersion ?? 0,
+      manual: true,
+      policyVersion: DREAM_POLICY_VERSION,
+      roleCardId: thread.roleCardId,
+      roll: deterministicDreamRoll(key),
+      sceneId: scene.id,
+      sourceMessageIds: source.ids,
+      sourceMessageVersionHashes: source.hashes,
+      sourceSnapshotHash: source.hash,
+      space: input.space,
+      threadId: thread.id,
+      now,
+    });
+    const job = await dreamRepository.createJob(db, { now, phase: 'generating', seed });
+    await dreamRepository.transitionJob(db, {
+      errorCode: 'replaced_by_current_source',
+      id: failedJob.id,
+      now,
+      status: 'cancelled',
+    });
+    return job;
+  });
+  if (!replacement) return null;
+  emitDreamRuntimeNotice({ jobId: replacement.id, threadId: replacement.threadId, type: 'generating' });
+  scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', delayMs: 0, space: input.space });
+  return replacement.id;
+}
+
+export const dreamService = { confirmManual: confirmManualDream, detectManualRequest: detectAndCreateManualDreamRequest, regenerateCurrent: regenerateDreamFromCurrentConversation, registerRound: registerCompanionDreamRound };

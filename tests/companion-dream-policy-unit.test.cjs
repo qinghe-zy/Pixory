@@ -49,6 +49,23 @@ test('strict classifier and generator envelopes reject drift and oversized conte
   assert.equal(policy.parseDreamClassification(JSON.stringify({ ...classification, x: 1 }), new Set(['m1'])), null);
   assert.equal(policy.parseDreamClassification(JSON.stringify({ ...classification, sourceMessageIds: ['sibling'] }), new Set(['m1'])), null);
   assert.deepEqual(policy.parseDreamGeneration('{"title":"雾中回声","body":"我沿着月光走进一片安静的雾。"}'), { title: '雾中回声', body: '我沿着月光走进一片安静的雾。' });
+  assert.deepEqual(policy.parseDreamGeneration('```json\n{"title":"雾中回声","body":"我沿着月光走进安静的雾。"}\n```'), { title: '雾中回声', body: '我沿着月光走进安静的雾。' });
+  assert.deepEqual(policy.parseDreamGeneration('结果如下：{"title":"雾中回声","body":"我沿着月光走进安静的雾。"}'), { title: '雾中回声', body: '我沿着月光走进安静的雾。' });
+  assert.equal(policy.parseDreamGeneration('{"title":"雾中回声","body":"有效","extra":1}'), null);
   assert.equal(policy.parseDreamGeneration(JSON.stringify({ title: '短', body: 'x' })), null);
   assert.equal(policy.parseDreamGeneration(JSON.stringify({ title: '合格标题', body: '梦'.repeat(221) })), null);
+});
+
+test('dream failures expose the recovery action that can actually succeed', () => {
+  assert.deepEqual(policy.presentDreamFailure('source_changed'), {
+    actionLabel: '按当前对话重新生成',
+    message: '原对话来源已经变化，请按当前对话重新生成。',
+    retryMode: 'regenerate_current',
+  });
+  assert.deepEqual(policy.presentDreamFailure('model_unavailable'), {
+    actionLabel: '配置后重试',
+    message: '当前没有可用模型，请完成模型配置后重试。',
+    retryMode: 'retry_same',
+  });
+  assert.equal(policy.presentDreamFailure('provider_failed').retryMode, 'retry_same');
 });

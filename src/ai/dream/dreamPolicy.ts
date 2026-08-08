@@ -150,12 +150,41 @@ export function shouldSelectDream(roll: number, classification: DreamClassificat
   return roll < dreamIntentProbability[classification.intentType];
 }
 
+function extractFirstJsonObject(value: string): string | null {
+  const start = value.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let escaped = false;
+  let quoted = false;
+  for (let index = start; index < value.length; index += 1) {
+    const character = value[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) return value.slice(start, index + 1);
+      if (depth < 0) return null;
+    }
+  }
+  return null;
+}
+
 export function parseDreamClassification(
   value: string,
   allowedSourceMessageIds?: Set<string>,
 ): DreamClassification | null {
   try {
-    const parsed: unknown = JSON.parse(value);
+    const json = extractFirstJsonObject(value);
+    if (!json) return null;
+    const parsed: unknown = JSON.parse(json);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const object = parsed as Record<string, unknown>;
     const keys = [
@@ -200,7 +229,9 @@ export function parseDreamClassification(
 
 export function parseDreamGeneration(value: string): { title: string; body: string } | null {
   try {
-    const parsed: unknown = JSON.parse(value);
+    const json = extractFirstJsonObject(value);
+    if (!json) return null;
+    const parsed: unknown = JSON.parse(json);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const object = parsed as Record<string, unknown>;
     if (Object.keys(object).some((key) => !['title', 'body'].includes(key))) return null;
@@ -213,4 +244,48 @@ export function parseDreamGeneration(value: string): { title: string; body: stri
   } catch {
     return null;
   }
+}
+
+export type DreamRetryMode = 'retry_same' | 'regenerate_current';
+
+export function presentDreamFailure(code: string | null): {
+  message: string;
+  actionLabel: string;
+  retryMode: DreamRetryMode;
+} {
+  if (code === 'source_changed') {
+    return {
+      actionLabel: '按当前对话重新生成',
+      message: '原对话来源已经变化，请按当前对话重新生成。',
+      retryMode: 'regenerate_current',
+    };
+  }
+  if (code === 'model_unavailable' || code === 'personal_remote_not_authorized') {
+    return {
+      actionLabel: '配置后重试',
+      message: code === 'personal_remote_not_authorized'
+        ? '个人空间尚未允许远程模型，请解锁并授权后重试。'
+        : '当前没有可用模型，请完成模型配置后重试。',
+      retryMode: 'retry_same',
+    };
+  }
+  if (code === 'invalid_generation' || code === 'invalid_classification') {
+    return {
+      actionLabel: '重试',
+      message: '梦境内容没有正确完成，请重试。',
+      retryMode: 'retry_same',
+    };
+  }
+  if (code === 'frequency_blocked') {
+    return {
+      actionLabel: '稍后再试',
+      message: '已达到今日次数或仍在梦境间隔内，请稍后再试。',
+      retryMode: 'retry_same',
+    };
+  }
+  return {
+    actionLabel: '重试',
+    message: '梦境生成失败，请稍后重试。',
+    retryMode: 'retry_same',
+  };
 }
