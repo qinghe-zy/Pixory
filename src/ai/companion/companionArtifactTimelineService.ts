@@ -1,3 +1,6 @@
+import type { AiBranchScope } from '../../database/repositories/aiThreadRepository';
+import { hashBranchRoute } from '../context/conversationCoverage';
+
 export type CompanionArtifactKind = 'diary' | 'dream' | 'dreamJob';
 
 export interface CompanionArtifactTimelineMessage {
@@ -24,6 +27,54 @@ export type CompanionArtifactTimelineItem<
       anchorMessageId: string;
       artifact: CompanionArtifactEntry<Payload>;
     };
+
+function parseBranchRoute(value: string | null | undefined): AiBranchScope[] | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    const scopes: AiBranchScope[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const scope = item as Partial<AiBranchScope>;
+      if (
+        typeof scope.branchRootMessageId !== 'string' ||
+        scope.branchRootMessageId.length === 0 ||
+        typeof scope.branchVersionIndex !== 'number' ||
+        !Number.isFinite(scope.branchVersionIndex)
+      ) {
+        return null;
+      }
+      scopes.push({
+        branchRootMessageId: scope.branchRootMessageId,
+        branchVersionIndex: scope.branchVersionIndex,
+      });
+    }
+    return scopes;
+  } catch {
+    return null;
+  }
+}
+
+export function isDiaryEligibleForCompanionTimeline(input: {
+  activeBranchScopes: AiBranchScope[];
+  activeThreadId: string | null;
+  sourceBranchRouteJson: string | null | undefined;
+  sourceThreadId: string | null;
+}): boolean {
+  if (!input.activeThreadId || input.sourceThreadId !== input.activeThreadId) {
+    return false;
+  }
+  const sourceBranchScopes = parseBranchRoute(input.sourceBranchRouteJson);
+  return sourceBranchScopes !== null &&
+    hashBranchRoute(sourceBranchScopes) === hashBranchRoute(input.activeBranchScopes);
+}
 
 function findLegacyAnchorIndex<Message extends CompanionArtifactTimelineMessage>(
   messages: Message[],

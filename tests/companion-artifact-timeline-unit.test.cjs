@@ -121,6 +121,76 @@ test('duplicate artifact identities render only once', () => {
   assert.deepEqual(keys(items), ['message:anchor', 'dream:same']);
 });
 
+test('diary timeline eligibility rejects another thread and missing provenance', () => {
+  const activeBranchScopes = [{ branchRootMessageId: 'root', branchVersionIndex: 1 }];
+
+  assert.equal(timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes,
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: JSON.stringify(activeBranchScopes),
+    sourceThreadId: 'thread-other',
+  }), false);
+  assert.equal(timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes,
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: JSON.stringify(activeBranchScopes),
+    sourceThreadId: null,
+  }), false);
+  assert.equal(timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes,
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: '{broken',
+    sourceThreadId: 'thread-current',
+  }), false);
+});
+
+test('diary timeline eligibility rejects a different branch even when message ids can overlap', () => {
+  assert.equal(timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes: [{ branchRootMessageId: 'shared-base-message', branchVersionIndex: 2 }],
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: JSON.stringify([
+      { branchRootMessageId: 'shared-base-message', branchVersionIndex: 1 },
+    ]),
+    sourceThreadId: 'thread-current',
+  }), false);
+});
+
+test('diary timeline eligibility accepts canonically equivalent normalized routes', () => {
+  const activeBranchScopes = [
+    { branchRootMessageId: 'root-b', branchVersionIndex: 2 },
+    { branchRootMessageId: 'root-a', branchVersionIndex: 1 },
+  ];
+  const storedRoute = JSON.stringify([
+    { branchVersionIndex: 1, branchRootMessageId: 'root-a' },
+    { branchVersionIndex: 2, branchRootMessageId: 'root-b' },
+  ]);
+
+  assert.equal(timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes,
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: storedRoute,
+    sourceThreadId: 'thread-current',
+  }), true);
+});
+
+test('a provenance-confirmed legacy diary remains eligible for timestamp fallback', () => {
+  const activeBranchScopes = [];
+  const eligible = timeline.isDiaryEligibleForCompanionTimeline({
+    activeBranchScopes,
+    activeThreadId: 'thread-current',
+    sourceBranchRouteJson: '[]',
+    sourceThreadId: 'thread-current',
+  });
+  const legacyDiary = artifact('confirmed-legacy', 'diary', [], '2026-08-08T10:30:00.000Z');
+  const items = timeline.buildCompanionArtifactTimeline({
+    messages: [message('m1', '2026-08-08T10:00:00.000Z')],
+    artifacts: eligible ? [legacyDiary] : [],
+  });
+
+  assert.equal(eligible, true);
+  assert.deepEqual(keys(items), ['message:m1', 'diary:confirmed-legacy']);
+});
+
 test('timeline preserves message order exactly and inserts no synthetic date nodes', () => {
   const messages = [
     message('late-clock', '2026-08-09T00:00:00.000Z'),

@@ -197,6 +197,7 @@ import {
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
 import {
   buildCompanionArtifactTimeline,
+  isDiaryEligibleForCompanionTimeline,
   type CompanionArtifactEntry,
 } from '../ai/companion/companionArtifactTimelineService';
 import { scheduleCompanionMaintenance } from '../ai/companion/companionMaintenanceQueue';
@@ -2294,14 +2295,24 @@ export function AiChatScreen({
     const displayMessages = nextVisibleMessages.map((message) =>
       selectVisibleMessage({ message, tailOverride }),
     );
+    const visibleBranchScopes = persistedCurrentBranchScopes.length > 0
+      ? persistedCurrentBranchScopes
+      : activeMessageBranchScopesRef.current ?? [];
     const artifactEntries: Array<CompanionArtifactEntry<ChatCompanionArtifactPayload>> = [
-      ...roleDiaries.map((diary) => ({
-        createdAt: diary.createdAt,
-        id: diary.id,
-        kind: 'diary' as const,
-        payload: diary,
-        sourceMessageIds: diary.sourceMessageIds,
-      })),
+      ...roleDiaries
+        .filter((diary) => isDiaryEligibleForCompanionTimeline({
+          activeBranchScopes: visibleBranchScopes,
+          activeThreadId,
+          sourceBranchRouteJson: diary.sourceBranchRouteJson,
+          sourceThreadId: diary.sourceThreadId,
+        }))
+        .map((diary) => ({
+          createdAt: diary.createdAt,
+          id: diary.id,
+          kind: 'diary' as const,
+          payload: diary,
+          sourceMessageIds: diary.sourceMessageIds,
+        })),
       ...roleDreams.map((dream) => ({
         createdAt: dream.displayAt,
         id: dream.id,
@@ -2456,7 +2467,9 @@ export function AiChatScreen({
       visibleMessages: nextVisibleMessages,
     };
   }, [
+    activeThreadId,
     messages,
+    persistedCurrentBranchScopes,
     selectedVersionByMessageId,
     singleBubbleTailReplayEnabled,
     streamingTailVersion,
