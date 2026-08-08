@@ -47,12 +47,16 @@ function validTimestamp(value: string | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function resolveMessageTimestamp(message: AiMessageRecord): string | null {
+function conversationTimestamp(message: AiMessageRecord): string | null {
+  return validTimestamp(message.createdAt) ?? validTimestamp(message.completedAt);
+}
+
+function roundCompletionTimestamp(message: AiMessageRecord): string | null {
   return validTimestamp(message.completedAt) ?? validTimestamp(message.createdAt);
 }
 
 function compareMessages(left: AiMessageRecord, right: AiMessageRecord): number {
-  const timestampCompare = (resolveMessageTimestamp(left) ?? '').localeCompare(resolveMessageTimestamp(right) ?? '');
+  const timestampCompare = (conversationTimestamp(left) ?? '').localeCompare(conversationTimestamp(right) ?? '');
   if (timestampCompare !== 0) {
     return timestampCompare;
   }
@@ -66,7 +70,7 @@ function preferCanonicalMessage(existing: AiMessageRecord, candidate: AiMessageR
   if (updatedAtCompare !== 0) {
     return updatedAtCompare > 0 ? candidate : existing;
   }
-  const timestampCompare = (resolveMessageTimestamp(candidate) ?? '').localeCompare(resolveMessageTimestamp(existing) ?? '');
+  const timestampCompare = (roundCompletionTimestamp(candidate) ?? '').localeCompare(roundCompletionTimestamp(existing) ?? '');
   if (timestampCompare !== 0) {
     return timestampCompare > 0 ? candidate : existing;
   }
@@ -76,7 +80,7 @@ function preferCanonicalMessage(existing: AiMessageRecord, candidate: AiMessageR
 function completedConversationMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
   const unique = new Map<string, AiMessageRecord>();
   for (const message of messages) {
-    if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant') && resolveMessageTimestamp(message)) {
+    if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant') && conversationTimestamp(message)) {
       const existing = unique.get(message.id);
       unique.set(message.id, existing ? preferCanonicalMessage(existing, message) : message);
     }
@@ -94,7 +98,7 @@ function stableMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
 }
 
 function formattedMessageLength(message: AiMessageRecord): number {
-  return `${formatCompanionBeijingTimestamp(resolveMessageTimestamp(message) ?? message.createdAt)} ${message.role === 'user' ? '用户' : '角色'}：${message.content}`.length;
+  return `${formatCompanionBeijingTimestamp(conversationTimestamp(message) ?? message.createdAt)} ${message.role === 'user' ? '用户' : '角色'}：${message.content}`.length;
 }
 
 function unitLength(unit: SnapshotUnit): number {
@@ -174,7 +178,7 @@ export function pairCompletedConversationRounds(messages: AiMessageRecord[]): Co
         const assistantMessages = current.filter((item) => item.role === 'assistant');
         rounds.push({
           assistantMessages,
-          completedAt: resolveMessageTimestamp(assistantMessages.at(-1)!)!,
+          completedAt: roundCompletionTimestamp(assistantMessages.at(-1)!)!,
           messages: current,
           userMessage: current[0],
         });
@@ -188,7 +192,7 @@ export function pairCompletedConversationRounds(messages: AiMessageRecord[]): Co
     const assistantMessages = current.filter((item) => item.role === 'assistant');
     rounds.push({
       assistantMessages,
-      completedAt: resolveMessageTimestamp(assistantMessages.at(-1)!)!,
+      completedAt: roundCompletionTimestamp(assistantMessages.at(-1)!)!,
       messages: current,
       userMessage: current[0],
     });

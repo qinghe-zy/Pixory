@@ -217,6 +217,24 @@ test('equal timestamps preserve user-before-assistant semantic ordering and assi
   assert.equal(snapshot.anchorMessageId, 'a2');
 });
 
+test('late assistant completion does not reorder consecutive conversation rounds or their anchor', () => {
+  const messages = [
+    message('u1', 'user', '2026-08-08T08:00:00.000Z'),
+    message('a1', 'assistant', '2026-08-08T08:01:00.000Z', 'first reply', { completedAt: '2026-08-08T08:05:00.000Z' }),
+    message('u2', 'user', '2026-08-08T08:02:00.000Z'),
+    message('a2', 'assistant', '2026-08-08T08:03:00.000Z', 'second reply', { completedAt: '2026-08-08T08:04:00.000Z' }),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08',
+    maxSourceCharacters: 100_000,
+    messages,
+  });
+
+  assert.equal(snapshot.roundCount, 2);
+  assert.deepEqual(snapshot.sourceMessageIds, ['u1', 'a1', 'u2', 'a2']);
+  assert.equal(snapshot.anchorMessageId, 'a2');
+});
+
 test('dream caps trigger-containing focus rounds and does not restore omitted-round triggers', () => {
   const focusRounds = Array.from({ length: 21 }, (_, index) => round(index + 1, '2026-08-08', '-cap'));
   const snapshot = snapshots.buildDreamConversationSnapshot({
