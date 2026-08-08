@@ -4184,8 +4184,6 @@ export const aiThreadRepository = {
          SELECT *, rowid AS rowOrder
          FROM ai_messages
          WHERE threadId = ?
-           AND status = 'completed'
-           AND role <> 'system'
            ${visibleBranchClause.clause}
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
          ORDER BY createdAt DESC, rowid DESC
@@ -4197,7 +4195,9 @@ export const aiThreadRepository = {
       candidateLimit
     );
     const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
-    return materialized.filter((message) => message.status === 'completed' && message.role !== 'system');
+    return materialized
+      .filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
   },
 
   async listCompletedMessagesInDateRange(

@@ -75,6 +75,10 @@ function normalizeRoundLimit(value: number | undefined, fallback: number): numbe
   return Math.max(0, Math.floor(value ?? fallback));
 }
 
+function newestRounds<T>(rounds: T[], count: number): T[] {
+  return count > 0 ? rounds.slice(-count) : [];
+}
+
 function trimUnits(input: { focus: SnapshotUnit[]; background: SnapshotUnit[]; maxSourceCharacters: number }): { focus: SnapshotUnit[]; background: SnapshotUnit[]; trimmed: boolean } {
   const focus = [...input.focus];
   const background = [...input.background];
@@ -161,13 +165,16 @@ export function buildDiaryConversationSnapshot(input: {
 }): CompanionConversationSnapshot {
   const roundLimit = normalizeRoundLimit(input.roundLimit, 30);
   const rounds = pairCompletedConversationRounds(input.messages);
-  const focusRounds = rounds.filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) === input.diaryDate).slice(-roundLimit);
+  const focusRounds = newestRounds(
+    rounds.filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) === input.diaryDate),
+    roundLimit
+  );
   const focusIds = new Set(focusRounds.map((round) => round.userMessage.id));
   const backgroundRounds = rounds
-    .filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) < input.diaryDate && !focusIds.has(round.userMessage.id))
-    .slice(-Math.max(0, roundLimit - focusRounds.length));
+    .filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) < input.diaryDate && !focusIds.has(round.userMessage.id));
+  const selectedBackgroundRounds = newestRounds(backgroundRounds, Math.max(0, roundLimit - focusRounds.length));
   return snapshotFromUnits({
-    background: backgroundRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
+    background: selectedBackgroundRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
     focus: focusRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
     maxSourceCharacters: input.maxSourceCharacters,
   });
@@ -186,9 +193,10 @@ export function buildDreamConversationSnapshot(input: {
   const roundMessageIds = new Set(focusRounds.flatMap((round) => round.messages.map((message) => message.id)));
   const triggerOnlyMessages = messages.filter((message) => triggerIds.has(message.id) && !roundMessageIds.has(message.id));
   const roundLimit = normalizeRoundLimit(input.roundLimit, 20);
-  const backgroundRounds = rounds
-    .filter((round) => !focusRounds.includes(round))
-    .slice(-Math.max(0, roundLimit - focusRounds.length));
+  const backgroundRounds = newestRounds(
+    rounds.filter((round) => !focusRounds.includes(round)),
+    Math.max(0, roundLimit - focusRounds.length)
+  );
   return snapshotFromUnits({
     background: backgroundRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
     focus: [

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -19,6 +20,66 @@ try {
 } finally {
   if (original) require.extensions['.ts'] = original;
   else delete require.extensions['.ts'];
+}
+
+function loadRepository() {
+  const filename = path.join(root, 'src/database/repositories/aiThreadRepository.ts');
+  const previous = require.extensions['.ts'];
+  require.extensions['.ts'] = function (module, sourcePath) {
+    module._compile(ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, sourcePath);
+  };
+  try {
+    delete require.cache[require.resolve(filename)];
+    return require(filename).aiThreadRepository;
+  } finally {
+    if (previous) require.extensions['.ts'] = previous;
+    else delete require.extensions['.ts'];
+  }
+}
+
+class AsyncDatabase {
+  constructor() {
+    this.db = new DatabaseSync(':memory:');
+  }
+
+  async getAllAsync(sql, ...params) {
+    return this.db.prepare(sql).all(...params);
+  }
+
+  close() {
+    this.db.close();
+  }
+}
+
+function createRepositorySchema(db) {
+  db.db.exec(`
+    CREATE TABLE ai_messages (
+      id TEXT PRIMARY KEY, threadId TEXT NOT NULL, branchRootMessageId TEXT,
+      branchVersionIndex INTEGER, role TEXT, status TEXT, content TEXT,
+      reasoningText TEXT, errorMessage TEXT, providerId TEXT, modelId TEXT,
+      modelSnapshotJson TEXT, promptSnapshotJson TEXT, continuityImportSessionId TEXT,
+      continuitySyntheticKind TEXT, createdAt TEXT, updatedAt TEXT, completedAt TEXT
+    );
+    CREATE TABLE ai_message_versions (
+      id TEXT PRIMARY KEY, originalMessageId TEXT, threadId TEXT, versionIndex INTEGER,
+      role TEXT, status TEXT, content TEXT, reasoningText TEXT, errorMessage TEXT,
+      providerId TEXT, modelId TEXT, modelSnapshotJson TEXT, promptSnapshotJson TEXT,
+      citationsJson TEXT, messageCreatedAt TEXT, messageUpdatedAt TEXT,
+      messageCompletedAt TEXT, createdAt TEXT
+    );
+    CREATE TABLE ai_continuity_import_sessions (id TEXT PRIMARY KEY, reviewGateState TEXT);
+  `);
+}
+
+function insertRepositoryMessage(db, input) {
+  db.db.prepare(`INSERT INTO ai_messages (
+    id, threadId, branchRootMessageId, branchVersionIndex, role, status, content,
+    reasoningText, errorMessage, providerId, modelId, modelSnapshotJson, promptSnapshotJson,
+    continuityImportSessionId, continuitySyntheticKind, createdAt, updatedAt, completedAt
+  ) VALUES (?, 'thread-1', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, '{}', '{}', NULL, NULL, ?, ?, ?)`)
+    .run(input.id, input.branchRootMessageId ?? null, input.branchVersionIndex ?? null, input.role, input.status, input.content ?? input.id, input.createdAt, input.updatedAt ?? input.createdAt, input.completedAt ?? null);
 }
 
 function message(id, role, createdAt, content = id, options = {}) {
@@ -67,6 +128,18 @@ test('diary snapshots retain today rounds before backfilled history and anchor t
   assert.equal(snapshot.sourceMessageIds.at(-1), 'a-2026-08-08-28');
 });
 
+test('diary respects an exact 30-round focus limit without backfilling history', () => {
+  const messages = [
+    ...Array.from({ length: 5 }, (_, index) => round(index + 1, '2026-08-07')).flat(),
+    ...Array.from({ length: 30 }, (_, index) => round(index + 1, '2026-08-08')).flat(),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({ diaryDate: '2026-08-08', maxSourceCharacters: 100_000, messages });
+
+  assert.equal(snapshot.focusRoundCount, 30);
+  assert.equal(snapshot.backgroundRoundCount, 0);
+  assert.equal(snapshot.roundCount, 30);
+});
+
 test('dream keeps an unpaired manual trigger plus 20 complete background rounds and uses the trigger as anchor', () => {
   const manual = message('manual-trigger', 'user', '2026-08-08T08:00:00.000Z', 'write a dream for me');
   const messages = [manual, ...Array.from({ length: 24 }, (_, index) => round(index + 1, '2026-08-08')).flat()];
@@ -100,6 +173,20 @@ test('dream counts an automatic trigger round inside its 20-round total and excl
   assert.equal(snapshot.roundCount, 20);
   assert.deepEqual(snapshot.focusMessages.map((item) => item.id), triggerRound.map((item) => item.id));
   assert.equal(snapshot.sourceMessageIds.includes('u-incomplete'), false);
+});
+
+test('dream respects an exact 20-round automatic-trigger focus limit without background rounds', () => {
+  const focusRounds = Array.from({ length: 20 }, (_, index) => round(index + 1, '2026-08-08'));
+  const backgroundRounds = Array.from({ length: 5 }, (_, index) => round(index + 1, '2026-08-07'));
+  const snapshot = snapshots.buildDreamConversationSnapshot({
+    maxSourceCharacters: 100_000,
+    messages: [...backgroundRounds.flat(), ...focusRounds.flat()],
+    triggerMessageIds: focusRounds.map((items) => items[0].id),
+  });
+
+  assert.equal(snapshot.focusRoundCount, 20);
+  assert.equal(snapshot.backgroundRoundCount, 0);
+  assert.equal(snapshot.roundCount, 20);
 });
 
 test('trimming removes whole oldest background rounds before focus rounds', () => {
@@ -142,14 +229,34 @@ test('source ordering and hashes are stable, and Beijing timestamps use Asia/Sha
   assert.equal(snapshot.sourceSnapshotHash, expectedSnapshotHash);
 });
 
-test('snapshot candidate loading is bounded and materializes the visible branch route', () => {
-  const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
-  const method = /async listSnapshotCandidateMessages[\s\S]*?\n  },\n\n  async listCompletedMessagesInDateRange/.exec(repository)?.[0] ?? '';
+test('snapshot candidate loading includes completed selected versions and reorders their materialized timestamps', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  insertRepositoryMessage(db, {
+    branchRootMessageId: 'branch-root',
+    branchVersionIndex: 1,
+    createdAt: '2026-08-08T01:00:00.000Z',
+    id: 'branch-root',
+    role: 'assistant',
+    status: 'generating',
+  });
+  insertRepositoryMessage(db, {
+    createdAt: '2026-08-08T02:00:00.000Z',
+    id: 'visible-completed',
+    role: 'assistant',
+    status: 'completed',
+  });
+  db.db.prepare(`INSERT INTO ai_message_versions (
+    id, originalMessageId, threadId, versionIndex, role, status, content,
+    reasoningText, errorMessage, providerId, modelId, modelSnapshotJson, promptSnapshotJson,
+    citationsJson, messageCreatedAt, messageUpdatedAt, messageCompletedAt, createdAt
+  ) VALUES ('version-1', 'branch-root', 'thread-1', 1, 'assistant', 'completed', 'selected historical version', NULL, NULL, NULL, NULL, '{}', '{}', '[]', '2026-08-08T03:00:00.000Z', '2026-08-08T03:00:00.000Z', '2026-08-08T03:00:00.000Z', '2026-08-08T03:00:00.000Z')`).run();
 
-  assert.match(method, /Math\.max\(96, roundLimit \* 4\)/);
-  assert.match(method, /buildVisibleBranchClause\('ai_messages', branchScopes\)/);
-  assert.match(method, /status = 'completed'/);
-  assert.match(method, /role <> 'system'/);
-  assert.match(method, /materializeMessagesForBranchScopes\(db, rows, branchScopes\)/);
-  assert.match(method, /materialized\.filter\(\(message\) => message\.status === 'completed' && message\.role !== 'system'\)/);
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, [{ branchRootMessageId: 'branch-root', branchVersionIndex: 1 }]);
+
+  assert.deepEqual(messages.map((item) => item.id), ['visible-completed', 'branch-root']);
+  assert.equal(messages[1].status, 'completed');
+  assert.equal(messages[1].createdAt, '2026-08-08T03:00:00.000Z');
+  db.close();
 });
