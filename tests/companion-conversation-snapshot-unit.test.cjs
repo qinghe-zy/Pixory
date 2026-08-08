@@ -154,6 +154,21 @@ test('dream keeps an unpaired manual trigger plus 20 complete background rounds 
   assert.equal(snapshot.sourceMessageIds.length, 41);
 });
 
+test('dream preserves global caller sequence across equal-timestamp background and manual trigger categories', () => {
+  const createdAt = '2026-08-08T08:00:00.000Z';
+  const backgroundUser = message('u-bg', 'user', createdAt);
+  const backgroundAssistant = message('a-bg', 'assistant', createdAt);
+  const manualTrigger = message('u-manual', 'user', createdAt);
+  const snapshot = snapshots.buildDreamConversationSnapshot({
+    maxSourceCharacters: 100_000,
+    messages: [backgroundUser, backgroundAssistant, manualTrigger],
+    triggerMessageIds: [manualTrigger.id],
+  });
+
+  assert.deepEqual(snapshot.sourceMessageIds, [backgroundUser.id, backgroundAssistant.id, manualTrigger.id]);
+  assert.equal(snapshot.anchorMessageId, manualTrigger.id);
+});
+
 test('dream counts an automatic trigger round inside its 20-round total and excludes incomplete rounds', () => {
   const triggerRound = round(1, '2026-08-08', '-trigger');
   const incomplete = [message('u-incomplete', 'user', '2026-08-08T10:00:00.000Z')];

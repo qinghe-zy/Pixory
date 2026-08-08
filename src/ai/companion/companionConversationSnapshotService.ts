@@ -82,14 +82,21 @@ function preferCanonicalMessage(existing: AiMessageRecord, candidate: AiMessageR
   return hashCompanionMessageVersion(candidate).localeCompare(hashCompanionMessageVersion(existing)) > 0 ? candidate : existing;
 }
 
-function completedConversationMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
-  const unique = new Map<string, AiMessageRecord>();
+function conversationSequenceById(messages: AiMessageRecord[]): Map<string, number> {
   const sequenceById = new Map<string, number>();
   for (const [sequence, message] of messages.entries()) {
+    if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant') && conversationTimestamp(message) && !sequenceById.has(message.id)) {
+      sequenceById.set(message.id, sequence);
+    }
+  }
+  return sequenceById;
+}
+
+function completedConversationMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
+  const unique = new Map<string, AiMessageRecord>();
+  const sequenceById = conversationSequenceById(messages);
+  for (const message of messages) {
     if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant') && conversationTimestamp(message)) {
-      if (!sequenceById.has(message.id)) {
-        sequenceById.set(message.id, sequence);
-      }
       const existing = unique.get(message.id);
       unique.set(message.id, existing ? preferCanonicalMessage(existing, message) : message);
     }
@@ -97,9 +104,9 @@ function completedConversationMessages(messages: AiMessageRecord[]): AiMessageRe
   return [...unique.values()].sort((left, right) => compareMessages(left, right, sequenceById));
 }
 
-function stableMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
+function stableMessages(messages: AiMessageRecord[], globalSequenceById?: Map<string, number>): AiMessageRecord[] {
   const unique = new Map<string, AiMessageRecord>();
-  const sequenceById = new Map<string, number>();
+  const sequenceById = new Map(globalSequenceById);
   for (const [sequence, message] of messages.entries()) {
     if (!sequenceById.has(message.id)) {
       sequenceById.set(message.id, sequence);
@@ -160,11 +167,12 @@ function snapshotFromUnits(input: {
   focus: SnapshotUnit[];
   background: SnapshotUnit[];
   maxSourceCharacters: number;
+  globalSequenceById?: Map<string, number>;
 }): CompanionConversationSnapshot {
   const trimmed = trimUnits(input);
-  const focusMessages = stableMessages(trimmed.focus.flatMap((unit) => unit.messages));
-  const backgroundMessages = stableMessages(trimmed.background.flatMap((unit) => unit.messages));
-  const sourceMessages = stableMessages([...focusMessages, ...backgroundMessages]);
+  const focusMessages = stableMessages(trimmed.focus.flatMap((unit) => unit.messages), input.globalSequenceById);
+  const backgroundMessages = stableMessages(trimmed.background.flatMap((unit) => unit.messages), input.globalSequenceById);
+  const sourceMessages = stableMessages([...focusMessages, ...backgroundMessages], input.globalSequenceById);
   const sourceMessageIds = sourceMessages.map((message) => message.id);
   const sourceMessageVersionHashes = sourceMessages.map((message) => hashCompanionMessageVersion(message));
   return {
@@ -223,6 +231,7 @@ export function buildDiaryConversationSnapshot(input: {
     return snapshotFromUnits({ background: [], focus: [], maxSourceCharacters: input.maxSourceCharacters });
   }
   const roundLimit = normalizeRoundLimit(input.roundLimit, 30);
+  const globalSequenceById = conversationSequenceById(input.messages);
   const rounds = pairCompletedConversationRounds(input.messages);
   const focusRounds = newestRounds(
     rounds.filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) === input.diaryDate),
@@ -235,6 +244,7 @@ export function buildDiaryConversationSnapshot(input: {
   return snapshotFromUnits({
     background: selectedBackgroundRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
     focus: focusRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
+    globalSequenceById,
     maxSourceCharacters: input.maxSourceCharacters,
   });
 }
@@ -246,6 +256,7 @@ export function buildDreamConversationSnapshot(input: {
   maxSourceCharacters: number;
 }): CompanionConversationSnapshot {
   const triggerIds = new Set(input.triggerMessageIds);
+  const globalSequenceById = conversationSequenceById(input.messages);
   const messages = completedConversationMessages(input.messages);
   const rounds = pairCompletedConversationRounds(messages);
   const allFocusRounds = rounds.filter((round) => round.messages.some((message) => triggerIds.has(message.id)));
@@ -263,6 +274,7 @@ export function buildDreamConversationSnapshot(input: {
       ...focusRounds.map((round) => ({ messages: round.messages, protected: true, round: true })),
       ...triggerOnlyMessages.map((message) => ({ messages: [message], protected: true, round: false })),
     ],
+    globalSequenceById,
     maxSourceCharacters: input.maxSourceCharacters,
   });
 }
