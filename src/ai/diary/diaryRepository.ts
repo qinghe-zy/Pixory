@@ -17,6 +17,7 @@ export interface RoleDiaryRecord {
   sourceThreadId: string | null;
   sourceBranchRouteJson: string;
   sourceSnapshotHash: string;
+  sourceMessageIds: string[];
   contextOptIn: boolean | null;
   createdAt: string;
   updatedAt: string;
@@ -58,12 +59,32 @@ export interface RoleDiaryJobRecord {
   updatedAt: string;
 }
 
-interface RoleDiaryRow extends Omit<RoleDiaryRecord, 'contextOptIn'> {
+interface RoleDiaryRow extends Omit<RoleDiaryRecord, 'contextOptIn' | 'sourceMessageIds'> {
   contextOptIn: number | null;
+  currentSourceMessageIdsJson?: string | null;
+}
+
+function parseSourceMessageIds(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')
+      ? parsed
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function mapDiaryRow(row: RoleDiaryRow): RoleDiaryRecord {
-  return { ...row, contextOptIn: row.contextOptIn == null ? null : sqliteToBoolean(row.contextOptIn) };
+  const { currentSourceMessageIdsJson, ...diary } = row;
+  return {
+    ...diary,
+    sourceMessageIds: parseSourceMessageIds(currentSourceMessageIdsJson),
+    contextOptIn: row.contextOptIn == null ? null : sqliteToBoolean(row.contextOptIn),
+  };
 }
 
 function diaryId(roleCardId: string, diaryDate: string): string {
@@ -73,7 +94,10 @@ function diaryId(roleCardId: string, diaryDate: string): string {
 export const diaryRepository = {
   async findCurrentDiary(db: SQLiteDatabase, roleCardId: string, diaryDate: string): Promise<RoleDiaryRecord | null> {
     const row = await db.getFirstAsync<RoleDiaryRow>(
-      'SELECT * FROM companion_diaries WHERE roleCardId = ? AND diaryDate = ?',
+      `SELECT diary.*, version.sourceMessageIdsJson AS currentSourceMessageIdsJson
+       FROM companion_diaries diary
+       LEFT JOIN companion_diary_versions version ON version.id = diary.currentVersionId
+       WHERE diary.roleCardId = ? AND diary.diaryDate = ?`,
       roleCardId,
       diaryDate,
     );
@@ -95,9 +119,11 @@ export const diaryRepository = {
 
   async findCurrentDiaryForRole(db: SQLiteDatabase, roleCardId: string): Promise<RoleDiaryRecord | null> {
     const row = await db.getFirstAsync<RoleDiaryRow>(
-      `SELECT * FROM companion_diaries
-       WHERE roleCardId = ? AND status IN ('ready_pending_presentation', 'ready')
-       ORDER BY diaryDate DESC, updatedAt DESC LIMIT 1`,
+      `SELECT diary.*, version.sourceMessageIdsJson AS currentSourceMessageIdsJson
+       FROM companion_diaries diary
+       LEFT JOIN companion_diary_versions version ON version.id = diary.currentVersionId
+       WHERE diary.roleCardId = ? AND diary.status IN ('ready_pending_presentation', 'ready')
+       ORDER BY diary.diaryDate DESC, diary.updatedAt DESC LIMIT 1`,
       roleCardId,
     );
     return row ? mapDiaryRow(row) : null;
@@ -114,9 +140,11 @@ export const diaryRepository = {
 
   async listCurrentDiariesForRole(db: SQLiteDatabase, roleCardId: string): Promise<RoleDiaryRecord[]> {
     const rows = await db.getAllAsync<RoleDiaryRow>(
-      `SELECT * FROM companion_diaries
-       WHERE roleCardId = ? AND status IN ('ready_pending_presentation', 'ready')
-       ORDER BY diaryDate DESC, updatedAt DESC`,
+      `SELECT diary.*, version.sourceMessageIdsJson AS currentSourceMessageIdsJson
+       FROM companion_diaries diary
+       LEFT JOIN companion_diary_versions version ON version.id = diary.currentVersionId
+       WHERE diary.roleCardId = ? AND diary.status IN ('ready_pending_presentation', 'ready')
+       ORDER BY diary.diaryDate DESC, diary.updatedAt DESC`,
       roleCardId,
     );
     return rows.map(mapDiaryRow);
@@ -128,10 +156,12 @@ export const diaryRepository = {
     limit = 3,
   ): Promise<Array<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord }>> {
     const rows = await db.getAllAsync<RoleDiaryRow>(
-      `SELECT * FROM companion_diaries
-       WHERE roleCardId = ? AND contextOptIn = 1
-         AND status IN ('ready_pending_presentation', 'ready')
-       ORDER BY diaryDate DESC, updatedAt DESC
+      `SELECT diary.*, version.sourceMessageIdsJson AS currentSourceMessageIdsJson
+       FROM companion_diaries diary
+       LEFT JOIN companion_diary_versions version ON version.id = diary.currentVersionId
+       WHERE diary.roleCardId = ? AND diary.contextOptIn = 1
+         AND diary.status IN ('ready_pending_presentation', 'ready')
+       ORDER BY diary.diaryDate DESC, diary.updatedAt DESC
        LIMIT ?`,
       roleCardId,
       Math.max(1, limit),
@@ -156,13 +186,19 @@ export const diaryRepository = {
   },
 
   async findCurrentDiaryById(db: SQLiteDatabase, diaryIdValue: string): Promise<RoleDiaryRecord | null> {
-    const row = await db.getFirstAsync<RoleDiaryRow>('SELECT * FROM companion_diaries WHERE id = ?', diaryIdValue);
+    const row = await db.getFirstAsync<RoleDiaryRow>(
+      `SELECT diary.*, version.sourceMessageIdsJson AS currentSourceMessageIdsJson
+       FROM companion_diaries diary
+       LEFT JOIN companion_diary_versions version ON version.id = diary.currentVersionId
+       WHERE diary.id = ?`,
+      diaryIdValue,
+    );
     return row ? mapDiaryRow(row) : null;
   },
 
   async saveDiaryVersion(
     db: SQLiteDatabase,
-    input: Omit<RoleDiaryRecord, 'id' | 'currentVersionId' | 'createdAt' | 'updatedAt' | 'contextOptIn'> & {
+    input: Omit<RoleDiaryRecord, 'id' | 'currentVersionId' | 'createdAt' | 'updatedAt' | 'contextOptIn' | 'sourceMessageIds'> & {
       body: string;
       pageLayoutJson?: string | null;
       generationModelSnapshotJson?: string;
@@ -178,7 +214,7 @@ export const diaryRepository = {
     // "cannot rollback · no transaction is active" errors caused by concurrent
     // withTransactionAsync calls (e.g. memory writes) racing on the shared connection.
     await db.withExclusiveTransactionAsync(async (txn) => {
-      const existing = await txn.getFirstAsync<RoleDiaryRecord>(
+      const existing = await txn.getFirstAsync<Pick<RoleDiaryRecord, 'currentVersionId'>>(
         'SELECT * FROM companion_diaries WHERE id = ?',
         id,
       );

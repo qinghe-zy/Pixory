@@ -1181,8 +1181,9 @@ test('AI long chat rendering memoizes message rows and precomputes avatar groupi
   assert.match(bubble, /export const AiMessageBubble = memo\(AiMessageBubbleComponent, areAiMessageBubblePropsEqual\)/);
   assert.match(chat, /message\.versionIndex === message\.versionTotal \? message : \{ \.\.\.message, versionIndex: message\.versionTotal \}/);
   assert.match(chat, /type VisibleMessageItem/);
-  assert.match(chat, /const messagesByDate = new Map<string, AiMessageWithCitations\[\]>\(\)/);
-  assert.match(chat, /mixedItems\.forEach\(\(item\) =>/);
+  assert.match(chat, /const displayMessages = nextVisibleMessages\.map/);
+  assert.match(chat, /buildCompanionArtifactTimeline\(\{/);
+  assert.match(chat, /timelineItems\.forEach\(\(item\) =>/);
   assert.match(chat, /const nextInvertedMessageItems = nextVisibleMessageItems\.slice\(\)\.reverse\(\)/);
   assert.match(chat, /const nextInvertedMessageIndexById = new Map<string, number>\(\)/);
   assert.match(chat, /const \{\s*invertedMessageIndexById,\s*invertedMessageItems,\s*messagesById,/);

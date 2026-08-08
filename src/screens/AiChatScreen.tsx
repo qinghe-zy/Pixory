@@ -195,6 +195,10 @@ import {
   type PixorySpace,
 } from "../database";
 import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import {
+  buildCompanionArtifactTimeline,
+  type CompanionArtifactEntry,
+} from '../ai/companion/companionArtifactTimelineService';
 import { scheduleCompanionMaintenance } from '../ai/companion/companionMaintenanceQueue';
 import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/diaryGenerationManager';
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
@@ -613,6 +617,8 @@ type VisibleMessageItem =
       id: string;
       job: DreamJobRecord;
     };
+
+type ChatCompanionArtifactPayload = RoleDiaryRecord | DreamRecord | DreamJobRecord;
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
 
@@ -2285,90 +2291,80 @@ export function AiChatScreen({
             updatedAt: tailState.updatedAt,
           }
         : undefined;
-    const messagesByDate = new Map<string, AiMessageWithCitations[]>();
-    nextVisibleMessages.forEach((message) => {
-      const dateKey = beijingDiaryDate(message.createdAt);
-      const dayMessages = messagesByDate.get(dateKey) ?? [];
-      dayMessages.push(message);
-      messagesByDate.set(dateKey, dayMessages);
-    });
-    const visibleDiariesByDate = new Map(
-      roleDiaries.map((diary) => [diary.diaryDate, diary] as const),
+    const displayMessages = nextVisibleMessages.map((message) =>
+      selectVisibleMessage({ message, tailOverride }),
     );
-    const visibleDreamsByDate = new Map<string, DreamRecord[]>();
-    roleDreams.forEach((dream) => {
-      const dateKey = beijingDiaryDate(new Date(dream.displayAt));
-      const entries = visibleDreamsByDate.get(dateKey) ?? [];
-      entries.push(dream);
-      visibleDreamsByDate.set(dateKey, entries);
+    const artifactEntries: Array<CompanionArtifactEntry<ChatCompanionArtifactPayload>> = [
+      ...roleDiaries.map((diary) => ({
+        createdAt: diary.createdAt,
+        id: diary.id,
+        kind: 'diary' as const,
+        payload: diary,
+        sourceMessageIds: diary.sourceMessageIds,
+      })),
+      ...roleDreams.map((dream) => ({
+        createdAt: dream.displayAt,
+        id: dream.id,
+        kind: 'dream' as const,
+        payload: dream,
+        sourceMessageIds: dream.sourceMessageIds,
+      })),
+      ...roleDreamJobs.map((job) => ({
+        createdAt: job.createdAt,
+        id: job.id,
+        kind: 'dreamJob' as const,
+        payload: job,
+        sourceMessageIds: job.sourceMessageIds,
+      })),
+    ];
+    const timelineItems = buildCompanionArtifactTimeline({
+      artifacts: artifactEntries,
+      messages: displayMessages,
     });
-    const visibleDreamJobsByDate = new Map<string, DreamJobRecord[]>();
-    roleDreamJobs.forEach((job) => {
-      const dateKey = beijingDiaryDate(job.createdAt);
-      const entries = visibleDreamJobsByDate.get(dateKey) ?? [];
-      entries.push(job);
-      visibleDreamJobsByDate.set(dateKey, entries);
-    });
-    const calendarDates = Array.from(
-      new Set([...messagesByDate.keys(), ...visibleDiariesByDate.keys(), ...visibleDreamsByDate.keys(), ...visibleDreamJobsByDate.keys()]),
-    ).sort();
     const nextVisibleMessageItems: VisibleMessageItem[] = [];
     let previousMessage: AiMessageWithCitations | undefined;
-    calendarDates.forEach((dateKey) => {
-      const dayMessages = messagesByDate.get(dateKey) ?? [];
-      const diary = visibleDiariesByDate.get(dateKey) ?? null;
-      nextVisibleMessageItems.push({
-        type: "dateSeparator",
-        id: `date-separator-${dateKey}`,
-        label: formatDateSeparator(dateKey),
-        dateKey,
-      });
-      const dayDreams = visibleDreamsByDate.get(dateKey) ?? [];
-      const dayJobs = visibleDreamJobsByDate.get(dateKey) ?? [];
-      const mixedItems = [
-        ...dayMessages.map((m) => ({ type: 'msg' as const, time: new Date(m.createdAt).getTime(), data: m })),
-        ...dayDreams.map((d) => ({ type: 'drm' as const, time: new Date(d.displayAt).getTime(), data: d })),
-        ...dayJobs.map((j) => ({ type: 'job' as const, time: new Date(j.createdAt).getTime(), data: j })),
-        // Diary is inserted at its CREATED time (not updatedAt) so the card anchors
-        // permanently. updatedAt changes on contextOptIn writes and would cause the
-        // card to re-sort to the bottom of the list after the user taps 是/否.
-        ...(diary ? [{ type: 'diary' as const, time: new Date(diary.createdAt).getTime(), data: diary }] : []),
-      ].sort((a, b) => a.time - b.time);
-
-      let firstMessageSeen = false;
-      mixedItems.forEach((item) => {
-        if (item.type === 'msg') {
-          const message = selectVisibleMessage({
-            message: item.data as AiMessageWithCitations,
-            tailOverride,
-          });
-          const startsNewDate = !firstMessageSeen;
-          firstMessageSeen = true;
-          nextVisibleMessageItems.push({
-            id: message.id,
-            type: "message",
-            message,
-            showAvatar:
-              message.role === 'assistant' &&
-              (startsNewDate ||
-                previousMessage?.role !== 'assistant' ||
-                messageUsesStandaloneAssistantDisplay(message)),
-            showUserAvatar:
-              message.role === 'user' &&
-              (startsNewDate || previousMessage?.role !== 'user'),
-          });
-          previousMessage = message;
-        } else if (item.type === 'drm') {
-          const dream = item.data as DreamRecord;
-          nextVisibleMessageItems.push({ type: 'dream', id: `dream-${dream.id}`, dream });
-        } else if (item.type === 'job') {
-          const job = item.data as DreamJobRecord;
-          nextVisibleMessageItems.push({ type: 'dreamJob', id: `dreamJob-${job.id}`, job });
-        } else if (item.type === 'diary') {
-          const diaryRecord = item.data as RoleDiaryRecord;
-          nextVisibleMessageItems.push({ type: 'diary', id: `diary-${diaryRecord.id}`, diary: diaryRecord });
+    let previousMessageDateKey: string | null = null;
+    timelineItems.forEach((item) => {
+      if (item.type === 'artifact') {
+        if (item.artifact.kind === 'diary') {
+          const diary = item.artifact.payload as RoleDiaryRecord;
+          nextVisibleMessageItems.push({ type: 'diary', id: item.id, diary });
+        } else if (item.artifact.kind === 'dream') {
+          const dream = item.artifact.payload as DreamRecord;
+          nextVisibleMessageItems.push({ type: 'dream', id: item.id, dream });
+        } else {
+          const job = item.artifact.payload as DreamJobRecord;
+          nextVisibleMessageItems.push({ type: 'dreamJob', id: item.id, job });
         }
+        return;
+      }
+
+      const message = item.message;
+      const dateKey = beijingDiaryDate(message.createdAt);
+      const startsNewDate = dateKey !== previousMessageDateKey;
+      if (startsNewDate) {
+        nextVisibleMessageItems.push({
+          type: "dateSeparator",
+          id: `date-separator-${dateKey}`,
+          label: formatDateSeparator(dateKey),
+          dateKey,
+        });
+        previousMessageDateKey = dateKey;
+      }
+      nextVisibleMessageItems.push({
+        id: message.id,
+        type: "message",
+        message,
+        showAvatar:
+          message.role === 'assistant' &&
+          (startsNewDate ||
+            previousMessage?.role !== 'assistant' ||
+            messageUsesStandaloneAssistantDisplay(message)),
+        showUserAvatar:
+          message.role === 'user' &&
+          (startsNewDate || previousMessage?.role !== 'user'),
       });
+      previousMessage = message;
     });
     const nextVisibleMessagesById = new Map<string, AiMessageWithCitations>();
     nextVisibleMessageItems.forEach((item) => {
