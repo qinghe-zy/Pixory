@@ -12,10 +12,38 @@ test('uses a persisted local diary job and an Android alarm bridge', () => {
   assert.match(source, /scheduleDiaryWakeup/);
   assert.match(source, /nextDiaryWakeupAt/);
   assert.match(source, /sourceMessagesJson/);
+  assert.match(source, /buildDiaryConversationSnapshot/);
+  assert.match(source, /listSnapshotCandidateMessages\(db, thread\.id, 30, input\.branchScopes\)/);
+  assert.match(source, /roundLimit:\s*30/);
+  assert.match(source, /maxSourceCharacters:\s*24_000/);
+  assert.match(source, /conversationSnapshot\.sourceSnapshotHash/);
   assert.match(source, /roleSnapshotJson/);
   assert.match(source, /reconcileDiaryJobs/);
   assert.match(source, /DIARY_TIME_ZONE/);
   assert.match(native, /scheduleDiaryAlarm/);
+});
+
+test('manual and automatic triggers freeze their source through the same preparation path', () => {
+  const scheduler = readFileSync('src/ai/diary/diarySchedulerService.ts', 'utf8');
+  const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
+
+  assert.match(chat, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*outcome\.decision\.kind/);
+  assert.match(chat, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*'manual'/);
+  assert.match(scheduler, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*decision\.kind/);
+  assert.doesNotMatch(chat, /generateRoleDiary\(/);
+});
+
+test('generation reapplies the actual model budget only to the frozen source snapshot', () => {
+  const generation = readFileSync('src/ai/diary/diaryGenerationService.ts', 'utf8');
+
+  assert.match(generation, /buildDiaryConversationSnapshot\(\{/);
+  assert.match(generation, /messages:\s*input\.sourceMessages\s*\?\?\s*\[\]/);
+  assert.match(generation, /maxSourceCharacters:\s*sourceCharacterBudget\(resolved\.modelContextWindowTokens\)/);
+  assert.match(generation, /roundLimit:\s*30/);
+  assert.match(generation, /sourceMessageIdsJson:\s*JSON\.stringify\(conversationSnapshot\.sourceMessageIds\)/);
+  assert.match(generation, /sourceSnapshotHash:\s*conversationSnapshot\.sourceSnapshotHash/);
+  assert.doesNotMatch(generation, /listCompletedMessagesInDateRange/);
+  assert.doesNotMatch(generation, /listSnapshotCandidateMessages/);
 });
 
 test('claims each diary job once and reconciles durable work on foreground', () => {

@@ -1,5 +1,4 @@
 import {
-  aiThreadRepository,
   runWithDatabaseSpace,
   type AiThreadRecord,
   type PixorySpace,
@@ -9,9 +8,10 @@ import type { AiMessageRecord } from '../../database/repositories/aiThreadReposi
 import { getAdapterForProvider } from '../aiProviderService';
 import { resolveThreadChatModel } from '../aiChatService';
 import { normalizeAiErrorMessage } from '../aiErrorMessageService';
+import { buildDiaryConversationSnapshot } from '../companion/companionConversationSnapshotService';
 import { diaryRepository, type RoleDiaryVersionRecord } from './diaryRepository';
 import { buildDiaryPrompt } from './diaryPromptService';
-import { beijingDiaryDayBounds, resolveDiaryBodyFont, resolveDiaryTheme, type DiaryTriggerKind } from './diaryTypes';
+import { resolveDiaryBodyFont, resolveDiaryTheme, type DiaryTriggerKind } from './diaryTypes';
 
 export interface GenerateRoleDiaryInput {
   space: PixorySpace;
@@ -63,17 +63,17 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
     throw new Error('当前会话模型还没有可用的 API Key。');
   }
 
-  const { startIso, endIso } = beijingDiaryDayBounds(input.diaryDate);
-  const messages = input.sourceMessages ?? await runWithDatabaseSpace(input.space, (db) =>
-    aiThreadRepository.listCompletedMessagesInDateRange(db, input.thread.id, startIso, endIso, input.branchScopes),
-  );
+  const conversationSnapshot = buildDiaryConversationSnapshot({
+    diaryDate: input.diaryDate,
+    maxSourceCharacters: sourceCharacterBudget(resolved.modelContextWindowTokens),
+    messages: input.sourceMessages ?? [],
+    roundLimit: 30,
+  });
   const built = buildDiaryPrompt({
+    backgroundMessages: conversationSnapshot.backgroundMessages,
+    focusMessages: conversationSnapshot.focusMessages,
     roleContext: buildRoleContext(input.thread, input.roleSnapshotJson),
     threadSummary: input.sourceSummarySnapshot ?? input.thread.summary,
-    messages,
-    historyRoundLimit: input.thread.contextHistoryRoundLimit,
-    maxSourceCharacters: sourceCharacterBudget(resolved.modelContextWindowTokens),
-    hasDayChat: messages.length > 0,
   });
 
   let streamed = '';
@@ -113,8 +113,8 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
       bodyFontKey: resolveDiaryBodyFont(input.space, roleCardId, input.diaryDate),
       generationModelSnapshotJson: JSON.stringify({ providerId: resolved.provider.id, modelId: resolved.modelId }),
       sourceBranchRouteJson: input.sourceBranchRouteJson,
-      sourceMessageIdsJson: JSON.stringify(built.sourceMessages.map((message) => message.id)),
-      sourceSnapshotHash: input.sourceSnapshotHash,
+      sourceMessageIdsJson: JSON.stringify(conversationSnapshot.sourceMessageIds),
+      sourceSnapshotHash: conversationSnapshot.sourceSnapshotHash,
       sourceSummarySnapshot: input.sourceSummarySnapshot ?? input.thread.summary,
       sourceThreadId: input.thread.id,
       status: input.deferPresentation ? 'ready_pending_presentation' : 'ready',

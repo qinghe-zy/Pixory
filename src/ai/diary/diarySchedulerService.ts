@@ -7,6 +7,7 @@ import { cancelDiaryAlarm, scheduleDiaryAlarm } from '../../native/pixoryMediaMo
 import { generateRoleDiary } from './diaryGenerationService';
 import type { AiBranchScope, AiMessageRecord } from '../../database/repositories/aiThreadRepository';
 import { aiThreadRepository, settingsRepository } from '../../database';
+import { buildDiaryConversationSnapshot } from '../companion/companionConversationSnapshotService';
 
 const STALE_GENERATING_JOB_MS = 15 * 60 * 1_000;
 const dueRunsBySpace = new Map<PixorySpace, Promise<void>>();
@@ -124,11 +125,22 @@ export async function prepareAndScheduleDiaryJob(input: {
     if (!thread?.roleCardId) {
       throw new Error('当前会话没有角色卡，无法生成角色日记。');
     }
-    const { startIso, endIso } = beijingDiaryDayBounds(input.diaryDate);
-    const messages = await aiThreadRepository.listCompletedMessagesInDateRange(db, thread.id, startIso, endIso, input.branchScopes);
-    const sourceMessagesJson = JSON.stringify(messages);
+    const candidates = await aiThreadRepository.listSnapshotCandidateMessages(db, thread.id, 30, input.branchScopes);
+    const conversationSnapshot = buildDiaryConversationSnapshot({
+      diaryDate: input.diaryDate,
+      maxSourceCharacters: 24_000,
+      messages: candidates,
+      roundLimit: 30,
+    });
+    const sourceMessagesJson = JSON.stringify(conversationSnapshot.sourceMessages);
     const sourceBranchRouteJson = JSON.stringify(input.branchScopes);
-    const sourceSnapshotHash = snapshotHash([thread.roleCardId, thread.roleSnapshotJson, thread.summary ?? '', sourceBranchRouteJson, sourceMessagesJson].join('|'));
+    const sourceSnapshotHash = snapshotHash([
+      thread.roleCardId,
+      thread.roleSnapshotJson,
+      thread.summary ?? '',
+      sourceBranchRouteJson,
+      conversationSnapshot.sourceSnapshotHash,
+    ].join('|'));
     return {
       space: input.space,
       roleCardId: thread.roleCardId,
