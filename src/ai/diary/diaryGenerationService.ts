@@ -20,8 +20,9 @@ export interface GenerateRoleDiaryInput {
   triggerKind: DiaryTriggerKind | 'manual';
   branchScopes: AiBranchScope[];
   sourceBranchRouteJson: string;
-  sourceSnapshotHash: string;
+  jobContextSnapshotHash: string;
   sourceSummarySnapshot?: string | null;
+  sourceSystemPromptSnapshot?: string | null;
   sourceMessages?: AiMessageRecord[];
   roleSnapshotJson?: string;
   roleCardId?: string;
@@ -29,8 +30,8 @@ export interface GenerateRoleDiaryInput {
   signal?: AbortSignal;
 }
 
-function buildRoleContext(thread: AiThreadRecord, roleSnapshotJson?: string): string {
-  return [thread.systemPrompt.trim(), (roleSnapshotJson ?? thread.roleSnapshotJson).trim()].filter(Boolean).join('\n\n');
+function buildRoleContext(systemPromptSnapshot: string, thread: AiThreadRecord, roleSnapshotJson?: string): string {
+  return [systemPromptSnapshot.trim(), (roleSnapshotJson ?? thread.roleSnapshotJson).trim()].filter(Boolean).join('\n\n');
 }
 
 function sourceCharacterBudget(contextWindowTokens: number | null): number {
@@ -72,10 +73,11 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
   const sourceSummarySnapshot = input.sourceSummarySnapshot === undefined
     ? input.thread.summary
     : input.sourceSummarySnapshot;
+  const sourceSystemPromptSnapshot = input.sourceSystemPromptSnapshot ?? input.thread.systemPrompt;
   const built = buildDiaryPrompt({
     backgroundMessages: conversationSnapshot.backgroundMessages,
     focusMessages: conversationSnapshot.focusMessages,
-    roleContext: buildRoleContext(input.thread, input.roleSnapshotJson),
+    roleContext: buildRoleContext(sourceSystemPromptSnapshot, input.thread, input.roleSnapshotJson),
     threadSummary: sourceSummarySnapshot,
   });
 
@@ -114,11 +116,18 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
       diaryDate: input.diaryDate,
       body: sanitizeDiaryBody(streamed),
       bodyFontKey: resolveDiaryBodyFont(input.space, roleCardId, input.diaryDate),
-      generationModelSnapshotJson: JSON.stringify({ providerId: resolved.provider.id, modelId: resolved.modelId }),
+      generationModelSnapshotJson: JSON.stringify({
+        providerId: resolved.provider.id,
+        modelId: resolved.modelId,
+        jobContextSnapshotHash: input.jobContextSnapshotHash,
+        effectiveSourceSnapshotHash: conversationSnapshot.sourceSnapshotHash,
+      }),
       sourceBranchRouteJson: input.sourceBranchRouteJson,
       sourceMessageIdsJson: JSON.stringify(conversationSnapshot.sourceMessageIds),
-      sourceSnapshotHash: conversationSnapshot.sourceSnapshotHash,
+      effectiveSourceSnapshotHash: conversationSnapshot.sourceSnapshotHash,
+      jobContextSnapshotHash: input.jobContextSnapshotHash,
       sourceSummarySnapshot,
+      sourceSystemPromptSnapshot,
       sourceThreadId: input.thread.id,
       status: input.deferPresentation ? 'ready_pending_presentation' : 'ready',
       themeKey: resolveDiaryTheme(input.space, roleCardId, input.diaryDate),

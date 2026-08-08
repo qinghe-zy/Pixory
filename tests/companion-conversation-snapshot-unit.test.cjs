@@ -50,6 +50,10 @@ class AsyncDatabase {
     return this.db.prepare(sql).all(...params);
   }
 
+  async getFirstAsync(sql, ...params) {
+    return this.db.prepare(sql).get(...params) ?? null;
+  }
+
   close() {
     this.db.close();
   }
@@ -72,6 +76,8 @@ function createRepositorySchema(db) {
       messageCompletedAt TEXT, createdAt TEXT
     );
     CREATE TABLE ai_continuity_import_sessions (id TEXT PRIMARY KEY, reviewGateState TEXT);
+    CREATE INDEX idx_ai_messages_snapshot_candidates
+      ON ai_messages(threadId, status, role, createdAt DESC);
   `);
 }
 
@@ -432,6 +438,9 @@ test('snapshot candidate loading includes completed selected versions and reorde
   const db = new AsyncDatabase();
   createRepositorySchema(db);
   insertRepositoryMessage(db, {
+    createdAt: '2026-08-08T00:00:00.000Z', id: 'source-user', role: 'user', status: 'completed',
+  });
+  insertRepositoryMessage(db, {
     branchRootMessageId: 'branch-root',
     branchVersionIndex: 1,
     createdAt: '2026-08-08T01:00:00.000Z',
@@ -454,15 +463,18 @@ test('snapshot candidate loading includes completed selected versions and reorde
   const repository = loadRepository();
   const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, [{ branchRootMessageId: 'branch-root', branchVersionIndex: 1 }]);
 
-  assert.deepEqual(messages.map((item) => item.id), ['visible-completed', 'branch-root']);
-  assert.equal(messages[1].status, 'completed');
-  assert.equal(messages[1].createdAt, '2026-08-08T03:00:00.000Z');
+  assert.deepEqual(messages.map((item) => item.id), ['source-user', 'visible-completed', 'branch-root']);
+  assert.equal(messages[2].status, 'completed');
+  assert.equal(messages[2].createdAt, '2026-08-08T03:00:00.000Z');
   db.close();
 });
 
 test('a selected version replacing a completed base row is materialized once without conflicting duplicate content', async () => {
   const db = new AsyncDatabase();
   createRepositorySchema(db);
+  insertRepositoryMessage(db, {
+    createdAt: '2026-08-08T00:00:00.000Z', id: 'replacement-user', role: 'user', status: 'completed',
+  });
   insertRepositoryMessage(db, {
     branchRootMessageId: 'completed-root',
     branchVersionIndex: 1,
@@ -483,10 +495,10 @@ test('a selected version replacing a completed base row is materialized once wit
     db, 'thread-1', 20, [{ branchRootMessageId: 'completed-root', branchVersionIndex: 1 }],
   );
 
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].id, 'completed-root');
-  assert.equal(messages[0].content, 'selected content');
-  assert.equal(messages[0].createdAt, '2026-08-08T03:00:00.000Z');
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].id, 'completed-root');
+  assert.equal(messages[1].content, 'selected content');
+  assert.equal(messages[1].createdAt, '2026-08-08T03:00:00.000Z');
   db.close();
 });
 
@@ -494,6 +506,9 @@ test('snapshot candidate loading preserves SQLite row order for equal materializ
   const db = new AsyncDatabase();
   createRepositorySchema(db);
   const createdAt = '2026-08-08T08:00:00.000Z';
+  insertRepositoryMessage(db, {
+    createdAt: '2026-08-08T07:59:00.000Z', id: 'same-time-user', role: 'user', status: 'completed',
+  });
   insertRepositoryMessage(db, { createdAt, id: 'z-first', role: 'assistant', status: 'completed' });
   insertRepositoryMessage(db, {
     branchRootMessageId: 'a-second',
@@ -512,7 +527,7 @@ test('snapshot candidate loading preserves SQLite row order for equal materializ
   const repository = loadRepository();
   const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, [{ branchRootMessageId: 'a-second', branchVersionIndex: 1 }]);
 
-  assert.deepEqual(messages.map((item) => item.id), ['z-first', 'a-second']);
+  assert.deepEqual(messages.map((item) => item.id), ['same-time-user', 'z-first', 'a-second']);
   db.close();
 });
 
@@ -543,6 +558,59 @@ test('snapshot candidate loading scans past newer failed generating and system n
   db.close();
 });
 
+test('snapshot candidate loading reaches older complete rounds past newer completed user-only messages', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const timestamp = (seconds) => new Date(Date.UTC(2026, 7, 8, 0, 0, seconds)).toISOString();
+  for (let index = 0; index < 30; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(index * 2), id: `round-user-${String(index).padStart(2, '0')}`,
+      role: 'user', status: 'completed',
+    });
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(index * 2 + 1), id: `round-assistant-${String(index).padStart(2, '0')}`,
+      role: 'assistant', status: 'completed',
+    });
+  }
+  for (let index = 0; index < 120; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(60 + index), id: `unpaired-user-${String(index).padStart(3, '0')}`,
+      role: 'user', status: 'completed',
+    });
+  }
+
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 30, []);
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08', maxSourceCharacters: 100_000, messages, roundLimit: 30,
+  });
+
+  assert.equal(snapshot.roundCount, 30);
+  assert.equal(snapshot.anchorMessageId, 'round-assistant-29');
+  assert.deepEqual(snapshot.sourceMessageIds.slice(0, 2), ['round-user-00', 'round-assistant-00']);
+  db.close();
+});
+
+test('snapshot candidate loading preserves consecutive assistant messages inside a complete round', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  insertRepositoryMessage(db, { createdAt: '2026-08-08T00:00:00.000Z', id: 'multi-user', role: 'user', status: 'completed' });
+  insertRepositoryMessage(db, { createdAt: '2026-08-08T00:00:01.000Z', id: 'multi-assistant-1', role: 'assistant', status: 'completed' });
+  insertRepositoryMessage(db, { createdAt: '2026-08-08T00:00:02.000Z', id: 'multi-assistant-2', role: 'assistant', status: 'completed' });
+  for (let index = 0; index < 120; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: new Date(Date.UTC(2026, 7, 8, 0, 1, index)).toISOString(),
+      id: `later-user-${String(index).padStart(3, '0')}`, role: 'user', status: 'completed',
+    });
+  }
+
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 1, []);
+
+  assert.deepEqual(messages.map((item) => item.id), ['multi-user', 'multi-assistant-1', 'multi-assistant-2']);
+  db.close();
+});
+
 test('snapshot candidate loading performs bounded database work despite more than twelve hundred noisy rows', async () => {
   const db = new AsyncDatabase();
   createRepositorySchema(db);
@@ -567,6 +635,23 @@ test('snapshot candidate loading performs bounded database work despite more tha
   db.close();
 });
 
+test('snapshot boundary lookups use the dedicated role and status index', () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const plan = db.db.prepare(`EXPLAIN QUERY PLAN
+    SELECT ai_messages.*
+    FROM ai_messages
+    WHERE threadId = 'thread-1' AND status = 'completed' AND role = 'assistant'
+    ORDER BY createdAt DESC
+    LIMIT 1`).all();
+
+  assert.match(
+    plan.map((row) => row.detail).join('\n'),
+    /idx_ai_messages_snapshot_candidates/,
+  );
+  db.close();
+});
+
 test('snapshot candidate loading returns the newest bounded eligible window in ascending order', async () => {
   const db = new AsyncDatabase();
   createRepositorySchema(db);
@@ -582,11 +667,11 @@ test('snapshot candidate loading returns the newest bounded eligible window in a
   const limit20 = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, []);
   const limit30 = await repository.listSnapshotCandidateMessages(db, 'thread-1', 30, []);
 
-  assert.equal(limit20.length, 96);
-  assert.equal(limit20[0].id, 'eligible-044');
+  assert.equal(limit20.length, 40);
+  assert.equal(limit20[0].id, 'eligible-100');
   assert.equal(limit20.at(-1).id, 'eligible-139');
-  assert.equal(limit30.length, 120);
-  assert.equal(limit30[0].id, 'eligible-020');
+  assert.equal(limit30.length, 60);
+  assert.equal(limit30[0].id, 'eligible-080');
   assert.equal(limit30.at(-1).id, 'eligible-139');
   db.close();
 });
@@ -620,9 +705,9 @@ test('an old selected branch root cannot displace a newer eligible message after
     db, 'thread-1', 30, [{ branchRootMessageId: 'old-root', branchVersionIndex: 1 }],
   );
 
-  assert.equal(messages.length, 120);
+  assert.equal(messages.length, 60);
   assert.equal(messages.some((item) => item.id === 'old-root'), false);
-  assert.equal(messages[0].id, 'eligible-002');
+  assert.equal(messages[0].id, 'eligible-062');
   assert.equal(messages.at(-1).id, 'eligible-121');
   db.close();
 });

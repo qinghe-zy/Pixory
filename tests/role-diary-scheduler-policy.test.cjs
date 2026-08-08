@@ -18,6 +18,9 @@ test('uses a persisted local diary job and an Android alarm bridge', () => {
   assert.match(source, /maxSourceCharacters:\s*24_000/);
   assert.match(source, /conversationSnapshot\.sourceSnapshotHash/);
   assert.match(source, /roleSnapshotJson/);
+  assert.match(source, /sourceSystemPromptSnapshot:\s*thread\.systemPrompt/);
+  assert.match(source, /hashDiaryJobContextSnapshot/);
+  assert.match(source, /jobContextSnapshotHash/);
   assert.match(source, /reconcileDiaryJobs/);
   assert.match(source, /DIARY_TIME_ZONE/);
   assert.match(native, /scheduleDiaryAlarm/);
@@ -41,7 +44,8 @@ test('generation reapplies the actual model budget only to the frozen source sna
   assert.match(generation, /maxSourceCharacters:\s*sourceCharacterBudget\(resolved\.modelContextWindowTokens\)/);
   assert.match(generation, /roundLimit:\s*30/);
   assert.match(generation, /sourceMessageIdsJson:\s*JSON\.stringify\(conversationSnapshot\.sourceMessageIds\)/);
-  assert.match(generation, /sourceSnapshotHash:\s*conversationSnapshot\.sourceSnapshotHash/);
+  assert.match(generation, /effectiveSourceSnapshotHash:\s*conversationSnapshot\.sourceSnapshotHash/);
+  assert.match(generation, /jobContextSnapshotHash:\s*input\.jobContextSnapshotHash/);
   assert.doesNotMatch(generation, /listCompletedMessagesInDateRange/);
   assert.doesNotMatch(generation, /listSnapshotCandidateMessages/);
 });

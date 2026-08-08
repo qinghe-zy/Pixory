@@ -14,9 +14,12 @@ require.extensions['.ts'] = function (module, filename) {
 };
 let promptService;
 let snapshotService;
+let snapshotContract;
 try {
   promptService = require(path.join(root, 'src/ai/diary/diaryPromptService.ts'));
   snapshotService = require(path.join(root, 'src/ai/companion/companionConversationSnapshotService.ts'));
+  const contractPath = path.join(root, 'src/ai/diary/diarySnapshotContract.ts');
+  snapshotContract = fs.existsSync(contractPath) ? require(contractPath) : null;
 } finally {
   if (original) require.extensions['.ts'] = original;
   else delete require.extensions['.ts'];
@@ -99,7 +102,7 @@ function loadDiaryGenerationForSummaryTest(capture) {
   }
 }
 
-function diaryGenerationInput(sourceSummarySnapshot) {
+function diaryGenerationInput(sourceSummarySnapshot, sourceSystemPromptSnapshot = undefined) {
   return {
     space: 'normal',
     thread: {
@@ -110,9 +113,10 @@ function diaryGenerationInput(sourceSummarySnapshot) {
     triggerKind: 'manual',
     branchScopes: [],
     sourceBranchRouteJson: '[]',
-    sourceSnapshotHash: 'frozen-job-hash',
+    jobContextSnapshotHash: 'frozen-job-hash',
     sourceMessages: [],
     sourceSummarySnapshot,
+    sourceSystemPromptSnapshot,
   };
 }
 
@@ -234,4 +238,39 @@ test('legacy callers with an undefined summary snapshot still fall back to the l
 
   assert.equal(capture.promptInput.threadSummary, '执行前新写入的摘要');
   assert.equal(capture.savedInput.sourceSummarySnapshot, '执行前新写入的摘要');
+});
+
+test('uses the frozen session system prompt and persists separate job and effective message hashes', async () => {
+  const capture = {};
+  const generation = loadDiaryGenerationForSummaryTest(capture);
+
+  await generation.generateRoleDiary(diaryGenerationInput(null, '任务创建时的会话设定'));
+
+  assert.match(capture.promptInput.roleContext, /任务创建时的会话设定/);
+  assert.doesNotMatch(capture.promptInput.roleContext, /角色设定/);
+  assert.equal(capture.savedInput.sourceSystemPromptSnapshot, '任务创建时的会话设定');
+  assert.equal(capture.savedInput.jobContextSnapshotHash, 'frozen-job-hash');
+  assert.equal(typeof capture.savedInput.effectiveSourceSnapshotHash, 'string');
+  assert.notEqual(capture.savedInput.effectiveSourceSnapshotHash, 'frozen-job-hash');
+});
+
+test('job context hash changes when any frozen prompt input changes', () => {
+  const contractPath = path.join(root, 'src/ai/diary/diarySnapshotContract.ts');
+  assert.equal(fs.existsSync(contractPath), true, 'diary snapshot contract must exist');
+  const contract = snapshotContract;
+  const base = {
+    branchRouteJson: '[]',
+    conversationSnapshotHash: 'messages-hash',
+    roleCardId: 'role-1',
+    roleSnapshotJson: '{"name":"角色"}',
+    summarySnapshot: null,
+    systemPromptSnapshot: '原始会话设定',
+  };
+
+  const baseline = contract.hashDiaryJobContextSnapshot(base);
+  assert.notEqual(contract.hashDiaryJobContextSnapshot({ ...base, systemPromptSnapshot: '修改后的设定' }), baseline);
+  assert.notEqual(contract.hashDiaryJobContextSnapshot({ ...base, summarySnapshot: '新摘要' }), baseline);
+  assert.notEqual(contract.hashDiaryJobContextSnapshot({ ...base, branchRouteJson: '[{"branchRootMessageId":"m","branchVersionIndex":1}]' }), baseline);
+  assert.notEqual(contract.hashDiaryJobContextSnapshot({ ...base, roleSnapshotJson: '{"name":"另一个角色"}' }), baseline);
+  assert.notEqual(contract.hashDiaryJobContextSnapshot({ ...base, conversationSnapshotHash: 'other-messages' }), baseline);
 });

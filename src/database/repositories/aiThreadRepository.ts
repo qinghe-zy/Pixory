@@ -4177,15 +4177,27 @@ export const aiThreadRepository = {
   },
 
   async listSnapshotCandidateMessages(db: SQLiteDatabase, threadId: string, roundLimit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
-    const candidateLimit = Math.max(96, roundLimit * 4);
+    const normalizedRoundLimit = Math.max(0, Math.floor(roundLimit));
+    if (normalizedRoundLimit === 0) {
+      return [];
+    }
+    const candidateLimit = Math.max(96, normalizedRoundLimit * 4);
+    const maxAssistantsPerRound = Math.max(1, Math.ceil(candidateLimit / normalizedRoundLimit) - 1);
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
     const normalizedScopes = normalizeBranchScopes(branchScopes) ?? [];
     const scopedRootIds = [...new Set(normalizedScopes.map((scope) => scope.branchRootMessageId))];
-    const rowOrderByMessageId = new Map<string, number>();
-    const eligible: AiMessageRecord[] = [];
+    type OrderedMessage = AiMessageRecord & { rowOrder: number };
+    type MessageCursor = Pick<OrderedMessage, 'createdAt' | 'rowOrder'>;
+
+    const compareOrder = (left: MessageCursor, right: MessageCursor): number =>
+      left.createdAt.localeCompare(right.createdAt) || left.rowOrder - right.rowOrder;
+    const isAfter = (message: MessageCursor, cursor: MessageCursor): boolean => compareOrder(message, cursor) > 0;
+    const isBefore = (message: MessageCursor, cursor: MessageCursor): boolean => compareOrder(message, cursor) < 0;
+
+    const selectedRoots: OrderedMessage[] = [];
 
     if (scopedRootIds.length > 0) {
-      const rootRows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
+      const rootRows = await db.getAllAsync<OrderedMessage>(
         `SELECT *, rowid AS rowOrder
          FROM ai_messages
          WHERE threadId = ?
@@ -4196,47 +4208,146 @@ export const aiThreadRepository = {
         ...visibleBranchClause.values,
         ...scopedRootIds,
       );
-      for (const row of rootRows) rowOrderByMessageId.set(row.id, row.rowOrder);
       const materializedRoots = await materializeMessagesForBranchScopes(db, rootRows, branchScopes);
-      eligible.push(...materializedRoots.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')));
+      selectedRoots.push(...materializedRoots
+        .filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'))
+        .map((message) => message as OrderedMessage));
     }
 
     const rootExclusionClause = scopedRootIds.length > 0
-      ? `AND id NOT IN (${makeInClause(scopedRootIds)})`
+      ? `AND ai_messages.id NOT IN (${makeInClause(scopedRootIds)})`
       : '';
-    const ordinaryRows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
-      `SELECT *, rowid AS rowOrder
-       FROM ai_messages
-       WHERE threadId = ?
-         AND status = 'completed'
-         AND role IN ('user', 'assistant')
-         ${visibleBranchClause.clause}
-         AND ${excludeRolledBackContinuityPayload('ai_messages')}
-         ${rootExclusionClause}
-       ORDER BY createdAt DESC, rowid DESC
-       LIMIT ?`,
-      threadId,
-      ...visibleBranchClause.values,
-      ...scopedRootIds,
-      candidateLimit,
-    );
-    for (const row of ordinaryRows) rowOrderByMessageId.set(row.id, row.rowOrder);
-    const materializedOrdinary = await materializeMessagesForBranchScopes(db, ordinaryRows, branchScopes);
-    const eligibleById = new Map<string, AiMessageRecord>();
-    for (const message of materializedOrdinary) {
-      if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')) {
-        eligibleById.set(message.id, message);
-      }
-    }
-    // Selected versions win defensively if malformed legacy data ever exposes
-    // the same branch root through both paths.
-    for (const message of eligible) eligibleById.set(message.id, message);
+    const ordinaryParams = [threadId, ...visibleBranchClause.values, ...scopedRootIds] as Array<string | number>;
 
-    return [...eligibleById.values()]
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
-        || (rowOrderByMessageId.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rowOrderByMessageId.get(right.id) ?? Number.MAX_SAFE_INTEGER)
-        || left.id.localeCompare(right.id))
-      .slice(-candidateLimit);
+    const findOrdinaryBefore = async (role: 'user' | 'assistant', cursor: MessageCursor | null): Promise<OrderedMessage | null> => {
+      const cursorClause = cursor
+        ? 'AND (ai_messages.createdAt < ? OR (ai_messages.createdAt = ? AND ai_messages.rowid < ?))'
+        : '';
+      const row = await db.getFirstAsync<OrderedMessage>(
+        `SELECT ai_messages.*, ai_messages.rowid AS rowOrder
+         FROM ai_messages
+         WHERE ai_messages.threadId = ?
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role = '${role}'
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           ${rootExclusionClause}
+           ${cursorClause}
+         ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
+         LIMIT 1`,
+        ...ordinaryParams,
+        ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.rowOrder] : []),
+      );
+      return row ?? null;
+    };
+
+    const findOrdinaryAfter = async (role: 'user', cursor: MessageCursor): Promise<OrderedMessage | null> => {
+      const row = await db.getFirstAsync<OrderedMessage>(
+        `SELECT ai_messages.*, ai_messages.rowid AS rowOrder
+         FROM ai_messages
+         WHERE ai_messages.threadId = ?
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role = '${role}'
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           ${rootExclusionClause}
+           AND (ai_messages.createdAt > ? OR (ai_messages.createdAt = ? AND ai_messages.rowid > ?))
+         ORDER BY ai_messages.createdAt ASC, ai_messages.rowid ASC
+         LIMIT 1`,
+        ...ordinaryParams,
+        cursor.createdAt,
+        cursor.createdAt,
+        cursor.rowOrder,
+      );
+      return row ?? null;
+    };
+
+    const selectedBefore = (role: 'user' | 'assistant', cursor: MessageCursor | null): OrderedMessage | null =>
+      selectedRoots
+        .filter((message) => message.role === role && (!cursor || isBefore(message, cursor)))
+        .sort(compareOrder)
+        .at(-1) ?? null;
+    const selectedAfter = (role: 'user', cursor: MessageCursor): OrderedMessage | null =>
+      selectedRoots
+        .filter((message) => message.role === role && isAfter(message, cursor))
+        .sort(compareOrder)
+        .at(0) ?? null;
+    const later = (left: OrderedMessage | null, right: OrderedMessage | null): OrderedMessage | null => {
+      if (!left) return right;
+      if (!right) return left;
+      return compareOrder(left, right) >= 0 ? left : right;
+    };
+    const earlier = (left: OrderedMessage | null, right: OrderedMessage | null): OrderedMessage | null => {
+      if (!left) return right;
+      if (!right) return left;
+      return compareOrder(left, right) <= 0 ? left : right;
+    };
+
+    const buildRound = async (user: OrderedMessage): Promise<OrderedMessage[] | null> => {
+      const nextUser = earlier(await findOrdinaryAfter('user', user), selectedAfter('user', user));
+      const nextUserClause = nextUser
+        ? 'AND (ai_messages.createdAt < ? OR (ai_messages.createdAt = ? AND ai_messages.rowid < ?))'
+        : '';
+      const ordinaryAssistants = await db.getAllAsync<OrderedMessage>(
+        `SELECT ai_messages.*, ai_messages.rowid AS rowOrder
+         FROM ai_messages
+         WHERE ai_messages.threadId = ?
+           AND ai_messages.status = 'completed'
+           AND ai_messages.role = 'assistant'
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           ${rootExclusionClause}
+           AND (ai_messages.createdAt > ? OR (ai_messages.createdAt = ? AND ai_messages.rowid > ?))
+           ${nextUserClause}
+         ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
+         LIMIT ?`,
+        ...ordinaryParams,
+        user.createdAt,
+        user.createdAt,
+        user.rowOrder,
+        ...(nextUser ? [nextUser.createdAt, nextUser.createdAt, nextUser.rowOrder] : []),
+        maxAssistantsPerRound,
+      );
+      const selectedAssistants = selectedRoots.filter((message) =>
+        message.role === 'assistant'
+        && isAfter(message, user)
+        && (!nextUser || isBefore(message, nextUser)));
+      const assistantsById = new Map<string, OrderedMessage>();
+      for (const assistant of ordinaryAssistants) assistantsById.set(assistant.id, assistant);
+      for (const assistant of selectedAssistants) assistantsById.set(assistant.id, assistant);
+      const assistants = [...assistantsById.values()].sort(compareOrder).slice(-maxAssistantsPerRound);
+      return assistants.length > 0 ? [user, ...assistants] : null;
+    };
+
+    const roundsByUserId = new Map<string, OrderedMessage[]>();
+    let cursor: MessageCursor | null = null;
+    while (roundsByUserId.size < normalizedRoundLimit) {
+      const assistant = later(
+        await findOrdinaryBefore('assistant', cursor),
+        selectedBefore('assistant', cursor),
+      );
+      if (!assistant) break;
+      const user = later(
+        await findOrdinaryBefore('user', assistant),
+        selectedBefore('user', assistant),
+      );
+      if (!user) break;
+      const round = await buildRound(user);
+      if (round) roundsByUserId.set(user.id, round);
+      cursor = user;
+    }
+
+    // A selected user version can be the first message in a thread, so it may
+    // not be discoverable by the ordinary assistant-first walk.
+    for (const selectedUser of selectedRoots.filter((message) => message.role === 'user')) {
+      const round = await buildRound(selectedUser);
+      if (round) roundsByUserId.set(selectedUser.id, round);
+    }
+
+    return [...roundsByUserId.values()]
+      .sort((left, right) => compareOrder(left[0], right[0]))
+      .slice(-normalizedRoundLimit)
+      .flat();
   },
 
   async listCompletedMessagesInDateRange(

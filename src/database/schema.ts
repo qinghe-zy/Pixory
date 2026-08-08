@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 56;
+export const DATABASE_VERSION = 57;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2055,6 +2055,18 @@ CREATE INDEX IF NOT EXISTS idx_ai_generation_events_job
 export const MIGRATION_STATEMENTS_V56 = `
 ALTER TABLE image_assets ADD COLUMN sourceOrder INTEGER;
 CREATE INDEX IF NOT EXISTS idx_image_assets_import_batch_source_order ON image_assets(importBatchId, sourceOrder, id);
+`;
+
+// Diary retries must use the exact prompt context frozen at scheduling time.
+// Keep the durable job-context hash separate from the model-budget-adjusted
+// message snapshot hash stored on the generated version.
+export const MIGRATION_STATEMENTS_V57 = `
+ALTER TABLE companion_diary_jobs ADD COLUMN sourceSystemPromptSnapshot TEXT;
+ALTER TABLE companion_diary_versions ADD COLUMN jobContextSnapshotHash TEXT;
+ALTER TABLE companion_diary_versions ADD COLUMN sourceSystemPromptSnapshot TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_snapshot_candidates
+  ON ai_messages(threadId, status, role, createdAt DESC);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

@@ -8,6 +8,7 @@ import { generateRoleDiary } from './diaryGenerationService';
 import type { AiBranchScope, AiMessageRecord } from '../../database/repositories/aiThreadRepository';
 import { aiThreadRepository, settingsRepository } from '../../database';
 import { buildDiaryConversationSnapshot } from '../companion/companionConversationSnapshotService';
+import { hashDiaryJobContextSnapshot } from './diarySnapshotContract';
 
 const STALE_GENERATING_JOB_MS = 15 * 60 * 1_000;
 const dueRunsBySpace = new Map<PixorySpace, Promise<void>>();
@@ -22,13 +23,14 @@ export interface ScheduleDiaryJobInput {
   sourceBranchRouteJson: string;
   sourceMessagesJson: string;
   sourceSummarySnapshot: string | null;
+  sourceSystemPromptSnapshot: string | null;
   roleSnapshotJson: string;
-  sourceSnapshotHash: string;
+  jobContextSnapshotHash: string;
 }
 
 function jobIdempotencyKey(input: ScheduleDiaryJobInput): string {
   if (input.triggerKind === 'manual') {
-    return [input.roleCardId, input.diaryDate, input.triggerKind, input.sourceSnapshotHash, input.scheduledFor].join(':');
+    return [input.roleCardId, input.diaryDate, input.triggerKind, input.jobContextSnapshotHash, input.scheduledFor].join(':');
   }
   if (input.triggerKind !== 'wake') {
     return [input.roleCardId, input.diaryDate, 'automatic'].join(':');
@@ -47,8 +49,9 @@ export async function scheduleDiaryJob(input: ScheduleDiaryJobInput): Promise<Ro
     sourceBranchRouteJson: input.sourceBranchRouteJson,
     sourceMessagesJson: input.sourceMessagesJson,
     sourceSummarySnapshot: input.sourceSummarySnapshot,
+    sourceSystemPromptSnapshot: input.sourceSystemPromptSnapshot,
     roleSnapshotJson: input.roleSnapshotJson,
-    sourceSnapshotHash: input.sourceSnapshotHash,
+    jobContextSnapshotHash: input.jobContextSnapshotHash,
     status: 'pending',
     idempotencyKey: jobIdempotencyKey(input),
   }));
@@ -134,13 +137,14 @@ export async function prepareAndScheduleDiaryJob(input: {
     });
     const sourceMessagesJson = JSON.stringify(conversationSnapshot.sourceMessages);
     const sourceBranchRouteJson = JSON.stringify(input.branchScopes);
-    const sourceSnapshotHash = snapshotHash([
-      thread.roleCardId,
-      thread.roleSnapshotJson,
-      thread.summary ?? '',
-      sourceBranchRouteJson,
-      conversationSnapshot.sourceSnapshotHash,
-    ].join('|'));
+    const jobContextSnapshotHash = hashDiaryJobContextSnapshot({
+      branchRouteJson: sourceBranchRouteJson,
+      conversationSnapshotHash: conversationSnapshot.sourceSnapshotHash,
+      roleCardId: thread.roleCardId,
+      roleSnapshotJson: thread.roleSnapshotJson,
+      summarySnapshot: thread.summary,
+      systemPromptSnapshot: thread.systemPrompt,
+    });
     return {
       space: input.space,
       roleCardId: thread.roleCardId,
@@ -151,8 +155,9 @@ export async function prepareAndScheduleDiaryJob(input: {
       sourceBranchRouteJson,
       sourceMessagesJson,
       sourceSummarySnapshot: thread.summary,
+      sourceSystemPromptSnapshot: thread.systemPrompt,
       roleSnapshotJson: thread.roleSnapshotJson,
-      sourceSnapshotHash,
+      jobContextSnapshotHash,
     };
   });
   return scheduleDiaryJob(snapshot);
@@ -182,8 +187,16 @@ export async function scheduleDiaryWakeup(input: {
       sourceBranchRouteJson: JSON.stringify(input.branchScopes),
       sourceMessagesJson: '[]',
       sourceSummarySnapshot: thread.summary,
+      sourceSystemPromptSnapshot: thread.systemPrompt,
       roleSnapshotJson: thread.roleSnapshotJson,
-      sourceSnapshotHash: latest?.id ?? 'no-message',
+      jobContextSnapshotHash: hashDiaryJobContextSnapshot({
+        branchRouteJson: JSON.stringify(input.branchScopes),
+        conversationSnapshotHash: latest?.id ?? 'no-message',
+        roleCardId: thread.roleCardId,
+        roleSnapshotJson: thread.roleSnapshotJson,
+        summarySnapshot: thread.summary,
+        systemPromptSnapshot: thread.systemPrompt,
+      }),
     };
   });
   const idempotencyKey = jobIdempotencyKey(snapshot);
@@ -202,7 +215,7 @@ export async function reconcileDiaryJobs(space: PixorySpace): Promise<RoleDiaryJ
     new Date(Date.now() - STALE_GENERATING_JOB_MS).toISOString(),
   );
   return db.getAllAsync<RoleDiaryJobRecord>(
-    `SELECT * FROM companion_diary_jobs
+    `SELECT *, sourceSnapshotHash AS jobContextSnapshotHash FROM companion_diary_jobs
      WHERE (status IN ('pending', 'due') AND scheduledFor <= ? AND (nextRunAt IS NULL OR nextRunAt <= ?))
         OR (status = 'failed' AND nextRunAt IS NOT NULL AND nextRunAt <= ?)
      ORDER BY scheduledFor ASC`,
@@ -367,8 +380,9 @@ async function executeDiaryJob(space: PixorySpace, jobId: string, signal: AbortS
       triggerKind: job.triggerKind,
       branchScopes: parseBranchScopes(job.sourceBranchRouteJson),
       sourceBranchRouteJson: job.sourceBranchRouteJson,
-      sourceSnapshotHash: job.sourceSnapshotHash,
+      jobContextSnapshotHash: job.jobContextSnapshotHash,
       sourceSummarySnapshot: job.sourceSummarySnapshot,
+      sourceSystemPromptSnapshot: job.sourceSystemPromptSnapshot,
       sourceMessages: parseSnapshotMessages(job.sourceMessagesJson),
       roleSnapshotJson: job.roleSnapshotJson,
       roleCardId: job.roleCardId,

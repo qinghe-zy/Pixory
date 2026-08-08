@@ -32,7 +32,9 @@ export interface RoleDiaryVersionRecord {
   generationModelSnapshotJson: string;
   sourceMessageIdsJson: string;
   sourceSummarySnapshot: string | null;
-  sourceSnapshotHash: string;
+  sourceSystemPromptSnapshot: string | null;
+  effectiveSourceSnapshotHash: string;
+  jobContextSnapshotHash: string | null;
   status: 'current' | 'superseded';
   createdAt: string;
   supersededAt: string | null;
@@ -48,8 +50,9 @@ export interface RoleDiaryJobRecord {
   sourceBranchRouteJson: string;
   sourceMessagesJson: string;
   sourceSummarySnapshot: string | null;
+  sourceSystemPromptSnapshot: string | null;
   roleSnapshotJson: string;
-  sourceSnapshotHash: string;
+  jobContextSnapshotHash: string;
   status: RoleDiaryJobStatus;
   idempotencyKey: string;
   attemptCount: number;
@@ -62,6 +65,14 @@ export interface RoleDiaryJobRecord {
 interface RoleDiaryRow extends Omit<RoleDiaryRecord, 'contextOptIn' | 'sourceMessageIds'> {
   contextOptIn: number | null;
   currentSourceMessageIdsJson?: string | null;
+}
+
+interface RoleDiaryVersionRow extends Omit<RoleDiaryVersionRecord, 'effectiveSourceSnapshotHash'> {
+  sourceSnapshotHash: string;
+}
+
+interface RoleDiaryJobRow extends Omit<RoleDiaryJobRecord, 'jobContextSnapshotHash'> {
+  sourceSnapshotHash: string;
 }
 
 function parseSourceMessageIds(value: string | null | undefined): string[] {
@@ -85,6 +96,16 @@ function mapDiaryRow(row: RoleDiaryRow): RoleDiaryRecord {
     sourceMessageIds: parseSourceMessageIds(currentSourceMessageIdsJson),
     contextOptIn: row.contextOptIn == null ? null : sqliteToBoolean(row.contextOptIn),
   };
+}
+
+function mapDiaryVersionRow(row: RoleDiaryVersionRow): RoleDiaryVersionRecord {
+  const { sourceSnapshotHash, ...version } = row;
+  return { ...version, effectiveSourceSnapshotHash: sourceSnapshotHash };
+}
+
+function mapDiaryJobRow(row: RoleDiaryJobRow): RoleDiaryJobRecord {
+  const { sourceSnapshotHash, ...job } = row;
+  return { ...job, jobContextSnapshotHash: sourceSnapshotHash };
 }
 
 function diaryId(roleCardId: string, diaryDate: string): string {
@@ -130,12 +151,13 @@ export const diaryRepository = {
   },
 
   async findCurrentVersion(db: SQLiteDatabase, diaryIdValue: string): Promise<RoleDiaryVersionRecord | null> {
-    return db.getFirstAsync<RoleDiaryVersionRecord>(
+    const row = await db.getFirstAsync<RoleDiaryVersionRow>(
       `SELECT version.* FROM companion_diary_versions version
        JOIN companion_diaries diary ON diary.currentVersionId = version.id
        WHERE diary.id = ?`,
       diaryIdValue,
     );
+    return row ? mapDiaryVersionRow(row) : null;
   },
 
   async listCurrentDiariesForRole(db: SQLiteDatabase, roleCardId: string): Promise<RoleDiaryRecord[]> {
@@ -198,12 +220,15 @@ export const diaryRepository = {
 
   async saveDiaryVersion(
     db: SQLiteDatabase,
-    input: Omit<RoleDiaryRecord, 'id' | 'currentVersionId' | 'createdAt' | 'updatedAt' | 'contextOptIn' | 'sourceMessageIds'> & {
+    input: Omit<RoleDiaryRecord, 'id' | 'currentVersionId' | 'createdAt' | 'updatedAt' | 'contextOptIn' | 'sourceMessageIds' | 'sourceSnapshotHash'> & {
       body: string;
+      effectiveSourceSnapshotHash: string;
+      jobContextSnapshotHash: string;
       pageLayoutJson?: string | null;
       generationModelSnapshotJson?: string;
       sourceMessageIdsJson?: string;
       sourceSummarySnapshot?: string | null;
+      sourceSystemPromptSnapshot?: string | null;
     },
   ): Promise<RoleDiaryVersionRecord> {
     const id = diaryId(input.roleCardId, input.diaryDate);
@@ -235,11 +260,13 @@ export const diaryRepository = {
       await txn.runAsync(
         `INSERT INTO companion_diary_versions (
           id, diaryId, versionNumber, body, pageLayoutJson, generationModelSnapshotJson,
-          sourceMessageIdsJson, sourceSummarySnapshot, sourceSnapshotHash, status, createdAt, supersededAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'current', ?, NULL)`,
+          sourceMessageIdsJson, sourceSummarySnapshot, sourceSystemPromptSnapshot,
+          sourceSnapshotHash, jobContextSnapshotHash, status, createdAt, supersededAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'current', ?, NULL)`,
         versionId, id, versionNumber, input.body, input.pageLayoutJson ?? null,
         input.generationModelSnapshotJson ?? '{}', input.sourceMessageIdsJson ?? '[]',
-        input.sourceSummarySnapshot ?? null, input.sourceSnapshotHash, now,
+        input.sourceSummarySnapshot ?? null, input.sourceSystemPromptSnapshot ?? null,
+        input.effectiveSourceSnapshotHash, input.jobContextSnapshotHash, now,
       );
       await txn.runAsync(
         `INSERT INTO companion_diaries (
@@ -252,12 +279,13 @@ export const diaryRepository = {
           sourceThreadId = excluded.sourceThreadId, sourceBranchRouteJson = excluded.sourceBranchRouteJson,
           sourceSnapshotHash = excluded.sourceSnapshotHash, updatedAt = excluded.updatedAt`,
         id, input.roleCardId, input.diaryDate, versionId, input.themeKey, input.bodyFontKey,
-        input.status, input.sourceThreadId, input.sourceBranchRouteJson, input.sourceSnapshotHash, now, now,
+        input.status, input.sourceThreadId, input.sourceBranchRouteJson, input.effectiveSourceSnapshotHash, now, now,
       );
-      version = await txn.getFirstAsync<RoleDiaryVersionRecord>(
+      const savedVersion = await txn.getFirstAsync<RoleDiaryVersionRow>(
         'SELECT * FROM companion_diary_versions WHERE id = ?',
         versionId,
       );
+      version = savedVersion ? mapDiaryVersionRow(savedVersion) : null;
     });
 
     if (!version) {
@@ -280,27 +308,28 @@ export const diaryRepository = {
     await db.runAsync(
       `INSERT INTO companion_diary_jobs (
         id, roleCardId, diaryDate, triggerKind, scheduledFor, sourceThreadId, sourceBranchRouteJson,
-        sourceMessagesJson, sourceSummarySnapshot, roleSnapshotJson, sourceSnapshotHash,
+        sourceMessagesJson, sourceSummarySnapshot, sourceSystemPromptSnapshot, roleSnapshotJson, sourceSnapshotHash,
         status, idempotencyKey, attemptCount, nextRunAt, errorMessage, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)
       ON CONFLICT(idempotencyKey) DO NOTHING`,
       input.id, input.roleCardId, input.diaryDate, input.triggerKind, input.scheduledFor,
       input.sourceThreadId, input.sourceBranchRouteJson, input.sourceMessagesJson,
-      input.sourceSummarySnapshot, input.roleSnapshotJson, input.sourceSnapshotHash,
+      input.sourceSummarySnapshot, input.sourceSystemPromptSnapshot, input.roleSnapshotJson, input.jobContextSnapshotHash,
       input.status, input.idempotencyKey, now, now,
     );
-    const job = await db.getFirstAsync<RoleDiaryJobRecord>(
+    const job = await db.getFirstAsync<RoleDiaryJobRow>(
       'SELECT * FROM companion_diary_jobs WHERE idempotencyKey = ?',
       input.idempotencyKey,
     );
     if (!job) {
       throw new Error('角色日记任务写入失败。');
     }
-    return job;
+    return mapDiaryJobRow(job);
   },
 
   async findJobById(db: SQLiteDatabase, jobId: string): Promise<RoleDiaryJobRecord | null> {
-    return db.getFirstAsync<RoleDiaryJobRecord>('SELECT * FROM companion_diary_jobs WHERE id = ?', jobId);
+    const row = await db.getFirstAsync<RoleDiaryJobRow>('SELECT * FROM companion_diary_jobs WHERE id = ?', jobId);
+    return row ? mapDiaryJobRow(row) : null;
   },
 
   async recoverStaleGeneratingJobs(db: SQLiteDatabase, staleBefore: string): Promise<void> {
