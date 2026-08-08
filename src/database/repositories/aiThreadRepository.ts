@@ -4179,28 +4179,70 @@ export const aiThreadRepository = {
   async listSnapshotCandidateMessages(db: SQLiteDatabase, threadId: string, roundLimit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     const candidateLimit = Math.max(96, roundLimit * 4);
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
-    const rows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
-      `SELECT * FROM (
-         SELECT *, rowid AS rowOrder
+    const normalizedScopes = normalizeBranchScopes(branchScopes) ?? [];
+    const scopedRootIds = [...new Set(normalizedScopes.map((scope) => scope.branchRootMessageId))];
+    const rowOrderByMessageId = new Map<string, number>();
+    const eligible: AiMessageRecord[] = [];
+
+    if (scopedRootIds.length > 0) {
+      const rootRows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
+        `SELECT *, rowid AS rowOrder
          FROM ai_messages
          WHERE threadId = ?
            ${visibleBranchClause.clause}
            AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           AND id IN (${makeInClause(scopedRootIds)})`,
+        threadId,
+        ...visibleBranchClause.values,
+        ...scopedRootIds,
+      );
+      for (const row of rootRows) rowOrderByMessageId.set(row.id, row.rowOrder);
+      const materializedRoots = await materializeMessagesForBranchScopes(db, rootRows, branchScopes);
+      eligible.push(...materializedRoots.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant')));
+    }
+
+    const scanBatchSize = candidateLimit;
+    let scannedEligibleCount = 0;
+    let cursor: { createdAt: string; rowOrder: number } | null = null;
+    while (scannedEligibleCount < candidateLimit) {
+      const cursorClause = cursor
+        ? 'AND (createdAt < ? OR (createdAt = ? AND rowid < ?))'
+        : '';
+      const rootExclusionClause = scopedRootIds.length > 0
+        ? `AND id NOT IN (${makeInClause(scopedRootIds)})`
+        : '';
+      const rows: Array<AiMessageRecord & { rowOrder: number }> = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
+        `SELECT *, rowid AS rowOrder
+         FROM ai_messages
+         WHERE threadId = ?
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           ${rootExclusionClause}
+           ${cursorClause}
          ORDER BY createdAt DESC, rowid DESC
-         LIMIT ?
-       )
-       ORDER BY createdAt ASC, rowOrder ASC`,
-      threadId,
-      ...visibleBranchClause.values,
-      candidateLimit
-    );
-    const rowOrderByMessageId = new Map(rows.map((row) => [row.id, row.rowOrder]));
-    const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
-    return materialized
-      .filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'))
+         LIMIT ?`,
+        threadId,
+        ...visibleBranchClause.values,
+        ...scopedRootIds,
+        ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.rowOrder] : []),
+        scanBatchSize,
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) rowOrderByMessageId.set(row.id, row.rowOrder);
+      const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
+      const eligibleBatch = materialized.filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'));
+      eligible.push(...eligibleBatch);
+      scannedEligibleCount += eligibleBatch.length;
+      const oldest: AiMessageRecord & { rowOrder: number } = rows[rows.length - 1];
+      cursor = { createdAt: oldest.createdAt, rowOrder: oldest.rowOrder };
+      if (rows.length < scanBatchSize) break;
+    }
+
+    return eligible
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
         || (rowOrderByMessageId.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rowOrderByMessageId.get(right.id) ?? Number.MAX_SAFE_INTEGER)
-        || left.id.localeCompare(right.id));
+        || left.id.localeCompare(right.id))
+      .slice(-candidateLimit);
   },
 
   async listCompletedMessagesInDateRange(

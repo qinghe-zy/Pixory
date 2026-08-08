@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const Module = require('node:module');
 const path = require('node:path');
 const test = require('node:test');
 const ts = require('typescript');
@@ -41,6 +42,77 @@ function message(id, role, createdAt, content, completedAt = createdAt) {
     createdAt,
     updatedAt: createdAt,
     completedAt,
+  };
+}
+
+function loadDiaryGenerationForSummaryTest(capture) {
+  const filename = path.join(root, 'src/ai/diary/diaryGenerationService.ts');
+  const previousExtension = require.extensions['.ts'];
+  const previousLoad = Module._load;
+  require.extensions['.ts'] = function (module, sourcePath) {
+    module._compile(ts.transpileModule(fs.readFileSync(sourcePath, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, sourcePath);
+  };
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (parent?.filename === filename && request === '../../database') {
+      return { runWithDatabaseSpace: async (_space, callback) => callback({}) };
+    }
+    if (parent?.filename === filename && request === '../aiProviderService') {
+      return { getAdapterForProvider: () => ({
+        streamChat: async (_input, onEvent) => onEvent({ type: 'answer_delta', text: '今天很安静。' }),
+      }) };
+    }
+    if (parent?.filename === filename && request === '../aiChatService') {
+      return { resolveThreadChatModel: async () => ({
+        status: 'ready', apiKey: 'test-key', modelContextWindowTokens: 8_000,
+        modelId: 'test-model', provider: { id: 'test-provider', baseUrl: '' },
+      }) };
+    }
+    if (parent?.filename === filename && request === '../aiErrorMessageService') {
+      return { normalizeAiErrorMessage: (error) => error.message };
+    }
+    if (parent?.filename === filename && request === './diaryPromptService') {
+      return { buildDiaryPrompt: (input) => {
+        capture.promptInput = input;
+        return { prompt: 'test prompt', sourceMessages: [], sourceTrimmed: false };
+      } };
+    }
+    if (parent?.filename === filename && request === './diaryRepository') {
+      return { diaryRepository: { saveDiaryVersion: async (_db, input) => {
+        capture.savedInput = input;
+        return input;
+      } } };
+    }
+    if (parent?.filename === filename && request === './diaryTypes') {
+      return { resolveDiaryBodyFont: () => 'sans', resolveDiaryTheme: () => 'paper' };
+    }
+    return previousLoad(request, parent, isMain);
+  };
+  try {
+    delete require.cache[require.resolve(filename)];
+    return require(filename);
+  } finally {
+    Module._load = previousLoad;
+    if (previousExtension) require.extensions['.ts'] = previousExtension;
+    else delete require.extensions['.ts'];
+  }
+}
+
+function diaryGenerationInput(sourceSummarySnapshot) {
+  return {
+    space: 'normal',
+    thread: {
+      id: 'thread-1', roleCardId: 'role-1', summary: '执行前新写入的摘要',
+      systemPrompt: '角色设定', roleSnapshotJson: '{}',
+    },
+    diaryDate: '2026-08-08',
+    triggerKind: 'manual',
+    branchScopes: [],
+    sourceBranchRouteJson: '[]',
+    sourceSnapshotHash: 'frozen-job-hash',
+    sourceMessages: [],
+    sourceSummarySnapshot,
   };
 }
 
@@ -142,4 +214,24 @@ test('keeps the diary request private, first-person, and free of backstage conce
   assert.match(source, /通常不超过 300 个汉字/);
   assert.match(source, /不得提及 AI、模型、系统、提示词、上下文、记忆、数据、生成/);
   assert.match(source, /formatCompanionBeijingTimestamp/);
+});
+
+test('a frozen null summary stays null for both prompt and persisted diary version', async () => {
+  const capture = {};
+  const generation = loadDiaryGenerationForSummaryTest(capture);
+
+  await generation.generateRoleDiary(diaryGenerationInput(null));
+
+  assert.equal(capture.promptInput.threadSummary, null);
+  assert.equal(capture.savedInput.sourceSummarySnapshot, null);
+});
+
+test('legacy callers with an undefined summary snapshot still fall back to the live thread summary', async () => {
+  const capture = {};
+  const generation = loadDiaryGenerationForSummaryTest(capture);
+
+  await generation.generateRoleDiary(diaryGenerationInput(undefined));
+
+  assert.equal(capture.promptInput.threadSummary, '执行前新写入的摘要');
+  assert.equal(capture.savedInput.sourceSummarySnapshot, '执行前新写入的摘要');
 });

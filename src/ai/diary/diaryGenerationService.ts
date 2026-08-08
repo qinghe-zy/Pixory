@@ -69,11 +69,14 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
     messages: input.sourceMessages ?? [],
     roundLimit: 30,
   });
+  const sourceSummarySnapshot = input.sourceSummarySnapshot === undefined
+    ? input.thread.summary
+    : input.sourceSummarySnapshot;
   const built = buildDiaryPrompt({
     backgroundMessages: conversationSnapshot.backgroundMessages,
     focusMessages: conversationSnapshot.focusMessages,
     roleContext: buildRoleContext(input.thread, input.roleSnapshotJson),
-    threadSummary: input.sourceSummarySnapshot ?? input.thread.summary,
+    threadSummary: sourceSummarySnapshot,
   });
 
   let streamed = '';
@@ -115,7 +118,7 @@ export async function generateRoleDiary(input: GenerateRoleDiaryInput): Promise<
       sourceBranchRouteJson: input.sourceBranchRouteJson,
       sourceMessageIdsJson: JSON.stringify(conversationSnapshot.sourceMessageIds),
       sourceSnapshotHash: conversationSnapshot.sourceSnapshotHash,
-      sourceSummarySnapshot: input.sourceSummarySnapshot ?? input.thread.summary,
+      sourceSummarySnapshot,
       sourceThreadId: input.thread.id,
       status: input.deferPresentation ? 'ready_pending_presentation' : 'ready',
       themeKey: resolveDiaryTheme(input.space, roleCardId, input.diaryDate),

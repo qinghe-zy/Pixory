@@ -148,9 +148,11 @@ function trimUnits(input: { focus: SnapshotUnit[]; background: SnapshotUnit[]; m
   const budget = Math.max(0, Math.floor(input.maxSourceCharacters));
   let total = [...focus, ...background].reduce((sum, unit) => sum + unitLength(unit), 0);
   let trimmed = false;
-  while (total > budget && background.length > 0) {
-    total -= unitLength(background.shift()!);
+  let removableBackground = background.findIndex((unit) => !unit.protected);
+  while (total > budget && removableBackground >= 0) {
+    total -= unitLength(background.splice(removableBackground, 1)[0]);
     trimmed = true;
+    removableBackground = background.findIndex((unit) => !unit.protected);
   }
   while (total > budget) {
     const removable = focus.findIndex((unit) => !unit.protected);
@@ -241,9 +243,10 @@ export function buildDiaryConversationSnapshot(input: {
   const backgroundRounds = rounds
     .filter((round) => formatCompanionBeijingTimestamp(round.completedAt).slice(0, 10) < input.diaryDate && !focusIds.has(round.userMessage.id));
   const selectedBackgroundRounds = newestRounds(backgroundRounds, Math.max(0, roundLimit - focusRounds.length));
+  const protectedRound = focusRounds.at(-1) ?? selectedBackgroundRounds.at(-1) ?? null;
   return snapshotFromUnits({
-    background: selectedBackgroundRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
-    focus: focusRounds.map((round) => ({ messages: round.messages, protected: false, round: true })),
+    background: selectedBackgroundRounds.map((round) => ({ messages: round.messages, protected: round === protectedRound, round: true })),
+    focus: focusRounds.map((round) => ({ messages: round.messages, protected: round === protectedRound, round: true })),
     globalSequenceById,
     maxSourceCharacters: input.maxSourceCharacters,
   });

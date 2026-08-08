@@ -332,6 +332,44 @@ test('an oversized unpaired trigger remains protected when its formatted message
   assert.deepEqual(snapshot.sourceMessageIds, [manual.id]);
 });
 
+test('diary retains its only latest complete round and assistant anchor when that round exceeds the model budget', () => {
+  const oversizedRound = [
+    message('diary-oversized-user', 'user', '2026-08-08T08:00:00.000Z', '甲'.repeat(1_800)),
+    message('diary-oversized-assistant', 'assistant', '2026-08-08T08:01:00.000Z', '乙'.repeat(1_800)),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08',
+    maxSourceCharacters: 3_000,
+    messages: oversizedRound,
+    roundLimit: 30,
+  });
+
+  assert.equal(snapshot.roundCount, 1);
+  assert.deepEqual(snapshot.sourceMessageIds, oversizedRound.map((item) => item.id));
+  assert.equal(snapshot.anchorMessageId, 'diary-oversized-assistant');
+});
+
+test('diary model-budget trimming removes older rounds before its protected latest anchor round', () => {
+  const olderRounds = Array.from({ length: 3 }, (_, index) => round(index + 1, '2026-08-07'))
+    .flat()
+    .map((item) => ({ ...item, content: '旧'.repeat(900) }));
+  const latestRound = [
+    message('diary-latest-user', 'user', '2026-08-08T08:00:00.000Z', '今'.repeat(1_800)),
+    message('diary-latest-assistant', 'assistant', '2026-08-08T08:01:00.000Z', '日'.repeat(1_800)),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({
+    diaryDate: '2026-08-08',
+    maxSourceCharacters: 3_000,
+    messages: [...olderRounds, ...latestRound],
+    roundLimit: 30,
+  });
+
+  assert.equal(snapshot.roundCount, 1);
+  assert.deepEqual(snapshot.sourceMessageIds, latestRound.map((item) => item.id));
+  assert.equal(snapshot.anchorMessageId, 'diary-latest-assistant');
+  assert.equal(snapshot.sourceTrimmed, true);
+});
+
 test('diary uses valid createdAt when completedAt is malformed and excludes records without any valid timestamp', () => {
   const fallbackRound = [
     message('fallback-user', 'user', '2026-08-08T08:00:00.000Z'),
@@ -443,5 +481,92 @@ test('snapshot candidate loading preserves SQLite row order for equal materializ
   const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, [{ branchRootMessageId: 'a-second', branchVersionIndex: 1 }]);
 
   assert.deepEqual(messages.map((item) => item.id), ['z-first', 'a-second']);
+  db.close();
+});
+
+test('snapshot candidate loading scans past newer failed generating and system noise', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const timestamp = (seconds) => new Date(Date.UTC(2026, 7, 8, 0, 0, seconds)).toISOString();
+  for (let index = 0; index < 60; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(index), id: `eligible-${String(index).padStart(3, '0')}`,
+      role: index % 2 === 0 ? 'user' : 'assistant', status: 'completed',
+    });
+  }
+  for (let index = 0; index < 120; index += 1) {
+    const mode = index % 3;
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(60 + index), id: `noise-${String(index).padStart(3, '0')}`,
+      role: mode === 0 ? 'system' : mode === 1 ? 'assistant' : 'user',
+      status: mode === 0 ? 'completed' : mode === 1 ? 'failed' : 'generating',
+    });
+  }
+
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 30, []);
+
+  assert.equal(messages.length, 60);
+  assert.deepEqual(messages.map((item) => item.id), Array.from({ length: 60 }, (_, index) => `eligible-${String(index).padStart(3, '0')}`));
+  db.close();
+});
+
+test('snapshot candidate loading returns the newest bounded eligible window in ascending order', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const timestamp = (seconds) => new Date(Date.UTC(2026, 7, 8, 0, 0, seconds)).toISOString();
+  for (let index = 0; index < 140; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(index), id: `eligible-${String(index).padStart(3, '0')}`,
+      role: index % 2 === 0 ? 'user' : 'assistant', status: 'completed',
+    });
+  }
+
+  const repository = loadRepository();
+  const limit20 = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, []);
+  const limit30 = await repository.listSnapshotCandidateMessages(db, 'thread-1', 30, []);
+
+  assert.equal(limit20.length, 96);
+  assert.equal(limit20[0].id, 'eligible-044');
+  assert.equal(limit20.at(-1).id, 'eligible-139');
+  assert.equal(limit30.length, 120);
+  assert.equal(limit30[0].id, 'eligible-020');
+  assert.equal(limit30.at(-1).id, 'eligible-139');
+  db.close();
+});
+
+test('an old selected branch root cannot displace a newer eligible message after a noisy scan page', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const timestamp = (seconds) => new Date(Date.UTC(2026, 7, 8, 0, 0, seconds)).toISOString();
+  insertRepositoryMessage(db, {
+    branchRootMessageId: 'old-root', branchVersionIndex: 1,
+    createdAt: timestamp(0), id: 'old-root', role: 'assistant', status: 'generating',
+  });
+  db.db.prepare(`INSERT INTO ai_message_versions (
+    id, originalMessageId, threadId, versionIndex, role, status, content,
+    reasoningText, errorMessage, providerId, modelId, modelSnapshotJson, promptSnapshotJson,
+    citationsJson, messageCreatedAt, messageUpdatedAt, messageCompletedAt, createdAt
+  ) VALUES ('old-root-version', 'old-root', 'thread-1', 1, 'assistant', 'completed', 'old selected version', NULL, NULL, NULL, NULL, '{}', '{}', '[]', ?, ?, ?, ?)`)
+    .run(timestamp(0), timestamp(0), timestamp(0), timestamp(0));
+  for (let index = 1; index <= 121; index += 1) {
+    insertRepositoryMessage(db, {
+      createdAt: timestamp(index), id: `eligible-${String(index).padStart(3, '0')}`,
+      role: index % 2 === 0 ? 'user' : 'assistant', status: 'completed',
+    });
+  }
+  insertRepositoryMessage(db, {
+    createdAt: timestamp(122), id: 'newest-noise', role: 'assistant', status: 'failed',
+  });
+
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(
+    db, 'thread-1', 30, [{ branchRootMessageId: 'old-root', branchVersionIndex: 1 }],
+  );
+
+  assert.equal(messages.length, 120);
+  assert.equal(messages.some((item) => item.id === 'old-root'), false);
+  assert.equal(messages[0].id, 'eligible-002');
+  assert.equal(messages.at(-1).id, 'eligible-121');
   db.close();
 });
