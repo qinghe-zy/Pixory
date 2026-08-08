@@ -41,12 +41,15 @@ test('due diary reconciliation is process-single-flight per space', () => {
   assert.match(scheduler, /dueRunsBySpace\.delete\(space\)/);
 });
 
-test('the active chat schedules diary checks at the next relevant wake-up, not every minute', () => {
+test('the application coordinator schedules diary wakeups without requiring an active chat', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
+  const coordinator = read('src/ai/diary/diaryRuntimeCoordinator.ts');
   const scheduler = read('src/ai/diary/diarySchedulerService.ts');
 
-  assert.match(chat, /Date\.parse\(nextDiaryWakeupAt\(\)\) - Date\.now\(\)/);
-  assert.doesNotMatch(chat, /setInterval\(\(\) => void evaluateDiaryTriggerRef\.current\(\)/);
+  assert.match(coordinator, /nextDiaryWakeupAt/);
+  assert.match(coordinator, /listActiveRoleThreads/);
+  assert.doesNotMatch(chat, /nextDiaryWakeupAt/);
+  assert.doesNotMatch(chat, /scheduleDiaryWakeup/);
   assert.match(scheduler, /A session that began before 23:50 may finish after midnight/);
 });
 

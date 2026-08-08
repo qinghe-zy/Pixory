@@ -9,6 +9,7 @@ import type { AiBranchScope, AiMessageRecord } from '../../database/repositories
 import { aiThreadRepository, settingsRepository } from '../../database';
 import { buildDiaryConversationSnapshot } from '../companion/companionConversationSnapshotService';
 import { hashDiaryJobContextSnapshot } from './diarySnapshotContract';
+import { emitDiaryRuntimeNotice } from './diaryRuntimeEvents';
 
 const STALE_GENERATING_JOB_MS = 15 * 60 * 1_000;
 const dueRunsBySpace = new Map<PixorySpace, Promise<void>>();
@@ -373,7 +374,7 @@ async function executeDiaryJob(space: PixorySpace, jobId: string, signal: AbortS
     if (!thread) {
       throw new Error('日记来源会话已不存在。');
     }
-    await generateRoleDiary({
+    const version = await generateRoleDiary({
       space,
       thread,
       diaryDate: job.diaryDate,
@@ -390,6 +391,14 @@ async function executeDiaryJob(space: PixorySpace, jobId: string, signal: AbortS
     });
     assertDiaryRuntimeActive(space, signal);
     await diaryRepository.updateJobStatus(db, jobId, { status: 'completed' });
+    emitDiaryRuntimeNotice({
+      diaryId: version.diaryId,
+      jobId,
+      roleCardId: job.roleCardId,
+      space,
+      threadId: job.sourceThreadId,
+      type: 'completed',
+    });
   } catch (error) {
     if (signal.aborted || suspendedDiarySpaces.has(space)) {
       await diaryRepository.updateJobStatus(db, jobId, {

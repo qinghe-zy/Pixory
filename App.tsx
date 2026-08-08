@@ -65,6 +65,7 @@ import type { ComposerEntranceReason } from './src/ai/aiComposerEntrancePolicy';
 import { resumeCompanionMemoryMaintenance, scheduleCompanionMemoryMaintenance, suspendCompanionMemoryMaintenance } from './src/ai/aiMemoryMaintenanceService';
 import { reconcileThoughtSessions, settleActiveThoughtSessions } from './src/ai/thought/thoughtSessionCoordinator';
 import { resumeDiaryBackgroundTasks, suspendDiaryBackgroundTasks } from './src/ai/diary/diaryGenerationManager';
+import { coordinateDiaryRuntime } from './src/ai/diary/diaryRuntimeCoordinator';
 import { resumePersonalCompanionMaintenance, runCompanionMaintenancePass, suspendCompanionMaintenance } from './src/ai/companion/companionMaintenanceQueue';
 import { aiGenerationManager } from './src/ai/aiGenerationManager';
 import type { AiBranchScope } from './src/database/repositories/aiThreadRepository';
@@ -596,8 +597,10 @@ export default function App() {
 
   function resumeCompanionRuntimes(): void {
     void reconcileThoughtSessions('normal').then(() => runCompanionMaintenancePass({ space: 'normal' })).catch(() => undefined);
+    void coordinateDiaryRuntime({ space: 'normal' }).catch(() => undefined);
     if (personalSessionStateRef.current === 'unlocked') {
       void reconcileThoughtSessions('personal').then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' })).catch(() => undefined);
+      void coordinateDiaryRuntime({ allowPersonal: true, space: 'personal' }).catch(() => undefined);
     }
   }
 
@@ -612,6 +615,7 @@ export default function App() {
       try {
         await ensureAppDirectories();
         await initDatabase();
+        void coordinateDiaryRuntime({ space: 'normal' }).catch(() => undefined);
         void aiGenerationManager.reconcileInterruptedGenerations('normal').catch(() => undefined);
         void reconcileThoughtSessions('normal').catch(() => undefined);
         void runCompanionMaintenancePass({ space: 'normal' }).catch(() => undefined);
@@ -854,6 +858,7 @@ export default function App() {
       resumePersonalCompanionMaintenance();
       resumeCompanionMemoryMaintenance('personal');
       resumeDiaryBackgroundTasks('personal');
+      void coordinateDiaryRuntime({ allowPersonal: true, space: 'personal' }).catch(() => undefined);
       void aiGenerationManager.reconcileInterruptedGenerations('personal').catch(() => undefined);
       void reconcileThoughtSessions('personal')
         .then(() => runCompanionMaintenancePass({ allowRemoteModelForPersonal: true, space: 'personal' }))

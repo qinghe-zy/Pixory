@@ -30,7 +30,6 @@ test('manual and automatic triggers freeze their source through the same prepara
   const scheduler = readFileSync('src/ai/diary/diarySchedulerService.ts', 'utf8');
   const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
 
-  assert.match(chat, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*outcome\.decision\.kind/);
   assert.match(chat, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*'manual'/);
   assert.match(scheduler, /prepareAndScheduleDiaryJob\(\{[\s\S]*?triggerKind:\s*decision\.kind/);
   assert.doesNotMatch(chat, /generateRoleDiary\(/);
@@ -53,7 +52,8 @@ test('generation reapplies the actual model budget only to the frozen source sna
 test('claims each diary job once and reconciles durable work on foreground', () => {
   const scheduler = readFileSync('src/ai/diary/diarySchedulerService.ts', 'utf8');
   const repository = readFileSync('src/ai/diary/diaryRepository.ts', 'utf8');
-  const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
+  const app = readFileSync('App.tsx', 'utf8');
+  const coordinator = readFileSync('src/ai/diary/diaryRuntimeCoordinator.ts', 'utf8');
 
   assert.match(repository, /claimJobForRun/);
   assert.match(repository, /WHERE id = \? AND status IN \('pending', 'due', 'failed'\)/);
@@ -64,22 +64,24 @@ test('claims each diary job once and reconciles durable work on foreground', () 
   assert.match(scheduler, /'automatic'/);
   assert.match(scheduler, /cancelPendingWakeupsForRole/);
   assert.match(scheduler, /nextBeijingTimeAt\(now, 22, 30\)/);
-  assert.match(chat, /runDueDiaryJobs/);
-  assert.match(chat, /reconcileDueDiaryJobsRef/);
-  assert.match(chat, /persistedCurrentBranchScopes/);
+  assert.match(coordinator, /runDueDiaryJobs/);
+  assert.match(coordinator, /scheduleDiaryWakeup/);
+  assert.match(app, /coordinateDiaryRuntime\(\{ space: 'normal'/);
+  assert.match(app, /coordinateDiaryRuntime\(\{ allowPersonal: true, space: 'personal'/);
 });
 
-test('only resets the diary session clock when the active thread changes', () => {
+test('chat keeps manual diary generation but no longer owns automatic timers or foreground reconciliation', () => {
   const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
 
-  assert.match(chat, /const evaluateDiaryTriggerRef = useRef\(evaluateDiaryTrigger\)/);
-  assert.match(chat, /evaluateDiaryTriggerRef\.current = evaluateDiaryTrigger/);
+  assert.match(chat, /triggerKind:\s*'manual'/);
   assert.match(chat, /setRoleDiaries\(\[\]\);/);
   assert.match(chat, /setDiaryManualHint\(false\);/);
   assert.match(chat, /setDiaryCommandHint\(false\);/);
   assert.match(chat, /diarySessionStartedAtRef\.current = new Date\(\)\.toISOString\(\)/);
-  assert.match(chat, /\}, \[activeThreadId\]\);/);
-  assert.doesNotMatch(chat, /\}, \[activeThreadId, evaluateDiaryTrigger\]\);/);
+  assert.doesNotMatch(chat, /nextDiaryWakeupAt/);
+  assert.doesNotMatch(chat, /scheduleDiaryWakeup/);
+  assert.doesNotMatch(chat, /runDueDiaryJobs/);
+  assert.doesNotMatch(chat, /evaluateDiaryTriggerRef/);
 });
 
 test('can cancel pending diary jobs when the feature is disabled', () => {

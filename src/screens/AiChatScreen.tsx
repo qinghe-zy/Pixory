@@ -203,8 +203,9 @@ import {
 import { scheduleCompanionMaintenance } from '../ai/companion/companionMaintenanceQueue';
 import { runDiaryJobInBackground, runDiaryTaskInBackground } from '../ai/diary/diaryGenerationManager';
 import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
-import { nextDiaryWakeupAt, prepareAndScheduleDiaryJob, resolveDiarySessionStartedAt, runDueDiaryJobs, scheduleDiaryWakeup } from '../ai/diary/diarySchedulerService';
-import { beijingDiaryDate, beijingDiaryDayBounds, decideDiaryTrigger } from '../ai/diary/diaryTypes';
+import { prepareAndScheduleDiaryJob } from '../ai/diary/diarySchedulerService';
+import { beijingDiaryDate } from '../ai/diary/diaryTypes';
+import { subscribeDiaryRuntimeNotices } from '../ai/diary/diaryRuntimeEvents';
 import { dreamRepository, type DreamJobRecord, type DreamRecord } from '../ai/dream/dreamRepository';
 import { confirmManualDream } from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
@@ -1390,6 +1391,7 @@ export function AiChatScreen({
   );
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
+  const activeDiaryRoleCardIdRef = useRef<string | null>(null);
   const [roleDreams, setRoleDreams] = useState<DreamRecord[]>([]);
   const [roleDreamJobs, setRoleDreamJobs] = useState<DreamJobRecord[]>([]);
   const [dreamNotice, setDreamNotice] = useState<DreamRuntimeNotice | null>(null);
@@ -1901,17 +1903,28 @@ export function AiChatScreen({
   const reloadRoleDiaries = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
     if (!targetThreadId) {
+      activeDiaryRoleCardIdRef.current = null;
       setRoleDiaries([]);
       return;
     }
-    const diaries = await runWithDatabaseSpace(space, async (db) => {
+    const diaryState = await runWithDatabaseSpace(space, async (db) => {
       const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      return thread?.roleCardId ? diaryRepository.listCurrentDiariesForRole(db, thread.roleCardId) : [];
+      if (!thread?.roleCardId) return { diaries: [], roleCardId: null };
+      return {
+        diaries: await diaryRepository.listCurrentDiariesForRole(db, thread.roleCardId),
+        roleCardId: thread.roleCardId,
+      };
     });
     if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
-      setRoleDiaries(diaries);
+      activeDiaryRoleCardIdRef.current = diaryState.roleCardId;
+      setRoleDiaries(diaryState.diaries);
     }
   }, [space]);
+
+  useEffect(() => subscribeDiaryRuntimeNotices((notice) => {
+    if (notice.space !== space || notice.roleCardId !== activeDiaryRoleCardIdRef.current) return;
+    void reloadRoleDiaries();
+  }), [reloadRoleDiaries, space]);
 
   const reloadRoleDreams = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
@@ -1976,82 +1989,6 @@ export function AiChatScreen({
     }
   }, [activeThreadId, isInitialMessageLoading, reloadRoleDiaries, reloadRoleDreams, thinking]);
 
-  const evaluateDiaryTrigger = useCallback(async () => {
-    const targetThreadId = activeThreadIdRef.current;
-    if (!targetThreadId || thinking) {
-      return;
-    }
-    return runDiaryTaskInBackground({
-      space,
-      taskKey: `${space}:diary-trigger:${targetThreadId}`,
-      task: async () => {
-        const branchScopes = persistedCurrentBranchScopes.length > 0
-          ? persistedCurrentBranchScopes
-          : activeMessageBranchScopesRef.current ?? [];
-        const now = new Date();
-        const outcome = await runWithDatabaseSpace(space, async (db) => {
-          if ((await settingsRepository.getValue(db, 'AI_ROLE_DIARY_ENABLED')) === 'false') {
-            return null;
-          }
-          const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-          if (!thread?.roleCardId) {
-            return null;
-          }
-          const date = beijingDiaryDate(now);
-          const bounds = beijingDiaryDayBounds(date);
-          const dayMessages = await aiThreadRepository.listCompletedMessagesInDateRange(
-            db, targetThreadId, bounds.startIso, bounds.endIso, branchScopes,
-          );
-          const recentMessages = await aiThreadRepository.listRecentCompletedNonSystemMessages(
-            db, targetThreadId, 80, branchScopes,
-          );
-          const latest = recentMessages.at(-1) ?? null;
-          const sessionStartedAt = resolveDiarySessionStartedAt(recentMessages) ?? diarySessionStartedAtRef.current;
-          const diaryDateToCheck = beijingDiaryDate(sessionStartedAt) !== date
-            ? beijingDiaryDate(sessionStartedAt)
-            : date;
-          const hasCompletedAutomaticDiary = await diaryRepository.hasCompletedAutomaticDiary(
-            db,
-            thread.roleCardId,
-            diaryDateToCheck,
-          );
-          const latestAt = latest?.completedAt ?? latest?.createdAt ?? null;
-          const isRecentContinuation = Boolean(latestAt)
-            && now.getTime() - new Date(latestAt as string).getTime() <= 10 * 60 * 1_000;
-          const decision = decideDiaryTrigger({
-            now,
-            hasCurrentDiary: hasCompletedAutomaticDiary,
-            hasDayChat: dayMessages.length > 0 || (isRecentContinuation && beijingDiaryDate(latestAt as string) !== date),
-            isSessionActive: thinking || isRecentContinuation,
-            lastInteractionAt: latestAt,
-            lastRealInteractionAt: latestAt,
-            sessionStartedAt,
-          });
-          return decision.kind === 'show_manual_hint' || decision.kind === 'auto_early_evening' || decision.kind === 'auto_late_evening' || decision.kind === 'auto_idle_monologue'
-            ? { decision, scopes: branchScopes }
-            : null;
-        });
-        if (!outcome || activeThreadIdRef.current !== targetThreadId) {
-          return;
-        }
-        if (outcome.decision.kind === 'show_manual_hint') {
-          setDiaryManualHint(true);
-          return;
-        }
-        const job = await prepareAndScheduleDiaryJob({
-          space,
-          threadId: targetThreadId,
-          diaryDate: outcome.decision.diaryDate,
-          triggerKind: outcome.decision.kind,
-          scheduledFor: now.toISOString(),
-          branchScopes: outcome.scopes,
-        });
-        await runDiaryJobInBackground({ jobId: job.id, space });
-        await reloadRoleDiaries();
-      },
-    });
-  }, [persistedCurrentBranchScopes, reloadRoleDiaries, space, thinking]);
-
   const generateDiaryManually = useCallback(async () => {
     if (diaryGenerationJobRef.current) {
       return diaryGenerationJobRef.current;
@@ -2112,12 +2049,6 @@ export function AiChatScreen({
     await generateDiaryManually();
   }, [generateDiaryManually]);
 
-  const evaluateDiaryTriggerRef = useRef(evaluateDiaryTrigger);
-
-  useEffect(() => {
-    evaluateDiaryTriggerRef.current = evaluateDiaryTrigger;
-  }, [evaluateDiaryTrigger]);
-
   useEffect(() => {
     setRoleDiaries([]);
     setRoleDreams([]);
@@ -2128,65 +2059,6 @@ export function AiChatScreen({
     setDiaryGenerationStatus(null);
     diarySessionStartedAtRef.current = new Date().toISOString();
   }, [activeThreadId]);
-
-  useEffect(() => {
-    if (!activeThreadId || isInitialMessageLoading) {
-      return undefined;
-    }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleNext = () => {
-      if (cancelled) {
-        return;
-      }
-      const delay = Math.max(1_000, Date.parse(nextDiaryWakeupAt()) - Date.now());
-      timer = setTimeout(runCheck, delay);
-    };
-    const runCheck = () => {
-      void evaluateDiaryTriggerRef.current()
-        .catch(() => undefined)
-        .finally(scheduleNext);
-    };
-    runCheck();
-    return () => {
-      cancelled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [activeThreadId, isInitialMessageLoading]);
-
-  useEffect(() => {
-    if (!activeThreadId || isInitialMessageLoading) {
-      return;
-    }
-    const branchScopes = persistedCurrentBranchScopes.length > 0
-      ? persistedCurrentBranchScopes
-      : activeMessageBranchScopesRef.current ?? [];
-    void scheduleDiaryWakeup({
-      space,
-      threadId: activeThreadId,
-      scheduledFor: nextDiaryWakeupAt(),
-      branchScopes,
-    }).catch(() => undefined);
-  }, [activeThreadId, isInitialMessageLoading, persistedCurrentBranchScopes, space]);
-
-  const reconcileDueDiaryJobs = useCallback(async () => {
-    await runDueDiaryJobs(space);
-    await reloadRoleDiaries();
-  }, [reloadRoleDiaries, space]);
-  const reconcileDueDiaryJobsRef = useRef(reconcileDueDiaryJobs);
-
-  useEffect(() => {
-    reconcileDueDiaryJobsRef.current = reconcileDueDiaryJobs;
-  }, [reconcileDueDiaryJobs]);
-
-  useEffect(() => {
-    if (isInitialMessageLoading) {
-      return;
-    }
-    void reconcileDueDiaryJobs().catch(() => undefined);
-  }, [isInitialMessageLoading, reconcileDueDiaryJobs]);
 
   function getSelectedMessageVersionIndex(
     messageId: string,
@@ -4909,7 +4781,7 @@ export function AiChatScreen({
     const subscription = AppState.addEventListener('change', (state) => {
       appActiveRef.current = state === "active";
       if (state === 'active') {
-        void reconcileDueDiaryJobsRef.current().catch(() => undefined);
+        void reloadRoleDiaries().catch(() => undefined);
         scheduleCompanionMaintenance({ delayMs: 0, space: spaceRef.current });
       }
       if (state !== 'active') {
@@ -4945,7 +4817,7 @@ export function AiChatScreen({
         newChatFeedbackTimeoutRef.current = null;
       }
     };
-  }, []);
+  }, [reloadRoleDiaries]);
 
   useEffect(() => {
     // Wait until message loading is settled before playing the entrance

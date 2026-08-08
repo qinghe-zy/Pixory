@@ -23,9 +23,11 @@ test('uses a local diary-creation phrase list, bounded natural phrasing, and a q
 test('keeps the nightly automatic diary independent from a confirmed manual version', () => {
   const repository = readFileSync('src/ai/diary/diaryRepository.ts', 'utf8');
   const scheduler = readFileSync('src/ai/diary/diarySchedulerService.ts', 'utf8');
+  const coordinator = readFileSync('src/ai/diary/diaryRuntimeCoordinator.ts', 'utf8');
   const chat = readFileSync('src/screens/AiChatScreen.tsx', 'utf8');
 
   assert.match(repository, /hasCompletedAutomaticDiary/);
   assert.match(scheduler, /hasCompletedAutomaticDiary/);
-  assert.match(chat, /hasCompletedAutomaticDiary/);
+  assert.match(coordinator, /runDueDiaryJobs/);
+  assert.doesNotMatch(chat, /hasCompletedAutomaticDiary/);
 });

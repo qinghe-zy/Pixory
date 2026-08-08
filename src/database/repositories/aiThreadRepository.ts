@@ -2449,6 +2449,17 @@ export const aiThreadRepository = {
     return rows.map(mapThreadRow);
   },
 
+  async listActiveRoleThreads(db: SQLiteDatabase, space: PixorySpace): Promise<AiThreadRecord[]> {
+    const rows = await db.getAllAsync<AiThreadRow>(
+      `SELECT * FROM ai_threads
+       WHERE space = ? AND archivedAt IS NULL
+         AND roleCardId IS NOT NULL AND TRIM(roleCardId) <> ''
+       ORDER BY updatedAt DESC, createdAt DESC, id ASC`,
+      space,
+    );
+    return rows.map(mapThreadRow);
+  },
+
   async listThreads(db: SQLiteDatabase, query: AiThreadListQuery): Promise<AiThreadRecord[]> {
     const clauses = ['space = ?'];
     const values: (string | number)[] = [query.space];
