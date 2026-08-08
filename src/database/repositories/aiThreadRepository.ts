@@ -4179,7 +4179,7 @@ export const aiThreadRepository = {
   async listSnapshotCandidateMessages(db: SQLiteDatabase, threadId: string, roundLimit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {
     const candidateLimit = Math.max(96, roundLimit * 4);
     const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
-    const rows = await db.getAllAsync<AiMessageRecord>(
+    const rows = await db.getAllAsync<AiMessageRecord & { rowOrder: number }>(
       `SELECT * FROM (
          SELECT *, rowid AS rowOrder
          FROM ai_messages
@@ -4194,10 +4194,13 @@ export const aiThreadRepository = {
       ...visibleBranchClause.values,
       candidateLimit
     );
+    const rowOrderByMessageId = new Map(rows.map((row) => [row.id, row.rowOrder]));
     const materialized = await materializeMessagesForBranchScopes(db, rows, branchScopes);
     return materialized
       .filter((message) => message.status === 'completed' && (message.role === 'user' || message.role === 'assistant'))
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt)
+        || (rowOrderByMessageId.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rowOrderByMessageId.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+        || left.id.localeCompare(right.id));
   },
 
   async listCompletedMessagesInDateRange(

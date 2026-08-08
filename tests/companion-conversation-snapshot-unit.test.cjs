@@ -205,16 +205,43 @@ test('an automatic trigger round remains protected when its complete round excee
 test('equal timestamps preserve user-before-assistant semantic ordering and assistant anchors', () => {
   const createdAt = '2026-08-08T08:00:00.000Z';
   const user = message('u1', 'user', createdAt);
-  const assistants = [message('a2', 'assistant', createdAt), message('a1', 'assistant', createdAt)];
+  const assistants = [message('a1', 'assistant', createdAt), message('a2', 'assistant', createdAt)];
   const snapshot = snapshots.buildDiaryConversationSnapshot({
     diaryDate: '2026-08-08',
     maxSourceCharacters: 100_000,
-    messages: [...assistants, user],
+    messages: [user, ...assistants],
   });
 
   assert.equal(snapshot.roundCount, 1);
   assert.deepEqual(snapshot.sourceMessageIds, ['u1', 'a1', 'a2']);
   assert.equal(snapshot.anchorMessageId, 'a2');
+});
+
+test('equal timestamps preserve two complete rounds in their caller sequence', () => {
+  const createdAt = '2026-08-08T08:00:00.000Z';
+  const messages = [
+    message('u1', 'user', createdAt),
+    message('a1', 'assistant', createdAt),
+    message('u2', 'user', createdAt),
+    message('a2', 'assistant', createdAt),
+  ];
+  const snapshot = snapshots.buildDiaryConversationSnapshot({ diaryDate: '2026-08-08', maxSourceCharacters: 100_000, messages });
+
+  assert.equal(snapshot.roundCount, 2);
+  assert.deepEqual(snapshot.sourceMessageIds, ['u1', 'a1', 'u2', 'a2']);
+  assert.equal(snapshot.anchorMessageId, 'a2');
+});
+
+test('an equal-timestamp assistant greeting remains unpaired before the later user-assistant round', () => {
+  const createdAt = '2026-08-08T08:00:00.000Z';
+  const greeting = message('a-greeting', 'assistant', createdAt);
+  const user = message('u1', 'user', createdAt);
+  const reply = message('a-reply', 'assistant', createdAt);
+  const snapshot = snapshots.buildDiaryConversationSnapshot({ diaryDate: '2026-08-08', maxSourceCharacters: 100_000, messages: [greeting, user, reply] });
+
+  assert.equal(snapshot.roundCount, 1);
+  assert.deepEqual(snapshot.sourceMessageIds, [user.id, reply.id]);
+  assert.equal(snapshot.anchorMessageId, reply.id);
 });
 
 test('late assistant completion does not reorder consecutive conversation rounds or their anchor', () => {
@@ -323,7 +350,7 @@ test('an invalid diary date does not classify messages using raw timestamp prefi
 test('source ordering and hashes are stable, and Beijing timestamps use Asia/Shanghai', () => {
   const first = message('a', 'user', '2026-08-08T08:00:00.000Z', 'first', { updatedAt: '2026-08-08T08:01:00.000Z' });
   const second = message('b', 'assistant', '2026-08-08T08:00:00.000Z', 'second');
-  const snapshot = snapshots.buildDreamConversationSnapshot({ maxSourceCharacters: 100_000, messages: [second, first, second], triggerMessageIds: [first.id] });
+  const snapshot = snapshots.buildDreamConversationSnapshot({ maxSourceCharacters: 100_000, messages: [first, second, second], triggerMessageIds: [first.id] });
   const expectedHashes = snapshot.sourceMessages.map((item) => validation.hashCompanionMessageVersion(item));
   const expectedSnapshotHash = validation.hashCompanionText(snapshot.sourceMessageIds.map((id, index) => `${id}:${expectedHashes[index]}`).join('\u001F'));
 
@@ -375,5 +402,31 @@ test('snapshot candidate loading includes completed selected versions and reorde
   assert.deepEqual(messages.map((item) => item.id), ['visible-completed', 'branch-root']);
   assert.equal(messages[1].status, 'completed');
   assert.equal(messages[1].createdAt, '2026-08-08T03:00:00.000Z');
+  db.close();
+});
+
+test('snapshot candidate loading preserves SQLite row order for equal materialized timestamps', async () => {
+  const db = new AsyncDatabase();
+  createRepositorySchema(db);
+  const createdAt = '2026-08-08T08:00:00.000Z';
+  insertRepositoryMessage(db, { createdAt, id: 'z-first', role: 'assistant', status: 'completed' });
+  insertRepositoryMessage(db, {
+    branchRootMessageId: 'a-second',
+    branchVersionIndex: 1,
+    createdAt,
+    id: 'a-second',
+    role: 'assistant',
+    status: 'generating',
+  });
+  db.db.prepare(`INSERT INTO ai_message_versions (
+    id, originalMessageId, threadId, versionIndex, role, status, content,
+    reasoningText, errorMessage, providerId, modelId, modelSnapshotJson, promptSnapshotJson,
+    citationsJson, messageCreatedAt, messageUpdatedAt, messageCompletedAt, createdAt
+  ) VALUES ('version-same-time', 'a-second', 'thread-1', 1, 'assistant', 'completed', 'selected version', NULL, NULL, NULL, NULL, '{}', '{}', '[]', ?, ?, ?, ?)`).run(createdAt, createdAt, createdAt, createdAt);
+
+  const repository = loadRepository();
+  const messages = await repository.listSnapshotCandidateMessages(db, 'thread-1', 20, [{ branchRootMessageId: 'a-second', branchVersionIndex: 1 }]);
+
+  assert.deepEqual(messages.map((item) => item.id), ['z-first', 'a-second']);
   db.close();
 });

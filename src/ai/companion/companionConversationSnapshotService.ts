@@ -55,10 +55,15 @@ function roundCompletionTimestamp(message: AiMessageRecord): string | null {
   return validTimestamp(message.completedAt) ?? validTimestamp(message.createdAt);
 }
 
-function compareMessages(left: AiMessageRecord, right: AiMessageRecord): number {
+function compareMessages(left: AiMessageRecord, right: AiMessageRecord, sequenceById?: Map<string, number>): number {
   const timestampCompare = (conversationTimestamp(left) ?? '').localeCompare(conversationTimestamp(right) ?? '');
   if (timestampCompare !== 0) {
     return timestampCompare;
+  }
+  const leftSequence = sequenceById?.get(left.id);
+  const rightSequence = sequenceById?.get(right.id);
+  if (leftSequence != null && rightSequence != null && leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
   }
   const roleCompare = (left.role === 'user' ? 0 : left.role === 'assistant' ? 1 : 2) - (right.role === 'user' ? 0 : right.role === 'assistant' ? 1 : 2);
   return roleCompare || left.id.localeCompare(right.id);
@@ -79,22 +84,30 @@ function preferCanonicalMessage(existing: AiMessageRecord, candidate: AiMessageR
 
 function completedConversationMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
   const unique = new Map<string, AiMessageRecord>();
-  for (const message of messages) {
+  const sequenceById = new Map<string, number>();
+  for (const [sequence, message] of messages.entries()) {
     if (message.status === 'completed' && (message.role === 'user' || message.role === 'assistant') && conversationTimestamp(message)) {
+      if (!sequenceById.has(message.id)) {
+        sequenceById.set(message.id, sequence);
+      }
       const existing = unique.get(message.id);
       unique.set(message.id, existing ? preferCanonicalMessage(existing, message) : message);
     }
   }
-  return [...unique.values()].sort(compareMessages);
+  return [...unique.values()].sort((left, right) => compareMessages(left, right, sequenceById));
 }
 
 function stableMessages(messages: AiMessageRecord[]): AiMessageRecord[] {
   const unique = new Map<string, AiMessageRecord>();
-  for (const message of messages) {
+  const sequenceById = new Map<string, number>();
+  for (const [sequence, message] of messages.entries()) {
+    if (!sequenceById.has(message.id)) {
+      sequenceById.set(message.id, sequence);
+    }
     const existing = unique.get(message.id);
     unique.set(message.id, existing ? preferCanonicalMessage(existing, message) : message);
   }
-  return [...unique.values()].sort(compareMessages);
+  return [...unique.values()].sort((left, right) => compareMessages(left, right, sequenceById));
 }
 
 function formattedMessageLength(message: AiMessageRecord): number {
