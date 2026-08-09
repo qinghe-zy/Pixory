@@ -4016,7 +4016,11 @@ export function AiChatScreen({
   );
 
   const reloadRecentThreads = useCallback(async () => {
-    setRecentThreads(await listAiHistoryThreads({ limit: 15, space }));
+    try {
+      setRecentThreads(await listAiHistoryThreads({ limit: 15, space }));
+    } catch {
+      // Keep existing list on error; don't blank the sidebar.
+    }
   }, [space]);
 
   const flushBufferedStreamingState = useCallback(

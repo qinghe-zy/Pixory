@@ -2544,42 +2544,39 @@ export const aiThreadRepository = {
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
     }
-    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null }>(
-      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory
+    const normalizedSearchLower = normalizedSearch.toLocaleLowerCase();
+    // Pure-SQL implementation: use a subquery for the latest non-system message
+    // timestamp per thread. Avoids per-row async loops that previously caused
+    // NativeStatement.finalizeAsync crashes and silently dropped all threads.
+    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }>(
+      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory,
+              ai_last_msg.lastMessageAt AS lastMessageAt
        FROM ai_threads
        LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
-       WHERE ${clauses.join(' AND ')}`,
+       LEFT JOIN (
+         SELECT threadId, MAX(COALESCE(completedAt, updatedAt, createdAt)) AS lastMessageAt
+         FROM ai_messages
+         WHERE role <> 'system'
+         GROUP BY threadId
+       ) ai_last_msg ON ai_last_msg.threadId = ai_threads.id
+       WHERE ${clauses.join(' AND ')}
+       ORDER BY COALESCE(ai_last_msg.lastMessageAt, ai_threads.updatedAt) DESC,
+                ai_threads.createdAt DESC`,
       ...values,
     );
-    const normalizedSearchLower = normalizedSearch.toLocaleLowerCase();
-    const historyItems: AiThreadHistoryItem[] = [];
-    for (const row of rows) {
-      const thread = mapThreadRow(row);
-      // Terminal message may be null if the thread has no completed non-system
-      // messages yet (e.g. brand-new thread, or branch route invalid). Fall back
-      // to the thread's own stored preview so the thread is never hidden.
-      const terminalMessage = await listLatestVisibleHistoryMessage(db, thread);
-      const lastMessagePreview = terminalMessage?.content.trim() || thread.lastMessagePreview;
-      if (
-        normalizedSearchLower
-        && !thread.title.toLocaleLowerCase().includes(normalizedSearchLower)
-        && !lastMessagePreview?.toLocaleLowerCase().includes(normalizedSearchLower)
-      ) {
-        continue;
-      }
-      historyItems.push({
-        ...thread,
+    return rows
+      .map((row) => ({
+        ...mapThreadRow(row),
         knowledgeCategory: row.knowledgeCategory ?? null,
-        lastMessageAt: terminalMessage ? messageHistoryTimestamp(terminalMessage) : null,
-        lastMessagePreview: lastMessagePreview ?? null,
-      });
-    }
-    return historyItems
-      .sort((left, right) =>
-        (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt)
-        || right.createdAt.localeCompare(left.createdAt)
-        || left.id.localeCompare(right.id),
-      )
+        lastMessageAt: row.lastMessageAt ?? null,
+      }))
+      .filter((item) => {
+        if (!normalizedSearchLower) return true;
+        return (
+          item.title.toLocaleLowerCase().includes(normalizedSearchLower)
+          || (item.lastMessagePreview ?? '').toLocaleLowerCase().includes(normalizedSearchLower)
+        );
+      })
       .slice(0, limit);
   },
 
