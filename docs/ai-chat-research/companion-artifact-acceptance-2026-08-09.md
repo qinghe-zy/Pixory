@@ -53,4 +53,6 @@
 - Android 资源处理：首次命令在工具等待窗口到时仍继续运行，随后从 Gradle daemon 日志确认 `BUILD SUCCESSFUL in 4m15s`，没有把超时误报成源码失败。
 - Android debug APK：从深层 `.worktrees/companion-artifact-fixes` 构建时，Ninja 因 safe-area-context codegen 对象路径超过 Windows 260 字符失败；这是路径环境问题。
 - `subst W:` 方案：Expo autolinking 无法从 `W:\android` 向上发现 `W:\package.json`，因此已明确废弃；最终原生构建必须在真正的短物理工作树完成。
-- 设备启动图实机截图：待短路径 APK 构建和可用设备检查完成后填写；若当时无设备，必须明确标为未验证，不能用静态预览冒充系统启动屏实测。
+- 最终 Android 构建：在真实短物理工作树执行 `gradlew clean`（`BUILD SUCCESSFUL in 1m24s`）和 `gradlew assembleDebug`（`BUILD SUCCESSFUL in 6m39s`，675 个任务）；原始 debug APK 为 100,198,667 bytes，SHA-256 `75B7A992456C3C54A3353559C4BE0E18088B3B779BE2924C7AFF6048A9A7D9FA`，并确认 APK 内含五档 `splashscreen_logo.png`。
+- Android 设备验收：没有连接真机；API 35、1080×2400 模拟器可用。已有正式包签名不同，因此未卸载、未清除数据；只在临时工作树给 debug 包添加 `.smoke` 后缀平行安装并冷启动。
+- 系统启动屏实测：冷启动帧四周和中心空白区均为精确 RGB `(74,123,247)` / `#4a7bf7`；前景可见内容边界约为 `449×388`，位于屏幕 `x=323..771, y=1003..1390`，核心聊天气泡以及图片、视频、爱心、轨道和星点装饰完整，没有触碰屏幕边缘或被系统遮罩切断。
