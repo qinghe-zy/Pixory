@@ -3713,12 +3713,18 @@ export function AiChatScreen({
         }
       }
       // Direct message load – avoids the snapshot DB chain that crashed expo-sqlite.
-      const nextMessages = await listThreadMessages(space, targetThreadId, {
-        anchorMessageId: options.anchorMessageId,
-        branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
-        limit: messageLimit,
-        selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
-      });
+      let nextMessages: AiMessageWithCitations[];
+      try {
+        nextMessages = await listThreadMessages(space, targetThreadId, {
+          anchorMessageId: options.anchorMessageId,
+          branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
+          limit: messageLimit,
+          selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
+        });
+      } catch {
+        // DB error: bail out so messages state is not replaced with empty list.
+        return;
+      }
       if (!isLatestRequest("messages", requestId, targetThreadId)) {
         return;
       }
@@ -4520,11 +4526,16 @@ export function AiChatScreen({
       if (cancelled) {
         return;
       }
-      await reloadMessages(targetThreadId, {
-        anchorMessageId: searchTargetMessageId ?? undefined,
-        branchScopes: searchTargetBranchScopes,
-        forceToLatest: !hasSearchTarget,
-      });
+      try {
+        await reloadMessages(targetThreadId, {
+          anchorMessageId: searchTargetMessageId ?? undefined,
+          branchScopes: searchTargetBranchScopes,
+          forceToLatest: !hasSearchTarget,
+        });
+      } catch {
+        // reloadMessages failed; still mark loading done so the sidebar
+        // and UI can recover instead of being stuck in loading state.
+      }
       if (!cancelled) {
         setIsInitialMessageLoading(false);
         if (hasSearchTarget) {
