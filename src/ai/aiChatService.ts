@@ -2614,11 +2614,12 @@ export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId:
       : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
   const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
   const messageIds = messagesWithBranchRoots.map((message) => message.id);
-  const [versionTotalsByMessageId, citationsByMessageId, attachmentsByMessageId] = await Promise.all([
-    aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds),
-    aiThreadRepository.listCitationsForMessages(db, messageIds),
-    aiThreadRepository.listAttachmentsForMessages(db, messageIds),
-  ]);
+  // Sequential queries: expo-sqlite does not support concurrent prepared
+  // statements on the same connection; Promise.all here caused
+  // NativeStatement.finalizeAsync crashes.
+  const versionTotalsByMessageId = await aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds);
+  const citationsByMessageId = await aiThreadRepository.listCitationsForMessages(db, messageIds);
+  const attachmentsByMessageId = await aiThreadRepository.listAttachmentsForMessages(db, messageIds);
   const selectedVersionEntries = messagesWithBranchRoots
     .map((message) => {
       const versionTotal = versionTotalsByMessageId[message.id] ?? 1;

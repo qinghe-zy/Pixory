@@ -352,11 +352,11 @@ async function buildBranchTreeFromDatabase(input: {
   threadId: string;
   currentBranchScopes?: AiBranchScope[];
 }): Promise<AiBranchTreeResult> {
-  const [candidates, metadataRows, currentThread] = await Promise.all([
-    aiThreadRepository.listBranchTreeCandidates(input.db, input.threadId),
-    aiThreadRepository.listBranchRouteMetadata(input.db, input.threadId),
-    aiThreadRepository.findThreadById(input.db, input.threadId),
-  ]);
+  // Sequential queries: expo-sqlite does not support concurrent prepared
+  // statements on the same connection.
+  const candidates = await aiThreadRepository.listBranchTreeCandidates(input.db, input.threadId);
+  const metadataRows = await aiThreadRepository.listBranchRouteMetadata(input.db, input.threadId);
+  const currentThread = await aiThreadRepository.findThreadById(input.db, input.threadId);
   const currentScopes = await normalizeCurrentScopes(input.db, input.currentBranchScopes, currentThread);
   const persistedCurrentScopes = currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
     ? await aiThreadRepository.resolveBranchLineage(input.db, currentThread.currentBranchRootMessageId, currentThread.currentBranchVersionIndex)
