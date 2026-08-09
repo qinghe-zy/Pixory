@@ -66,37 +66,41 @@ export async function loadPersistedAdoptedThreadBranchScopes(
 export async function loadAdoptedThreadRouteSnapshot(
   input: LoadAdoptedThreadRouteSnapshotInput,
 ): Promise<AiAdoptedThreadRouteSnapshot | null> {
-  let snapshot: AiAdoptedThreadRouteSnapshot | null = null;
-  await runWithDatabaseSpace(input.space, async (db) => {
-    await db.withTransactionAsync(async () => {
-      const thread = await aiThreadRepository.findThreadById(db, input.threadId);
-      if (!thread || thread.space !== input.space) {
-        return;
-      }
-      const branchScopes = input.branchScopes ?? await loadPersistedBranchScopes(db, thread);
-      const selectedVersionByMessageId = selectionMapForScopes(branchScopes);
-      const [messages, messageCount] = await Promise.all([
-        listThreadMessagesInDatabase(db, input.threadId, {
-          anchorMessageId: input.anchorMessageId,
-          branchScopes,
-          limit: input.limit,
-          selectedVersionByMessageId,
-        }),
-        aiThreadRepository.countMessagesBase(db, input.threadId, branchScopes),
-      ]);
-      snapshot = {
-        branchScopes,
-        hasEarlierMessages: Boolean(input.anchorMessageId) || messageCount > input.limit,
-        lineageVersion: thread.lineageVersion ?? 0,
-        messages,
-        routeHash: hashBranchRoute(branchScopes),
-        selectedVersionByMessageId,
-        thread,
-        threadId: input.threadId,
-      };
+  return runWithDatabaseSpace(input.space, async (db) => {
+    const thread = await aiThreadRepository.findThreadById(db, input.threadId);
+    if (!thread || thread.space !== input.space) {
+      return null;
+    }
+    // Resolve branch scopes first (sequential to avoid concurrent statement
+    // conflicts on the same expo-sqlite connection).
+    let branchScopes: AiBranchScope[];
+    try {
+      branchScopes = input.branchScopes ?? await loadPersistedBranchScopes(db, thread);
+    } catch {
+      // Persisted route no longer valid – fall back to main trunk.
+      branchScopes = [];
+    }
+    const selectedVersionByMessageId = selectionMapForScopes(branchScopes);
+    // Run message load and count sequentially: expo-sqlite withTransactionAsync
+    // does not support Promise.all over the same connection inside a transaction.
+    const messages = await listThreadMessagesInDatabase(db, input.threadId, {
+      anchorMessageId: input.anchorMessageId,
+      branchScopes,
+      limit: input.limit,
+      selectedVersionByMessageId,
     });
+    const messageCount = await aiThreadRepository.countMessagesBase(db, input.threadId, branchScopes);
+    return {
+      branchScopes,
+      hasEarlierMessages: Boolean(input.anchorMessageId) || messageCount > input.limit,
+      lineageVersion: thread.lineageVersion ?? 0,
+      messages,
+      routeHash: hashBranchRoute(branchScopes),
+      selectedVersionByMessageId,
+      thread,
+      threadId: input.threadId,
+    };
   });
-  return snapshot;
 }
 
 /**

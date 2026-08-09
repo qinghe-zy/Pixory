@@ -2555,11 +2555,11 @@ export const aiThreadRepository = {
     const historyItems: AiThreadHistoryItem[] = [];
     for (const row of rows) {
       const thread = mapThreadRow(row);
+      // Terminal message may be null if the thread has no completed non-system
+      // messages yet (e.g. brand-new thread, or branch route invalid). Fall back
+      // to the thread's own stored preview so the thread is never hidden.
       const terminalMessage = await listLatestVisibleHistoryMessage(db, thread);
-      if (!terminalMessage) {
-        continue;
-      }
-      const lastMessagePreview = terminalMessage.content.trim() || thread.lastMessagePreview;
+      const lastMessagePreview = terminalMessage?.content.trim() || thread.lastMessagePreview;
       if (
         normalizedSearchLower
         && !thread.title.toLocaleLowerCase().includes(normalizedSearchLower)
@@ -2570,8 +2570,8 @@ export const aiThreadRepository = {
       historyItems.push({
         ...thread,
         knowledgeCategory: row.knowledgeCategory ?? null,
-        lastMessageAt: messageHistoryTimestamp(terminalMessage),
-        lastMessagePreview: terminalMessage.content.trim() || thread.lastMessagePreview,
+        lastMessageAt: terminalMessage ? messageHistoryTimestamp(terminalMessage) : null,
+        lastMessagePreview: lastMessagePreview ?? null,
       });
     }
     return historyItems
