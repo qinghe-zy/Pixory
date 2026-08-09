@@ -209,7 +209,7 @@ type AppRoute =
       threadId: string;
       contextTitle?: string;
       contextType?: 'normal' | 'ip' | 'knowledge_base';
-      currentBranchScopes: AiBranchScope[];
+      currentBranchScopes?: AiBranchScope[];
     }
   | {
       name: 'ai-chat-search';
@@ -217,7 +217,7 @@ type AppRoute =
       threadId: string;
       contextTitle?: string;
       contextType?: 'normal' | 'ip' | 'knowledge_base';
-      branchScopes: AiBranchScope[];
+      branchScopes?: AiBranchScope[];
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
   | { name: 'diary-reader'; space: PixorySpace; diaryId: string }
@@ -303,6 +303,7 @@ function buildAiChatRouteFromBranchTree(
 function buildAiChatRouteFromSearch(
   searchRoute: Extract<AppRoute, { name: 'ai-chat-search' }>,
   result: { messageId: string },
+  branchScopes: AiBranchScope[],
   previousRoute?: AppRoute
 ): Extract<AppRoute, { name: 'ai-chat' }> {
   const previousChat = previousRoute?.name === 'ai-chat' ? previousRoute : undefined;
@@ -314,7 +315,7 @@ function buildAiChatRouteFromSearch(
     ipId: previousChat?.ipId,
     knowledgeBaseId: previousChat?.knowledgeBaseId,
     routeKey: previousChat?.routeKey,
-    searchTargetBranchScopes: searchRoute.branchScopes,
+    searchTargetBranchScopes: branchScopes,
     searchTargetKey: `${result.messageId}:${Date.now()}`,
     searchTargetMessageId: result.messageId,
     space: searchRoute.space,
@@ -1981,8 +1982,8 @@ export default function App() {
         branchScopes={currentRoute.branchScopes}
         contextTitle={currentRoute.contextTitle}
         onBack={popRoute}
-        onSelectResult={(result) => {
-          const nextRoute = buildAiChatRouteFromSearch(currentRoute, result, previousRoute);
+        onSelectResult={(result, branchScopes) => {
+          const nextRoute = buildAiChatRouteFromSearch(currentRoute, result, branchScopes, previousRoute);
           setRouteStack((current) => [...current.slice(0, -1), nextRoute]);
         }}
         space={currentRoute.space}
@@ -2005,7 +2006,6 @@ export default function App() {
                   name: 'ai-branch-tree',
                   contextTitle: currentRoute.contextTitle,
                   contextType: currentRoute.contextType,
-                  currentBranchScopes: [],
                   space: currentRoute.space,
                   threadId: currentRoute.threadId as string,
                 })
@@ -2018,7 +2018,7 @@ export default function App() {
         }
         onOpenChatSearch={
           currentRoute.threadId
-            ? () => pushRoute({ name: 'ai-chat-search', branchScopes: [], contextTitle: currentRoute.contextTitle, contextType: currentRoute.contextType, space: currentRoute.space, threadId: currentRoute.threadId as string })
+            ? () => pushRoute({ name: 'ai-chat-search', contextTitle: currentRoute.contextTitle, contextType: currentRoute.contextType, space: currentRoute.space, threadId: currentRoute.threadId as string })
             : undefined
         }
         onOpenMemoryBoard={

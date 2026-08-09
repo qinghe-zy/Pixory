@@ -722,12 +722,57 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
   };
 }
 
-function mapThreadHistoryRow(row: AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }): AiThreadHistoryItem {
-  return {
-    ...mapThreadRow(row),
-    knowledgeCategory: row.knowledgeCategory ?? null,
-    lastMessageAt: row.lastMessageAt ?? null,
-  };
+function messageHistoryTimestamp(message: AiMessageRecord): string {
+  return message.completedAt ?? message.updatedAt ?? message.createdAt;
+}
+
+async function resolveThreadHistoryBranchScopes(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+): Promise<AiBranchScope[] | null> {
+  if (!thread.currentBranchRootMessageId || thread.currentBranchVersionIndex == null) {
+    return [];
+  }
+  const scopes = await aiThreadRepository.resolveBranchLineage(
+    db,
+    thread.currentBranchRootMessageId,
+    thread.currentBranchVersionIndex,
+  );
+  return scopes.length > 0 ? scopes : null;
+}
+
+/** Returns the terminal completed message from the thread’s persisted route. */
+async function listLatestVisibleHistoryMessage(
+  db: SQLiteDatabase,
+  thread: AiThreadRecord,
+): Promise<AiMessageRecord | null> {
+  const branchScopes = await resolveThreadHistoryBranchScopes(db, thread);
+  if (!branchScopes) {
+    return null;
+  }
+  const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+  const baseMessage = await db.getFirstAsync<AiMessageRecord>(
+    `SELECT *
+     FROM ai_messages
+     WHERE threadId = ?
+       ${visibleBranchClause.clause}
+       AND role <> 'system'
+       AND status = 'completed'
+       AND ${excludeRolledBackContinuityPayload('ai_messages')}
+     ORDER BY createdAt DESC, rowid DESC
+     LIMIT 1`,
+    thread.id,
+    ...visibleBranchClause.values,
+  );
+  if (!baseMessage) {
+    return null;
+  }
+  const [message] = await materializeMessagesForBranchScopes(
+    db,
+    [baseMessage],
+    branchScopes,
+  );
+  return message ?? null;
 }
 
 function parseVersionCitations(citationsJson: string): AiCitationRecord[] {
@@ -2499,32 +2544,43 @@ export const aiThreadRepository = {
         clauses.push("ai_knowledge_bases.category = 'customer_project'");
       }
     }
-    clauses.push(`EXISTS (
-      SELECT 1
-      FROM ai_messages history_messages
-      WHERE history_messages.threadId = ai_threads.id
-        AND history_messages.role <> 'system'
-    )`);
-    if (normalizedSearch) {
-      clauses.push('(ai_threads.title LIKE ? OR ai_threads.lastMessagePreview LIKE ?)');
-      values.push(`%${normalizedSearch}%`, `%${normalizedSearch}%`);
-    }
-    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }>(
-      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory, ai_last_messages.lastMessageAt AS lastMessageAt
+    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null }>(
+      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory
        FROM ai_threads
        LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
-       LEFT JOIN (
-         SELECT threadId, MAX(COALESCE(completedAt, updatedAt, createdAt)) AS lastMessageAt
-         FROM ai_messages
-         GROUP BY threadId
-       ) ai_last_messages ON ai_last_messages.threadId = ai_threads.id
-       WHERE ${clauses.join(' AND ')}
-       ORDER BY COALESCE(ai_last_messages.lastMessageAt, ai_threads.updatedAt) DESC, ai_threads.createdAt DESC
-       LIMIT ?`,
+       WHERE ${clauses.join(' AND ')}`,
       ...values,
-      limit
     );
-    return rows.map(mapThreadHistoryRow);
+    const normalizedSearchLower = normalizedSearch.toLocaleLowerCase();
+    const historyItems: AiThreadHistoryItem[] = [];
+    for (const row of rows) {
+      const thread = mapThreadRow(row);
+      const terminalMessage = await listLatestVisibleHistoryMessage(db, thread);
+      if (!terminalMessage) {
+        continue;
+      }
+      const lastMessagePreview = terminalMessage.content.trim() || thread.lastMessagePreview;
+      if (
+        normalizedSearchLower
+        && !thread.title.toLocaleLowerCase().includes(normalizedSearchLower)
+        && !lastMessagePreview?.toLocaleLowerCase().includes(normalizedSearchLower)
+      ) {
+        continue;
+      }
+      historyItems.push({
+        ...thread,
+        knowledgeCategory: row.knowledgeCategory ?? null,
+        lastMessageAt: messageHistoryTimestamp(terminalMessage),
+        lastMessagePreview: terminalMessage.content.trim() || thread.lastMessagePreview,
+      });
+    }
+    return historyItems
+      .sort((left, right) =>
+        (right.lastMessageAt ?? right.updatedAt).localeCompare(left.lastMessageAt ?? left.updatedAt)
+        || right.createdAt.localeCompare(left.createdAt)
+        || left.id.localeCompare(right.id),
+      )
+      .slice(0, limit);
   },
 
   async createMessage(db: SQLiteDatabase, input: CreateAiMessageInput): Promise<AiMessageRecord> {
@@ -3789,10 +3845,10 @@ export const aiThreadRepository = {
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
-           ORDER BY createdAt DESC
+           ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC`,
+          ORDER BY createdAt ASC, rowid ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -3803,10 +3859,24 @@ export const aiThreadRepository = {
        WHERE threadId = ?
          ${visibleBranchClause.clause}
          AND ${excludeRolledBackContinuityPayload('ai_messages')}
-       ORDER BY createdAt ASC`,
+       ORDER BY createdAt ASC, rowid ASC`,
       threadId,
       ...visibleBranchClause.values
     );
+  },
+
+  async countMessagesBase(db: SQLiteDatabase, threadId: string, branchScopes?: AiBranchScope[]): Promise<number> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    const row = await db.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM ai_messages
+       WHERE threadId = ?
+         ${visibleBranchClause.clause}
+         AND ${excludeRolledBackContinuityPayload('ai_messages')}`,
+      threadId,
+      ...visibleBranchClause.values
+    );
+    return row?.count ?? 0;
   },
 
   async listMessagesBaseAroundAnchor(db: SQLiteDatabase, threadId: string, anchorMessageId: string, limit: number, branchScopes?: AiBranchScope[]): Promise<AiMessageRecord[]> {

@@ -93,7 +93,6 @@ import {
   flushStreamingMessageSnapshot,
   getCurrentChatModelPresentation,
   generateReplyAssistSuggestions,
-  listThreadMessages,
   loadThreadContinuityMilestones,
   loadThreadMessageAppearanceConfig,
   loadThreadTitle,
@@ -229,6 +228,10 @@ import {
 import { formatAiMessageMinute } from "../utils/aiTimeFormatters";
 import { AiChatMessageSkeleton } from "../components/ai/AiChatMessageSkeleton";
 import { consumeThreadMessagePrefetch } from "../ai/aiThreadMessagePrefetch";
+import {
+  isAdoptedThreadRouteSnapshotCurrent,
+  loadAdoptedThreadRouteSnapshot,
+} from "../ai/aiThreadRouteSnapshotService";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -3696,24 +3699,23 @@ export function AiChatScreen({
         return;
       }
       const forceToLatest = options.forceToLatest ?? false;
-      const branchScopes = options.branchScopes;
       const messageLimit =
         options.limitOverride ?? loadedMessageLimitRef.current;
-      const nextMessages = await listThreadMessages(space, targetThreadId, {
+      const snapshot = await loadAdoptedThreadRouteSnapshot({
         anchorMessageId: options.anchorMessageId,
-        branchScopes:
-          branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
         limit: messageLimit,
-        selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
+        branchScopes: options.branchScopes,
+        space,
+        threadId: targetThreadId,
       });
-      if (!isLatestRequest("messages", requestId, targetThreadId)) {
+      if (!snapshot || !isLatestRequest("messages", requestId, targetThreadId)) {
         return;
       }
-      activeMessageBranchScopesRef.current =
-        branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
-      setHasEarlierMessages(
-        options.anchorMessageId ? true : nextMessages.length >= messageLimit,
-      );
+      activeMessageBranchScopesRef.current = snapshot.branchScopes;
+      selectedVersionByMessageIdRef.current = snapshot.selectedVersionByMessageId;
+      setSelectedVersionByMessageId(snapshot.selectedVersionByMessageId);
+      setPersistedCurrentBranchScopes(snapshot.branchScopes);
+      setHasEarlierMessages(snapshot.hasEarlierMessages);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
         bottomLockedRef.current = true;
@@ -3723,7 +3725,7 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
       }
       // prettier-ignore
-      const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages));
+      const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? snapshot.messages : preserveReadModeFrozenMessages(snapshot.messages));
       replaceMessages(renderedMessages);
       void reloadContinuityMilestones(targetThreadId);
     },
@@ -4462,7 +4464,11 @@ export function AiChatScreen({
       // consume that cached result before touching the database again.
       if (!hasSearchTarget) {
         const prefetched = await consumeThreadMessagePrefetch(space, targetThreadId);
-        if (prefetched && !cancelled) {
+        if (
+          prefetched
+          && await isAdoptedThreadRouteSnapshotCurrent(prefetched)
+          && !cancelled
+        ) {
           // Apply data while the FlatList is still opacity-0 so the user
           // never sees the layout repositioning.
           userScrolledAwayFromBottomRef.current = false;
@@ -4471,8 +4477,12 @@ export function AiChatScreen({
           previousMessageScrollOffsetRef.current = 0;
           scrollingTowardLatestRef.current = true;
           setScrollToLatestVisible(false);
-          setHasEarlierMessages(prefetched.length >= CHAT_MESSAGE_PAGE_SIZE);
-          replaceMessages(prefetched);
+          activeMessageBranchScopesRef.current = prefetched.branchScopes;
+          selectedVersionByMessageIdRef.current = prefetched.selectedVersionByMessageId;
+          setSelectedVersionByMessageId(prefetched.selectedVersionByMessageId);
+          setPersistedCurrentBranchScopes(prefetched.branchScopes);
+          setHasEarlierMessages(prefetched.hasEarlierMessages);
+          replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
           // Give the FlatList one frame to position itself at offset 0.
           // scheduleIntentionalLatestJump retries the scroll at 80/260/520ms;
@@ -4486,22 +4496,12 @@ export function AiChatScreen({
         }
       }
       // ── Normal path (no prefetch hit) ───────────────────────────────────
-      let currentBranchScopes: AiBranchScope[] = [];
-      try {
-        currentBranchScopes = searchTargetBranchScopes ?? await loadPersistedCurrentBranchScopes(targetThreadId);
-      } catch {
-        currentBranchScopes = [];
-      }
       if (cancelled) {
         return;
       }
-      setPersistedCurrentBranchScopes(currentBranchScopes);
-      if (currentBranchScopes.length > 0) {
-        setSelectedVersionByMessageId(buildBranchSelectionMap(currentBranchScopes));
-      }
       await reloadMessages(targetThreadId, {
         anchorMessageId: searchTargetMessageId ?? undefined,
-        branchScopes: currentBranchScopes,
+        branchScopes: searchTargetBranchScopes,
         forceToLatest: !hasSearchTarget,
       });
       if (!cancelled) {

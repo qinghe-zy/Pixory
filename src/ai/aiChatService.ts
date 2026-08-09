@@ -2608,47 +2608,49 @@ async function loadBranchRootMessages(
   );
 }
 
-export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
-  return runWithDatabaseSpace(space, async (db) => {
-    const messages = options.anchorMessageId && options.limit
+export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
+  const messages = options.anchorMessageId && options.limit
       ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
       : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
-    const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
-    const messageIds = messagesWithBranchRoots.map((message) => message.id);
-    const [versionTotalsByMessageId, citationsByMessageId, attachmentsByMessageId] = await Promise.all([
-      aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds),
-      aiThreadRepository.listCitationsForMessages(db, messageIds),
-      aiThreadRepository.listAttachmentsForMessages(db, messageIds),
-    ]);
-    const selectedVersionEntries = messagesWithBranchRoots
-      .map((message) => {
-        const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
-        const selectedVersionIndex = options.selectedVersionByMessageId?.[message.id];
-        if (!selectedVersionIndex || selectedVersionIndex >= versionTotal) {
-          return null;
-        }
-        return {
-          messageId: message.id,
-          versionIndex: selectedVersionIndex,
-        };
-      })
-      .filter((selection): selection is { messageId: string; versionIndex: number } => Boolean(selection));
-    const selectedVersionsByMessageId = selectedVersionEntries.length > 0
-      ? await aiThreadRepository.listMessageVersionsByIndexForMessages(db, selectedVersionEntries)
-      : {};
-    return messagesWithBranchRoots.map((message) => {
+  const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
+  const messageIds = messagesWithBranchRoots.map((message) => message.id);
+  const [versionTotalsByMessageId, citationsByMessageId, attachmentsByMessageId] = await Promise.all([
+    aiThreadRepository.listMessageVersionTotalsForMessages(db, messageIds),
+    aiThreadRepository.listCitationsForMessages(db, messageIds),
+    aiThreadRepository.listAttachmentsForMessages(db, messageIds),
+  ]);
+  const selectedVersionEntries = messagesWithBranchRoots
+    .map((message) => {
       const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
-      const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
+      const selectedVersionIndex = options.selectedVersionByMessageId?.[message.id];
+      if (!selectedVersionIndex || selectedVersionIndex >= versionTotal) {
+        return null;
+      }
       return {
-        ...message,
-        attachments: attachmentsByMessageId[message.id] ?? [],
-        citations: citationsByMessageId[message.id] ?? [],
-        messageVersions: selectedVersion ? [selectedVersion] : [],
-        versionIndex: selectedVersion?.versionIndex ?? versionTotal,
-        versionTotal,
+        messageId: message.id,
+        versionIndex: selectedVersionIndex,
       };
-    });
+    })
+    .filter((selection): selection is { messageId: string; versionIndex: number } => Boolean(selection));
+  const selectedVersionsByMessageId = selectedVersionEntries.length > 0
+    ? await aiThreadRepository.listMessageVersionsByIndexForMessages(db, selectedVersionEntries)
+    : {};
+  return messagesWithBranchRoots.map((message) => {
+    const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
+    const selectedVersion = selectedVersionsByMessageId[message.id] ?? null;
+    return {
+      ...message,
+      attachments: attachmentsByMessageId[message.id] ?? [],
+      citations: citationsByMessageId[message.id] ?? [],
+      messageVersions: selectedVersion ? [selectedVersion] : [],
+      versionIndex: selectedVersion?.versionIndex ?? versionTotal,
+      versionTotal,
+    };
   });
+}
+
+export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
+  return runWithDatabaseSpace(space, (db) => listThreadMessagesInDatabase(db, threadId, options));
 }
 
 export async function searchThreadMessages(input: {

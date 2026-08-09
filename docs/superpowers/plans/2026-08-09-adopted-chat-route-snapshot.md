@@ -1,10 +1,10 @@
 # Adopted Chat Route Snapshot Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status (2026-08-09): implemented on `main`; this document is retained as the implementation record.**
 
 **Goal:** Make chat, prefetch, history, search and branch entry use one persisted adopted-route identity so the correct thread always renders its correct latest visible messages.
 
-**Architecture:** Add a bounded `AiAdoptedThreadRouteSnapshot` service which resolves persisted lineage, loads a branch-filtered stable page, and checks the route identity once more before returning. The UI consumes that snapshot synchronously for prefetch and normal entry; repository history projection selects the latest visible terminal message under the same route rules.
+**Architecture:** Add a bounded `AiAdoptedThreadRouteSnapshot` service which resolves persisted lineage, loads a branch-filtered stable page and count in one SQLite transaction, and exposes its lineage identity for a prefetch-before-render check. The UI consumes that snapshot synchronously for prefetch and normal entry; repository history projection selects the latest visible terminal message under the same route rules.
 
 **Tech Stack:** TypeScript, Expo SQLite, React Native, Node `node:test`, TypeScript transpile-backed SQLite integration tests.
 
@@ -188,3 +188,11 @@ Expected: PASS.
 - [ ] **Step 2: Run `pnpm typecheck`, `pnpm test`, and `git diff --check`; each must return zero failures.**
 - [ ] **Step 3: Run `android\\gradlew.bat clean` followed by `android\\gradlew.bat assembleDebug` and inspect the produced APK.**
 - [ ] **Step 4: Commit with What, Why, Verification and Limitations paragraphs.**
+
+## Completion record
+
+- Implemented the snapshot service in `src/ai/aiThreadRouteSnapshotService.ts`; its route identity is used by prefetch, chat loading and settings search.
+- Replaced bare prefetch and stale selected-version reads, preserved explicit base scopes, and made same-timestamp message pages stable with `rowid`.
+- Reworked recent-chat projection, branch-tree route selection and adopted-route persistence; settings no longer fabricates a base scope when an adopted route exists.
+- Added `tests/ai-chat-route-loading-policy.test.cjs` and `tests/ai-thread-history-projection-policy.test.cjs`, including a real in-memory SQLite sibling-route regression. Existing route-tree/search policies now describe the new contract rather than the superseded fallback.
+- Final full test/build evidence and commit information are recorded in the task handoff and commit body.

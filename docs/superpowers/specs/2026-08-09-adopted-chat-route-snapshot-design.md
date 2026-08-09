@@ -8,7 +8,7 @@ Make every entry into an AI chat thread render the same persisted adopted route 
 
 Use one `AiAdoptedThreadRouteSnapshot` read model instead of independent branch lookups at each surface. The snapshot contains the thread route identity (`lineageVersion`, `branchScopes`, selection map and route hash), one SQL-filtered message page, and a separately calculated `hasEarlierMessages` value. `[]` remains an explicit base-route scope; only callers that intentionally need unrestricted data may pass `undefined` to low-level repository APIs.
 
-The snapshot loader reads the persisted route, resolves its lineage, reads the route-scoped page, then rereads the route identity. If it changed during the read it retries once; the second result is returned with its route identity. This is bounded, keeps the existing SQLite API, and prevents an old prefetch from becoming a visible mixed-route page.
+The snapshot loader reads the thread, persisted route, lineage, route-scoped page and count inside one SQLite transaction. A short-lived prefetch is additionally checked against `lineageVersion` immediately before it is rendered; a changed route is discarded and the normal loader reads the current route. This is bounded, keeps the existing SQLite API, and prevents an old prefetch from becoming a visible mixed-route page.
 
 ## Alternatives considered
 

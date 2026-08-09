@@ -46,7 +46,7 @@ test('AI chat streaming patches update by indexed message id before falling back
   assert.match(preserveLiveBody, /nextContentLength >= currentContentLength/);
   assert.match(preserveLiveBody, /content: currentMessage\.content/);
   assert.match(preserveLiveBody, /reasoningText: currentMessage\.reasoningText/);
-  assert.match(chat, /preserveLiveStreamingMessages\(forceToLatest \? nextMessages : preserveReadModeFrozenMessages\(nextMessages\)\)/);
+  assert.match(chat, /preserveLiveStreamingMessages\(forceToLatest \? snapshot\.messages : preserveReadModeFrozenMessages\(snapshot\.messages\)\)/);
   const mergeMatches = bufferBody.match(/mergeBufferedStreamingPatch\(patch\)/g) ?? [];
   assert.equal(mergeMatches.length, 1);
   assert.match(bufferBody, /shouldPublishLiveStreamingPatch/);
@@ -158,7 +158,8 @@ test('selecting an older message version refreshes thread messages with the late
 
   assert.match(chat, /const selectedVersionByMessageIdRef = useRef<Record<string, number>>\(\{\}\)/);
   assert.match(chat, /selectedVersionByMessageIdRef\.current = selectedVersionByMessageId/);
-  assert.match(chat, /selectedVersionByMessageId: selectedVersionByMessageIdRef\.current/);
+  assert.match(chat, /selectedVersionByMessageIdRef\.current = snapshot\.selectedVersionByMessageId/);
+  assert.match(chat, /setSelectedVersionByMessageId\(snapshot\.selectedVersionByMessageId\)/);
   assert.match(chat, /function handleSelectMessageVersion\(messageId: string, versionIndex: number\)/);
   assert.match(chat, /selectedVersionByMessageIdRef\.current = nextSelection/);
   assert.match(chat, /void reloadMessages\(targetThreadId, false, nextBranchScopes\)/);

@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Pressable,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { searchThreadMessages, type AiChatSearchResult } from '../ai/aiChatService';
+import { loadPersistedAdoptedThreadBranchScopes } from '../ai/aiThreadRouteSnapshotService';
 import { AiLightSearchBar } from '../components/ai/AiLightField';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { AppScreen } from '../components/AppScreen';
@@ -15,12 +16,12 @@ const SEARCH_PAGE_SIZE = 40;
 const SEARCH_DEBOUNCE_MS = 220;
 
 interface AiChatSearchScreenProps {
-  branchScopes: AiBranchScope[];
+  branchScopes?: AiBranchScope[];
   contextTitle?: string;
   space: PixorySpace;
   threadId: string;
   onBack: () => void;
-  onSelectResult: (result: AiChatSearchResult) => void;
+  onSelectResult: (result: AiChatSearchResult, branchScopes: AiBranchScope[]) => void;
 }
 
 export function AiChatSearchScreen({
@@ -41,6 +42,26 @@ export function AiChatSearchScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const offsetRef = useRef(0);
+  const resolvedBranchScopesRef = useRef<AiBranchScope[] | null>(branchScopes ?? null);
+
+  useEffect(() => {
+    resolvedBranchScopesRef.current = branchScopes ?? null;
+  }, [branchScopes, threadId]);
+
+  const resolveBranchScopes = useCallback(async (): Promise<AiBranchScope[]> => {
+    if (branchScopes) {
+      return branchScopes;
+    }
+    if (resolvedBranchScopesRef.current) {
+      return resolvedBranchScopesRef.current;
+    }
+    const resolved = await loadPersistedAdoptedThreadBranchScopes(space, threadId);
+    if (!resolved) {
+      throw new Error('当前聊天不存在或已被删除');
+    }
+    resolvedBranchScopesRef.current = resolved;
+    return resolved;
+  }, [branchScopes, space, threadId]);
 
   const runSearch = useCallback(
     async (searchQuery: string, offset = 0) => {
@@ -63,8 +84,9 @@ export function AiChatSearchScreen({
       }
       setErrorMessage(null);
       try {
+        const activeBranchScopes = await resolveBranchScopes();
         const response = await searchThreadMessages({
-          branchScopes,
+          branchScopes: activeBranchScopes,
           limit: SEARCH_PAGE_SIZE,
           offset,
           query: trimmedQuery,
@@ -90,7 +112,7 @@ export function AiChatSearchScreen({
         }
       }
     },
-    [branchScopes, space, threadId]
+    [resolveBranchScopes, space, threadId]
   );
 
   useEffect(() => {
@@ -108,7 +130,7 @@ export function AiChatSearchScreen({
   }
 
   function handleSelectResult(result: AiChatSearchResult) {
-    onSelectResult(result);
+    onSelectResult(result, resolvedBranchScopesRef.current ?? branchScopes ?? []);
   }
 
   const hasQuery = query.trim().length > 0;

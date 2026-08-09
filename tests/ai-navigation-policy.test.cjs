@@ -543,8 +543,9 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(history, /上次聊天/);
   assert.match(repository, /lastMessageAt/);
-  assert.match(repository, /MAX\(COALESCE\(completedAt, updatedAt, createdAt\)\) AS lastMessageAt/);
-  assert.match(repository, /EXISTS \([\s\S]*FROM ai_messages history_messages[\s\S]*history_messages\.threadId = ai_threads\.id[\s\S]*history_messages\.role <> 'system'/);
+  assert.match(repository, /async function listLatestVisibleHistoryMessage/);
+  assert.match(repository, /resolveThreadHistoryBranchScopes/);
+  assert.match(repository, /lastMessagePreview: terminalMessage\.content\.trim\(\)/);
   assert.doesNotMatch(history, /rowActions/);
   assert.doesNotMatch(history, /PrimaryButton/);
   assert.match(history, /footer={selectionFooter}/);
@@ -595,7 +596,7 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(history, /搜索标题或最近消息/);
   assert.match(history, /historyGroupLabel/);
   assert.match(history, /过去 7 天/);
-  assert.match(repository, /lastMessagePreview LIKE/);
+  assert.match(repository, /lastMessagePreview\?\.toLocaleLowerCase\(\)\.includes/);
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
   assert.match(drawer, /onLongPress=\{\(\) => openRecentActionPopover\(thread\)\}/);
   assert.match(drawer, /recentActionPopover/);
@@ -715,7 +716,8 @@ test('AI chat keeps the header focused and moves search to session settings', ()
   assert.doesNotMatch(chat, /accessibilityLabel="搜索当前聊天"/);
   assert.doesNotMatch(chat, /accessibilityLabel="开启新会话"/);
   assert.match(sessionConfig, /title="查找聊天记录"/);
-  assert.match(app, /onOpenChatSearch=\{[\s\S]*branchScopes:\s*\[\]/);
+  assert.match(app, /onOpenChatSearch=\{[\s\S]*name: 'ai-chat-search'/);
+  assert.doesNotMatch(app, /name: 'ai-chat-search', branchScopes: \[\]/);
   assert.match(chat, /swipeDrawerPanResponder/);
   assert.match(chat, /DRAWER_SWIPE_ACTIVATION_DISTANCE = 6/);
   assert.match(chat, /DRAWER_SWIPE_RELEASE_DISTANCE = 10/);

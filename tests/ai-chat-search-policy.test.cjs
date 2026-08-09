@@ -16,7 +16,8 @@ test('AI chat search is a full-page session-settings local fuzzy search flow', (
   assert.match(app, /name: 'ai-chat-search'/);
   assert.match(app, /<AiChatSearchScreen/);
   assert.match(app, /onOpenChatSearch/);
-  assert.match(app, /onOpenChatSearch=\{[\s\S]*branchScopes:\s*\[\]/);
+  assert.match(app, /onOpenChatSearch=\{[\s\S]*name: 'ai-chat-search'/);
+  assert.doesNotMatch(app, /name: 'ai-chat-search', branchScopes: \[\]/);
   assert.doesNotMatch(chat, /accessibilityLabel="搜索当前聊天"/);
   assert.doesNotMatch(chat, /handleOpenChatSearch/);
   assert.match(sessionConfig, /title="查找聊天记录"/);
@@ -74,17 +75,18 @@ test('AI chat search result selection returns to chat and scrolls to target', ()
   assert.match(app, /searchTargetMessageId\?: string/);
   assert.match(app, /searchTargetKey\?: string/);
   assert.match(app, /searchTargetBranchScopes\?: AiBranchScope\[\]/);
-  assert.match(app, /searchTargetBranchScopes: searchRoute\.branchScopes/);
-  assert.match(app, /onSelectResult=\{\(result\) =>/);
+  assert.match(app, /searchTargetBranchScopes: branchScopes/);
+  assert.match(app, /onSelectResult=\{\(result, branchScopes\) =>/);
   assert.match(app, /searchTargetMessageId: result\.messageId/);
   assert.match(chat, /searchTargetMessageId\?: string/);
   assert.match(chat, /searchTargetBranchScopes\?: AiBranchScope\[\]/);
-  assert.match(chat, /currentBranchScopes = searchTargetBranchScopes \?\? await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
+  assert.match(chat, /branchScopes: searchTargetBranchScopes/);
   assert.match(chat, /pendingSearchScrollMessageIdRef/);
   assert.match(chat, /searchHighlightMessageId/);
   assert.match(chat, /scheduleSearchTargetScroll/);
   assert.match(chat, /retrySearchScrollToIndex/);
-  assert.match(search, /onSelectResult\(result\)/);
+  assert.match(search, /loadPersistedAdoptedThreadBranchScopes/);
+  assert.match(search, /onSelectResult\(result, resolvedBranchScopesRef\.current \?\? branchScopes \?\? \[\]\)/);
 });
 
 test('AI chat search target scroll is not overwritten by latest-message jumps', () => {
@@ -100,7 +102,7 @@ test('AI chat search target scroll is not overwritten by latest-message jumps', 
 
   assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
   assert.match(chat, /const SEARCH_SCROLL_RETRY_DELAYS_MS = \[80, 260, 520, 900, 1400, 2200, 3400\]/);
-  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: searchTargetBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.match(searchTargetGuard, /return/);
   assert.doesNotMatch(searchTargetGuard, /scheduleIntentionalLatestJump/);
   assert.match(routeReloadEffect, /searchTargetMessageId/);

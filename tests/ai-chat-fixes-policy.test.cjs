@@ -349,7 +349,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /function scheduleIntentionalLatestJump\(animated = false\)[\s\S]{0,700}followLatestMessage\(animated\);[\s\S]{0,700}queueFollowLatestMessageAfterLayout\(animated\);[\s\S]{0,700}ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS\.forEach\(\(delay\) => \{/);
   assert.match(chat, /setTimeout\(\(\) => \{[\s\S]{0,160}followLatestMessage\(animated\);[\s\S]{0,80}\}, delay\)/);
   assert.match(chat, /applyOrBufferStreamingMessagePatch\(targetThreadId, generation, patch\)/);
-  assert.match(chat, /preserveReadModeFrozenMessages\(nextMessages\)/);
+  assert.match(chat, /preserveReadModeFrozenMessages\(snapshot\.messages\)/);
   assert.match(chat, /resetStreamingReadBufferState\(\)/);
   assert.match(chat, /function markIntentionalLatestJump\(\)[\s\S]{0,420}bottomLockedRef\.current = true[\s\S]{0,420}setScrollToLatestVisible\(false\)/);
   assert.match(chat, /previousMessageScrollOffsetRef/);
@@ -410,9 +410,10 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
 
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
-  assert.match(routeReloadEffect, /currentBranchScopes = searchTargetBranchScopes \?\? await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
+  assert.match(routeReloadEffect, /branchScopes: searchTargetBranchScopes/);
+  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
   assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
-  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
+  assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: searchTargetBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
   assert.match(chat, /reloadModelLabel\(threadId \?\? null/);
   assert.match(chat, /reloadParticipantAppearance\(threadId \?\? null/);

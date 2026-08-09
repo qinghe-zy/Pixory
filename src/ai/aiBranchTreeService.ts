@@ -1,4 +1,4 @@
-import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
+import { aiThreadRepository, runWithDatabaseSpace, type AiThreadRecord, type PixorySpace } from '../database';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type {
   AiBranchRouteMetadataRecord,
@@ -72,8 +72,6 @@ export interface AiResolvedBranchSelection {
   lineage: AiBranchScope[];
   selectionMap: Record<string, number>;
 }
-
-const LONG_BRANCH_PROMOTION_THRESHOLD = 5;
 
 function compactText(value: string, max = 42): string {
   const text = value.replace(/\s+/g, ' ').trim();
@@ -151,25 +149,12 @@ function isSameScope(scope: AiBranchScope, node: Pick<AiBranchTreeNode, 'branchR
 
 function chooseMainRouteScopes(
   currentScopes: AiBranchScope[],
-  nodes: AiBranchTreeNode[],
   persistedCurrentScopes: AiBranchScope[] = []
 ): AiBranchScope[] {
   if (persistedCurrentScopes.length > 0) {
     return uniqueScopes(persistedCurrentScopes);
   }
-  const longBranch = [...nodes]
-    .filter((node) => node.followUpMessageCount >= LONG_BRANCH_PROMOTION_THRESHOLD)
-    .sort((left, right) => right.followUpMessageCount - left.followUpMessageCount || right.updatedAt.localeCompare(left.updatedAt))[0];
-  if (!longBranch) {
-    return currentScopes;
-  }
-  return uniqueScopes([
-    ...currentScopes,
-    {
-      branchRootMessageId: longBranch.branchRootMessageId,
-      branchVersionIndex: longBranch.branchVersionIndex,
-    },
-  ]);
+  return uniqueScopes(currentScopes);
 }
 
 function branchSiblingKey(node: AiBranchTreeNode): string {
@@ -277,34 +262,28 @@ export function buildBranchSelectionMap(scopes: AiBranchScope[]): Record<string,
   }, {});
 }
 
-function resolveDefaultCurrentScopes(candidates: AiBranchTreeCandidateRecord[]): AiBranchScope[] {
-  const latestByRoot = new Map<string, AiBranchTreeCandidateRecord>();
-  candidates.forEach((candidate) => {
-    const current = latestByRoot.get(candidate.branchRootMessageId);
-    if (!current || candidate.branchVersionIndex > current.branchVersionIndex) {
-      latestByRoot.set(candidate.branchRootMessageId, candidate);
-    }
-  });
-  return [...latestByRoot.values()].map((candidate) => ({
-    branchRootMessageId: candidate.branchRootMessageId,
-    branchVersionIndex: candidate.branchVersionIndex,
-  }));
-}
-
 async function normalizeCurrentScopes(
   db: SQLiteDatabase,
   currentBranchScopes: AiBranchScope[] | undefined,
-  candidates: AiBranchTreeCandidateRecord[]
+  currentThread: AiThreadRecord | null,
 ): Promise<AiBranchScope[]> {
-  if (currentBranchScopes && currentBranchScopes.length > 0) {
+  const requestedScopes = currentBranchScopes ?? (
+    currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
+      ? [{
+          branchRootMessageId: currentThread.currentBranchRootMessageId,
+          branchVersionIndex: currentThread.currentBranchVersionIndex,
+        }]
+      : []
+  );
+  if (requestedScopes.length > 0) {
     const expanded: AiBranchScope[] = [];
-    for (const scope of currentBranchScopes) {
+    for (const scope of requestedScopes) {
       const lineage = await aiThreadRepository.resolveBranchLineage(db, scope.branchRootMessageId, scope.branchVersionIndex);
       expanded.push(...(lineage.length > 0 ? lineage : [scope]));
     }
     return uniqueScopes(expanded);
   }
-  return resolveDefaultCurrentScopes(candidates);
+  return [];
 }
 
 export async function resolveBranchSelection(input: {
@@ -351,16 +330,18 @@ export async function adoptBranchSelection(input: {
       lineage: scopes,
       selectionMap: buildBranchSelectionMap(scopes),
     };
-    await aiThreadRepository.setThreadCurrentBranch(db, {
-      branchRootMessageId: selection.branchRootMessageId,
-      branchVersionIndex: selection.branchVersionIndex,
-      threadId: input.threadId,
-    });
-    await aiThreadRepository.upsertBranchRouteMetadata(db, {
-      branchRootMessageId: selection.branchRootMessageId,
-      branchVersionIndex: selection.branchVersionIndex,
-      status: 'adopted',
-      threadId: input.threadId,
+    await db.withTransactionAsync(async () => {
+      await aiThreadRepository.setThreadCurrentBranch(db, {
+        branchRootMessageId: selection.branchRootMessageId,
+        branchVersionIndex: selection.branchVersionIndex,
+        threadId: input.threadId,
+      });
+      await aiThreadRepository.upsertBranchRouteMetadata(db, {
+        branchRootMessageId: selection.branchRootMessageId,
+        branchVersionIndex: selection.branchVersionIndex,
+        status: 'adopted',
+        threadId: input.threadId,
+      });
     });
     return selection;
   });
@@ -371,12 +352,12 @@ async function buildBranchTreeFromDatabase(input: {
   threadId: string;
   currentBranchScopes?: AiBranchScope[];
 }): Promise<AiBranchTreeResult> {
-  const [candidates, metadataRows] = await Promise.all([
+  const [candidates, metadataRows, currentThread] = await Promise.all([
     aiThreadRepository.listBranchTreeCandidates(input.db, input.threadId),
     aiThreadRepository.listBranchRouteMetadata(input.db, input.threadId),
+    aiThreadRepository.findThreadById(input.db, input.threadId),
   ]);
-  const currentThread = await aiThreadRepository.findThreadById(input.db, input.threadId);
-  const currentScopes = await normalizeCurrentScopes(input.db, input.currentBranchScopes, candidates);
+  const currentScopes = await normalizeCurrentScopes(input.db, input.currentBranchScopes, currentThread);
   const persistedCurrentScopes = currentThread?.currentBranchRootMessageId && currentThread.currentBranchVersionIndex != null
     ? await aiThreadRepository.resolveBranchLineage(input.db, currentThread.currentBranchRootMessageId, currentThread.currentBranchVersionIndex)
     : [];
@@ -391,7 +372,7 @@ async function buildBranchTreeFromDatabase(input: {
     )
   );
   const visibleNodes = allNodes;
-  const mainRouteScopes = chooseMainRouteScopes(currentScopes, visibleNodes, persistedCurrentScopes);
+  const mainRouteScopes = chooseMainRouteScopes(currentScopes, persistedCurrentScopes);
   const promotedNodes = visibleNodes.map((node) => ({
     ...node,
     isCurrentRoute: mainRouteScopes.some((scope) => isSameScope(scope, node)),

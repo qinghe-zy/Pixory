@@ -121,7 +121,7 @@ test('AI branch route metadata and current route survive thread export import', 
   assert.match(importThreadBlock, /route\.branchVersionIndex/);
 });
 
-test('AI branch tree service returns promoted main route and folded sibling groups', () => {
+test('AI branch tree highlights the persisted route and folds sibling groups', () => {
   const service = read('src/ai/aiBranchTreeService.ts');
 
   assert.match(service, /export interface AiBranchTreeGroup/);
@@ -129,12 +129,13 @@ test('AI branch tree service returns promoted main route and folded sibling grou
   assert.match(service, /collapsedGroups: AiBranchTreeGroup\[\]/);
   assert.match(service, /rows: AiBranchTreeRow\[\]/);
   assert.match(service, /function chooseMainRouteScopes/);
-  assert.match(service, /LONG_BRANCH_PROMOTION_THRESHOLD/);
+  assert.doesNotMatch(service, /LONG_BRANCH_PROMOTION_THRESHOLD/);
   assert.match(service, /function buildBranchTreeRows/);
   assert.match(service, /function buildCollapsedGroups/);
   assert.match(service, /function branchSiblingKey/);
   assert.match(service, /persistedCurrentScopes/);
-  assert.match(service, /resolveBranchLineage\(input\.db, currentThread\.currentBranchRootMessageId, currentThread\.currentBranchVersionIndex\)/);
+  assert.match(service, /currentThread\?\.currentBranchRootMessageId/);
+  assert.match(service, /return uniqueScopes\(currentScopes\)/);
   assert.match(service, /siblingNodes\.slice\(0,\s*2\)/);
   assert.match(service, /sortedNodes\.slice\(2\)/);
   assert.match(service, /renderedSiblingKeys/);
@@ -159,14 +160,14 @@ test('AI branch tree screen delegates folded route density to the canvas layout'
   assert.doesNotMatch(screen, /Modal/);
 });
 
-test('AI branch tree opens with persisted route and adopts selected route before returning', () => {
+test('AI branch tree resolves the persisted route and adopts selected route before returning', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const app = read('App.tsx');
 
   assert.match(chat, /thread\?\.currentBranchRootMessageId/);
   assert.match(chat, /setSelectedVersionByMessageId\(buildBranchSelectionMap/);
-  assert.match(chat, /getPersistedCurrentBranchScopes/);
-  assert.match(app, /currentBranchScopes: \[\]/);
+  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
+  assert.doesNotMatch(app, /currentBranchScopes: \[\]/);
   assert.match(app, /adoptBranchSelection/);
   assert.match(app, /await adoptBranchSelection/);
   assert.match(app, /onCheckoutBranch=\{async \(selection\) => \{/);
@@ -368,7 +369,7 @@ test('AI session settings opens branch tree from the current-session module and 
   assert.match(sessionConfig, /icon="git-branch-outline"/);
   assert.match(sessionConfig, /disabled=\{!threadId \|\| !onOpenBranchTree\}/);
   assert.match(app, /onOpenBranchTree=\{[\s\S]{0,220}name: 'ai-branch-tree'/);
-  assert.match(app, /currentBranchScopes: \[\]/);
+  assert.doesNotMatch(app, /currentBranchScopes: \[\]/);
   assert.match(chat, /setSelectedVersionByMessageId\(branchTreeSelection\.selectionMap\)/);
   assert.match(chat, /pendingBranchTreeScrollMessageIdRef/);
 });
@@ -406,24 +407,25 @@ test('AI branch tree returns lineage scopes so nested branches switch predictabl
   assert.match(service, /aiThreadRepository\.resolveBranchLineage/);
   assert.match(service, /buildBranchSelectionMap\(scopes\)/);
   assert.match(service, /normalizeCurrentScopes/);
-  assert.match(service, /resolveDefaultCurrentScopes/);
+  assert.doesNotMatch(service, /resolveDefaultCurrentScopes/);
+  assert.match(service, /currentThread: AiThreadRecord \| null/);
   assert.match(screen, /resolveBranchSelection/);
   assert.match(screen, /selectionMap/);
   assert.match(chat, /selectionMap: Record<string, number>/);
   assert.match(chat, /setSelectedVersionByMessageId\(branchTreeSelection\.selectionMap\)/);
 });
 
-test('AI chat restores persisted branch scopes before loading and positioning messages', () => {
+test('AI chat restores one persisted route snapshot before loading and positioning messages', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const service = read('src/ai/aiChatService.ts');
 
   assert.match(service, /export interface ListThreadMessagesOptions \{[\s\S]*anchorMessageId\?: string;[\s\S]*branchScopes\?: AiBranchScope\[\]/);
   assert.match(service, /aiThreadRepository\.listMessagesBaseAroundAnchor\(db, threadId, options\.anchorMessageId, options\.limit, options\.branchScopes\)/);
   assert.match(service, /aiThreadRepository\.listMessagesBase\(db, threadId, options\.limit, options\.branchScopes\)/);
-  assert.match(chat, /async function loadPersistedCurrentBranchScopes\(targetThreadId: string\): Promise<AiBranchScope\[\]>/);
-  assert.match(chat, /await loadPersistedCurrentBranchScopes\(targetThreadId\)/);
+  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
+  assert.match(chat, /selectedVersionByMessageIdRef\.current = snapshot\.selectedVersionByMessageId/);
   assert.match(chat, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
-  assert.match(chat, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: currentBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
+  assert.match(chat, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: searchTargetBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.match(chat, /anchorMessageId: branchTreeSelection\.branchRootMessageId/);
   assert.doesNotMatch(chat, /void reloadMessages\(threadId \?\? null, true\)/);
 });

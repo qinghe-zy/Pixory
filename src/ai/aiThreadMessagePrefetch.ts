@@ -13,15 +13,17 @@
  */
 
 import type { PixorySpace } from '../database';
-import type { AiMessageWithCitations } from './aiChatService';
-import { listThreadMessages } from './aiChatService';
 import { CHAT_PREFETCH_PAGE_SIZE } from './aiConstants';
+import {
+  loadAdoptedThreadRouteSnapshot,
+  type AiAdoptedThreadRouteSnapshot,
+} from './aiThreadRouteSnapshotService';
 
 interface PrefetchEntry {
   space: PixorySpace;
   threadId: string;
-  /** Resolves to the message list, or rejects on error. */
-  promise: Promise<AiMessageWithCitations[]>;
+  /** Resolves to one atomically-read adopted route, or rejects on error. */
+  promise: Promise<AiAdoptedThreadRouteSnapshot | null>;
 }
 
 let activeEntry: PrefetchEntry | null = null;
@@ -38,8 +40,10 @@ export function prefetchThreadMessages(
   if (activeEntry?.space === space && activeEntry.threadId === threadId) {
     return;
   }
-  const promise = listThreadMessages(space, threadId, {
+  const promise = loadAdoptedThreadRouteSnapshot({
     limit: CHAT_PREFETCH_PAGE_SIZE,
+    space,
+    threadId,
   });
   activeEntry = { space, threadId, promise };
 }
@@ -52,7 +56,7 @@ export function prefetchThreadMessages(
 export async function consumeThreadMessagePrefetch(
   space: PixorySpace,
   threadId: string,
-): Promise<AiMessageWithCitations[] | null> {
+): Promise<AiAdoptedThreadRouteSnapshot | null> {
   const entry = activeEntry;
   if (!entry || entry.space !== space || entry.threadId !== threadId) {
     return null;
