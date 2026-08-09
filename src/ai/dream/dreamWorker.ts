@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { aiRoleCardRepository, aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../../database';
+import { aiThreadRepository, runWithDatabaseSpace, type PixorySpace } from '../../database';
 import { callMemoryMaintenanceModel } from '../aiMemoryMaintenanceModelService';
 import { normalizeProviderUsage } from '../aiProviderUsage';
 import { hashCompanionMessageVersion, hashCompanionText } from '../companion/companionRuntimeValidation';
@@ -136,9 +136,10 @@ export async function runDreamJob(input: { space: PixorySpace; jobId: string; no
       if (reserved) emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'generating' }); return 'completed';
     }
     emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'generating' });
-    const role = await runWithDatabaseSpace(input.space, (db) => aiRoleCardRepository.findById(db, job.roleCardId));
     const prompt = buildDreamGenerationPrompt({
-      roleVoice: role?.prompt ?? source.thread.roleSnapshotJson,
+      // The thread snapshot is part of the source session that created the
+      // durable job. A later role-card edit must not mutate retry output.
+      roleVoice: source.thread.roleSnapshotJson,
       snapshot: conversationSnapshot,
     });
     const model = await callMemoryMaintenanceModel({ maxOutputTokens: 320, responseFormat: 'json_object', responseJsonSchema: DREAM_GENERATION_JSON_SCHEMA, signal: controller.signal, space: input.space, thinkingDisabled: true, systemPrompt: prompt.systemPrompt, thread: source.thread, userPrompt: prompt.userPrompt });

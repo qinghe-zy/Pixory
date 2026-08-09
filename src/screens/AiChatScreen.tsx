@@ -1984,13 +1984,27 @@ export function AiChatScreen({
   }, [activeThreadId, persistedCurrentBranchScopes, reloadRoleDreams, space]);
 
   const handleDreamJobRetry = useCallback(async (job: DreamJobRecord) => {
-    const failure = presentDreamFailure(job.lastErrorCode);
-    if (failure.retryMode === 'regenerate_current') {
-      await regenerateDreamFromCurrentConversation({ failedJobId: job.id, space });
-    } else {
-      await retryDreamGeneration(space, job.id);
+    try {
+      setErrorMessage(null);
+      const failure = presentDreamFailure(job.lastErrorCode);
+      if (failure.retryMode === 'regenerate_current') {
+        const replacementJobId = await regenerateDreamFromCurrentConversation({ failedJobId: job.id, space });
+        if (!replacementJobId) {
+          setErrorMessage('原梦境任务状态已变化，请刷新后再试。');
+        }
+      } else {
+        const retryResult = await retryDreamGeneration(space, job.id);
+        if (retryResult.status === 'frequency_blocked') {
+          setErrorMessage('已达到今日次数或仍在梦境间隔内，请稍后再试。');
+        } else if (retryResult.status === 'not_retryable') {
+          setErrorMessage('梦境任务状态已变化，请刷新后再试。');
+        }
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? `梦境重试失败：${error.message}` : '梦境重试失败，请稍后再试。');
+    } finally {
+      await reloadRoleDreams().catch(() => undefined);
     }
-    await reloadRoleDreams();
   }, [reloadRoleDreams, space]);
 
   useEffect(() => {

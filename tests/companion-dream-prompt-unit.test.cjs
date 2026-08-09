@@ -42,3 +42,10 @@ test('dream prompts separate Beijing-stamped current evidence from historical re
     assert.match(prompt.systemPrompt,/当前触发证据/);
   }
 });
+
+test('dream generation keeps the role voice frozen to the thread snapshot', () => {
+  const worker = fs.readFileSync('src/ai/dream/dreamWorker.ts', 'utf8');
+
+  assert.match(worker, /roleVoice:\s*source\.thread\.roleSnapshotJson/);
+  assert.doesNotMatch(worker, /role\?\.prompt\s*\?\?\s*source\.thread\.roleSnapshotJson/);
+});

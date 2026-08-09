@@ -231,6 +231,9 @@ test('chat reloads every terminal dream transition and chooses current-source re
   assert.match(chat, /presentDreamFailure/);
   assert.match(chat, /await retryDreamGeneration/);
   assert.match(chat, /await regenerateDreamFromCurrentConversation/);
+  assert.match(chat, /retryResult\.status === 'frequency_blocked'/);
+  assert.match(chat, /replacementJobId/);
+  assert.match(chat, /梦境重试失败/);
   assert.match(runtimeEvents, /status IN \('pending', 'running', 'retry'\)/);
   assert.match(runtimeEvents, /status IN \('failed', 'waiting_model'\)/);
 });

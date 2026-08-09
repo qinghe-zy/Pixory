@@ -315,7 +315,14 @@ async function executeDiaryJob(space: PixorySpace, jobId: string, signal: AbortS
       }
       const today = beijingDiaryDate(now);
       const todayBounds = beijingDiaryDayBounds(today);
-      const branchScopes = parseBranchScopes(job.sourceBranchRouteJson);
+      // A wake-up can sit in SQLite/AlarmManager for hours. Resolve the route
+      // again when it fires so the real generation job freezes the branch the
+      // user currently adopted, rather than the branch active at scheduling.
+      const branchScopes = await aiThreadRepository.resolveBranchLineage(
+        db,
+        thread.currentBranchRootMessageId,
+        thread.currentBranchVersionIndex,
+      );
       const [dayMessages, recentMessages] = await Promise.all([
         aiThreadRepository.listCompletedMessagesInDateRange(db, thread.id, todayBounds.startIso, todayBounds.endIso, branchScopes),
         aiThreadRepository.listRecentCompletedNonSystemMessages(db, thread.id, 80, branchScopes),

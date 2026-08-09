@@ -35,6 +35,17 @@ test('manual and automatic triggers freeze their source through the same prepara
   assert.doesNotMatch(chat, /generateRoleDiary\(/);
 });
 
+test('a due wake resolves the currently adopted branch before freezing automatic source', () => {
+  const scheduler = readFileSync('src/ai/diary/diarySchedulerService.ts', 'utf8');
+  const wakePath = scheduler.slice(
+    scheduler.indexOf("if (job.triggerKind === 'wake')"),
+    scheduler.indexOf("const version = await generateRoleDiary"),
+  );
+
+  assert.match(wakePath, /resolveBranchLineage\([\s\S]*?thread\.currentBranchRootMessageId,[\s\S]*?thread\.currentBranchVersionIndex/);
+  assert.doesNotMatch(wakePath, /const branchScopes = parseBranchScopes\(job\.sourceBranchRouteJson\)/);
+});
+
 test('generation reapplies the actual model budget only to the frozen source snapshot', () => {
   const generation = readFileSync('src/ai/diary/diaryGenerationService.ts', 'utf8');
 

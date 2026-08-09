@@ -191,9 +191,47 @@ export async function reserveDreamQuota(db: SQLiteDatabase, job: DreamJobRecord,
   if ((await findDreamJob(db, job.id))?.quotaReserved) return true;
   if ((await findDreamSeed(db, job.seedId))?.manual) return true;
   const dateKey = beijingDiaryDate(new Date(now));
-  const result = await db.runAsync(`UPDATE companion_role_round_counters SET dailyDreamReservedCount = dailyDreamReservedCount + 1, updatedAt = ? WHERE space = ? AND roleCardId = ? AND beijingDateKey = ? AND dailyDreamSuccessCount + dailyDreamReservedCount < 2 AND (lastDreamSuccessRound IS NULL OR totalRounds - lastDreamSuccessRound >= 50)`, now, job.space, job.roleCardId, dateKey);
-  if (Number(result.changes ?? 0) === 0) return false;
-  await db.runAsync('UPDATE companion_dream_jobs SET quotaReserved = 1, updatedAt = ? WHERE id = ?', now, job.id); return true;
+  let reserved = false;
+  await db.withTransactionAsync(async () => {
+    const claim = await db.runAsync(
+      `UPDATE companion_dream_jobs
+       SET quotaReserved = 1, updatedAt = ?
+       WHERE id = ? AND quotaReserved = 0 AND cancelRequested = 0
+         AND status IN ('pending', 'running', 'retry', 'waiting_model', 'failed')`,
+      now,
+      job.id,
+    );
+    if (Number(claim.changes ?? 0) === 0) {
+      reserved = Boolean((await findDreamJob(db, job.id))?.quotaReserved);
+      return;
+    }
+    const counter = await db.runAsync(
+      `UPDATE companion_role_round_counters
+       SET beijingDateKey = ?,
+           dailyDreamSuccessCount = CASE WHEN beijingDateKey = ? THEN dailyDreamSuccessCount ELSE 0 END,
+           dailyDreamReservedCount = CASE WHEN beijingDateKey = ? THEN dailyDreamReservedCount + 1 ELSE 1 END,
+           updatedAt = ?
+       WHERE space = ? AND roleCardId = ?
+         AND (beijingDateKey <> ? OR dailyDreamSuccessCount + dailyDreamReservedCount < 2)
+         AND (lastDreamSuccessRound IS NULL OR totalRounds - lastDreamSuccessRound >= 50)`,
+      dateKey,
+      dateKey,
+      dateKey,
+      now,
+      job.space,
+      job.roleCardId,
+      dateKey,
+    );
+    reserved = Number(counter.changes ?? 0) > 0;
+    if (!reserved) {
+      await db.runAsync(
+        'UPDATE companion_dream_jobs SET quotaReserved = 0, updatedAt = ? WHERE id = ? AND quotaReserved = 1',
+        now,
+        job.id,
+      );
+    }
+  });
+  return reserved;
 }
 
 export async function transitionDreamJob(db: SQLiteDatabase, input: { id: string; workerId?: string; phase?: DreamJobRecord['phase']; status: DreamJobStatus; now: string; errorCode?: string | null; nextRunAt?: string; releaseLease?: boolean; resetAttemptCount?: boolean }): Promise<void> {
