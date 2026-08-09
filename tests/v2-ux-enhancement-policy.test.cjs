@@ -75,6 +75,8 @@ test('expo config persists Android intent entry patches through a local config p
   assert.match(manifestTemplate, /android:windowSoftInputMode="adjustNothing"/);
   assert.match(manifestTemplate, /android:pathSuffix="\.pixorypack"/);
   assert.match(activityTemplate, /PixoryMediaModule\.dispatchIntent/);
+  assert.match(activityTemplate, /^package com\.pixory\.app\r?\n/);
+  assert.match(activityTemplate, /import expo\.modules\.splashscreen\.SplashScreenManager/);
   assert.match(moduleTemplate, /PixoryMediaIntentReceived/);
 });
 

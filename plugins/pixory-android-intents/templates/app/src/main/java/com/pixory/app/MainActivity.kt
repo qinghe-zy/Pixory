@@ -11,6 +11,7 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 import com.pixory.app.media.PixoryMediaModule
 
 import expo.modules.ReactActivityDelegateWrapper
+import expo.modules.splashscreen.SplashScreenManager
 
 open class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {

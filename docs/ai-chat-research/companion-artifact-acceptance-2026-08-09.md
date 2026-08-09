@@ -53,6 +53,8 @@
 - Android 资源处理：首次命令在工具等待窗口到时仍继续运行，随后从 Gradle daemon 日志确认 `BUILD SUCCESSFUL in 4m15s`，没有把超时误报成源码失败。
 - Android debug APK：从深层 `.worktrees/companion-artifact-fixes` 构建时，Ninja 因 safe-area-context codegen 对象路径超过 Windows 260 字符失败；这是路径环境问题。
 - `subst W:` 方案：Expo autolinking 无法从 `W:\android` 向上发现 `W:\package.json`，因此已明确废弃；最终原生构建必须在真正的短物理工作树完成。
-- 最终 Android 构建：在真实短物理工作树执行 `gradlew clean`（`BUILD SUCCESSFUL in 1m24s`）和 `gradlew assembleDebug`（`BUILD SUCCESSFUL in 6m39s`，675 个任务）；原始 debug APK 为 100,198,667 bytes，SHA-256 `75B7A992456C3C54A3353559C4BE0E18088B3B779BE2924C7AFF6048A9A7D9FA`，并确认 APK 内含五档 `splashscreen_logo.png`。
+- 前台服务补强后的 Android 复验：在真实短物理工作树 `D:\px2` 从提交 `96c076e` 干净预构建。第一次编译暴露自定义 `MainActivity.kt` 模板缺少 Expo splash import，导致 Expo mod 把 import 插到 `package` 前；先增加失败策略用例，再把 import 固定在模板合法位置。重新 `expo prebuild --clean` 后生成 Kotlin 顺序正确。
+- 构建重试记录：修复模板后的第一次 `gradlew clean` 因上一轮失败构建遗留 Gradle/Java 文件句柄无法删除模块 build 目录；检查进程并执行 `gradlew --stop` 后只重试一次，`clean` 在 51 秒内成功。随后 `gradlew assembleDebug` 在 9 分 55 秒内成功，695 个任务完成。
+- 最新 Android debug APK：`196,743,947` bytes，SHA-256 `3484E8FAAB1CDD547C97D836A3F47E74BADF6B439ECBBB4EB9EE847DA293623E`。`aapt` 确认 APK 内含 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`、`DiaryAlarmService` 的 `dataSync` 类型和 `DiaryAlarmReceiver`；五档 `splashscreen_logo.png` 均进入 packaged resources。
 - Android 设备验收：没有连接真机；API 35、1080×2400 模拟器可用。已有正式包签名不同，因此未卸载、未清除数据；只在临时工作树给 debug 包添加 `.smoke` 后缀平行安装并冷启动。
 - 系统启动屏实测：冷启动帧四周和中心空白区均为精确 RGB `(74,123,247)` / `#4a7bf7`；前景可见内容边界约为 `449×388`，位于屏幕 `x=323..771, y=1003..1390`，核心聊天气泡以及图片、视频、爱心、轨道和星点装饰完整，没有触碰屏幕边缘或被系统遮罩切断。
