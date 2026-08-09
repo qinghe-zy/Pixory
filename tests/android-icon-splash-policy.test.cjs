@@ -6,7 +6,7 @@ const { Jimp } = require('jimp');
 
 const root = path.resolve(__dirname, '..');
 const splashBackground = '#4a7bf7';
-const splashIcon = './icons/splash_foreground.png';
+const splashIcon = './icons/splash_foreground_compact.png';
 const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
 const expectedSplashSizes = {
   mdpi: 288,
@@ -106,10 +106,10 @@ test('configures Android 12 splash from a transparent safe-area foreground', asy
     alphaAt(master, width - 1, height - 1),
   ], [0, 0, 0, 0]);
   const bounds = nonTransparentBounds(master);
-  assert.ok(bounds.minX / width >= 0.15);
-  assert.ok(bounds.minY / height >= 0.15);
-  assert.ok((width - 1 - bounds.maxX) / width >= 0.15);
-  assert.ok((height - 1 - bounds.maxY) / height >= 0.15);
+  assert.ok(bounds.minX / width >= 0.24);
+  assert.ok(bounds.minY / height >= 0.24);
+  assert.ok((width - 1 - bounds.maxX) / width >= 0.24);
+  assert.ok((height - 1 - bounds.maxY) / height >= 0.24);
 
   for (const density of densities) {
     const image = await Jimp.read(path.join(

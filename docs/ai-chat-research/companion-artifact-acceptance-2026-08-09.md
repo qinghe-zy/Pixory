@@ -24,7 +24,7 @@
 | 梦境失败重试与取消有响应 | 可重试失败复用原 seed、roll、冻结来源和种子内持久角色快照；来源变化时建立按当前消息冻结的手动替代任务；频率阻断、状态已变化和请求异常均在聊天页显示错误并重新加载卡片。生成中卡片提供“取消”，会中止活动请求、释放预留并刷新持久状态 | `dreamWorker.ts`、`dreamService.ts`、`DreamChatCard.tsx`、`AiChatScreen.tsx` | `companion-dream-recovery-unit.test.cjs`、`companion-dream-repository-integration.test.cjs` |
 | 梦境不过度频繁 | 自动成功之间至少相隔 50 个幂等完整问答轮；同一连续场景只有一个 seed 和永久 roll；手动确认绕过自动日限额/冷却但仍幂等 | `dreamPolicy.ts`、`dreamRepository.ts`、`dreamService.ts` | `companion-dream-policy-unit.test.cjs`、`companion-dream-repository-integration.test.cjs` |
 | 梦境生成不是空功能 | 候选门禁、结构化分类、持久 roll、独立生成 job、兼容一层代码围栏/短说明但对抽取对象严格校验的解析、最多两次自动重试、取消/晚到结果拦截、阅读页与显式 context opt-in 全部有落库或运行入口 | `src/ai/dream/`、`DreamReaderScreen.tsx`、`DreamDeckPager.tsx` | dream policy/prompt/recovery/repository tests |
-| Android 12 启动图控制裁剪并保留外围装饰 | 透明正方形前景把核心气泡和图库、视频、相机、爱心、轨道、星点限制在系统安全区；背景使用一致的 `#4a7bf7`，五档 drawable 密度由同一 master 确定性生成 | `icons/splash_foreground.png`、`scripts/generate-android-splash-assets.cjs`、`app.json` | `android-icon-splash-policy.test.cjs`、Android resource/build 验证 |
+| Android 12 启动图控制裁剪并保留外围装饰 | 在原透明素材基础上生成缩小 12.5% 且按实际非透明内容重新居中的 compact 前景；核心气泡和图库、视频、相机、爱心、轨道、星点均位于至少 24% 的透明画布边距内。Expo clean prebuild 与仓库内五档 drawable 共用同一 compact 资源，背景一致为 `#4a7bf7` | `icons/splash_foreground.png`、`icons/splash_foreground_compact.png`、`scripts/generate-android-splash-assets.cjs`、`app.json` | `android-icon-splash-policy.test.cjs`、Android resource/build/模拟器冷启动验证 |
 
 ## 2. 梦境实际发送给模型的消息
 
@@ -57,4 +57,5 @@
 - 构建重试记录：修复模板后的第一次 `gradlew clean` 因上一轮失败构建遗留 Gradle/Java 文件句柄无法删除模块 build 目录；检查进程并执行 `gradlew --stop` 后只重试一次，`clean` 在 51 秒内成功。随后 `gradlew assembleDebug` 在 9 分 55 秒内成功，695 个任务完成。
 - 最新 Android debug APK：`196,743,947` bytes，SHA-256 `3484E8FAAB1CDD547C97D836A3F47E74BADF6B439ECBBB4EB9EE847DA293623E`。`aapt` 确认 APK 内含 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`、`DiaryAlarmService` 的 `dataSync` 类型和 `DiaryAlarmReceiver`；五档 `splashscreen_logo.png` 均进入 packaged resources。
 - Android 设备验收：没有连接真机；API 35、1080×2400 模拟器可用。已有正式包签名不同，因此未卸载、未清除数据；只在临时工作树给 debug 包添加 `.smoke` 后缀平行安装并冷启动。
-- 系统启动屏实测：冷启动帧四周和中心空白区均为精确 RGB `(74,123,247)` / `#4a7bf7`；前景可见内容边界约为 `449×388`，位于屏幕 `x=323..771, y=1003..1390`，核心聊天气泡以及图片、视频、爱心、轨道和星点装饰完整，没有触碰屏幕边缘或被系统遮罩切断。
+- 用户反馈上一版仍有圆形切割观感后，前景在原透明素材上整体缩小 12.5%，并按实际非透明内容而非画布中心重新居中；compact master 的非透明边界为 `652×561`，左右透明边距各约 24.0%，上下约 27.6%。
+- 缩小版系统启动屏实测：在 API 35、1080×2400 模拟器冷启动帧中，四周和中心空白区均为精确 RGB `(74,123,247)` / `#4a7bf7`；前景可见内容边界约为 `394×340`，位于屏幕 `x=343..736, y=1031..1370`。核心聊天气泡以及图片、视频、相机、爱心、轨道和星点装饰完整，没有触碰系统遮罩或出现圆形裁切断面。

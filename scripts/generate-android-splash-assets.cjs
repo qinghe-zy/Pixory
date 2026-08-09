@@ -4,6 +4,8 @@ const { Jimp, ResizeStrategy } = require('jimp');
 
 const root = path.resolve(__dirname, '..');
 const sourcePath = path.join(root, 'icons/splash_foreground.png');
+const compactPath = path.join(root, 'icons/splash_foreground_compact.png');
+const compactScale = 0.875;
 const targets = {
   mdpi: 288,
   hdpi: 432,
@@ -23,10 +25,23 @@ async function main() {
     throw new Error(`Splash foreground must use a square canvas; received ${width}x${height}.`);
   }
   let hasTransparency = false;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
   for (let offset = 3; offset < data.length; offset += 4) {
-    if (data[offset] < 255) {
+    const alpha = data[offset];
+    if (alpha < 255) {
       hasTransparency = true;
-      break;
+    }
+    if (alpha > 0) {
+      const pixelIndex = (offset - 3) / 4;
+      const x = pixelIndex % width;
+      const y = Math.floor(pixelIndex / width);
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
     }
   }
   if (!hasTransparency) {
@@ -42,11 +57,30 @@ async function main() {
     throw new Error('Splash foreground corners must be fully transparent.');
   }
 
+  const compactSize = Math.round(width * compactScale);
+  const contentCenterX = ((minX + maxX + 1) / 2) * compactScale;
+  const contentCenterY = ((minY + maxY + 1) / 2) * compactScale;
+  const compactOffsetX = Math.floor(width / 2 - contentCenterX);
+  const compactOffsetY = Math.floor(height / 2 - contentCenterY);
+  const compact = new Jimp({
+    color: 0x00000000,
+    height,
+    width,
+  });
+  const compactArtwork = source.clone().resize({
+    h: compactSize,
+    mode: ResizeStrategy.BICUBIC,
+    w: compactSize,
+  });
+  compact.composite(compactArtwork, compactOffsetX, compactOffsetY);
+  await compact.write(compactPath);
+  process.stdout.write(`compact: ${width}x${height} at ${compactScale} scale -> ${compactPath}\n`);
+
   for (const [density, size] of Object.entries(targets)) {
     const outputDirectory = path.join(root, `android/app/src/main/res/drawable-${density}`);
     const outputPath = path.join(outputDirectory, 'splashscreen_logo.png');
     fs.mkdirSync(outputDirectory, { recursive: true });
-    const resized = source.clone().resize({
+    const resized = compact.clone().resize({
       h: size,
       mode: ResizeStrategy.BICUBIC,
       w: size,
