@@ -453,6 +453,21 @@ For remote announcements:
 - To stop announcements, set `enabled: false` and push `main`.
 - Announcement changes do not require a new APK for app versions that already support the remote announcement feature.
 
+## Android Native Build Path Safety
+
+- Before running an Android Gradle task that can invoke React Native CMake/codegen, inspect the repository or worktree absolute path length.
+- Do not run or retry native builds directly from a deeply nested worktree path when generated CMake object paths can exceed the Windows 260-character limit.
+- Use a real short physical worktree path for native verification (for example a detached temporary worktree directly under a drive root). Install dependencies in that physical worktree, run Gradle there, and remove it only after verifying the exact temporary target.
+- Do not rely on a `subst` drive for Expo Android builds: Expo autolinking walks upward from `android/` to find `package.json`, and the virtual drive root can make that lookup fail even when Node can resolve `node_modules`.
+- A `Filename longer than 260 characters` Ninja failure is an environment-path failure, not a source failure. Preserve the first failure output, verify that no Gradle process is still running, then use the short-path workflow instead of blindly retrying the same command.
+- 2026-08-09 incident: `:app:assembleDebug` was first run from `.worktrees/companion-artifact-fixes`; React Native safe-area-context codegen exceeded the Ninja path limit. A follow-up `subst W:` attempt failed because Expo autolinking could not discover `W:\package.json` from `W:\android`. Future isolated Android builds must preflight and use a real short physical worktree instead of repeating either failed path.
+
+## Commit And Handoff Clarity
+
+- Every non-trivial commit must have a concise subject plus a body that states what changed, why it changed, how it was verified, and any remaining limitation or unverified boundary.
+- User-facing progress and final handoff must map each commit hash to its actual functional scope; do not report only a commit title or a vague “completed” claim.
+- When a failed command materially affects verification, include the failed command, root cause, state check, corrective workflow, and final outcome in the commit body or task report as appropriate.
+
 ## Final Direction
 
 Pixory should stay focused on:
