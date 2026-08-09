@@ -210,7 +210,7 @@ import { dreamRepository, type DreamJobRecord, type DreamRecord } from '../ai/dr
 import { confirmManualDream, regenerateDreamFromCurrentConversation } from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
 import { presentDreamFailure } from '../ai/dream/dreamPolicy';
-import { getLatestDreamRuntimeNotice, loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
+import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import type {
   AiBranchScope,
@@ -1956,8 +1956,9 @@ export function AiChatScreen({
     const branchScopes = persistedCurrentBranchScopes.length > 0
       ? persistedCurrentBranchScopes
       : activeMessageBranchScopesRef.current ?? [];
-    if (targetThreadId) {
-      void runWithDatabaseSpace(space, async (db) => {
+    const reloadDreamNotice = async () => {
+      if (!targetThreadId) return null;
+      const notice = await runWithDatabaseSpace(space, async (db) => {
         const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
         if (!thread) return null;
         return loadDreamRuntimeNotice(db, {
@@ -1965,19 +1966,20 @@ export function AiChatScreen({
           lineageVersion: thread.lineageVersion ?? 0,
           threadId: targetThreadId,
         });
-      }).then((notice) => {
-        if (!disposed && targetThreadId === activeThreadIdRef.current) {
-          setDreamNotice(notice ?? getLatestDreamRuntimeNotice(targetThreadId));
-        }
-      }).catch(() => {
-        if (!disposed) setDreamNotice(getLatestDreamRuntimeNotice(targetThreadId));
+      });
+      if (!disposed && targetThreadId === activeThreadIdRef.current) setDreamNotice(notice);
+      return notice;
+    };
+    if (targetThreadId) {
+      void reloadDreamNotice().catch(() => {
+        if (!disposed && targetThreadId === activeThreadIdRef.current) setDreamNotice(null);
       });
     } else {
       setDreamNotice(null);
     }
     const unsubscribe = subscribeDreamRuntimeNotices((notice) => {
       if (notice.threadId !== activeThreadIdRef.current) return;
-      setDreamNotice(notice);
+      void reloadDreamNotice().catch(() => undefined);
       void reloadRoleDreams();
     });
     return () => { disposed = true; unsubscribe(); };
@@ -2002,6 +2004,17 @@ export function AiChatScreen({
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? `梦境重试失败：${error.message}` : '梦境重试失败，请稍后再试。');
+    } finally {
+      await reloadRoleDreams().catch(() => undefined);
+    }
+  }, [reloadRoleDreams, space]);
+
+  const handleDreamJobCancel = useCallback(async (job: DreamJobRecord) => {
+    try {
+      setErrorMessage(null);
+      await cancelDreamGeneration(space, job.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? `取消梦境制作失败：${error.message}` : '取消梦境制作失败，请稍后再试。');
     } finally {
       await reloadRoleDreams().catch(() => undefined);
     }
@@ -6479,7 +6492,7 @@ export function AiChatScreen({
           return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
         case 'dreamJob':
           const failure = presentDreamFailure(item.job.lastErrorCode);
-          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onRetry={() => void handleDreamJobRetry(item.job)} />;
+          return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} />;
       }
       if (item.type === "streamTailSpacer") {
         return <AiStreamingTailSpacer height={item.height} />;
@@ -6743,6 +6756,7 @@ export function AiChatScreen({
       onOpenDream,
       reloadRoleDiaries,
       reloadRoleDreams,
+      handleDreamJobCancel,
       handleDreamJobRetry,
     ],
   );

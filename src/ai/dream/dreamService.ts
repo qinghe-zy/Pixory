@@ -53,7 +53,7 @@ export async function registerCompanionDreamRound(db: SQLiteDatabase, input: {
   // A clear sleep-quality/product topic has a proven zero trigger probability, so it never spends a classifier call.
   const provenUpperBound = detected.intent === 'sleep_topic' ? 0 : undefined;
   const decision = !dreamFrequencyAllowed(registered.counter) ? 'frequency_blocked' : shouldPrepruneDream(roll, false, provenUpperBound) ? 'prepruned' : 'classifying';
-  const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision, idempotencyKey: key, lineageVersion: input.thread.lineageVersion ?? 0, manual: false, policyVersion: DREAM_POLICY_VERSION, roleCardId: input.thread.roleCardId, roll, sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: input.thread.id, now: input.now });
+  const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision, idempotencyKey: key, lineageVersion: input.thread.lineageVersion ?? 0, manual: false, policyVersion: DREAM_POLICY_VERSION, roleCardId: input.thread.roleCardId, roleSnapshotJson: input.thread.roleSnapshotJson, roll, sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: input.thread.id, now: input.now });
   if (decision !== 'classifying') return { jobId: null, seed };
   const job = await dreamRepository.createJob(db, { now: input.now, phase: 'classifying', seed });
   emitDreamRuntimeNotice({ jobId: job.id, threadId: input.thread.id, type: 'generating' });
@@ -74,7 +74,7 @@ export async function detectAndCreateManualDreamRequest(input: { space: PixorySp
       scene = await dreamRepository.upsertScene(db, { branchRouteHash: input.branchRouteHash, evidenceMessageIds: source.focusIds, lineageVersion: thread.lineageVersion ?? 0, now: new Date(new Date(now).getTime() + 1).toISOString(), roleCardId: thread.roleCardId, sourceSnapshotHash: source.hash, space: input.space, state: 'dream_active', threadId: thread.id });
     }
     const key = `manual-dream:${input.space}:${thread.id}:${message.id}:${versionHash(message)}`;
-    const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision: 'awaiting_confirmation', idempotencyKey: key, lineageVersion: thread.lineageVersion ?? 0, manual: true, policyVersion: DREAM_POLICY_VERSION, roleCardId: thread.roleCardId, roll: deterministicDreamRoll(key), sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: thread.id, now });
+    const seed = await dreamRepository.createSeed(db, { branchRouteHash: input.branchRouteHash, decision: 'awaiting_confirmation', idempotencyKey: key, lineageVersion: thread.lineageVersion ?? 0, manual: true, policyVersion: DREAM_POLICY_VERSION, roleCardId: thread.roleCardId, roleSnapshotJson: thread.roleSnapshotJson, roll: deterministicDreamRoll(key), sceneId: scene.id, sourceMessageIds: source.ids, sourceMessageVersionHashes: source.hashes, sourceSnapshotHash: source.hash, space: input.space, threadId: thread.id, now });
     emitDreamRuntimeNotice({ seedId: seed.id, threadId: thread.id, type: 'manual_confirmation' }); return seed;
   });
 }
@@ -132,6 +132,7 @@ export async function regenerateDreamFromCurrentConversation(input: {
       manual: true,
       policyVersion: DREAM_POLICY_VERSION,
       roleCardId: thread.roleCardId,
+      roleSnapshotJson: thread.roleSnapshotJson,
       roll: deterministicDreamRoll(key),
       sceneId: scene.id,
       sourceMessageIds: source.ids,

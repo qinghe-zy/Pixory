@@ -18,11 +18,21 @@ test('stores frozen diary prompt provenance separately from the effective messag
   const schema = readFileSync('src/database/schema.ts', 'utf8');
   const database = readFileSync('src/database/db.ts', 'utf8');
 
-  assert.match(schema, /export const DATABASE_VERSION = 57/);
+  assert.match(schema, /export const DATABASE_VERSION = 58/);
   assert.match(schema, /ALTER TABLE companion_diary_jobs ADD COLUMN sourceSystemPromptSnapshot TEXT/);
   assert.match(schema, /ALTER TABLE companion_diary_versions ADD COLUMN jobContextSnapshotHash TEXT/);
   assert.match(schema, /ALTER TABLE companion_diary_versions ADD COLUMN sourceSystemPromptSnapshot TEXT/);
   assert.match(schema, /idx_ai_messages_snapshot_candidates[\s\S]*threadId, status, role, createdAt DESC/);
   assert.match(database, /MIGRATION_STATEMENTS_V57/);
   assert.match(database, /currentVersion < 57/);
+});
+
+test('stores the dream role snapshot durably for retry-stable generation', () => {
+  const schema = readFileSync('src/database/schema.ts', 'utf8');
+  const database = readFileSync('src/database/db.ts', 'utf8');
+
+  assert.match(schema, /export const DATABASE_VERSION = 58/);
+  assert.match(schema, /ALTER TABLE companion_dream_seeds ADD COLUMN roleSnapshotJson TEXT NOT NULL DEFAULT '\{\}'/);
+  assert.match(database, /MIGRATION_STATEMENTS_V58/);
+  assert.match(database, /currentVersion < 58/);
 });

@@ -137,9 +137,9 @@ export async function runDreamJob(input: { space: PixorySpace; jobId: string; no
     }
     emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'generating' });
     const prompt = buildDreamGenerationPrompt({
-      // The thread snapshot is part of the source session that created the
-      // durable job. A later role-card edit must not mutate retry output.
-      roleVoice: source.thread.roleSnapshotJson,
+      // The seed freezes the session voice when the durable job is created.
+      // Later thread or role-card edits must not mutate retry output.
+      roleVoice: source.seed.roleSnapshotJson,
       snapshot: conversationSnapshot,
     });
     const model = await callMemoryMaintenanceModel({ maxOutputTokens: 320, responseFormat: 'json_object', responseJsonSchema: DREAM_GENERATION_JSON_SCHEMA, signal: controller.signal, space: input.space, thinkingDisabled: true, systemPrompt: prompt.systemPrompt, thread: source.thread, userPrompt: prompt.userPrompt });
@@ -187,40 +187,43 @@ export type DreamRetryResult =
 export async function retryDreamGeneration(space: PixorySpace, jobId: string): Promise<DreamRetryResult> {
   const now = new Date().toISOString();
   const result = await runWithDatabaseSpace(space, async (db): Promise<{ job: DreamJobRecord } | DreamRetryResult> => {
-    const current = await dreamRepository.findJob(db, jobId);
-    if (!current || (current.status !== 'failed' && current.status !== 'waiting_model')) {
-      return { status: 'not_retryable' };
-    }
-    const seed = await dreamRepository.findSeed(db, current.seedId);
-    if (!seed) return { status: 'not_retryable' };
-    if (current.phase === 'generating' && !seed.manual && !current.quotaReserved) {
-      const reserved = await dreamRepository.reserveQuota(db, current, now);
-      if (!reserved) {
-        await dreamRepository.transitionJob(db, {
-          errorCode: 'frequency_blocked',
-          id: current.id,
-          now,
-          status: 'failed',
-        });
-        return { status: 'frequency_blocked' };
+    let outcome: { job: DreamJobRecord } | DreamRetryResult = { status: 'not_retryable' };
+    await db.withTransactionAsync(async () => {
+      const current = await dreamRepository.findJob(db, jobId);
+      if (!current || (current.status !== 'failed' && current.status !== 'waiting_model')) return;
+      const seed = await dreamRepository.findSeed(db, current.seedId);
+      if (!seed) return;
+      if (current.phase === 'generating' && !seed.manual && !current.quotaReserved) {
+        const reserved = await dreamRepository.reserveQuotaInTransaction(db, current, now);
+        if (!reserved) {
+          await dreamRepository.transitionJob(db, {
+            errorCode: 'frequency_blocked',
+            id: current.id,
+            now,
+            status: 'failed',
+          });
+          outcome = { status: 'frequency_blocked' };
+          return;
+        }
       }
-    }
-    await db.runAsync(
-      `UPDATE companion_dream_jobs
-       SET status = 'pending', attemptCount = 0, cancelRequested = 0, nextRunAt = ?,
-           leaseOwner = NULL, leaseUntil = NULL, lastErrorCode = NULL,
-           completedAt = NULL, updatedAt = ?
-       WHERE id = ? AND status IN ('failed', 'waiting_model')`,
-      now,
-      now,
-      jobId,
-    );
-    await dreamRepository.updateSeed(db, {
-      decision: current.phase === 'classifying' ? 'classifying' : 'selected',
-      id: current.seedId,
-      now,
+      await db.runAsync(
+        `UPDATE companion_dream_jobs
+         SET status = 'pending', attemptCount = 0, cancelRequested = 0, nextRunAt = ?,
+             leaseOwner = NULL, leaseUntil = NULL, lastErrorCode = NULL,
+             completedAt = NULL, updatedAt = ?
+         WHERE id = ? AND status IN ('failed', 'waiting_model')`,
+        now,
+        now,
+        jobId,
+      );
+      await dreamRepository.updateSeed(db, {
+        decision: current.phase === 'classifying' ? 'classifying' : 'selected',
+        id: current.seedId,
+        now,
+      });
+      outcome = { job: { ...current, status: 'pending' } };
     });
-    return { job: { ...current, status: 'pending' } };
+    return outcome;
   });
   if ('status' in result) return result;
   emitDreamRuntimeNotice({ jobId, threadId: result.job.threadId, type: 'generating' });

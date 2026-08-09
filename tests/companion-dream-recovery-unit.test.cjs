@@ -42,6 +42,9 @@ test('retry accepts failed and waiting-model jobs, re-reserves automatic quota, 
   assert.match(worker, /reserveQuota/);
   assert.match(worker, /frequency_blocked/);
   assert.match(worker, /scheduleCompanionMaintenance/);
+  const retry = worker.slice(worker.indexOf('export async function retryDreamGeneration'), worker.indexOf('export const dreamWorker'));
+  assert.match(retry, /withTransactionAsync/);
+  assert.match(retry, /reserveQuotaInTransaction/);
 });
 
 function loadWorker(capture) {
@@ -56,7 +59,7 @@ function loadWorker(capture) {
   const repo = {
     findJob: async () => capture.job,
     findSeed: async () => capture.seed,
-    reserveQuota: async () => { capture.reserveCalls += 1; return capture.reserveAllowed; },
+    reserveQuotaInTransaction: async () => { capture.reserveCalls += 1; if (capture.reserveAllowed) capture.quotaReservations += 1; return capture.reserveAllowed; },
     transitionJob: async (_db, input) => { capture.transitions.push(input); },
     updateSeed: async (_db, input) => { capture.seedUpdates.push(input); },
   };
@@ -66,7 +69,12 @@ function loadWorker(capture) {
         aiRoleCardRepository: {},
         aiThreadRepository: {},
         runWithDatabaseSpace: async (_space, callback) => callback({
-          runAsync: async (...args) => { capture.sql.push(args); return { changes: 1 }; },
+          runAsync: async (...args) => { capture.sql.push(args); if (capture.failPendingUpdate) throw new Error('pending_write_failed'); return { changes: 1 }; },
+          withTransactionAsync: async (task) => {
+            const quotaBefore = capture.quotaReservations;
+            try { return await task(); }
+            catch (error) { capture.quotaReservations = quotaBefore; throw error; }
+          },
         }),
       };
     }
@@ -102,6 +110,8 @@ function retryCapture(overrides = {}) {
     seed: { id:'seed-a',manual:false },
     reserveAllowed: true,
     reserveCalls: 0,
+    quotaReservations: 0,
+    failPendingUpdate: false,
     notices: [],
     schedules: [],
     seedUpdates: [],
@@ -122,6 +132,18 @@ test('automatic generation retry durably re-reserves quota before it is schedule
   assert.equal(capture.sql.length, 1);
   assert.equal(capture.notices.at(-1).type, 'generating');
   assert.equal(capture.schedules.length, 1);
+});
+
+test('automatic retry rolls quota reservation back when resetting the job fails', async () => {
+  const capture = retryCapture({ failPendingUpdate: true });
+  const loaded = loadWorker(capture);
+  await assert.rejects(() => loaded.worker.retryDreamGeneration('normal', 'job-a'), /pending_write_failed/);
+  loaded.restore();
+
+  assert.equal(capture.reserveCalls, 1);
+  assert.equal(capture.quotaReservations, 0);
+  assert.equal(capture.notices.length, 0);
+  assert.equal(capture.schedules.length, 0);
 });
 
 test('waiting-model manual retry bypasses automatic quota and frequency block remains failed', async () => {
@@ -160,12 +182,13 @@ test('source-changed recovery creates a real manual replacement job and retires 
   const repository = loadTsModule(path.join(root, 'src/ai/dream/dreamRepository.ts'));
   const db = new TestDb();
   db.exec(`PRAGMA foreign_keys=ON;
-    CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL);
+    CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL, roleSnapshotJson TEXT NOT NULL DEFAULT '{}');
     CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE);
-    INSERT INTO ai_threads VALUES('thread-a','normal');
+    INSERT INTO ai_threads(id, space) VALUES('thread-a','normal');
     INSERT INTO ai_messages VALUES('user-a','thread-a');
     INSERT INTO ai_messages VALUES('assistant-a','thread-a');`);
   db.exec(schema.MIGRATION_STATEMENTS_V53);
+  db.exec(schema.MIGRATION_STATEMENTS_V58);
   const now = '2026-08-08T14:00:00.000Z';
   const scene = await repository.upsertDreamScene(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'old-route',lineageVersion:0,state:'sleep_established',evidenceMessageIds:['user-a','assistant-a'],sourceSnapshotHash:'old',now});
   const seed = await repository.createDreamSeed(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'old-route',lineageVersion:0,sceneId:scene.id,sourceMessageIds:['user-a','assistant-a'],sourceMessageVersionHashes:['old-u','old-a'],sourceSnapshotHash:'old',roll:0.01,decision:'failed',manual:false,policyVersion:'v',idempotencyKey:'stale-seed',now});
@@ -234,6 +257,10 @@ test('chat reloads every terminal dream transition and chooses current-source re
   assert.match(chat, /retryResult\.status === 'frequency_blocked'/);
   assert.match(chat, /replacementJobId/);
   assert.match(chat, /梦境重试失败/);
+  assert.match(chat, /await cancelDreamGeneration/);
+  assert.match(chat, /onCancel=\{\(\) => void handleDreamJobCancel/);
+  assert.doesNotMatch(chat, /getLatestDreamRuntimeNotice/);
+  assert.match(fs.readFileSync(path.join(root, 'src/components/ai/DreamChatCard.tsx'), 'utf8'), /取消/);
   assert.match(runtimeEvents, /status IN \('pending', 'running', 'retry'\)/);
   assert.match(runtimeEvents, /status IN \('failed', 'waiting_model'\)/);
 });

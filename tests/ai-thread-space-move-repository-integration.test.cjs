@@ -218,6 +218,7 @@ function createSchema(db) {
   db.exec(schema.MIGRATION_STATEMENTS_V52);
   db.exec(schema.MIGRATION_STATEMENTS_V53);
   db.exec(schema.MIGRATION_STATEMENTS_V55);
+  db.exec(schema.MIGRATION_STATEMENTS_V58);
 }
 
 function makeSnapshot(space) {
@@ -361,7 +362,7 @@ function makeSnapshot(space) {
       id: 'dream-seed-1', space, roleCardId: 'role-1', threadId: 'thread-1',
       branchRouteHash: 'route-main', lineageVersion: 0, sceneId: 'dream-scene-1',
       sourceMessageIdsJson: '["message-1"]', sourceMessageVersionHashesJson: '["hash-1"]',
-      sourceSnapshotHash: 'dream-hash', roll: 0.1, classificationJson: null,
+      sourceSnapshotHash: 'dream-hash', roleSnapshotJson: '{"name":"frozen voice"}', roll: 0.1, classificationJson: null,
       classifiedProbability: null, decision: 'classifying', manual: 0,
       policyVersion: 'dream-v1', idempotencyKey: 'dream-seed-idem-1', createdAt: now, updatedAt: now,
     }],
@@ -370,7 +371,7 @@ function makeSnapshot(space) {
       branchRouteHash: 'route-main', lineageVersion: 0, sceneId: 'dream-scene-1', seedId: 'dream-seed-1',
       phase: 'classifying', status: 'running', sourceSnapshotHash: 'dream-hash',
       sourceMessageIdsJson: '["message-1"]', attemptCount: 1, maxAttempts: 3,
-      cancelRequested: 0, quotaReserved: 1, nextRunAt: now, leaseOwner: 'old-worker',
+      cancelRequested: 0, quotaReserved: 1, quotaReservationDateKey: '2026-07-23', nextRunAt: now, leaseOwner: 'old-worker',
       leaseUntil: now, lastErrorCode: null, idempotencyKey: 'dream-job-idem-1',
       createdAt: now, updatedAt: now, completedAt: null,
     }],
@@ -449,8 +450,9 @@ test('repository round-trip preserves thread-owned records and rebuilds searchab
     assert.equal(movedJob.space, 'personal');
     assert.equal(movedJob.status, 'retry');
     assert.equal(movedJob.leaseOwner, null);
-    const movedDreamJob = await target.getFirstAsync('SELECT space, status, leaseOwner, quotaReserved FROM companion_dream_jobs');
-    assert.deepEqual({ ...movedDreamJob }, { space: 'personal', status: 'retry', leaseOwner: null, quotaReserved: 0 });
+    const movedDreamJob = await target.getFirstAsync('SELECT space, status, leaseOwner, quotaReserved, quotaReservationDateKey FROM companion_dream_jobs');
+    assert.deepEqual({ ...movedDreamJob }, { space: 'personal', status: 'retry', leaseOwner: null, quotaReserved: 0, quotaReservationDateKey: null });
+    assert.equal((await target.getFirstAsync('SELECT roleSnapshotJson FROM companion_dream_seeds')).roleSnapshotJson, '{"name":"frozen voice"}');
     const movedThoughtJob = await target.getFirstAsync('SELECT space, status, leaseOwner, quotaReservedCount FROM companion_thought_jobs');
     assert.deepEqual({ ...movedThoughtJob }, { space: 'personal', status: 'retry', leaseOwner: null, quotaReservedCount: 0 });
     const movedThought = await target.getFirstAsync('SELECT space, deliveryStatus, reservationId, reservationMessageId FROM companion_thoughts');

@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 57;
+export const DATABASE_VERSION = 58;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2067,6 +2067,22 @@ ALTER TABLE companion_diary_versions ADD COLUMN sourceSystemPromptSnapshot TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_ai_messages_snapshot_candidates
   ON ai_messages(threadId, status, role, createdAt DESC);
+`;
+
+// Dream retries must keep the exact session role voice that existed when the
+// seed was created. Message hashes alone cannot detect later session edits.
+export const MIGRATION_STATEMENTS_V58 = `
+ALTER TABLE companion_dream_seeds ADD COLUMN roleSnapshotJson TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE companion_dream_jobs ADD COLUMN quotaReservationDateKey TEXT;
+
+UPDATE companion_dream_seeds
+SET roleSnapshotJson = COALESCE(
+  (SELECT ai_threads.roleSnapshotJson
+   FROM ai_threads
+   WHERE ai_threads.id = companion_dream_seeds.threadId),
+  '{}'
+)
+WHERE roleSnapshotJson = '{}';
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `

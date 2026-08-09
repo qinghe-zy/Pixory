@@ -2000,6 +2000,7 @@ export const aiThreadRepository = {
         leaseOwner: null,
         leaseUntil: null,
         quotaReserved: importedStatus === 'retry' ? 0 : job.quotaReserved,
+        quotaReservationDateKey: importedStatus === 'retry' ? null : job.quotaReservationDateKey ?? null,
       });
     }
 

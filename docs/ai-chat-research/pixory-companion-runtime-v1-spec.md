@@ -795,7 +795,7 @@ job 保存：
 
 分类输入只包含候选消息、附近少量 adopted/completed 消息、精简角色与当前场景、持久化场景摘要。对话文本作为不可执行数据，不读取完整角色卡、完整历史、其他分支、日记、旧梦境或长期材料。
 
-分类器输出严格 JSON：`intentType/participants/temporality/assertionMode/roleplay/evidenceStrength/sceneRelation/sourceMessageIds/confidence?`。`intentType` 至少包括：
+分类器输出使用严格字段结构：`intentType/participants/temporality/assertionMode/roleplay/evidenceStrength/sceneRelation/sourceMessageIds/confidence?`。解析器可兼容剥离一层 Markdown 代码围栏或很短的前后说明，但抽取出的对象仍必须通过字段、枚举、evidence 与 scope 校验，否则 fail closed。`intentType` 至少包括：
 
 ```text
 explicit_dream_request

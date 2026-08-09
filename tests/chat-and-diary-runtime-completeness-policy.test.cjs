@@ -5,8 +5,12 @@ const test = require('node:test');
 const read = (path) => readFileSync(path, 'utf8');
 
 test('Android diary alarms have a registered native execution path', () => {
-  const manifest = read('android/app/src/main/AndroidManifest.xml');
-  const native = read('android/app/src/main/java/com/pixory/app/media/PixoryMediaModule.kt');
+  const templateRoot = 'plugins/pixory-android-intents/templates/app/src/main';
+  const plugin = read('plugins/withPixoryAndroidIntents.js');
+  const manifest = read(`${templateRoot}/AndroidManifest.xml`);
+  const native = read(`${templateRoot}/java/com/pixory/app/media/PixoryMediaModule.kt`);
+  const receiver = read(`${templateRoot}/java/com/pixory/app/diary/DiaryAlarmReceiver.kt`);
+  const service = read(`${templateRoot}/java/com/pixory/app/diary/DiaryAlarmService.kt`);
 
   assert.match(manifest, /SCHEDULE_EXACT_ALARM/);
   assert.match(manifest, /WAKE_LOCK/);
@@ -16,6 +20,13 @@ test('Android diary alarms have a registered native execution path', () => {
   assert.match(native, /fun cancelDiaryAlarm/);
   assert.match(native, /canScheduleExactAlarms/);
   assert.match(native, /setAndAllowWhileIdle/);
+  assert.match(manifest, /FOREGROUND_SERVICE/);
+  assert.match(manifest, /foregroundServiceType="dataSync"/);
+  assert.match(receiver, /startForegroundService/);
+  assert.match(receiver, /ForegroundServiceStartNotAllowedException|IllegalStateException/);
+  assert.match(service, /startForeground\(/);
+  assert.match(plugin, /DiaryAlarmReceiver\.kt/);
+  assert.match(plugin, /DiaryAlarmService\.kt/);
 });
 
 test('chat initial hydration does not duplicate model, appearance, or title reads', () => {

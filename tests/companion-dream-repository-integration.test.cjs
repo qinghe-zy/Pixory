@@ -11,7 +11,7 @@ let schema, repository, runtimeEvents;
 try { schema = require(path.join(root, 'src/database/schema.ts')); repository = require(path.join(root, 'src/ai/dream/dreamRepository.ts')); runtimeEvents = require(path.join(root, 'src/ai/dream/dreamRuntimeEvents.ts')); } finally { if (original) require.extensions['.ts'] = original; else delete require.extensions['.ts']; }
 
 class DB { constructor() { this.db = new DatabaseSync(':memory:'); } exec(s) { this.db.exec(s); } async runAsync(s,...p){return this.db.prepare(s).run(...p);} async getFirstAsync(s,...p){return this.db.prepare(s).get(...p)??null;} async getAllAsync(s,...p){return this.db.prepare(s).all(...p);} async withTransactionAsync(task){this.db.exec('BEGIN');try{const r=await task();this.db.exec('COMMIT');return r;}catch(e){this.db.exec('ROLLBACK');throw e;}} close(){this.db.close();} }
-function createDb() { const db = new DB(); db.exec(`PRAGMA foreign_keys=ON; CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL); CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE); INSERT INTO ai_threads VALUES('thread-a','normal'); INSERT INTO ai_messages VALUES('user-a','thread-a'); INSERT INTO ai_messages VALUES('assistant-a','thread-a');`); db.exec(schema.MIGRATION_STATEMENTS_V53); return db; }
+function createDb() { const db = new DB(); db.exec(`PRAGMA foreign_keys=ON; CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL, roleSnapshotJson TEXT NOT NULL DEFAULT '{}'); CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE); INSERT INTO ai_threads(id, space) VALUES('thread-a','normal'); INSERT INTO ai_messages VALUES('user-a','thread-a'); INSERT INTO ai_messages VALUES('assistant-a','thread-a');`); db.exec(schema.MIGRATION_STATEMENTS_V53); db.exec(schema.MIGRATION_STATEMENTS_V58); return db; }
 
 test('round receipts are idempotent and first automatic dream can reserve quota', async () => {
   const db=createDb(); try {
@@ -19,7 +19,9 @@ test('round receipts are idempotent and first automatic dream can reserve quota'
     const first=await repository.registerDreamRound(db,input); const duplicate=await repository.registerDreamRound(db,input);
     assert.equal(first.inserted,true); assert.equal(duplicate.inserted,false); assert.equal(duplicate.counter.totalRounds,1);
     const scene=await repository.upsertDreamScene(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,state:'sleep_established',evidenceMessageIds:['user-a','assistant-a'],sourceSnapshotHash:'snapshot',now:input.now});
-    const seed=await repository.createDreamSeed(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,sceneId:scene.id,sourceMessageIds:['user-a','assistant-a'],sourceMessageVersionHashes:['uh','ah'],sourceSnapshotHash:'snapshot',roll:0.01,decision:'classifying',manual:false,policyVersion:'v',idempotencyKey:'seed-a',now:input.now});
+    const seed=await repository.createDreamSeed(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,sceneId:scene.id,sourceMessageIds:['user-a','assistant-a'],sourceMessageVersionHashes:['uh','ah'],sourceSnapshotHash:'snapshot',roleSnapshotJson:'{"name":"frozen voice"}',roll:0.01,decision:'classifying',manual:false,policyVersion:'v',idempotencyKey:'seed-a',now:input.now});
+    await db.runAsync('UPDATE ai_threads SET roleSnapshotJson = ? WHERE id = ?', '{"name":"edited later"}', 'thread-a');
+    assert.equal((await repository.findDreamSeed(db, seed.id)).roleSnapshotJson, '{"name":"frozen voice"}');
     const job=await repository.createDreamJob(db,{seed,phase:'classifying',now:input.now});
     assert.equal(await repository.reserveDreamQuota(db,job,input.now),true);
     const counter=db.db.prepare('SELECT * FROM companion_role_round_counters').get(); assert.equal(counter.dailyDreamReservedCount,1);
@@ -147,5 +149,40 @@ test('an automatic failure can reserve the new Beijing day without requiring ano
     assert.equal(counter.beijingDateKey,'2026-07-30');
     assert.equal(counter.dailyDreamSuccessCount,0);
     assert.equal(counter.dailyDreamReservedCount,1);
+  } finally { db.close(); }
+});
+
+test('a reservation made before Beijing midnight cannot create a third success after midnight', async () => {
+  const db=createDb(); try {
+    const beforeMidnight='2026-08-09T15:59:00.000Z';
+    const afterMidnight='2026-08-09T16:01:00.000Z';
+    await repository.registerDreamRound(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',userMessageId:'user-a',assistantMessageId:'assistant-a',userMessageVersionHash:'uh',assistantMessageVersionHash:'ah',now:beforeMidnight});
+
+    async function makeJob(key, now) {
+      const scene=await repository.upsertDreamScene(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,state:'sleep_established',evidenceMessageIds:['user-a','assistant-a'],sourceSnapshotHash:key,now});
+      const seed=await repository.createDreamSeed(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,sceneId:scene.id,sourceMessageIds:['user-a','assistant-a'],sourceMessageVersionHashes:['uh','ah'],sourceSnapshotHash:key,roll:0.01,decision:'selected',manual:false,policyVersion:'v',idempotencyKey:key,now});
+      const job=await repository.createDreamJob(db,{seed,phase:'generating',now});
+      return {job,seed,scene};
+    }
+    async function finish(entry, now, workerId) {
+      const running=await repository.acquireDreamJob(db,{id:entry.job.id,workerId,now,leaseUntil:new Date(new Date(now).getTime()+300000).toISOString()});
+      return repository.completeDream(db,{job:running,seed:entry.seed,title:'午夜梦境',body:'我从午夜的月光里慢慢走过。',now,workerId});
+    }
+
+    const oldDay=await makeJob('midnight-old',beforeMidnight);
+    assert.equal(await repository.reserveDreamQuota(db,oldDay.job,beforeMidnight),true);
+    assert.ok(await finish(oldDay,afterMidnight,'worker-old'));
+    await repository.closeDreamScene(db,oldDay.scene.id,'2026-08-09T16:01:30.000Z');
+
+    await db.runAsync('UPDATE companion_role_round_counters SET totalRounds = 51 WHERE roleCardId = ?', 'role-a');
+    const second=await makeJob('midnight-second','2026-08-09T16:02:00.000Z');
+    assert.equal(await repository.reserveDreamQuota(db,second.job,'2026-08-09T16:02:00.000Z'),true);
+    assert.ok(await finish(second,'2026-08-09T16:03:00.000Z','worker-second'));
+    await repository.closeDreamScene(db,second.scene.id,'2026-08-09T16:03:30.000Z');
+
+    await db.runAsync('UPDATE companion_role_round_counters SET totalRounds = 101 WHERE roleCardId = ?', 'role-a');
+    const third=await makeJob('midnight-third','2026-08-09T16:04:00.000Z');
+    assert.equal(await repository.reserveDreamQuota(db,third.job,'2026-08-09T16:04:00.000Z'),false);
+    assert.equal(db.db.prepare("SELECT COUNT(*) AS count FROM companion_dreams WHERE displayAt >= '2026-08-09T16:00:00.000Z'").get().count,2);
   } finally { db.close(); }
 });
