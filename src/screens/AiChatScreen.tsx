@@ -93,6 +93,7 @@ import {
   flushStreamingMessageSnapshot,
   getCurrentChatModelPresentation,
   generateReplyAssistSuggestions,
+  listThreadMessages,
   loadThreadContinuityMilestones,
   loadThreadMessageAppearanceConfig,
   loadThreadTitle,
@@ -230,7 +231,7 @@ import { AiChatMessageSkeleton } from "../components/ai/AiChatMessageSkeleton";
 import { consumeThreadMessagePrefetch } from "../ai/aiThreadMessagePrefetch";
 import {
   isAdoptedThreadRouteSnapshotCurrent,
-  loadAdoptedThreadRouteSnapshot,
+  loadPersistedAdoptedThreadBranchScopes,
 } from "../ai/aiThreadRouteSnapshotService";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
@@ -3701,21 +3702,37 @@ export function AiChatScreen({
       const forceToLatest = options.forceToLatest ?? false;
       const messageLimit =
         options.limitOverride ?? loadedMessageLimitRef.current;
-      const snapshot = await loadAdoptedThreadRouteSnapshot({
+      // Resolve branch scopes: use caller-provided, or load persisted route,
+      // falling back to undefined (= show all branches / no filter).
+      let branchScopes: AiBranchScope[] | undefined = options.branchScopes;
+      if (branchScopes === undefined) {
+        try {
+          branchScopes = (await loadPersistedAdoptedThreadBranchScopes(space, targetThreadId)) ?? undefined;
+        } catch {
+          branchScopes = undefined;
+        }
+      }
+      // Direct message load – avoids the snapshot DB chain that crashed expo-sqlite.
+      const nextMessages = await listThreadMessages(space, targetThreadId, {
         anchorMessageId: options.anchorMessageId,
+        branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
         limit: messageLimit,
-        branchScopes: options.branchScopes,
-        space,
-        threadId: targetThreadId,
+        selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
       });
-      if (!snapshot || !isLatestRequest("messages", requestId, targetThreadId)) {
+      if (!isLatestRequest("messages", requestId, targetThreadId)) {
         return;
       }
-      activeMessageBranchScopesRef.current = snapshot.branchScopes;
-      selectedVersionByMessageIdRef.current = snapshot.selectedVersionByMessageId;
-      setSelectedVersionByMessageId(snapshot.selectedVersionByMessageId);
-      setPersistedCurrentBranchScopes(snapshot.branchScopes);
-      setHasEarlierMessages(snapshot.hasEarlierMessages);
+      activeMessageBranchScopesRef.current =
+        branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
+      const resolvedScopes = branchScopes ?? [];
+      if (resolvedScopes.length > 0) {
+        selectedVersionByMessageIdRef.current = buildBranchSelectionMap(resolvedScopes);
+      }
+      setSelectedVersionByMessageId(selectedVersionByMessageIdRef.current);
+      setPersistedCurrentBranchScopes(resolvedScopes);
+      setHasEarlierMessages(
+        options.anchorMessageId ? true : nextMessages.length >= messageLimit,
+      );
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
         bottomLockedRef.current = true;
@@ -3725,7 +3742,7 @@ export function AiChatScreen({
         setScrollToLatestVisible(false);
       }
       // prettier-ignore
-      const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? snapshot.messages : preserveReadModeFrozenMessages(snapshot.messages));
+      const renderedMessages = preserveLiveStreamingMessages(forceToLatest ? nextMessages : preserveReadModeFrozenMessages(nextMessages));
       replaceMessages(renderedMessages);
       void reloadContinuityMilestones(targetThreadId);
     },
