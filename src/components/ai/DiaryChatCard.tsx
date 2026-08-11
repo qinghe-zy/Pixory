@@ -3,6 +3,7 @@ import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native
 import { diaryThemeAssets } from '../../ai/diary/diaryThemeAssets';
 import { beijingDiaryDate, beijingTimeLabel, type DiaryThemeKey } from '../../ai/diary/diaryTypes';
 import { colors, radius, rhythm, spacing, typography } from '../../design/tokens';
+import { AiVersionStepper } from './AiVersionStepper';
 
 interface DiaryChatCardProps {
   createdAt: string;
@@ -11,14 +12,19 @@ interface DiaryChatCardProps {
   contextOptIn: boolean | null;
   onOpen: () => void;
   onContextChoice: (accepted: boolean) => void;
+  onLongPress: (pageX: number, pageY: number) => void;
+  onNextVersion: () => void;
+  onPreviousVersion: () => void;
+  versionIndex: number;
+  versionTotal: number;
 }
 
-export function DiaryChatCard({ createdAt, diaryDate, themeKey, contextOptIn, onOpen, onContextChoice }: DiaryChatCardProps) {
+export function DiaryChatCard({ createdAt, diaryDate, themeKey, contextOptIn, onOpen, onContextChoice, onLongPress, onNextVersion, onPreviousVersion, versionIndex, versionTotal }: DiaryChatCardProps) {
   const isToday = diaryDate === beijingDiaryDate(new Date());
   const label = isToday ? `TODAY · ${beijingTimeLabel(createdAt)}` : diaryDate.replaceAll('-', '.');
   return (
     <View style={styles.host}>
-      <Pressable accessibilityRole="button" accessibilityLabel="打开角色日记" onPress={onOpen} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="打开角色日记" delayLongPress={500} onLongPress={(event) => onLongPress(event.nativeEvent.pageX, event.nativeEvent.pageY)} onPress={onOpen} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
         <ImageBackground imageStyle={styles.image} source={diaryThemeAssets[themeKey].card} style={styles.background}>
           <View style={styles.glass}>
             <Text style={styles.meta}>{label}</Text>
@@ -27,6 +33,7 @@ export function DiaryChatCard({ createdAt, diaryDate, themeKey, contextOptIn, on
           </View>
         </ImageBackground>
       </Pressable>
+      {versionTotal > 1 ? <AiVersionStepper currentIndex={versionIndex} nextAccessibilityLabel="下一版日记" onNext={onNextVersion} onPrevious={onPreviousVersion} previousAccessibilityLabel="上一版日记" total={versionTotal} /> : null}
       <View style={styles.contextRow}>
         <Text style={styles.contextHint}>是否将该日记纳入上下文？</Text>
         <Pressable onPress={() => onContextChoice(true)}><Text style={[styles.contextAction, contextOptIn === true && styles.contextSelected]}>是</Text></Pressable>

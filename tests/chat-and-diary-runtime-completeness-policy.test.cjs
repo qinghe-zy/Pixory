@@ -82,7 +82,7 @@ test('dream reader uses finite three-sheet pagination and thoughts expose confir
   assert.match(pager, /\[0, 1, 2\]/);
   assert.match(pager, /Math\.min\(pages\.length - 1/);
   assert.doesNotMatch(pager, /%\s*pages\.length/);
-  assert.match(innerLife, /Alert\.alert\('永久删除独白？'/);
+  assert.match(innerLife, /永久删除 \$\{selectedCount\} 项？/);
   assert.match(innerLife, /thoughtRepository\.permanentlyDelete/);
-  assert.match(innerLife, /accessibilityLabel="永久删除这条独白"/);
+  assert.match(innerLife, /accessibilityLabel="永久删除所选内容"/);
 });

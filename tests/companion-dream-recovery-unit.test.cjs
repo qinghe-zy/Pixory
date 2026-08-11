@@ -188,6 +188,7 @@ test('source-changed recovery creates a real manual replacement job and retires 
     INSERT INTO ai_messages VALUES('user-a','thread-a');
     INSERT INTO ai_messages VALUES('assistant-a','thread-a');`);
   db.exec(schema.MIGRATION_STATEMENTS_V53);
+  db.exec(schema.MIGRATION_STATEMENTS_V59);
   db.exec(schema.MIGRATION_STATEMENTS_V58);
   const now = '2026-08-08T14:00:00.000Z';
   const scene = await repository.upsertDreamScene(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'old-route',lineageVersion:0,state:'sleep_established',evidenceMessageIds:['user-a','assistant-a'],sourceSnapshotHash:'old',now});

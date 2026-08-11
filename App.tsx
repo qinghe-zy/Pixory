@@ -220,7 +220,7 @@ type AppRoute =
       branchScopes?: AiBranchScope[];
     }
   | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
-  | { name: 'diary-reader'; space: PixorySpace; diaryId: string }
+  | { name: 'diary-reader'; space: PixorySpace; diaryId: string; versionId?: string }
   | { name: 'dream-reader'; space: PixorySpace; dreamId: string }
   | { name: 'companion-inner-life'; space: PixorySpace; threadId: string }
   | { name: 'companion-runtime-manager'; space: PixorySpace; threadId: string }
@@ -1920,7 +1920,7 @@ export default function App() {
           })
         }
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
-        onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })}
+        onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })}
         onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}
         onNewChat={() => openNewAiChat(currentRoute.space)}
         onOpenThread={(thread) =>
@@ -1950,7 +1950,7 @@ export default function App() {
       />
     );
   } else if (currentRoute.name === 'diary-reader') {
-    content = <DiaryReaderScreen diaryId={currentRoute.diaryId} onBack={popRoute} space={currentRoute.space} />;
+    content = <DiaryReaderScreen diaryId={currentRoute.diaryId} onBack={popRoute} space={currentRoute.space} versionId={currentRoute.versionId} />;
   } else if (currentRoute.name === 'ai-branch-tree') {
     const previousRoute = routeStack[routeStack.length - 2];
     content = (
@@ -2046,7 +2046,7 @@ export default function App() {
   } else if (currentRoute.name === 'dream-reader') {
     content = <DreamReaderScreen dreamId={currentRoute.dreamId} onBack={popRoute} space={currentRoute.space} />;
   } else if (currentRoute.name === 'companion-inner-life') {
-    content = <CompanionInnerLifeScreen onBack={popRoute} onOpenDiary={(diaryId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId })} onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })} space={currentRoute.space} threadId={currentRoute.threadId} />;
+    content = <CompanionInnerLifeScreen onBack={popRoute} onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })} onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'companion-runtime-manager') {
     content = <CompanionRuntimeManagerScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'milestones-detail') {

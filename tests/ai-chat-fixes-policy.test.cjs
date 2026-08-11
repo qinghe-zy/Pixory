@@ -69,8 +69,9 @@ test('AI chat persists and exposes message versions for edits and regenerations'
   assert.match(service, /versionIndex/);
   assert.match(bubble, /onSelectVersion/);
   assert.match(bubble, /versionTotal/);
-  assert.match(bubble, /chevron-back/);
-  assert.match(bubble, /chevron-forward/);
+  assert.match(bubble, /AiVersionStepper/);
+  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /chevron-back/);
+  assert.match(read('src\/components\/ai\/AiVersionStepper.tsx'), /chevron-forward/);
 });
 
 test('AI chat exposes direct cancellable Android speech recognition', () => {
@@ -481,13 +482,11 @@ test('AI message header keeps participant identity while menu owns the compact t
   const copyIndex = actionRow.indexOf('accessibilityLabel="复制消息"');
   const editIndex = actionRow.indexOf('accessibilityLabel="重写消息"');
   const regenerateIndex = actionRow.indexOf('accessibilityLabel="重新生成回复"');
-  const versionIndex = actionRow.indexOf('styles.versionControl');
 
   assert.ok(copyIndex >= 0);
   assert.ok(editIndex >= 0);
   assert.ok(regenerateIndex >= 0);
-  assert.ok(versionIndex > editIndex);
-  assert.ok(versionIndex > regenerateIndex);
+  assert.match(bubble, /AiVersionStepper/);
   assert.match(bubble, /assistantDisplayName\?: string \| null/);
   assert.match(bubble, /showUserAvatar\?: boolean/);
   assert.match(bubble, /formatAiFullMinute/);
@@ -498,7 +497,8 @@ test('AI message header keeps participant identity while menu owns the compact t
   assert.match(bubble, /styles\.headerTime/);
   assert.match(bubble, /messageTimestamp/);
   assert.match(chat, /timeLabel: formatAiMessageMinute/);
-  assert.match(contextMenu, /styles\.timeRow/);
+  assert.match(contextMenu, /AiAnchoredContextMenu/);
+  assert.match(read('src\/components\/ai\/AiAnchoredContextMenu.tsx'), /styles\.timeRow/);
 });
 
 test('AI failed streaming state is not overwritten by a final generating patch', () => {

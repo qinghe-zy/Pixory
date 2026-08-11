@@ -232,7 +232,7 @@ test('AI chat messages move full actions into long press and keep only latest AI
   assert.match(bubble, /showActionButtons/);
   assert.match(content, /latestVisibleMessageId/);
   assert.match(content, /AiMessageContextMenu/);
-  assert.match(contextMenu, /timeLabel/);
+  assert.match(contextMenu, /AiAnchoredContextMenu/);
 });
 
 test('AI chat composer matches the design.md light input surface', () => {

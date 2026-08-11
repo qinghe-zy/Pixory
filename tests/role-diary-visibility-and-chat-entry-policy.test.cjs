@@ -62,7 +62,7 @@ test('chat timeline renders every role diary by its calendar date instead of one
   const chat = read('src/screens/AiChatScreen.tsx');
 
   assert.match(chat, /const \[roleDiaries, setRoleDiaries\]/);
-  assert.match(chat, /diaryRepository\.listCurrentDiariesForRole/);
+  assert.match(chat, /diaryRepository\.listVersionGroupsForRole/);
   assert.match(chat, /type: 'diary'/);
   assert.match(chat, /item\.type === 'diary'/);
   assert.doesNotMatch(chat, /ListHeaderComponent=\{\s*roleDiary/);

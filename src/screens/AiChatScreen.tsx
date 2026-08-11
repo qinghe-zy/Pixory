@@ -48,6 +48,10 @@ import {
 import { AiChatErrorBanner } from "../components/ai/AiChatErrorBanner";
 import { DiaryChatCard } from '../components/ai/DiaryChatCard';
 import { DreamChatCard } from '../components/ai/DreamChatCard';
+import {
+  AiAnchoredContextMenu,
+  type AiAnchoredContextMenuAction,
+} from '../components/ai/AiAnchoredContextMenu';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
@@ -194,7 +198,14 @@ import {
   settingsRepository,
   type PixorySpace,
 } from "../database";
-import { diaryRepository, type RoleDiaryRecord } from '../ai/diary/diaryRepository';
+import {
+  diaryRepository,
+  type RoleDiaryRecord,
+  type RoleDiaryVersionGroup,
+  type RoleDiaryVersionRecord,
+} from '../ai/diary/diaryRepository';
+import { regenerateDiaryVersion } from '../ai/diary/diaryVersionService';
+import { companionArtifactChatStateRepository } from '../ai/companion/companionArtifactChatStateRepository';
 import {
   buildCompanionArtifactTimeline,
   isDiaryEligibleForCompanionTimeline,
@@ -206,8 +217,17 @@ import { isDiaryCreationRequest } from '../ai/diary/diaryCommandIntent';
 import { prepareAndScheduleDiaryJob } from '../ai/diary/diarySchedulerService';
 import { beijingDiaryDate } from '../ai/diary/diaryTypes';
 import { subscribeDiaryRuntimeNotices } from '../ai/diary/diaryRuntimeEvents';
-import { dreamRepository, type DreamJobRecord, type DreamRecord } from '../ai/dream/dreamRepository';
-import { confirmManualDream, regenerateDreamFromCurrentConversation } from '../ai/dream/dreamService';
+import {
+  dreamRepository,
+  type DreamJobRecord,
+  type DreamRecord,
+  type DreamVersionGroup,
+} from '../ai/dream/dreamRepository';
+import {
+  confirmManualDream,
+  regenerateDreamFromCurrentConversation,
+  regenerateDreamVersion,
+} from '../ai/dream/dreamService';
 import { cancelDreamGeneration, retryDreamGeneration } from '../ai/dream/dreamWorker';
 import { presentDreamFailure } from '../ai/dream/dreamPolicy';
 import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntimeNotice } from '../ai/dream/dreamRuntimeEvents';
@@ -262,6 +282,15 @@ type MessageContextMenuState = {
   anchorX: number;
   anchorY: number;
   messageId: string;
+};
+
+type ArtifactContextMenuState = {
+  anchorX: number;
+  anchorY: number;
+  artifactKind: 'diary' | 'dream';
+  createdAt: string;
+  groupId: string;
+  versionId: string;
 };
 
 const CHAT_DOCUMENT_TYPES = [
@@ -647,11 +676,16 @@ type VisibleMessageItem =
       type: 'diary';
       id: string;
       diary: RoleDiaryRecord;
+      version: RoleDiaryVersionRecord;
+      versionIndex: number;
+      versionTotal: number;
     }
   | {
       type: 'dream';
       id: string;
       dream: DreamRecord;
+      versionIndex: number;
+      versionTotal: number;
     }
   | {
       type: 'dreamJob';
@@ -659,7 +693,10 @@ type VisibleMessageItem =
       job: DreamJobRecord;
     };
 
-type ChatCompanionArtifactPayload = RoleDiaryRecord | DreamRecord | DreamJobRecord;
+type ChatCompanionArtifactPayload =
+  | { diary: RoleDiaryRecord; version: RoleDiaryVersionRecord; versionIndex: number; versionTotal: number }
+  | { dream: DreamRecord; versionIndex: number; versionTotal: number }
+  | DreamJobRecord;
 
 type ActiveStreamingIdentity = AiStreamingMessageIdentity;
 
@@ -804,7 +841,7 @@ interface AiChatScreenProps {
   onOpenGlobalMaterials: () => void;
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
-  onOpenDiary: (diaryId: string) => void;
+  onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
@@ -1430,8 +1467,17 @@ export function AiChatScreen({
   );
   const [messages, setMessages] = useState<AiMessageWithCitations[]>([]);
   const [roleDiaries, setRoleDiaries] = useState<RoleDiaryRecord[]>([]);
+  const [diaryVersionsById, setDiaryVersionsById] = useState<
+    Record<string, RoleDiaryVersionRecord[]>
+  >({});
   const activeDiaryRoleCardIdRef = useRef<string | null>(null);
   const [roleDreams, setRoleDreams] = useState<DreamRecord[]>([]);
+  const [dreamVersionsByGroupId, setDreamVersionsByGroupId] = useState<
+    Record<string, DreamRecord[]>
+  >({});
+  const [selectedArtifactVersionByGroupId, setSelectedArtifactVersionByGroupId] =
+    useState<Record<string, string>>({});
+  const regeneratedArtifactGroupIdsRef = useRef(new Set<string>());
   const [roleDreamJobs, setRoleDreamJobs] = useState<DreamJobRecord[]>([]);
   const [dreamNotice, setDreamNotice] = useState<DreamRuntimeNotice | null>(null);
   const [diaryManualHint, setDiaryManualHint] = useState(false);
@@ -1879,6 +1925,9 @@ export function AiChatScreen({
   >({});
   const [messageContextMenuState, setMessageContextMenuState] =
     useState<MessageContextMenuState | null>(null);
+  const [artifactContextMenuState, setArtifactContextMenuState] =
+    useState<ArtifactContextMenuState | null>(null);
+  const [artifactActionPending, setArtifactActionPending] = useState(false);
   const [messageTextSelectionContent, setMessageTextSelectionContent] = useState<{
     messageId: string; content: string; role: string;
   } | null>(null);
@@ -1945,19 +1994,38 @@ export function AiChatScreen({
     if (!targetThreadId) {
       activeDiaryRoleCardIdRef.current = null;
       setRoleDiaries([]);
+      setDiaryVersionsById({});
       return;
     }
     const diaryState = await runWithDatabaseSpace(space, async (db) => {
       const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      if (!thread?.roleCardId) return { diaries: [], roleCardId: null };
+      if (!thread?.roleCardId) return { groups: [], roleCardId: null };
+      const [groups, hiddenGroupIds] = await Promise.all([
+        diaryRepository.listVersionGroupsForRole(db, thread.roleCardId),
+        companionArtifactChatStateRepository.listHiddenGroupIds(db, targetThreadId, 'diary'),
+      ]);
       return {
-        diaries: await diaryRepository.listCurrentDiariesForRole(db, thread.roleCardId),
+        groups: groups.filter((group) => !hiddenGroupIds.has(group.diary.id)),
         roleCardId: thread.roleCardId,
       };
     });
     if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
       activeDiaryRoleCardIdRef.current = diaryState.roleCardId;
-      setRoleDiaries(diaryState.diaries);
+      setRoleDiaries(diaryState.groups.map((group) => group.diary));
+      setDiaryVersionsById(Object.fromEntries(
+        diaryState.groups.map((group) => [group.diary.id, group.versions]),
+      ));
+      setSelectedArtifactVersionByGroupId((previous) => {
+        const next = { ...previous };
+        for (const group of diaryState.groups) {
+          const currentVersionId = group.diary.currentVersionId ?? group.versions.at(-1)?.id;
+          if (!currentVersionId) continue;
+          if (regeneratedArtifactGroupIdsRef.current.delete(group.diary.id) || !group.versions.some((version) => version.id === next[group.diary.id])) {
+            next[group.diary.id] = currentVersionId;
+          }
+        }
+        return next;
+      });
     }
   }, [space]);
 
@@ -1968,23 +2036,43 @@ export function AiChatScreen({
 
   const reloadRoleDreams = useCallback(async () => {
     const targetThreadId = activeThreadIdRef.current;
-    if (!targetThreadId) { setRoleDreams([]); setRoleDreamJobs([]); return; }
-    const { dreams, jobs } = await runWithDatabaseSpace(space, async (db) => {
+    if (!targetThreadId) { setRoleDreams([]); setDreamVersionsByGroupId({}); setRoleDreamJobs([]); return; }
+    const { groups, jobs } = await runWithDatabaseSpace(space, async (db) => {
       const thread = await aiThreadRepository.findThreadById(db, targetThreadId);
-      if (!thread?.roleCardId) return { dreams: [], jobs: [] };
+      if (!thread?.roleCardId) return { groups: [], jobs: [] };
       const scopes = persistedCurrentBranchScopes.length > 0 ? persistedCurrentBranchScopes : activeMessageBranchScopesRef.current ?? [];
       const route = hashBranchRoute(scopes);
-      const [allDreams, allJobs] = await Promise.all([
-        dreamRepository.listForRole(db, thread.roleCardId),
+      const [allGroups, allJobs, hiddenGroupIds] = await Promise.all([
+        dreamRepository.listVersionGroupsForRole(db, thread.roleCardId),
         dreamRepository.listJobsForRole(db, thread.roleCardId),
+        companionArtifactChatStateRepository.listHiddenGroupIds(db, targetThreadId, 'dream'),
       ]);
       return {
-        dreams: allDreams.filter(dream => dream.sourceThreadId === targetThreadId && dream.sourceBranchRouteHash === route && dream.lineageVersion === (thread.lineageVersion ?? 0)),
-        jobs: allJobs.filter(job => job.threadId === targetThreadId && job.branchRouteHash === route && job.lineageVersion === (thread.lineageVersion ?? 0)),
+        groups: allGroups.filter((group) => {
+          const current = group.versions.find((dream) => dream.isCurrent) ?? group.versions.at(-1);
+          if (!current) return false;
+          return !hiddenGroupIds.has(group.id)
+            && current.sourceThreadId === targetThreadId
+            && current.sourceBranchRouteHash === route
+            && current.lineageVersion === (thread.lineageVersion ?? 0);
+        }),
+        jobs: allJobs.filter(job => job.targetVersionGroupId == null && job.threadId === targetThreadId && job.branchRouteHash === route && job.lineageVersion === (thread.lineageVersion ?? 0)),
       };
     });
     if (screenMountedRef.current && targetThreadId === activeThreadIdRef.current) {
-      setRoleDreams(dreams);
+      setRoleDreams(groups.map((group) => group.versions.find((dream) => dream.isCurrent) ?? group.versions.at(-1)).filter((dream): dream is DreamRecord => Boolean(dream)));
+      setDreamVersionsByGroupId(Object.fromEntries(groups.map((group) => [group.id, group.versions])));
+      setSelectedArtifactVersionByGroupId((previous) => {
+        const next = { ...previous };
+        for (const group of groups) {
+          const current = group.versions.find((dream) => dream.isCurrent) ?? group.versions.at(-1);
+          if (!current) continue;
+          if (regeneratedArtifactGroupIdsRef.current.delete(group.id) || !group.versions.some((dream) => dream.id === next[group.id])) {
+            next[group.id] = current.id;
+          }
+        }
+        return next;
+      });
       setRoleDreamJobs(jobs);
     }
   }, [persistedCurrentBranchScopes, space]);
@@ -2128,7 +2216,10 @@ export function AiChatScreen({
 
   useEffect(() => {
     setRoleDiaries([]);
+    setDiaryVersionsById({});
     setRoleDreams([]);
+    setDreamVersionsByGroupId({});
+    setSelectedArtifactVersionByGroupId({});
     setRoleDreamJobs([]);
     setDreamNotice(null);
     setDiaryManualHint(false);
@@ -2255,20 +2346,38 @@ export function AiChatScreen({
           sourceBranchRouteJson: diary.sourceBranchRouteJson,
           sourceThreadId: diary.sourceThreadId,
         }))
-        .map((diary) => ({
+        .flatMap((diary) => {
+          const versions = diaryVersionsById[diary.id] ?? [];
+          const selectedVersionId = selectedArtifactVersionByGroupId[diary.id];
+          const version = versions.find((entry) => entry.id === selectedVersionId)
+            ?? versions.find((entry) => entry.id === diary.currentVersionId)
+            ?? versions.at(-1);
+          if (!version) return [];
+          const versionIndex = Math.max(0, versions.findIndex((entry) => entry.id === version.id)) + 1;
+          return [{
           createdAt: diary.createdAt,
           id: diary.id,
           kind: 'diary' as const,
-          payload: diary,
+          payload: { diary, version, versionIndex, versionTotal: versions.length },
           sourceMessageIds: diary.sourceMessageIds,
-        })),
-      ...roleDreams.map((dream) => ({
+          }];
+        }),
+      ...roleDreams.flatMap((currentDream) => {
+        const groupId = currentDream.versionGroupId;
+        const versions = dreamVersionsByGroupId[groupId] ?? [];
+        const selectedVersionId = selectedArtifactVersionByGroupId[groupId];
+        const dream = versions.find((entry) => entry.id === selectedVersionId)
+          ?? versions.find((entry) => entry.isCurrent)
+          ?? currentDream;
+        const versionIndex = Math.max(0, versions.findIndex((entry) => entry.id === dream.id)) + 1;
+        return [{
         createdAt: dream.displayAt,
-        id: dream.id,
+        id: groupId,
         kind: 'dream' as const,
-        payload: dream,
+        payload: { dream, versionIndex, versionTotal: versions.length },
         sourceMessageIds: dream.sourceMessageIds,
-      })),
+        }];
+      }),
       ...roleDreamJobs.map((job) => ({
         createdAt: job.createdAt,
         id: job.id,
@@ -2287,11 +2396,11 @@ export function AiChatScreen({
     timelineItems.forEach((item) => {
       if (item.type === 'artifact') {
         if (item.artifact.kind === 'diary') {
-          const diary = item.artifact.payload as RoleDiaryRecord;
-          nextVisibleMessageItems.push({ type: 'diary', id: item.id, diary });
+          const payload = item.artifact.payload as Extract<ChatCompanionArtifactPayload, { diary: RoleDiaryRecord }>;
+          nextVisibleMessageItems.push({ type: 'diary', id: item.id, ...payload });
         } else if (item.artifact.kind === 'dream') {
-          const dream = item.artifact.payload as DreamRecord;
-          nextVisibleMessageItems.push({ type: 'dream', id: item.id, dream });
+          const payload = item.artifact.payload as Extract<ChatCompanionArtifactPayload, { dream: DreamRecord }>;
+          nextVisibleMessageItems.push({ type: 'dream', id: item.id, ...payload });
         } else {
           const job = item.artifact.payload as DreamJobRecord;
           nextVisibleMessageItems.push({ type: 'dreamJob', id: item.id, job });
@@ -2423,8 +2532,11 @@ export function AiChatScreen({
     singleBubbleTailReplayEnabled,
     streamingTailVersion,
     roleDiaries,
+    diaryVersionsById,
     roleDreams,
+    dreamVersionsByGroupId,
     roleDreamJobs,
+    selectedArtifactVersionByGroupId,
     thinking,
   ]);
   const {
@@ -6411,6 +6523,90 @@ export function AiChatScreen({
     }
   }
 
+  const handleArtifactLongPress = useCallback((
+    artifactKind: 'diary' | 'dream',
+    groupId: string,
+    versionId: string,
+    createdAt: string,
+    pageX: number,
+    pageY: number,
+  ) => {
+    setArtifactContextMenuState({
+      anchorX: pageX,
+      anchorY: pageY,
+      artifactKind,
+      createdAt,
+      groupId,
+      versionId,
+    });
+  }, []);
+
+  const handleHideArtifactFromChat = useCallback(async () => {
+    const artifact = artifactContextMenuState;
+    const targetThreadId = activeThreadIdRef.current;
+    if (!artifact || !targetThreadId) return;
+    setArtifactActionPending(true);
+    try {
+      await runWithDatabaseSpace(space, (db) =>
+        companionArtifactChatStateRepository.hide(db, {
+          artifactGroupId: artifact.groupId,
+          artifactKind: artifact.artifactKind,
+          threadId: targetThreadId,
+        }),
+      );
+      if (artifact.artifactKind === 'diary') {
+        await reloadRoleDiaries();
+      } else {
+        await reloadRoleDreams();
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? `从聊天中移除失败：${error.message}` : '从聊天中移除失败，请稍后重试。');
+    } finally {
+      setArtifactActionPending(false);
+    }
+  }, [artifactContextMenuState, reloadRoleDiaries, reloadRoleDreams, space]);
+
+  const handleRegenerateArtifactVersion = useCallback(async () => {
+    const artifact = artifactContextMenuState;
+    if (!artifact) return;
+    setArtifactActionPending(true);
+    try {
+      regeneratedArtifactGroupIdsRef.current.add(artifact.groupId);
+      if (artifact.artifactKind === 'diary') {
+        const result = await regenerateDiaryVersion({ space, versionId: artifact.versionId });
+        setSelectedArtifactVersionByGroupId((current) => ({ ...current, [artifact.groupId]: result.versionId }));
+        await reloadRoleDiaries();
+      } else {
+        await regenerateDreamVersion({ dreamId: artifact.versionId, space });
+        await reloadRoleDreams();
+      }
+    } catch (error) {
+      regeneratedArtifactGroupIdsRef.current.delete(artifact.groupId);
+      setErrorMessage(error instanceof Error ? `重新生成失败：${error.message}` : '重新生成失败，请稍后重试。');
+    } finally {
+      setArtifactActionPending(false);
+    }
+  }, [artifactContextMenuState, reloadRoleDiaries, reloadRoleDreams, space]);
+
+  const artifactContextMenuActions: AiAnchoredContextMenuAction[] = artifactContextMenuState
+    ? [
+        {
+          disabled: artifactActionPending,
+          icon: 'refresh-outline',
+          key: 'regenerate-artifact',
+          label: '重新生成',
+          onPress: () => { void handleRegenerateArtifactVersion(); },
+        },
+        {
+          disabled: artifactActionPending,
+          icon: 'eye-off-outline',
+          key: 'hide-artifact-from-chat',
+          label: '从聊天中移除',
+          onPress: () => { void handleHideArtifactFromChat(); },
+        },
+      ]
+    : [];
+
   const baseMessageContextMenuTarget = messageContextMenuState
     ? (visibleMessagesById.get(messageContextMenuState.messageId) ?? null)
     : null;
@@ -6603,14 +6799,44 @@ export function AiChatScreen({
                 .then(() => reloadRoleDiaries())
                 .catch(() => undefined);
             }}
-            onOpen={() => onOpenDiary(item.diary.id)}
+            onLongPress={(pageX, pageY) => handleArtifactLongPress(
+              'diary', item.diary.id, item.version.id, item.diary.updatedAt, pageX, pageY,
+            )}
+            onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+              ...current,
+              [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.version.id,
+            }))}
+            onOpen={() => onOpenDiary(item.diary.id, item.version.id)}
+            onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+              ...current,
+              [item.diary.id]: (diaryVersionsById[item.diary.id] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.version.id,
+            }))}
             themeKey={item.diary.themeKey}
+            versionIndex={item.versionIndex}
+            versionTotal={item.versionTotal}
           />
         );
       }
       switch (item.type) {
         case 'dream':
-          return <DreamChatCard createdAt={item.dream.displayAt} onOpen={() => onOpenDream(item.dream.id)} title={item.dream.title} />;
+          return <DreamChatCard
+            createdAt={item.dream.displayAt}
+            onLongPress={(pageX, pageY) => handleArtifactLongPress(
+              'dream', item.dream.versionGroupId, item.dream.id, item.dream.updatedAt, pageX, pageY,
+            )}
+            onNextVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+              ...current,
+              [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.min(item.versionIndex, item.versionTotal - 1)]?.id ?? item.dream.id,
+            }))}
+            onOpen={() => onOpenDream(item.dream.id)}
+            onPreviousVersion={() => setSelectedArtifactVersionByGroupId((current) => ({
+              ...current,
+              [item.dream.versionGroupId]: (dreamVersionsByGroupId[item.dream.versionGroupId] ?? [])[Math.max(0, item.versionIndex - 2)]?.id ?? item.dream.id,
+            }))}
+            title={item.dream.title}
+            versionIndex={item.versionIndex}
+            versionTotal={item.versionTotal}
+          />;
         case 'dreamJob':
           const failure = presentDreamFailure(item.job.lastErrorCode);
           return <DreamChatCard actionLabel={failure.actionLabel} createdAt={item.job.createdAt} failureMessage={failure.message} title="未命名梦境" status={item.job.status === 'waiting_model' ? 'waiting_model' : item.job.status === 'failed' ? 'failed' : 'generating'} onCancel={() => void handleDreamJobCancel(item.job)} onRetry={() => void handleDreamJobRetry(item.job)} />;
@@ -6873,6 +7099,9 @@ export function AiChatScreen({
       singleBubbleTailReplayEnabled,
       space,
       scheduleStreamingTailReconcile,
+      diaryVersionsById,
+      dreamVersionsByGroupId,
+      handleArtifactLongPress,
       onOpenDiary,
       onOpenDream,
       reloadRoleDiaries,
@@ -7305,6 +7534,15 @@ export function AiChatScreen({
         onClose={() => setMessageContextMenuState(null)}
         timeLabel={messageContextMenuPresentation?.timeLabel ?? ""}
         visible={Boolean(messageContextMenuPresentation)}
+      />
+      <AiAnchoredContextMenu
+        actions={artifactContextMenuActions}
+        anchorX={artifactContextMenuState?.anchorX ?? 0}
+        anchorY={artifactContextMenuState?.anchorY ?? 0}
+        dismissAccessibilityLabel="关闭卡片操作菜单"
+        onClose={() => setArtifactContextMenuState(null)}
+        timeLabel={artifactContextMenuState ? formatAiMessageMinute(artifactContextMenuState.createdAt) : ''}
+        visible={Boolean(artifactContextMenuState)}
       />
       <AiMessageTextSelectionModal
         content={messageTextSelectionContent?.content ?? ""}

@@ -2,13 +2,14 @@ import { ActivityIndicator, ImageBackground, Pressable, StyleSheet, Text, View }
 
 import { dreamAssets } from '../../ai/dream/dreamAssets';
 import { colors, radius, shadows, spacing, typography } from '../../design/tokens';
+import { AiVersionStepper } from './AiVersionStepper';
 
 // Asset-specific ink colors preserve contrast against the generated moonlit background.
 const dreamInk = { title: '#283149', action: '#586A96' } as const;
 
 function label(value:string):string{const date=new Date(value);const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date);const get=(t:string)=>parts.find(p=>p.type===t)?.value??'';const key=`${get('year')}-${get('month')}-${get('day')}`;const nowParts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const today=`${nowParts.find(p=>p.type==='year')?.value}-${nowParts.find(p=>p.type==='month')?.value}-${nowParts.find(p=>p.type==='day')?.value}`;return key===today?`TODAY · ${get('hour')}:${get('minute')}`:`${key.replaceAll('-','.')} · ${get('hour')}:${get('minute')}`}
 
-export function DreamChatCard({actionLabel,createdAt,failureMessage,title,onCancel,onOpen,status,onRetry}:{actionLabel?:string;createdAt:string;failureMessage?:string;title:string;onCancel?:()=>void;onOpen?:()=>void;status?:'generating'|'failed'|'waiting_model'|'completed';onRetry?:()=>void}){
+export function DreamChatCard({actionLabel,createdAt,failureMessage,title,onCancel,onLongPress,onNextVersion,onOpen,onPreviousVersion,status,onRetry,versionIndex=1,versionTotal=1}:{actionLabel?:string;createdAt:string;failureMessage?:string;title:string;onCancel?:()=>void;onLongPress?:(pageX:number,pageY:number)=>void;onNextVersion?:()=>void;onOpen?:()=>void;onPreviousVersion?:()=>void;status?:'generating'|'failed'|'waiting_model'|'completed';onRetry?:()=>void;versionIndex?:number;versionTotal?:number}){
   const failed = status === 'failed' || status === 'waiting_model';
   const content = (
     <ImageBackground imageStyle={styles.image} source={dreamAssets.moonlitBotanical} style={styles.background}>
@@ -37,10 +38,11 @@ export function DreamChatCard({actionLabel,createdAt,failureMessage,title,onCanc
       {status === 'generating' ? (
         <View style={styles.card}>{content}</View>
       ) : (
-        <Pressable accessibilityLabel={failed?(actionLabel??'重试梦境制作'):'查看梦境'} accessibilityRole="button" onPress={failed?onRetry:onOpen} style={({pressed})=>[styles.card,pressed&&styles.pressed]}>
+        <Pressable accessibilityLabel={failed?(actionLabel??'重试梦境制作'):'查看梦境'} accessibilityRole="button" delayLongPress={500} onLongPress={(event)=>onLongPress?.(event.nativeEvent.pageX,event.nativeEvent.pageY)} onPress={failed?onRetry:onOpen} style={({pressed})=>[styles.card,pressed&&styles.pressed]}>
           {content}
         </Pressable>
       )}
+      {!failed && status !== 'generating' && versionTotal > 1 && onNextVersion && onPreviousVersion ? <AiVersionStepper currentIndex={versionIndex} nextAccessibilityLabel="下一版梦境" onNext={onNextVersion} onPrevious={onPreviousVersion} previousAccessibilityLabel="上一版梦境" total={versionTotal} /> : null}
     </View>
   );
 }

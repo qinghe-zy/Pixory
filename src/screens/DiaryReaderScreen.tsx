@@ -15,22 +15,23 @@ import { colors, metrics, spacing, typography } from '../design/tokens';
 interface DiaryReaderScreenProps {
   space: PixorySpace;
   diaryId: string;
+  versionId?: string;
   onBack: () => void;
 }
 
-export function DiaryReaderScreen({ space, diaryId, onBack }: DiaryReaderScreenProps) {
+export function DiaryReaderScreen({ space, diaryId, versionId, onBack }: DiaryReaderScreenProps) {
   const insets = useSafeAreaInsets();
   const [entry, setEntry] = useState<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
-      const current = await runWithDatabaseSpace(space, (db) => diaryRepository.findDiaryVersion(db, diaryId));
+    const current = await runWithDatabaseSpace(space, (db) => diaryRepository.findDiaryVersion(db, diaryId, versionId));
       setEntry(current);
       setError(current ? null : '这篇日记暂时不可用。');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '日记加载失败。');
     }
-  }, [diaryId, space]);
+  }, [diaryId, space, versionId]);
   useEffect(() => { void load(); }, [load]);
 
   return (
