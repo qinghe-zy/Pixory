@@ -7,6 +7,10 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const sourcePath = path.join(root, 'src/ai/aiScrollToLatestPolicy.ts');
+const buttonPath = path.join(
+  root,
+  'src/components/ai/AiScrollToLatestButton.tsx',
+);
 
 function loadPolicy() {
   const source = fs.readFileSync(sourcePath, 'utf8');
@@ -81,4 +85,11 @@ test('the affordance appears at 200 points', () => {
   const { shouldShowScrollToLatest } = loadPolicy();
   assert.equal(shouldShowScrollToLatest(199.9), false);
   assert.equal(shouldShowScrollToLatest(200), true);
+});
+
+test('the return-to-latest control is anchored at the right edge', () => {
+  const button = fs.readFileSync(buttonPath, 'utf8');
+
+  assert.match(button, /fadeWrap:[\s\S]*right: spacing\[4\]/);
+  assert.doesNotMatch(button, /fadeWrap:[\s\S]*left: 0,[\s\S]*right: 0/);
 });

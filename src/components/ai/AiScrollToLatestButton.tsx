@@ -176,9 +176,7 @@ export function AiScrollToLatestButton({
 const styles = StyleSheet.create({
   fadeWrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    right: spacing[4],
     zIndex: 5,
   },
   button: {
