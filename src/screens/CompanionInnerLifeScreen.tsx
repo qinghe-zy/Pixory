@@ -57,11 +57,9 @@ export function CompanionInnerLifeScreen({
       const result = await runWithDatabaseSpace(space, async (db) => {
         const thread = await aiThreadRepository.findThreadById(db, threadId);
         if (!thread?.roleCardId) return { diaryGroups: [], dreamGroups: [], thoughts: [] };
-        const [nextDiaryGroups, nextDreamGroups, roleThoughts] = await Promise.all([
-          diaryRepository.listVersionGroupsForRole(db, thread.roleCardId),
-          dreamRepository.listVersionGroupsForRole(db, thread.roleCardId),
-          thoughtRepository.listForRole(db, thread.roleCardId, true),
-        ]);
+        const nextDiaryGroups = await diaryRepository.listVersionGroupsForRole(db, thread.roleCardId);
+        const nextDreamGroups = await dreamRepository.listVersionGroupsForRole(db, thread.roleCardId);
+        const roleThoughts = await thoughtRepository.listForRole(db, thread.roleCardId, true);
         return { diaryGroups: nextDiaryGroups, dreamGroups: nextDreamGroups, thoughts: roleThoughts };
       });
       setDiaryGroups(result.diaryGroups);
@@ -122,9 +120,7 @@ export function CompanionInnerLifeScreen({
               .map((key) => key.slice(activeKind.length + 1));
             if (activeKind === 'diary') await diaryRepository.permanentlyDeleteVersions(db, ids);
             if (activeKind === 'dream') await dreamRepository.permanentlyDeleteVersions(db, ids);
-            if (activeKind === 'thought') {
-              for (const id of ids) await thoughtRepository.permanentlyDelete(db, id);
-            }
+            if (activeKind === 'thought') await thoughtRepository.permanentlyDeleteMany(db, ids);
           }).then(() => {
             exitSelection();
             return load();
@@ -176,27 +172,30 @@ export function CompanionInnerLifeScreen({
         {loading ? <Text accessibilityLiveRegion="polite" style={styles.empty}>正在整理…</Text> : null}
         {!loading && error ? <View style={styles.errorState}><Text style={styles.empty}>{error}</Text><Pressable accessibilityRole="button" onPress={() => void load()} style={styles.retryTouch}><Text style={styles.retry}>重试</Text></Pressable></View> : null}
 
-        {!loading && !error && activeKind === 'diary' ? diaryGroups.flatMap((group) => group.versions.map((version) => {
+        {!loading && !error && activeKind === 'diary' ? diaryGroups.flatMap((group) => group.versions.map((version, versionIndex) => {
           const key = selectionKey('diary', version.id);
           const selected = selectedKeys.has(key);
-          return <Pressable accessibilityLabel={`打开 ${group.diary.diaryDate} 的日记，第 ${version.versionNumber} 版`} accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => selectionMode ? toggleSelected(key) : onOpenDiary(group.diary.id, version.id)} style={({ pressed }) => [styles.entry, selected && styles.selectedEntry, pressed && styles.pressed]}>
-            <Text style={styles.meta}>{timeLabel(version.createdAt)}</Text><Text style={styles.entryTitle}>{group.diary.diaryDate.replaceAll('-', '.')} 的日记 · {version.versionNumber}/{group.versions.length}</Text><Text style={styles.open}>{selectionMode ? (selected ? '已选' : '选择') : '打开'}</Text>
+          return <Pressable accessibilityLabel={`打开 ${group.diary.diaryDate} 的日记，第 ${versionIndex + 1} 版`} accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => selectionMode ? toggleSelected(key) : onOpenDiary(group.diary.id, version.id)} style={({ pressed }) => [styles.entry, selected && styles.selectedEntry, pressed && styles.pressed]}>
+            <Text style={styles.meta}>{timeLabel(version.createdAt)}</Text><Text style={styles.entryTitle}>{group.diary.diaryDate.replaceAll('-', '.')} 的日记 · {versionIndex + 1}/{group.versions.length}</Text><Text style={styles.open}>{selectionMode ? (selected ? '已选' : '选择') : '打开'}</Text>
           </Pressable>;
         })) : null}
 
-        {!loading && !error && activeKind === 'dream' ? dreamGroups.flatMap((group) => group.versions.map((dream) => {
+        {!loading && !error && activeKind === 'dream' ? dreamGroups.flatMap((group) => group.versions.map((dream, versionIndex) => {
           const key = selectionKey('dream', dream.id);
           const selected = selectedKeys.has(key);
-          return <Pressable accessibilityLabel={`查看梦境：${dream.title}，第 ${dream.versionNumber} 版`} accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => selectionMode ? toggleSelected(key) : onOpenDream(dream.id)} style={({ pressed }) => [styles.dream, selected && styles.selectedEntry, pressed && styles.pressed]}>
-            <ImageBackground imageStyle={styles.dreamImage} source={dreamAssets.moonlitBotanical} style={styles.dreamBackground}><View style={styles.dreamVeil}><Text style={styles.dreamMeta}>{timeLabel(dream.displayAt)}</Text><Text numberOfLines={1} style={styles.dreamTitle}>{dream.title}</Text><Text style={styles.dreamOpen}>{selectionMode ? (selected ? '已选' : '选择') : `${dream.versionNumber}/${group.versions.length}`}</Text></View></ImageBackground>
+          return <Pressable accessibilityLabel={`查看梦境：${dream.title}，第 ${versionIndex + 1} 版`} accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => selectionMode ? toggleSelected(key) : onOpenDream(dream.id)} style={({ pressed }) => [styles.dream, selected && styles.selectedEntry, pressed && styles.pressed]}>
+            <ImageBackground imageStyle={styles.dreamImage} source={dreamAssets.moonlitBotanical} style={styles.dreamBackground}><View style={styles.dreamVeil}><Text style={styles.dreamMeta}>{timeLabel(dream.displayAt)}</Text><Text numberOfLines={1} style={styles.dreamTitle}>{dream.title}</Text><Text style={styles.dreamOpen}>{selectionMode ? (selected ? '已选' : '选择') : `${versionIndex + 1}/${group.versions.length}`}</Text></View></ImageBackground>
           </Pressable>;
         })) : null}
 
         {!loading && !error && activeKind === 'thought' ? thoughts.map((thought) => {
           const key = selectionKey('thought', thought.id);
           const selected = selectedKeys.has(key);
-          return <Pressable accessibilityLabel="选择内心独白" accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => selectionMode ? toggleSelected(key) : undefined} style={({ pressed }) => [styles.thought, selected && styles.selectedEntry, thought.status === 'soft_deleted' && styles.deletedEntry, pressed && styles.pressed]}>
-            <Text style={styles.meta}>{timeLabel(thought.createdAt)}</Text><Text style={styles.thoughtBody}>{thought.body}</Text>{selectionMode ? <Text style={styles.open}>{selected ? '已选' : '选择'}</Text> : null}
+          return <Pressable accessibilityLabel={thought.status === 'soft_deleted' ? '恢复这条独白' : '选择内心独白'} accessibilityRole="button" accessibilityState={{ selected }} delayLongPress={500} key={key} onLongPress={() => enterSelection(key)} onPress={() => {
+            if (selectionMode) toggleSelected(key);
+            else if (thought.status === 'soft_deleted') void runWithDatabaseSpace(space, (db) => thoughtRepository.restore(db, thought.id)).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : '恢复失败，请稍后重试。'));
+          }} style={({ pressed }) => [styles.thought, selected && styles.selectedEntry, thought.status === 'soft_deleted' && styles.deletedEntry, pressed && styles.pressed]}>
+            <Text style={styles.meta}>{timeLabel(thought.createdAt)}</Text><Text style={styles.thoughtBody}>{thought.body}</Text>{selectionMode ? <Text style={styles.open}>{selected ? '已选' : '选择'}</Text> : thought.status === 'soft_deleted' ? <Text style={styles.open}>恢复</Text> : null}
           </Pressable>;
         }) : null}
         {!loading && !error && activeCount === 0 ? <Text style={styles.empty}>{emptyText}</Text> : null}

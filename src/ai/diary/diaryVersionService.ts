@@ -37,13 +37,14 @@ export async function regenerateDiaryVersion(input: {
   await runDiaryJobInBackground({ jobId: job.id, space: input.space });
 
   return runWithDatabaseSpace(input.space, async (db) => {
-    const [latest, completedJob] = await Promise.all([
-      diaryRepository.findDiaryVersion(db, entry.diary.id),
-      diaryRepository.findJobById(db, job.id),
-    ]);
-    if (latest && latest.version.id !== input.versionId) {
+    const latest = await diaryRepository.findDiaryVersion(db, entry.diary.id);
+    const completedJob = await diaryRepository.findJobById(db, job.id);
+    if (completedJob?.status !== 'completed') {
+      throw new Error(completedJob?.errorMessage ?? '日记重新生成失败。');
+    }
+    if (latest && latest.version.id !== entry.diary.currentVersionId) {
       return { diaryId: latest.diary.id, versionId: latest.version.id };
     }
-    throw new Error(completedJob?.errorMessage ?? '日记重新生成失败。');
+    throw new Error('日记重新生成完成，但未找到新版本。');
   });
 }

@@ -190,3 +190,42 @@ test('a reservation made before Beijing midnight cannot create a third success a
     assert.equal(db.db.prepare("SELECT COUNT(*) AS count FROM companion_dreams WHERE displayAt >= '2026-08-09T16:00:00.000Z'").get().count,2);
   } finally { db.close(); }
 });
+
+test('dream regeneration appends versions, promotes the latest survivor, and clears orphaned chat state', async () => {
+  const db=createDb(); try {
+    const now='2026-08-11T08:00:00.000Z';
+    const scene=await repository.upsertDreamScene(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,state:'sleep_established',evidenceMessageIds:['user-a','assistant-a'],sourceSnapshotHash:'snapshot',now});
+    async function completeVersion(key, at, targetVersionGroupId=null) {
+      const seed=await repository.createDreamSeed(db,{space:'normal',roleCardId:'role-a',threadId:'thread-a',branchRouteHash:'route-a',lineageVersion:0,sceneId:scene.id,sourceMessageIds:['user-a','assistant-a'],sourceMessageVersionHashes:['uh','ah'],sourceSnapshotHash:'snapshot',roll:0,decision:'selected',manual:true,policyVersion:'v',idempotencyKey:key,now:at});
+      const pending=await repository.createDreamJob(db,{seed,phase:'generating',now:at,targetVersionGroupId});
+      const running=await repository.acquireDreamJob(db,{id:pending.id,workerId:key,now:at,leaseUntil:new Date(new Date(at).getTime()+300000).toISOString()});
+      return repository.completeDream(db,{job:running,seed,title:`梦境 ${key}`,body:`这是 ${key} 的梦境正文。`,now:at,workerId:key});
+    }
+
+    const first=await completeVersion('version-one',now);
+    assert.ok(first);
+    await repository.setDreamContextOptIn(db,first.id,true);
+    const second=await completeVersion('version-two','2026-08-11T08:01:00.000Z',first.versionGroupId);
+    assert.ok(second);
+    assert.equal(second.versionGroupId,first.versionGroupId);
+    assert.equal(second.versionNumber,2);
+    assert.equal(second.isCurrent,true);
+    assert.equal(second.contextOptIn,true);
+
+    let groups=await repository.listDreamVersionGroupsForRole(db,'role-a');
+    assert.deepEqual(groups[0].versions.map((dream)=>[dream.versionNumber,dream.isCurrent]),[[1,false],[2,true]]);
+    await db.runAsync(`INSERT INTO companion_artifact_chat_states (artifactKind, artifactGroupId, threadId, hiddenAt, createdAt, updatedAt) VALUES ('dream', ?, 'thread-a', ?, ?, ?)`,first.versionGroupId,now,now,now);
+
+    await assert.rejects(repository.permanentlyDeleteDreamVersions(db,[second.id,'missing-dream']),/发生变化/);
+    groups=await repository.listDreamVersionGroupsForRole(db,'role-a');
+    assert.equal(groups[0].versions.length,2);
+
+    await repository.permanentlyDeleteDreamVersions(db,[second.id]);
+    groups=await repository.listDreamVersionGroupsForRole(db,'role-a');
+    assert.deepEqual(groups[0].versions.map((dream)=>[dream.versionNumber,dream.isCurrent]),[[1,true]]);
+
+    await repository.permanentlyDeleteDreamVersions(db,[first.id]);
+    assert.deepEqual(await repository.listDreamVersionGroupsForRole(db,'role-a'),[]);
+    assert.equal(db.db.prepare(`SELECT COUNT(*) AS count FROM companion_artifact_chat_states WHERE artifactKind='dream' AND artifactGroupId=?`).get(first.versionGroupId).count,0);
+  } finally { db.close(); }
+});

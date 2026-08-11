@@ -35,4 +35,18 @@ export async function listThoughtsForRole(db:SQLiteDatabase,roleCardId:string,in
 export async function softDeleteThought(db:SQLiteDatabase,id:string):Promise<void>{const now=createTimestamp();await db.runAsync(`UPDATE companion_thoughts SET status='soft_deleted',deliveryStatus=CASE WHEN deliveryStatus='reserved' THEN 'pending' ELSE deliveryStatus END,reservationId=NULL,reservationMessageId=NULL,reservedAt=NULL,deletedAt=?,updatedAt=? WHERE id=? AND status='active'`,now,now,id)}
 export async function restoreThought(db:SQLiteDatabase,id:string):Promise<void>{await db.runAsync(`UPDATE companion_thoughts SET status='active',deletedAt=NULL,updatedAt=? WHERE id=? AND status='soft_deleted'`,createTimestamp(),id)}
 export async function permanentlyDeleteThought(db:SQLiteDatabase,id:string):Promise<void>{await db.runAsync('DELETE FROM companion_thoughts WHERE id=?',id)}
-export const thoughtRepository={acquireJob:acquireThoughtJob,completeJob:completeThoughtJob,findJob:findThoughtJob,listEvents:listThoughtEvents,listForRole:listThoughtsForRole,listReadyJobs:listReadyThoughtJobs,permanentlyDelete:permanentlyDeleteThought,recordEvents:recordThoughtEvents,recordUsage:recordThoughtJobUsage,reserveQuota:reserveThoughtQuota,restore:restoreThought,settleSession:settleThoughtSession,softDelete:softDeleteThought,transitionJob:transitionThoughtJob};
+export async function permanentlyDeleteThoughts(db:SQLiteDatabase,ids:string[]):Promise<number>{
+  const uniqueIds=[...new Set(ids)];
+  if(uniqueIds.length===0||uniqueIds.length!==ids.length)throw new Error('所选独白已发生变化，请刷新后重试。');
+  const placeholders=uniqueIds.map(()=>'?').join(', ');
+  let deletedCount=0;
+  await db.withExclusiveTransactionAsync(async(txn)=>{
+    const selected=await txn.getAllAsync<{id:string}>(`SELECT id FROM companion_thoughts WHERE id IN (${placeholders})`,...uniqueIds);
+    if(selected.length!==uniqueIds.length)throw new Error('所选独白已发生变化，请刷新后重试。');
+    const deletion=await txn.runAsync(`DELETE FROM companion_thoughts WHERE id IN (${placeholders})`,...uniqueIds);
+    deletedCount=Number(deletion.changes??0);
+    if(deletedCount!==uniqueIds.length)throw new Error('所选独白已发生变化，请刷新后重试。');
+  });
+  return deletedCount;
+}
+export const thoughtRepository={acquireJob:acquireThoughtJob,completeJob:completeThoughtJob,findJob:findThoughtJob,listEvents:listThoughtEvents,listForRole:listThoughtsForRole,listReadyJobs:listReadyThoughtJobs,permanentlyDelete:permanentlyDeleteThought,permanentlyDeleteMany:permanentlyDeleteThoughts,recordEvents:recordThoughtEvents,recordUsage:recordThoughtJobUsage,reserveQuota:reserveThoughtQuota,restore:restoreThought,settleSession:settleThoughtSession,softDelete:softDeleteThought,transitionJob:transitionThoughtJob};

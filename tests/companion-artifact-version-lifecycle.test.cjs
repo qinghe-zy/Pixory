@@ -35,6 +35,9 @@ const chatStateRepository = fs.existsSync(repositoryPath)
 const diaryRepository = loadTypeScriptModule(
   path.join(root, 'src/ai/diary/diaryRepository.ts'),
 ).diaryRepository;
+const thoughtRepository = loadTypeScriptModule(
+  path.join(root, 'src/ai/thought/thoughtRepository.ts'),
+).thoughtRepository;
 
 class DB {
   constructor() {
@@ -158,6 +161,81 @@ test('diary versions are append-only, promote after deletion, and clear orphaned
       [...await chatStateRepository.listHiddenGroupIds(db, 'thread-a', 'diary')],
       [],
     );
+  } finally {
+    db.close();
+  }
+});
+
+test('diary version numbers keep increasing after an intermediate version is deleted', async () => {
+  const db = createDb();
+  try {
+    const base = {
+      bodyFontKey: 'serif',
+      diaryDate: '2026-08-11',
+      effectiveSourceSnapshotHash: 'snapshot-a',
+      jobContextSnapshotHash: 'job-context-a',
+      roleCardId: 'role-a',
+      sourceBranchRouteJson: '[]',
+      sourceThreadId: 'thread-a',
+      status: 'ready',
+      themeKey: 'paper-light',
+    };
+    const first = await diaryRepository.saveDiaryVersion(db, { ...base, body: '第一版日记。' });
+    const second = await diaryRepository.saveDiaryVersion(db, { ...base, body: '第二版日记。' });
+    const third = await diaryRepository.saveDiaryVersion(db, { ...base, body: '第三版日记。' });
+
+    await diaryRepository.permanentlyDeleteVersions(db, [second.id]);
+    const fourth = await diaryRepository.saveDiaryVersion(db, { ...base, body: '删除中间版本后生成的新版本。' });
+    const groups = await diaryRepository.listVersionGroupsForRole(db, 'role-a');
+
+    assert.equal(first.versionNumber, 1);
+    assert.equal(third.versionNumber, 3);
+    assert.equal(fourth.versionNumber, 4);
+    assert.deepEqual(groups[0].versions.map((version) => version.versionNumber), [1, 3, 4]);
+  } finally {
+    db.close();
+  }
+});
+
+test('thought batch permanent deletion is atomic when any selected item is stale', async () => {
+  const db = createDb();
+  try {
+    db.exec(`
+      INSERT INTO companion_thought_jobs (
+        id, space, roleCardId, threadId, branchRouteHash, lineageVersion,
+        sessionKey, eventIdsJson, sourceSnapshotHash, roleSnapshotJson,
+        scheduledFor, status, nextRunAt, idempotencyKey, createdAt, updatedAt
+      ) VALUES (
+        'thought-job-a', 'normal', 'role-a', 'thread-a', 'route-a', 0,
+        'session-a', '[]', 'snapshot-a', '{}',
+        '2026-08-11T00:00:00.000Z', 'completed', '2026-08-11T00:00:00.000Z',
+        'thought-job-a', '2026-08-11T00:00:00.000Z', '2026-08-11T00:00:00.000Z'
+      );
+      INSERT INTO companion_thoughts (
+        id, space, roleCardId, sourceThreadId, sourceBranchRouteHash, lineageVersion,
+        jobId, eventIdsJson, sourceMessageIdsJson, sourceSnapshotHash, priority, body,
+        status, deliveryStatus, idempotencyKey, createdAt, updatedAt
+      ) VALUES
+        ('thought-a', 'normal', 'role-a', 'thread-a', 'route-a', 0,
+         'thought-job-a', '[]', '[]', 'snapshot-a', 1, '第一条独白',
+         'active', 'pending', 'thought-a', '2026-08-11T00:00:00.000Z', '2026-08-11T00:00:00.000Z'),
+        ('thought-b', 'normal', 'role-a', 'thread-a', 'route-a', 0,
+         'thought-job-a', '[]', '[]', 'snapshot-a', 1, '第二条独白',
+         'soft_deleted', 'pending', 'thought-b', '2026-08-11T00:01:00.000Z', '2026-08-11T00:01:00.000Z');
+    `);
+
+    assert.equal(typeof thoughtRepository.permanentlyDeleteMany, 'function');
+    await assert.rejects(
+      thoughtRepository.permanentlyDeleteMany(db, ['thought-a', 'missing-thought']),
+      /发生变化/,
+    );
+    assert.deepEqual(
+      (await db.getAllAsync('SELECT id FROM companion_thoughts ORDER BY id')).map((row) => row.id),
+      ['thought-a', 'thought-b'],
+    );
+
+    await thoughtRepository.permanentlyDeleteMany(db, ['thought-a', 'thought-b']);
+    assert.deepEqual(await db.getAllAsync('SELECT id FROM companion_thoughts'), []);
   } finally {
     db.close();
   }

@@ -182,14 +182,25 @@ export const diaryRepository = {
     roleCardId: string,
   ): Promise<RoleDiaryVersionGroup[]> {
     const diaries = await diaryRepository.listCurrentDiariesForRole(db, roleCardId);
-    return Promise.all(diaries.map(async (diary) => {
-      const rows = await db.getAllAsync<RoleDiaryVersionRow>(
-        `SELECT * FROM companion_diary_versions
-         WHERE diaryId = ?
-         ORDER BY versionNumber ASC`,
-        diary.id,
-      );
-      return { diary, versions: rows.map(mapDiaryVersionRow) };
+    const rows = await db.getAllAsync<RoleDiaryVersionRow>(
+      `SELECT version.*
+       FROM companion_diary_versions version
+       JOIN companion_diaries diary ON diary.id = version.diaryId
+       WHERE diary.roleCardId = ?
+         AND diary.status IN ('ready_pending_presentation', 'ready')
+       ORDER BY diary.diaryDate DESC, diary.updatedAt DESC, version.versionNumber ASC`,
+      roleCardId,
+    );
+    const versionsByDiaryId = new Map<string, RoleDiaryVersionRecord[]>();
+    for (const row of rows) {
+      const version = mapDiaryVersionRow(row);
+      const versions = versionsByDiaryId.get(version.diaryId) ?? [];
+      versions.push(version);
+      versionsByDiaryId.set(version.diaryId, versions);
+    }
+    return diaries.map((diary) => ({
+      diary,
+      versions: versionsByDiaryId.get(diary.id) ?? [],
     }));
   },
 
@@ -386,11 +397,11 @@ export const diaryRepository = {
         'SELECT * FROM companion_diaries WHERE id = ?',
         id,
       );
-      const count = await txn.getFirstAsync<{ count: number }>(
-        'SELECT COUNT(*) AS count FROM companion_diary_versions WHERE diaryId = ?',
+      const latestVersion = await txn.getFirstAsync<{ maxVersion: number }>(
+        'SELECT COALESCE(MAX(versionNumber), 0) AS maxVersion FROM companion_diary_versions WHERE diaryId = ?',
         id,
       );
-      const versionNumber = (count?.count ?? 0) + 1;
+      const versionNumber = Number(latestVersion?.maxVersion ?? 0) + 1;
       const versionId = `${id}:v${versionNumber}`;
 
       if (!existing) {

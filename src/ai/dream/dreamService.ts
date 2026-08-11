@@ -167,10 +167,8 @@ export async function regenerateDreamVersion(input: {
     if (!dream) {
       throw new Error('梦境版本不存在或已删除。');
     }
-    const [seed, thread] = await Promise.all([
-      dreamRepository.findSeed(db, dream.seedId),
-      aiThreadRepository.findThreadById(db, dream.sourceThreadId),
-    ]);
+    const seed = await dreamRepository.findSeed(db, dream.seedId);
+    const thread = await aiThreadRepository.findThreadById(db, dream.sourceThreadId);
     if (!seed || !thread || thread.roleCardId !== dream.roleCardId) {
       throw new Error('梦境来源已不可用，无法重新生成。');
     }

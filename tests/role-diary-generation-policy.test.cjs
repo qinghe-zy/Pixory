@@ -20,5 +20,6 @@ test('regenerates a diary from its completed frozen-source job', () => {
   assert.match(versionService, /findSourceJobForVersion/);
   assert.match(versionService, /sourceMessagesJson:\s*sourceJob\.sourceMessagesJson/);
   assert.match(versionService, /sourceBranchRouteJson:\s*sourceJob\.sourceBranchRouteJson/);
+  assert.match(versionService, /completedJob\?\.status !== 'completed'/);
   assert.doesNotMatch(versionService, /prepareAndScheduleDiaryJob/);
 });
