@@ -15,6 +15,7 @@ import { AiMessageContent } from './AiMessageContent';
 import { AiStreamingMessageText, AiStreamingReasoningText } from './AiStreamingMessageText';
 import { AiThinkingBlock } from './AiThinkingBlock';
 import { AiTypingIndicator } from './AiTypingIndicator';
+import { AiVersionStepper } from './AiVersionStepper';
 import { formatAiFullMinute } from '../../utils/aiTimeFormatters';
 import type { AiStreamingMessageIdentity } from '../../ai/aiStreamingMessageStore';
 import type { AiMessageAttachmentRecord } from '../../database/repositories/aiThreadRepository';
@@ -223,29 +224,14 @@ export function AiMessageFooterActions({
         </Pressable>
       ) : null}
       {message.versionTotal > 1 ? (
-        <View style={styles.versionControl}>
-          <Pressable
-            accessibilityLabel="上一版消息"
-            accessibilityRole="button"
-            disabled={message.versionIndex <= 1}
-            hitSlop={8}
-            onPress={() => selectVersion(-1)}
-            style={({ pressed }) => [styles.versionButton, message.versionIndex <= 1 && styles.disabledAction, pressed && message.versionIndex > 1 && styles.pressed]}
-          >
-            <Ionicons color={aiLightColors.muted} name="chevron-back" size={14} />
-          </Pressable>
-          <Text style={styles.versionText}>{message.versionIndex}/{message.versionTotal}</Text>
-          <Pressable
-            accessibilityLabel="下一版消息"
-            accessibilityRole="button"
-            disabled={message.versionIndex >= message.versionTotal}
-            hitSlop={8}
-            onPress={() => selectVersion(1)}
-            style={({ pressed }) => [styles.versionButton, message.versionIndex >= message.versionTotal && styles.disabledAction, pressed && message.versionIndex < message.versionTotal && styles.pressed]}
-          >
-            <Ionicons color={aiLightColors.muted} name="chevron-forward" size={14} />
-          </Pressable>
-        </View>
+        <AiVersionStepper
+          currentIndex={message.versionIndex}
+          nextAccessibilityLabel="下一版消息"
+          onNext={() => selectVersion(1)}
+          onPrevious={() => selectVersion(-1)}
+          previousAccessibilityLabel="上一版消息"
+          total={message.versionTotal}
+        />
       ) : null}
     </View>
   );

@@ -118,16 +118,28 @@ test('message context menu preserves its 5px finger anchor in a constrained view
 });
 
 test('message context menu has regular icons, dismiss handling, and a persistent time row', () => {
-  const menu = read('src/components/ai/AiMessageContextMenu.tsx');
+  const menu = read('src/components/ai/AiAnchoredContextMenu.tsx');
 
-  assert.match(menu, /export type AiMessageContextMenuAction/);
-  assert.match(menu, /accessibilityLabel="关闭消息操作菜单"/);
+  assert.match(menu, /export type AiAnchoredContextMenuAction/);
+  assert.match(menu, /accessibilityLabel=\{dismissAccessibilityLabel\}/);
   assert.match(menu, /action\.icon/);
   assert.match(menu, /timeLabel/);
   assert.match(menu, /styles\.timeRow/);
   assert.match(menu, /onRequestClose=\{onClose\}/);
   assert.match(menu, /ScrollView/);
   assert.match(menu, /maxHeight: position\.maxHeight/);
+});
+
+test('message context menu delegates its presentation to the shared anchored menu', () => {
+  const anchoredPath = path.join(root, 'src/components/ai/AiAnchoredContextMenu.tsx');
+  const anchored = fs.existsSync(anchoredPath) ? fs.readFileSync(anchoredPath, 'utf8') : '';
+  const messageMenu = read('src/components/ai/AiMessageContextMenu.tsx');
+
+  assert.match(anchored, /resolveAiMessageContextMenuPosition/);
+  assert.match(anchored, /animationType="fade"/);
+  assert.match(anchored, /dismissAccessibilityLabel/);
+  assert.match(messageMenu, /AiAnchoredContextMenu/);
+  assert.match(messageMenu, /关闭消息操作菜单/);
 });
 
 test('select text opens a full-screen selectable message reader', () => {
