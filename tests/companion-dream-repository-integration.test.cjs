@@ -11,7 +11,7 @@ let schema, repository, runtimeEvents;
 try { schema = require(path.join(root, 'src/database/schema.ts')); repository = require(path.join(root, 'src/ai/dream/dreamRepository.ts')); runtimeEvents = require(path.join(root, 'src/ai/dream/dreamRuntimeEvents.ts')); } finally { if (original) require.extensions['.ts'] = original; else delete require.extensions['.ts']; }
 
 class DB { constructor() { this.db = new DatabaseSync(':memory:'); } exec(s) { this.db.exec(s); } async runAsync(s,...p){return this.db.prepare(s).run(...p);} async getFirstAsync(s,...p){return this.db.prepare(s).get(...p)??null;} async getAllAsync(s,...p){return this.db.prepare(s).all(...p);} async withTransactionAsync(task){this.db.exec('BEGIN');try{const r=await task();this.db.exec('COMMIT');return r;}catch(e){this.db.exec('ROLLBACK');throw e;}} close(){this.db.close();} }
-function createDb() { const db = new DB(); db.exec(`PRAGMA foreign_keys=ON; CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL, roleSnapshotJson TEXT NOT NULL DEFAULT '{}'); CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE); INSERT INTO ai_threads(id, space) VALUES('thread-a','normal'); INSERT INTO ai_messages VALUES('user-a','thread-a'); INSERT INTO ai_messages VALUES('assistant-a','thread-a');`); db.exec(schema.MIGRATION_STATEMENTS_V53); db.exec(schema.MIGRATION_STATEMENTS_V58); return db; }
+function createDb() { const db = new DB(); db.exec(`PRAGMA foreign_keys=ON; CREATE TABLE ai_threads(id TEXT PRIMARY KEY, space TEXT NOT NULL, roleSnapshotJson TEXT NOT NULL DEFAULT '{}'); CREATE TABLE ai_messages(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE); INSERT INTO ai_threads(id, space) VALUES('thread-a','normal'); INSERT INTO ai_messages VALUES('user-a','thread-a'); INSERT INTO ai_messages VALUES('assistant-a','thread-a');`); db.exec(schema.MIGRATION_STATEMENTS_V53); db.exec(schema.MIGRATION_STATEMENTS_V58); db.exec(schema.MIGRATION_STATEMENTS_V59); return db; }
 
 test('round receipts are idempotent and first automatic dream can reserve quota', async () => {
   const db=createDb(); try {
@@ -61,7 +61,11 @@ test('counter rebuild after delete or move excludes completed manual dreams from
     const running=await repository.acquireDreamJob(db,{id:pending.id,workerId:'manual-worker',now,leaseUntil:'2026-07-29T08:05:00Z'});
     assert.ok(running);
     assert.equal(await repository.reserveDreamQuota(db,running,now),true);
-    assert.ok(await repository.completeDream(db,{job:running,seed,title:'手动梦境',body:'这是用户明确请求生成的梦。',now,workerId:'manual-worker'}));
+    const completed = await repository.completeDream(db,{job:running,seed,title:'手动梦境',body:'这是用户明确请求生成的梦。',now,workerId:'manual-worker'});
+    assert.ok(completed);
+    assert.equal(completed.versionGroupId, completed.id);
+    assert.equal(completed.versionNumber, 1);
+    assert.equal(completed.isCurrent, true);
 
     await repository.rebuildRoleRoundCounter(db,{space:'normal',roleCardId:'role-a',now});
     const counter=db.db.prepare('SELECT * FROM companion_role_round_counters WHERE roleCardId=?').get('role-a');

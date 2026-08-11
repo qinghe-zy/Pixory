@@ -27,6 +27,7 @@ export interface DreamSeedRecord {
 export interface DreamJobRecord {
   id: string; space: PixorySpace; roleCardId: string; threadId: string; branchRouteHash: string; lineageVersion: number;
   sceneId: string; seedId: string; phase: 'classifying' | 'generating'; status: DreamJobStatus; sourceSnapshotHash: string;
+  targetVersionGroupId: string | null;
   sourceMessageIds: string[]; attemptCount: number; maxAttempts: number; cancelRequested: boolean; quotaReserved: boolean; quotaReservationDateKey: string | null;
   nextRunAt: string; leaseOwner: string | null; leaseUntil: string | null; lastErrorCode: string | null;
   classifierPromptTokens: number | null; classifierCompletionTokens: number | null;
@@ -36,6 +37,7 @@ export interface DreamJobRecord {
 export interface DreamRecord {
   id: string; space: PixorySpace; roleCardId: string; sourceThreadId: string; sourceBranchRouteHash: string; lineageVersion: number;
   sceneId: string; seedId: string; jobId: string; sourceMessageIds: string[]; sourceSnapshotHash: string;
+  versionGroupId: string; versionNumber: number; isCurrent: boolean;
   title: string; body: string; displayAt: string; status: 'active' | 'stale_source' | 'soft_deleted';
   contextOptIn: boolean | null; viewedAt: string | null; deletedAt: string | null; createdAt: string; updatedAt: string;
 }
@@ -49,10 +51,14 @@ function mapSeed(row: Record<string, unknown>): DreamSeedRecord {
   return { id: String(row.id), space: row.space as PixorySpace, roleCardId: String(row.roleCardId), threadId: String(row.threadId), branchRouteHash: String(row.branchRouteHash), lineageVersion: Number(row.lineageVersion), sceneId: String(row.sceneId), sourceMessageIds: strings(parseCompanionJsonArray(String(row.sourceMessageIdsJson))), sourceMessageVersionHashes: strings(parseCompanionJsonArray(String(row.sourceMessageVersionHashesJson))), sourceSnapshotHash: String(row.sourceSnapshotHash), roleSnapshotJson: String(row.roleSnapshotJson ?? '{}'), roll: Number(row.roll), classification: classification as DreamClassification | null, classifiedProbability: row.classifiedProbability == null ? null : Number(row.classifiedProbability), decision: row.decision as DreamSeedDecision, manual: Number(row.manual) === 1, policyVersion: String(row.policyVersion), idempotencyKey: String(row.idempotencyKey), createdAt: String(row.createdAt), updatedAt: String(row.updatedAt) };
 }
 function mapJob(row: Record<string, unknown>): DreamJobRecord {
-  return { id: String(row.id), space: row.space as PixorySpace, roleCardId: String(row.roleCardId), threadId: String(row.threadId), branchRouteHash: String(row.branchRouteHash), lineageVersion: Number(row.lineageVersion), sceneId: String(row.sceneId), seedId: String(row.seedId), phase: row.phase as DreamJobRecord['phase'], status: row.status as DreamJobStatus, sourceSnapshotHash: String(row.sourceSnapshotHash), sourceMessageIds: strings(parseCompanionJsonArray(String(row.sourceMessageIdsJson))), attemptCount: Number(row.attemptCount), maxAttempts: Number(row.maxAttempts), cancelRequested: Number(row.cancelRequested) === 1, quotaReserved: Number(row.quotaReserved) === 1, quotaReservationDateKey: (row.quotaReservationDateKey as string | null) ?? null, nextRunAt: String(row.nextRunAt), leaseOwner: (row.leaseOwner as string | null) ?? null, leaseUntil: (row.leaseUntil as string | null) ?? null, lastErrorCode: (row.lastErrorCode as string | null) ?? null, classifierPromptTokens: row.classifierPromptTokens == null ? null : Number(row.classifierPromptTokens), classifierCompletionTokens: row.classifierCompletionTokens == null ? null : Number(row.classifierCompletionTokens), generationPromptTokens: row.generationPromptTokens == null ? null : Number(row.generationPromptTokens), generationCompletionTokens: row.generationCompletionTokens == null ? null : Number(row.generationCompletionTokens), idempotencyKey: String(row.idempotencyKey), createdAt: String(row.createdAt), updatedAt: String(row.updatedAt), completedAt: (row.completedAt as string | null) ?? null };
+  return { id: String(row.id), space: row.space as PixorySpace, roleCardId: String(row.roleCardId), threadId: String(row.threadId), branchRouteHash: String(row.branchRouteHash), lineageVersion: Number(row.lineageVersion), sceneId: String(row.sceneId), seedId: String(row.seedId), phase: row.phase as DreamJobRecord['phase'], status: row.status as DreamJobStatus, sourceSnapshotHash: String(row.sourceSnapshotHash), targetVersionGroupId: (row.targetVersionGroupId as string | null) ?? null, sourceMessageIds: strings(parseCompanionJsonArray(String(row.sourceMessageIdsJson))), attemptCount: Number(row.attemptCount), maxAttempts: Number(row.maxAttempts), cancelRequested: Number(row.cancelRequested) === 1, quotaReserved: Number(row.quotaReserved) === 1, quotaReservationDateKey: (row.quotaReservationDateKey as string | null) ?? null, nextRunAt: String(row.nextRunAt), leaseOwner: (row.leaseOwner as string | null) ?? null, leaseUntil: (row.leaseUntil as string | null) ?? null, lastErrorCode: (row.lastErrorCode as string | null) ?? null, classifierPromptTokens: row.classifierPromptTokens == null ? null : Number(row.classifierPromptTokens), classifierCompletionTokens: row.classifierCompletionTokens == null ? null : Number(row.classifierCompletionTokens), generationPromptTokens: row.generationPromptTokens == null ? null : Number(row.generationPromptTokens), generationCompletionTokens: row.generationCompletionTokens == null ? null : Number(row.generationCompletionTokens), idempotencyKey: String(row.idempotencyKey), createdAt: String(row.createdAt), updatedAt: String(row.updatedAt), completedAt: (row.completedAt as string | null) ?? null };
+}
+export interface DreamVersionGroup {
+  id: string;
+  versions: DreamRecord[];
 }
 function mapDream(row: Record<string, unknown>): DreamRecord {
-  return { id: String(row.id), space: row.space as PixorySpace, roleCardId: String(row.roleCardId), sourceThreadId: String(row.sourceThreadId), sourceBranchRouteHash: String(row.sourceBranchRouteHash), lineageVersion: Number(row.lineageVersion), sceneId: String(row.sceneId), seedId: String(row.seedId), jobId: String(row.jobId), sourceMessageIds: strings(parseCompanionJsonArray(String(row.sourceMessageIdsJson))), sourceSnapshotHash: String(row.sourceSnapshotHash), title: String(row.title), body: String(row.body), displayAt: String(row.displayAt), status: row.status as DreamRecord['status'], contextOptIn: row.contextOptIn == null ? null : Number(row.contextOptIn) === 1, viewedAt: (row.viewedAt as string | null) ?? null, deletedAt: (row.deletedAt as string | null) ?? null, createdAt: String(row.createdAt), updatedAt: String(row.updatedAt) };
+  return { id: String(row.id), space: row.space as PixorySpace, roleCardId: String(row.roleCardId), sourceThreadId: String(row.sourceThreadId), sourceBranchRouteHash: String(row.sourceBranchRouteHash), lineageVersion: Number(row.lineageVersion), sceneId: String(row.sceneId), seedId: String(row.seedId), jobId: String(row.jobId), sourceMessageIds: strings(parseCompanionJsonArray(String(row.sourceMessageIdsJson))), sourceSnapshotHash: String(row.sourceSnapshotHash), versionGroupId: String(row.versionGroupId || row.id), versionNumber: Number(row.versionNumber ?? 1), isCurrent: row.isCurrent == null ? true : Number(row.isCurrent) === 1, title: String(row.title), body: String(row.body), displayAt: String(row.displayAt), status: row.status as DreamRecord['status'], contextOptIn: row.contextOptIn == null ? null : Number(row.contextOptIn) === 1, viewedAt: (row.viewedAt as string | null) ?? null, deletedAt: (row.deletedAt as string | null) ?? null, createdAt: String(row.createdAt), updatedAt: String(row.updatedAt) };
 }
 
 export async function registerDreamRound(db: SQLiteDatabase, input: { space: PixorySpace; roleCardId: string; threadId: string; branchRouteHash: string; userMessageId: string; assistantMessageId: string; userMessageVersionHash: string; assistantMessageVersionHash: string; now: string }): Promise<{ counter: DreamRoundCounter; inserted: boolean }> {
@@ -176,9 +182,9 @@ export async function createDreamSeed(db: SQLiteDatabase, input: Omit<DreamSeedR
 
 export async function updateDreamSeed(db: SQLiteDatabase, input: { id: string; decision: DreamSeedDecision; now: string; classification?: DreamClassification | null; probability?: number | null }): Promise<void> { await db.runAsync('UPDATE companion_dream_seeds SET decision = ?, classificationJson = COALESCE(?, classificationJson), classifiedProbability = COALESCE(?, classifiedProbability), updatedAt = ? WHERE id = ?', input.decision, input.classification ? JSON.stringify(input.classification) : null, input.probability ?? null, input.now, input.id); }
 
-export async function createDreamJob(db: SQLiteDatabase, input: { seed: DreamSeedRecord; phase: DreamJobRecord['phase']; now: string }): Promise<DreamJobRecord> {
+export async function createDreamJob(db: SQLiteDatabase, input: { seed: DreamSeedRecord; phase: DreamJobRecord['phase']; now: string; targetVersionGroupId?: string | null }): Promise<DreamJobRecord> {
   const idempotencyKey = `dream-job:${input.seed.id}`; const id = `djob_${hashCompanionText(idempotencyKey).slice(0, 32)}`;
-  await db.runAsync(`INSERT OR IGNORE INTO companion_dream_jobs (id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sceneId, seedId, phase, status, sourceSnapshotHash, sourceMessageIdsJson, nextRunAt, idempotencyKey, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`, id, input.seed.space, input.seed.roleCardId, input.seed.threadId, input.seed.branchRouteHash, input.seed.lineageVersion, input.seed.sceneId, input.seed.id, input.phase, input.seed.sourceSnapshotHash, JSON.stringify(input.seed.sourceMessageIds), input.now, idempotencyKey, input.now, input.now);
+  await db.runAsync(`INSERT OR IGNORE INTO companion_dream_jobs (id, space, roleCardId, threadId, branchRouteHash, lineageVersion, sceneId, seedId, phase, status, sourceSnapshotHash, sourceMessageIdsJson, targetVersionGroupId, nextRunAt, idempotencyKey, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`, id, input.seed.space, input.seed.roleCardId, input.seed.threadId, input.seed.branchRouteHash, input.seed.lineageVersion, input.seed.sceneId, input.seed.id, input.phase, input.seed.sourceSnapshotHash, JSON.stringify(input.seed.sourceMessageIds), input.targetVersionGroupId ?? null, input.now, idempotencyKey, input.now, input.now);
   const row = await db.getFirstAsync<Record<string, unknown>>('SELECT * FROM companion_dream_jobs WHERE seedId = ?', input.seed.id); if (!row) throw new Error('dream_job_write_failed'); return mapJob(row);
 }
 
@@ -324,7 +330,48 @@ export async function completeDream(db: SQLiteDatabase, input: { job: DreamJobRe
     }
   }
   const id = `dream_${hashCompanionText(input.job.id).slice(0, 32)}`;
-  await db.runAsync(`INSERT OR IGNORE INTO companion_dreams (id, space, roleCardId, sourceThreadId, sourceBranchRouteHash, lineageVersion, sceneId, seedId, jobId, sourceMessageIdsJson, sourceSnapshotHash, title, body, displayAt, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`, id, input.job.space, input.job.roleCardId, input.job.threadId, input.job.branchRouteHash, input.job.lineageVersion, input.job.sceneId, input.job.seedId, input.job.id, JSON.stringify(input.job.sourceMessageIds), input.job.sourceSnapshotHash, input.title, input.body, input.now, input.now, input.now);
+  const versionGroupId = current.targetVersionGroupId ?? id;
+  const latest = await db.getFirstAsync<{ maxVersion: number; contextOptIn: number | null }>(
+    `SELECT COALESCE(MAX(versionNumber), 0) AS maxVersion,
+            MAX(CASE WHEN isCurrent = 1 THEN contextOptIn END) AS contextOptIn
+     FROM companion_dreams
+     WHERE versionGroupId = ?`,
+    versionGroupId,
+  );
+  const versionNumber = Number(latest?.maxVersion ?? 0) + 1;
+  await db.runAsync(
+    `UPDATE companion_dreams SET isCurrent = 0, updatedAt = ?
+     WHERE versionGroupId = ? AND isCurrent = 1`,
+    input.now,
+    versionGroupId,
+  );
+  await db.runAsync(
+    `INSERT OR IGNORE INTO companion_dreams (
+      id, space, roleCardId, sourceThreadId, sourceBranchRouteHash, lineageVersion,
+      sceneId, seedId, jobId, sourceMessageIdsJson, sourceSnapshotHash,
+      versionGroupId, versionNumber, isCurrent, title, body, displayAt,
+      status, contextOptIn, createdAt, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'active', ?, ?, ?)`,
+    id,
+    input.job.space,
+    input.job.roleCardId,
+    input.job.threadId,
+    input.job.branchRouteHash,
+    input.job.lineageVersion,
+    input.job.sceneId,
+    input.job.seedId,
+    input.job.id,
+    JSON.stringify(input.job.sourceMessageIds),
+    input.job.sourceSnapshotHash,
+    versionGroupId,
+    versionNumber,
+    input.title,
+    input.body,
+    input.now,
+    latest?.contextOptIn ?? null,
+    input.now,
+    input.now,
+  );
   await db.runAsync('UPDATE companion_dream_jobs SET quotaReserved = 0, quotaReservationDateKey = NULL, updatedAt = ? WHERE id = ?', input.now, input.job.id);
   await transitionDreamJob(db, { id: input.job.id, now: input.now, status: 'completed', workerId: input.workerId });
   await updateDreamSeed(db, { decision: 'selected', id: input.seed.id, now: input.now });
@@ -335,6 +382,82 @@ export async function cancelDreamJob(db: SQLiteDatabase, id: string, now = creat
 export async function releaseDreamQuota(db: SQLiteDatabase, job: DreamJobRecord, now: string): Promise<void> { const current = await findDreamJob(db, job.id); if (!current?.quotaReserved) return; if (current.quotaReservationDateKey) await db.runAsync('UPDATE companion_role_round_counters SET dailyDreamReservedCount = MAX(0, dailyDreamReservedCount - 1), updatedAt = ? WHERE space = ? AND roleCardId = ? AND beijingDateKey = ?', now, current.space, current.roleCardId, current.quotaReservationDateKey); await db.runAsync('UPDATE companion_dream_jobs SET quotaReserved = 0, quotaReservationDateKey = NULL, updatedAt = ? WHERE id = ?', now, current.id); }
 
 export async function listDreamsForRole(db: SQLiteDatabase, roleCardId: string): Promise<DreamRecord[]> { const rows = await db.getAllAsync<Record<string, unknown>>(`SELECT * FROM companion_dreams WHERE roleCardId = ? AND status = 'active' ORDER BY displayAt DESC`, roleCardId); return rows.map(mapDream); }
+export async function listDreamVersionGroupsForRole(db: SQLiteDatabase, roleCardId: string): Promise<DreamVersionGroup[]> {
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM companion_dreams
+     WHERE roleCardId = ? AND status = 'active'
+     ORDER BY (
+       SELECT MAX(other.displayAt) FROM companion_dreams other
+       WHERE other.versionGroupId = companion_dreams.versionGroupId AND other.status = 'active'
+     ) DESC, versionNumber ASC`,
+    roleCardId,
+  );
+  const groups = new Map<string, DreamRecord[]>();
+  for (const dream of rows.map(mapDream)) {
+    const versions = groups.get(dream.versionGroupId) ?? [];
+    versions.push(dream);
+    groups.set(dream.versionGroupId, versions);
+  }
+  return [...groups].map(([id, versions]) => ({ id, versions }));
+}
+export async function permanentlyDeleteDreamVersions(
+  db: SQLiteDatabase,
+  dreamIds: string[],
+): Promise<{ deletedCount: number; removedGroupIds: string[] }> {
+  const uniqueIds = [...new Set(dreamIds)];
+  if (uniqueIds.length === 0 || uniqueIds.length !== dreamIds.length) {
+    throw new Error('所选梦境版本已发生变化，请刷新后重试。');
+  }
+  const placeholders = uniqueIds.map(() => '?').join(', ');
+  let deletedCount = 0;
+  const removedGroupIds: string[] = [];
+  await db.withTransactionAsync(async () => {
+    const selected = await db.getAllAsync<{ id: string; versionGroupId: string }>(
+      `SELECT id, versionGroupId FROM companion_dreams
+       WHERE id IN (${placeholders}) AND status = 'active'`,
+      ...uniqueIds,
+    );
+    if (selected.length !== uniqueIds.length) {
+      throw new Error('所选梦境版本已发生变化，请刷新后重试。');
+    }
+    const groupIds = [...new Set(selected.map((dream) => dream.versionGroupId))];
+    const deletion = await db.runAsync(
+      `DELETE FROM companion_dreams WHERE id IN (${placeholders})`,
+      ...uniqueIds,
+    );
+    deletedCount = Number(deletion.changes ?? 0);
+    const now = createTimestamp();
+    for (const groupId of groupIds) {
+      const latest = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM companion_dreams
+         WHERE versionGroupId = ? AND status = 'active'
+         ORDER BY versionNumber DESC LIMIT 1`,
+        groupId,
+      );
+      if (!latest) {
+        await db.runAsync(
+          `DELETE FROM companion_artifact_chat_states
+           WHERE artifactKind = 'dream' AND artifactGroupId = ?`,
+          groupId,
+        );
+        removedGroupIds.push(groupId);
+        continue;
+      }
+      await db.runAsync(
+        `UPDATE companion_dreams SET isCurrent = 0, updatedAt = ?
+         WHERE versionGroupId = ? AND status = 'active'`,
+        now,
+        groupId,
+      );
+      await db.runAsync(
+        `UPDATE companion_dreams SET isCurrent = 1, updatedAt = ? WHERE id = ?`,
+        now,
+        latest.id,
+      );
+    }
+  });
+  return { deletedCount, removedGroupIds };
+}
 export async function listJobsForRole(db: SQLiteDatabase, roleCardId: string): Promise<DreamJobRecord[]> {
   const rows = await db.getAllAsync<Record<string, unknown>>(`SELECT * FROM companion_dream_jobs WHERE roleCardId = ? AND status IN ('pending', 'running', 'retry', 'waiting_model', 'failed') ORDER BY createdAt DESC`, roleCardId);
   return rows.map(mapJob);
@@ -344,4 +467,4 @@ export async function setDreamContextOptIn(db: SQLiteDatabase, id: string, accep
 export async function markDreamViewed(db: SQLiteDatabase, id: string): Promise<void> { const now = createTimestamp(); await db.runAsync(`UPDATE companion_dreams SET viewedAt = COALESCE(viewedAt, ?), updatedAt = ? WHERE id = ? AND status = 'active'`, now, now, id); }
 export async function softDeleteDream(db: SQLiteDatabase, id: string): Promise<void> { const now = createTimestamp(); await db.runAsync(`UPDATE companion_dreams SET status = 'soft_deleted', deletedAt = ?, updatedAt = ? WHERE id = ? AND status = 'active'`, now, now, id); }
 
-export const dreamRepository = { acquireJob: acquireDreamJob, cancelJob: cancelDreamJob, closeScene: closeDreamScene, complete: completeDream, createJob: createDreamJob, createSeed: createDreamSeed, find: findDream, findActiveScene: findActiveDreamScene, findJob: findDreamJob, findScene: findDreamScene, findSeed: findDreamSeed, findSeedForScene: findDreamSeedForScene, listForRole: listDreamsForRole, listJobsForRole: listJobsForRole, listReadyJobs: listReadyDreamJobs, markViewed: markDreamViewed, rebuildRoleRoundCounter, recordUsage: recordDreamJobUsage, registerRound: registerDreamRound, releaseQuota: releaseDreamQuota, reserveQuota: reserveDreamQuota, reserveQuotaInTransaction: reserveDreamQuotaInTransaction, setContextOptIn: setDreamContextOptIn, softDelete: softDeleteDream, transitionJob: transitionDreamJob, updateSeed: updateDreamSeed, upsertScene: upsertDreamScene };
+export const dreamRepository = { acquireJob: acquireDreamJob, cancelJob: cancelDreamJob, closeScene: closeDreamScene, complete: completeDream, createJob: createDreamJob, createSeed: createDreamSeed, find: findDream, findActiveScene: findActiveDreamScene, findJob: findDreamJob, findScene: findDreamScene, findSeed: findDreamSeed, findSeedForScene: findDreamSeedForScene, listForRole: listDreamsForRole, listJobsForRole: listJobsForRole, listReadyJobs: listReadyDreamJobs, listVersionGroupsForRole: listDreamVersionGroupsForRole, markViewed: markDreamViewed, permanentlyDeleteVersions: permanentlyDeleteDreamVersions, rebuildRoleRoundCounter, recordUsage: recordDreamJobUsage, registerRound: registerDreamRound, releaseQuota: releaseDreamQuota, reserveQuota: reserveDreamQuota, reserveQuotaInTransaction: reserveDreamQuotaInTransaction, setContextOptIn: setDreamContextOptIn, softDelete: softDeleteDream, transitionJob: transitionDreamJob, updateSeed: updateDreamSeed, upsertScene: upsertDreamScene };

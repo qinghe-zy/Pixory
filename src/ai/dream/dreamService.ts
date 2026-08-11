@@ -157,4 +157,52 @@ export async function regenerateDreamFromCurrentConversation(input: {
   return replacement.id;
 }
 
-export const dreamService = { confirmManual: confirmManualDream, detectManualRequest: detectAndCreateManualDreamRequest, regenerateCurrent: regenerateDreamFromCurrentConversation, registerRound: registerCompanionDreamRound };
+export async function regenerateDreamVersion(input: {
+  space: PixorySpace;
+  dreamId: string;
+}): Promise<string> {
+  const now = new Date().toISOString();
+  const job = await runWithDatabaseSpace(input.space, async (db) => {
+    const dream = await dreamRepository.find(db, input.dreamId);
+    if (!dream) {
+      throw new Error('梦境版本不存在或已删除。');
+    }
+    const [seed, thread] = await Promise.all([
+      dreamRepository.findSeed(db, dream.seedId),
+      aiThreadRepository.findThreadById(db, dream.sourceThreadId),
+    ]);
+    if (!seed || !thread || thread.roleCardId !== dream.roleCardId) {
+      throw new Error('梦境来源已不可用，无法重新生成。');
+    }
+    const key = `dream-version:${dream.id}:${now}`;
+    const replacementSeed = await dreamRepository.createSeed(db, {
+      branchRouteHash: seed.branchRouteHash,
+      decision: 'selected',
+      idempotencyKey: key,
+      lineageVersion: seed.lineageVersion,
+      manual: true,
+      policyVersion: seed.policyVersion,
+      roleCardId: seed.roleCardId,
+      roleSnapshotJson: seed.roleSnapshotJson,
+      roll: seed.roll,
+      sceneId: seed.sceneId,
+      sourceMessageIds: seed.sourceMessageIds,
+      sourceMessageVersionHashes: seed.sourceMessageVersionHashes,
+      sourceSnapshotHash: seed.sourceSnapshotHash,
+      space: seed.space,
+      threadId: seed.threadId,
+      now,
+    });
+    return dreamRepository.createJob(db, {
+      now,
+      phase: 'generating',
+      seed: replacementSeed,
+      targetVersionGroupId: dream.versionGroupId,
+    });
+  });
+  emitDreamRuntimeNotice({ jobId: job.id, threadId: job.threadId, type: 'generating' });
+  scheduleCompanionMaintenance({ allowRemoteModelForPersonal: input.space === 'personal', delayMs: 0, space: input.space });
+  return job.id;
+}
+
+export const dreamService = { confirmManual: confirmManualDream, detectManualRequest: detectAndCreateManualDreamRequest, regenerateCurrent: regenerateDreamFromCurrentConversation, regenerateVersion: regenerateDreamVersion, registerRound: registerCompanionDreamRound };
