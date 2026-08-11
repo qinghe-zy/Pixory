@@ -172,10 +172,11 @@ test('AI citations are reconciled with snippets that survived prompt budget trim
 test('AI context budget estimates Chinese text conservatively', () => {
   const budget = read('src/ai/aiContextBudget.ts');
 
-  assert.match(budget, /CJK_CHAR_PATTERN/);
-  assert.match(budget, /asciiTokenEstimate/);
-  assert.match(budget, /cjkTokenEstimate/);
+  assert.match(budget, /function isCjkCodeUnit/);
+  assert.match(budget, /function estimatePromptTokensFromCounts/);
+  assert.match(budget, /value\.charCodeAt\(index\)/);
   assert.match(budget, /Math\.ceil\(cjkChars \* 0\.8\)/);
+  assert.match(budget, /Math\.ceil\(nonCjkChars \/ 4\)/);
   assert.doesNotMatch(budget, /Math\.ceil\(value\.length \/ 3\)/);
 });
 

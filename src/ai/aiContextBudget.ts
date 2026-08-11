@@ -20,14 +20,45 @@ export interface PromptBudgetResult {
 }
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 512_000;
-const CJK_CHAR_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/g;
+
+function isCjkCodeUnit(code: number): boolean {
+  return (
+    (code >= 0x3400 && code <= 0x9fff) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0x3040 && code <= 0x30ff) ||
+    (code >= 0xac00 && code <= 0xd7af)
+  );
+}
+
+function estimatePromptTokensFromCounts(cjkChars: number, totalChars: number): number {
+  const nonCjkChars = Math.max(0, totalChars - cjkChars);
+  return Math.max(1, Math.ceil(cjkChars * 0.8) + Math.ceil(nonCjkChars / 4));
+}
 
 export function estimatePromptTokens(value: string): number {
-  const cjkChars = value.match(CJK_CHAR_PATTERN)?.length ?? 0;
-  const nonCjkChars = Math.max(0, value.length - cjkChars);
-  const cjkTokenEstimate = Math.ceil(cjkChars * 0.8);
-  const asciiTokenEstimate = Math.ceil(nonCjkChars / 4);
-  return Math.max(1, cjkTokenEstimate + asciiTokenEstimate);
+  let cjkChars = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (isCjkCodeUnit(value.charCodeAt(index))) {
+      cjkChars += 1;
+    }
+  }
+  return estimatePromptTokensFromCounts(cjkChars, value.length);
+}
+
+function findMaxPrefixForTokenBudget(value: string, maxTokens: number): number {
+  let cjkChars = 0;
+  let acceptedLength = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (isCjkCodeUnit(value.charCodeAt(index))) {
+      cjkChars += 1;
+    }
+    const length = index + 1;
+    if (estimatePromptTokensFromCounts(cjkChars, length) > maxTokens) {
+      break;
+    }
+    acceptedLength = length;
+  }
+  return acceptedLength;
 }
 
 export function getConservativeContextBudget(modelContextWindowTokens?: number | null): number {
@@ -90,18 +121,15 @@ function trimTextToTokenBudget(value: string, maxTokens: number, minChars = 0): 
   const trimNotice = '\n[已因模型上下文窗口裁剪]';
   const noticeTokens = estimatePromptTokens(trimNotice);
   const contentMaxTokens = maxTokens > noticeTokens + 1 ? maxTokens - noticeTokens : maxTokens;
-  const minCandidate = value.slice(0, Math.min(minChars, value.length));
-  let low = minCandidate && estimatePromptTokens(minCandidate) <= contentMaxTokens ? minCandidate.length : 0;
-  let high = value.length;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if (estimatePromptTokens(value.slice(0, mid)) <= contentMaxTokens) {
-      low = mid;
-    } else {
-      high = mid - 1;
-    }
-  }
-  const trimmed = value.slice(0, low).trimEnd();
+  const minimumLength = Math.min(minChars, value.length);
+  const minimumFits =
+    minimumLength > 0 &&
+    estimatePromptTokens(value.slice(0, minimumLength)) <= contentMaxTokens;
+  const acceptedLength = findMaxPrefixForTokenBudget(value, contentMaxTokens);
+  const finalLength = minimumFits
+    ? Math.max(minimumLength, acceptedLength)
+    : acceptedLength;
+  const trimmed = value.slice(0, finalLength).trimEnd();
   if (trimmed.length >= value.length) {
     return trimmed;
   }
