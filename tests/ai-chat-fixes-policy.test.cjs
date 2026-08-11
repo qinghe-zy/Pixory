@@ -628,7 +628,7 @@ test('AI rich HTML uses a bounded WebView for CSS and block layout support', () 
   assert.match(content, /replace\(\s*\/@import\\s\+/);
   assert.match(content, /replace\(\s*\/\\s\+\(src\|srcset\|poster\)/);
   assert.match(content, /shouldRenderWholeRichHtml\(content\)[\s\S]*<AiRichHtmlBlock html=\{content\}/);
-  assert.match(content, /const renderWholeRichHtml = shouldRenderWholeRichHtml\(content\)/);
+  assert.match(content, /const renderWholeRichHtml = useMemo\(\(\) => shouldRenderWholeRichHtml\(content\), \[content\]\)/);
   assert.match(content, /shouldParseMarkdown \? getCachedMarkdownContent\(content\) : null/);
   assert.match(content, /variant === 'assistant' && !streaming && !renderWholeRichHtml/);
   assert.match(content, /Math\.max\(rect\.height, root\.scrollHeight\)/);

@@ -190,6 +190,14 @@ test('math blocks compile KaTeX and build HTML inside a math-keyed memo', () => 
   assert.match(math, /source=\{\{ html: compiled\.html, baseUrl: 'about:blank' \}\}/);
 });
 
+test('message content memoizes the rich HTML decision by content', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  assert.match(
+    content,
+    /const renderWholeRichHtml = useMemo\(\(\) => shouldRenderWholeRichHtml\(content\), \[content\]\)/,
+  );
+});
+
 test('streaming output keeps live rendering separate from detached history layout', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const button = read('src/components/ai/AiScrollToLatestButton.tsx');

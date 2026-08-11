@@ -758,7 +758,7 @@ export function AiMessageContent({ content, trailingInline, streaming = false, v
   const [copiedBlockKey, setCopiedBlockKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const renderWholeRichHtml = shouldRenderWholeRichHtml(content);
+  const renderWholeRichHtml = useMemo(() => shouldRenderWholeRichHtml(content), [content]);
   const shouldParseMarkdown = variant === 'assistant' && !streaming && !renderWholeRichHtml;
   const parsedMarkdown = useMemo(
     () => (shouldParseMarkdown ? getCachedMarkdownContent(content) : null),
