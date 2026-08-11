@@ -323,6 +323,40 @@ function getSelectableMessageContent(
   return visibleContent === "请根据以下附件继续对话。" ? "" : visibleContent;
 }
 
+function createOptimisticUserMessage(
+  threadId: string,
+  userMessageId: string,
+  content: string,
+  createdAt: string,
+  branchRootMessageId: string | null,
+  branchVersionIndex: number | null,
+): AiMessageWithCitations {
+  return {
+    branchRootMessageId,
+    branchVersionIndex,
+    citations: [],
+    completedAt: createdAt,
+    continuityImportSessionId: null,
+    continuitySyntheticKind: null,
+    content,
+    createdAt,
+    errorMessage: null,
+    id: userMessageId,
+    messageVersions: [],
+    modelId: null,
+    modelSnapshotJson: "",
+    promptSnapshotJson: "",
+    providerId: null,
+    reasoningText: null,
+    role: 'user',
+    status: 'completed',
+    threadId,
+    updatedAt: createdAt,
+    versionIndex: 1,
+    versionTotal: 1,
+  };
+}
+
 function createStreamingAssistantMessage(
   threadId: string,
   assistantMessageId: string,
@@ -1830,6 +1864,7 @@ export function AiChatScreen({
     string | null
   >(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<
     AiComposerAttachment[]
   >([]);
@@ -2725,11 +2760,17 @@ export function AiChatScreen({
   function createGenerationSubscriber(
     targetThreadId: string,
     generation: number,
+    pendingUserMessage?: {
+      branchRootMessageId: string | null;
+      branchVersionIndex: number | null;
+      content: string;
+      createdAt: string;
+    },
   ): AiGenerationSubscriber {
     return {
       // prettier-ignore
       getStreamingVisibility: () => getActiveStreamingVisibility(targetThreadId, generation),
-      onCreated: ({ assistantMessageId, generationId, thinkingExpected }) => {
+      onCreated: ({ assistantMessageId, generationId, thinkingExpected, userMessageId }) => {
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
@@ -2750,13 +2791,29 @@ export function AiChatScreen({
         thinkingExpandedByMessageIdRef.current.set(assistantMessageId, getLatestAssistantThinkingExpanded());
         setActiveAssistantId(assistantMessageId);
         setMessages((current) => {
-          const nextMessages = current.some((message) => message.id === assistantMessageId)
-            ? current
-            : [
-                ...current,
-                // prettier-ignore
-                createStreamingAssistantMessage(targetThreadId, assistantMessageId),
-              ];
+          let nextMessages = current;
+          if (
+            pendingUserMessage &&
+            !nextMessages.some((message) => message.id === userMessageId)
+          ) {
+            nextMessages = [
+              ...nextMessages,
+              createOptimisticUserMessage(
+                targetThreadId,
+                userMessageId,
+                pendingUserMessage.content,
+                pendingUserMessage.createdAt,
+                pendingUserMessage.branchRootMessageId,
+                pendingUserMessage.branchVersionIndex,
+              ),
+            ];
+          }
+          if (!nextMessages.some((message) => message.id === assistantMessageId)) {
+            nextMessages = [
+              ...nextMessages,
+              createStreamingAssistantMessage(targetThreadId, assistantMessageId),
+            ];
+          }
           messagesRef.current = nextMessages;
           rebuildMessageIndex(nextMessages);
           return nextMessages;
@@ -2817,7 +2874,15 @@ export function AiChatScreen({
     };
   }
 
-  function beginStreamingRequest(targetThreadId: string): {
+  function beginStreamingRequest(
+    targetThreadId: string,
+    pendingUserMessage?: {
+      branchRootMessageId: string | null;
+      branchVersionIndex: number | null;
+      content: string;
+      createdAt: string;
+    },
+  ): {
     generation: number;
     subscriber: AiGenerationSubscriber;
   } {
@@ -2829,7 +2894,11 @@ export function AiChatScreen({
     const generation = activeStreamGenerationRef.current;
     return {
       generation,
-      subscriber: createGenerationSubscriber(targetThreadId, generation),
+      subscriber: createGenerationSubscriber(
+        targetThreadId,
+        generation,
+        pendingUserMessage,
+      ),
     };
   }
 
@@ -3688,6 +3757,7 @@ export function AiChatScreen({
       if (!targetThreadId) {
         resetStreamingReadBufferState();
         replaceMessages([]);
+        setMessageLoadError(null);
         void reloadContinuityMilestones(null);
         setHasEarlierMessages(false);
         loadedMessageLimitRef.current = CHAT_MESSAGE_PAGE_SIZE;
@@ -3702,38 +3772,43 @@ export function AiChatScreen({
       const forceToLatest = options.forceToLatest ?? false;
       const messageLimit =
         options.limitOverride ?? loadedMessageLimitRef.current;
-      // Resolve branch scopes: use caller-provided, or load persisted route,
-      // falling back to undefined (= show all branches / no filter).
+      // An explicit empty route means the main trunk. Never widen it to an
+      // unrestricted all-branch query when the persisted route is absent or invalid.
       let branchScopes: AiBranchScope[] | undefined = options.branchScopes;
       if (branchScopes === undefined) {
         try {
-          branchScopes = (await loadPersistedAdoptedThreadBranchScopes(space, targetThreadId)) ?? undefined;
+          branchScopes = (await loadPersistedAdoptedThreadBranchScopes(space, targetThreadId)) ?? [];
         } catch {
-          branchScopes = undefined;
+          branchScopes = [];
         }
       }
+      const resolvedScopes = branchScopes ?? [];
+      const routeSelection = buildBranchSelectionMap(resolvedScopes);
       // Direct message load – avoids the snapshot DB chain that crashed expo-sqlite.
       let nextMessages: AiMessageWithCitations[];
       try {
         nextMessages = await listThreadMessages(space, targetThreadId, {
           anchorMessageId: options.anchorMessageId,
-          branchScopes: branchScopes && branchScopes.length > 0 ? branchScopes : undefined,
+          branchScopes: resolvedScopes,
           limit: messageLimit,
-          selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
+          selectedVersionByMessageId: routeSelection,
         });
-      } catch {
-        // DB error: bail out so messages state is not replaced with empty list.
+      } catch (error) {
+        if (isLatestRequest("messages", requestId, targetThreadId)) {
+          setMessageLoadError(
+            error instanceof Error
+              ? `聊天记录加载失败：${error.message}`
+              : "聊天记录加载失败，请重试。",
+          );
+        }
         return;
       }
       if (!isLatestRequest("messages", requestId, targetThreadId)) {
         return;
       }
-      activeMessageBranchScopesRef.current =
-        branchScopes && branchScopes.length > 0 ? branchScopes : undefined;
-      const resolvedScopes = branchScopes ?? [];
-      if (resolvedScopes.length > 0) {
-        selectedVersionByMessageIdRef.current = buildBranchSelectionMap(resolvedScopes);
-      }
+      setMessageLoadError(null);
+      activeMessageBranchScopesRef.current = resolvedScopes;
+      selectedVersionByMessageIdRef.current = buildBranchSelectionMap(resolvedScopes);
       setSelectedVersionByMessageId(selectedVersionByMessageIdRef.current);
       setPersistedCurrentBranchScopes(resolvedScopes);
       setHasEarlierMessages(
@@ -4449,6 +4524,7 @@ export function AiChatScreen({
     editingUserMessageIdRef.current = null;
     setEditingUserMessageId(null);
     setSelectedVersionByMessageId({});
+    setMessageLoadError(null);
     setPendingAttachments([]);
     clearGenerationSubscription();
     clearActiveStreamingIdentity();
@@ -4490,10 +4566,17 @@ export function AiChatScreen({
       // messages were pre-loaded during the navigation animation.  Try to
       // consume that cached result before touching the database again.
       if (!hasSearchTarget) {
-        const prefetched = await consumeThreadMessagePrefetch(space, targetThreadId);
+        let prefetched = null;
+        try {
+          const candidate = await consumeThreadMessagePrefetch(space, targetThreadId);
+          if (candidate && await isAdoptedThreadRouteSnapshotCurrent(candidate)) {
+            prefetched = candidate;
+          }
+        } catch {
+          // Treat a stale or failed prefetch as a cache miss and use the direct loader.
+        }
         if (
           prefetched
-          && await isAdoptedThreadRouteSnapshotCurrent(prefetched)
           && !cancelled
         ) {
           // Apply data while the FlatList is still opacity-0 so the user
@@ -4509,6 +4592,7 @@ export function AiChatScreen({
           setSelectedVersionByMessageId(prefetched.selectedVersionByMessageId);
           setPersistedCurrentBranchScopes(prefetched.branchScopes);
           setHasEarlierMessages(prefetched.hasEarlierMessages);
+          setMessageLoadError(null);
           replaceMessages(prefetched.messages);
           setIsInitialMessageLoading(false);
           // Give the FlatList one frame to position itself at offset 0.
@@ -4526,16 +4610,11 @@ export function AiChatScreen({
       if (cancelled) {
         return;
       }
-      try {
-        await reloadMessages(targetThreadId, {
-          anchorMessageId: searchTargetMessageId ?? undefined,
-          branchScopes: searchTargetBranchScopes,
-          forceToLatest: !hasSearchTarget,
-        });
-      } catch {
-        // reloadMessages failed; still mark loading done so the sidebar
-        // and UI can recover instead of being stuck in loading state.
-      }
+      await reloadMessages(targetThreadId, {
+        anchorMessageId: searchTargetMessageId ?? undefined,
+        branchScopes: searchTargetBranchScopes,
+        forceToLatest: !hasSearchTarget,
+      });
       if (!cancelled) {
         setIsInitialMessageLoading(false);
         if (hasSearchTarget) {
@@ -5664,7 +5743,18 @@ export function AiChatScreen({
           shouldOfferDiaryCreation = false;
         }
       }
-      const streamRequest = beginStreamingRequest(targetThreadId);
+      const activeBranch = replyTarget ? null : getActiveBranchForNextMessage();
+      const streamRequest = beginStreamingRequest(
+        targetThreadId,
+        replyTarget
+          ? undefined
+          : {
+              branchRootMessageId: activeBranch?.branchRootMessageId ?? null,
+              branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
+              content,
+              createdAt: sendPressedAt,
+            },
+      );
       streamGeneration = streamRequest.generation;
       const managedGeneration = replyTarget
         ? aiGenerationManager.startReplyToAssistantMessage({
@@ -5696,7 +5786,6 @@ export function AiChatScreen({
             threadId: targetThreadId,
           })
         : (() => {
-            const activeBranch = getActiveBranchForNextMessage();
             return aiGenerationManager.startSendUserMessage({
               attachments,
               branchRootMessageId: activeBranch?.branchRootMessageId,
@@ -6914,11 +7003,13 @@ export function AiChatScreen({
                 windowSize={tailListWindowSize}
                 ListFooterComponent={
                   <>
-                    {errorMessage ? (
+                    {errorMessage || messageLoadError ? (
                       <AiChatErrorBanner
-                        message={errorMessage}
+                        message={errorMessage ?? messageLoadError ?? ""}
                         onRetry={
-                          latestAssistantMessage?.status === "failed"
+                          messageLoadError && activeThreadId
+                            ? () => void reloadMessages(activeThreadId, { forceToLatest: true })
+                            : latestAssistantMessage?.status === "failed"
                             ? () =>
                                 void handleRegenerate(latestAssistantMessage.id)
                             : undefined
@@ -6971,7 +7062,7 @@ export function AiChatScreen({
                 <AiChatMessageSkeleton />
               </View>
             ) : null}
-            {invertedMessageItems.length === 0 && !isInitialMessageLoading && !errorMessage ? (
+            {invertedMessageItems.length === 0 && !isInitialMessageLoading && !errorMessage && !messageLoadError ? (
               <View style={styles.starterOverlay}>
                 <AiChatStarterHints onPickSuggestion={setComposerText} />
               </View>

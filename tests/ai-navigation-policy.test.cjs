@@ -516,6 +516,10 @@ test('AI history long-press enters batch mode while single actions stay in a com
   const history = fs.readFileSync(path.join(root, 'src/screens/AiHistoryScreen.tsx'), 'utf8');
   const service = fs.readFileSync(path.join(root, 'src/ai/aiChatService.ts'), 'utf8');
   const repository = fs.readFileSync(path.join(root, 'src/database/repositories/aiThreadRepository.ts'), 'utf8');
+  const historyProjection = repository.slice(
+    repository.indexOf('async listHistoryItems('),
+    repository.indexOf('async createMessage('),
+  );
 
   for (const expected of ['onLongPress', 'selectedIds', 'deleteAiThreads', 'permanentlyDeleteAiThreads', 'moveAiThreadsBetweenSpaces', 'personalPassword']) {
     assert.match(history, new RegExp(expected));
@@ -543,9 +547,9 @@ test('AI history long-press enters batch mode while single actions stay in a com
   assert.match(history, /thread\.lastMessageAt \?\? thread\.updatedAt/);
   assert.match(history, /上次聊天/);
   assert.match(repository, /lastMessageAt/);
-  assert.match(repository, /async function listLatestVisibleHistoryMessage/);
-  assert.match(repository, /resolveThreadHistoryBranchScopes/);
-  assert.match(repository, /lastMessagePreview: terminalMessage\.content\.trim\(\)/);
+  assert.match(repository, /WITH RECURSIVE adopted_scopes/);
+  assert.match(repository, /projectedLastMessagePreview/);
+  assert.doesNotMatch(historyProjection, /for \(const row of rows\)/);
   assert.doesNotMatch(history, /rowActions/);
   assert.doesNotMatch(history, /PrimaryButton/);
   assert.match(history, /footer={selectionFooter}/);
@@ -596,7 +600,7 @@ test('AI chat and history expose drawer quick new chat and searchable grouped hi
   assert.match(history, /搜索标题或最近消息/);
   assert.match(history, /historyGroupLabel/);
   assert.match(history, /过去 7 天/);
-  assert.match(repository, /lastMessagePreview\?\.toLocaleLowerCase\(\)\.includes/);
+  assert.match(repository, /\(item\.lastMessagePreview \?\? ''\)\.toLocaleLowerCase\(\)\.includes/);
   const drawer = read('src/components/ai/AiComprehensiveRecordDrawer.tsx');
   assert.match(drawer, /onLongPress=\{\(\) => openRecentActionPopover\(thread\)\}/);
   assert.match(drawer, /recentActionPopover/);

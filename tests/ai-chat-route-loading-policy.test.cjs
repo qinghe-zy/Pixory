@@ -36,15 +36,45 @@ test('chat preserves explicit base-route scope when reloading messages', () => {
     /branchScopes && branchScopes\.length > 0 \? branchScopes : undefined/,
     'an explicit [] is the base route, not an unrestricted all-branch query',
   );
+  assert.match(
+    chat,
+    /selectedVersionByMessageIdRef\.current = buildBranchSelectionMap\(resolvedScopes\)/,
+    'base-route reloads must also clear stale branch-version selections',
+  );
 });
 
-test('message paging orders equal timestamps with the same rowid cursor in both directions', () => {
+test('chat shows a recoverable load error instead of treating failed history reads as an empty thread', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /const \[messageLoadError, setMessageLoadError\]/);
+  assert.match(chat, /setMessageLoadError\([^)]*聊天记录加载失败/);
+  assert.match(
+    chat,
+    /invertedMessageItems\.length === 0 && !isInitialMessageLoading && !errorMessage && !messageLoadError/,
+  );
+});
+
+test('new sends optimistically append the persisted user message before the assistant placeholder', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(chat, /function createOptimisticUserMessage\(/);
+  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected, userMessageId \}\) =>/);
+  assert.match(
+    chat,
+    /createOptimisticUserMessage\([\s\S]{0,500}createStreamingAssistantMessage/,
+    'the user bubble must be present even while the database refresh is pending',
+  );
+});
+
+test('message paging exports the rowid tie breaker before the outer limited-page ordering', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const listMessagesBase = repository.slice(
     repository.indexOf('async listMessagesBase'),
     repository.indexOf('async listMessagesBaseAroundAnchor'),
   );
 
+  assert.match(listMessagesBase, /SELECT ai_messages\.\*, ai_messages\.rowid AS rowOrder/);
   assert.match(listMessagesBase, /ORDER BY createdAt DESC, rowid DESC/);
+  assert.match(listMessagesBase, /ORDER BY createdAt ASC, rowOrder ASC/);
   assert.match(listMessagesBase, /ORDER BY createdAt ASC, rowid ASC/);
 });

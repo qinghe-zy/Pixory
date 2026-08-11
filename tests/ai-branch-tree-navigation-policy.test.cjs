@@ -166,7 +166,7 @@ test('AI branch tree resolves the persisted route and adopts selected route befo
 
   assert.match(chat, /thread\?\.currentBranchRootMessageId/);
   assert.match(chat, /setSelectedVersionByMessageId\(buildBranchSelectionMap/);
-  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
+  assert.match(chat, /loadPersistedAdoptedThreadBranchScopes/);
   assert.doesNotMatch(app, /currentBranchScopes: \[\]/);
   assert.match(app, /adoptBranchSelection/);
   assert.match(app, /await adoptBranchSelection/);
@@ -415,15 +415,15 @@ test('AI branch tree returns lineage scopes so nested branches switch predictabl
   assert.match(chat, /setSelectedVersionByMessageId\(branchTreeSelection\.selectionMap\)/);
 });
 
-test('AI chat restores one persisted route snapshot before loading and positioning messages', () => {
+test('AI chat resolves one persisted route before loading and positioning messages', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const service = read('src/ai/aiChatService.ts');
 
   assert.match(service, /export interface ListThreadMessagesOptions \{[\s\S]*anchorMessageId\?: string;[\s\S]*branchScopes\?: AiBranchScope\[\]/);
   assert.match(service, /aiThreadRepository\.listMessagesBaseAroundAnchor\(db, threadId, options\.anchorMessageId, options\.limit, options\.branchScopes\)/);
   assert.match(service, /aiThreadRepository\.listMessagesBase\(db, threadId, options\.limit, options\.branchScopes\)/);
-  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
-  assert.match(chat, /selectedVersionByMessageIdRef\.current = snapshot\.selectedVersionByMessageId/);
+  assert.match(chat, /loadPersistedAdoptedThreadBranchScopes/);
+  assert.match(chat, /selectedVersionByMessageIdRef\.current = buildBranchSelectionMap\(resolvedScopes\)/);
   assert.match(chat, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
   assert.match(chat, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: searchTargetBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.match(chat, /anchorMessageId: branchTreeSelection\.branchRootMessageId/);

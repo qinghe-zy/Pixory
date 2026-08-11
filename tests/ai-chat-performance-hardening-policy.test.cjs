@@ -46,7 +46,7 @@ test('AI chat streaming patches update by indexed message id before falling back
   assert.match(preserveLiveBody, /nextContentLength >= currentContentLength/);
   assert.match(preserveLiveBody, /content: currentMessage\.content/);
   assert.match(preserveLiveBody, /reasoningText: currentMessage\.reasoningText/);
-  assert.match(chat, /preserveLiveStreamingMessages\(forceToLatest \? snapshot\.messages : preserveReadModeFrozenMessages\(snapshot\.messages\)\)/);
+  assert.match(chat, /preserveLiveStreamingMessages\(forceToLatest \? nextMessages : preserveReadModeFrozenMessages\(nextMessages\)\)/);
   const mergeMatches = bufferBody.match(/mergeBufferedStreamingPatch\(patch\)/g) ?? [];
   assert.equal(mergeMatches.length, 1);
   assert.match(bufferBody, /shouldPublishLiveStreamingPatch/);
@@ -60,7 +60,7 @@ test('AI chat streaming patches update by indexed message id before falling back
 test('AI chat streaming assistant creation avoids an immediate full message reload', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const subscriberBody = /function createGenerationSubscriber[\s\S]*?\r?\n  }\r?\n\r?\n  function beginStreamingRequest/.exec(chat)?.[0] ?? '';
-  const onCreatedBody = /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected \}\) => \{[\s\S]*?\r?\n      \},\r?\n      onMessagePatch/.exec(subscriberBody)?.[0] ?? '';
+  const onCreatedBody = /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected, userMessageId \}\) => \{[\s\S]*?\r?\n      \},\r?\n      onMessagePatch/.exec(subscriberBody)?.[0] ?? '';
 
   assert.match(onCreatedBody, /publishStreamingMessage\(streamingIdentity/);
   assert.match(onCreatedBody, /createStreamingAssistantMessage\(targetThreadId, assistantMessageId\)/);
@@ -158,8 +158,10 @@ test('selecting an older message version refreshes thread messages with the late
 
   assert.match(chat, /const selectedVersionByMessageIdRef = useRef<Record<string, number>>\(\{\}\)/);
   assert.match(chat, /selectedVersionByMessageIdRef\.current = selectedVersionByMessageId/);
-  assert.match(chat, /selectedVersionByMessageIdRef\.current = snapshot\.selectedVersionByMessageId/);
-  assert.match(chat, /setSelectedVersionByMessageId\(snapshot\.selectedVersionByMessageId\)/);
+  assert.match(chat, /const routeSelection = buildBranchSelectionMap\(resolvedScopes\)/);
+  assert.match(chat, /selectedVersionByMessageId: routeSelection/);
+  assert.match(chat, /selectedVersionByMessageIdRef\.current = buildBranchSelectionMap\(resolvedScopes\)/);
+  assert.match(chat, /setSelectedVersionByMessageId\(selectedVersionByMessageIdRef\.current\)/);
   assert.match(chat, /function handleSelectMessageVersion\(messageId: string, versionIndex: number\)/);
   assert.match(chat, /selectedVersionByMessageIdRef\.current = nextSelection/);
   assert.match(chat, /void reloadMessages\(targetThreadId, false, nextBranchScopes\)/);

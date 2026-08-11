@@ -349,7 +349,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /function scheduleIntentionalLatestJump\(animated = false\)[\s\S]{0,700}followLatestMessage\(animated\);[\s\S]{0,700}queueFollowLatestMessageAfterLayout\(animated\);[\s\S]{0,700}ACTIVE_LATEST_JUMP_RETRY_DELAYS_MS\.forEach\(\(delay\) => \{/);
   assert.match(chat, /setTimeout\(\(\) => \{[\s\S]{0,160}followLatestMessage\(animated\);[\s\S]{0,80}\}, delay\)/);
   assert.match(chat, /applyOrBufferStreamingMessagePatch\(targetThreadId, generation, patch\)/);
-  assert.match(chat, /preserveReadModeFrozenMessages\(snapshot\.messages\)/);
+  assert.match(chat, /preserveReadModeFrozenMessages\(nextMessages\)/);
   assert.match(chat, /resetStreamingReadBufferState\(\)/);
   assert.match(chat, /function markIntentionalLatestJump\(\)[\s\S]{0,420}bottomLockedRef\.current = true[\s\S]{0,420}setScrollToLatestVisible\(false\)/);
   assert.match(chat, /previousMessageScrollOffsetRef/);
@@ -363,7 +363,7 @@ test('AI chat buffers streaming patches while reading history and only flushes a
   assert.match(chat, /async function handleSend\(\)[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*markIntentionalLatestJump\(\);\s*await flushBufferedStreamingState\(\{ followLatest: false \}\)/);
-  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected \}\) => \{[\s\S]*thinkingExpectedByMessageIdRef\.current\.set\([\s\S]*publishStreamingMessage\(streamingIdentity[\s\S]*scheduleIntentionalLatestJump\(false\)/);
+  assert.match(chat, /onCreated: \(\{ assistantMessageId, generationId, thinkingExpected, userMessageId \}\) => \{[\s\S]*thinkingExpectedByMessageIdRef\.current\.set\([\s\S]*publishStreamingMessage\(streamingIdentity[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSend\(\)[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleSubmitInlineRewrite[\s\S]*scheduleIntentionalLatestJump\(false\)/);
   assert.match(chat, /async function handleConfirmedRegenerate[\s\S]*scheduleIntentionalLatestJump\(false\)/);
@@ -411,7 +411,7 @@ test('AI chat route reloads do not fall back to stale active thread state', () =
   assert.doesNotMatch(chat, /threadId \?\? activeThreadId/);
   assert.match(routeReloadEffect, /const targetThreadId = threadId \?\? null/);
   assert.match(routeReloadEffect, /branchScopes: searchTargetBranchScopes/);
-  assert.match(chat, /loadAdoptedThreadRouteSnapshot/);
+  assert.match(chat, /loadPersistedAdoptedThreadBranchScopes/);
   assert.match(routeReloadEffect, /const hasSearchTarget = Boolean\(searchTargetMessageId\)/);
   assert.match(routeReloadEffect, /await reloadMessages\(targetThreadId, \{\s*anchorMessageId: searchTargetMessageId \?\? undefined,\s*branchScopes: searchTargetBranchScopes,\s*forceToLatest: !hasSearchTarget,\s*\}\)/);
   assert.doesNotMatch(routeReloadEffect, /activeThreadId/);
@@ -457,7 +457,8 @@ test('AI chat keeps first-message streaming alive when a new thread is written b
   assert.match(routeEffect, /return;/);
   assert.match(routeEffect, /clearGenerationSubscription\(\)/);
   assert.match(routeEffect, /activeStreamGenerationRef\.current \+= 1/);
-  assert.match(chat, /setMessages\(\(current\) => \{\s*const nextMessages = current\.some\(\(message\) => message\.id === assistantMessageId\)/);
+  assert.match(chat, /setMessages\(\(current\) => \{\s*let nextMessages = current/);
+  assert.match(chat, /createOptimisticUserMessage\([\s\S]{0,500}createStreamingAssistantMessage/);
   assert.match(chat, /messagesRef\.current = nextMessages/);
   assert.match(chat, /role:\s*'assistant'/);
   assert.match(chat, /status:\s*'generating'/);

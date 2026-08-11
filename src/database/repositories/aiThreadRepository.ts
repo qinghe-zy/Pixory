@@ -722,59 +722,6 @@ function mapThreadRow(row: AiThreadRow): AiThreadRecord {
   };
 }
 
-function messageHistoryTimestamp(message: AiMessageRecord): string {
-  return message.completedAt ?? message.updatedAt ?? message.createdAt;
-}
-
-async function resolveThreadHistoryBranchScopes(
-  db: SQLiteDatabase,
-  thread: AiThreadRecord,
-): Promise<AiBranchScope[] | null> {
-  if (!thread.currentBranchRootMessageId || thread.currentBranchVersionIndex == null) {
-    return [];
-  }
-  const scopes = await aiThreadRepository.resolveBranchLineage(
-    db,
-    thread.currentBranchRootMessageId,
-    thread.currentBranchVersionIndex,
-  );
-  return scopes.length > 0 ? scopes : null;
-}
-
-/** Returns the terminal completed message from the thread’s persisted route. */
-async function listLatestVisibleHistoryMessage(
-  db: SQLiteDatabase,
-  thread: AiThreadRecord,
-): Promise<AiMessageRecord | null> {
-  const branchScopes = await resolveThreadHistoryBranchScopes(db, thread);
-  if (!branchScopes) {
-    return null;
-  }
-  const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
-  const baseMessage = await db.getFirstAsync<AiMessageRecord>(
-    `SELECT *
-     FROM ai_messages
-     WHERE threadId = ?
-       ${visibleBranchClause.clause}
-       AND role <> 'system'
-       AND status = 'completed'
-       AND ${excludeRolledBackContinuityPayload('ai_messages')}
-     ORDER BY createdAt DESC, rowid DESC
-     LIMIT 1`,
-    thread.id,
-    ...visibleBranchClause.values,
-  );
-  if (!baseMessage) {
-    return null;
-  }
-  const [message] = await materializeMessagesForBranchScopes(
-    db,
-    [baseMessage],
-    branchScopes,
-  );
-  return message ?? null;
-}
-
 function parseVersionCitations(citationsJson: string): AiCitationRecord[] {
   try {
     const parsed = JSON.parse(citationsJson);
@@ -2545,22 +2492,81 @@ export const aiThreadRepository = {
       }
     }
     const normalizedSearchLower = normalizedSearch.toLocaleLowerCase();
-    // Pure-SQL implementation: use a subquery for the latest non-system message
-    // timestamp per thread. Avoids per-row async loops that previously caused
-    // NativeStatement.finalizeAsync crashes and silently dropped all threads.
-    const rows = await db.getAllAsync<AiThreadRow & { knowledgeCategory: string | null; lastMessageAt: string | null }>(
-      `SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory,
-              ai_last_msg.lastMessageAt AS lastMessageAt
+    // Resolve every persisted route in one recursive query. This keeps hidden
+    // sibling branches out of recent-history ordering without the per-thread
+    // async statement loop that crashed expo-sqlite on Android.
+    const rows = await db.getAllAsync<AiThreadRow & {
+      knowledgeCategory: string | null;
+      lastMessageAt: string | null;
+      projectedLastMessagePreview: string | null;
+    }>(
+      `WITH RECURSIVE adopted_scopes (
+         threadId, branchRootMessageId, branchVersionIndex
+       ) AS (
+         SELECT id, currentBranchRootMessageId, currentBranchVersionIndex
+         FROM ai_threads
+         WHERE currentBranchRootMessageId IS NOT NULL
+           AND currentBranchVersionIndex IS NOT NULL
+         UNION
+         SELECT adopted_scopes.threadId,
+                parent_message.branchRootMessageId,
+                parent_message.branchVersionIndex
+         FROM adopted_scopes
+         JOIN ai_messages parent_message
+           ON parent_message.id = adopted_scopes.branchRootMessageId
+          AND parent_message.threadId = adopted_scopes.threadId
+         WHERE parent_message.branchRootMessageId IS NOT NULL
+           AND parent_message.branchVersionIndex IS NOT NULL
+       ),
+       ranked_visible_messages AS (
+         SELECT ai_messages.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY ai_messages.threadId
+                  ORDER BY ai_messages.createdAt DESC, ai_messages.rowid DESC
+                ) AS routeRank
+         FROM ai_messages
+         WHERE ai_messages.role <> 'system'
+           AND ai_messages.status = 'completed'
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           AND (
+             ai_messages.branchRootMessageId IS NULL
+             OR EXISTS (
+               SELECT 1
+               FROM adopted_scopes
+               WHERE adopted_scopes.threadId = ai_messages.threadId
+                 AND adopted_scopes.branchRootMessageId = ai_messages.branchRootMessageId
+                 AND adopted_scopes.branchVersionIndex = ai_messages.branchVersionIndex
+             )
+           )
+       ),
+       projected_history AS (
+         SELECT ranked_visible_messages.threadId,
+                COALESCE(selected_version.content, ranked_visible_messages.content) AS lastMessagePreview,
+                COALESCE(
+                  selected_version.messageCompletedAt,
+                  selected_version.messageUpdatedAt,
+                  selected_version.messageCreatedAt,
+                  ranked_visible_messages.completedAt,
+                  ranked_visible_messages.updatedAt,
+                  ranked_visible_messages.createdAt
+                ) AS lastMessageAt
+         FROM ranked_visible_messages
+         LEFT JOIN adopted_scopes selected_scope
+           ON selected_scope.threadId = ranked_visible_messages.threadId
+          AND selected_scope.branchRootMessageId = ranked_visible_messages.id
+         LEFT JOIN ai_message_versions selected_version
+           ON selected_version.originalMessageId = ranked_visible_messages.id
+          AND selected_version.versionIndex = selected_scope.branchVersionIndex
+         WHERE ranked_visible_messages.routeRank = 1
+       )
+       SELECT ai_threads.*, ai_knowledge_bases.category AS knowledgeCategory,
+              projected_history.lastMessageAt AS lastMessageAt,
+              projected_history.lastMessagePreview AS projectedLastMessagePreview
        FROM ai_threads
        LEFT JOIN ai_knowledge_bases ON ai_knowledge_bases.id = ai_threads.boundKnowledgeBaseId
-       LEFT JOIN (
-         SELECT threadId, MAX(COALESCE(completedAt, updatedAt, createdAt)) AS lastMessageAt
-         FROM ai_messages
-         WHERE role <> 'system'
-         GROUP BY threadId
-       ) ai_last_msg ON ai_last_msg.threadId = ai_threads.id
+       JOIN projected_history ON projected_history.threadId = ai_threads.id
        WHERE ${clauses.join(' AND ')}
-       ORDER BY COALESCE(ai_last_msg.lastMessageAt, ai_threads.updatedAt) DESC,
+       ORDER BY projected_history.lastMessageAt DESC,
                 ai_threads.createdAt DESC`,
       ...values,
     );
@@ -2569,6 +2575,7 @@ export const aiThreadRepository = {
         ...mapThreadRow(row),
         knowledgeCategory: row.knowledgeCategory ?? null,
         lastMessageAt: row.lastMessageAt ?? null,
+        lastMessagePreview: row.projectedLastMessagePreview?.trim() || row.lastMessagePreview,
       }))
       .filter((item) => {
         if (!normalizedSearchLower) return true;
@@ -3838,14 +3845,15 @@ export const aiThreadRepository = {
     if (limit && limit > 0) {
       return db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM (
-           SELECT * FROM ai_messages
+           SELECT ai_messages.*, ai_messages.rowid AS rowOrder
+           FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
            ORDER BY createdAt DESC, rowid DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC, rowid ASC`,
+          ORDER BY createdAt ASC, rowOrder ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit

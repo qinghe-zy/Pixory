@@ -74,9 +74,12 @@ function insertMessage(db, input) {
 
 test('recent-chat history is projected from each thread’s adopted route', () => {
   const historyBody = source.slice(source.indexOf('async listHistoryItems('), source.indexOf('async createMessage('));
-  assert.match(historyBody, /listLatestVisibleHistoryMessage/);
-  assert.match(source, /async function resolveThreadHistoryBranchScopes[\s\S]*resolveBranchLineage/);
-  assert.match(historyBody, /lastMessagePreview:\s*terminalMessage\.content\.trim\(\)/);
+  assert.match(historyBody, /WITH RECURSIVE adopted_scopes/);
+  assert.match(historyBody, /ranked_visible_messages/);
+  assert.match(historyBody, /projected_history/);
+  assert.match(historyBody, /selected_version\.content/);
+  assert.match(historyBody, /projectedLastMessagePreview/);
+  assert.doesNotMatch(historyBody, /for \(const row of rows\)/);
   assert.doesNotMatch(historyBody, /MAX\(COALESCE\(completedAt, updatedAt, createdAt\)\)/);
   assert.doesNotMatch(historyBody, /LIMIT \?/, 'the final visible-route ordering must happen after route projection');
 });
@@ -97,11 +100,27 @@ test('adopting a route persists its pointer and metadata atomically', () => {
   assert.match(adoptionBody, /setThreadCurrentBranch[\s\S]*upsertBranchRouteMetadata/);
 });
 
+test('limited message paging keeps the row-order tie breaker visible to the outer query', async () => {
+  const db = new AsyncDatabase();
+  createHistorySchema(db);
+  insertThread(db, 'paged-thread');
+  insertMessage(db, { id: 'message-a', threadId: 'paged-thread', role: 'user', content: 'a', createdAt: '2026-01-01T00:00:00.000Z' });
+  insertMessage(db, { id: 'message-b', threadId: 'paged-thread', role: 'assistant', content: 'b', createdAt: '2026-01-01T00:00:00.000Z' });
+  insertMessage(db, { id: 'message-c', threadId: 'paged-thread', role: 'assistant', content: 'c', createdAt: '2026-01-01T00:00:00.000Z' });
+
+  const repository = loadRepository();
+  const messages = await repository.listMessagesBase(db, 'paged-thread', 2, []);
+
+  assert.deepEqual(messages.map((message) => message.id), ['message-b', 'message-c']);
+  db.close();
+});
+
 test('history ignores a newer sibling and previews the newest message on the adopted route', async () => {
   const db = new AsyncDatabase();
   createHistorySchema(db);
   insertThread(db, 'adopted-thread', { root: 'branch-root', version: 2 });
   insertThread(db, 'other-thread');
+  insertThread(db, 'empty-thread');
   insertMessage(db, { id: 'main-user', threadId: 'adopted-thread', role: 'user', content: 'main user', createdAt: '2026-01-01T00:00:00.000Z' });
   insertMessage(db, { id: 'branch-root', threadId: 'adopted-thread', role: 'assistant', content: 'base branch text', createdAt: '2026-01-02T00:00:00.000Z' });
   insertMessage(db, { id: 'hidden-sibling', threadId: 'adopted-thread', root: 'branch-root', version: 1, role: 'assistant', content: 'hidden newer sibling', createdAt: '2099-01-01T00:00:00.000Z' });
@@ -112,5 +131,6 @@ test('history ignores a newer sibling and previews the newest message on the ado
   const items = await repository.listHistoryItems(db, 'normal');
   assert.deepEqual(items.map((item) => item.id), ['other-thread', 'adopted-thread']);
   assert.equal(items[1].lastMessagePreview, 'adopted route latest');
+  assert.equal(items.some((item) => item.id === 'empty-thread'), false);
   db.close();
 });
