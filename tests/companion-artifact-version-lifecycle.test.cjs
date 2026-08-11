@@ -32,6 +32,9 @@ const repositoryPath = path.join(root, 'src/ai/companion/companionArtifactChatSt
 const chatStateRepository = fs.existsSync(repositoryPath)
   ? loadTypeScriptModule(repositoryPath).companionArtifactChatStateRepository
   : null;
+const diaryRepository = loadTypeScriptModule(
+  path.join(root, 'src/ai/diary/diaryRepository.ts'),
+).diaryRepository;
 
 class DB {
   constructor() {
@@ -40,7 +43,19 @@ class DB {
 
   exec(statement) { this.db.exec(statement); }
   async runAsync(statement, ...params) { return this.db.prepare(statement).run(...params); }
+  async getFirstAsync(statement, ...params) { return this.db.prepare(statement).get(...params) ?? null; }
   async getAllAsync(statement, ...params) { return this.db.prepare(statement).all(...params); }
+  async withExclusiveTransactionAsync(task) {
+    this.db.exec('BEGIN');
+    try {
+      const result = await task(this);
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
   close() { this.db.close(); }
 }
 
@@ -56,10 +71,16 @@ function createDb() {
     CREATE TABLE ai_messages (
       id TEXT PRIMARY KEY,
       threadId TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'completed',
+      role TEXT NOT NULL DEFAULT 'user',
+      createdAt TEXT NOT NULL DEFAULT '2026-08-11T00:00:00.000Z',
       FOREIGN KEY(threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
     );
     INSERT INTO ai_threads(id, space) VALUES ('thread-a', 'normal'), ('thread-b', 'normal');
   `);
+  db.exec(schema.MIGRATION_STATEMENTS_V49);
+  db.exec(schema.MIGRATION_STATEMENTS_V50);
+  db.exec(schema.MIGRATION_STATEMENTS_V57);
   db.exec(schema.MIGRATION_STATEMENTS_V53);
   db.exec(schema.MIGRATION_STATEMENTS_V58);
   db.exec(schema.MIGRATION_STATEMENTS_V59);
@@ -86,6 +107,55 @@ test('chat-only hiding is scoped to artifact kind, group, and thread', async () 
     );
     assert.deepEqual(
       [...await chatStateRepository.listHiddenGroupIds(db, 'thread-b', 'diary')],
+      [],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('diary versions are append-only, promote after deletion, and clear orphaned chat state', async () => {
+  const db = createDb();
+  try {
+    const base = {
+      bodyFontKey: 'serif',
+      diaryDate: '2026-08-11',
+      effectiveSourceSnapshotHash: 'snapshot-a',
+      jobContextSnapshotHash: 'job-context-a',
+      roleCardId: 'role-a',
+      sourceBranchRouteJson: '[]',
+      sourceThreadId: 'thread-a',
+      status: 'ready',
+      themeKey: 'paper-light',
+    };
+    const first = await diaryRepository.saveDiaryVersion(db, { ...base, body: '第一版日记。' });
+    const second = await diaryRepository.saveDiaryVersion(db, { ...base, body: '第二版日记。' });
+    const diaryId = 'role-diary:role-a:2026-08-11';
+
+    const groups = await diaryRepository.listVersionGroupsForRole(db, 'role-a');
+    assert.equal(groups.length, 1);
+    assert.deepEqual(groups[0].versions.map((version) => version.versionNumber), [1, 2]);
+
+    await chatStateRepository.hide(db, {
+      artifactKind: 'diary',
+      artifactGroupId: diaryId,
+      threadId: 'thread-a',
+    });
+    await assert.rejects(
+      diaryRepository.permanentlyDeleteVersions(db, [first.id, 'missing-version']),
+      /发生变化/,
+    );
+    assert.equal((await diaryRepository.findDiaryVersion(db, diaryId)).version.id, second.id);
+
+    await diaryRepository.permanentlyDeleteVersions(db, [second.id]);
+    const promoted = await diaryRepository.findDiaryVersion(db, diaryId);
+    assert.equal(promoted.version.id, first.id);
+    assert.equal(promoted.version.status, 'current');
+
+    await diaryRepository.permanentlyDeleteVersions(db, [first.id]);
+    assert.equal(await diaryRepository.findCurrentDiaryById(db, diaryId), null);
+    assert.deepEqual(
+      [...await chatStateRepository.listHiddenGroupIds(db, 'thread-a', 'diary')],
       [],
     );
   } finally {

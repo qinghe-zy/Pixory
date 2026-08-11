@@ -10,3 +10,15 @@ test('generates a diary with the thread model without chat-message streaming', (
   assert.match(source, /diaryRepository\.saveDiaryVersion/);
   assert.doesNotMatch(source, /createAssistantMessage|updateStreamingMessage|ai_messages/);
 });
+
+test('regenerates a diary from its completed frozen-source job', () => {
+  const servicePath = 'src/ai/diary/diaryVersionService.ts';
+  const versionService = require('node:fs').existsSync(servicePath)
+    ? readFileSync(servicePath, 'utf8')
+    : '';
+
+  assert.match(versionService, /findSourceJobForVersion/);
+  assert.match(versionService, /sourceMessagesJson:\s*sourceJob\.sourceMessagesJson/);
+  assert.match(versionService, /sourceBranchRouteJson:\s*sourceJob\.sourceBranchRouteJson/);
+  assert.doesNotMatch(versionService, /prepareAndScheduleDiaryJob/);
+});

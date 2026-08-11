@@ -40,6 +40,11 @@ export interface RoleDiaryVersionRecord {
   supersededAt: string | null;
 }
 
+export interface RoleDiaryVersionGroup {
+  diary: RoleDiaryRecord;
+  versions: RoleDiaryVersionRecord[];
+}
+
 export interface RoleDiaryJobRecord {
   id: string;
   roleCardId: string;
@@ -172,6 +177,22 @@ export const diaryRepository = {
     return rows.map(mapDiaryRow);
   },
 
+  async listVersionGroupsForRole(
+    db: SQLiteDatabase,
+    roleCardId: string,
+  ): Promise<RoleDiaryVersionGroup[]> {
+    const diaries = await diaryRepository.listCurrentDiariesForRole(db, roleCardId);
+    return Promise.all(diaries.map(async (diary) => {
+      const rows = await db.getAllAsync<RoleDiaryVersionRow>(
+        `SELECT * FROM companion_diary_versions
+         WHERE diaryId = ?
+         ORDER BY versionNumber ASC`,
+        diary.id,
+      );
+      return { diary, versions: rows.map(mapDiaryVersionRow) };
+    }));
+  },
+
   async listContextOptInDiaryVersionsForRole(
     db: SQLiteDatabase,
     roleCardId: string,
@@ -198,13 +219,135 @@ export const diaryRepository = {
     );
   },
 
-  async findDiaryVersion(db: SQLiteDatabase, diaryIdValue: string): Promise<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null> {
+  async findVersionEntryById(
+    db: SQLiteDatabase,
+    versionId: string,
+  ): Promise<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null> {
+    const version = await db.getFirstAsync<RoleDiaryVersionRow>(
+      'SELECT * FROM companion_diary_versions WHERE id = ?',
+      versionId,
+    );
+    if (!version) {
+      return null;
+    }
+    const diary = await diaryRepository.findCurrentDiaryById(db, version.diaryId);
+    return diary ? { diary, version: mapDiaryVersionRow(version) } : null;
+  },
+
+  async findDiaryVersion(
+    db: SQLiteDatabase,
+    diaryIdValue: string,
+    versionId?: string,
+  ): Promise<{ diary: RoleDiaryRecord; version: RoleDiaryVersionRecord } | null> {
     const diary = await diaryRepository.findCurrentDiaryById(db, diaryIdValue);
     if (!diary) {
       return null;
     }
-    const version = await diaryRepository.findCurrentVersion(db, diaryIdValue);
-    return version ? { diary, version } : null;
+    const row = versionId
+      ? await db.getFirstAsync<RoleDiaryVersionRow>(
+        'SELECT * FROM companion_diary_versions WHERE id = ? AND diaryId = ?',
+        versionId,
+        diaryIdValue,
+      )
+      : await db.getFirstAsync<RoleDiaryVersionRow>(
+        'SELECT * FROM companion_diary_versions WHERE id = ?',
+        diary.currentVersionId,
+      );
+    return row ? { diary, version: mapDiaryVersionRow(row) } : null;
+  },
+
+  async findSourceJobForVersion(
+    db: SQLiteDatabase,
+    versionId: string,
+  ): Promise<RoleDiaryJobRecord | null> {
+    const row = await db.getFirstAsync<RoleDiaryJobRow>(
+      `SELECT job.*
+       FROM companion_diary_versions version
+       JOIN companion_diaries diary ON diary.id = version.diaryId
+       JOIN companion_diary_jobs job
+         ON job.roleCardId = diary.roleCardId
+        AND job.diaryDate = diary.diaryDate
+        AND job.sourceSnapshotHash = version.jobContextSnapshotHash
+       WHERE version.id = ? AND job.status = 'completed'
+       ORDER BY ABS(julianday(job.createdAt) - julianday(version.createdAt)) ASC
+       LIMIT 1`,
+      versionId,
+    );
+    return row ? mapDiaryJobRow(row) : null;
+  },
+
+  async permanentlyDeleteVersions(
+    db: SQLiteDatabase,
+    versionIds: string[],
+  ): Promise<{ deletedCount: number; removedDiaryIds: string[] }> {
+    const uniqueIds = [...new Set(versionIds)];
+    if (uniqueIds.length === 0 || uniqueIds.length !== versionIds.length) {
+      throw new Error('所选日记版本已发生变化，请刷新后重试。');
+    }
+
+    const placeholders = uniqueIds.map(() => '?').join(', ');
+    let deletedCount = 0;
+    const removedDiaryIds: string[] = [];
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      const selected = await txn.getAllAsync<{ id: string; diaryId: string }>(
+        `SELECT id, diaryId FROM companion_diary_versions WHERE id IN (${placeholders})`,
+        ...uniqueIds,
+      );
+      if (selected.length !== uniqueIds.length) {
+        throw new Error('所选日记版本已发生变化，请刷新后重试。');
+      }
+
+      const affectedDiaryIds = [...new Set(selected.map((version) => version.diaryId))];
+      const deletion = await txn.runAsync(
+        `DELETE FROM companion_diary_versions WHERE id IN (${placeholders})`,
+        ...uniqueIds,
+      );
+      deletedCount = Number(deletion.changes ?? 0);
+      const now = createTimestamp();
+
+      for (const diaryIdValue of affectedDiaryIds) {
+        const latest = await txn.getFirstAsync<Pick<RoleDiaryVersionRow, 'id'>>(
+          `SELECT id FROM companion_diary_versions
+           WHERE diaryId = ?
+           ORDER BY versionNumber DESC
+           LIMIT 1`,
+          diaryIdValue,
+        );
+        if (!latest) {
+          await txn.runAsync(
+            `DELETE FROM companion_artifact_chat_states
+             WHERE artifactKind = 'diary' AND artifactGroupId = ?`,
+            diaryIdValue,
+          );
+          await txn.runAsync('DELETE FROM companion_diaries WHERE id = ?', diaryIdValue);
+          removedDiaryIds.push(diaryIdValue);
+          continue;
+        }
+
+        await txn.runAsync(
+          `UPDATE companion_diary_versions
+           SET status = 'superseded', supersededAt = COALESCE(supersededAt, ?)
+           WHERE diaryId = ?`,
+          now,
+          diaryIdValue,
+        );
+        await txn.runAsync(
+          `UPDATE companion_diary_versions
+           SET status = 'current', supersededAt = NULL
+           WHERE id = ?`,
+          latest.id,
+        );
+        await txn.runAsync(
+          `UPDATE companion_diaries
+           SET currentVersionId = ?, updatedAt = ?
+           WHERE id = ?`,
+          latest.id,
+          now,
+          diaryIdValue,
+        );
+      }
+    });
+    return { deletedCount, removedDiaryIds };
   },
 
   async findCurrentDiaryById(db: SQLiteDatabase, diaryIdValue: string): Promise<RoleDiaryRecord | null> {
@@ -250,6 +393,25 @@ export const diaryRepository = {
       const versionNumber = (count?.count ?? 0) + 1;
       const versionId = `${id}:v${versionNumber}`;
 
+      if (!existing) {
+        await txn.runAsync(
+          `INSERT INTO companion_diaries (
+            id, roleCardId, diaryDate, currentVersionId, themeKey, bodyFontKey, status,
+            sourceThreadId, sourceBranchRouteJson, sourceSnapshotHash, contextOptIn, createdAt, updatedAt
+          ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+          id,
+          input.roleCardId,
+          input.diaryDate,
+          input.themeKey,
+          input.bodyFontKey,
+          input.status,
+          input.sourceThreadId,
+          input.sourceBranchRouteJson,
+          input.effectiveSourceSnapshotHash,
+          now,
+          now,
+        );
+      }
       if (existing?.currentVersionId) {
         await txn.runAsync(
           `UPDATE companion_diary_versions SET status = 'superseded', supersededAt = ? WHERE id = ?`,
@@ -269,17 +431,19 @@ export const diaryRepository = {
         input.effectiveSourceSnapshotHash, input.jobContextSnapshotHash, now,
       );
       await txn.runAsync(
-        `INSERT INTO companion_diaries (
-          id, roleCardId, diaryDate, currentVersionId, themeKey, bodyFontKey, status,
-          sourceThreadId, sourceBranchRouteJson, sourceSnapshotHash, contextOptIn, createdAt, updatedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
-        ON CONFLICT(roleCardId, diaryDate) DO UPDATE SET
-          currentVersionId = excluded.currentVersionId, themeKey = excluded.themeKey,
-          bodyFontKey = excluded.bodyFontKey, status = excluded.status,
-          sourceThreadId = excluded.sourceThreadId, sourceBranchRouteJson = excluded.sourceBranchRouteJson,
-          sourceSnapshotHash = excluded.sourceSnapshotHash, updatedAt = excluded.updatedAt`,
-        id, input.roleCardId, input.diaryDate, versionId, input.themeKey, input.bodyFontKey,
-        input.status, input.sourceThreadId, input.sourceBranchRouteJson, input.effectiveSourceSnapshotHash, now, now,
+        `UPDATE companion_diaries
+         SET currentVersionId = ?, themeKey = ?, bodyFontKey = ?, status = ?,
+             sourceThreadId = ?, sourceBranchRouteJson = ?, sourceSnapshotHash = ?, updatedAt = ?
+         WHERE id = ?`,
+        versionId,
+        input.themeKey,
+        input.bodyFontKey,
+        input.status,
+        input.sourceThreadId,
+        input.sourceBranchRouteJson,
+        input.effectiveSourceSnapshotHash,
+        now,
+        id,
       );
       const savedVersion = await txn.getFirstAsync<RoleDiaryVersionRow>(
         'SELECT * FROM companion_diary_versions WHERE id = ?',
