@@ -180,6 +180,16 @@ test('streaming assistant content uses lightweight rendering until the reply is 
   assert.doesNotMatch(content, /const parsedMarkdown = useMemo\(.*\[content, streaming\]\)/);
 });
 
+test('math blocks compile KaTeX and build HTML inside a math-keyed memo', () => {
+  const math = read('src/components/ai/AiMathBlock.tsx');
+  assert.match(math, /import \{ useMemo, useState \} from 'react'/);
+  assert.match(math, /const compiled = useMemo\(\(\) => \{/);
+  assert.match(math, /katex\.renderToString\(math/);
+  assert.match(math, /\}, \[math\]\);/);
+  assert.match(math, /if \(compiled\.error\)/);
+  assert.match(math, /source=\{\{ html: compiled\.html, baseUrl: 'about:blank' \}\}/);
+});
+
 test('streaming output keeps live rendering separate from detached history layout', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const button = read('src/components/ai/AiScrollToLatestButton.tsx');
