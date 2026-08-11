@@ -1,6 +1,6 @@
 export const DATABASE_NAME = 'pixory.sqlite';
 export const PERSONAL_DATABASE_NAME = 'pixory_personal.sqlite';
-export const DATABASE_VERSION = 58;
+export const DATABASE_VERSION = 59;
 
 export const MIGRATION_STATEMENTS_V1 = `
 CREATE TABLE IF NOT EXISTS ips (
@@ -2083,6 +2083,39 @@ SET roleSnapshotJson = COALESCE(
   '{}'
 )
 WHERE roleSnapshotJson = '{}';
+`;
+
+export const MIGRATION_STATEMENTS_V59 = `
+ALTER TABLE companion_dream_jobs ADD COLUMN targetVersionGroupId TEXT;
+ALTER TABLE companion_dreams ADD COLUMN versionGroupId TEXT NOT NULL DEFAULT '';
+ALTER TABLE companion_dreams ADD COLUMN versionNumber INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE companion_dreams ADD COLUMN isCurrent INTEGER NOT NULL DEFAULT 0
+  CHECK (isCurrent IN (0, 1));
+
+UPDATE companion_dreams
+SET versionGroupId = id,
+    versionNumber = 1,
+    isCurrent = 1
+WHERE versionGroupId = '';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_dreams_group_version
+  ON companion_dreams(versionGroupId, versionNumber);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companion_dreams_group_current
+  ON companion_dreams(versionGroupId)
+  WHERE isCurrent = 1 AND status = 'active';
+
+CREATE TABLE IF NOT EXISTS companion_artifact_chat_states (
+  artifactKind TEXT NOT NULL CHECK (artifactKind IN ('diary', 'dream')),
+  artifactGroupId TEXT NOT NULL,
+  threadId TEXT NOT NULL,
+  hiddenAt TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  PRIMARY KEY (artifactKind, artifactGroupId, threadId),
+  FOREIGN KEY (threadId) REFERENCES ai_threads(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_companion_artifact_chat_states_thread
+  ON companion_artifact_chat_states(threadId, artifactKind, hiddenAt);
 `;
 
 export const MEMORY_SCOPE_GOVERNANCE_STATEMENTS = `
