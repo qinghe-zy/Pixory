@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 
 import { layout } from '../../design/tokens/layout';
 import { metrics, radius, spacing, typography } from '../../design/tokens';
@@ -144,27 +145,28 @@ export function AiMessageTextSelectionModal({
             </Pressable>
           </View>
         </View>
-        <ScrollView
-          contentContainerStyle={styles.contentContainer}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator
-        >
-          {editing ? (
-            <TextInput
-              autoFocus
-              multiline
-              onChangeText={setEditText}
-              scrollEnabled={false}
-              style={[styles.content, styles.editInput]}
-              textAlignVertical="top"
-              value={editText}
-            />
-          ) : (
-            <Text selectable selectionColor={aiLightColors.primary} style={styles.content}>
-              {content}
-            </Text>
-          )}
-        </ScrollView>
+        <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoiding}>
+          <ScrollView
+            contentContainerStyle={styles.contentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
+            {editing ? (
+              <TextInput
+                multiline
+                onChangeText={setEditText}
+                scrollEnabled={false}
+                style={[styles.content, styles.editInput]}
+                textAlignVertical="top"
+                value={editText}
+              />
+            ) : (
+              <Text selectable selectionColor={aiLightColors.primary} style={styles.content}>
+                {content}
+              </Text>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -210,12 +212,10 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
   },
   editInput: {
-    backgroundColor: aiLightColors.surface,
-    borderColor: aiLightColors.hairline,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
     minHeight: 200,
-    padding: spacing[4],
+  },
+  keyboardAvoiding: {
+    flex: 1,
   },
   pressed: {
     backgroundColor: aiLightColors.primarySoft,
