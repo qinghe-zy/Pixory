@@ -111,10 +111,10 @@ export function AiMessageTextSelectionModal({
           <Text style={styles.title}>{editing ? '编辑文本' : '选择文本'}</Text>
           <View style={styles.headerActions}>
             <Pressable
-              accessibilityLabel={editing ? '切换到选择' : '切换到编辑'}
+              accessibilityLabel={editing ? '完成编辑' : '切换到编辑'}
               accessibilityRole="button"
               hitSlop={spacing[1]}
-              onPress={toggleEdit}
+              onPress={editing ? handleClose : toggleEdit}
               style={({ pressed }) => [
                 styles.headerButton,
                 pressed && styles.pressed,
@@ -122,7 +122,7 @@ export function AiMessageTextSelectionModal({
             >
               <Ionicons
                 color={editing ? aiLightColors.primaryActive : aiLightColors.mutedReadable}
-                name={editing ? 'text-outline' : 'create-outline'}
+                name={editing ? 'checkmark-outline' : 'create-outline'}
                 size={metrics.iconSizeMd}
               />
             </Pressable>
