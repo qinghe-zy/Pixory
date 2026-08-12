@@ -162,7 +162,7 @@ export function AiMessageTextSelectionModal({
               multiline
               onChangeText={setEditText}
               scrollEnabled={true}
-              style={[styles.content, styles.contentContainer, styles.editInput, { paddingBottom: spacing[8] + insets.bottom }]}
+              style={[styles.content, styles.editInput]}
               textAlignVertical="top"
               value={editText}
             />
@@ -224,6 +224,8 @@ const styles = StyleSheet.create({
   },
   editInput: {
     flex: 1,
+    paddingHorizontal: layout.pagePaddingHorizontal,
+    paddingVertical: spacing[2],
   },
   keyboardAvoiding: {
     flex: 1,
