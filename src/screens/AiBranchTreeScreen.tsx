@@ -35,7 +35,7 @@ interface AiBranchTreeScreenProps {
 }
 
 export function AiBranchTreeScreen({
-  currentBranchScopes = [],
+  currentBranchScopes,
   onBack,
   onCheckoutBranch,
   onDeriveBranch,
