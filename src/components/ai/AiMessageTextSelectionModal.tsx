@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { layout } from '../../design/tokens/layout';
 import { metrics, radius, spacing, typography } from '../../design/tokens';
@@ -156,28 +156,29 @@ export function AiMessageTextSelectionModal({
             </Pressable>
           </View>
         </View>
-        <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoiding}>
+        <KeyboardAwareScrollView
+          bottomOffset={spacing[4]}
+          contentContainerStyle={styles.keyboardAvoiding}
+          keyboardShouldPersistTaps="handled"
+          style={styles.keyboardAvoiding}
+        >
           {editing ? (
             <TextInput
               multiline
               onChangeText={setEditText}
-              scrollEnabled={true}
+              scrollEnabled={false}
               style={[styles.content, styles.editInput]}
               textAlignVertical="top"
               value={editText}
             />
           ) : (
-            <ScrollView
-              contentContainerStyle={[styles.contentContainer, { paddingBottom: spacing[8] + insets.bottom }]}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator
-            >
+            <View style={styles.readContainer}>
               <Text selectable selectionColor={aiLightColors.primary} style={styles.content}>
                 {content}
               </Text>
-            </ScrollView>
+            </View>
           )}
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
       </View>
     </Modal>
   );
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  contentContainer: {
+  readContainer: {
     paddingBottom: spacing[8],
     paddingHorizontal: layout.pagePaddingHorizontal,
     paddingTop: spacing[6],
@@ -228,7 +229,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[2],
   },
   keyboardAvoiding: {
-    flex: 1,
+    flexGrow: 1,
   },
   pressed: {
     backgroundColor: aiLightColors.primarySoft,
