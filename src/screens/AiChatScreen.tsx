@@ -840,6 +840,7 @@ interface AiChatScreenProps {
   onOpenHistory: () => void;
   onOpenRoleLibrary: () => void;
   onOpenGlobalMaterials: () => void;
+  onOpenProviderSettings: () => void;
   onOpenSessionConfig: (threadId: string) => void;
   onOpenMemoryBoard: (threadId: string) => void;
   onOpenDiary: (diaryId: string, versionId?: string) => void;
@@ -875,6 +876,7 @@ export function AiChatScreen({
   onOpenHistory,
   onOpenRoleLibrary,
   onOpenGlobalMaterials,
+  onOpenProviderSettings,
   onOpenSessionConfig,
   onOpenMemoryBoard,
   onOpenDiary,
@@ -7504,6 +7506,10 @@ export function AiChatScreen({
         recentThreads={recentThreads}
         visible={recordDrawerVisible}
         onClose={() => setRecordDrawerVisible(false)}
+        onOpenProviderSettings={() => {
+          setRecordDrawerVisible(false);
+          onOpenProviderSettings();
+        }}
         onNewChat={() => {
           setRecordDrawerVisible(false);
           handleNewChatPress();

@@ -34,6 +34,7 @@ interface AiComprehensiveRecordDrawerProps {
   onOpenRoleLibrary: () => void;
   onOpenHistory: () => void;
   onOpenGlobalMaterials: () => void;
+  onOpenProviderSettings: () => void;
   onOpenThread: (thread: AiThreadHistoryItem) => void;
   onRenameThread?: (thread: AiThreadHistoryItem, title: string) => Promise<void> | void;
   onDeleteThread?: (thread: AiThreadHistoryItem) => Promise<void> | void;
@@ -48,6 +49,7 @@ export function AiComprehensiveRecordDrawer({
   onOpenRoleLibrary,
   onOpenHistory,
   onOpenGlobalMaterials,
+  onOpenProviderSettings,
   onOpenThread,
   onRenameThread,
   onDeleteThread,
@@ -281,7 +283,17 @@ export function AiComprehensiveRecordDrawer({
             style={styles.drawerGradient}
           />
           <View pointerEvents="none" style={styles.drawerHighlight} />
-          <Text style={styles.brand}>Pixory AI</Text>
+          <View style={styles.brandRow}>
+            <Text style={styles.brand}>Pixory AI</Text>
+            <Pressable
+              accessibilityLabel="AI 设置"
+              accessibilityRole="button"
+              onPress={onOpenProviderSettings}
+              style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+            >
+              <Ionicons color={aiLightColors.ink} name="settings-outline" size={18} />
+            </Pressable>
+          </View>
           <View style={styles.primaryActions}>
             <DrawerAction icon="add-circle-outline" label="新聊天" onPress={onNewChat} tone="accent" />
             <DrawerAction icon="person-circle-outline" label="角色库" onPress={onOpenRoleLibrary} />
@@ -472,10 +484,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.9)',
   },
+  brandRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: rhythm.screenSectionGap,
+  },
   brand: {
     ...typography.textStyles.pageTitle,
     color: aiLightColors.ink,
-    marginBottom: rhythm.screenSectionGap,
+  },
+  settingsButton: {
+    alignItems: 'center',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+    ...shadows.sm,
   },
   primaryActions: {
     gap: rhythm.cardContentGap,
