@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -68,7 +69,18 @@ export function AiMessageTextSelectionModal({
     });
   }, [content]);
 
-  const handleClose = useCallback(() => {
+  const handleBack = useCallback(() => {
+    if (editing && editText !== content) {
+      Alert.alert('放弃修改', '您有未保存的修改，确定要放弃吗？', [
+        { text: '取消', style: 'cancel' },
+        { text: '确定', style: 'destructive', onPress: () => onClose() },
+      ]);
+    } else {
+      onClose();
+    }
+  }, [editing, editText, content, onClose]);
+
+  const handleSave = useCallback(() => {
     if (editing && editText !== content) {
       onClose(editText);
     } else {
@@ -79,7 +91,7 @@ export function AiMessageTextSelectionModal({
   return (
     <Modal
       animationType="slide"
-      onRequestClose={handleClose}
+      onRequestClose={handleBack}
       presentationStyle="fullScreen"
       visible={visible}
     >
@@ -96,7 +108,7 @@ export function AiMessageTextSelectionModal({
             accessibilityLabel="关闭"
             accessibilityRole="button"
             hitSlop={spacing[2]}
-            onPress={handleClose}
+            onPress={handleBack}
             style={({ pressed }) => [
               styles.headerButton,
               pressed && styles.pressed,
@@ -114,7 +126,7 @@ export function AiMessageTextSelectionModal({
               accessibilityLabel={editing ? '完成编辑' : '切换到编辑'}
               accessibilityRole="button"
               hitSlop={spacing[1]}
-              onPress={editing ? handleClose : toggleEdit}
+              onPress={editing ? handleSave : toggleEdit}
               style={({ pressed }) => [
                 styles.headerButton,
                 pressed && styles.pressed,

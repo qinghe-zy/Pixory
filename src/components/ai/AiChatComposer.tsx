@@ -6,6 +6,7 @@ import { radius, rhythm, shadows, spacing, typography } from '../../design/token
 import type { AiModelIconBrand } from '../../ai/aiModelIconService';
 import { aiLightColors } from './aiLightTheme';
 import { AiModelIcon } from './AiModelIcon';
+import { AiMessageTextSelectionModal } from './AiMessageTextSelectionModal';
 import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
 
 export interface AiComposerAttachment {
@@ -131,6 +132,7 @@ export function AiChatComposer({
   const voiceCancelledRef = useRef(false);
   const suppressVoiceTapRef = useRef(false);
   const voiceActive = voiceState === 'listening' || voiceState === 'recognizing';
+  const [fullscreenEditVisible, setFullscreenEditVisible] = useState(false);
 
   const updateInputHeight = useCallback((measuredHeight: number) => {
     const nextHeight = Math.min(
@@ -172,6 +174,16 @@ export function AiChatComposer({
 
   return (
     <View style={styles.container}>
+      <AiMessageTextSelectionModal
+        content={value}
+        onClose={(editedText) => {
+          setFullscreenEditVisible(false);
+          if (editedText !== undefined && editedText !== value) {
+            onChangeText(editedText);
+          }
+        }}
+        visible={fullscreenEditVisible}
+      />
       <AiVoiceInputStatus error={voiceError} mode={voiceMode} onCancel={onCancelVoiceInput} state={voiceState} />
       <View
         onLayout={(event) =>
@@ -271,6 +283,20 @@ export function AiChatComposer({
             >
               <Ionicons color={aiLightColors.primary} name="bulb-outline" size={spacing[5]} />
             </Pressable>
+            {inputHeight >= COMPOSER_INPUT_MAX_HEIGHT && (
+              <Pressable
+                accessibilityLabel="全屏查看与编辑"
+                accessibilityRole="button"
+                hitSlop={spacing[2]}
+                onPress={() => setFullscreenEditVisible(true)}
+                style={({ pressed }) => [
+                  styles.expandButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons color={aiLightColors.mutedReadable} name="expand-outline" size={spacing[5]} />
+              </Pressable>
+            )}
           </View>
 
           {/* Spacer */}
@@ -488,6 +514,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     /* primarySoft fill — matches the modal accent; no border needed */
     backgroundColor: aiLightColors.primarySoft,
+    borderRadius: radius.pill,
+    height: spacing[8],
+    justifyContent: 'center',
+    width: spacing[8],
+  },
+  expandButton: {
+    alignItems: 'center',
     borderRadius: radius.pill,
     height: spacing[8],
     justifyContent: 'center',
