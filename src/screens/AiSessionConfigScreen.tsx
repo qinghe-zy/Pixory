@@ -3,7 +3,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, findNodeHandle, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Animated, PanResponder, Dimensions, Keyboard, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { SecureImage } from '../components/SecureImage';
 
 import { AppDialog } from '../components/AppDialog';
 import { AiLightButton } from '../components/ai/AiLightButton';
@@ -44,7 +47,7 @@ import { builtInModelsForProvider } from '../ai/providerRegistry';
 import { exportRoleContinuityPackage, getExportableRoleCardIdForThread } from '../ai/aiRoleCardContinuityExportService';
 import type { AiUsageAggregate } from '../ai/aiUsageAnalytics';
 import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructionWeight } from '../ai/types';
-import { radius, rhythm, spacing, typography } from '../design/tokens';
+import { radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
 import { PET_MODELS } from '../config/petModels';
@@ -57,6 +60,7 @@ interface AiSessionConfigScreenProps {
   threadId?: string;
   contextTitle?: string;
   contextType?: AiContextType;
+  visible?: boolean;
   onBack: () => void;
   onOpenProviderSettings: () => void;
   onOpenRoleLibrary: () => void;
@@ -161,11 +165,18 @@ function formatPendingRoundsSummary(status: MemoryMaintenanceStatus | null): str
   return `待整理 ${ordinaryRounds} 轮`;
 }
 
+
+const DRAWER_WIDTH_RATIO = 0.85;
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const DRAWER_WIDTH = SCREEN_WIDTH * DRAWER_WIDTH_RATIO;
+const SWIPE_CLOSE_THRESHOLD = DRAWER_WIDTH * 0.35;
+
 export function AiSessionConfigScreen({
   space,
   threadId,
   contextTitle,
   contextType = 'normal',
+  visible = true,
   onBack,
   onOpenProviderSettings,
   onOpenRoleLibrary,
@@ -230,10 +241,8 @@ export function AiSessionConfigScreen({
   const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
   const [selectedSessionModelKeys, setSelectedSessionModelKeys] = useState<string[]>([]);
   const [threadUsage, setThreadUsage] = useState<AiUsageAggregate | null>(null);
-  const [modelPickerVisible, setModelPickerVisible] = useState(false);
-  const [advancedPromptVisible, setAdvancedPromptVisible] = useState(contextType !== 'normal');
-  const [advancedUsageVisible, setAdvancedUsageVisible] = useState(false);
   const [status, setStatus] = useState<{ message: string; tone: FeedbackTone; title?: string } | null>(null);
+  const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const [exportingRolePackage, setExportingRolePackage] = useState(false);
@@ -955,366 +964,325 @@ export function AiSessionConfigScreen({
     });
   };
 
+
+  const insets = useSafeAreaInsets();
+  const [mounted, setMounted] = useState(false);
+  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const scrimOpacity = useRef(new Animated.Value(0)).current;
+  const drawerTranslateX = useRef(new Animated.Value(0)).current;
+  const drawerAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const [promptEditorVisible, setPromptEditorVisible] = useState(false);
+  const [usageModalVisible, setUsageModalVisible] = useState(false);
+  const [advancedPromptVisible, setAdvancedPromptVisible] = useState(false);
+  const [advancedUsageVisible, setAdvancedUsageVisible] = useState(false);
+
+  function startDrawerAnimation(animation: Animated.CompositeAnimation, onFinished?: () => void) {
+    drawerAnimationRef.current?.stop();
+    drawerAnimationRef.current = animation;
+    animation.start(({ finished }) => {
+      if (!finished) return;
+      drawerAnimationRef.current = null;
+      onFinished?.();
+    });
+  }
+
+  const handleClose = useCallback(() => {
+    Keyboard.dismiss();
+    drawerTranslateX.setValue(0);
+    startDrawerAnimation(Animated.parallel([
+      Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }),
+      Animated.timing(scrimOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
+    ]), () => {
+      setMounted(false);
+      onBack();
+    });
+  }, [onBack, slideAnim, scrimOpacity, drawerTranslateX]);
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      drawerTranslateX.setValue(0);
+      startDrawerAnimation(Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, damping: 28, stiffness: 260, mass: 0.9, useNativeDriver: true }),
+        Animated.timing(scrimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]));
+    } else {
+      if (mounted) {
+        handleClose();
+      }
+    }
+  }, [visible]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gs) =>
+        Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx > 0,
+      onPanResponderMove: (_evt, gs) => {
+        const clampedDx = Math.max(0, gs.dx);
+        drawerTranslateX.setValue(clampedDx);
+        const progress = 1 - clampedDx / DRAWER_WIDTH;
+        scrimOpacity.setValue(Math.max(0, progress));
+      },
+      onPanResponderRelease: (_evt, gs) => {
+        if (gs.dx > SWIPE_CLOSE_THRESHOLD || gs.vx > 0.5) {
+          slideAnim.setValue(Math.max(0, Math.min(DRAWER_WIDTH, gs.dx)));
+          drawerTranslateX.setValue(0);
+          startDrawerAnimation(Animated.parallel([
+            Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }),
+            Animated.timing(scrimOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
+          ]), () => {
+            setMounted(false);
+            onBack();
+          });
+        } else {
+          Animated.parallel([
+            Animated.spring(drawerTranslateX, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }),
+            Animated.timing(scrimOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+          ]).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(drawerTranslateX, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }).start();
+        Animated.timing(scrimOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  if (!mounted && !visible) {
+    return null;
+  }
+
   return (
     <>
-      <AiLightScaffold
-        onBack={onBack}
-        scrollable
-        scrollViewRef={scrollViewRef}
-        subtitle={spaceLabel}
-        title="会话设置"
-      >
-        <View style={styles.content}>
-          <AiLightListGroup title="当前会话">
-            <AiLightListItem
-              accessibilityLabel="重命名当前会话"
-              icon="create-outline"
-              title="会话名称"
-              value={threadTitle}
-              onPress={() => {
-                setRenameValue(threadTitle);
-                setRenameDialogVisible(true);
-              }}
-            />
-            <AiLightListItem
-              icon="hardware-chip-outline"
-              title="会话模型"
-              value={sessionModelConfig?.currentLabel ?? '加载中'}
-              subtitle={sessionModelConfig?.currentStatus === 'invalid' ? '模型配置已失效，请重新选择' : undefined}
-              destructive={sessionModelConfig?.currentStatus === 'invalid'}
-              onPress={() => setModelPickerVisible(true)}
-            />
-            {threadId && onOpenThreadMaterials ? (
-              <AiLightListItem
-                icon="library-outline"
-                title="会话资料库"
-                onPress={onOpenThreadMaterials}
-              />
-            ) : null}
-            <AiLightListItem
-              disabled={!threadId || !onOpenChatSearch}
-              icon="search-outline"
-              title="查找聊天记录"
-              onPress={onOpenChatSearch}
-            />
-            <AiLightListItem
-              disabled={!threadId || !onOpenBranchTree}
-              icon="git-branch-outline"
-              title="创作路线树"
-              subtitle="查看改写、重生成形成的路线"
-              onPress={onOpenBranchTree}
-            />
-            <AiLightListItem
-              disabled={!threadId || !currentRoleCardId || !onOpenInnerLife}
-              icon="book-outline"
-              title="内心独白"
-              subtitle="日记、独白与梦境"
-              onPress={onOpenInnerLife}
-              isLast
-            />
-          </AiLightListGroup>
-
-          <AiLightListGroup title="角色与表现">
-            <AiLightListItem
-              icon="person-circle-outline"
-              title="角色身份"
-              subtitle="从角色库中选择或新建角色"
-              value={roleCardSummary}
-              onPress={onOpenRoleLibrary}
-            />
-            <AiLightListItem
-              accessibilityRole="switch"
-              icon="image-outline"
-              title="角色头像"
-              subtitle={avatarSummary}
-              value={avatarEnabled ? '头像开启' : '头像关闭'}
-              onPress={() => setAvatarEnabled((current) => !current)}
-              showChevron={false}
-              action={
-                configLoaded ? (
-                  <AiSwitch
-                    value={avatarEnabled}
-                    onValueChange={setAvatarEnabled}
-                  />
-                ) : null
-              }
-            />
-            <AiLightListItem
-              accessibilityRole="switch"
-              accessibilityState={{ checked: roleDiaryEnabled }}
-              icon="book-outline"
-              title="角色日记"
-              subtitle="在安静的夜晚写下角色自己的心绪"
-              showChevron={false}
-              onPress={() => updateRoleDiaryEnabled(!roleDiaryEnabled)}
-              action={<AiSwitch value={roleDiaryEnabled} onValueChange={(next) => {
-                updateRoleDiaryEnabled(next);
-              }} />}
-            />
-            <AiLightListItem
-              accessibilityRole="switch"
-              accessibilityState={{ checked: companionAwarenessEnabled }}
-              icon="heart-outline"
-              title="情感与时间感知"
-              subtitle="让角色在当前物理空间中延续关系、边界和未完话题"
-              showChevron={false}
-              onPress={() => updateCompanionAwareness(!companionAwarenessEnabled)}
-              action={<AiSwitch value={companionAwarenessEnabled} onValueChange={updateCompanionAwareness} />}
-            />
-            {onOpenCompanionRuntime ? <AiLightListItem
-              icon="time-outline"
-              title="管理情感与时间"
-              subtitle="查看或移除边界、待跟进话题和时间锚点"
-              onPress={onOpenCompanionRuntime}
-            /> : null}
-            <AiLightListItem
-              accessibilityRole="switch"
-              icon="person-outline"
-              title="我的头像"
-              subtitle={selfAvatarSummary}
-              value={userAvatarEnabled ? '头像开启' : '头像关闭'}
-              onPress={() => setUserAvatarEnabled((current) => !current)}
-              showChevron={false}
-              action={
-                configLoaded ? (
-                  <AiSwitch
-                    value={userAvatarEnabled}
-                    onValueChange={setUserAvatarEnabled}
-                  />
-                ) : null
-              }
-            />
-            <AiLightListItem
-              accessibilityRole="switch"
-              accessibilityState={{ checked: thinkingDisabled }}
-              icon="flash-outline"
-              title="思考过程"
-              value={thinkingDisabled ? '已关闭' : '允许输出'}
-              showChevron={false}
-              isLast
-              onPress={() => setThinkingDisabled((current) => !current)}
-              action={
-                configLoaded ? (
-                  <AiSwitch
-                    value={!thinkingDisabled}
-                    onValueChange={(val) => setThinkingDisabled(!val)}
-                  />
-                ) : null
-              }
-            />
-          </AiLightListGroup>
-
-
-          {/*
-          <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
-            <AiLightListItem
-              accessibilityRole="switch"
-              icon="eye-outline"
-              title="显示桌宠"
-              onPress={() => void handleSelectPetModel(currentPetModelId === null ? PET_MODELS[0].id : null)}
-              action={
-                <AiSwitch
-                  value={currentPetModelId !== null}
-                  onValueChange={(val) => void handleSelectPetModel(val ? PET_MODELS[0].id : null)}
-                />
-              }
-            />
-            <AiLightListItem
-              icon="shirt-outline"
-              title="桌宠管理"
-              onPress={() => setPetManagerVisible(true)}
-              value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
-            />
-          </AiLightListGroup>
-          */}
-
-          <AiLightListGroup title="上下文与偏好">
-            <View style={styles.inlineConfigPadding}>
-              <Text style={styles.caption}>资料范围</Text>
-              <View style={styles.chips}>
-                {BOUNDARY_MODES.map((mode) => (
-                  <AiLightChip
-                    active={boundaryMode === mode.value}
-                    key={mode.value}
-                    label={mode.label}
-                    onPress={() => setBoundaryMode(mode.value)}
-                  />
-                ))}
-              </View>
-              <Text style={[styles.caption, { marginTop: spacing[4] }]}>回复倾向</Text>
-              <View style={styles.chips}>
-                {REPLY_PREFERENCES.map((item) => (
-                  <AiLightChip
-                    active={replyPreference === item.value}
-                    key={item.value}
-                    label={item.label}
-                    onPress={() => setReplyPreference(item.value)}
-                  />
-                ))}
-              </View>
+      <View pointerEvents="box-none" style={styles.drawerOverlay}>
+        <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[styles.drawerScrimBase, { opacity: scrimOpacity }]} />
+        <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={handleClose} style={styles.drawerScrimTouchable} />
+        
+        <Animated.View
+          style={[
+            styles.drawerContainer,
+            {
+              paddingBottom: Math.max(insets.bottom, spacing[5]),
+              paddingTop: Math.max(insets.top, spacing[5]),
+              transform: [{ translateX: Animated.add(slideAnim, drawerTranslateX) }],
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
+          {/* Header */}
+          <View style={styles.drawerHeader}>
+            <View style={styles.drawerHeaderTop}>
+              <Pressable onPress={handleClose} style={styles.drawerCloseBtn}>
+                <Ionicons name="chevron-forward-outline" size={24} color={aiLightColors.muted} />
+              </Pressable>
+              <Pressable style={styles.drawerUsageBtn} onPress={() => setUsageModalVisible(true)}>
+                <Ionicons name="bar-chart-outline" size={12} color={aiLightColors.muted} />
+                <Text style={styles.drawerUsageBtnText}>用量统计</Text>
+              </Pressable>
             </View>
-            {threadId ? (
-              <AiContextSlider
-                label="最近对话轮数"
-                onCommit={setContextHistoryRoundLimit}
-                value={contextHistoryRoundLimit}
-              />
-            ) : null}
-            {threadId ? (
-              <Text style={styles.contextRoundHint}>
-                一问一答算一轮；实际装入数量仍受模型上下文窗口限制。
-              </Text>
-            ) : null}
-          </AiLightListGroup>
+            
+            <Pressable onPress={() => setRenameDialogVisible(true)} style={styles.drawerThreadTitleRow}>
+              <Text style={styles.drawerThreadTitleText} numberOfLines={1}>{threadTitle}</Text>
+              <Ionicons name="create-outline" size={16} color={aiLightColors.muted} />
+            </Pressable>
 
-          <AiLightListGroup
-            footer={deepMemoryEnabled ? `上次维护：${maintenanceStatus?.lastMaintenanceCompletedAt ? formatMinute(maintenanceStatus.lastMaintenanceCompletedAt) : '暂无'} · 摘要 ${maintenanceStatus?.summarySegmentCount ?? 0} 段` : '开启后在本地保存会话摘要和可复用记忆，用于长对话回看。'}
-            title="记忆与历史"
-          >
-            <AiLightListItem
-              accessibilityRole="switch"
-              action={
-                configLoaded ? (
-                  <AiSwitch
-                    onValueChange={setDeepMemoryEnabled}
-                    value={deepMemoryEnabled}
-                  />
-                ) : null
-              }
-              onPress={() => setDeepMemoryEnabled((current) => !current)}
-              icon="albums-outline"
-              showChevron={false}
-              title="深度记忆"
-              subtitle="开启后在本地保存会话摘要和可复用记忆，用于长对话回看；关闭后不会继续注入记忆背景。"
-              isLast={!threadId}
-            />
-            {threadId ? (
-              <AiLightListItem
-                icon="layers-outline"
-                onPress={onOpenMemoryBoard}
-                title="管理记忆黑板"
-                isLast={!maintenanceStatus?.lastMaintenanceUsedFallback && !lastMaintenanceError}
-              />
-            ) : null}
-            {maintenanceStatus?.lastMaintenanceUsedFallback ? (
-              <AiLightListItem
-                icon="warning-outline"
-                title="维护警告"
-                subtitle="远程失败，已使用本地轻量整理"
-                showChevron={false}
-                isLast={!lastMaintenanceError}
-              />
-            ) : null}
-            {lastMaintenanceError ? (
-              <AiLightListItem
-                icon="alert-circle-outline"
-                title="维护失败"
-                subtitle={formatMaintenanceError(lastMaintenanceError)}
-                showChevron={false}
-                isLast
-              />
-            ) : null}
-          </AiLightListGroup>
+            <View style={styles.drawerQuickActions}>
+              <DrawerActionItem icon="search-outline" label="搜索" onPress={onOpenChatSearch} disabled={!threadId || !onOpenChatSearch} />
+              <DrawerActionItem icon="library-outline" label="资料库" onPress={onOpenThreadMaterials} disabled={!threadId || !onOpenThreadMaterials} />
+              <DrawerActionItem icon="git-branch-outline" label="路线树" onPress={onOpenBranchTree} disabled={!threadId || !onOpenBranchTree} />
+            </View>
+          </View>
 
-          <AiLightListGroup footer="这些选项会自动保存。" title="回复设置">
-            <AiLightListItem
-              icon="code-working-outline"
-              onPress={() => setAdvancedPromptVisible((current) => !current)}
-              title="高级角色指令"
-              value={advancedPromptVisible ? '收起' : '展开'}
-            />
-            {advancedPromptVisible ? (
-              <View style={styles.advancedContent}>
-                <Text style={styles.caption}>角色指令需要点击保存后生效，避免输入过程中频繁改写当前会话。</Text>
-                <View style={styles.weightRow}>
-                  <Text style={styles.caption}>权重等级</Text>
-                  <View style={styles.weightChips}>
-                    {ROLE_INSTRUCTION_WEIGHTS.map((item) => (
-                      <AiLightChip
-                        active={roleInstructionWeight === item.value}
-                        dense
-                        key={item.value}
-                        label={item.label}
-                        onPress={() => setRoleInstructionWeight(item.value)}
-                      />
+          {/* Scrollable Content */}
+          <ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}>
+            {/* Engine */}
+            <View style={styles.drawerGroup}>
+              <Text style={styles.drawerGroupTitle}>核心引擎 Engine</Text>
+              <View style={styles.drawerCardGroup}>
+                <DrawerListRow icon="hardware-chip-outline" title={sessionModelConfig?.currentLabel ?? '加载中'} value="切换" hasChevron onPress={() => setModelPickerVisible(true)} />
+                <View style={[styles.drawerListRow, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                  <Text style={styles.drawerListTitleSmall}>引用资料范围</Text>
+                  <View style={styles.drawerChipsRow}>
+                    {BOUNDARY_MODES.map((mode) => (
+                      <AiLightChip key={mode.value} label={mode.label} active={boundaryMode === mode.value} onPress={() => setBoundaryMode(mode.value)} dense />
                     ))}
                   </View>
                 </View>
-                <View collapsable={false} ref={systemPromptFieldRef}>
-                  <AiLightTextareaRow
-                    label="角色指令"
-                    minHeight={104}
-                    onChangeText={setSystemPrompt}
-                    onFocus={handleSystemPromptFocus}
-                    placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
-                    scrollEnabled
-                    style={styles.systemPromptTextarea}
-                    value={systemPrompt}
-                  />
+                <DrawerListRow icon="flash-outline" title="显示大模型思考过程" isLast action={<AiSwitch value={!thinkingDisabled} onValueChange={(val) => setThinkingDisabled(!val)} />} onPress={() => setThinkingDisabled(!thinkingDisabled)} />
+              </View>
+            </View>
+
+            {/* Role */}
+            <View style={styles.drawerGroup}>
+              <Text style={styles.drawerGroupTitle}>角色与展现 Role & Presentation</Text>
+              <View style={styles.drawerCardGroup}>
+                <DrawerListRow icon="person-circle-outline" title={roleCardSummary} value="更换" hasChevron onPress={onOpenRoleLibrary} />
+                <DrawerListRow icon="image-outline" title="角色头像" action={avatarUri ? <SecureImage uri={avatarUri} space={space} style={styles.drawerAvatarPreview} /> : null} />
+                <DrawerListRow icon="person-outline" title="显示头像" subtitle="统一控制双方头像显示" action={<AiSwitch value={avatarEnabled} onValueChange={(val) => { setAvatarEnabled(val); setUserAvatarEnabled(val); }} />} onPress={() => { setAvatarEnabled(!avatarEnabled); setUserAvatarEnabled(!avatarEnabled); }} />
+                <DrawerListRow 
+                  icon="code-working-outline" 
+                  iconColor={aiLightColors.muted} 
+                  title="高级: 角色指令与权重" 
+                  hasChevron 
+                  chevronIcon={advancedPromptVisible ? "chevron-up-outline" : "chevron-down-outline"} 
+                  onPress={() => setAdvancedPromptVisible(!advancedPromptVisible)} 
+                  isLast={!advancedPromptVisible}
+                />
+                {advancedPromptVisible && (
+                  <View style={styles.drawerAccordionContent}>
+                    <View style={[styles.drawerListRow, { flexDirection: 'column', alignItems: 'stretch', backgroundColor: aiLightColors.surface, borderBottomWidth: 0 }]}>
+                      <Text style={styles.drawerListTitleSmall}>权重等级</Text>
+                      <View style={styles.drawerChipsRow}>
+                        {ROLE_INSTRUCTION_WEIGHTS.map((item) => (
+                          <AiLightChip key={item.value} label={item.label} active={roleInstructionWeight === item.value} onPress={() => setRoleInstructionWeight(item.value)} dense />
+                        ))}
+                      </View>
+                    </View>
+                    <View style={styles.drawerSystemPromptContainer}>
+                      <TextInput 
+                        style={styles.drawerSystemPromptTextarea} 
+                        multiline 
+                        placeholder={contextType === 'normal' ? '普通聊天默认不配置角色指令，可按需填写。' : '输入角色指令'}
+                        value={systemPrompt ?? undefined}
+                        onChangeText={setSystemPrompt}
+                      />
+                      <Pressable style={styles.drawerExpandBtn} onPress={() => setPromptEditorVisible(true)}>
+                        <Ionicons name="expand-outline" size={16} color={aiLightColors.muted} />
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* World */}
+            <View style={styles.drawerGroup}>
+              <Text style={styles.drawerGroupTitle}>记忆与衍生世界 World</Text>
+              <View style={styles.drawerCardGroup}>
+                <DrawerListRow icon="albums-outline" title="深度记忆引擎" action={<AiSwitch value={deepMemoryEnabled} onValueChange={setDeepMemoryEnabled} />} onPress={() => setDeepMemoryEnabled(!deepMemoryEnabled)} />
+                <DrawerListRow icon="albums-outline" iconColor="transparent" title="管理记忆黑板" hasChevron onPress={onOpenMemoryBoard} disabled={!threadId || !onOpenMemoryBoard} />
+                <DrawerListRow icon="heart-outline" title="时间与情感感知" action={<AiSwitch value={companionAwarenessEnabled} onValueChange={updateCompanionAwareness} />} onPress={() => updateCompanionAwareness(!companionAwarenessEnabled)} />
+                <DrawerListRow icon="heart-outline" iconColor="transparent" title="管理情感与时间" hasChevron onPress={onOpenCompanionRuntime} disabled={!threadId || !onOpenCompanionRuntime} />
+                <DrawerListRow icon="book-outline" title="角色日记" action={<AiSwitch value={roleDiaryEnabled} onValueChange={updateRoleDiaryEnabled} />} onPress={() => updateRoleDiaryEnabled(!roleDiaryEnabled)} />
+                <DrawerListRow icon="book-outline" iconColor="transparent" title="内心独白 (日记与梦境)" hasChevron onPress={onOpenInnerLife} disabled={!threadId || !currentRoleCardId || !onOpenInnerLife} />
+                
+                <View style={[styles.drawerListBlock, { borderBottomWidth: 0 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.drawerListTitle}>上下文轮数: </Text>
+                    <Text style={{ color: aiLightColors.primaryActive, fontWeight: 'bold' }}>{contextHistoryRoundLimit}</Text>
+                    <Text style={styles.drawerListTitle}> 轮</Text>
+                  </View>
+                  <AiContextSlider value={contextHistoryRoundLimit} onCommit={setContextHistoryRoundLimit} label="" />
                 </View>
               </View>
-            ) : null}
-            <AiLightListItem
-              icon="bar-chart-outline"
-              onPress={() => setAdvancedUsageVisible((current) => !current)}
-              title="本会话用量统计"
-              value={advancedUsageVisible ? '收起' : '展开'}
-              isLast={!advancedUsageVisible}
-            />
-            {advancedUsageVisible ? (
-              <View style={styles.inlineConfigPadding}>
-                <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
+            </View>
+
+            {/* Migration */}
+            <View style={styles.drawerGroup}>
+              <View style={styles.drawerCardGroup}>
+                <DrawerListRow 
+                  title="数据与迁移 Migration" 
+                  hasChevron 
+                  chevronIcon={advancedUsageVisible ? "chevron-up-outline" : "chevron-down-outline"} 
+                  onPress={() => setAdvancedUsageVisible(!advancedUsageVisible)} 
+                  isLast={!advancedUsageVisible}
+                />
+                {advancedUsageVisible && (
+                  <View style={styles.drawerAccordionContent}>
+                    <DrawerListRow icon="push-outline" iconColor={aiLightColors.muted} title={exportingRolePackage ? '导出中...' : '导出当前角色包'} onPress={confirmExportCurrentRolePackage} disabled={!threadId || !currentRoleCardId || exportingRolePackage} style={{ backgroundColor: aiLightColors.surface }} />
+                    <DrawerListRow icon="download-outline" iconColor={aiLightColors.muted} title={importingContinuity ? '导入中...' : '导入外部记忆'} onPress={() => void pickAndImportContinuity()} disabled={!threadId || importingContinuity} style={{ backgroundColor: aiLightColors.surface }} />
+                    <DrawerListRow icon="copy-outline" iconColor={aiLightColors.muted} title="复制迁移提示词" onPress={() => void copyExternalContinuityPrompt()} isLast style={{ backgroundColor: aiLightColors.surface }} />
+                  </View>
+                )}
               </View>
-            ) : null}
-          </AiLightListGroup>
+            </View>
 
-          <AiLightListGroup title="角色与数据迁移">
-            <AiLightListItem
-              icon="push-outline"
-              title={exportingRolePackage ? '导出中' : '导出当前角色包'}
-              onPress={confirmExportCurrentRolePackage}
-              disabled={!threadId || !currentRoleCardId || exportingRolePackage}
-              showChevron={false}
-            />
-            <AiLightListItem
-              icon="download-outline"
-              title={importingContinuity ? '导入中' : '导入外部记忆'}
-              onPress={() => void pickAndImportContinuity()}
-              disabled={!threadId || importingContinuity}
-              showChevron={false}
-            />
-            <AiLightListItem
-              icon="copy-outline"
-              title="复制迁移提示词"
-              onPress={() => void copyExternalContinuityPrompt()}
-              showChevron={false}
-              isLast
-            />
-          </AiLightListGroup>
+            <Pressable style={styles.drawerDangerBtn} onPress={() => setDeleteDialogVisible(true)}>
+              <Ionicons name="trash-outline" size={18} color={'#FF3B30'} />
+              <Text style={styles.drawerDangerBtnText}>移入回收站</Text>
+            </Pressable>
+            
+            {status ? <View style={{marginTop: 16}}><AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /></View> : null}
+            
+          </ScrollView>
 
-          <View style={styles.actions}>
-            <AiLightButton label="保存角色指令并开始聊天" loading={saving} onPress={() => void saveAndStartChat()} />
-            <AiLightButton label="仅保存角色指令" loading={saving} onPress={() => void saveSessionSettings()} variant="ghost" />
-          </View>
+          <Pressable
+            accessibilityLabel="收起面板"
+            accessibilityRole="button"
+            onPress={onBack}
+            style={({ pressed }) => [styles.closeButtonShell, pressed && styles.pressed]}
+          >
+            <View style={styles.closeButtonArrows}>
+              <Ionicons color={aiLightColors.ink} name="chevron-forward-outline" size={16} style={styles.stackedArrow} />
+              <Ionicons color={aiLightColors.ink} name="chevron-forward-outline" size={16} style={styles.stackedArrow} />
+              <Ionicons color={aiLightColors.ink} name="chevron-forward-outline" size={16} />
+            </View>
+            <Text style={styles.closeButtonText}>收起面板</Text>
+          </Pressable>
+        </Animated.View>
+      </View>
 
-          <AiLightListGroup>
-            <AiLightListItem
-              destructive
-              icon="trash-outline"
-              iconBackgroundColor="#FFECEB"
-              iconColor="#FF3B30"
-              isLast
-              onPress={() => setDeleteDialogVisible(true)}
-              showChevron={false}
-              title="移入回收站"
-            />
-          </AiLightListGroup>
+      <AppDialog
+        accent="ai"
+        message="修改后会同步显示在聊天页、最近继续和历史列表。"
+        onClose={() => {
+          if (!saving) {
+            setRenameDialogVisible(false);
+          }
+        }}
+        onPrimary={() => void confirmRenameThread()}
+        primaryDisabled={saving || !renameValue.trim()}
+        primaryLabel={saving ? '正在保存' : '保存'}
+        title="重命名当前会话"
+        visible={renameDialogVisible}
+      >
+        <TextInput
+          editable={!saving}
+          onChangeText={setRenameValue}
+          placeholder="会话名称"
+          placeholderTextColor={aiLightColors.mutedSoft}
+          selectionColor={aiLightColors.primary}
+          style={styles.dialogInput}
+          value={renameValue}
+        />
+      </AppDialog>
 
-          {status ? <AiLightFeedbackBanner message={status.message} title={status.title} tone={status.tone} /> : null}
-        </View>
-      </AiLightScaffold>
+      <AppDialog
+        accent="ai"
+        danger
+        message="删除后会将当前会话移入回收站，聊天记录和会话资料会保留，之后可在历史会话的回收站中恢复或永久删除。"
+        onClose={() => {
+          if (!saving) {
+            setDeleteDialogVisible(false);
+          }
+        }}
+        onPrimary={() => void confirmDeleteCurrentThread()}
+        primaryDisabled={saving || !threadId}
+        primaryLabel={saving ? '正在移入' : '移入回收站'}
+        title="删除当前会话"
+        visible={deleteDialogVisible}
+      />
 
+      <Live2DPetManagerModal
+        visible={petManagerVisible}
+        currentModelId={currentPetModelId}
+        onClose={() => setPetManagerVisible(false)}
+        onSelect={(id) => {
+          void handleSelectPetModel(id);
+        }}
+      />
+      <AppDialog
+        accent="ai"
+        onClose={() => setUsageModalVisible(false)}
+        onPrimary={() => setUsageModalVisible(false)}
+        primaryLabel="关闭"
+        title="本会话用量统计"
+        visible={usageModalVisible}
+      >
+        <AiUsageSummary showRecent={false} usage={threadUsage ?? EMPTY_THREAD_USAGE} />
+      </AppDialog>
 
+      <FullscreenPromptEditorModal visible={promptEditorVisible} content={systemPrompt} onClose={(text) => { setPromptEditorVisible(false); if (text !== undefined) setSystemPrompt(text); }} />
 
       <AppDialog
         accent="ai"
@@ -1546,7 +1514,408 @@ export function AiSessionConfigScreen({
   );
 }
 
+
+function DrawerActionItem({ icon, label, onPress, disabled }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress?: () => void; disabled?: boolean }) {
+  return (
+    <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.drawerActionItem, disabled && styles.drawerDisabled, pressed && styles.drawerPressed]}>
+      <View style={styles.drawerActionIconWrap}>
+        <Ionicons name={icon} size={20} color={aiLightColors.ink} />
+      </View>
+      <Text style={styles.drawerActionLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function DrawerListRow({ icon, iconColor = aiLightColors.primary, title, subtitle, value, hasChevron, chevronIcon = "chevron-forward-outline", onPress, disabled, isLast, action, style }: any) {
+  const content = (
+    <>
+      {icon && <Ionicons name={icon} size={20} color={iconColor} style={[styles.drawerListIcon, iconColor === 'transparent' && { opacity: 0 }]} />}
+      <View style={styles.drawerListContent}>
+        <Text style={styles.drawerListTitle}>{title}</Text>
+        {subtitle && <Text style={styles.drawerListSubtitle}>{subtitle}</Text>}
+      </View>
+      {value && <Text style={styles.drawerListValue}>{value}</Text>}
+      {action && <View style={styles.drawerListAction}>{action}</View>}
+      {hasChevron && <Ionicons name={chevronIcon} size={16} color={aiLightColors.muted} style={styles.drawerListChevron} />}
+    </>
+  );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.drawerListRow, !isLast && styles.drawerListRowBorder, disabled && styles.drawerDisabled, pressed && styles.drawerPressed, style]}>
+        {content}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.drawerListRow, !isLast && styles.drawerListRowBorder, style]}>
+      {content}
+    </View>
+  );
+}
+
+function FullscreenPromptEditorModal({
+  content,
+  onClose,
+  visible,
+}: {
+  content: string | null;
+  onClose: (editedContent?: string) => void;
+  visible: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  const [editText, setEditText] = useState(content ?? '');
+
+  useEffect(() => {
+    if (visible) {
+      setEditText(content ?? '');
+    }
+  }, [visible, content]);
+
+  const handleBack = () => {
+    if (editText !== (content ?? '')) {
+      Alert.alert('放弃修改', '您有未保存的修改，确定要放弃吗？', [
+        { text: '取消', style: 'cancel' },
+        { text: '确定', style: 'destructive', onPress: () => onClose() },
+      ]);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleSave = () => {
+    onClose(editText);
+  };
+
+  return (
+    <Modal animationType="slide" onRequestClose={handleBack} presentationStyle="fullScreen" visible={visible}>
+      <View style={[styles.drawerFsScreen, { paddingTop: insets.top }]}>
+        <View style={styles.drawerFsHeader}>
+          <Pressable accessibilityRole="button" hitSlop={spacing[2]} onPress={handleBack} style={({ pressed }) => [styles.drawerFsHeaderButton, pressed && styles.drawerPressed]}>
+            <Ionicons color={aiLightColors.ink} name="chevron-back" size={24} />
+          </Pressable>
+          <Text style={styles.drawerFsTitle}>角色指令</Text>
+          <Pressable accessibilityRole="button" hitSlop={spacing[1]} onPress={handleSave} style={({ pressed }) => [styles.drawerFsHeaderButton, pressed && styles.drawerPressed]}>
+            <Ionicons color={aiLightColors.primaryActive} name="checkmark-outline" size={24} />
+          </Pressable>
+        </View>
+        <KeyboardAwareScrollView bottomOffset={spacing[4]} contentContainerStyle={styles.drawerFsKeyboardAvoiding} keyboardShouldPersistTaps="handled" style={styles.drawerFsKeyboardAvoiding}>
+          <TextInput
+            multiline
+            onChangeText={setEditText}
+            scrollEnabled={false}
+            style={styles.drawerFsEditInput}
+            textAlignVertical="top"
+            value={editText}
+            autoFocus
+          />
+        </KeyboardAwareScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    zIndex: 20,
+  },
+  drawerScrimBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  drawerScrimTouchable: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  drawerContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: DRAWER_WIDTH,
+    backgroundColor: aiLightColors.canvas,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: -5, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 15,
+    elevation: 10,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  drawerHeader: {
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
+    backgroundColor: aiLightColors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: aiLightColors.hairline,
+    borderTopLeftRadius: 20,
+  },
+  drawerHeaderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing[4],
+  },
+  drawerCloseBtn: {
+    padding: 4,
+  },
+  drawerUsageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: aiLightColors.canvas,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  drawerUsageBtnText: {
+    fontSize: 12,
+    color: aiLightColors.muted,
+  },
+  drawerThreadTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing[4],
+  },
+  drawerThreadTitleText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: aiLightColors.ink,
+    flexShrink: 1,
+  },
+  drawerQuickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing[2],
+  },
+  drawerActionItem: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  drawerActionIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: aiLightColors.canvas,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  drawerActionLabel: {
+    fontSize: 11,
+    color: aiLightColors.muted,
+  },
+  drawerContent: {
+    padding: spacing[4],
+    paddingBottom: 40,
+    gap: spacing[4],
+  },
+  drawerGroup: {
+    gap: spacing[2],
+  },
+  closeButtonShell: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: aiLightColors.surface,
+    borderColor: aiLightColors.hairline,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing[3],
+    minHeight: spacing[10],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    ...shadows.sm,
+  },
+  closeButtonText: {
+    ...typography.textStyles.bodyStrong,
+    color: aiLightColors.ink,
+  },
+  closeButtonArrows: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  stackedArrow: {
+    marginRight: -10,
+  },
+  drawerGroupTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: aiLightColors.muted,
+    paddingLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  drawerCardGroup: {
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  drawerListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    minHeight: 54,
+    backgroundColor: aiLightColors.surface,
+  },
+  drawerListRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: aiLightColors.hairline,
+  },
+  drawerListIcon: {
+    marginRight: 12,
+    width: 24,
+    textAlign: 'center',
+  },
+  drawerListContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  drawerListTitle: {
+    fontSize: 15,
+    color: aiLightColors.ink,
+    fontWeight: '500',
+  },
+  drawerListTitleSmall: {
+    fontSize: 13,
+    color: aiLightColors.muted,
+  },
+  drawerListSubtitle: {
+    fontSize: 12,
+    color: aiLightColors.muted,
+    marginTop: 2,
+  },
+  drawerListValue: {
+    fontSize: 15,
+    color: aiLightColors.muted,
+    marginRight: 4,
+  },
+  drawerListChevron: {
+    marginLeft: 4,
+  },
+  drawerListAction: {
+    marginLeft: 8,
+  },
+  drawerChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+  },
+  drawerAvatarPreview: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.hairline,
+  },
+  drawerAccordionContent: {
+    backgroundColor: aiLightColors.canvas,
+  },
+  drawerSystemPromptContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  drawerSystemPromptTextarea: {
+    width: '100%',
+    minHeight: 72,
+    maxHeight: 192,
+    backgroundColor: aiLightColors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.hairline,
+    borderRadius: 12,
+    padding: 10,
+    paddingBottom: 28,
+    fontSize: 14,
+    color: aiLightColors.ink,
+    textAlignVertical: 'top',
+  },
+  drawerExpandBtn: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: aiLightColors.canvas,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: aiLightColors.hairline,
+  },
+  drawerListBlock: {
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: aiLightColors.hairline,
+  },
+  drawerDangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: aiLightColors.surface,
+    borderRadius: radius.md,
+    marginTop: 8,
+  },
+  drawerDangerBtnText: {
+    color: '#FF3B30',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  drawerDisabled: {
+    opacity: 0.5,
+  },
+  drawerPressed: {
+    opacity: 0.7,
+  },
+  drawerFsScreen: {
+    backgroundColor: aiLightColors.canvas,
+    flex: 1,
+  },
+  drawerFsHeader: {
+    alignItems: 'center',
+    borderBottomColor: aiLightColors.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    minHeight: spacing[12],
+    paddingHorizontal: 16,
+  },
+  drawerFsHeaderButton: {
+    alignItems: 'center',
+    borderRadius: radius.pill,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  drawerFsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: aiLightColors.ink,
+    flex: 1,
+    textAlign: 'center',
+  },
+  drawerFsKeyboardAvoiding: {
+    flexGrow: 1,
+  },
+  drawerFsEditInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 16,
+    color: aiLightColors.ink,
+  },
+
   content: {
     gap: rhythm.listCardGap,
   },

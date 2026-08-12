@@ -53,6 +53,7 @@ import {
   type AiAnchoredContextMenuAction,
 } from '../components/ai/AiAnchoredContextMenu';
 import { AiComprehensiveRecordDrawer } from "../components/ai/AiComprehensiveRecordDrawer";
+import { AiSessionConfigScreen } from "./AiSessionConfigScreen";
 import type { AiVoiceInputState } from "../components/ai/AiVoiceInputStatus";
 import {
   aiLightColors,
@@ -841,8 +842,13 @@ interface AiChatScreenProps {
   onOpenRoleLibrary: () => void;
   onOpenGlobalMaterials: () => void;
   onOpenProviderSettings: () => void;
-  onOpenSessionConfig: (threadId: string) => void;
-  onOpenMemoryBoard: (threadId: string) => void;
+    onOpenMemoryBoard: (threadId: string) => void;
+    onOpenBranchTree: (threadId: string) => void;
+    onOpenChatSearch: (threadId: string) => void;
+    onOpenThreadMaterials: (threadId: string) => void;
+    onOpenInnerLife: (threadId: string) => void;
+    onOpenCompanionRuntime: (threadId: string) => void;
+    onCurrentThreadDeleted: (threadId: string) => void;
   onOpenDiary: (diaryId: string, versionId?: string) => void;
   onOpenDream: (dreamId: string) => void;
   onNewChat: () => void;
@@ -877,8 +883,13 @@ export function AiChatScreen({
   onOpenRoleLibrary,
   onOpenGlobalMaterials,
   onOpenProviderSettings,
-  onOpenSessionConfig,
-  onOpenMemoryBoard,
+    onOpenMemoryBoard,
+    onOpenBranchTree,
+    onOpenChatSearch,
+    onOpenThreadMaterials,
+    onOpenInnerLife,
+    onOpenCompanionRuntime,
+    onCurrentThreadDeleted,
   onOpenDiary,
   onOpenDream,
   onNewChat,
@@ -1969,6 +1980,7 @@ export function AiChatScreen({
   const [recentThreads, setRecentThreads] = useState<AiThreadHistoryItem[]>([]);
   const [newChatFeedbackVisible, setNewChatFeedbackVisible] = useState(false);
   const [recordDrawerVisible, setRecordDrawerVisible] = useState(false);
+  const [configDrawerVisible, setConfigDrawerVisible] = useState(false);
   const [searchHighlightMessageId, setSearchHighlightMessageId] = useState<
     string | null
   >(null);
@@ -5259,10 +5271,10 @@ export function AiChatScreen({
     try {
       const nextThreadId = await ensureThread();
       if (!nextThreadId || !screenMountedRef.current) {
-        return;
-      }
-      onOpenSessionConfig(nextThreadId);
-    } catch (error) {
+          return;
+        }
+        setConfigDrawerVisible(true);
+      } catch (error) {
       if (!screenMountedRef.current) {
         return;
       }
@@ -7501,8 +7513,67 @@ export function AiChatScreen({
           />
         </View>
       </KeyboardAvoidingView>
-      <AiComprehensiveRecordDrawer
-        activeThreadId={activeThreadId}
+      <AiSessionConfigScreen
+          contextTitle={contextTitle}
+          contextType={contextType}
+          onBack={() => setConfigDrawerVisible(false)}
+          onCurrentThreadDeleted={() => {
+            if (activeThreadId) {
+              onCurrentThreadDeleted(activeThreadId);
+            }
+            setConfigDrawerVisible(false);
+          }}
+          onOpenProviderSettings={() => {
+            setConfigDrawerVisible(false);
+            onOpenProviderSettings();
+          }}
+          onOpenRoleLibrary={() => {
+            setConfigDrawerVisible(false);
+            onOpenRoleLibrary();
+          }}
+          onOpenBranchTree={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenBranchTree(activeThreadId);
+            }
+          }}
+          onOpenChatSearch={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenChatSearch(activeThreadId);
+            }
+          }}
+          onOpenThreadMaterials={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenThreadMaterials(activeThreadId);
+            }
+          }}
+          onOpenMemoryBoard={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenMemoryBoard(activeThreadId);
+            }
+          }}
+          onOpenInnerLife={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenInnerLife(activeThreadId);
+            }
+          }}
+          onOpenCompanionRuntime={() => {
+            if (activeThreadId) {
+              setConfigDrawerVisible(false);
+              onOpenCompanionRuntime(activeThreadId);
+            }
+          }}
+          onStartChat={() => setConfigDrawerVisible(false)}
+          space={space}
+          threadId={activeThreadId ?? undefined}
+          visible={configDrawerVisible}
+        />
+        <AiComprehensiveRecordDrawer
+          activeThreadId={activeThreadId}
         recentThreads={recentThreads}
         visible={recordDrawerVisible}
         onClose={() => setRecordDrawerVisible(false)}

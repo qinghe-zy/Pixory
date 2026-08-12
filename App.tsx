@@ -219,7 +219,7 @@ type AppRoute =
       contextType?: 'normal' | 'ip' | 'knowledge_base';
       branchScopes?: AiBranchScope[];
     }
-  | { name: 'ai-session-config'; space: PixorySpace; threadId?: string; contextTitle?: string; contextType?: 'normal' | 'ip' | 'knowledge_base' }
+
   | { name: 'diary-reader'; space: PixorySpace; diaryId: string; versionId?: string }
   | { name: 'dream-reader'; space: PixorySpace; dreamId: string }
   | { name: 'companion-inner-life'; space: PixorySpace; threadId: string }
@@ -382,17 +382,17 @@ function popRouteStack(current: AppRoute[]): AppRoute[] {
   const closingRoute = current[current.length - 1];
   const next = current.slice(0, -1);
   const previousRoute = next[next.length - 1];
-  if (
-    closingRoute?.name === 'ai-session-config' &&
-    previousRoute?.name === 'ai-chat' &&
-    previousRoute.space === closingRoute.space &&
-    (!closingRoute.threadId || previousRoute.threadId === closingRoute.threadId)
-  ) {
-    next[next.length - 1] = {
-      ...previousRoute,
-      modelRefreshKey: (previousRoute.modelRefreshKey ?? 0) + 1,
-    };
-  }
+
+
+
+
+
+
+
+
+
+
+
   return next;
 }
 
@@ -1910,15 +1910,51 @@ export default function App() {
         onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space })}
         onOpenGlobalMaterials={() => pushRoute({ name: 'ai-material-list', space: currentRoute.space })}
         onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenSessionConfig={(threadId) =>
+        onOpenBranchTree={(threadId) =>
           pushRoute({
-            name: 'ai-session-config',
+            name: 'ai-branch-tree',
             contextTitle: currentRoute.contextTitle,
             contextType: currentRoute.contextType,
             space: currentRoute.space,
             threadId,
           })
         }
+        onOpenChatSearch={(threadId) =>
+          pushRoute({
+            name: 'ai-chat-search',
+            contextTitle: currentRoute.contextTitle,
+            contextType: currentRoute.contextType,
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        onOpenThreadMaterials={(threadId) =>
+          pushRoute({
+            name: 'ai-thread-material-list',
+            title: currentRoute.contextTitle,
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        onOpenInnerLife={(threadId) =>
+          pushRoute({
+            name: 'companion-inner-life',
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        onOpenCompanionRuntime={(threadId) =>
+          pushRoute({
+            name: 'companion-runtime-manager',
+            space: currentRoute.space,
+            threadId,
+          })
+        }
+        onCurrentThreadDeleted={() => {
+          if (currentRoute.threadId) {
+            closeDeletedAiThread(currentRoute.threadId);
+          }
+        }}
         onOpenMemoryBoard={(threadId) => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId })}
         onOpenDiary={(diaryId, versionId) => pushRoute({ name: 'diary-reader', space: currentRoute.space, diaryId, versionId })}
         onOpenDream={(dreamId) => pushRoute({ name: 'dream-reader', space: currentRoute.space, dreamId })}
@@ -1990,57 +2026,57 @@ export default function App() {
         threadId={currentRoute.threadId}
       />
     );
-  } else if (currentRoute.name === 'ai-session-config') {
-    content = (
-      <AiSessionConfigScreen
-        contextTitle={currentRoute.contextTitle}
-        contextType={currentRoute.contextType}
-        onBack={popRoute}
-        onCurrentThreadDeleted={() => closeDeletedAiThread(currentRoute.threadId)}
-        onOpenProviderSettings={() => pushRoute({ name: 'ai-provider-settings', space: currentRoute.space })}
-        onOpenRoleLibrary={() => pushRoute({ name: 'ai-role-library', space: currentRoute.space, threadId: currentRoute.threadId, mode: 'apply_to_thread' })}
-        onOpenBranchTree={
-          currentRoute.threadId
-            ? () =>
-                pushRoute({
-                  name: 'ai-branch-tree',
-                  contextTitle: currentRoute.contextTitle,
-                  contextType: currentRoute.contextType,
-                  space: currentRoute.space,
-                  threadId: currentRoute.threadId as string,
-                })
-            : undefined
-        }
-        onOpenThreadMaterials={
-          currentRoute.threadId
-            ? () => pushRoute({ name: 'ai-thread-material-list', space: currentRoute.space, threadId: currentRoute.threadId as string, title: currentRoute.contextTitle })
-            : undefined
-        }
-        onOpenChatSearch={
-          currentRoute.threadId
-            ? () => pushRoute({ name: 'ai-chat-search', contextTitle: currentRoute.contextTitle, contextType: currentRoute.contextType, space: currentRoute.space, threadId: currentRoute.threadId as string })
-            : undefined
-        }
-        onOpenMemoryBoard={
-          currentRoute.threadId
-            ? () => pushRoute({ name: 'ai-memory-board', space: currentRoute.space, threadId: currentRoute.threadId as string })
-            : undefined
-        }
-        onOpenInnerLife={
-          currentRoute.threadId
-            ? () => pushRoute({ name: 'companion-inner-life', space: currentRoute.space, threadId: currentRoute.threadId as string })
-            : undefined
-        }
-        onOpenCompanionRuntime={
-          currentRoute.threadId
-            ? () => pushRoute({ name: 'companion-runtime-manager', space: currentRoute.space, threadId: currentRoute.threadId as string })
-            : undefined
-        }
-        onStartChat={popRoute}
-        space={currentRoute.space}
-        threadId={currentRoute.threadId}
-      />
-    );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   } else if (currentRoute.name === 'ai-memory-board') {
     content = <AiMemoryBoardScreen onBack={popRoute} space={currentRoute.space} threadId={currentRoute.threadId} />;
   } else if (currentRoute.name === 'dream-reader') {
