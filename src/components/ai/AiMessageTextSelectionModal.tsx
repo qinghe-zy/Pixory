@@ -87,7 +87,6 @@ export function AiMessageTextSelectionModal({
         style={[
           styles.screen,
           {
-            paddingBottom: insets.bottom,
             paddingTop: insets.top,
           },
         ]}
@@ -151,13 +150,13 @@ export function AiMessageTextSelectionModal({
               multiline
               onChangeText={setEditText}
               scrollEnabled={true}
-              style={[styles.content, styles.contentContainer, styles.editInput]}
+              style={[styles.content, styles.contentContainer, styles.editInput, { paddingBottom: spacing[8] + insets.bottom }]}
               textAlignVertical="top"
               value={editText}
             />
           ) : (
             <ScrollView
-              contentContainerStyle={styles.contentContainer}
+              contentContainerStyle={[styles.contentContainer, { paddingBottom: spacing[8] + insets.bottom }]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
             >
