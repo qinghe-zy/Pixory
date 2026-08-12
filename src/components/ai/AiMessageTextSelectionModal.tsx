@@ -146,26 +146,26 @@ export function AiMessageTextSelectionModal({
           </View>
         </View>
         <KeyboardAvoidingView behavior="padding" style={styles.keyboardAvoiding}>
-          <ScrollView
-            contentContainerStyle={styles.contentContainer}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
-          >
-            {editing ? (
-              <TextInput
-                multiline
-                onChangeText={setEditText}
-                scrollEnabled={false}
-                style={[styles.content, styles.editInput]}
-                textAlignVertical="top"
-                value={editText}
-              />
-            ) : (
+          {editing ? (
+            <TextInput
+              multiline
+              onChangeText={setEditText}
+              scrollEnabled={true}
+              style={[styles.content, styles.contentContainer, styles.editInput]}
+              textAlignVertical="top"
+              value={editText}
+            />
+          ) : (
+            <ScrollView
+              contentContainerStyle={styles.contentContainer}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+            >
               <Text selectable selectionColor={aiLightColors.primary} style={styles.content}>
                 {content}
               </Text>
-            )}
-          </ScrollView>
+            </ScrollView>
+          )}
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     color: aiLightColors.ink,
   },
   editInput: {
-    minHeight: 200,
+    flex: 1,
   },
   keyboardAvoiding: {
     flex: 1,
