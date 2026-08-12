@@ -392,6 +392,14 @@ export function MeScreen({
             <Text style={styles.systemListTitle}>关于</Text>
             <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
           </Pressable>
+          <View style={styles.systemListDivider} />
+          <Pressable onPress={() => showToast('设置功能暂未开放')} style={({ pressed }) => [styles.systemListItem, pressed && styles.pressed]}>
+            <View style={styles.systemListIcon}>
+              <Ionicons color={colors.primary.active} name="settings-outline" size={20} />
+            </View>
+            <Text style={styles.systemListTitle}>设置</Text>
+            <Ionicons color={colors.text.secondary} name="chevron-forward" size={18} />
+          </Pressable>
         </ContentCard>
       </View>
 
