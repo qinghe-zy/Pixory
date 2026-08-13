@@ -376,9 +376,9 @@ function HomeBrandHeader() {
 
   useEffect(() => {
     timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
-    rot1.value = withRepeat(withTiming(Math.PI * 2, { duration: 15000, easing: Easing.linear }), -1, false);
-    rot2.value = withRepeat(withTiming(-Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
-    rot3.value = withRepeat(withTiming(Math.PI * 2, { duration: 25000, easing: Easing.linear }), -1, false);
+    rot1.value = withRepeat(withTiming(Math.PI * 2, { duration: 10000, easing: Easing.linear }), -1, false);
+    rot2.value = withRepeat(withTiming(-Math.PI * 2, { duration: 14000, easing: Easing.linear }), -1, false);
+    rot3.value = withRepeat(withTiming(Math.PI * 2, { duration: 18000, easing: Easing.linear }), -1, false);
   }, [timeT, rot1, rot2, rot3]);
 
   const textStyle = useAnimatedStyle(() => {
