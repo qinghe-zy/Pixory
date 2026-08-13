@@ -46,28 +46,29 @@ interface MeStats {
 
 // ENTRY_ITEMS removed for dashboard layout
 
-function ProfileLinkAura() {
-  const bar1 = useSharedValue(0.3);
-  const bar2 = useSharedValue(0.8);
-  const bar3 = useSharedValue(0.4);
-  const bar4 = useSharedValue(0.9);
-  const bar5 = useSharedValue(0.2);
+function ProfileMemoryCore() {
+  const rotation = useSharedValue(0);
+  const pulse = useSharedValue(1);
 
   useEffect(() => {
-    bar1.value = withRepeat(withTiming(1, { duration: 600 }), -1, true);
-    bar2.value = withRepeat(withTiming(0.4, { duration: 800 }), -1, true);
-    bar3.value = withRepeat(withTiming(0.9, { duration: 500 }), -1, true);
-    bar4.value = withRepeat(withTiming(0.3, { duration: 700 }), -1, true);
-    bar5.value = withRepeat(withTiming(0.8, { duration: 900 }), -1, true);
-  }, [bar1, bar2, bar3, bar4, bar5]);
+    rotation.value = withRepeat(withTiming(360, { duration: 8000, easing: Easing.linear }), -1, false);
+    pulse.value = withRepeat(withTiming(0.6, { duration: 3000, easing: Easing.inOut(Easing.ease) }), -1, true);
+  }, [rotation, pulse]);
+
+  const orbitStyle = useAnimatedStyle(() => {
+    return { transform: [{ rotate: `${rotation.value}deg` }] };
+  });
+
+  const coreStyle = useAnimatedStyle(() => {
+    return { transform: [{ scale: pulse.value }], opacity: pulse.value };
+  });
 
   return (
-    <View style={styles.auraContainer}>
-      <Reanimated.View style={[styles.auraBar, { backgroundColor: colors.support.mint300 }, useAnimatedStyle(() => ({ transform: [{ scaleY: bar1.value }] }))]} />
-      <Reanimated.View style={[styles.auraBar, { backgroundColor: colors.support.sky300 }, useAnimatedStyle(() => ({ transform: [{ scaleY: bar2.value }] }))]} />
-      <Reanimated.View style={[styles.auraBar, { backgroundColor: colors.support.lilac300 }, useAnimatedStyle(() => ({ transform: [{ scaleY: bar3.value }] }))]} />
-      <Reanimated.View style={[styles.auraBar, { backgroundColor: colors.support.coral400 }, useAnimatedStyle(() => ({ transform: [{ scaleY: bar4.value }] }))]} />
-      <Reanimated.View style={[styles.auraBar, { backgroundColor: colors.support.mint300 }, useAnimatedStyle(() => ({ transform: [{ scaleY: bar5.value }] }))]} />
+    <View style={styles.coreContainer}>
+      <Reanimated.View style={[styles.coreDot, coreStyle]} />
+      <Reanimated.View style={[styles.orbitLayer, orbitStyle]}>
+        <View style={styles.orbitSatellite} />
+      </Reanimated.View>
     </View>
   );
 }
@@ -304,7 +305,7 @@ export function MeScreen({
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [pressed && styles.pressed]}>
                 <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
               </Pressable>
-              <ProfileLinkAura />
+              <ProfileMemoryCore />
             </View>
           </View>
         </View>
@@ -670,17 +671,32 @@ const styles = StyleSheet.create({
     gap: spacing[1],
     justifyContent: 'flex-start',
   },
-  auraContainer: {
-    flexDirection: 'row',
+  coreContainer: {
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 2,
     marginLeft: spacing[2],
-    height: 12,
   },
-  auraBar: {
+  coreDot: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.support.sky300,
+  },
+  orbitLayer: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  orbitSatellite: {
     width: 3,
-    height: 12,
+    height: 3,
     borderRadius: 1.5,
+    backgroundColor: colors.support.lilac300,
   },
   storageLegendDot: {
     width: 6,
