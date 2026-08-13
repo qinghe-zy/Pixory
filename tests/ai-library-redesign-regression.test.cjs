@@ -79,7 +79,9 @@ test('AI thread delete moves chats to recycle bin while permanent delete cleans 
   assert.match(removeBody, /isAppPrivateAiDocumentFile/);
   assert.match(documentService, /export async function cleanupDeletedMaterialFiles/);
   assert.match(documentService, /deleteLocalFile\(fileUri\)/);
-  assert.match(knowledgeRepository, /DELETE FROM ai_message_citations WHERE sourceType = 'document_chunk' AND sourceId = \?/);
+  assert.match(knowledgeRepository, /DELETE FROM ai_message_citations\s+WHERE sourceType = 'document_chunk'/);
+  assert.match(knowledgeRepository, /sourceId IN \(SELECT id FROM ai_chunks WHERE documentId = \?\)/);
+  assert.doesNotMatch(knowledgeRepository, /for \(const chunkId of chunkIds\)/);
   assert.match(sessionConfig, /移入回收站/);
   assert.match(historyScreen, /回收站/);
 });
