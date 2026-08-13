@@ -8,6 +8,7 @@ import { aiLightColors } from './aiLightTheme';
 import { AiModelIcon } from './AiModelIcon';
 import { AiMessageTextSelectionModal } from './AiMessageTextSelectionModal';
 import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
+import { RhythmBars, MACARON_COLORS } from '../RhythmBars';
 
 export interface AiComposerAttachment {
   id: string;
@@ -296,6 +297,15 @@ export function AiChatComposer({
               >
                 <Ionicons color={aiLightColors.mutedReadable} name="expand-outline" size={spacing[5]} />
               </Pressable>
+            )}
+            {generating && (
+              <RhythmBars
+                barGap={4}
+                barWidth={3}
+                colors={MACARON_COLORS.slice(0, 4)}
+                maxBarHeight={spacing[8]}
+                minBarHeight={10}
+              />
             )}
           </View>
 

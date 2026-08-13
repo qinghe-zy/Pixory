@@ -219,7 +219,7 @@ export function RhythmBars({
 
   return (
     <View style={[s.row, { gap: barGap, height: maxBarHeight }, style]}>
-      {INDICES.map((i) => (
+      {INDICES.slice(0, Math.min(barColors.length, 7)).map((i) => (
         <Bar
           key={i}
           blend={blend}
