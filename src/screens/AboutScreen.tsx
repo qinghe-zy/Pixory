@@ -33,7 +33,7 @@ function formatBytes(bytes: number): string {
 
 export function AboutScreen({ onBack, onPushRoute, space = 'normal' }: AboutScreenProps) {
   const { showToast } = useToast();
-  const version = Constants.expoConfig?.version ?? '2.7.7';
+  const version = Constants.expoConfig?.version ?? '2.7.8';
   const [milestones, setMilestones] = useState<AppMilestones | null>(null);
 
   const [expandedNodes, setExpandedNodes] = useState<{ [key: string]: boolean }>({});
