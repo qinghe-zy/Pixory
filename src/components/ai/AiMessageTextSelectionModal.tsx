@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { layout } from '../../design/tokens/layout';
 import { metrics, radius, spacing, typography } from '../../design/tokens';
@@ -96,8 +95,7 @@ export function AiMessageTextSelectionModal({
       presentationStyle="fullScreen"
       visible={visible}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <View
         style={[
           styles.screen,
           {
@@ -158,27 +156,30 @@ export function AiMessageTextSelectionModal({
             </Pressable>
           </View>
         </View>
-        {editing ? (
-          <TextInput
-            multiline
-            onChangeText={setEditText}
-            style={[styles.content, styles.editInput]}
-            textAlignVertical="top"
-            value={editText}
-          />
-        ) : (
-          <ScrollView
-            contentContainerStyle={styles.keyboardAvoiding}
-            style={styles.keyboardAvoiding}
-          >
+        <KeyboardAwareScrollView
+          bottomOffset={spacing[4]}
+          contentContainerStyle={styles.keyboardAvoiding}
+          keyboardShouldPersistTaps="handled"
+          style={styles.keyboardAvoiding}
+        >
+          {editing ? (
+            <TextInput
+              multiline
+              onChangeText={setEditText}
+              scrollEnabled={false}
+              style={[styles.content, styles.editInput]}
+              textAlignVertical="top"
+              value={editText}
+            />
+          ) : (
             <View style={styles.readContainer}>
               <Text selectable selectionColor={aiLightColors.primary} style={styles.content}>
                 {content}
               </Text>
             </View>
-          </ScrollView>
-        )}
-      </KeyboardAvoidingView>
+          )}
+        </KeyboardAwareScrollView>
+      </View>
     </Modal>
   );
 }
