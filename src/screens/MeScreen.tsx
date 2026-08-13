@@ -689,6 +689,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 16,
     height: 16,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.strong,
+    borderStyle: 'dashed',
     justifyContent: 'flex-start',
     alignItems: 'center',
   },
@@ -697,6 +701,7 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 1.5,
     backgroundColor: colors.support.lilac300,
+    marginTop: -1.5,
   },
   storageLegendDot: {
     width: 6,
