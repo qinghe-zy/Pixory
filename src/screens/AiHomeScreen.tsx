@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing } from 'react-native-reanimated';
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -246,7 +246,7 @@ export function AiHomeScreen({
   );
 }
 
-function AiActiveSpectrumBar({ delay, color, minHeight, maxHeight }: { delay: number; color: string; minHeight: number; maxHeight: number }) {
+function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight }: { delay: number; theta: Animated.SharedValue<number>; index: number; minHeight: number; maxHeight: number }) {
   const currentHeight = useSharedValue(minHeight);
 
   useEffect(() => {
@@ -260,20 +260,45 @@ function AiActiveSpectrumBar({ delay, color, minHeight, maxHeight }: { delay: nu
     ));
   }, [delay, minHeight, maxHeight, currentHeight]);
 
-  const style = useAnimatedStyle(() => ({
-    height: currentHeight.value,
-  }));
+  const style = useAnimatedStyle(() => {
+    // 错开相位：每个柱子错开 PI / 4
+    const phaseOffset = index * (Math.PI / 4);
+    const rawSine = Math.sin(theta.value + phaseOffset); // -1 到 1
+    const normalized = ((rawSine + 1) / 2) * 3; // 0 到 3 之间的平滑值
 
-  return <Animated.View style={[{ width: 4, borderRadius: 2, backgroundColor: color }, style]} />;
+    const bg = interpolateColor(
+      normalized,
+      [0, 1, 2, 3],
+      [colors.support.sky300, colors.support.lilac300, colors.support.coral400, colors.support.mint300]
+    );
+
+    return {
+      height: currentHeight.value,
+      backgroundColor: bg,
+    };
+  });
+
+  return <Animated.View style={[{ width: 4, borderRadius: 2 }, style]} />;
 }
 
 function AiActiveSpectrum() {
+  const theta = useSharedValue(0);
+
+  useEffect(() => {
+    // 0 到 2PI 的无限循环，周期 6 秒，使用线性动画保证顺畅旋转
+    theta.value = withRepeat(
+      withTiming(Math.PI * 2, { duration: 6000, easing: Easing.linear }),
+      -1,
+      false
+    );
+  }, [theta]);
+
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 24, paddingRight: spacing[2] }}>
-      <AiActiveSpectrumBar delay={0} color={colors.support.sky300} minHeight={4} maxHeight={12} />
-      <AiActiveSpectrumBar delay={150} color={colors.support.lilac300} minHeight={8} maxHeight={18} />
-      <AiActiveSpectrumBar delay={300} color={colors.support.sky300} minHeight={6} maxHeight={14} />
-      <AiActiveSpectrumBar delay={450} color={colors.support.mint300} minHeight={4} maxHeight={10} />
+      <AiActiveSpectrumBar delay={0} theta={theta} index={0} minHeight={4} maxHeight={12} />
+      <AiActiveSpectrumBar delay={150} theta={theta} index={1} minHeight={8} maxHeight={18} />
+      <AiActiveSpectrumBar delay={300} theta={theta} index={2} minHeight={6} maxHeight={14} />
+      <AiActiveSpectrumBar delay={450} theta={theta} index={3} minHeight={4} maxHeight={10} />
     </View>
   );
 }
