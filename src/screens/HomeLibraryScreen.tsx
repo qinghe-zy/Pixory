@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -200,8 +201,7 @@ export function HomeLibraryScreen({
       backgroundVariant="home"
       footer={footer}
       rightAction={rightSlot}
-      subtitle="IP 图像资产管理"
-      title="Pixory"
+      titleSlot={<HomeBrandHeader />}
       titleVariant="brand"
     >
       <View style={styles.topArea}>
@@ -358,7 +358,95 @@ export function HomeLibraryScreen({
   );
 }
 
+function HomeBrandHeader() {
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 9) return '早上好。';
+    if (hour >= 9 && hour < 12) return '上午好。';
+    if (hour >= 12 && hour < 14) return '中午好。';
+    if (hour >= 14 && hour < 18) return '下午好。';
+    if (hour >= 18 && hour < 23) return '晚上好。';
+    return '夜深了。';
+  }, []);
+  
+  const orbScale = useSharedValue(0.7);
+  const orbOpacity = useSharedValue(0.4);
+  const textShimmer = useSharedValue(0);
+
+  useEffect(() => {
+    orbScale.value = withRepeat(withTiming(1.2, { duration: 1500 }), -1, true);
+    orbOpacity.value = withRepeat(withTiming(1, { duration: 1500 }), -1, true);
+
+    textShimmer.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 6000 }), 
+        withTiming(1, { duration: 1200 }),
+        withTiming(0, { duration: 1200 })
+      ),
+      -1,
+      false
+    );
+  }, [orbScale, orbOpacity, textShimmer]);
+
+  const orbStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: orbScale.value }],
+    opacity: orbOpacity.value,
+  }));
+
+  const textStyle = useAnimatedStyle(() => {
+    const color = interpolateColor(
+      textShimmer.value,
+      [0, 1],
+      [colors.text.title, '#8E9B90'] // 从主标题色平滑过渡到微亮的银灰绿色
+    );
+    return { color };
+  });
+
+  return (
+    <View style={styles.brandHeaderContainer}>
+      <View style={styles.brandGreetingRow}>
+        <Animated.View style={[styles.brandOrb, orbStyle]} />
+        <Animated.Text style={[styles.brandGreetingText, textStyle]}>
+          {greeting}
+        </Animated.Text>
+      </View>
+      <Text style={styles.brandSubtitleText}>
+        PIXORY · PRIVATE ARCHIVE
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  brandHeaderContainer: {
+    justifyContent: 'center',
+    paddingVertical: spacing[1],
+  },
+  brandGreetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  brandOrb: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.support.mint300,
+  },
+  brandGreetingText: {
+    fontFamily: 'ZCOOLXiaoWei_400Regular',
+    fontSize: 28,
+    includeFontPadding: false,
+    letterSpacing: 2,
+  },
+  brandSubtitleText: {
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontSize: 9,
+    color: colors.text.secondary,
+    letterSpacing: 1.5,
+    marginTop: 2,
+    marginLeft: 6 + spacing[2], // 对齐主标题文字的左边缘
+  },
   pressed: {
     opacity: 0.8,
   },
