@@ -323,10 +323,20 @@ export function MeScreen({
           >
             <View style={styles.coreAssetHeader}>
               <Ionicons color="#22C55E" name="star" size={28} />
-              <Ionicons color={colors.text.tertiary} name="arrow-forward" size={18} style={{ transform: [{ rotate: '-45deg' }] }} />
+              <View style={styles.arrowButtonBadge}>
+                <Ionicons color={colors.text.tertiary} name="arrow-forward" size={14} style={{ transform: [{ rotate: '-45deg' }] }} />
+              </View>
             </View>
             <View style={styles.coreAssetBody}>
-              <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
+              <View style={styles.coreAssetCountRow}>
+                <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
+                <View style={styles.sparkline}>
+                  <View style={[styles.sparklineBar, { height: 6 }]} />
+                  <View style={[styles.sparklineBar, { height: 12 }]} />
+                  <View style={[styles.sparklineBar, { height: 4 }]} />
+                  <View style={[styles.sparklineBar, { height: 9 }]} />
+                </View>
+              </View>
               <Text style={styles.coreAssetTitle}>收藏图片</Text>
             </View>
           </Pressable>
@@ -339,10 +349,20 @@ export function MeScreen({
           >
             <View style={styles.coreAssetHeader}>
               <Ionicons color={colors.text.secondary} name="time-outline" size={28} />
-              <Ionicons color={colors.text.tertiary} name="arrow-forward" size={18} style={{ transform: [{ rotate: '-45deg' }] }} />
+              <View style={styles.arrowButtonBadge}>
+                <Ionicons color={colors.text.tertiary} name="arrow-forward" size={14} style={{ transform: [{ rotate: '-45deg' }] }} />
+              </View>
             </View>
             <View style={styles.coreAssetBody}>
-              <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
+              <View style={styles.coreAssetCountRow}>
+                <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
+                <View style={styles.sparkline}>
+                  <View style={[styles.sparklineBar, { height: 4 }]} />
+                  <View style={[styles.sparklineBar, { height: 9 }]} />
+                  <View style={[styles.sparklineBar, { height: 11 }]} />
+                  <View style={[styles.sparklineBar, { height: 5 }]} />
+                </View>
+              </View>
               <Text style={styles.coreAssetTitle}>最近查看</Text>
             </View>
           </Pressable>
@@ -655,6 +675,30 @@ const styles = StyleSheet.create({
   },
   coreAssetBody: {
     gap: spacing[1],
+  },
+  coreAssetCountRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing[2],
+  },
+  sparkline: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    paddingBottom: 8,
+  },
+  sparklineBar: {
+    width: 3,
+    backgroundColor: colors.border.strong,
+    borderRadius: radius.pill,
+  },
+  arrowButtonBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   coreAssetCount: {
     fontFamily: typography.family.monoBold,
