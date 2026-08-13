@@ -33,7 +33,7 @@ test('Live2D has no chat or session-settings runtime entry point', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs`  
+Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs`
 Expected: FAIL because both screen files still import or reference the Live2D runtime.
 
 - [ ] **Step 3: Implement the minimal runtime-entry removal**
@@ -42,7 +42,7 @@ Remove Live2D imports, state, settings reads, events, timers, responders, callba
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs`  
+Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs`
 Expected: PASS.
 
 ### Task 2: Remove superseded pet-animation policy and update feature inventory
@@ -58,7 +58,7 @@ Replace the resize-handle policy with an assertion that `AiChatScreen` has no `r
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test tests/ai-chat-performance-hardening-policy.test.cjs`  
+Run: `node --test tests/ai-chat-performance-hardening-policy.test.cjs`
 Expected: FAIL because `AiChatScreen` still contains the disabled runtime animation code.
 
 - [ ] **Step 3: Update inventory**
@@ -67,7 +67,7 @@ Mark Live2D in `docs/feature-matrix.md` as fully disabled/not shipped: source an
 
 - [ ] **Step 4: Run focused verification**
 
-Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs tests/ai-chat-performance-hardening-policy.test.cjs`  
+Run: `node --test tests/live2d-runtime-disabled-policy.test.cjs tests/ai-chat-performance-hardening-policy.test.cjs`
 Expected: PASS.
 
 ### Task 3: Verify and save the implementation
@@ -77,17 +77,17 @@ Expected: PASS.
 
 - [ ] **Step 1: Run static and type verification**
 
-Run: `git diff --check` and `pnpm typecheck`  
+Run: `git diff --check` and `pnpm typecheck`
 Expected: no whitespace errors and TypeScript exits 0.
 
 - [ ] **Step 2: Run full regression suite**
 
-Run: `pnpm test`  
+Run: `pnpm test`
 Expected: all runnable tests pass; skipped tests keep their existing skip status.
 
 - [ ] **Step 3: Record Android boundary**
 
-Run: `D:\\Develop\\Android\\Sdk\\platform-tools\\adb.exe devices`  
+Run: `D:\\Develop\\Android\\Sdk\\platform-tools\\adb.exe devices`
 Expected: if no device is listed, report Android memory/frame validation as blocked without attempting installation.
 
 - [ ] **Step 4: Commit**

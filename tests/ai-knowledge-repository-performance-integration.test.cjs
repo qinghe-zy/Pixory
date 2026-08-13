@@ -178,4 +178,46 @@ for (const space of ['normal', 'personal']) {
       db.close();
     }
   });
+
+  test(`${space} embedding replacement keeps last-write-wins semantics for duplicate keys`, async () => {
+    const db = new CountedDB(space);
+    try {
+      seedDocument(db, 1);
+      await db.withTransactionAsync(() => repository.replaceEmbeddings(db, [
+        {
+          id: 'replacement-first',
+          chunkId: 'chunk-0',
+          providerId: 'provider-1',
+          modelId: 'model-1',
+          dimensions: 2,
+          vectorJson: '[3,3]',
+        },
+        {
+          id: 'replacement-last',
+          chunkId: 'chunk-0',
+          providerId: 'provider-1',
+          modelId: 'model-1',
+          dimensions: 2,
+          vectorJson: '[7,7]',
+        },
+      ]));
+
+      assert.equal(
+        db.scalar(
+          `SELECT COUNT(*) AS value
+           FROM ai_embeddings
+           WHERE chunkId = 'chunk-0'
+             AND providerId = 'provider-1'
+             AND modelId = 'model-1'`,
+        ),
+        1,
+      );
+      assert.equal(
+        db.scalar("SELECT COUNT(*) AS value FROM ai_embeddings WHERE id = 'replacement-last' AND vectorJson = '[7,7]'"),
+        1,
+      );
+    } finally {
+      db.close();
+    }
+  });
 }

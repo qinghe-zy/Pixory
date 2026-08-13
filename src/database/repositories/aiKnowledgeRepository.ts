@@ -536,7 +536,14 @@ export const aiKnowledgeRepository = {
 
   async replaceEmbeddings(db: SQLiteDatabase, chunkEmbeddings: ReplaceEmbeddingInput[]): Promise<void> {
     const now = createTimestamp();
-    for (const batch of chunkItems(chunkEmbeddings, EMBEDDING_WRITE_BATCH_SIZE)) {
+    const latestEmbeddingByKey = new Map<string, ReplaceEmbeddingInput>();
+    for (const embedding of chunkEmbeddings) {
+      latestEmbeddingByKey.set(
+        `${embedding.chunkId}\u0000${embedding.providerId}\u0000${embedding.modelId}`,
+        embedding,
+      );
+    }
+    for (const batch of chunkItems([...latestEmbeddingByKey.values()], EMBEDDING_WRITE_BATCH_SIZE)) {
       const deleteTuples = batch.map(() => '(?, ?, ?)').join(', ');
       await db.runAsync(
         `DELETE FROM ai_embeddings

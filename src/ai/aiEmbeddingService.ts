@@ -133,7 +133,6 @@ export async function generateMissingEmbeddingsForDocument(
     }
     if (embeddings.length > 0) {
       await db.withTransactionAsync(async () => {
-        await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId IN (SELECT id FROM ai_chunks WHERE documentId = ?) AND providerId = ? AND modelId = ?', input.documentId, providerId, modelId);
         await aiKnowledgeRepository.replaceEmbeddings(db, embeddings);
       });
     }

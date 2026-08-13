@@ -6,6 +6,12 @@
 
 **Scope:** P0/P1 executable optimization program; P2/P3 triaged roadmap only
 
+## 2026-08-13 implementation review addendum
+
+第二轮全量复审确认总体分波和风险边界仍成立，并补充两项数据一致性约束：missing-embedding 生成只能 upsert 本轮缺失 chunk，不得删除同文档已有的同模型向量；批量 embedding 替换在重复 `(chunkId, providerId, modelId)` 输入下必须保持旧实现的 last-write-wins 语义。对应行为由 repository 与 service integration tests 固定。
+
+原 Task 10 的桌宠 resize-handle opacity 优化已被后续“完整关闭 Live2D 运行时”取代；该改变不授权删除桌宠源码、下载文件或持久设置。Android 设备仍不可用，因此 detached streaming、单源测量、Composer、splitter 与 drawer 的设备门禁结论没有改变。
+
 ## Goal
 
 Improve Pixory's Android-first AI chat responsiveness without regressing chat continuity, detached streaming replay, controlled composer sizing, Personal space isolation, generation recovery, or original local data safety.

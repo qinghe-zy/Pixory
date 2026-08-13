@@ -1,7 +1,9 @@
 # AI 聊天性能 Wave 3 Android 验收门禁
 
-日期：2026-08-13  
-关联报告：[chat_performance_report_v2.md](./chat_performance_report_v2.md)  
+日期：2026-08-13
+
+关联报告：[chat_performance_report_v2.md](./chat_performance_report_v2.md)
+
 关联核对表：[chat_performance_report_v2_triage.md](./chat_performance_report_v2_triage.md)
 
 ## 设备状态

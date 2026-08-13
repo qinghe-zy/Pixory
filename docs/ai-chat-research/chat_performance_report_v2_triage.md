@@ -28,9 +28,23 @@
 
 ## 本轮验收证据
 
-- 代码保留项的最终聚焦验证和完整 `pnpm test` 将在本轮收尾运行；Node/SQLite 测试只证明语义、回归和有界 SQL 行为。
+- 第二轮复审最终聚焦套件：146 通过、0 失败、1 跳过；完整 `pnpm test`：1018 通过、0 失败、15 跳过；`pnpm typecheck`、工作区 diff 和从 `5b73674` 起的完整分支 whitespace 检查通过。Node/SQLite 测试只证明语义、回归和有界 SQL 行为。
 - 本机 Node `v24.13.1`（Windows）非门禁基准：`scratch/ai-chat-performance-before.json` 的 1MB 混合文本 token 估算中位数为 `6.815ms`，`scratch/ai-chat-performance-final.json` 为 `4.074ms`。二者仅用于确认低分配实现的方向；完整 streaming splitter 重放未改动，不以两次 wall-clock 差异推导收益。
 - `adb devices` 未列出可用设备，因此 P0-1、P0-2、P0-4、P1-10、P1-11 和恢复桌宠前的 P1-12 设备端结论均为 `BLOCKED — 无可用 Android 设备`；具体场景见 [chat-performance-wave3-gate.md](./chat-performance-wave3-gate.md)。
+
+## 第二轮全量复审纠偏
+
+- 对照报告、设计、实施计划和实际分支差异后，确认两项数据一致性缺陷：missing-embedding 补全成功时会先删除文档已有的同模型向量；批量 `replaceEmbeddings()` 遇到重复 `(chunkId, providerId, modelId)` 时会留下多条逻辑重复记录，偏离旧实现的 last-write-wins。两项均已先以失败测试复现，再做最小修复。
+- 新增 `tests/ai-embedding-service-integration.test.cjs`，直接覆盖 service 层最多 3 个活跃 provider 请求、输入顺序、拒绝/空向量计数和已有向量保留；repository integration 在 normal/personal 两个物理数据库覆盖重复逻辑键。
+- P0-6 原文声称的“400 组确定性随机 corpus”在上一轮测试中实际不存在；复审现已补齐 400 组旧二分裁剪等价对照及 1MB 混合语言 fixture。复审 benchmark 为 1MB `5.032ms`、23 code-unit 小输入 `0.121µs`（批量摊销中位数），均为本机 Node 方向性数据，不替代 Android。
+- 上一轮完整分支差异仍有 11 处 Markdown 行尾空格，因此“`git diff --check` 已通过”的记录不准确；根因是只检查了未提交增量。本轮清理后将同时检查工作区和从基线到 HEAD 的完整差异。
+- 功能矩阵上一轮把 embedding 路径写成“手动生成/不自动启动”，与源码不符：存在可用默认 Embedding 模型和密钥时，材料导入/重解析会自动尝试向量化；普通聊天不会无条件调用。该触发行为早于本性能分支，本轮只修正文档，不改变成本/隐私产品策略。
+
+### 本轮未扩大的既有边界
+
+- OpenAI/Gemini 内置 provider 可带默认 Embedding 模型；是否还需要独立的成本/隐私 opt-in 属于产品决策，不在本轮性能等价修复中擅自改变。
+- `ownerEmbeddingAvailabilityCache` 的 false 结果最长保留约 5 分钟且生成后没有主动失效，是原报告 P3-25 的既有候选；本计划明令不实施 P2/P3，故只保留风险，不把它混入 P1 并发修复。
+- 本性能 worktree 的 merge base 为 `5b73674`；复审时 `main` 已另有 12 个提交，并同时修改两个 Live2D 入口屏幕。当前分支关闭了运行时，但 `main` 尚未关闭；后续合并必须显式解冲突并重新验证，不能把本分支测试等同于 main 集成验收。
 
 ## P0 核对
 
@@ -47,9 +61,9 @@
 
 | # | 报告项 | 标记 | 当前证据 | 决策 |
 |---|---|---|---|---|
-| P1-7 | 嵌入生成并发批处理 | `已实施` | 原 `generateMissingEmbeddingsForDocument()` 对每个 chunk 串行 `await adapter.embedText()`，失败只计数；完成后再统一写库。 | 提交 `ee2df51` 提供有序 worker pool，`893959a` 以最多 3 个并发请求接入；`tests/ai-bounded-concurrency-unit.test.cjs`、RAG policy 和 knowledge SQLite integration 测试覆盖顺序、失败/空向量和批量写入。无 provider/Android 吞吐证据。 |
+| P1-7 | 嵌入生成并发批处理 | `已实施、复审修正` | 原 `generateMissingEmbeddingsForDocument()` 对每个 chunk 串行 `await adapter.embedText()`，失败只计数；完成后再统一写库。复审发现接入并发后仍保留了“先删文档全部同模型向量”的旧语句，会在仅查询缺失 chunk 的路径误删既有向量。 | 提交 `ee2df51` 提供有序 worker pool，`893959a` 以最多 3 个并发请求接入；复审移除全量删除，只 upsert 本轮成功结果。worker、service integration、RAG policy 和 knowledge SQLite integration 覆盖并发、顺序、失败/空向量、已有向量保留和批量写入。无真实 provider/Android 吞吐证据。 |
 | P1-8 | KaTeX 编译缓存 | `已实施` | `AiMathBlock` 原在 render body 执行 `katex.renderToString()` 和 HTML 拼接，WebView 高度回传会触发 `setHeight()` 后重渲染。 | 提交 `3ec69c9` 将编译成功/失败与 HTML 结果按 `math` memo，高度更新不再重复编译；`tests/ai-chat-performance-hardening-policy.test.cjs` 已覆盖，WebView 设备端高度回传仍待验证。 |
-| P1-9 | knowledge repository 批量删除/写入 | `已实施` | 原 `deleteDocument()` 对每个 chunk 连续执行两次删除，`replaceEmbeddings()` 对每个 embedding 执行 delete + insert。 | 提交 `73758f5` 改为 citation 子查询清理及最多 100 条一批的写入；`tests/ai-knowledge-repository-performance-integration.test.cjs` 固定 normal/personal 的 1000/250 条有界 statement 数，删除回归断言由 `b8bbec8` 同步更新。 |
+| P1-9 | knowledge repository 批量删除/写入 | `已实施、复审修正` | 原 `deleteDocument()` 对每个 chunk 连续执行两次删除，`replaceEmbeddings()` 对每个 embedding 执行 delete + insert。复审确认批量 insert 在重复逻辑键输入下会留下多行，而旧循环语义是最后一条覆盖前一条。 | 提交 `73758f5` 改为 citation 子查询清理及最多 100 条一批的写入；复审在分批前按 `(chunkId, providerId, modelId)` 去重并保留最后输入。integration 固定 normal/personal 的 1000/250 条有界 statement 数、数据完整性和 last-write-wins，删除回归断言由 `b8bbec8` 同步更新。 |
 | P1-10 | streaming splitter 增量解析 | `部分成立`、`BLOCKED — 无可用 Android 设备` | detached patch 会把完整 tail 重新传给 `splitStreamingTextIntoBlocks()`，函数重新扫描段落并重建 block；但稳定 blockId、soft segment、测量缓存、promotion 与 shrink debt 都依赖现有输出。 | 未进行 Android 长流等价与帧耗时采样；不实施增量状态机，须在门禁解除后单独立项。 |
 | P1-11 | Drawer 迁移 Reanimated | `部分成立`、`BLOCKED — 无可用 Android 设备` | 抽屉用 `PanResponder` 在 JS 线程更新位置，风险描述成立；但迁移会同时影响遮罩、关闭阈值、无障碍和最近会话操作。 | 未验证拖动、scrim、按钮、最近会话操作和 Android 返回；不迁移手势。 |
 | P1-12 | 所有 JS 动画开启 Native Driver | `不再适用（系统关闭）` | `resizeHandleOpacity` 与 `petPan` 均随桌宠运行时入口移除；聊天页不再加载模型、注册桌宠监听、创建桌宠动画或手势 responder。 | 提交 `fab5eac` 完全关闭桌宠入口，`tests/live2d-runtime-disabled-policy.test.cjs` 和聊天性能策略测试固定无运行时引用；恢复前须重新建立 Android 验收门禁。 |

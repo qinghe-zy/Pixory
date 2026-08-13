@@ -44,8 +44,21 @@ function measure(iterations, operation) {
   return Number(median(samples).toFixed(3));
 }
 
+function measureAverageMicroseconds(iterations, operationsPerSample, operation) {
+  const samples = [];
+  for (let sampleIndex = 0; sampleIndex < iterations; sampleIndex += 1) {
+    const startedAt = performance.now();
+    for (let operationIndex = 0; operationIndex < operationsPerSample; operationIndex += 1) {
+      operation();
+    }
+    samples.push(((performance.now() - startedAt) * 1_000) / operationsPerSample);
+  }
+  return Number(median(samples).toFixed(3));
+}
+
 const mixedUnit = '中文 English 日本語 한국어 12345 🙂\n';
 const prompt = mixedUnit.repeat(Math.ceil(1_048_576 / mixedUnit.length)).slice(0, 1_048_576);
+const smallPrompt = '角色约束：保持自然、简洁，并准确回应当前问题。';
 const paragraphs = Array.from(
   { length: 240 },
   (_, index) => `第 ${index + 1} 段。${'streaming text '.repeat(16)}`,
@@ -72,9 +85,15 @@ const result = {
     }
   }),
   tokenEstimateMedianMs: measure(21, () => estimatePromptTokens(prompt)),
+  tokenEstimateSmallMedianUs: measureAverageMicroseconds(
+    51,
+    1_000,
+    () => estimatePromptTokens(smallPrompt),
+  ),
   workload: {
     patchCount: patchSizes.length,
     promptChars: prompt.length,
+    smallPromptChars: smallPrompt.length,
     streamChars: stream.length,
   },
 };
