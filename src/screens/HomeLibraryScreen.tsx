@@ -461,8 +461,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   brandGreetingText: {
-    fontFamily: typography.family.stat,
-    fontWeight: '600',
+    fontWeight: 'bold',
     fontSize: 28,
     includeFontPadding: false,
     letterSpacing: 2,
