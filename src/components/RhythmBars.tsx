@@ -135,6 +135,8 @@ export interface RhythmBarsProps {
   barGap?: number;
   /** 7 colors, one per bar. @default MACARON_COLORS */
   colors?: readonly string[];
+  /** Animation speed multiplier. @default 1 */
+  speedMultiplier?: number;
   /** Container style override. */
   style?: StyleProp<ViewStyle>;
 }
@@ -147,6 +149,7 @@ export function RhythmBars({
   barWidth = 4,
   barGap = 7,
   colors: barColors = MACARON_COLORS,
+  speedMultiplier = 1,
   style,
 }: RhythmBarsProps) {
   // Continuous time source (seconds)
@@ -162,11 +165,11 @@ export function RhythmBars({
   // Start time loop
   useEffect(() => {
     time.value = withRepeat(
-      withTiming(T_LOOP, { duration: T_LOOP * 1000, easing: Easing.linear }),
+      withTiming(T_LOOP, { duration: (T_LOOP * 1000) / speedMultiplier, easing: Easing.linear }),
       -1,
       false,
     );
-  }, [time]);
+  }, [time, speedMultiplier]);
 
   // Transition-complete handler: swap A = B, reset blend
   const onBlendDone = useCallback(() => {

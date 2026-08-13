@@ -59,6 +59,11 @@ export function HomeLibraryScreen({
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [isMovingSpace, setIsMovingSpace] = useState(false);
+
+  const isDaytime = useMemo(() => {
+    const hour = new Date().getHours();
+    return hour >= 5 && hour < 18;
+  }, [refreshKey]);
   const {
     items,
     meta: needsOrganizingCount,
@@ -213,12 +218,14 @@ export function HomeLibraryScreen({
               barWidth={3}
               maxBarHeight={24}
               minBarHeight={7}
+              speedMultiplier={isDaytime ? 1.5 : 1}
             />
             <RhythmBars
               barGap={5}
               barWidth={3}
               maxBarHeight={24}
               minBarHeight={7}
+              speedMultiplier={isDaytime ? 1.5 : 1}
             />
           </View>
           <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />

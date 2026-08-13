@@ -936,7 +936,6 @@ export function AiSessionConfigScreen({
   const [mounted, setMounted] = useState(false);
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const scrimOpacity = useRef(new Animated.Value(0)).current;
-  const drawerTranslateX = useRef(new Animated.Value(0)).current;
   const drawerAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const [promptEditorVisible, setPromptEditorVisible] = useState(false);
   const [usageModalVisible, setUsageModalVisible] = useState(false);
@@ -955,7 +954,6 @@ export function AiSessionConfigScreen({
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
-    drawerTranslateX.setValue(0);
     startDrawerAnimation(Animated.parallel([
       Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }),
       Animated.timing(scrimOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
@@ -963,12 +961,11 @@ export function AiSessionConfigScreen({
       setMounted(false);
       onBack();
     });
-  }, [onBack, slideAnim, scrimOpacity, drawerTranslateX]);
+  }, [onBack, slideAnim, scrimOpacity]);
 
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      drawerTranslateX.setValue(0);
       startDrawerAnimation(Animated.parallel([
         Animated.spring(slideAnim, { toValue: 0, damping: 28, stiffness: 260, mass: 0.9, useNativeDriver: true }),
         Animated.timing(scrimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -986,14 +983,12 @@ export function AiSessionConfigScreen({
         Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx > 0,
       onPanResponderMove: (_evt, gs) => {
         const clampedDx = Math.max(0, gs.dx);
-        drawerTranslateX.setValue(clampedDx);
+        slideAnim.setValue(clampedDx);
         const progress = 1 - clampedDx / DRAWER_WIDTH;
         scrimOpacity.setValue(Math.max(0, progress));
       },
       onPanResponderRelease: (_evt, gs) => {
         if (gs.dx > SWIPE_CLOSE_THRESHOLD || gs.vx > 0.5) {
-          slideAnim.setValue(Math.max(0, Math.min(DRAWER_WIDTH, gs.dx)));
-          drawerTranslateX.setValue(0);
           startDrawerAnimation(Animated.parallel([
             Animated.timing(slideAnim, { toValue: DRAWER_WIDTH, duration: 200, useNativeDriver: true }),
             Animated.timing(scrimOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
@@ -1003,13 +998,13 @@ export function AiSessionConfigScreen({
           });
         } else {
           Animated.parallel([
-            Animated.spring(drawerTranslateX, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }),
             Animated.timing(scrimOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
           ]).start();
         }
       },
       onPanResponderTerminate: () => {
-        Animated.spring(drawerTranslateX, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }).start();
+        Animated.spring(slideAnim, { toValue: 0, damping: 24, stiffness: 280, useNativeDriver: true }).start();
         Animated.timing(scrimOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
       },
     })
@@ -1031,7 +1026,7 @@ export function AiSessionConfigScreen({
             {
               paddingBottom: Math.max(insets.bottom, spacing[5]),
               paddingTop: Math.max(insets.top, spacing[2]),
-              transform: [{ translateX: Animated.add(slideAnim, drawerTranslateX) }],
+              transform: [{ translateX: slideAnim }],
             },
           ]}
           {...panResponder.panHandlers}
@@ -1606,6 +1601,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopLeftRadius: 20,
+    gap: 12,
   },
   drawerHeader: {
     paddingHorizontal: spacing[4],
@@ -1637,10 +1633,10 @@ const styles = StyleSheet.create({
     color: aiLightColors.muted,
   },
   drawerThreadTitleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: spacing[4],
   },
   drawerThreadTitleText: {
     fontSize: 20,
