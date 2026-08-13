@@ -185,7 +185,7 @@ test('active streaming updates publish live text without replacing the full mess
   assert.match(bufferBody, /publishStreamingMessage\(/);
   assert.match(bufferBody, /return;/);
   assert.doesNotMatch(bufferBody, /applyStreamingMessagePatch\(patch\);\s*return;\s*\}/);
-  assert.doesNotMatch(settledBody, /await reloadMessages\(targetThreadId\)/);
+  assert.match(settledBody, /if \(pendingUserMessage\?\.hasAttachments\) \{\s*await reloadMessages\(targetThreadId\);\s*\}/);
   assert.match(settledBody, /await reloadMemoryCaptures\(targetThreadId\)/);
   assert.match(settledBody, /await reloadContinuityMilestones\(targetThreadId\)/);
   assert.match(settledBody, /clearActiveStreamingIdentity\(\)/);

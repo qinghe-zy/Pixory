@@ -38,10 +38,23 @@ test('route snapshots use a bounded page and retain its older cursor', () => {
   assert.match(service, /olderCursor: oldest \? \{ createdAt: oldest\.createdAt, id: oldest\.id \} : null/);
   assert.match(snapshot, /olderCursor/);
   assert.match(snapshot, /loadThreadMessagePageInDatabase/);
+  assert.match(snapshot, /loadThreadMessagePageAroundAnchorInDatabase/);
   assert.doesNotMatch(snapshot, /countMessagesBase/);
   assert.match(chat, /olderMessageCursorRef/);
   assert.match(chat, /loadThreadMessagePage\(space, targetThreadId/);
   assert.doesNotMatch(chat, /loadedMessageLimitRef\.current \+ CHAT_MESSAGE_PAGE_SIZE/);
+});
+
+test('anchored chat pages retain a real cursor for loading earlier history', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(service, /export async function loadThreadMessagePageAroundAnchorInDatabase/);
+  assert.match(service, /aiThreadRepository\.listMessagesBaseAroundAnchor/);
+  assert.match(service, /aiThreadRepository\.listMessagesBaseBefore/);
+  assert.match(chat, /loadThreadMessagePageAroundAnchor\(space, targetThreadId/);
+  assert.match(chat, /nextOlderCursor = page\.olderCursor/);
+  assert.doesNotMatch(chat, /nextHasEarlierMessages = true;\s*nextOlderCursor = null;/);
 });
 
 test('chat preserves explicit base-route scope when reloading messages', () => {

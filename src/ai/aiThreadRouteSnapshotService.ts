@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { aiThreadRepository, runWithDatabaseSpace, type AiThreadRecord, type PixorySpace } from '../database';
 import type { AiBranchScope, AiMessagePageCursor } from '../database/repositories/aiThreadRepository';
 import { hashBranchRoute } from './context/conversationCoverage';
-import { listThreadMessagesInDatabase, loadThreadMessagePageInDatabase, type AiMessageWithCitations } from './aiChatService';
+import { loadThreadMessagePageAroundAnchorInDatabase, loadThreadMessagePageInDatabase, type AiMessageWithCitations } from './aiChatService';
 
 export interface AiAdoptedThreadRouteSnapshot {
   branchScopes: AiBranchScope[];
@@ -84,17 +84,12 @@ export async function loadAdoptedThreadRouteSnapshot(
     }
     const selectedVersionByMessageId = selectionMapForScopes(branchScopes);
     const page = input.anchorMessageId
-      ? {
-        baseMessageCount: input.limit,
-        hasEarlierMessages: true,
-        messages: await listThreadMessagesInDatabase(db, input.threadId, {
-          anchorMessageId: input.anchorMessageId,
-          branchScopes,
-          limit: input.limit,
-          selectedVersionByMessageId,
-        }),
-        olderCursor: null,
-      }
+      ? await loadThreadMessagePageAroundAnchorInDatabase(db, input.threadId, {
+        anchorMessageId: input.anchorMessageId,
+        branchScopes,
+        limit: input.limit,
+        selectedVersionByMessageId,
+      })
       : await loadThreadMessagePageInDatabase(db, input.threadId, {
         branchScopes,
         limit: input.limit,

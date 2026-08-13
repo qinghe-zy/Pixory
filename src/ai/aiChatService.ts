@@ -2714,6 +2714,45 @@ export async function loadThreadMessagePageInDatabase(
   };
 }
 
+export async function loadThreadMessagePageAroundAnchorInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  options: LoadThreadMessagePageOptions & { anchorMessageId: string },
+): Promise<AiThreadMessagePage> {
+  const baseMessages = await aiThreadRepository.listMessagesBaseAroundAnchor(
+    db,
+    threadId,
+    options.anchorMessageId,
+    options.limit,
+    options.branchScopes,
+  );
+  const oldest = baseMessages[0] ?? null;
+  const olderCursor = oldest
+    ? { createdAt: oldest.createdAt, id: oldest.id }
+    : null;
+  const hasEarlierMessages = Boolean(
+    olderCursor
+    && (await aiThreadRepository.listMessagesBaseBefore(
+      db,
+      threadId,
+      olderCursor,
+      1,
+      options.branchScopes,
+    )).length,
+  );
+  return {
+    baseMessageCount: baseMessages.length,
+    hasEarlierMessages,
+    messages: await hydrateThreadMessagesInDatabase(
+      db,
+      threadId,
+      baseMessages,
+      options.selectedVersionByMessageId,
+    ),
+    olderCursor,
+  };
+}
+
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, (db) => listThreadMessagesInDatabase(db, threadId, options));
 }
@@ -2724,6 +2763,14 @@ export async function loadThreadMessagePage(
   options: LoadThreadMessagePageOptions,
 ): Promise<AiThreadMessagePage> {
   return runWithDatabaseSpace(space, (db) => loadThreadMessagePageInDatabase(db, threadId, options));
+}
+
+export async function loadThreadMessagePageAroundAnchor(
+  space: PixorySpace,
+  threadId: string,
+  options: LoadThreadMessagePageOptions & { anchorMessageId: string },
+): Promise<AiThreadMessagePage> {
+  return runWithDatabaseSpace(space, (db) => loadThreadMessagePageAroundAnchorInDatabase(db, threadId, options));
 }
 
 export async function searchThreadMessages(input: {

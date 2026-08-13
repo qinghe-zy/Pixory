@@ -96,6 +96,7 @@ import {
   generateReplyAssistSuggestions,
   listThreadMessages,
   loadThreadMessagePage,
+  loadThreadMessagePageAroundAnchor,
   loadThreadContinuityMilestones,
   loadThreadMessageAppearanceConfig,
   loadThreadTitle,
@@ -2552,6 +2553,7 @@ export function AiChatScreen({
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
+      hasAttachments: boolean;
     },
   ): AiGenerationSubscriber {
     return {
@@ -2643,6 +2645,9 @@ export function AiChatScreen({
           return;
         }
         void (async () => {
+          if (pendingUserMessage?.hasAttachments) {
+            await reloadMessages(targetThreadId);
+          }
           await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {
@@ -2666,6 +2671,7 @@ export function AiChatScreen({
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
+      hasAttachments: boolean;
     },
   ): {
     generation: number;
@@ -3573,14 +3579,15 @@ export function AiChatScreen({
       let nextOlderCursor: AiMessagePageCursor | null;
       try {
         if (options.anchorMessageId) {
-          nextMessages = await listThreadMessages(space, targetThreadId, {
+          const page = await loadThreadMessagePageAroundAnchor(space, targetThreadId, {
             anchorMessageId: options.anchorMessageId,
             branchScopes: resolvedScopes,
             limit: messageLimit,
             selectedVersionByMessageId: routeSelection,
           });
-          nextHasEarlierMessages = true;
-          nextOlderCursor = null;
+          nextMessages = page.messages;
+          nextHasEarlierMessages = page.hasEarlierMessages;
+          nextOlderCursor = page.olderCursor;
         } else {
           const page = await loadThreadMessagePage(space, targetThreadId, {
             branchScopes: resolvedScopes,
@@ -5589,6 +5596,7 @@ export function AiChatScreen({
               branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
               content,
               createdAt: sendPressedAt,
+              hasAttachments: attachments.length > 0,
             },
       );
       streamGeneration = streamRequest.generation;
