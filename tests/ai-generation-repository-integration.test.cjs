@@ -47,6 +47,19 @@ function preparedInput(space, generationId = `g-${space}`) {
   };
 }
 
+test('generationId lookup stays on the UNIQUE auto-index instead of scanning jobs', () => {
+  const db = new DB('normal');
+  try {
+    const plan = db.db.prepare(
+      'EXPLAIN QUERY PLAN SELECT * FROM ai_generation_jobs WHERE generationId = ?',
+    ).all('g-normal');
+    assert.match(
+      plan.map((row) => row.detail).join('\n'),
+      /SEARCH ai_generation_jobs USING INDEX sqlite_autoindex_ai_generation_jobs_\d+ \(generationId=\?\)/,
+    );
+  } finally { db.close(); }
+});
+
 test('generation repository orders events, leases recovery, and settles idempotently', async () => {
   const db = new DB('normal');
   try {

@@ -84,6 +84,11 @@ test('hybrid retrieval generates query vectors and document embeddings when conf
   assert.match(embeddingContent, /getEmbeddingProviderForSpace/);
   assert.match(embeddingContent, /adapter\.embedText/);
   assert.match(embeddingContent, /replaceEmbeddings/);
+  assert.match(embeddingContent, /import \{ settleWithConcurrency \} from '\.\/aiBoundedConcurrency'/);
+  assert.match(embeddingContent, /const EMBEDDING_REQUEST_CONCURRENCY = 3/);
+  assert.match(embeddingContent, /settleWithConcurrency\(\s*chunks,\s*EMBEDDING_REQUEST_CONCURRENCY,/);
+  assert.doesNotMatch(embeddingContent, /for \(const chunk of chunks\)[\s\S]{0,500}await adapter\.embedText/);
+  assert.doesNotMatch(embeddingContent, /retry|backoff|AbortSignal/);
   assert.doesNotMatch(embeddingContent, /return \{ generated: 0, failed: chunks\.length \}/);
   assert.match(documentContent, /generateMissingEmbeddingsForDocument/);
   assert.match(documentContent, /embedding_pending/);
@@ -172,10 +177,11 @@ test('AI citations are reconciled with snippets that survived prompt budget trim
 test('AI context budget estimates Chinese text conservatively', () => {
   const budget = read('src/ai/aiContextBudget.ts');
 
-  assert.match(budget, /CJK_CHAR_PATTERN/);
-  assert.match(budget, /asciiTokenEstimate/);
-  assert.match(budget, /cjkTokenEstimate/);
+  assert.match(budget, /function isCjkCodeUnit/);
+  assert.match(budget, /function estimatePromptTokensFromCounts/);
+  assert.match(budget, /value\.charCodeAt\(index\)/);
   assert.match(budget, /Math\.ceil\(cjkChars \* 0\.8\)/);
+  assert.match(budget, /Math\.ceil\(nonCjkChars \/ 4\)/);
   assert.doesNotMatch(budget, /Math\.ceil\(value\.length \/ 3\)/);
 });
 

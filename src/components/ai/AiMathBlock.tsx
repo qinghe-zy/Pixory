@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import katex from 'katex';
@@ -32,27 +32,8 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function AiMathBlock({ math }: { math: string }) {
-  const [height, setHeight] = useState(60);
-
-  let mathHtml = '';
-  try {
-    mathHtml = katex.renderToString(math, {
-      displayMode: true,
-      output: 'htmlAndMathml',
-      throwOnError: true,
-      trust: false,
-    });
-  } catch {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorLabel}>公式无法渲染</Text>
-        <Text numberOfLines={2} style={styles.errorText}>{math}</Text>
-      </View>
-    );
-  }
-
-  const html = `
+function buildMathHtmlDocument(mathHtml: string): string {
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -115,6 +96,33 @@ export function AiMathBlock({ math }: { math: string }) {
     </body>
     </html>
   `;
+}
+
+export function AiMathBlock({ math }: { math: string }) {
+  const [height, setHeight] = useState(60);
+
+  const compiled = useMemo(() => {
+    try {
+      const mathHtml = katex.renderToString(math, {
+        displayMode: true,
+        output: 'htmlAndMathml',
+        throwOnError: true,
+        trust: false,
+      });
+      return { error: false as const, html: buildMathHtmlDocument(mathHtml) };
+    } catch {
+      return { error: true as const, html: '' };
+    }
+  }, [math]);
+
+  if (compiled.error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorLabel}>公式无法渲染</Text>
+        <Text numberOfLines={2} style={styles.errorText}>{math}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { height: Math.min(Math.max(MATH_BLOCK_MIN_HEIGHT, height + MATH_BLOCK_VERTICAL_PADDING), MATH_BLOCK_MAX_HEIGHT) }]}>
@@ -134,7 +142,7 @@ export function AiMathBlock({ math }: { math: string }) {
         scrollEnabled={height + MATH_BLOCK_VERTICAL_PADDING > MATH_BLOCK_MAX_HEIGHT}
         setSupportMultipleWindows={false}
         showsHorizontalScrollIndicator={false}
-        source={{ html, baseUrl: 'about:blank' }}
+        source={{ html: compiled.html, baseUrl: 'about:blank' }}
         style={styles.webview}
       />
     </View>

@@ -144,6 +144,16 @@ function makeInClause(values: string[]): string {
   return values.map(() => '?').join(', ');
 }
 
+const EMBEDDING_WRITE_BATCH_SIZE = 100;
+
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
 export const aiKnowledgeRepository = {
   async createKnowledgeBase(db: SQLiteDatabase, input: CreateKnowledgeBaseInput): Promise<AiKnowledgeBaseRecord> {
     const now = createTimestamp();
@@ -330,13 +340,16 @@ export const aiKnowledgeRepository = {
   },
 
   async deleteDocument(db: SQLiteDatabase, documentId: string): Promise<number> {
-    const chunkRows = await db.getAllAsync<{ id: string }>('SELECT id FROM ai_chunks WHERE documentId = ?', documentId);
-    const chunkIds = chunkRows.map((row) => row.id);
-    await db.runAsync("DELETE FROM ai_message_citations WHERE sourceType = 'document_chunk' AND sourceId = ?", documentId);
-    for (const chunkId of chunkIds) {
-      await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId = ?', chunkId);
-      await db.runAsync('DELETE FROM ai_message_citations WHERE sourceId = ?', chunkId);
-    }
+    await db.runAsync(
+      `DELETE FROM ai_message_citations
+       WHERE sourceType = 'document_chunk'
+         AND (
+           sourceId = ?
+           OR sourceId IN (SELECT id FROM ai_chunks WHERE documentId = ?)
+         )`,
+      documentId,
+      documentId
+    );
     await db.runAsync('DELETE FROM ai_chunks WHERE documentId = ?', documentId);
     const result = await db.runAsync('DELETE FROM ai_documents WHERE id = ?', documentId);
     return result.changes;
@@ -523,8 +536,22 @@ export const aiKnowledgeRepository = {
 
   async replaceEmbeddings(db: SQLiteDatabase, chunkEmbeddings: ReplaceEmbeddingInput[]): Promise<void> {
     const now = createTimestamp();
+    const latestEmbeddingByKey = new Map<string, ReplaceEmbeddingInput>();
     for (const embedding of chunkEmbeddings) {
-      await db.runAsync('DELETE FROM ai_embeddings WHERE chunkId = ? AND providerId = ? AND modelId = ?', embedding.chunkId, embedding.providerId, embedding.modelId);
+      latestEmbeddingByKey.set(
+        `${embedding.chunkId}\u0000${embedding.providerId}\u0000${embedding.modelId}`,
+        embedding,
+      );
+    }
+    for (const batch of chunkItems([...latestEmbeddingByKey.values()], EMBEDDING_WRITE_BATCH_SIZE)) {
+      const deleteTuples = batch.map(() => '(?, ?, ?)').join(', ');
+      await db.runAsync(
+        `DELETE FROM ai_embeddings
+         WHERE (chunkId, providerId, modelId) IN (${deleteTuples})`,
+        ...batch.flatMap((item) => [item.chunkId, item.providerId, item.modelId])
+      );
+
+      const insertRows = batch.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
       await db.runAsync(
         `INSERT INTO ai_embeddings (
           id,
@@ -534,14 +561,16 @@ export const aiKnowledgeRepository = {
           dimensions,
           vectorJson,
           createdAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        embedding.id,
-        embedding.chunkId,
-        embedding.providerId,
-        embedding.modelId,
-        embedding.dimensions,
-        embedding.vectorJson,
-        now
+        ) VALUES ${insertRows}`,
+        ...batch.flatMap((item) => [
+          item.id,
+          item.chunkId,
+          item.providerId,
+          item.modelId,
+          item.dimensions,
+          item.vectorJson,
+          now,
+        ])
       );
     }
   },

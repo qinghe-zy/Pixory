@@ -180,6 +180,24 @@ test('streaming assistant content uses lightweight rendering until the reply is 
   assert.doesNotMatch(content, /const parsedMarkdown = useMemo\(.*\[content, streaming\]\)/);
 });
 
+test('math blocks compile KaTeX and build HTML inside a math-keyed memo', () => {
+  const math = read('src/components/ai/AiMathBlock.tsx');
+  assert.match(math, /import \{ useMemo, useState \} from 'react'/);
+  assert.match(math, /const compiled = useMemo\(\(\) => \{/);
+  assert.match(math, /katex\.renderToString\(math/);
+  assert.match(math, /\}, \[math\]\);/);
+  assert.match(math, /if \(compiled\.error\)/);
+  assert.match(math, /source=\{\{ html: compiled\.html, baseUrl: 'about:blank' \}\}/);
+});
+
+test('message content memoizes the rich HTML decision by content', () => {
+  const content = read('src/components/ai/AiMessageContent.tsx');
+  assert.match(
+    content,
+    /const renderWholeRichHtml = useMemo\(\(\) => shouldRenderWholeRichHtml\(content\), \[content\]\)/,
+  );
+});
+
 test('streaming output keeps live rendering separate from detached history layout', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const button = read('src/components/ai/AiScrollToLatestButton.tsx');
@@ -277,4 +295,11 @@ test('memory maintenance preserves per-thread coalescing and serializes global p
   assert.match(queue, /entry\.done\(undefined\)/);
   assert.match(queue, /activeMaintenanceTasks\.set\(key, entry\)/);
   assert.match(queue, /return entry\.promise/);
+});
+
+test('Live2D shutdown removes its animation and gesture paths from chat', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.doesNotMatch(chat, /resizeHandleOpacity|petPan|petScale|Live2D/);
+  assert.match(chat, /Animated\.timing\(messageAreaFadeAnim/);
 });
