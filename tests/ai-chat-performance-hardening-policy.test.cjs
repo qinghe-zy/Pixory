@@ -297,14 +297,9 @@ test('memory maintenance preserves per-thread coalescing and serializes global p
   assert.match(queue, /return entry\.promise/);
 });
 
-test('resize handle opacity is native-driven without changing pet pan ownership', () => {
+test('Live2D shutdown removes its animation and gesture paths from chat', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
-  const resizeBody = /const showResizeHandle = useCallback\([\s\S]*?\}, \[resizeHandleOpacity\]\);/.exec(chat)?.[0] ?? '';
-  const nativeDriverMatches = resizeBody.match(/useNativeDriver: true/g) ?? [];
 
-  assert.equal(nativeDriverMatches.length, 2);
-  assert.doesNotMatch(resizeBody, /useNativeDriver: false/);
-  assert.match(chat, /Animated\.timing\(petPan\.x, \{[\s\S]{0,160}useNativeDriver: false/);
-  assert.match(chat, /petPan\.x\.setValue\(gestureState\.dx\)/);
-  assert.match(chat, /petPan\.addListener/);
+  assert.doesNotMatch(chat, /resizeHandleOpacity|petPan|petScale|Live2D/);
+  assert.match(chat, /Animated\.timing\(messageAreaFadeAnim/);
 });

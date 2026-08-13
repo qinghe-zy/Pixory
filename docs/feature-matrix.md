@@ -50,7 +50,7 @@
 | 回收站 | 已实现 | 软删除、恢复、清空、过期清理 | `TrashScreen`, `trashService` |
 | 备份/导入导出 | 已实现，Manifest V2 | 普通、单 IP 与隐私包覆盖数据库、原图/视频、缩略图、AI 文档、聊天附件和角色头像；恢复前校验相对路径、大小与 SHA-256，按内容去重并事务合并，SecureStore 密钥不进入备份 | `BackupScreen`, `BackupExportManagerScreen`, `backupService`, `managedBackupService`, `backupManifestProtocol` |
 | AI 文档流 | 部分实现 | 已支持导入、受管复制、解析、切片、检索、答案级引用、阅读和带哈希校验的备份恢复；入口、术语、来源更新和跨资料搜索尚未形成统一闭环 | `AiGlobalMaterialsScreen`, `AiMaterialLibraryScreen`, `AiDocumentReaderScreen`, `aiDocumentService`, `managedBackupService` |
-| Live2D 桌宠 | 实验/不上线 | 代码和会话配置入口存在，但因缺少合适且权属清晰的正式素材，当前版本不发布、不宣传 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
+| Live2D 桌宠 | 完全关闭/不上线 | 已移除聊天页与会话设置页的运行时入口：不会加载模型、渲染 WebView、注册事件监听、启动动画/手势或提供下载与预览入口。保留源码、模型列表、已下载文件和既有 SQLite 设置值，供未来在独立验收后恢复 | `Live2DPetView`, `Live2DPetManagerModal`, `live2dManagerService`, `petModels` |
 | 隐私空间 | 已实现 | normal/personal 双空间、密码、锁定、隔离数据库和文件；解锁时只激活当前根分页，避免四个库页面同时读取隐私库，首页/整理/全部素材/分组素材/批量管理首屏查询延后到交互完成。Personal 成功建立会话后才授权生成恢复、梦境、思绪、日记和记忆维护任务；锁定先使会话 task token 失效，再撤销全部运行时入口、清除 timer、Abort 远程请求并等待生成/陪伴/记忆/日记/备份恢复任务停稳，最后关闭数据库，锁后不会由后台任务重开隐私库 | `App.tsx`, `MeScreen`, `PersonalUnlockModal`, `useScreenLoad`, `personalSystemService`, `personalTaskToken`, `aiGenerationManager`, `companionMaintenanceQueue`, `diaryGenerationManager`, `aiMemoryMaintenanceService` |
 | 外部分享/打开 | 已实现 | Android share/open-with 接入，导入外部图片、视频、包文件 | `ShareCollectScreen`, `ArchiveReaderScreen`, native media module |
 | 存储统计与维护 | 已实现 | 原图、缩略图、缓存、备份、回收站空间统计和清理 | `StorageUsageScreen`, `storageUsageService` |

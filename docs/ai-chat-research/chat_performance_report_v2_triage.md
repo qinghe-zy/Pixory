@@ -45,7 +45,7 @@
 | P1-9 | knowledge repository 批量删除/写入 | `已实施` | 原 `deleteDocument()` 对每个 chunk 连续执行两次删除，`replaceEmbeddings()` 对每个 embedding 执行 delete + insert。 | 提交 `73758f5` 改为 citation 子查询清理及最多 100 条一批的写入；normal/personal SQLite integration tests 固定 1000/250 条时的有界 statement 数。删除回归断言由 `b8bbec8` 同步更新。 |
 | P1-10 | streaming splitter 增量解析 | `部分成立`、`待 Android 基准` | detached patch 会把完整 tail 重新传给 `splitStreamingTextIntoBlocks()`，函数重新扫描段落并重建 block；但稳定 blockId、soft segment、测量缓存、promotion 与 shrink debt 都依赖现有输出。 | 先建立 splitter 等价性与长流基准；增量状态机作为独立高风险波次，要求每个 patch 的 block 输出与现实现完全等价。 |
 | P1-11 | Drawer 迁移 Reanimated | `部分成立`、`待 Android 基准` | 抽屉用 `PanResponder` 在 JS 线程更新位置，风险描述成立；但迁移会同时影响遮罩、关闭阈值、无障碍和最近会话操作。 | 在安全优化完成后单独迁移到 Gesture Handler + Reanimated；保持按钮关闭、点击遮罩、拖动阈值和 Android 返回行为。 |
-| P1-12 | 所有 JS 动画开启 Native Driver | `部分实施`、`待 Android 基准` | `resizeHandleOpacity` 可独立原生化；`petPan` 同时被 PanResponder、`setValue`、`addListener` 和定时动画共享，直接把某次 timing 改成 native driver 会混用 JS/native ownership。 | 提交 `2877426` 仅将 resize handle opacity 的两条 timing 改为 native driver，保留 `petPan` 的 JS 所有权；完整手势迁移与视觉流畅度因无 Android 设备被门禁阻止，详见 `chat-performance-wave3-gate.md`。 |
+| P1-12 | 所有 JS 动画开启 Native Driver | `不再适用（系统关闭）` | `resizeHandleOpacity` 与 `petPan` 均随桌宠运行时入口移除；聊天页不再加载模型、注册桌宠监听、创建桌宠动画或手势 responder。 | 原 `2877426` 的安全 opacity 改动已被桌宠整体关闭取代；完整手势迁移不再进入本轮，恢复桌宠前须重新建立 Android 验收门禁。 |
 
 ## 建议实施波次
 

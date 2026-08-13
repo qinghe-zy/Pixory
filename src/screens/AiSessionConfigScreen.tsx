@@ -47,8 +47,6 @@ import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructio
 import { radius, rhythm, spacing, typography } from '../design/tokens';
 import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
-import { PET_MODELS } from '../config/petModels';
-import { Live2DPetManagerModal } from '../components/ai/Live2DPetManagerModal';
 import { cancelPendingDiaryJobs } from '../ai/diary/diarySchedulerService';
 import { isCompanionAwarenessEnabled, setCompanionAwarenessEnabled } from '../ai/companion/companionSettingsService';
 
@@ -224,8 +222,6 @@ export function AiSessionConfigScreen({
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
   const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
   const [isSystemThinking, setIsSystemThinking] = useState(false);
-  const [currentPetModelId, setCurrentPetModelId] = useState<string | null>(null);
-  const [petManagerVisible, setPetManagerVisible] = useState(false);
   const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
   const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
   const [selectedSessionModelKeys, setSelectedSessionModelKeys] = useState<string[]>([]);
@@ -351,19 +347,6 @@ export function AiSessionConfigScreen({
     threadId,
     userAvatarEnabled,
   ]);
-
-  useEffect(() => {
-    let isMounted = true;
-    void runWithDatabaseSpace('normal', async (db) => {
-      const loadedPetModelId = await settingsRepository.getValue(db, 'GLOBAL_PET_MODEL_ID');
-      if (isMounted) {
-        setCurrentPetModelId(loadedPetModelId === '' ? null : (loadedPetModelId ?? PET_MODELS[0].id));
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     void reloadConfig();
@@ -938,23 +921,6 @@ export function AiSessionConfigScreen({
     return normalized ? `最近一次远程维护失败，已使用本地轻量整理：${normalized}` : '最近一次远程维护失败，已使用本地轻量整理。';
   }
 
-  const handleSelectPetModel = async (id: string | null) => {
-    const isChanging = id !== currentPetModelId;
-    setCurrentPetModelId(id);
-    await runWithDatabaseSpace('normal', async (db) => {
-      await settingsRepository.setValue(db, 'GLOBAL_PET_MODEL_ID', id ?? '');
-      if (isChanging && id) {
-        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_X', '0');
-        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_Y', '0');
-        await settingsRepository.setValue(db, 'GLOBAL_PET_SCALE', '1');
-      }
-    });
-    
-    import('react-native').then(({ DeviceEventEmitter }) => {
-      DeviceEventEmitter.emit('LIVE2D_MODEL_CHANGED');
-    });
-  };
-
   return (
     <>
       <AiLightScaffold
@@ -1103,30 +1069,6 @@ export function AiSessionConfigScreen({
               }
             />
           </AiLightListGroup>
-
-
-          {/*
-          <AiLightListGroup footer="此设置全局生效。" title="桌宠与互动">
-            <AiLightListItem
-              accessibilityRole="switch"
-              icon="eye-outline"
-              title="显示桌宠"
-              onPress={() => void handleSelectPetModel(currentPetModelId === null ? PET_MODELS[0].id : null)}
-              action={
-                <AiSwitch
-                  value={currentPetModelId !== null}
-                  onValueChange={(val) => void handleSelectPetModel(val ? PET_MODELS[0].id : null)}
-                />
-              }
-            />
-            <AiLightListItem
-              icon="shirt-outline"
-              title="桌宠管理"
-              onPress={() => setPetManagerVisible(true)}
-              value={currentPetModelId ? PET_MODELS.find((m) => m.id === currentPetModelId)?.name : undefined}
-            />
-          </AiLightListGroup>
-          */}
 
           <AiLightListGroup title="上下文与偏好">
             <View style={styles.inlineConfigPadding}>
@@ -1532,15 +1474,6 @@ export function AiSessionConfigScreen({
         primaryLabel={saving ? '正在移入' : '移入回收站'}
         title="删除当前会话"
         visible={deleteDialogVisible}
-      />
-      <Live2DPetManagerModal
-        visible={petManagerVisible}
-        currentModelId={currentPetModelId}
-        onClose={() => setPetManagerVisible(false)}
-        onSelect={(id) => {
-          void handleSelectPetModel(id);
-          setPetManagerVisible(false);
-        }}
       />
     </>
   );

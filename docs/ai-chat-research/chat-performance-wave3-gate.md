@@ -19,7 +19,7 @@
 | P0-4 Composer 测量路径 | 200 行输入、长文本粘贴、草稿恢复、键盘开合和清空后，确认高度、光标和安全区稳定 | **BLOCKED** |
 | P1-10 streaming splitter 增量解析 | 15K 字符长流与连续 patch，比较 block 等价性、解析耗时、内存和 tail promotion/reload 行为 | **BLOCKED** |
 | P1-11 Drawer Gesture Handler/Reanimated 迁移 | 打开/关闭、拖动阈值、遮罩点击、最近会话操作、无障碍及 Android 返回行为 | **BLOCKED** |
-| P1-12 完整 pet gesture 状态迁移 | 拖拽、缩放、自动移动、设置持久化和 listener 同时存在时验证无跳变；本轮仅安全原生化 resize handle opacity，仍需真机观察 | **BLOCKED** |
+| P1-12 完整 pet gesture 状态迁移 | 桌宠运行时已整体关闭，聊天页和会话设置页均无入口；未来若恢复，须重新验证拖拽、缩放、自动移动、设置持久化和 listener 同时存在时无跳变 | **BLOCKED** |
 
 ## 已完成但尚未替代 Android 验收的低风险改动
 
@@ -28,7 +28,7 @@
 - 文档 citation 清理和 embedding 写入的 SQLite 批量化；
 - rich-HTML 判定 memo；
 - 手动资料 Embedding 请求最多并发 3 个；
-- 仅 resize handle opacity 使用 native driver，`petPan` 继续由 JS 手势路径管理。
+- Live2D 桌宠运行时已整体关闭，原 resize handle opacity 与 `petPan` 手势路径均不再执行。
 
 这些改动均有目标 Node/SQLite 测试和 TypeScript 检查；它们不构成上述 Wave 3 项或 Android 流畅度的验收证据。
 
