@@ -934,13 +934,13 @@ export function AiChatScreen({
     Animated.timing(resizeHandleOpacity, {
       toValue: 1,
       duration: 150,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
     resizeHandleTimeoutRef.current = setTimeout(() => {
       Animated.timing(resizeHandleOpacity, {
         toValue: 0.1,
         duration: 300,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     }, 2000);
   }, [resizeHandleOpacity]);
