@@ -2,8 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -153,6 +152,7 @@ export function AiHomeScreen({
               <Text style={styles.primaryTitle}>开始聊天</Text>
               <Text style={styles.primaryDescription}>直接开始一次新的对话</Text>
             </View>
+            <AiActiveSpectrum />
             <View style={styles.primaryArrow}>
               <Ionicons color={aiLightColors.onDark} name="chevron-forward" size={22} />
             </View>
@@ -243,6 +243,38 @@ export function AiHomeScreen({
         <QuickEntry icon="time-outline" label="会话历史" meta="查看与管理历史记录" onPress={onOpenHistory} tone="gold" />
       </View>
     </AiLightScaffold>
+  );
+}
+
+function AiActiveSpectrumBar({ delay, color, minHeight, maxHeight }: { delay: number; color: string; minHeight: number; maxHeight: number }) {
+  const currentHeight = useSharedValue(minHeight);
+
+  useEffect(() => {
+    currentHeight.value = withDelay(delay, withRepeat(
+      withSequence(
+        withTiming(maxHeight, { duration: 600 + Math.random() * 200 }),
+        withTiming(minHeight, { duration: 600 + Math.random() * 200 })
+      ),
+      -1,
+      true
+    ));
+  }, [delay, minHeight, maxHeight, currentHeight]);
+
+  const style = useAnimatedStyle(() => ({
+    height: currentHeight.value,
+  }));
+
+  return <Animated.View style={[{ width: 4, borderRadius: 2, backgroundColor: color }, style]} />;
+}
+
+function AiActiveSpectrum() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 24, paddingRight: spacing[2] }}>
+      <AiActiveSpectrumBar delay={0} color={colors.support.sky300} minHeight={4} maxHeight={12} />
+      <AiActiveSpectrumBar delay={150} color={colors.support.lilac300} minHeight={8} maxHeight={18} />
+      <AiActiveSpectrumBar delay={300} color={colors.support.sky300} minHeight={6} maxHeight={14} />
+      <AiActiveSpectrumBar delay={450} color={colors.support.mint300} minHeight={4} maxHeight={10} />
+    </View>
   );
 }
 
