@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-13（AI 聊天性能复审：上下文、渲染、RAG 批量化/补全一致性与桌宠运行时关闭）
+最后更新：2026-08-13（资产列表分页虚拟化、AI 会话抽屉与共享头像选择体验）
 适用版本：Pixory 2.7.7
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -81,7 +81,7 @@
 | Prompt/cache | stable prefix hash、retrieval hash、cache key、Anthropic breakpoint、禁止 diagnostics 污染 prompt/cache；稳定摘要参与 stable hash，角色观察/用户画像等自动变化内容处于 dynamic layer，避免污染可复用前缀；DeepSeek 官方 V4 使用服务商原生前缀缓存并在流式请求中开启 usage 观测，不发送 OpenAI `prompt_cache_key`，其他 provider 策略保持原样 | `aiPromptCache`, `openAiCompatibleProvider` |
 | 首 token pipeline | fast-path classifier、normal skip retrieval、资料模糊引用 fail-closed、keyword/full retrieval 分层 | `aiChatFastPath`, `aiRetrievalService` |
 | 上下文预算 | 真实 model context window（无法读取时回退 512K）、会话级最近对话轮数滑杆（一问一答算一轮）、历史裁剪、保护 role/current request/retrieval/memory；token 估算使用等价的低分配单次 code-unit 扫描和前缀搜索，滑杆可在 5/20/30/50/100 等窗口间缩放，摘要缺失或因编辑/切分支失效时由本地原文桥或确定性临时摘要补齐，远程摘要只异步预热且不阻塞首 token | `aiContextBudget`, `aiContextSettings`, `AiContextSlider`, `conversationCoverageService` |
-| 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句 | `sillyTavernRoleCardParser`, `aiRoleCardRepository` |
+| 角色卡 | 手动角色、SillyTavern PNG/JSON/V1/V2/V3 导入、sourceJson 保留、头像、标签、首句；角色卡编辑和会话设置共用头像选择器，可从系统相册或当前空间的 IP 素材选择并复制到受管存储 | `sillyTavernRoleCardParser`, `aiRoleCardRepository`, `AiRoleCardEditorScreen`, `AiAvatarPicker` |
 | 角色卡导出 | SillyTavern PNG 导出、续聊 Markdown、系统人设/记忆/上下文分离 | `sillyTavernRoleCardExporter`, `aiRoleCardContinuityExport` |
 | 连续性导入 | 原生 Markdown 精确导入、外部文档接回、解析不足时模型辅助结构恢复、导入后分支接续、10 轮观察回退窗口、外部导入记忆审读门禁、显式 summary/profile/memory fan-out；外部路径将候选抽取与独立审核分开，模型建议还需 evidence/scope/manual-lock 确定性校验；待审读任务有同进程去重并可由下一次后台维护续跑，失败状态不自动重复烧调用；给外部软件的迁移提示词只允许 user/assistant transcript，违规 system/developer/tool 内容在解析侧继续隔离为 untrusted context；Personal 外部导入必须逐次授权远程整理 | `aiContinuityImport*`, `AiSessionConfigScreen`, `AiChatScreen` |
 | 记忆导入/导出 | 默认导出 Pixory Memory Package v2（JSON，确定性导入；兼容旧版 Markdown/v1 与外部文本审查）；包只包含当前会话可见 scope 的 Claim、关联账本事件与证据，避免带出其他线程记忆；原生导入先 pending、失败可复用原分支幂等续跑，导入消息 ID 映射后保留 Claim 证据引用并跳过悬空消息引用，已删除/抑制 Claim 由本地投影、删除证书和包内墓碑共同拦截，Claim/episode/关系/profile 随会话一起完整回滚；外部审核画像也同步进入 v1 profile 账本，外部回滚按 import session 精确隔离 | `aiRoleCardContinuityExport*`, `aiContinuityImport*`, `src/ai/memory/nativeMemoryPackage*` |
@@ -101,7 +101,7 @@
 | 收藏 | assistant 消息收藏、分支 scope 收藏、收藏列表 | `aiThreadRepository`, `AiMessageBubble` |
 | Usage | provider usage 归一化、cached token ratio、线程/总览用量；DeepSeek 官方原生 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` 进入缓存命中、未命中与命中率观测，Provider 未返回缓存字段时明确显示“未观测”；梦境分类/生成和思绪生成分别保存 content-free prompt/completion token 数，不落库 prompt 或模型正文副本 | `aiProviderUsage`, `aiUsageAnalytics`, `AiUsageSummary`, `companion_dream_jobs`, `companion_thought_jobs` |
 | 消息渲染 | Markdown (全新标记解析器防注入)、代码块、表格、原生图片附件画廊展示、HTML/CSS WebView、数学块、citation、thinking block、render cache；rich-HTML 判定按内容 memo，数学块按公式 memo KaTeX 编译与 WebView HTML | `AiMessageContent`, `AiMessageBubble`, `AiMathBlock`, `AiMarkdownReader` |
-| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；聊天消息与日记按北京时间自然日插入独立 `dateSeparator` 列表项，当天/前一天显示“今天/昨天”，每个自然日只出现一次且不会进入 reasoning 或正文节点；聊天首屏将消息页与非关键模型/外观/记录读取分阶段加载，并合并模型图标与名称查询，返回工作台优先显示内存快照再后台刷新；聊天页支持左侧菜单按钮和全屏右滑打开综合记录抽屉，顶部搜索靠近抽屉入口，右侧提供会话设置与聊天气泡形态的新会话入口；消息长按菜单按手指所在屏幕半区在触点上方或下方 `5px` 弹出，键盘压缩视口时操作列表在菜单内滚动并保持触点锚定，流式回复的正文/思考尾段和降级 continuation 路径同样可长按；用户消息提供复制、全屏选择文本和修改，AI 消息保留复制、全屏选择文本、收藏、继续生成、续答/回复、重新生成的独立入口，菜单底部始终显示 `HH:mm`；非最新消息不显示常驻操作栏，只有版本切换继续留在气泡下方，最新 AI 回复可保留原操作栏；输入框左下角模型图标右侧提供小灯泡 `AI 帮答` 入口，弹出固定高度的底部阅读器式候选面板，支持短句/长句切换、刷新保留历史页与左右翻页；聊天输入区首次进入时以 420ms 淡入并从下方轻移 20px，动画层使用页面同色合成底以避免 Android elevation 阴影产生黑色中间帧；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
+| AI UI | 工作台、聊天、会话设置、角色库、角色详情、材料、知识库、文档 reader、历史；聊天消息与日记按北京时间自然日插入独立 `dateSeparator` 列表项，当天/前一天显示“今天/昨天”，每个自然日只出现一次且不会进入 reasoning 或正文节点；聊天首屏将消息页与非关键模型/外观/记录读取分阶段加载，并合并模型图标与名称查询，返回工作台优先显示内存快照再后台刷新；聊天页支持左侧菜单按钮和全屏右滑打开综合记录抽屉、左滑打开会话设置抽屉，顶部搜索靠近抽屉入口，右侧提供会话设置与聊天气泡形态的新会话入口；会话设置抽屉固定显示线程标题与用量入口，快捷操作随内容滚动，模型名称精简展示，角色指令以只读预览进入全屏编辑，并可展开共用头像选择器；消息长按菜单按手指所在屏幕半区在触点上方或下方 `5px` 弹出，键盘压缩视口时操作列表在菜单内滚动并保持触点锚定，流式回复的正文/思考尾段和降级 continuation 路径同样可长按；用户消息提供复制、全屏选择文本和修改，AI 消息保留复制、全屏选择文本、收藏、继续生成、续答/回复、重新生成的独立入口，菜单底部始终显示 `HH:mm`；非最新消息不显示常驻操作栏，只有版本切换继续留在气泡下方，最新 AI 回复可保留原操作栏；输入框左下角模型图标右侧提供小灯泡 `AI 帮答` 入口，弹出固定高度的底部阅读器式候选面板，支持短句/长句切换、刷新保留历史页与左右翻页；聊天输入区首次进入时以 420ms 淡入并从下方轻移 20px，动画层使用页面同色合成底以避免 Android elevation 阴影产生黑色中间帧；“我的头像”默认开启，显式关闭按会话保留 | `src/screens/Ai*.tsx`, `src/components/ai/` |
 
 ---
 

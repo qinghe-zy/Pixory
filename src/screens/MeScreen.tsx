@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   coreAssetCount: {
-    fontFamily: typography.family.stat,
+    fontFamily: typography.family.mono,
     fontSize: 42,
     fontWeight: '700',
     color: colors.text.title,

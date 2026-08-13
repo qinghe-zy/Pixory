@@ -923,18 +923,27 @@ export function AiChatScreen({
   spaceRef.current = space;
 
 
-  // Right-swipe anywhere on the chat surface opens the record drawer.
+  // Right-swipe opens the left record drawer; left-swipe opens the right config drawer.
   const swipeDrawerPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gs) =>
-        gs.dx > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
+        Math.abs(gs.dx) > DRAWER_SWIPE_ACTIVATION_DISTANCE &&
         Math.abs(gs.dx) > Math.abs(gs.dy) * DRAWER_SWIPE_HORIZONTAL_RATIO,
       onPanResponderRelease: (_evt, gs) => {
+        // Right swipe → left record drawer
         if (
           gs.dx > DRAWER_SWIPE_RELEASE_DISTANCE ||
           (gs.dx > DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx > 0.18)
         ) {
           setRecordDrawerVisible(true);
+          return;
+        }
+        // Left swipe → right config drawer
+        if (
+          gs.dx < -DRAWER_SWIPE_RELEASE_DISTANCE ||
+          (gs.dx < -DRAWER_SWIPE_ACTIVATION_DISTANCE && gs.vx < -0.18)
+        ) {
+          setConfigDrawerVisible(true);
         }
       },
     }),

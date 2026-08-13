@@ -196,16 +196,18 @@ test('role card import remains local only', () => {
 
 test('role editor keeps IP avatar images collapsed until the user selects an IP', () => {
   const editor = read('src/screens/AiRoleCardEditorScreen.tsx');
+  const avatarPicker = read('src/components/ai/AiAvatarPicker.tsx');
 
   assert.match(editor, /ROLE_CONTENT_TEXTAREA_MIN_HEIGHT = 168/);
   assert.match(editor, /minHeight=\{ROLE_CONTENT_TEXTAREA_MIN_HEIGHT\}/);
   assert.doesNotMatch(editor, /minHeight=\{240\}/);
-  assert.match(editor, /setAvatarIpId\(\(current\) => current && nextIps\.some\(\(ip\) => ip\.id === current\) \? current : null\)/);
-  assert.match(editor, /avatarIpId == null \? null : avatarCandidates\.length \? \(/);
-  assert.match(editor, /styles\.avatarGrid/);
-  assert.match(editor, /当前 IP 还没有可用图片。/);
-  assert.match(editor, /avatarPanel:\s*\{[\s\S]{0,220}gap:\s*rhythm\.inlineGap[\s\S]{0,120}padding:\s*spacing\[2\]/);
-  assert.match(editor, /avatarChoice:\s*\{[\s\S]{0,180}height:\s*metrics\.minTouchSize[\s\S]{0,80}width:\s*metrics\.minTouchSize/);
+  assert.match(editor, /<AiAvatarPicker/);
+  assert.match(avatarPicker, /setAvatarIpId\(\(current\) => current && nextIps\.some\(\(ip\) => ip\.id === current\) \? current : null\)/);
+  assert.match(avatarPicker, /avatarIpId == null \? null : avatarCandidates\.length \? \(/);
+  assert.match(avatarPicker, /styles\.avatarGrid/);
+  assert.match(avatarPicker, /该 IP 下暂无可用图片。/);
+  assert.match(avatarPicker, /ipAvatarPicker:\s*\{[\s\S]{0,100}gap:\s*rhythm\.inlineGap/);
+  assert.match(avatarPicker, /avatarChoice:\s*\{[\s\S]{0,180}width:\s*metrics\.minTouchSize,[\s\S]{0,80}height:\s*metrics\.minTouchSize/);
 });
 
 test('imported role cards use strict de-duplication by exact source payload before creating a new library entry', () => {

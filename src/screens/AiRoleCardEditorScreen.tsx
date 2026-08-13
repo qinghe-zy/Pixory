@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AiAvatarPicker } from '../components/ai/AiAvatarPicker';
 import { AiLightButton } from '../components/ai/AiLightButton';
 import { AiLightInputRow, AiLightTextareaRow } from '../components/ai/AiLightField';
 import { AiRoleCardImportPreview } from '../components/ai/AiRoleCardImportPreview';
@@ -85,9 +85,7 @@ export function AiRoleCardEditorScreen({
   const [sourceJson, setSourceJson] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [cards, setCards] = useState<AiRoleCardRecord[]>([]);
-  const [ips, setIps] = useState<IpListItem[]>([]);
-  const [avatarIpId, setAvatarIpId] = useState<number | null>(null);
-  const [avatarCandidates, setAvatarCandidates] = useState<ImageListItem[]>([]);
+
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [importedRole, setImportedRole] = useState<NormalizedSillyTavernRoleCard | null>(null);
@@ -104,26 +102,9 @@ export function AiRoleCardEditorScreen({
     setCards(nextCards);
   }, [space]);
 
-  const loadIps = useCallback(async () => {
-    const nextIps = await runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItems(db));
-    setIps(nextIps);
-    setAvatarIpId((current) => current && nextIps.some((ip) => ip.id === current) ? current : null);
-  }, [space]);
-
   useEffect(() => {
     void loadCards();
-    void loadIps();
-  }, [loadCards, loadIps]);
-
-  useEffect(() => {
-    if (avatarIpId == null) {
-      setAvatarCandidates([]);
-      return;
-    }
-    void runWithDatabaseSpace(space, (db) => imageRepository.findByIpId(db, avatarIpId, { mediaType: 'image' })).then((images) => {
-      setAvatarCandidates(images);
-    });
-  }, [avatarIpId, space]);
+  }, [loadCards]);
 
   function createCurrentDraft(): RoleCardEditorDraft {
     return {
@@ -221,29 +202,7 @@ export function AiRoleCardEditorScreen({
     loadCardIntoEditor(card);
   }, [cards, roleCardId]);
 
-  async function pickAvatarFromAlbum() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setStatus('需要相册权限才能选择角色头像。');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsMultipleSelection: false,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
-    });
-    if (result.canceled || !result.assets[0]?.uri) {
-      return;
-    }
-    try {
-      const copiedUri = await copyAiRoleAvatarToAppStorage(result.assets[0].uri, space);
-      setAvatarUri(copiedUri);
-      setAvatarEnabled(true);
-      setStatus('头像已选择。');
-    } catch (error) {
-      setStatus(error instanceof Error ? `头像选择失败：${error.message}` : '头像选择失败');
-    }
-  }
+
 
   function isJsonAsset(asset: DocumentPicker.DocumentPickerAsset): boolean {
     return asset.mimeType === 'application/json' || asset.name.toLowerCase().endsWith('.json');
@@ -464,51 +423,16 @@ export function AiRoleCardEditorScreen({
         </View>
         <View style={styles.inlineActions}>
           <AiLightButton label={avatarEnabled ? '隐藏头像' : '启用头像'} onPress={() => setAvatarEnabled((current) => !current)} variant="outline" />
-          <AiLightButton label="从相册选择" onPress={() => void pickAvatarFromAlbum()} variant="ghost" />
-          {avatarUri ? <AiLightButton label="清除头像" onPress={() => setAvatarUri(null)} variant="ghost" /> : null}
         </View>
-        {ips.length ? (
-          <View style={styles.ipAvatarPicker}>
-            <Text style={styles.caption}>从 IP 选择</Text>
-            <View style={styles.ipChipRow}>
-              {ips.slice(0, 8).map((ip) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={ip.id}
-                  onPress={() => setAvatarIpId(ip.id)}
-                  style={({ pressed }) => [styles.ipChip, avatarIpId === ip.id && styles.ipChipActive, pressed && styles.pressed]}
-                >
-                  <Text numberOfLines={1} style={[styles.ipChipText, avatarIpId === ip.id && styles.ipChipTextActive]}>{ip.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {avatarIpId == null ? null : avatarCandidates.length ? (
-              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={styles.avatarGridScroll}>
-                <View style={styles.avatarGrid}>
-                  {avatarCandidates.map((image) => {
-                    const candidateUri = image.coverThumbnailFileUri ?? image.thumbnailFileUri ?? image.originalFileUri;
-                    const active = avatarUri === candidateUri;
-                    return (
-                      <Pressable
-                        accessibilityRole="button"
-                        key={image.id}
-                        onPress={() => {
-                          setAvatarUri(candidateUri);
-                          setAvatarEnabled(true);
-                        }}
-                        style={({ pressed }) => [styles.avatarChoice, active && styles.avatarChoiceActive, pressed && styles.pressed]}
-                      >
-                        <SecureImage contentFit="cover" space={space} style={styles.avatarChoiceImage} uri={candidateUri} />
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            ) : (
-              <Text style={styles.caption}>当前 IP 还没有可用图片。</Text>
-            )}
-          </View>
-        ) : null}
+        <AiAvatarPicker
+          avatarUri={avatarUri}
+          onAvatarChange={(uri) => {
+            setAvatarUri(uri);
+            if (uri) setAvatarEnabled(true);
+          }}
+          space={space}
+          onError={(err) => setStatus(err instanceof Error ? err.message : String(err))}
+        />
       </View>
 
       <View style={styles.actions}>
