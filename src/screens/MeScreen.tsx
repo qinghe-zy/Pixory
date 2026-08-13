@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import Reanimated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -330,12 +331,7 @@ export function MeScreen({
             <View style={styles.coreAssetBody}>
               <View style={styles.coreAssetCountRow}>
                 <Text style={styles.coreAssetCount}>{data?.favoriteImageCount ?? 0}</Text>
-                <View style={styles.sparkline}>
-                  <View style={[styles.sparklineBar, { height: 6 }]} />
-                  <View style={[styles.sparklineBar, { height: 12 }]} />
-                  <View style={[styles.sparklineBar, { height: 4 }]} />
-                  <View style={[styles.sparklineBar, { height: 9 }]} />
-                </View>
+                <AnimatedSparkline heights={[6, 12, 4, 9]} />
               </View>
               <Text style={styles.coreAssetTitle}>收藏图片</Text>
             </View>
@@ -356,12 +352,7 @@ export function MeScreen({
             <View style={styles.coreAssetBody}>
               <View style={styles.coreAssetCountRow}>
                 <Text style={styles.coreAssetCount}>{data?.recentViewedCount ?? 0}</Text>
-                <View style={styles.sparkline}>
-                  <View style={[styles.sparklineBar, { height: 4 }]} />
-                  <View style={[styles.sparklineBar, { height: 9 }]} />
-                  <View style={[styles.sparklineBar, { height: 11 }]} />
-                  <View style={[styles.sparklineBar, { height: 5 }]} />
-                </View>
+                <AnimatedSparkline heights={[4, 9, 11, 5]} />
               </View>
               <Text style={styles.coreAssetTitle}>最近查看</Text>
             </View>
@@ -445,7 +436,41 @@ export function MeScreen({
 }
 
 
-function StatBlock({ label, value }: { label: string; value: number }) {
+function AnimatedSparklineBar({ baseHeight, delay }: { baseHeight: number; delay: number }) {
+  const currentHeight = useSharedValue(baseHeight);
+  
+  useEffect(() => {
+    // 基础高度的 30% 到 100% 之间错落呼吸
+    currentHeight.value = withDelay(delay, withRepeat(
+      withSequence(
+        withTiming(Math.max(3, baseHeight * 0.3), { duration: 600 }),
+        withTiming(baseHeight, { duration: 700 }),
+        withTiming(Math.max(4, baseHeight * 0.6), { duration: 500 }),
+        withTiming(baseHeight, { duration: 600 }),
+      ),
+      -1, // infinite
+      true // reverse
+    ));
+  }, [baseHeight, delay, currentHeight]);
+
+  const style = useAnimatedStyle(() => ({
+    height: currentHeight.value,
+  }));
+
+  return <Reanimated.View style={[styles.sparklineBar, style]} />;
+}
+
+function AnimatedSparkline({ heights }: { heights: number[] }) {
+  return (
+    <View style={styles.sparkline}>
+      {heights.map((h, i) => (
+        <AnimatedSparklineBar key={i} baseHeight={h} delay={i * 200} />
+      ))}
+    </View>
+  );
+}
+
+function StatBlock({ label, value }: { label: string; value: number | string }) {
   return (
     <View style={styles.statBlock}>
       <Text style={styles.statLabel}>{label}</Text>
