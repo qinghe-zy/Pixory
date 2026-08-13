@@ -63,29 +63,29 @@ function ProfileMemoryCore() {
 
   const style1 = useAnimatedStyle(() => {
     const a = (rot1.value * Math.PI) / 180;
-    const x = 32 * Math.cos(a);
-    const y = 32 * Math.sin(a);
+    const x = 11 * Math.cos(a);
+    const y = 11 * Math.sin(a);
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
   const style2 = useAnimatedStyle(() => {
     const a = (rot2.value * Math.PI) / 180;
-    const x = 48 * Math.cos(a);
-    const y = 48 * Math.sin(a) * 0.342; // cos(70)
+    const x = 16 * Math.cos(a);
+    const y = 16 * Math.sin(a) * 0.342; // cos(70)
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
   const style3 = useAnimatedStyle(() => {
     const a = (rot3.value * Math.PI) / 180;
-    const x = 64 * Math.cos(a);
-    const y = 64 * Math.sin(a) * 0.422; // cos(65)
+    const x = 21 * Math.cos(a);
+    const y = 21 * Math.sin(a) * 0.422; // cos(65)
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
   const style4 = useAnimatedStyle(() => {
     const a = (rot4.value * Math.PI) / 180;
-    const x = 80 * Math.cos(a);
-    const y = 80 * Math.sin(a) * 0.258; // cos(75)
+    const x = 27 * Math.cos(a);
+    const y = 27 * Math.sin(a) * 0.258; // cos(75)
     return { transform: [{ translateX: x }, { translateY: y }] };
   });
 
@@ -95,11 +95,11 @@ function ProfileMemoryCore() {
     <View style={styles.coreContainer}>
       <Reanimated.View style={[styles.coreDot, coreStyle]} />
       
-      {/* 静止的虚线轨道体系 */}
+      {/* 静止的虚线轨道体系 - 注意先 rotateX 再 rotateZ，这样才和星星的一致！ */}
       <View style={styles.orbit1} />
       <View style={[styles.orbit2, { transform: [{ rotateX: '70deg' }] }]} />
-      <View style={[styles.orbit3, { transform: [{ rotateZ: '60deg' }, { rotateX: '65deg' }] }]} />
-      <View style={[styles.orbit4, { transform: [{ rotateZ: '-45deg' }, { rotateX: '75deg' }] }]} />
+      <View style={[styles.orbit3, { transform: [{ rotateX: '65deg' }, { rotateZ: '60deg' }] }]} />
+      <View style={[styles.orbit4, { transform: [{ rotateX: '75deg' }, { rotateZ: '-45deg' }] }]} />
 
       {/* 运动的星球实体 (绝对居中，依靠 translateX/Y 实现运动) */}
       <Reanimated.View style={[styles.planet1, style1]} />
@@ -308,7 +308,6 @@ export function MeScreen({
   return (
     <ScreenScaffold backgroundVariant="profile" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
       <ContentCard style={styles.heroCard}>
-        <ProfileMemoryCore />
         <Pressable
           accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}
           accessibilityRole="button"
@@ -350,6 +349,7 @@ export function MeScreen({
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
                 <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
               </Pressable>
+              <ProfileMemoryCore />
             </View>
           </View>
         </View>
@@ -720,21 +720,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   coreContainer: {
-    position: 'absolute',
-    right: -20,
-    top: 50,
-    width: 160,
-    height: 160,
+    width: 54,
+    height: 54,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 0,
-    pointerEvents: 'none',
+    marginLeft: spacing[2],
   },
   coreDot: {
     position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.text.primary,
   },
   orbitWrapper: {
@@ -744,9 +740,9 @@ const styles = StyleSheet.create({
   },
   orbit1: {
     position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
     justifyContent: 'center',
@@ -754,16 +750,16 @@ const styles = StyleSheet.create({
   },
   planet1: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: colors.support.mint300,
   },
   orbit2: {
     position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
@@ -772,16 +768,16 @@ const styles = StyleSheet.create({
   },
   planet2: {
     position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: colors.support.lilac300,
   },
   orbit3: {
     position: 'absolute',
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
     justifyContent: 'center',
@@ -789,16 +785,16 @@ const styles = StyleSheet.create({
   },
   planet3: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: colors.support.sky300,
   },
   orbit4: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
     justifyContent: 'center',
@@ -806,9 +802,9 @@ const styles = StyleSheet.create({
   },
   planet4: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: colors.support.coral400,
   },
   storageLegendDot: {

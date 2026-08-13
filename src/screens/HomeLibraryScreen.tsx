@@ -369,48 +369,82 @@ function HomeBrandHeader() {
     return '夜深了';
   }, []);
   
+  const timeT = useSharedValue(0);
   const rot1 = useSharedValue(0);
   const rot2 = useSharedValue(0);
   const rot3 = useSharedValue(0);
 
   useEffect(() => {
-    rot1.value = withRepeat(withTiming(360, { duration: 15000, easing: Easing.linear }), -1, false);
-    rot2.value = withRepeat(withTiming(-360, { duration: 20000, easing: Easing.linear }), -1, false);
-    rot3.value = withRepeat(withTiming(360, { duration: 25000, easing: Easing.linear }), -1, false);
-  }, [rot1, rot2, rot3]);
+    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
+    rot1.value = withRepeat(withTiming(Math.PI * 2, { duration: 15000, easing: Easing.linear }), -1, false);
+    rot2.value = withRepeat(withTiming(-Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
+    rot3.value = withRepeat(withTiming(Math.PI * 2, { duration: 25000, easing: Easing.linear }), -1, false);
+  }, [timeT, rot1, rot2, rot3]);
 
-  // 利用 3D 旋转构建轨道，使纯圆环在视觉上变成不同角度的椭圆
-  const orbitStyle1 = useAnimatedStyle(() => ({ transform: [{ rotateX: '60deg' }, { rotateZ: `${rot1.value}deg` }] }));
-  const orbitStyle2 = useAnimatedStyle(() => ({ transform: [{ rotateY: '60deg' }, { rotateZ: `${rot2.value}deg` }] }));
-  const orbitStyle3 = useAnimatedStyle(() => ({ transform: [{ rotateX: '-30deg' }, { rotateY: '45deg' }, { rotateZ: `${rot3.value}deg` }] }));
+  const textStyle = useAnimatedStyle(() => {
+    const color = interpolateColor(
+      timeT.value,
+      [0, Math.PI / 4, (Math.PI * 2) / 3, Math.PI, (Math.PI * 5) / 4, (Math.PI * 4) / 3, Math.PI * 2],
+      [
+        colors.support.sky300,
+        colors.support.mint300,
+        colors.support.sky300,
+        colors.support.lilac300,
+        colors.support.mint300,
+        colors.support.sky300,
+        colors.support.sky300,
+      ]
+    );
+    return { color };
+  });
+
+  const star1Style = useAnimatedStyle(() => {
+    const a = rot1.value;
+    const x = 9 * Math.cos(a);
+    const y = 9 * Math.sin(a) * 0.5; // cos(60deg)
+    const scale = 1.0 + 0.3 * Math.sin(a);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
+  });
+
+  const star2Style = useAnimatedStyle(() => {
+    const a = rot2.value;
+    const x = 12 * Math.cos(a) * 0.5; // cos(60deg)
+    const y = 12 * Math.sin(a);
+    const scale = 1.0 + 0.3 * Math.sin(a);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
+  });
+
+  const star3Style = useAnimatedStyle(() => {
+    const a = rot3.value;
+    const x = 15 * Math.cos(a);
+    const y = 15 * Math.sin(a) * 0.342; // cos(70deg)
+    const scale = 1.0 + 0.3 * Math.sin(a);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
+  });
 
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <Text style={[styles.brandGreetingText, { color: colors.text.title }]}>
+        <Animated.Text style={[styles.brandGreetingText, textStyle]}>
           {greeting}
-        </Text>
+        </Animated.Text>
         <View style={styles.binaryStarsContainer}>
-          {/* 极淡的虚线轨道 */}
+          {/* 极淡的虚线轨道 - 修正旋转顺序：先通过 rotateX 压扁成椭圆，再 rotateZ 旋转该椭圆，与星星包装器保持一致 */}
           <View style={[styles.faintOrbit, { width: 18, height: 18, borderRadius: 9, transform: [{ rotateX: '60deg' }] }]} />
           <View style={[styles.faintOrbit, { width: 24, height: 24, borderRadius: 12, transform: [{ rotateY: '60deg' }] }]} />
-          <View style={[styles.faintOrbit, { width: 30, height: 30, borderRadius: 15, transform: [{ rotateX: '-30deg' }, { rotateY: '45deg' }] }]} />
+          <View style={[styles.faintOrbit, { width: 30, height: 30, borderRadius: 15, transform: [{ rotateX: '70deg' }, { rotateZ: '45deg' }] }]} />
           
           {/* 星星实体 */}
-          <Animated.View style={[styles.orbitWrapper, { width: 18, height: 18 }, orbitStyle1]}>
-             <View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }]} />
-          </Animated.View>
-          <Animated.View style={[styles.orbitWrapper, { width: 24, height: 24 }, orbitStyle2]}>
-             <View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }]} />
-          </Animated.View>
-          <Animated.View style={[styles.orbitWrapper, { width: 30, height: 30 }, orbitStyle3]}>
-             <View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }]} />
-          </Animated.View>
+          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }, star1Style]} />
+          <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }, star2Style]} />
+          <View style={{ position: 'absolute', transform: [{ rotateZ: '45deg' }] }}>
+            <Animated.View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }, star3Style]} />
+          </View>
         </View>
       </View>
-      <Text style={styles.brandSubtitleText}>
+      <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
         PIXORY · PRIVATE ARCHIVE
-      </Text>
+      </Animated.Text>
     </View>
   );
 }
@@ -445,10 +479,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   binaryStar: {
+    position: 'absolute',
     width: 6,
     height: 6,
     borderRadius: 3,
-    marginTop: -3,
     opacity: 0.9,
   },
   brandGreetingText: {
