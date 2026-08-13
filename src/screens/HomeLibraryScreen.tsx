@@ -207,13 +207,20 @@ export function HomeLibraryScreen({
     >
       <View style={styles.topArea}>
         <View style={styles.searchWithDecor}>
-          <RhythmBars
-            barGap={5}
-            barWidth={3}
-            maxBarHeight={24}
-            minBarHeight={7}
-            style={styles.rhythmDecor}
-          />
+          <View style={styles.rhythmDecorRow}>
+            <RhythmBars
+              barGap={5}
+              barWidth={3}
+              maxBarHeight={24}
+              minBarHeight={7}
+            />
+            <RhythmBars
+              barGap={5}
+              barWidth={3}
+              maxBarHeight={24}
+              minBarHeight={7}
+            />
+          </View>
           <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
         </View>
         {needsOrganizingCount > 0 ? (
@@ -536,8 +543,12 @@ const styles = StyleSheet.create({
   searchWithDecor: {
     gap: 2, // tiny breathing room between bars and search bar
   },
-  rhythmDecor: {
+  rhythmDecorRow: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: 5,
     height: 24,
+    marginLeft: 16,
   },
   filterRow: {
     flexDirection: 'row',
