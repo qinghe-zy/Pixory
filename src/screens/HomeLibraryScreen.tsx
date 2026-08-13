@@ -429,7 +429,7 @@ function HomeBrandHeader() {
         <View style={styles.binaryStarsContainer}>
           <Animated.View style={[styles.binaryStar, { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
           <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300, zIndex: 2 }, star2Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.support.mint200, zIndex: 1 }, star3Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.support.mint100, zIndex: 1 }, star3Style]} />
         </View>
       </View>
       <Text style={styles.brandSubtitleText}>
