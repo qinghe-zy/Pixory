@@ -50,8 +50,6 @@ import type { AiBoundaryMode, AiContextType, AiReplyPreference, AiRoleInstructio
 import { radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { runWithDatabaseSpace, settingsRepository, type PixorySpace } from '../database';
 import { BUILT_IN_PROVIDERS } from '../ai/aiConstants';
-import { PET_MODELS } from '../config/petModels';
-import { Live2DPetManagerModal } from '../components/ai/Live2DPetManagerModal';
 import { cancelPendingDiaryJobs } from '../ai/diary/diarySchedulerService';
 import { isCompanionAwarenessEnabled, setCompanionAwarenessEnabled } from '../ai/companion/companionSettingsService';
 
@@ -235,8 +233,6 @@ export function AiSessionConfigScreen({
   const [sessionModelConfig, setSessionModelConfig] = useState<AiThreadSessionModelConfig | null>(null);
   const [sessionBaseUrlDraft, setSessionBaseUrlDraft] = useState('');
   const [isSystemThinking, setIsSystemThinking] = useState(false);
-  const [currentPetModelId, setCurrentPetModelId] = useState<string | null>(null);
-  const [petManagerVisible, setPetManagerVisible] = useState(false);
   const [sessionApiKeyDraft, setSessionApiKeyDraft] = useState('');
   const [manualSessionModelDraft, setManualSessionModelDraft] = useState('');
   const [selectedSessionModelKeys, setSelectedSessionModelKeys] = useState<string[]>([]);
@@ -360,19 +356,6 @@ export function AiSessionConfigScreen({
     threadId,
     userAvatarEnabled,
   ]);
-
-  useEffect(() => {
-    let isMounted = true;
-    void runWithDatabaseSpace('normal', async (db) => {
-      const loadedPetModelId = await settingsRepository.getValue(db, 'GLOBAL_PET_MODEL_ID');
-      if (isMounted) {
-        setCurrentPetModelId(loadedPetModelId === '' ? null : (loadedPetModelId ?? PET_MODELS[0].id));
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     void reloadConfig();
@@ -947,24 +930,6 @@ export function AiSessionConfigScreen({
     return normalized ? `最近一次远程维护失败，已使用本地轻量整理：${normalized}` : '最近一次远程维护失败，已使用本地轻量整理。';
   }
 
-  const handleSelectPetModel = async (id: string | null) => {
-    const isChanging = id !== currentPetModelId;
-    setCurrentPetModelId(id);
-    await runWithDatabaseSpace('normal', async (db) => {
-      await settingsRepository.setValue(db, 'GLOBAL_PET_MODEL_ID', id ?? '');
-      if (isChanging && id) {
-        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_X', '0');
-        await settingsRepository.setValue(db, 'GLOBAL_PET_OFFSET_Y', '0');
-        await settingsRepository.setValue(db, 'GLOBAL_PET_SCALE', '1');
-      }
-    });
-    
-    import('react-native').then(({ DeviceEventEmitter }) => {
-      DeviceEventEmitter.emit('LIVE2D_MODEL_CHANGED');
-    });
-  };
-
-
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
@@ -1263,14 +1228,6 @@ export function AiSessionConfigScreen({
         visible={deleteDialogVisible}
       />
 
-      <Live2DPetManagerModal
-        visible={petManagerVisible}
-        currentModelId={currentPetModelId}
-        onClose={() => setPetManagerVisible(false)}
-        onSelect={(id) => {
-          void handleSelectPetModel(id);
-        }}
-      />
       <AppDialog
         accent="ai"
         onClose={() => setUsageModalVisible(false)}
@@ -1500,15 +1457,6 @@ export function AiSessionConfigScreen({
         primaryLabel={saving ? '正在移入' : '移入回收站'}
         title="删除当前会话"
         visible={deleteDialogVisible}
-      />
-      <Live2DPetManagerModal
-        visible={petManagerVisible}
-        currentModelId={currentPetModelId}
-        onClose={() => setPetManagerVisible(false)}
-        onSelect={(id) => {
-          void handleSelectPetModel(id);
-          setPetManagerVisible(false);
-        }}
       />
     </>
   );

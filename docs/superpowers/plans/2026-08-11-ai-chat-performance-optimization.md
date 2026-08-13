@@ -10,6 +10,29 @@
 
 ---
 
+## 2026-08-13 execution audit
+
+下表是本计划的实际执行状态源；下方逐步 checkbox 保留为原始执行配方，不再用未勾选状态表示“尚未执行”。第二轮复审由主会话独立完成，遵守用户“不使用 subagent”的要求。
+
+| Task | 状态 | 实际结果与偏差 |
+|---|---|---|
+| 1 基线 | 已完成 | 使用隔离 worktree 和 `codex/ai-chat-performance-core`；基线问题先核因后修改。 |
+| 2 generation query | 已完成 | `0e848ff` 证明 UNIQUE auto-index 生效，未改生产 SQL。 |
+| 3 benchmark | 已完成 | `73bb677` 增加非门禁 Node benchmark；复审补充小输入耗时字段，scratch 证据不提交。 |
+| 4 token estimator | 已完成、复审补证 | `e6bb81c` 保持估算/裁剪语义；复审补齐 1MB fixture 和 400 组确定性旧实现等价对照。 |
+| 5 KaTeX | 已完成、设备待验 | `3ec69c9` 按 `math` memo；策略测试通过，Android WebView 高度回传仍阻塞。 |
+| 6 knowledge SQL | 已完成、复审纠偏 | `73758f5`/`b8bbec8` 批量化；复审发现重复逻辑键会留下多条记录，现恢复 last-write-wins 并覆盖 normal/personal。 |
+| 7 message render | 安全部分已完成、设备阻塞 | `48e8d8c` 只保留 rich-HTML predicate memo；组件 comparator 未获 Android profiler 授权。 |
+| 8 worker pool | 已完成 | `ee2df51` 的顺序、并发上限和 partial settlement 测试通过。 |
+| 9 embedding service | 已完成、复审纠偏 | `893959a` 接入并发 3；复审补服务级并发/失败测试，并修复部分补全误删同模型已有向量。重试/退避仍不在本轮。 |
+| 10 native-driver | 已完成后被取代 | `2877426` 曾完成独立 opacity 修改；`fab5eac` 随用户要求完整关闭 Live2D 运行时，相关动画/手势入口已删除。 |
+| 11 Android gate | 已记录为 BLOCKED | `chat-performance-wave3-gate.md` 已列全场景；无设备，不实施 detached store、单源测量、splitter 或 drawer 重构。 |
+| 12 final verification | 已完成、Android 阻塞 | 复审聚焦套件 146 pass/0 fail/1 skip，完整套件 1018 pass/0 fail/15 skip，typecheck 与完整差异 whitespace 检查通过；adb 无设备。 |
+
+复审还确认上一轮 `git diff --check` 只检查了工作区增量，未覆盖已经提交的完整分支差异，因而漏掉 11 处文档行尾空格。本轮已清理，并把 `5b73674..HEAD` 完整差异检查纳入最终门禁。
+
+集成边界：复审时 `main` 比本分支多 12 个提交，`AiChatScreen.tsx` 与 `AiSessionConfigScreen.tsx` 在双方均有修改，merge-tree 已显示会话设置冲突；`main` 当前仍含 Live2D 引用。按用户要求本轮不 rebase、不合并，后续集成必须在保留 main 新 UI 的同时重新应用运行时关闭并复跑本计划门禁。
+
 ## Scope and execution rules
 
 - Start from documentation commit `06dd861` or a descendant containing the reviewed report, triage, and design.
@@ -30,6 +53,7 @@
 - `tests/ai-knowledge-repository-performance-integration.test.cjs` — statement-count and data-integrity tests for document deletion and embedding replacement.
 - `src/ai/aiBoundedConcurrency.ts` — small deterministic worker-pool helper used by embedding generation.
 - `tests/ai-bounded-concurrency-unit.test.cjs` — worker-limit, ordering, and partial-failure tests.
+- `tests/ai-embedding-service-integration.test.cjs` — service-level concurrency, partial-result, and existing-vector preservation tests.
 - `docs/ai-chat-research/chat-performance-wave3-gate.md` — populated Android measurement record and go/no-go decisions.
 
 **Modify:**
@@ -43,7 +67,7 @@
 - `src/ai/aiEmbeddingService.ts` — use bounded concurrency while preserving the existing result contract.
 - `src/components/ai/AiMessageContent.tsx` — only apply the benchmark-confirmed rich-HTML predicate cache; component-level memo is conditional on the profiler gate.
 - `src/screens/AiChatScreen.tsx` — only the independently safe `resizeHandleOpacity` native-driver change in this plan.
-- `docs/feature-matrix.md` — record new performance regression coverage and the bounded manual embedding path.
+- `docs/feature-matrix.md` — record new performance regression coverage and the bounded provider-configured document embedding path.
 - `docs/ai-chat-research/chat_performance_report_v2_triage.md` — record implemented/no-change decisions, commits, commands, and measurements.
 
 ## Reviewed finding coverage
@@ -1113,7 +1137,7 @@ assert.doesNotMatch(embeddingContent, /retry|backoff|AbortSignal/);
 
 - [ ] **Step 3: Update feature matrix**
 
-In the Provider or document-lifecycle row, state that manual embedding generation uses bounded concurrency of three while retries/backoff remain unimplemented P2 work. Do not claim the companion runtime automatically enables embeddings.
+In the Provider or document-lifecycle row, state that provider-configured document indexing uses bounded concurrency of three while retries/backoff remain unimplemented P2 work. Material import/reparse does attempt embedding generation when a usable default model and key exist; ordinary chat does not unconditionally enable or call embeddings.
 
 - [ ] **Step 4: Verify**
 
@@ -1294,7 +1318,7 @@ Do not advertise Node microbenchmark timing as Android performance. Keep embeddi
 - [ ] **Step 3: Run focused suites**
 
 ```powershell
-node --test tests/ai-context-budget-unit.test.cjs tests/ai-generation-repository-integration.test.cjs tests/ai-knowledge-repository-performance-integration.test.cjs tests/ai-bounded-concurrency-unit.test.cjs tests/ai-rag-policy.test.cjs tests/ai-chat-performance-hardening-policy.test.cjs tests/ai-chat-streaming-tail-contract.test.cjs tests/ai-chat-streaming-tail-render-contract.test.cjs tests/ai-chat-fixes-policy.test.cjs
+node --test tests/ai-context-budget-unit.test.cjs tests/ai-generation-repository-integration.test.cjs tests/ai-knowledge-repository-performance-integration.test.cjs tests/ai-bounded-concurrency-unit.test.cjs tests/ai-embedding-service-integration.test.cjs tests/ai-rag-policy.test.cjs tests/ai-chat-performance-hardening-policy.test.cjs tests/ai-chat-streaming-tail-contract.test.cjs tests/ai-chat-streaming-tail-render-contract.test.cjs tests/ai-chat-fixes-policy.test.cjs tests/live2d-runtime-disabled-policy.test.cjs
 ```
 
 Expected: zero failures.
@@ -1318,7 +1342,7 @@ Run:
 D:\Develop\Android\Sdk\platform-tools\adb.exe devices
 ```
 
-If a device is present, use the existing debug build/install path and verify Composer sizing, math rendering, detached scrolling, drawer controls, and manual embedding generation. Do not uninstall an existing app or destroy user data to resolve a signature mismatch.
+If a device is present, use the existing debug build/install path and verify Composer sizing, math rendering, detached scrolling, drawer controls, and provider-configured material embedding generation. Do not uninstall an existing app or destroy user data to resolve a signature mismatch.
 
 - [ ] **Step 6: Commit final evidence**
 
