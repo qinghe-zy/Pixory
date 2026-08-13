@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
     gap: spacing[1],
   },
   nameRow: {
-    alignItems: 'flex-end',
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 4,
   },
