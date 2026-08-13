@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, interpolateColor, Easing } from 'react-native-reanimated';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -369,13 +369,12 @@ function HomeBrandHeader() {
     return '夜深了';
   }, []);
   
-  const orbScale = useSharedValue(0.7);
-  const orbOpacity = useSharedValue(0.4);
   const textShimmer = useSharedValue(0);
+  const starsTheta = useSharedValue(0);
 
   useEffect(() => {
-    orbScale.value = withRepeat(withTiming(1.2, { duration: 1500 }), -1, true);
-    orbOpacity.value = withRepeat(withTiming(1, { duration: 1500 }), -1, true);
+    // 双星旋转周期 4 秒
+    starsTheta.value = withRepeat(withTiming(Math.PI * 2, { duration: 4000, easing: Easing.linear }), -1, false);
 
     textShimmer.value = withRepeat(
       withSequence(
@@ -386,12 +385,7 @@ function HomeBrandHeader() {
       -1,
       false
     );
-  }, [orbScale, orbOpacity, textShimmer]);
-
-  const orbStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: orbScale.value }],
-    opacity: orbOpacity.value,
-  }));
+  }, [textShimmer, starsTheta]);
 
   const textStyle = useAnimatedStyle(() => {
     const color = interpolateColor(
@@ -402,13 +396,34 @@ function HomeBrandHeader() {
     return { color };
   });
 
+  const star1Style = useAnimatedStyle(() => {
+    const x = Math.cos(starsTheta.value) * 2;
+    const y = Math.sin(starsTheta.value) * 2;
+    const scale = 0.9 + 0.2 * Math.sin(starsTheta.value * 2);
+    return {
+      transform: [{ translateX: x }, { translateY: y }, { scale }],
+    };
+  });
+
+  const star2Style = useAnimatedStyle(() => {
+    const x = Math.cos(starsTheta.value + Math.PI) * 2.5;
+    const y = Math.sin(starsTheta.value + Math.PI) * 2.5;
+    const scale = 0.9 + 0.2 * Math.sin(starsTheta.value * 2 + Math.PI);
+    return {
+      transform: [{ translateX: x }, { translateY: y }, { scale }],
+    };
+  });
+
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
         <Animated.Text style={[styles.brandGreetingText, textStyle]}>
           {greeting}
         </Animated.Text>
-        <Animated.View style={[styles.brandOrb, orbStyle]} />
+        <View style={styles.binaryStarsContainer}>
+          <Animated.View style={[styles.binaryStar, { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.support.mint300 }, star1Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300 }, star2Style]} />
+        </View>
       </View>
       <Text style={styles.brandSubtitleText}>
         PIXORY · PRIVATE ARCHIVE
@@ -427,11 +442,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing[2],
   },
-  brandOrb: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.support.mint300,
+  binaryStarsContainer: {
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 2, // 稍微拉开一点和文字的间距
+  },
+  binaryStar: {
+    position: 'absolute',
+    opacity: 0.85,
   },
   brandGreetingText: {
     fontFamily: 'DiaryKai',
