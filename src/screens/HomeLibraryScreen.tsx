@@ -361,12 +361,12 @@ export function HomeLibraryScreen({
 function HomeBrandHeader() {
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 9) return '早上好。';
-    if (hour >= 9 && hour < 12) return '上午好。';
-    if (hour >= 12 && hour < 14) return '中午好。';
-    if (hour >= 14 && hour < 18) return '下午好。';
-    if (hour >= 18 && hour < 23) return '晚上好。';
-    return '夜深了。';
+    if (hour >= 5 && hour < 9) return '早上好';
+    if (hour >= 9 && hour < 12) return '上午好';
+    if (hour >= 12 && hour < 14) return '中午好';
+    if (hour >= 14 && hour < 18) return '下午好';
+    if (hour >= 18 && hour < 23) return '晚上好';
+    return '夜深了';
   }, []);
   
   const orbScale = useSharedValue(0.7);
@@ -405,10 +405,10 @@ function HomeBrandHeader() {
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <Animated.View style={[styles.brandOrb, orbStyle]} />
         <Animated.Text style={[styles.brandGreetingText, textStyle]}>
           {greeting}
         </Animated.Text>
+        <Animated.View style={[styles.brandOrb, orbStyle]} />
       </View>
       <Text style={styles.brandSubtitleText}>
         PIXORY · PRIVATE ARCHIVE
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.support.mint300,
   },
   brandGreetingText: {
-    fontFamily: 'ZCOOLXiaoWei_400Regular',
+    fontFamily: 'DiaryKai',
     fontSize: 28,
     includeFontPadding: false,
     letterSpacing: 2,
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     letterSpacing: 1.5,
     marginTop: 2,
-    marginLeft: 6 + spacing[2], // 对齐主标题文字的左边缘
+    marginLeft: 0, // 对齐主标题文字的左边缘
   },
   pressed: {
     opacity: 0.8,
