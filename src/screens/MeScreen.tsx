@@ -54,21 +54,41 @@ function ProfileMemoryCore() {
   const pulse = useSharedValue(1);
 
   useEffect(() => {
-    rot1.value = withRepeat(withTiming(360, { duration: 5000, easing: REasing.linear }), -1, false);
-    rot2.value = withRepeat(withTiming(-360, { duration: 8500, easing: REasing.linear }), -1, false);
-    rot3.value = withRepeat(withTiming(360, { duration: 14000, easing: REasing.linear }), -1, false);
-    rot4.value = withRepeat(withTiming(-360, { duration: 22000, easing: REasing.linear }), -1, false);
+    rot1.value = withRepeat(withTiming(360, { duration: 8000, easing: REasing.linear }), -1, false);
+    rot2.value = withRepeat(withTiming(-360, { duration: 12000, easing: REasing.linear }), -1, false);
+    rot3.value = withRepeat(withTiming(360, { duration: 18000, easing: REasing.linear }), -1, false);
+    rot4.value = withRepeat(withTiming(-360, { duration: 30000, easing: REasing.linear }), -1, false);
     pulse.value = withRepeat(withTiming(0.7, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
   }, [rot1, rot2, rot3, rot4, pulse]);
 
-  const style1 = useAnimatedStyle(() => ({ transform: [{ rotateZ: `${rot1.value}deg` }] }));
-  // 中环：沿 X 轴深倾斜，呈现细长椭圆
-  const style2 = useAnimatedStyle(() => ({ transform: [{ rotateX: '70deg' }, { rotateZ: `${rot2.value}deg` }] }));
-  // 外环：沿 Y 轴倾斜，交错
-  const style3 = useAnimatedStyle(() => ({ transform: [{ rotateX: '-15deg' }, { rotateY: '60deg' }, { rotateZ: `${rot3.value}deg` }] }));
-  // 极外环：大倾角双轴混合，宛如星系边缘彗星
-  const style4 = useAnimatedStyle(() => ({ transform: [{ rotateX: '45deg' }, { rotateY: '-50deg' }, { rotateZ: `${rot4.value}deg` }] }));
-  
+  const style1 = useAnimatedStyle(() => {
+    const a = (rot1.value * Math.PI) / 180;
+    const x = 32 * Math.cos(a);
+    const y = 32 * Math.sin(a);
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
+  const style2 = useAnimatedStyle(() => {
+    const a = (rot2.value * Math.PI) / 180;
+    const x = 48 * Math.cos(a);
+    const y = 48 * Math.sin(a) * 0.342; // cos(70)
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
+  const style3 = useAnimatedStyle(() => {
+    const a = (rot3.value * Math.PI) / 180;
+    const x = 64 * Math.cos(a);
+    const y = 64 * Math.sin(a) * 0.422; // cos(65)
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
+  const style4 = useAnimatedStyle(() => {
+    const a = (rot4.value * Math.PI) / 180;
+    const x = 80 * Math.cos(a);
+    const y = 80 * Math.sin(a) * 0.258; // cos(75)
+    return { transform: [{ translateX: x }, { translateY: y }] };
+  });
+
   const coreStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }], opacity: pulse.value }));
 
   return (
@@ -78,22 +98,21 @@ function ProfileMemoryCore() {
       {/* 静止的虚线轨道体系 */}
       <View style={styles.orbit1} />
       <View style={[styles.orbit2, { transform: [{ rotateX: '70deg' }] }]} />
-      <View style={[styles.orbit3, { transform: [{ rotateX: '-15deg' }, { rotateY: '60deg' }] }]} />
-      <View style={[styles.orbit4, { transform: [{ rotateX: '45deg' }, { rotateY: '-50deg' }] }]} />
+      <View style={[styles.orbit3, { transform: [{ rotateZ: '60deg' }, { rotateX: '65deg' }] }]} />
+      <View style={[styles.orbit4, { transform: [{ rotateZ: '-45deg' }, { rotateX: '75deg' }] }]} />
 
-      {/* 运动的星球体系 (带有rotateZ以实现轨道绕行) */}
-      <Reanimated.View style={[styles.orbitWrapper, { width: 20, height: 20 }, style1]}>
-        <View style={styles.planet1} />
-      </Reanimated.View>
-      <Reanimated.View style={[styles.orbitWrapper, { width: 28, height: 28 }, style2]}>
-        <View style={styles.planet2} />
-      </Reanimated.View>
-      <Reanimated.View style={[styles.orbitWrapper, { width: 36, height: 36 }, style3]}>
-        <View style={styles.planet3} />
-      </Reanimated.View>
-      <Reanimated.View style={[styles.orbitWrapper, { width: 44, height: 44 }, style4]}>
-        <View style={styles.planet4} />
-      </Reanimated.View>
+      {/* 运动的星球实体 (绝对居中，依靠 translateX/Y 实现运动) */}
+      <Reanimated.View style={[styles.planet1, style1]} />
+      
+      <Reanimated.View style={[styles.planet2, style2]} />
+      
+      <View style={{ position: 'absolute', transform: [{ rotateZ: '60deg' }] }}>
+        <Reanimated.View style={[styles.planet3, style3]} />
+      </View>
+      
+      <View style={{ position: 'absolute', transform: [{ rotateZ: '-45deg' }] }}>
+        <Reanimated.View style={[styles.planet4, style4]} />
+      </View>
     </View>
   );
 }
@@ -289,6 +308,7 @@ export function MeScreen({
   return (
     <ScreenScaffold backgroundVariant="profile" errorMessage={errorMessage} footer={footer} scrollable showHeader={false}>
       <ContentCard style={styles.heroCard}>
+        <ProfileMemoryCore />
         <Pressable
           accessibilityLabel={space === 'personal' ? '返回普通模式' : '进入隐私模式'}
           accessibilityRole="button"
@@ -330,7 +350,6 @@ export function MeScreen({
               <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
                 <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
               </Pressable>
-              <ProfileMemoryCore />
             </View>
           </View>
         </View>
@@ -701,17 +720,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   coreContainer: {
-    width: 44,
-    height: 44,
+    position: 'absolute',
+    right: -20,
+    top: 50,
+    width: 160,
+    height: 160,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: spacing[2],
+    zIndex: 0,
+    pointerEvents: 'none',
   },
   coreDot: {
     position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: colors.text.primary,
   },
   orbitWrapper: {
@@ -721,72 +744,72 @@ const styles = StyleSheet.create({
   },
   orbit1: {
     position: 'absolute',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   planet1: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.support.mint300,
-    marginTop: -2,
   },
   orbit2: {
     position: 'absolute',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   planet2: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.support.lilac300,
-    marginTop: -2.5,
   },
   orbit3: {
     position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   planet3: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.support.sky300,
-    marginTop: -2,
   },
   orbit4: {
     position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text.tertiary,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   planet4: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.support.coral400,
-    marginTop: -2,
   },
   storageLegendDot: {
     width: 6,

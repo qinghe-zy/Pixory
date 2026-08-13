@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withRepeat, withSequence, withTiming, withDelay, interpolateColor, Easing, type SharedValue } from 'react-native-reanimated';
 import { listAiHomeThreads, type AiHomeThreadItem } from '../ai/aiChatService';
 import { prefetchThreadMessages } from '../ai/aiThreadMessagePrefetch';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -246,7 +246,7 @@ export function AiHomeScreen({
   );
 }
 
-function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight, width = 4 }: { delay: number; theta: Animated.SharedValue<number>; index: number; minHeight: number; maxHeight: number; width?: number }) {
+function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight, width = 4 }: { delay: number; theta: SharedValue<number>; index: number; minHeight: number; maxHeight: number; width?: number }) {
   const currentHeight = useSharedValue(minHeight);
 
   useEffect(() => {
