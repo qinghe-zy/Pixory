@@ -18,6 +18,7 @@ import {
   AppState,
   Easing,
   FlatList,
+  InteractionManager,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type NativeTouchEvent,
@@ -3898,19 +3899,14 @@ export function AiChatScreen({
         });
         return;
       }
-      const [
-        nextAppearanceConfig,
-        nextUserAvatarUri,
-        nextUserNickname,
-      ] = await Promise.all([
-        loadThreadMessageAppearanceConfig(space, targetThreadId),
-        runWithDatabaseSpace(space, (db) =>
-          settingsRepository.getProfileAvatarUri(db),
-        ),
-        runWithDatabaseSpace(space, (db) =>
-          settingsRepository.getProfileNickname(db),
-        ),
-      ]);
+      const nextAppearanceConfig = await loadThreadMessageAppearanceConfig(
+        space,
+        targetThreadId,
+      );
+      const profile = await runWithDatabaseSpace(space, async (db) => ({
+        avatarUri: await settingsRepository.getProfileAvatarUri(db),
+        nickname: await settingsRepository.getProfileNickname(db),
+      }));
       if (!isLatestRequest("avatar", requestId, targetThreadId)) {
         return;
       }
@@ -3919,8 +3915,8 @@ export function AiChatScreen({
         assistantAvatarUri: nextAppearanceConfig.assistantAvatar.avatarUri,
         assistantName: nextAppearanceConfig.assistantName,
         userAvatarEnabled: nextAppearanceConfig.userAvatarEnabled,
-        userAvatarUri: nextUserAvatarUri,
-        userNickname: nextUserNickname,
+        userAvatarUri: profile.avatarUri,
+        userNickname: profile.nickname,
       });
     },
     [space],
@@ -4562,15 +4558,18 @@ export function AiChatScreen({
     if (isInitialMessageLoading) {
       return;
     }
-    void reloadMemoryCaptures(threadId ?? null);
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void reloadMemoryCaptures(threadId ?? null);
+    });
+    return () => interaction.cancel();
   }, [isInitialMessageLoading, reloadMemoryCaptures, threadId]);
 
   useEffect(() => {
-    if (isInitialMessageLoading) {
+    if (!recordDrawerVisible) {
       return;
     }
     void reloadRecentThreads();
-  }, [activeThreadId, isInitialMessageLoading, reloadRecentThreads]);
+  }, [recordDrawerVisible, reloadRecentThreads]);
 
   useEffect(() => {
     if (isLoadingEarlierRef.current) {

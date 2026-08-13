@@ -68,6 +68,22 @@ test('AI chat streaming assistant creation avoids an immediate full message relo
   assert.doesNotMatch(onCreatedBody, /reloadMessages\(targetThreadId/);
 });
 
+test('secondary chat-page reads wait for the drawer or initial interactions', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const participantStart = chat.indexOf('const reloadParticipantAppearance = useCallback');
+  const participantEnd = chat.indexOf('const reloadMemoryCaptures', participantStart);
+  const participantBody = chat.slice(participantStart, participantEnd);
+
+  assert.match(chat, /InteractionManager/);
+  assert.match(chat, /InteractionManager\.runAfterInteractions/);
+  assert.match(chat, /if \(!recordDrawerVisible\) \{\s*return;\s*\}[\s\S]*reloadRecentThreads\(\)/);
+  assert.doesNotMatch(chat, /\[activeThreadId, isInitialMessageLoading, reloadRecentThreads\]/);
+  assert.match(participantBody, /await loadThreadMessageAppearanceConfig/);
+  assert.match(participantBody, /await settingsRepository\.getProfileAvatarUri/);
+  assert.match(participantBody, /await settingsRepository\.getProfileNickname/);
+  assert.doesNotMatch(participantBody, /Promise\.all/);
+});
+
 test('AI chat favorite identity work is memoized outside row rendering', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const renderBody = /const renderMessageItem = useCallback\([\s\S]*?\r?\n  \);/.exec(chat)?.[0] ?? '';
