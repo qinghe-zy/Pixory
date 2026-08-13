@@ -47,27 +47,52 @@ interface MeStats {
 // ENTRY_ITEMS removed for dashboard layout
 
 function ProfileMemoryCore() {
-  const rotation = useSharedValue(0);
+  const rot1 = useSharedValue(0);
+  const rot2 = useSharedValue(0);
+  const rot3 = useSharedValue(0);
+  const rot4 = useSharedValue(0);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
-    rotation.value = withRepeat(withTiming(360, { duration: 8000, easing: REasing.linear }), -1, false);
-    pulse.value = withRepeat(withTiming(0.6, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
-  }, [rotation, pulse]);
+    rot1.value = withRepeat(withTiming(360, { duration: 5000, easing: REasing.linear }), -1, false);
+    rot2.value = withRepeat(withTiming(-360, { duration: 8500, easing: REasing.linear }), -1, false);
+    rot3.value = withRepeat(withTiming(360, { duration: 14000, easing: REasing.linear }), -1, false);
+    rot4.value = withRepeat(withTiming(-360, { duration: 22000, easing: REasing.linear }), -1, false);
+    pulse.value = withRepeat(withTiming(0.7, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
+  }, [rot1, rot2, rot3, rot4, pulse]);
 
-  const orbitStyle = useAnimatedStyle(() => {
-    return { transform: [{ rotate: `${rotation.value}deg` }] };
-  });
-
-  const coreStyle = useAnimatedStyle(() => {
-    return { transform: [{ scale: pulse.value }], opacity: pulse.value };
-  });
+  const style1 = useAnimatedStyle(() => ({ transform: [{ rotateZ: `${rot1.value}deg` }] }));
+  // 中环：沿 X 轴深倾斜，呈现细长椭圆
+  const style2 = useAnimatedStyle(() => ({ transform: [{ rotateX: '70deg' }, { rotateZ: `${rot2.value}deg` }] }));
+  // 外环：沿 Y 轴倾斜，交错
+  const style3 = useAnimatedStyle(() => ({ transform: [{ rotateX: '-15deg' }, { rotateY: '60deg' }, { rotateZ: `${rot3.value}deg` }] }));
+  // 极外环：大倾角双轴混合，宛如星系边缘彗星
+  const style4 = useAnimatedStyle(() => ({ transform: [{ rotateX: '45deg' }, { rotateY: '-50deg' }, { rotateZ: `${rot4.value}deg` }] }));
+  
+  const coreStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }], opacity: pulse.value }));
 
   return (
     <View style={styles.coreContainer}>
       <Reanimated.View style={[styles.coreDot, coreStyle]} />
-      <Reanimated.View style={[styles.orbitLayer, orbitStyle]}>
-        <View style={styles.orbitSatellite} />
+      
+      {/* 静止的虚线轨道体系 */}
+      <View style={styles.orbit1} />
+      <View style={[styles.orbit2, { transform: [{ rotateX: '70deg' }] }]} />
+      <View style={[styles.orbit3, { transform: [{ rotateX: '-15deg' }, { rotateY: '60deg' }] }]} />
+      <View style={[styles.orbit4, { transform: [{ rotateX: '45deg' }, { rotateY: '-50deg' }] }]} />
+
+      {/* 运动的星球体系 (带有rotateZ以实现轨道绕行) */}
+      <Reanimated.View style={[styles.orbitWrapper, { width: 20, height: 20 }, style1]}>
+        <View style={styles.planet1} />
+      </Reanimated.View>
+      <Reanimated.View style={[styles.orbitWrapper, { width: 28, height: 28 }, style2]}>
+        <View style={styles.planet2} />
+      </Reanimated.View>
+      <Reanimated.View style={[styles.orbitWrapper, { width: 36, height: 36 }, style3]}>
+        <View style={styles.planet3} />
+      </Reanimated.View>
+      <Reanimated.View style={[styles.orbitWrapper, { width: 44, height: 44 }, style4]}>
+        <View style={styles.planet4} />
       </Reanimated.View>
     </View>
   );
@@ -302,7 +327,7 @@ export function MeScreen({
           </Pressable>
           <View style={styles.profileCopy}>
             <View style={styles.nameRow}>
-              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [pressed && styles.pressed]}>
+              <Pressable onPress={() => setIsRenameDialogVisible(true)} hitSlop={12} style={({ pressed }) => [styles.heroTitleContainer, pressed && styles.pressed]}>
                 <Text style={styles.heroTitle}>{data?.profileNickname || '本地空间'}</Text>
               </Pressable>
               <ProfileMemoryCore />
@@ -614,7 +639,11 @@ const styles = StyleSheet.create({
   nameRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 4,
+    justifyContent: 'space-between',
+  },
+  heroTitleContainer: {
+    flexShrink: 1,
+    marginRight: spacing[4],
   },
   heroTitle: {
     ...typography.textStyles.pageTitle,
@@ -672,36 +701,92 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   coreContainer: {
-    width: 16,
-    height: 16,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: spacing[2],
   },
   coreDot: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.support.sky300,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.text.primary,
   },
-  orbitLayer: {
+  orbitWrapper: {
     position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  orbit1: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border.strong,
+    borderColor: colors.text.tertiary,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  planet1: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.support.mint300,
+    marginTop: -2,
+  },
+  orbit2: {
+    position: 'absolute',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
     justifyContent: 'flex-start',
     alignItems: 'center',
   },
-  orbitSatellite: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
+  planet2: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: colors.support.lilac300,
-    marginTop: -1.5,
+    marginTop: -2.5,
+  },
+  orbit3: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.text.tertiary,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  planet3: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.support.sky300,
+    marginTop: -2,
+  },
+  orbit4: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.text.tertiary,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  planet4: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.support.coral400,
+    marginTop: -2,
   },
   storageLegendDot: {
     width: 6,

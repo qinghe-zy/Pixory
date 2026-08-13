@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: rhythm.entryCardGap,
-    paddingTop: spacing[4],
+    paddingTop: spacing[2],
     paddingBottom: spacing[6],
   },
   listViewport: {

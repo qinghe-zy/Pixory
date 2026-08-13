@@ -6907,7 +6907,11 @@ export function AiChatScreen({
                 </Text>
                 {thinking ? <View style={styles.liveDot} /> : null}
               </View>
-
+              {modelLabel ? (
+                <Text numberOfLines={1} style={styles.modelSubtitle}>
+                  {modelLabel}
+                </Text>
+              ) : null}
             </View>
             {/* Right: session settings + new chat */}
             <View style={styles.headerSide}>

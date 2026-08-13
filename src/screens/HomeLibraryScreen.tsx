@@ -369,83 +369,48 @@ function HomeBrandHeader() {
     return '夜深了';
   }, []);
   
-  const textShimmer = useSharedValue(0);
-  const timeT = useSharedValue(0);
+  const rot1 = useSharedValue(0);
+  const rot2 = useSharedValue(0);
+  const rot3 = useSharedValue(0);
 
   useEffect(() => {
-    // 整个复杂轨道的完整周期为 20 秒，极其舒缓平滑
-    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
+    rot1.value = withRepeat(withTiming(360, { duration: 15000, easing: Easing.linear }), -1, false);
+    rot2.value = withRepeat(withTiming(-360, { duration: 20000, easing: Easing.linear }), -1, false);
+    rot3.value = withRepeat(withTiming(360, { duration: 25000, easing: Easing.linear }), -1, false);
+  }, [rot1, rot2, rot3]);
 
-    textShimmer.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 2400, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-  }, [textShimmer, timeT]);
-
-  const textStyle = useAnimatedStyle(() => {
-    // 根据 timeT (0 -> 2PI) 的变化，映射出星星达到最大的时刻
-    // Star 1 (mint300) peaks at PI/4 and 5PI/4
-    // Star 2 (sky300) peaks at 0, 2PI/3, 4PI/3, 2PI
-    // Star 3 (lilac300)
-    const color = interpolateColor(
-      timeT.value,
-      [0, Math.PI / 4, (Math.PI * 2) / 3, Math.PI, (Math.PI * 5) / 4, (Math.PI * 4) / 3, Math.PI * 2],
-      [
-        colors.support.sky300,
-        colors.support.mint300,
-        colors.support.sky300,
-        colors.support.lilac300, // 回归紫色主调
-        colors.support.mint300,
-        colors.support.sky300,
-        colors.support.sky300,
-      ]
-    );
-    return { color };
-  });
-
-  // 星星 1：8字形游走
-  const star1Style = useAnimatedStyle(() => {
-    const x = Math.sin(timeT.value) * 14;
-    const y = Math.cos(timeT.value * 2) * 8;
-    const scale = 1.0 + 0.6 * Math.sin(timeT.value * 2);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
-
-  // 星星 2：反向和错位的轨道
-  const star2Style = useAnimatedStyle(() => {
-    const x = Math.cos(timeT.value * 2 + Math.PI / 2) * 10;
-    const y = Math.sin(timeT.value + Math.PI) * 12;
-    const scale = 1.0 + 0.6 * Math.cos(timeT.value * 3);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
-
-  // 星星 3：高频小范围跳动
-  const star3Style = useAnimatedStyle(() => {
-    const x = Math.sin(timeT.value * 3) * 12;
-    const y = Math.cos(timeT.value) * 10;
-    const scale = 1.0 + 0.6 * Math.sin(timeT.value * 1.5);
-    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
-  });
+  // 利用 3D 旋转构建轨道，使纯圆环在视觉上变成不同角度的椭圆
+  const orbitStyle1 = useAnimatedStyle(() => ({ transform: [{ rotateX: '60deg' }, { rotateZ: `${rot1.value}deg` }] }));
+  const orbitStyle2 = useAnimatedStyle(() => ({ transform: [{ rotateY: '60deg' }, { rotateZ: `${rot2.value}deg` }] }));
+  const orbitStyle3 = useAnimatedStyle(() => ({ transform: [{ rotateX: '-30deg' }, { rotateY: '45deg' }, { rotateZ: `${rot3.value}deg` }] }));
 
   return (
     <View style={styles.brandHeaderContainer}>
       <View style={styles.brandGreetingRow}>
-        <Animated.Text style={[styles.brandGreetingText, textStyle]}>
+        <Text style={[styles.brandGreetingText, { color: colors.text.title }]}>
           {greeting}
-        </Animated.Text>
+        </Text>
         <View style={styles.binaryStarsContainer}>
-          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300, zIndex: 2 }, star2Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.lilac300, zIndex: 1 }, star3Style]} />
+          {/* 极淡的虚线轨道 */}
+          <View style={[styles.faintOrbit, { width: 18, height: 18, borderRadius: 9, transform: [{ rotateX: '60deg' }] }]} />
+          <View style={[styles.faintOrbit, { width: 24, height: 24, borderRadius: 12, transform: [{ rotateY: '60deg' }] }]} />
+          <View style={[styles.faintOrbit, { width: 30, height: 30, borderRadius: 15, transform: [{ rotateX: '-30deg' }, { rotateY: '45deg' }] }]} />
+          
+          {/* 星星实体 */}
+          <Animated.View style={[styles.orbitWrapper, { width: 18, height: 18 }, orbitStyle1]}>
+             <View style={[styles.binaryStar, { backgroundColor: colors.support.mint300 }]} />
+          </Animated.View>
+          <Animated.View style={[styles.orbitWrapper, { width: 24, height: 24 }, orbitStyle2]}>
+             <View style={[styles.binaryStar, { backgroundColor: colors.support.sky300 }]} />
+          </Animated.View>
+          <Animated.View style={[styles.orbitWrapper, { width: 30, height: 30 }, orbitStyle3]}>
+             <View style={[styles.binaryStar, { backgroundColor: colors.support.lilac300 }]} />
+          </Animated.View>
         </View>
       </View>
-      <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
+      <Text style={styles.brandSubtitleText}>
         PIXORY · PRIVATE ARCHIVE
-      </Animated.Text>
+      </Text>
     </View>
   );
 }
@@ -461,15 +426,30 @@ const styles = StyleSheet.create({
     gap: spacing[2],
   },
   binaryStarsContainer: {
-    width: 16,
-    height: 16,
+    width: 30,
+    height: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 2, // 稍微拉开一点和文字的间距
+    marginLeft: 12, // 稍微拉开一点和文字的间距
+  },
+  faintOrbit: {
+    position: 'absolute',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.strong,
+    borderStyle: 'dashed',
+    opacity: 0.3,
+  },
+  orbitWrapper: {
+    position: 'absolute',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
   },
   binaryStar: {
-    position: 'absolute',
-    opacity: 0.85,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: -3,
+    opacity: 0.9,
   },
   brandGreetingText: {
     fontWeight: 'bold',

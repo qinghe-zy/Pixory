@@ -437,18 +437,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.elevated,
     borderColor: colors.border.default,
-    borderRadius: radius.md,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    height: 44,
+    height: 32,
     justifyContent: 'center',
-    width: 44,
+    width: 32,
   },
   headerActionActive: {
     backgroundColor: colors.primary.weak,
     borderColor: colors.primary.light,
   },
   searchBlock: {
-    marginBottom: spacing[1],
+    marginBottom: 0,
   },
   selectionPanel: {
     backgroundColor: colors.background.surface,
