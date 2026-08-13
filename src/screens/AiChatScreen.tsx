@@ -252,6 +252,7 @@ import {
   isAdoptedThreadRouteSnapshotCurrent,
   loadPersistedAdoptedThreadBranchScopes,
 } from "../ai/aiThreadRouteSnapshotService";
+import { subscribeAiThreadPresentation } from "../ai/aiThreadPresentationEvents";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -4553,6 +4554,15 @@ export function AiChatScreen({
     }
     void reloadThreadTitle(threadId ?? null);
   }, [isInitialMessageLoading, reloadThreadTitle, threadId]);
+
+  useEffect(() => {
+    if (!threadId) {
+      return;
+    }
+    return subscribeAiThreadPresentation(space, threadId, () => {
+      void reloadThreadTitle(threadId);
+    });
+  }, [reloadThreadTitle, space, threadId]);
 
   useEffect(() => {
     if (isInitialMessageLoading) {

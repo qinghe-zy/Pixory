@@ -153,6 +153,8 @@ import {
   type AiGenerationJobRecord,
 } from './generation/aiGenerationRepository';
 import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
+import { enqueueAiPostReplyTask } from './aiPostReplyTaskQueue';
+import { emitAiThreadPresentationUpdated } from './aiThreadPresentationEvents';
 
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
@@ -5166,11 +5168,13 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    await maybeGenerateModelThreadTitleAfterReply({
-      branchScopes,
-      onUpdated: input.onUpdated,
-      space: input.space,
-      thread: input.thread,
+    void enqueueAiPostReplyTask(input.space, input.thread.id, async () => {
+      await maybeGenerateModelThreadTitleAfterReply({
+        branchScopes,
+        onUpdated: () => emitAiThreadPresentationUpdated(input.space, input.thread.id),
+        space: input.space,
+        thread: input.thread,
+      });
     });
     void scheduleDeferredCompanionMemoryMaintenance({
       assistantMessageId: input.assistantMessageId,

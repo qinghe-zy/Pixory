@@ -426,8 +426,9 @@ test('AI chat title uses a cheap model after three rounds while keeping the firs
   assert.match(chatService, /current\.titleStatus !== 'generated'/);
   assert.match(chatService, /modelTitleGeneratedAt: new Date\(\)\.toISOString\(\)/);
   assert.doesNotMatch(chatService, /titleStatus:\s*'custom'[\s\S]{0,120}maybeGenerateModelThreadTitleAfterReply/);
-  assert.doesNotMatch(chatService, /void maybeGenerateModelThreadTitleAfterReply/);
-  assert.match(chatService, /await maybeGenerateModelThreadTitleAfterReply/);
+  assert.match(chatService, /void enqueueAiPostReplyTask/);
+  assert.match(chatService, /enqueueAiPostReplyTask\([\s\S]{0,400}await maybeGenerateModelThreadTitleAfterReply/);
+  assert.doesNotMatch(chatService, /await finalizeThreadTitleAfterReply\([\s\S]{0,300}\);\s*await maybeGenerateModelThreadTitleAfterReply/);
 });
 
 test('AI chat can show role avatars while keeping no-avatar mode', () => {
