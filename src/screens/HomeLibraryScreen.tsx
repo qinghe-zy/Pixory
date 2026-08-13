@@ -370,11 +370,11 @@ function HomeBrandHeader() {
   }, []);
   
   const textShimmer = useSharedValue(0);
-  const starsTheta = useSharedValue(0);
+  const timeT = useSharedValue(0);
 
   useEffect(() => {
-    // 双星旋转周期 4 秒
-    starsTheta.value = withRepeat(withTiming(Math.PI * 2, { duration: 4000, easing: Easing.linear }), -1, false);
+    // 整个复杂轨道的完整周期为 8 秒
+    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 8000, easing: Easing.linear }), -1, false);
 
     textShimmer.value = withRepeat(
       withSequence(
@@ -385,7 +385,7 @@ function HomeBrandHeader() {
       -1,
       false
     );
-  }, [textShimmer, starsTheta]);
+  }, [textShimmer, timeT]);
 
   const textStyle = useAnimatedStyle(() => {
     const color = interpolateColor(
@@ -396,22 +396,28 @@ function HomeBrandHeader() {
     return { color };
   });
 
+  // 星星 1：8字形游走
   const star1Style = useAnimatedStyle(() => {
-    const x = Math.cos(starsTheta.value) * 2;
-    const y = Math.sin(starsTheta.value) * 2;
-    const scale = 0.9 + 0.2 * Math.sin(starsTheta.value * 2);
-    return {
-      transform: [{ translateX: x }, { translateY: y }, { scale }],
-    };
+    const x = Math.sin(timeT.value) * 6;
+    const y = Math.cos(timeT.value * 2) * 4;
+    const scale = 0.9 + 0.2 * Math.sin(timeT.value * 2);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
+  // 星星 2：反向和错位的轨道
   const star2Style = useAnimatedStyle(() => {
-    const x = Math.cos(starsTheta.value + Math.PI) * 2.5;
-    const y = Math.sin(starsTheta.value + Math.PI) * 2.5;
-    const scale = 0.9 + 0.2 * Math.sin(starsTheta.value * 2 + Math.PI);
-    return {
-      transform: [{ translateX: x }, { translateY: y }, { scale }],
-    };
+    const x = Math.cos(timeT.value * 2 + Math.PI / 2) * 5;
+    const y = Math.sin(timeT.value + Math.PI) * 6;
+    const scale = 0.9 + 0.2 * Math.cos(timeT.value * 3);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
+  });
+
+  // 星星 3：高频小范围跳动
+  const star3Style = useAnimatedStyle(() => {
+    const x = Math.sin(timeT.value * 3) * 4;
+    const y = Math.cos(timeT.value) * 5;
+    const scale = 0.9 + 0.2 * Math.sin(timeT.value);
+    return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
   return (
@@ -421,8 +427,9 @@ function HomeBrandHeader() {
           {greeting}
         </Animated.Text>
         <View style={styles.binaryStarsContainer}>
-          <Animated.View style={[styles.binaryStar, { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.support.mint300 }, star1Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300 }, star2Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300, zIndex: 2 }, star2Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.support.mint200, zIndex: 1 }, star3Style]} />
         </View>
       </View>
       <Text style={styles.brandSubtitleText}>
