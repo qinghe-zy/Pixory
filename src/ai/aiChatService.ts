@@ -20,7 +20,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
@@ -592,6 +592,18 @@ export interface ListThreadMessagesOptions {
   branchScopes?: AiBranchScope[];
   limit?: number;
   selectedVersionByMessageId?: Record<string, number>;
+}
+
+export interface AiThreadMessagePage {
+  baseMessageCount: number;
+  hasEarlierMessages: boolean;
+  messages: AiMessageWithCitations[];
+  olderCursor: AiMessagePageCursor | null;
+}
+
+export interface LoadThreadMessagePageOptions extends ListThreadMessagesOptions {
+  beforeCursor?: AiMessagePageCursor;
+  limit: number;
 }
 
 export type AiChatSearchMatchKind = 'exact' | 'fuzzy';
@@ -2608,11 +2620,13 @@ async function loadBranchRootMessages(
   );
 }
 
-export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
-  const messages = options.anchorMessageId && options.limit
-      ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
-      : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
-  const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
+async function hydrateThreadMessagesInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  baseMessages: AiMessageRecord[],
+  selectedVersionByMessageId?: Record<string, number>,
+): Promise<AiMessageWithCitations[]> {
+  const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, baseMessages);
   const messageIds = messagesWithBranchRoots.map((message) => message.id);
   // Sequential queries: expo-sqlite does not support concurrent prepared
   // statements on the same connection; Promise.all here caused
@@ -2623,7 +2637,7 @@ export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId:
   const selectedVersionEntries = messagesWithBranchRoots
     .map((message) => {
       const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
-      const selectedVersionIndex = options.selectedVersionByMessageId?.[message.id];
+      const selectedVersionIndex = selectedVersionByMessageId?.[message.id];
       if (!selectedVersionIndex || selectedVersionIndex >= versionTotal) {
         return null;
       }
@@ -2650,8 +2664,64 @@ export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId:
   });
 }
 
+export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
+  const baseMessages = options.anchorMessageId && options.limit
+    ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
+    : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
+  return hydrateThreadMessagesInDatabase(
+    db,
+    threadId,
+    baseMessages,
+    options.selectedVersionByMessageId,
+  );
+}
+
+export async function loadThreadMessagePageInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  options: LoadThreadMessagePageOptions,
+): Promise<AiThreadMessagePage> {
+  const limit = Math.max(1, options.limit);
+  const candidates = options.beforeCursor
+    ? await aiThreadRepository.listMessagesBaseBefore(
+      db,
+      threadId,
+      options.beforeCursor,
+      limit + 1,
+      options.branchScopes,
+    )
+    : await aiThreadRepository.listMessagesBase(
+      db,
+      threadId,
+      limit + 1,
+      options.branchScopes,
+    );
+  const hasEarlierMessages = candidates.length > limit;
+  const baseMessages = hasEarlierMessages ? candidates.slice(1) : candidates;
+  const oldest = baseMessages[0] ?? null;
+  return {
+    baseMessageCount: baseMessages.length,
+    hasEarlierMessages,
+    messages: await hydrateThreadMessagesInDatabase(
+      db,
+      threadId,
+      baseMessages,
+      options.selectedVersionByMessageId,
+    ),
+    olderCursor: oldest ? { createdAt: oldest.createdAt, id: oldest.id } : null,
+  };
+}
+
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, (db) => listThreadMessagesInDatabase(db, threadId, options));
+}
+
+export async function loadThreadMessagePage(
+  space: PixorySpace,
+  threadId: string,
+  options: LoadThreadMessagePageOptions,
+): Promise<AiThreadMessagePage> {
+  return runWithDatabaseSpace(space, (db) => loadThreadMessagePageInDatabase(db, threadId, options));
 }
 
 export async function searchThreadMessages(input: {

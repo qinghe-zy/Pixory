@@ -100,7 +100,7 @@ test('adopting a route persists its pointer and metadata atomically', () => {
   assert.match(adoptionBody, /setThreadCurrentBranch[\s\S]*upsertBranchRouteMetadata/);
 });
 
-test('limited message paging keeps the row-order tie breaker visible to the outer query', async () => {
+test('limited message paging keeps a deterministic id tie breaker', async () => {
   const db = new AsyncDatabase();
   createHistorySchema(db);
   insertThread(db, 'paged-thread');
@@ -112,6 +112,36 @@ test('limited message paging keeps the row-order tie breaker visible to the oute
   const messages = await repository.listMessagesBase(db, 'paged-thread', 2, []);
 
   assert.deepEqual(messages.map((message) => message.id), ['message-b', 'message-c']);
+  db.close();
+});
+
+test('older message pages use createdAt and id without gaps or duplicates', async () => {
+  const db = new AsyncDatabase();
+  createHistorySchema(db);
+  insertThread(db, 'paged-thread');
+  for (const suffix of ['a', 'b', 'c', 'd', 'e']) {
+    insertMessage(db, {
+      id: `message-${suffix}`,
+      threadId: 'paged-thread',
+      role: suffix === 'a' ? 'user' : 'assistant',
+      content: suffix,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+  }
+
+  const repository = loadRepository();
+  const latest = await repository.listMessagesBase(db, 'paged-thread', 3, []);
+  const older = await repository.listMessagesBaseBefore(
+    db,
+    'paged-thread',
+    { createdAt: latest[0].createdAt, id: latest[0].id },
+    3,
+    [],
+  );
+
+  assert.deepEqual(latest.map((message) => message.id), ['message-c', 'message-d', 'message-e']);
+  assert.deepEqual(older.map((message) => message.id), ['message-a', 'message-b']);
+  assert.equal(new Set([...older, ...latest].map((message) => message.id)).size, 5);
   db.close();
 });
 

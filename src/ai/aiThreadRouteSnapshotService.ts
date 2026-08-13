@@ -1,15 +1,17 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { aiThreadRepository, runWithDatabaseSpace, type AiThreadRecord, type PixorySpace } from '../database';
-import type { AiBranchScope } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMessagePageCursor } from '../database/repositories/aiThreadRepository';
 import { hashBranchRoute } from './context/conversationCoverage';
-import { listThreadMessagesInDatabase, type AiMessageWithCitations } from './aiChatService';
+import { listThreadMessagesInDatabase, loadThreadMessagePageInDatabase, type AiMessageWithCitations } from './aiChatService';
 
 export interface AiAdoptedThreadRouteSnapshot {
   branchScopes: AiBranchScope[];
+  baseMessageCount: number;
   hasEarlierMessages: boolean;
   lineageVersion: number;
   messages: AiMessageWithCitations[];
+  olderCursor: AiMessagePageCursor | null;
   routeHash: string;
   selectedVersionByMessageId: Record<string, number>;
   thread: AiThreadRecord;
@@ -81,20 +83,30 @@ export async function loadAdoptedThreadRouteSnapshot(
       branchScopes = [];
     }
     const selectedVersionByMessageId = selectionMapForScopes(branchScopes);
-    // Run message load and count sequentially: expo-sqlite withTransactionAsync
-    // does not support Promise.all over the same connection inside a transaction.
-    const messages = await listThreadMessagesInDatabase(db, input.threadId, {
-      anchorMessageId: input.anchorMessageId,
-      branchScopes,
-      limit: input.limit,
-      selectedVersionByMessageId,
-    });
-    const messageCount = await aiThreadRepository.countMessagesBase(db, input.threadId, branchScopes);
+    const page = input.anchorMessageId
+      ? {
+        baseMessageCount: input.limit,
+        hasEarlierMessages: true,
+        messages: await listThreadMessagesInDatabase(db, input.threadId, {
+          anchorMessageId: input.anchorMessageId,
+          branchScopes,
+          limit: input.limit,
+          selectedVersionByMessageId,
+        }),
+        olderCursor: null,
+      }
+      : await loadThreadMessagePageInDatabase(db, input.threadId, {
+        branchScopes,
+        limit: input.limit,
+        selectedVersionByMessageId,
+      });
     return {
       branchScopes,
-      hasEarlierMessages: Boolean(input.anchorMessageId) || messageCount > input.limit,
+      baseMessageCount: page.baseMessageCount,
+      hasEarlierMessages: page.hasEarlierMessages,
       lineageVersion: thread.lineageVersion ?? 0,
-      messages,
+      messages: page.messages,
+      olderCursor: page.olderCursor,
       routeHash: hashBranchRoute(branchScopes),
       selectedVersionByMessageId,
       thread,
@@ -115,7 +127,8 @@ export async function isAdoptedThreadRouteSnapshotCurrent(
     return Boolean(
       thread
       && thread.space === snapshot.thread.space
-      && (thread.lineageVersion ?? 0) === snapshot.lineageVersion,
+      && (thread.lineageVersion ?? 0) === snapshot.lineageVersion
+      && thread.updatedAt === snapshot.thread.updatedAt,
     );
   });
 }
