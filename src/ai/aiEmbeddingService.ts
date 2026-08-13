@@ -1,6 +1,7 @@
 import { aiKnowledgeRepository, aiProviderRepository, runWithDatabaseSpace, type PixorySpace } from '../database';
 import type { ReplaceEmbeddingInput } from '../database/repositories/aiKnowledgeRepository';
 import type { AiDocumentOwnerType } from './types';
+import { settleWithConcurrency } from './aiBoundedConcurrency';
 import { getAdapterForProvider } from './aiProviderService';
 import { getProviderApiKeyForSpace } from './secureAiSettingsService';
 
@@ -32,6 +33,7 @@ interface ChunkForEmbeddingRow {
 }
 
 const EMBEDDING_VECTOR_CANDIDATE_LIMIT = 320;
+const EMBEDDING_REQUEST_CONCURRENCY = 3;
 
 function createAiId(prefix: string): string {
   const timestamp = new Date().toISOString().replace(/[-:.TZ]/g, '');
@@ -99,31 +101,35 @@ export async function generateMissingEmbeddingsForDocument(
       input.space
     );
 
-    const embeddings: ReplaceEmbeddingInput[] = [];
-    let failed = 0;
-    for (const chunk of chunks) {
-      try {
-        const vector = await adapter.embedText({
+    const settled = await settleWithConcurrency(
+      chunks,
+      EMBEDDING_REQUEST_CONCURRENCY,
+      async (chunk) => ({
+        chunk,
+        vector: await adapter.embedText({
           apiKey,
           baseUrl: provider.embeddingBaseUrl ?? provider.baseUrl ?? '',
           modelId,
           text: chunk.text,
-        });
-        if (vector.length === 0) {
-          failed += 1;
-          continue;
-        }
-        embeddings.push({
-          id: createAiId('aiembed'),
-          chunkId: chunk.id,
-          providerId,
-          modelId,
-          dimensions: vector.length,
-          vectorJson: JSON.stringify(vector),
-        });
-      } catch {
+        }),
+      })
+    );
+    const embeddings: ReplaceEmbeddingInput[] = [];
+    let failed = 0;
+    for (const result of settled) {
+      if (result.status === 'rejected' || result.value.vector.length === 0) {
         failed += 1;
+        continue;
       }
+      const { chunk, vector } = result.value;
+      embeddings.push({
+        id: createAiId('aiembed'),
+        chunkId: chunk.id,
+        providerId,
+        modelId,
+        dimensions: vector.length,
+        vectorJson: JSON.stringify(vector),
+      });
     }
     if (embeddings.length > 0) {
       await db.withTransactionAsync(async () => {

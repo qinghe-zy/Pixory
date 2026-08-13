@@ -1,6 +1,6 @@
 # Pixory 功能矩阵
 
-最后更新：2026-08-11（聊天主干路由、最近历史与发送消息可见性恢复）
+最后更新：2026-08-13（AI 聊天性能：Embedding 有界并发与批量资料写入）
 适用版本：Pixory 2.7.7
 维护要求：新增、删除或显著改变用户可见功能、后台能力、数据模型、导入导出流程、AI 能力、隐私/备份/发布流程时，必须同步更新本文档。
 
@@ -64,7 +64,7 @@
 
 | 子域 | 功能 | 主要文件 |
 | --- | --- | --- |
-| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流；embedding 接口仍保留供未来启用，但当前陪伴运行时不启动 Embedding，记忆检索使用 FTS/词面回退；DeepSeek 官方端点只展示 V4 Flash/Pro，已弃用的 `deepseek-chat` / `deepseek-reasoner` 对存量会话兼容迁移但不再出现在模型列表，自定义中转网关不受该限制 | `src/ai/aiProviderService.ts`, `src/ai/providers/`, `src/ai/deepseekModelPolicy.ts` |
+| Provider | DeepSeek、OpenAI/OpenAI-compatible、Gemini、Claude；真实当前模型验证、辅助模型列表、不可枚举模型的手动 ID/历史成功模型、聊天流；embedding 接口仍保留供未来启用，手动资料 Embedding 生成使用上限为 3 的有界并发且暂未引入重试/退避；当前陪伴运行时不自动启动 Embedding，记忆检索使用 FTS/词面回退；DeepSeek 官方端点只展示 V4 Flash/Pro，已弃用的 `deepseek-chat` / `deepseek-reasoner` 对存量会话兼容迁移但不再出现在模型列表，自定义中转网关不受该限制 | `src/ai/aiProviderService.ts`, `src/ai/providers/`, `src/ai/deepseekModelPolicy.ts`, `src/ai/aiEmbeddingService.ts` |
 | Provider 设置 | 全局默认 provider/model、连接 JSON 导入、保存/刷新/测试拆分、验证状态、手动模型 ID、中转网关模型别名、按空间隔离的 API Key SecureStore、当前会话模型复用全局配置/独立保存/测试/新增候选模型、删除手动/同步模型并清理默认值与会话悬挂引用、长按多选批量删除与同来源一键清理；设置页静态说明 API Key 本地保护、对话请求发送给所选模型服务商，且单次测试成功不代表永久可用 | `AiProviderSettingsScreen`, `AiSessionConfigScreen`, `secureAiSettingsService`, `aiProviderService`, `aiProviderRepository` |
 | 聊天线程 | normal/IP/knowledge-base 上下文，标题、模型快照、角色快照、归档、删除 | `aiChatService`, `aiThreadRepository` |
 | 聊天记录恢复与可见性 | 空分支范围严格表示主干路线，不会放宽成混入隐藏分支的无约束查询；有限消息页在内层查询显式导出 SQLite `rowid` 排序别名，外层不直接访问不可见的隐藏列；最近历史通过单条递归 SQL 按每个线程已采纳路线计算排序和预览；没有有效完成消息的空线程不会进入侧栏、首页、搜索或历史，同时避免逐线程 SQLite statement 竞争；历史读取失败时显示可重试错误而不是伪装成初始化空会话；发送事务创建消息 ID 后立即显示已落库的用户消息和 assistant placeholder，不依赖后续历史重载才出现用户气泡 | `AiChatScreen`, `aiThreadRepository`, `aiGenerationManager` |
