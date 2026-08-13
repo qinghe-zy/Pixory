@@ -368,6 +368,13 @@ async function stopGeneration({ assistantMessageId, reason = 'user', space, thre
   }
   if (stoppedAssistantId) {
     await stopStreamingMessage({ assistantMessageId: stoppedAssistantId, reason, space });
+    if (task && task.assistantMessageId === stoppedAssistantId) {
+      emitMessagePatch(task, {
+        id: task.assistantMessageId!,
+        generationId: task.generationId!,
+        status: 'stopped',
+      });
+    }
   }
   task?.controller.abort();
 }
