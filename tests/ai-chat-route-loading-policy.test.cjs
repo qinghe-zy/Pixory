@@ -28,6 +28,35 @@ test('chat route loading has one adopted-route snapshot boundary', () => {
   assert.match(chat, /selectedVersionByMessageIdRef\.current = prefetched\.selectedVersionByMessageId/);
 });
 
+test('route snapshots use a bounded page and retain its older cursor', () => {
+  const snapshot = read('src/ai/aiThreadRouteSnapshotService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const service = read('src/ai/aiChatService.ts');
+
+  assert.match(service, /export async function loadThreadMessagePageInDatabase/);
+  assert.match(service, /const hasEarlierMessages = candidates\.length > limit/);
+  assert.match(service, /olderCursor: oldest \? \{ createdAt: oldest\.createdAt, id: oldest\.id \} : null/);
+  assert.match(snapshot, /olderCursor/);
+  assert.match(snapshot, /loadThreadMessagePageInDatabase/);
+  assert.match(snapshot, /loadThreadMessagePageAroundAnchorInDatabase/);
+  assert.doesNotMatch(snapshot, /countMessagesBase/);
+  assert.match(chat, /olderMessageCursorRef/);
+  assert.match(chat, /loadThreadMessagePage\(space, targetThreadId/);
+  assert.doesNotMatch(chat, /loadedMessageLimitRef\.current \+ CHAT_MESSAGE_PAGE_SIZE/);
+});
+
+test('anchored chat pages retain a real cursor for loading earlier history', () => {
+  const service = read('src/ai/aiChatService.ts');
+  const chat = read('src/screens/AiChatScreen.tsx');
+
+  assert.match(service, /export async function loadThreadMessagePageAroundAnchorInDatabase/);
+  assert.match(service, /aiThreadRepository\.listMessagesBaseAroundAnchor/);
+  assert.match(service, /aiThreadRepository\.listMessagesBaseBefore/);
+  assert.match(chat, /loadThreadMessagePageAroundAnchor\(space, targetThreadId/);
+  assert.match(chat, /nextOlderCursor = page\.olderCursor/);
+  assert.doesNotMatch(chat, /nextHasEarlierMessages = true;\s*nextOlderCursor = null;/);
+});
+
 test('chat preserves explicit base-route scope when reloading messages', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
 
@@ -66,15 +95,16 @@ test('new sends optimistically append the persisted user message before the assi
   );
 });
 
-test('message paging exports the rowid tie breaker before the outer limited-page ordering', () => {
+test('message paging uses a deterministic createdAt and id boundary', () => {
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const listMessagesBase = repository.slice(
     repository.indexOf('async listMessagesBase'),
     repository.indexOf('async listMessagesBaseAroundAnchor'),
   );
 
-  assert.match(listMessagesBase, /SELECT ai_messages\.\*, ai_messages\.rowid AS rowOrder/);
-  assert.match(listMessagesBase, /ORDER BY createdAt DESC, rowid DESC/);
-  assert.match(listMessagesBase, /ORDER BY createdAt ASC, rowOrder ASC/);
-  assert.match(listMessagesBase, /ORDER BY createdAt ASC, rowid ASC/);
+  assert.match(listMessagesBase, /ORDER BY createdAt DESC, id DESC/);
+  assert.match(listMessagesBase, /ORDER BY createdAt ASC, id ASC/);
+  assert.match(listMessagesBase, /async listMessagesBaseBefore/);
+  assert.doesNotMatch(listMessagesBase, /rowid AS rowOrder/);
+  assert.doesNotMatch(listMessagesBase, /ORDER BY createdAt DESC, rowid DESC/);
 });

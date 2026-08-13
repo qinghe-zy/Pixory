@@ -1279,6 +1279,14 @@ git commit -m "docs(chat): record P0 P1 performance coverage" -m "What: document
 
 ## Integration and rollback boundaries
 
+## Execution record (2026-08-13)
+
+- 已在短路径隔离工作树 `D:\px-chat-perf` 的 `codex/ai-chat-p0-p1-performance` 分支完成 Tasks 2–8：`a09883b`（稳定 cursor 分页与路线快照）、`de29833`（流式 UI 发布/持久化解耦）、`483e4de`（次级页面读取延后）、`8601902`（后台串行模型标题）。
+- 最终聚焦回归通过：57 个分页、路线、流式、首 token、性能硬化、队列和事件测试；标题策略的目标用例单独通过。`pnpm typecheck` 通过；`pnpm bench:ai-chat` 在相同负载下记录 `splitterFullReplayMedianMs` 为 78.867–91.977ms（初次 83.132ms），受本机调度波动影响；token 估算中位数为 3.95–5.01ms。
+- 交付前审阅发现并在当前会话修复两处 P1 回归：有附件的普通附着流终态保留一次条件 canonical reload；锚点/搜索页使用基础消息的真实 cursor 和精确的 `hasEarlierMessages`，因此不会让“加载更早”空转。
+- `pnpm test` 仍有 28 个本轮前已存在的无关失败：会话设置静态断言与隔离工作树缺少 Android Manifest / 原生媒体模块文件；遵循范围约束未修改。计划中引用的 `tests/ai-chat-message-pagination-integration.test.cjs` 在当前基线不存在，已由实际存在的 `ai-thread-history-projection-policy` 覆盖 equal-timestamp 多页边界。
+- `adb devices -l` 未发现设备，因此未执行真机滚动、流式或 Perfetto 验收。图片附件和 FlashList 迁移继续明确排除。
+
 - Merge commits in task order. Pagination repository/service/screen commits are one dependency chain; streaming, lazy secondary reads, and deferred title commits can be reviewed independently afterward.
 - Resolve `AiChatScreen.tsx` conflicts by preserving the user's avatar/UI changes and reapplying only cursor state, paging, prefetch, settlement, and lazy-query hunks from this branch.
 - If cursor paging regresses branch visibility, revert Tasks 2–4 together; do not keep the screen cursor state without the repository/service boundary.

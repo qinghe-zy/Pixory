@@ -70,6 +70,11 @@ export interface AiBranchScope {
   branchVersionIndex: number;
 }
 
+export interface AiMessagePageCursor {
+  createdAt: string;
+  id: string;
+}
+
 export type AiBranchRouteStatus = 'exploring' | 'adopted' | 'paused' | 'abandoned';
 
 export interface AiBranchRouteMetadataRecord {
@@ -3845,15 +3850,15 @@ export const aiThreadRepository = {
     if (limit && limit > 0) {
       return db.getAllAsync<AiMessageRecord>(
         `SELECT * FROM (
-           SELECT ai_messages.*, ai_messages.rowid AS rowOrder
+           SELECT *
            FROM ai_messages
            WHERE threadId = ?
              ${visibleBranchClause.clause}
              AND ${excludeRolledBackContinuityPayload('ai_messages')}
-           ORDER BY createdAt DESC, rowid DESC
+           ORDER BY createdAt DESC, id DESC
            LIMIT ?
           )
-          ORDER BY createdAt ASC, rowOrder ASC`,
+          ORDER BY createdAt ASC, id ASC`,
         threadId,
         ...visibleBranchClause.values,
         limit
@@ -3864,9 +3869,40 @@ export const aiThreadRepository = {
        WHERE threadId = ?
          ${visibleBranchClause.clause}
          AND ${excludeRolledBackContinuityPayload('ai_messages')}
-       ORDER BY createdAt ASC, rowid ASC`,
+       ORDER BY createdAt ASC, id ASC`,
       threadId,
       ...visibleBranchClause.values
+    );
+  },
+
+  async listMessagesBaseBefore(
+    db: SQLiteDatabase,
+    threadId: string,
+    cursor: AiMessagePageCursor,
+    limit: number,
+    branchScopes?: AiBranchScope[],
+  ): Promise<AiMessageRecord[]> {
+    const visibleBranchClause = buildVisibleBranchClause('ai_messages', branchScopes);
+    return db.getAllAsync<AiMessageRecord>(
+      `SELECT * FROM (
+         SELECT * FROM ai_messages
+         WHERE threadId = ?
+           ${visibleBranchClause.clause}
+           AND ${excludeRolledBackContinuityPayload('ai_messages')}
+           AND (
+             createdAt < ?
+             OR (createdAt = ? AND id < ?)
+           )
+         ORDER BY createdAt DESC, id DESC
+         LIMIT ?
+       )
+       ORDER BY createdAt ASC, id ASC`,
+      threadId,
+      ...visibleBranchClause.values,
+      cursor.createdAt,
+      cursor.createdAt,
+      cursor.id,
+      Math.max(1, limit),
     );
   },
 

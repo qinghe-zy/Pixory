@@ -68,6 +68,22 @@ test('AI chat streaming assistant creation avoids an immediate full message relo
   assert.doesNotMatch(onCreatedBody, /reloadMessages\(targetThreadId/);
 });
 
+test('secondary chat-page reads wait for the drawer or initial interactions', () => {
+  const chat = read('src/screens/AiChatScreen.tsx');
+  const participantStart = chat.indexOf('const reloadParticipantAppearance = useCallback');
+  const participantEnd = chat.indexOf('const reloadMemoryCaptures', participantStart);
+  const participantBody = chat.slice(participantStart, participantEnd);
+
+  assert.match(chat, /InteractionManager/);
+  assert.match(chat, /InteractionManager\.runAfterInteractions/);
+  assert.match(chat, /if \(!recordDrawerVisible\) \{\s*return;\s*\}[\s\S]*reloadRecentThreads\(\)/);
+  assert.doesNotMatch(chat, /\[activeThreadId, isInitialMessageLoading, reloadRecentThreads\]/);
+  assert.match(participantBody, /await loadThreadMessageAppearanceConfig/);
+  assert.match(participantBody, /await settingsRepository\.getProfileAvatarUri/);
+  assert.match(participantBody, /await settingsRepository\.getProfileNickname/);
+  assert.doesNotMatch(participantBody, /Promise\.all/);
+});
+
 test('AI chat favorite identity work is memoized outside row rendering', () => {
   const chat = read('src/screens/AiChatScreen.tsx');
   const renderBody = /const renderMessageItem = useCallback\([\s\S]*?\r?\n  \);/.exec(chat)?.[0] ?? '';
@@ -125,20 +141,21 @@ test('thread message loading keeps version totals cheap and only hydrates select
   const chat = read('src/ai/aiChatService.ts');
   const repository = read('src/database/repositories/aiThreadRepository.ts');
   const listBody = /export async function listThreadMessages[\s\S]*?\r?\n}\r?\n\r?\nexport async function searchThreadMessages/.exec(chat)?.[0] ?? '';
+  const hydrationBody = /async function hydrateThreadMessagesInDatabase[\s\S]*?\r?\n}/.exec(chat)?.[0] ?? '';
   const anchorBody = /async listMessagesBaseAroundAnchor[\s\S]*?\r?\n  \},\r?\n\r?\n  async findMessageById/.exec(repository)?.[0] ?? '';
 
   assert.match(chat, /anchorMessageId\?: string/);
   assert.match(chat, /selectedVersionByMessageId\?: Record<string, number>/);
   assert.match(listBody, /options\.anchorMessageId && options\.limit/);
   assert.match(listBody, /aiThreadRepository\.listMessagesBaseAroundAnchor/);
-  assert.match(listBody, /aiThreadRepository\.listMessageVersionTotalsForMessages/);
+  assert.match(hydrationBody, /aiThreadRepository\.listMessageVersionTotalsForMessages/);
   assert.match(listBody, /aiThreadRepository\.listMessagesBase/);
-  assert.match(listBody, /const selectedVersionEntries = messagesWithBranchRoots/);
-  assert.match(listBody, /aiThreadRepository\.listMessageVersionsByIndexForMessages/);
-  assert.match(listBody, /const selectedVersion = selectedVersionsByMessageId\[message\.id\] \?\? null/);
-  assert.match(listBody, /messageVersions: selectedVersion \? \[selectedVersion\] : \[\]/);
-  assert.match(listBody, /versionIndex: selectedVersion\?\.versionIndex \?\? versionTotal/);
-  assert.match(listBody, /versionTotal,/);
+  assert.match(hydrationBody, /const selectedVersionEntries = messagesWithBranchRoots/);
+  assert.match(hydrationBody, /aiThreadRepository\.listMessageVersionsByIndexForMessages/);
+  assert.match(hydrationBody, /const selectedVersion = selectedVersionsByMessageId\[message\.id\] \?\? null/);
+  assert.match(hydrationBody, /messageVersions: selectedVersion \? \[selectedVersion\] : \[\]/);
+  assert.match(hydrationBody, /versionIndex: selectedVersion\?\.versionIndex \?\? versionTotal/);
+  assert.match(hydrationBody, /versionTotal,/);
   assert.match(repository, /async listMessagesBase/);
   assert.match(repository, /async listMessagesBaseAroundAnchor/);
   assert.match(anchorBody, /const latestLimit = Math\.max\(1, limit\)/);
@@ -150,7 +167,7 @@ test('thread message loading keeps version totals cheap and only hydrates select
   assert.match(repository, /async listMessageVersionTotalsForMessages/);
   assert.match(repository, /async listMessageVersionsByIndexForMessages/);
   assert.doesNotMatch(listBody, /listMessages\(db, threadId, options\.limit, options\.branchScopes\)/);
-  assert.doesNotMatch(listBody, /listMessageVersionsForMessages\(db, messageIds\)/);
+  assert.doesNotMatch(hydrationBody, /listMessageVersionsForMessages\(db, messageIds\)/);
 });
 
 test('selecting an older message version refreshes thread messages with the latest selected-version map', () => {

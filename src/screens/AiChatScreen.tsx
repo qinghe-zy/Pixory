@@ -18,6 +18,7 @@ import {
   AppState,
   Easing,
   FlatList,
+  InteractionManager,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type NativeTouchEvent,
@@ -94,6 +95,8 @@ import {
   getCurrentChatModelPresentation,
   generateReplyAssistSuggestions,
   listThreadMessages,
+  loadThreadMessagePage,
+  loadThreadMessagePageAroundAnchor,
   loadThreadContinuityMilestones,
   loadThreadMessageAppearanceConfig,
   loadThreadTitle,
@@ -230,6 +233,7 @@ import { loadDreamRuntimeNotice, subscribeDreamRuntimeNotices, type DreamRuntime
 import { hashBranchRoute } from '../ai/context/conversationCoverage';
 import type {
   AiBranchScope,
+  AiMessagePageCursor,
   AiThreadContinuityMilestoneRecord,
   AiThreadHistoryItem,
 } from "../database/repositories/aiThreadRepository";
@@ -249,6 +253,7 @@ import {
   isAdoptedThreadRouteSnapshotCurrent,
   loadPersistedAdoptedThreadBranchScopes,
 } from "../ai/aiThreadRouteSnapshotService";
+import { subscribeAiThreadPresentation } from "../ai/aiThreadPresentationEvents";
 
 const MESSAGE_STREAM_FOLLOW_THRESHOLD = 48;
 const MESSAGE_SAFE_FLUSH_OFFSET = 32;
@@ -949,7 +954,7 @@ export function AiChatScreen({
     }),
   ).current;
 
-  const loadedMessageLimitRef = useRef(CHAT_MESSAGE_PAGE_SIZE);
+  const olderMessageCursorRef = useRef<AiMessagePageCursor | null>(null);
   const userScrolledAwayFromBottomRef = useRef(false);
   const bottomLockedRef = useRef(true);
   const isUserDraggingRef = useRef(false);
@@ -1505,9 +1510,6 @@ export function AiChatScreen({
     return item?.type === "message" ? item.message.id : null;
   }
 
-  const [loadedMessageLimit, setLoadedMessageLimit] = useState(
-    CHAT_MESSAGE_PAGE_SIZE,
-  );
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [composerText, setComposerText] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -2551,6 +2553,7 @@ export function AiChatScreen({
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
+      hasAttachments: boolean;
     },
   ): AiGenerationSubscriber {
     return {
@@ -2642,7 +2645,9 @@ export function AiChatScreen({
           return;
         }
         void (async () => {
-          await reloadMessages(targetThreadId);
+          if (pendingUserMessage?.hasAttachments) {
+            await reloadMessages(targetThreadId);
+          }
           await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {
@@ -2654,8 +2659,7 @@ export function AiChatScreen({
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
-        void reloadMessages(targetThreadId);
-        void reloadContinuityMilestones(targetThreadId);
+        void reloadThreadTitle(targetThreadId);
       },
     };
   }
@@ -2667,6 +2671,7 @@ export function AiChatScreen({
       branchVersionIndex: number | null;
       content: string;
       createdAt: string;
+      hasAttachments: boolean;
     },
   ): {
     generation: number;
@@ -3546,8 +3551,7 @@ export function AiChatScreen({
         setMessageLoadError(null);
         void reloadContinuityMilestones(null);
         setHasEarlierMessages(false);
-        loadedMessageLimitRef.current = CHAT_MESSAGE_PAGE_SIZE;
-        setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
+        olderMessageCursorRef.current = null;
         setMemoryCaptures([]);
         isLoadingEarlierRef.current = false;
         userScrolledAwayFromBottomRef.current = false;
@@ -3556,8 +3560,7 @@ export function AiChatScreen({
         return;
       }
       const forceToLatest = options.forceToLatest ?? false;
-      const messageLimit =
-        options.limitOverride ?? loadedMessageLimitRef.current;
+      const messageLimit = options.limitOverride ?? CHAT_MESSAGE_PAGE_SIZE;
       // An explicit empty route means the main trunk. Never widen it to an
       // unrestricted all-branch query when the persisted route is absent or invalid.
       let branchScopes: AiBranchScope[] | undefined = options.branchScopes;
@@ -3572,13 +3575,29 @@ export function AiChatScreen({
       const routeSelection = buildBranchSelectionMap(resolvedScopes);
       // Direct message load – avoids the snapshot DB chain that crashed expo-sqlite.
       let nextMessages: AiMessageWithCitations[];
+      let nextHasEarlierMessages: boolean;
+      let nextOlderCursor: AiMessagePageCursor | null;
       try {
-        nextMessages = await listThreadMessages(space, targetThreadId, {
-          anchorMessageId: options.anchorMessageId,
-          branchScopes: resolvedScopes,
-          limit: messageLimit,
-          selectedVersionByMessageId: routeSelection,
-        });
+        if (options.anchorMessageId) {
+          const page = await loadThreadMessagePageAroundAnchor(space, targetThreadId, {
+            anchorMessageId: options.anchorMessageId,
+            branchScopes: resolvedScopes,
+            limit: messageLimit,
+            selectedVersionByMessageId: routeSelection,
+          });
+          nextMessages = page.messages;
+          nextHasEarlierMessages = page.hasEarlierMessages;
+          nextOlderCursor = page.olderCursor;
+        } else {
+          const page = await loadThreadMessagePage(space, targetThreadId, {
+            branchScopes: resolvedScopes,
+            limit: messageLimit,
+            selectedVersionByMessageId: routeSelection,
+          });
+          nextMessages = page.messages;
+          nextHasEarlierMessages = page.hasEarlierMessages;
+          nextOlderCursor = page.olderCursor;
+        }
       } catch (error) {
         if (isLatestRequest("messages", requestId, targetThreadId)) {
           setMessageLoadError(
@@ -3597,9 +3616,8 @@ export function AiChatScreen({
       selectedVersionByMessageIdRef.current = buildBranchSelectionMap(resolvedScopes);
       setSelectedVersionByMessageId(selectedVersionByMessageIdRef.current);
       setPersistedCurrentBranchScopes(resolvedScopes);
-      setHasEarlierMessages(
-        options.anchorMessageId ? true : nextMessages.length >= messageLimit,
-      );
+      olderMessageCursorRef.current = nextOlderCursor;
+      setHasEarlierMessages(nextHasEarlierMessages);
       if (forceToLatest) {
         userScrolledAwayFromBottomRef.current = false;
         bottomLockedRef.current = true;
@@ -3803,15 +3821,49 @@ export function AiChatScreen({
 
   const loadEarlierMessages = useCallback(() => {
     const targetThreadId = activeThreadIdRef.current;
-    const nextLimit = loadedMessageLimitRef.current + CHAT_MESSAGE_PAGE_SIZE;
-    isLoadingEarlierRef.current = true;
-    loadedMessageLimitRef.current = nextLimit;
-    setLoadedMessageLimit(nextLimit);
-    if (targetThreadId) {
-      // prettier-ignore
-      void reloadMessages(targetThreadId, false, activeMessageBranchScopesRef.current, nextLimit);
+    const beforeCursor = olderMessageCursorRef.current;
+    if (!targetThreadId || !beforeCursor || isLoadingEarlierRef.current) {
+      return;
     }
-  }, [reloadMessages]);
+    isLoadingEarlierRef.current = true;
+    void (async () => {
+      try {
+        const page = await loadThreadMessagePage(space, targetThreadId, {
+          beforeCursor,
+          branchScopes: activeMessageBranchScopesRef.current ?? [],
+          limit: CHAT_MESSAGE_PAGE_SIZE,
+          selectedVersionByMessageId: selectedVersionByMessageIdRef.current,
+        });
+        if (
+          activeThreadIdRef.current !== targetThreadId
+          || olderMessageCursorRef.current !== beforeCursor
+        ) {
+          return;
+        }
+        const mergedMessagesById = new Map(
+          page.messages.map((message) => [message.id, message]),
+        );
+        messagesRef.current.forEach((message) => {
+          mergedMessagesById.set(message.id, message);
+        });
+        const mergedMessages = [...mergedMessagesById.values()]
+          .sort((left, right) =>
+            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+          );
+        olderMessageCursorRef.current = page.olderCursor;
+        setHasEarlierMessages(page.hasEarlierMessages);
+        replaceMessages(mergedMessages);
+      } catch (error) {
+        setMessageLoadError(
+          error instanceof Error
+            ? `聊天记录加载失败：${error.message}`
+            : "聊天记录加载失败，请重试。",
+        );
+      } finally {
+        isLoadingEarlierRef.current = false;
+      }
+    })();
+  }, [space]);
 
   const reloadThreadTitle = useCallback(
     async (targetThreadId: string | null) => {
@@ -3855,19 +3907,14 @@ export function AiChatScreen({
         });
         return;
       }
-      const [
-        nextAppearanceConfig,
-        nextUserAvatarUri,
-        nextUserNickname,
-      ] = await Promise.all([
-        loadThreadMessageAppearanceConfig(space, targetThreadId),
-        runWithDatabaseSpace(space, (db) =>
-          settingsRepository.getProfileAvatarUri(db),
-        ),
-        runWithDatabaseSpace(space, (db) =>
-          settingsRepository.getProfileNickname(db),
-        ),
-      ]);
+      const nextAppearanceConfig = await loadThreadMessageAppearanceConfig(
+        space,
+        targetThreadId,
+      );
+      const profile = await runWithDatabaseSpace(space, async (db) => ({
+        avatarUri: await settingsRepository.getProfileAvatarUri(db),
+        nickname: await settingsRepository.getProfileNickname(db),
+      }));
       if (!isLatestRequest("avatar", requestId, targetThreadId)) {
         return;
       }
@@ -3876,8 +3923,8 @@ export function AiChatScreen({
         assistantAvatarUri: nextAppearanceConfig.assistantAvatar.avatarUri,
         assistantName: nextAppearanceConfig.assistantName,
         userAvatarEnabled: nextAppearanceConfig.userAvatarEnabled,
-        userAvatarUri: nextUserAvatarUri,
-        userNickname: nextUserNickname,
+        userAvatarUri: profile.avatarUri,
+        userNickname: profile.nickname,
       });
     },
     [space],
@@ -4318,7 +4365,7 @@ export function AiChatScreen({
     resetStreamingReadBufferState();
     setGenerating(false);
     setActiveAssistantId(null);
-    setLoadedMessageLimit(CHAT_MESSAGE_PAGE_SIZE);
+    olderMessageCursorRef.current = null;
     setHasEarlierMessages(false);
     setSearchHighlightMessageId(null);
     if (!nextThreadId) {
@@ -4377,6 +4424,7 @@ export function AiChatScreen({
           selectedVersionByMessageIdRef.current = prefetched.selectedVersionByMessageId;
           setSelectedVersionByMessageId(prefetched.selectedVersionByMessageId);
           setPersistedCurrentBranchScopes(prefetched.branchScopes);
+          olderMessageCursorRef.current = prefetched.olderCursor;
           setHasEarlierMessages(prefetched.hasEarlierMessages);
           setMessageLoadError(null);
           replaceMessages(prefetched.messages);
@@ -4386,9 +4434,6 @@ export function AiChatScreen({
           // fade in at 150ms so the 80ms retry has settled before reveal.
           scheduleIntentionalLatestJump(false);
           fadeInMessageArea(150);
-          // Silently refresh in the background in case new messages arrived
-          // between the prefetch and now.
-          void reloadMessages(targetThreadId, { forceToLatest: true });
           return;
         }
       }
@@ -4518,18 +4563,30 @@ export function AiChatScreen({
   }, [isInitialMessageLoading, reloadThreadTitle, threadId]);
 
   useEffect(() => {
-    if (isInitialMessageLoading) {
+    if (!threadId) {
       return;
     }
-    void reloadMemoryCaptures(threadId ?? null);
-  }, [isInitialMessageLoading, reloadMemoryCaptures, threadId]);
+    return subscribeAiThreadPresentation(space, threadId, () => {
+      void reloadThreadTitle(threadId);
+    });
+  }, [reloadThreadTitle, space, threadId]);
 
   useEffect(() => {
     if (isInitialMessageLoading) {
       return;
     }
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void reloadMemoryCaptures(threadId ?? null);
+    });
+    return () => interaction.cancel();
+  }, [isInitialMessageLoading, reloadMemoryCaptures, threadId]);
+
+  useEffect(() => {
+    if (!recordDrawerVisible) {
+      return;
+    }
     void reloadRecentThreads();
-  }, [activeThreadId, isInitialMessageLoading, reloadRecentThreads]);
+  }, [recordDrawerVisible, reloadRecentThreads]);
 
   useEffect(() => {
     if (isLoadingEarlierRef.current) {
@@ -5539,6 +5596,7 @@ export function AiChatScreen({
               branchVersionIndex: activeBranch?.branchVersionIndex ?? null,
               content,
               createdAt: sendPressedAt,
+              hasAttachments: attachments.length > 0,
             },
       );
       streamGeneration = streamRequest.generation;

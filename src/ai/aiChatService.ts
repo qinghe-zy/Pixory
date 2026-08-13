@@ -20,7 +20,7 @@ import {
   type AiThreadRecord,
   type PixorySpace,
 } from '../database';
-import type { AiBranchScope, AiMemoryRecord, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
+import type { AiBranchScope, AiMemoryRecord, AiMessagePageCursor, AiMessageRecord, AiMessageVersionRecord, AiThreadHistoryFilter, AiThreadHistoryItem, AiMessageAttachmentRecord, AiThreadExportSnapshot } from '../database/repositories/aiThreadRepository';
 import type { AiThreadContinuityMilestoneRecord } from '../database/repositories/aiThreadRepository';
 import type { AiDocumentRecord } from '../database/repositories/aiKnowledgeRepository';
 import { DEFAULT_AI_ROLE_PROMPT, MATERIAL_SESSION_RULES, STRICT_MATERIAL_RULES } from './aiConstants';
@@ -153,6 +153,8 @@ import {
   type AiGenerationJobRecord,
 } from './generation/aiGenerationRepository';
 import { mergeContinuationDelta } from './generation/aiGenerationRecovery';
+import { enqueueAiPostReplyTask } from './aiPostReplyTaskQueue';
+import { emitAiThreadPresentationUpdated } from './aiThreadPresentationEvents';
 
 export interface AiThreadAvatarConfig {
   avatarEnabled: boolean;
@@ -592,6 +594,18 @@ export interface ListThreadMessagesOptions {
   branchScopes?: AiBranchScope[];
   limit?: number;
   selectedVersionByMessageId?: Record<string, number>;
+}
+
+export interface AiThreadMessagePage {
+  baseMessageCount: number;
+  hasEarlierMessages: boolean;
+  messages: AiMessageWithCitations[];
+  olderCursor: AiMessagePageCursor | null;
+}
+
+export interface LoadThreadMessagePageOptions extends ListThreadMessagesOptions {
+  beforeCursor?: AiMessagePageCursor;
+  limit: number;
 }
 
 export type AiChatSearchMatchKind = 'exact' | 'fuzzy';
@@ -2608,11 +2622,13 @@ async function loadBranchRootMessages(
   );
 }
 
-export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
-  const messages = options.anchorMessageId && options.limit
-      ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
-      : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
-  const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, messages);
+async function hydrateThreadMessagesInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  baseMessages: AiMessageRecord[],
+  selectedVersionByMessageId?: Record<string, number>,
+): Promise<AiMessageWithCitations[]> {
+  const messagesWithBranchRoots = await loadBranchRootMessages(db, threadId, baseMessages);
   const messageIds = messagesWithBranchRoots.map((message) => message.id);
   // Sequential queries: expo-sqlite does not support concurrent prepared
   // statements on the same connection; Promise.all here caused
@@ -2623,7 +2639,7 @@ export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId:
   const selectedVersionEntries = messagesWithBranchRoots
     .map((message) => {
       const versionTotal = versionTotalsByMessageId[message.id] ?? 1;
-      const selectedVersionIndex = options.selectedVersionByMessageId?.[message.id];
+      const selectedVersionIndex = selectedVersionByMessageId?.[message.id];
       if (!selectedVersionIndex || selectedVersionIndex >= versionTotal) {
         return null;
       }
@@ -2650,8 +2666,111 @@ export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId:
   });
 }
 
+export async function listThreadMessagesInDatabase(db: SQLiteDatabase, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
+  const baseMessages = options.anchorMessageId && options.limit
+    ? await aiThreadRepository.listMessagesBaseAroundAnchor(db, threadId, options.anchorMessageId, options.limit, options.branchScopes)
+    : await aiThreadRepository.listMessagesBase(db, threadId, options.limit, options.branchScopes);
+  return hydrateThreadMessagesInDatabase(
+    db,
+    threadId,
+    baseMessages,
+    options.selectedVersionByMessageId,
+  );
+}
+
+export async function loadThreadMessagePageInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  options: LoadThreadMessagePageOptions,
+): Promise<AiThreadMessagePage> {
+  const limit = Math.max(1, options.limit);
+  const candidates = options.beforeCursor
+    ? await aiThreadRepository.listMessagesBaseBefore(
+      db,
+      threadId,
+      options.beforeCursor,
+      limit + 1,
+      options.branchScopes,
+    )
+    : await aiThreadRepository.listMessagesBase(
+      db,
+      threadId,
+      limit + 1,
+      options.branchScopes,
+    );
+  const hasEarlierMessages = candidates.length > limit;
+  const baseMessages = hasEarlierMessages ? candidates.slice(1) : candidates;
+  const oldest = baseMessages[0] ?? null;
+  return {
+    baseMessageCount: baseMessages.length,
+    hasEarlierMessages,
+    messages: await hydrateThreadMessagesInDatabase(
+      db,
+      threadId,
+      baseMessages,
+      options.selectedVersionByMessageId,
+    ),
+    olderCursor: oldest ? { createdAt: oldest.createdAt, id: oldest.id } : null,
+  };
+}
+
+export async function loadThreadMessagePageAroundAnchorInDatabase(
+  db: SQLiteDatabase,
+  threadId: string,
+  options: LoadThreadMessagePageOptions & { anchorMessageId: string },
+): Promise<AiThreadMessagePage> {
+  const baseMessages = await aiThreadRepository.listMessagesBaseAroundAnchor(
+    db,
+    threadId,
+    options.anchorMessageId,
+    options.limit,
+    options.branchScopes,
+  );
+  const oldest = baseMessages[0] ?? null;
+  const olderCursor = oldest
+    ? { createdAt: oldest.createdAt, id: oldest.id }
+    : null;
+  const hasEarlierMessages = Boolean(
+    olderCursor
+    && (await aiThreadRepository.listMessagesBaseBefore(
+      db,
+      threadId,
+      olderCursor,
+      1,
+      options.branchScopes,
+    )).length,
+  );
+  return {
+    baseMessageCount: baseMessages.length,
+    hasEarlierMessages,
+    messages: await hydrateThreadMessagesInDatabase(
+      db,
+      threadId,
+      baseMessages,
+      options.selectedVersionByMessageId,
+    ),
+    olderCursor,
+  };
+}
+
 export async function listThreadMessages(space: PixorySpace, threadId: string, options: ListThreadMessagesOptions = {}): Promise<AiMessageWithCitations[]> {
   return runWithDatabaseSpace(space, (db) => listThreadMessagesInDatabase(db, threadId, options));
+}
+
+export async function loadThreadMessagePage(
+  space: PixorySpace,
+  threadId: string,
+  options: LoadThreadMessagePageOptions,
+): Promise<AiThreadMessagePage> {
+  return runWithDatabaseSpace(space, (db) => loadThreadMessagePageInDatabase(db, threadId, options));
+}
+
+export async function loadThreadMessagePageAroundAnchor(
+  space: PixorySpace,
+  threadId: string,
+  options: LoadThreadMessagePageOptions & { anchorMessageId: string },
+): Promise<AiThreadMessagePage> {
+  return runWithDatabaseSpace(space, (db) => loadThreadMessagePageAroundAnchorInDatabase(db, threadId, options));
 }
 
 export async function searchThreadMessages(input: {
@@ -4537,6 +4656,9 @@ async function streamAssistantReply(input: {
   let lastUiPatchAt = 0;
   let lastUiPatchAnswerChars = initialAnswerText.length;
   let lastUiPatchReasoningChars = reasoningText.length;
+  const hasUnpublishedStreamingText = () =>
+    answerText.length + pendingAnswerChars !== lastUiPatchAnswerChars
+    || reasoningText.length + pendingReasoningChars !== lastUiPatchReasoningChars;
   let pressureProbeExpectedAt = Date.now();
   let pressureProbeActive = true;
   const sampleStreamingDevicePressure = () => {
@@ -4614,9 +4736,10 @@ async function streamAssistantReply(input: {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
     }
+    flushStreamingTextChunks();
     lastUiPatchAt = now;
-    lastUiPatchAnswerChars = answerChars;
-    lastUiPatchReasoningChars = reasoningChars;
+    lastUiPatchAnswerChars = answerText.length;
+    lastUiPatchReasoningChars = reasoningText.length;
     generationMetrics.counters.streamUiPatchCount += 1;
     if (!generationMetrics.timestamps.firstUiPatchAt && answerText.length + reasoningText.length > 0) {
       markGenerationMetric(generationMetrics, 'firstUiPatchAt');
@@ -4644,7 +4767,7 @@ async function streamAssistantReply(input: {
     }
     pendingUiPatchTimer = setTimeout(() => {
       pendingUiPatchTimer = null;
-      if (!streamFailed && (pendingAnswerChunks.length > 0 || pendingReasoningChunks.length > 0)) {
+      if (!streamFailed && hasUnpublishedStreamingText()) {
         emitStreamingPatch(true);
       }
     }, intervalMs);
@@ -5092,11 +5215,13 @@ async function streamAssistantReply(input: {
       thread: input.thread,
       userMessage: input.userMessage,
     });
-    await maybeGenerateModelThreadTitleAfterReply({
-      branchScopes,
-      onUpdated: input.onUpdated,
-      space: input.space,
-      thread: input.thread,
+    void enqueueAiPostReplyTask(input.space, input.thread.id, async () => {
+      await maybeGenerateModelThreadTitleAfterReply({
+        branchScopes,
+        onUpdated: () => emitAiThreadPresentationUpdated(input.space, input.thread.id),
+        space: input.space,
+        thread: input.thread,
+      });
     });
     void scheduleDeferredCompanionMemoryMaintenance({
       assistantMessageId: input.assistantMessageId,
