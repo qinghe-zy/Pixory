@@ -454,7 +454,8 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   brandGreetingText: {
-    fontFamily: 'DiaryKai',
+    fontFamily: typography.family.stat,
+    fontWeight: '600',
     fontSize: 28,
     includeFontPadding: false,
     letterSpacing: 2,
