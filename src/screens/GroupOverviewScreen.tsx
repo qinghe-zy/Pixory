@@ -15,7 +15,7 @@ import { getGroupTypeLabel, GROUP_TYPE_OPTIONS } from '../constants/groups';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GroupListItem, type IpRecord, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { BlurView } from 'expo-blur';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
@@ -48,23 +48,33 @@ export function GroupOverviewScreen({
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[]; hasMore: boolean }>(
-    async () => {
-      const [ip, page] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.findById(db, ipId),
-        groupRepository.findOverviewPage(db, { ipId, limit: GROUP_PAGE_SIZE }),
-      ]));
-
-      return { ip, groups: page.items, hasMore: page.hasMore };
-    },
-    [ipId, refreshToken, space],
+  const {
+    items: groups,
+    meta: ip,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<GroupListItem, IpRecord | null>(
+    async (offset) => runWithDatabaseSpace(space, async (db) => {
+      const [nextIp, page] = await Promise.all([
+        offset === 0 ? ipRepository.findById(db, ipId) : Promise.resolve(undefined),
+        groupRepository.findOverviewPage(db, { ipId, limit: GROUP_PAGE_SIZE, offset }),
+      ]);
+      return { items: page.items, hasMore: page.hasMore, meta: nextIp };
+    }),
     {
+      requestKey: JSON.stringify([space, ipId, refreshToken]),
+      getItemKey: (group) => group.id,
+      initialMeta: null,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取分组失败：${message}`;
       },
-      initialData: { groups: [], hasMore: false, ip: null },
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
+      },
     }
   );
 
@@ -82,40 +92,11 @@ export function GroupOverviewScreen({
     [onCreateGroup]
   );
 
-  const ip = data?.ip ?? null;
-  const groups = data?.groups ?? [];
-  const hasMore = data?.hasMore ?? false;
   const groupCoverBlurRadius = space === 'personal' && (ip?.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip?.coverBlurRadius) : undefined;
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
     data: groups.filter((group) => group.type === option.value),
   })).filter((section) => section.data.length > 0);
-
-  function loadMore() {
-    if (isLoading || isLoadingMore || !hasMore) {
-      return;
-    }
-
-    setIsLoadingMore(true);
-    void (async () => {
-      try {
-        const page = await runWithDatabaseSpace(space, (db) => groupRepository.findOverviewPage(db, {
-          ipId,
-          limit: GROUP_PAGE_SIZE,
-          offset: groups.length,
-        }));
-        setData((current) => current ? {
-          ...current,
-          groups: [...current.groups, ...page.items],
-          hasMore: page.hasMore,
-        } : current);
-      } catch (error) {
-        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
-      } finally {
-        setIsLoadingMore(false);
-      }
-    })();
-  }
 
   function confirmDeleteGroup() {
     if (!deleteGroup) {

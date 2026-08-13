@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
@@ -16,7 +16,7 @@ import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { resolvePersonalCoverBlurRadius } from '../constants/privacy';
 import { groupRepository, ipRepository, runWithDatabaseSpace, type GlobalGroupListItem, type IpListItem, type PixorySpace } from '../database';
 import { colors, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { formatDate } from '../utils/formatters';
 import { AssetFilterDrawer } from '../components/AssetFilterDrawer';
@@ -56,33 +56,57 @@ export function GlobalGroupsScreen({
   const [renameGroup, setRenameGroup] = useState<GlobalGroupListItem | null>(null);
   const [selectedIpId, setSelectedIpId] = useState<number | null>(null);
   const [isIpDrawerOpen, setIsIpDrawerOpen] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ groups: GlobalGroupListItem[]; hasMore: boolean }>(
-    async () => {
-      const page = await runWithDatabaseSpace(space, (db) => groupRepository.findOverviewPage(db, {
+  const {
+    items: groups,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<GlobalGroupListItem, null>(
+    (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await groupRepository.findOverviewPage(db, {
         ipId: selectedIpId ?? undefined,
         limit: GROUP_PAGE_SIZE,
-      }));
-      return { groups: page.items, hasMore: page.hasMore };
-    },
-    [refreshToken, selectedIpId, space],
+        offset,
+      });
+      return { items: page.items, hasMore: page.hasMore };
+    }),
     {
+      requestKey: JSON.stringify([space, selectedIpId, refreshToken]),
+      getItemKey: (group) => group.id,
+      initialMeta: null,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取分组总览失败：${message}`;
       },
-      initialData: { groups: [], hasMore: false },
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
+      },
     }
   );
-  const { data: scopeData, setData: setScopeData } = useScreenLoad<{ items: IpListItem[]; hasMore: boolean }>(
-    () => runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItemsPage(db, { limit: IP_SCOPE_PAGE_SIZE })),
-    [refreshToken, space],
-    { initialData: { items: [], hasMore: false } }
+  const {
+    items: ipScopes,
+    isLoadingMore: isLoadingMoreScopes,
+    loadMore: loadMoreScopes,
+  } = usePagedScreenLoad<IpListItem, null>(
+    (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await ipRepository.findLibraryItemsPage(db, { limit: IP_SCOPE_PAGE_SIZE, offset });
+      return { items: page.items, hasMore: page.hasMore };
+    }),
+    {
+      requestKey: JSON.stringify([space, refreshToken]),
+      getItemKey: (ip) => ip.id,
+      initialMeta: null,
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
+      },
+    }
   );
-  const groups = data?.groups ?? [];
-  const hasMore = data?.hasMore ?? false;
-  const ipScopes = scopeData?.items ?? [];
-  const scopeHasMore = scopeData?.hasMore ?? false;
+
+  useEffect(() => {
+    setSelectedIpId(null);
+  }, [space]);
 
   const selectedIpName = selectedIpId == null ? '全部 IP' : ipScopes.find((ip) => ip.id === selectedIpId)?.name ?? groups[0]?.ipName ?? '当前 IP';
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
@@ -92,40 +116,6 @@ export function GlobalGroupsScreen({
 
   function getGroupCoverBlurRadius(group: GlobalGroupListItem): number | undefined {
     return space === 'personal' && (group.ipCoverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(group.ipCoverBlurRadius) : undefined;
-  }
-
-  function loadMore() {
-    if (isLoading || isLoadingMore || !hasMore) {
-      return;
-    }
-    setIsLoadingMore(true);
-    void (async () => {
-      try {
-        const page = await runWithDatabaseSpace(space, (db) => groupRepository.findOverviewPage(db, {
-          ipId: selectedIpId ?? undefined,
-          limit: GROUP_PAGE_SIZE,
-          offset: groups.length,
-        }));
-        setData((current) => current ? { ...current, groups: [...current.groups, ...page.items], hasMore: page.hasMore } : current);
-      } catch (error) {
-        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
-      } finally {
-        setIsLoadingMore(false);
-      }
-    })();
-  }
-
-  function loadMoreScopes() {
-    if (!scopeHasMore) {
-      return;
-    }
-    void (async () => {
-      const page = await runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItemsPage(db, {
-        limit: IP_SCOPE_PAGE_SIZE,
-        offset: ipScopes.length,
-      }));
-      setScopeData((current) => current ? { items: [...current.items, ...page.items], hasMore: page.hasMore } : current);
-    })();
   }
 
   function confirmDeleteGroup() {
@@ -238,6 +228,7 @@ export function GlobalGroupsScreen({
       <FlatList
         data={ipScopes}
         keyExtractor={(ip) => String(ip.id)}
+        ListFooterComponent={isLoadingMoreScopes ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
         onEndReached={loadMoreScopes}
         onEndReachedThreshold={0.5}
         renderItem={({ item: ip }) => <OptionSelectRow label={ip.name} onPress={() => { setSelectedIpId(ip.id); setIsIpDrawerOpen(false); }} selected={selectedIpId === ip.id} />}

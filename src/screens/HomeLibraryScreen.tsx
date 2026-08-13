@@ -14,7 +14,7 @@ import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../cons
 import { imageRepository, ipRepository, runWithDatabaseSpace, type IpLibraryFilter, type IpListItem, type PixorySpace } from '../database';
 import { colors, componentTokens, radius, rhythm, shadows, spacing, typography } from '../design/tokens';
 import { BlurView } from 'expo-blur';
-import { useScreenLoad } from '../hooks/useScreenLoad';
+import { usePagedScreenLoad } from '../hooks/usePagedScreenLoad';
 import { useToast } from '../components/AppToast';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
 import { permanentlyDeleteIp, softDeleteIpToTrash } from '../services/ipDeletionService';
@@ -57,31 +57,38 @@ export function HomeLibraryScreen({
   const [spaceMoveIp, setSpaceMoveIp] = useState<IpListItem | null>(null);
   const [personalPassword, setPersonalPassword] = useState('');
   const [isMovingSpace, setIsMovingSpace] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ items: IpListItem[]; hasMore: boolean; needsOrganizingCount: number }>(
-    async () => {
-      const [page, needsOrganizingCount] = await runWithDatabaseSpace(space, (db) => Promise.all([
-        ipRepository.findLibraryItemsPage(db, {
-          filter: activeFilter,
-          limit: IP_LIBRARY_PAGE_SIZE,
-        }),
-        imageRepository.countNeedsOrganizing(db),
-      ]));
-      return { items: page.items, hasMore: page.hasMore, needsOrganizingCount };
-    },
-    [activeFilter, refreshKey, space],
+  const {
+    items,
+    meta: needsOrganizingCount,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    loadMore,
+    reload,
+  } = usePagedScreenLoad<IpListItem, number>(
+    async (offset) => runWithDatabaseSpace(space, async (db) => {
+      const page = await ipRepository.findLibraryItemsPage(db, {
+        filter: activeFilter,
+        limit: IP_LIBRARY_PAGE_SIZE,
+        offset,
+      });
+      const count = offset === 0 ? await imageRepository.countNeedsOrganizing(db) : undefined;
+      return { items: page.items, hasMore: page.hasMore, meta: count };
+    }),
     {
+      requestKey: JSON.stringify([space, activeFilter, refreshKey]),
+      getItemKey: (item) => item.id,
+      initialMeta: 0,
       formatError: (error) => {
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取 IP 资产失败：${message}`;
       },
-      initialData: { items: [], hasMore: false, needsOrganizingCount: 0 },
+      onLoadMoreError: (error) => {
+        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
+      },
       deferUntilInteractions: true,
     }
   );
-  const items = data?.items ?? [];
-  const hasMore = data?.hasMore ?? false;
-  const needsOrganizingCount = data?.needsOrganizingCount ?? 0;
 
   useEffect(() => {
     setActiveFilter(initialFilter);
@@ -111,32 +118,6 @@ export function HomeLibraryScreen({
 
   function handleDeleteIp(ip: IpListItem) {
     setActionIp(ip);
-  }
-
-  function loadMore() {
-    if (isLoading || isLoadingMore || !hasMore) {
-      return;
-    }
-
-    setIsLoadingMore(true);
-    void (async () => {
-      try {
-        const page = await runWithDatabaseSpace(space, (db) => ipRepository.findLibraryItemsPage(db, {
-          filter: activeFilter,
-          limit: IP_LIBRARY_PAGE_SIZE,
-          offset: items.length,
-        }));
-        setData((current) => current ? {
-          ...current,
-          items: [...current.items, ...page.items],
-          hasMore: page.hasMore,
-        } : current);
-      } catch (error) {
-        showToast(error instanceof Error ? `加载更多 IP 失败：${error.message}` : '加载更多 IP 失败');
-      } finally {
-        setIsLoadingMore(false);
-      }
-    })();
   }
 
   function confirmMoveIpToTrash() {

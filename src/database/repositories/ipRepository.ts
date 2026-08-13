@@ -198,14 +198,16 @@ function buildLibraryPageQuery(query?: IpLibraryQuery): { sql: string; values: A
         COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'image' THEN image_assets.id END) AS imageCount,
         COUNT(CASE WHEN image_assets.deletedAt IS NULL AND image_assets.mediaType = 'video' THEN image_assets.id END) AS videoCount,
         COALESCE(SUM(CASE WHEN image_assets.deletedAt IS NULL THEN image_assets.fileSize ELSE 0 END), 0) AS totalBytes
-      FROM image_assets
-      INNER JOIN page_ips ON page_ips.id = image_assets.ipId
+      FROM page_ips
+      CROSS JOIN image_assets
+      WHERE image_assets.ipId = page_ips.id
       GROUP BY image_assets.ipId
     ),
     group_stats AS (
       SELECT groups.ipId, COUNT(*) AS groupCount
-      FROM groups
-      INNER JOIN page_ips ON page_ips.id = groups.ipId
+      FROM page_ips
+      CROSS JOIN groups
+      WHERE groups.ipId = page_ips.id
       GROUP BY groups.ipId
     )
     SELECT

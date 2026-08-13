@@ -197,6 +197,27 @@ export const groupRepository = {
     };
   },
 
+  async findOverviewSearch(db: SQLiteDatabase, searchText: string, limit = 20): Promise<GlobalGroupListItem[]> {
+    const normalizedSearchText = searchText.trim();
+    if (!normalizedSearchText) {
+      return [];
+    }
+    const boundedLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const likeValue = `%${normalizedSearchText}%`;
+    const rows = await db.getAllAsync<GlobalGroupListItemRow>(
+      `${GROUP_OVERVIEW_SELECT}
+       WHERE ips.deletedAt IS NULL
+         AND (groups.name LIKE ? COLLATE NOCASE OR ips.name LIKE ? COLLATE NOCASE)
+       GROUP BY groups.id
+       ORDER BY groups.isPinned DESC, imageCount DESC, groups.updatedAt DESC, groups.id DESC
+       LIMIT ?`,
+      likeValue,
+      likeValue,
+      boundedLimit
+    );
+    return rows.map(mapGlobalGroupListItemRow);
+  },
+
   async findOverview(db: SQLiteDatabase): Promise<GlobalGroupListItem[]> {
     const rows = await db.getAllAsync<GlobalGroupListItemRow>(
       `${GROUP_OVERVIEW_SELECT} WHERE ips.deletedAt IS NULL GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC`
