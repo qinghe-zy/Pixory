@@ -388,10 +388,21 @@ function HomeBrandHeader() {
   }, [textShimmer, timeT]);
 
   const textStyle = useAnimatedStyle(() => {
+    // 根据 timeT (0 -> 2PI) 的变化，映射出星星达到最大的时刻
+    // Star 1 (mint300) peaks at PI/4 and 5PI/4
+    // Star 2 (sky300) peaks at 0, 2PI/3, 4PI/3, 2PI
     const color = interpolateColor(
-      textShimmer.value,
-      [0, 1],
-      [colors.text.title, '#8E9B90'] // 从主标题色平滑过渡到微亮的银灰绿色
+      timeT.value,
+      [0, Math.PI / 4, (Math.PI * 2) / 3, Math.PI, (Math.PI * 5) / 4, (Math.PI * 4) / 3, Math.PI * 2],
+      [
+        colors.support.sky300,
+        colors.support.mint300,
+        colors.support.sky300,
+        colors.text.title, // 回归主色调呼吸
+        colors.support.mint300,
+        colors.support.sky300,
+        colors.support.sky300,
+      ]
     );
     return { color };
   });
@@ -400,7 +411,7 @@ function HomeBrandHeader() {
   const star1Style = useAnimatedStyle(() => {
     const x = Math.sin(timeT.value) * 6;
     const y = Math.cos(timeT.value * 2) * 4;
-    const scale = 0.9 + 0.2 * Math.sin(timeT.value * 2);
+    const scale = 1.0 + 0.6 * Math.sin(timeT.value * 2);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
@@ -408,7 +419,7 @@ function HomeBrandHeader() {
   const star2Style = useAnimatedStyle(() => {
     const x = Math.cos(timeT.value * 2 + Math.PI / 2) * 5;
     const y = Math.sin(timeT.value + Math.PI) * 6;
-    const scale = 0.9 + 0.2 * Math.cos(timeT.value * 3);
+    const scale = 1.0 + 0.6 * Math.cos(timeT.value * 3);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
@@ -416,7 +427,7 @@ function HomeBrandHeader() {
   const star3Style = useAnimatedStyle(() => {
     const x = Math.sin(timeT.value * 3) * 4;
     const y = Math.cos(timeT.value) * 5;
-    const scale = 0.9 + 0.2 * Math.sin(timeT.value);
+    const scale = 1.0 + 0.6 * Math.sin(timeT.value * 1.5);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
@@ -427,14 +438,14 @@ function HomeBrandHeader() {
           {greeting}
         </Animated.Text>
         <View style={styles.binaryStarsContainer}>
-          <Animated.View style={[styles.binaryStar, { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
           <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300, zIndex: 2 }, star2Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.support.mint100, zIndex: 1 }, star3Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.mint100, zIndex: 1 }, star3Style]} />
         </View>
       </View>
-      <Text style={styles.brandSubtitleText}>
+      <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
         PIXORY · PRIVATE ARCHIVE
-      </Text>
+      </Animated.Text>
     </View>
   );
 }
