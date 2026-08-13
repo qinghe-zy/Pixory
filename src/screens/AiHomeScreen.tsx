@@ -194,7 +194,7 @@ export function AiHomeScreen({
       </View>
 
       <View style={styles.section}>
-        <SectionTitle actionLabel="全部" title="最近聊天" onPress={onOpenHistory} />
+        <SectionTitle actionLabel="全部" title="最近聊天" showDecoration onPress={onOpenHistory} />
         <View style={[styles.recentChatPanel, threads.length ? styles.recentChatPanelFilled : styles.recentChatPanelEmpty]}>
           <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={threads.length > RECENT_CHAT_VISIBLE_ROWS} style={styles.recentChatScroll}>
             {threads.length ? (
@@ -246,7 +246,7 @@ export function AiHomeScreen({
   );
 }
 
-function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight }: { delay: number; theta: Animated.SharedValue<number>; index: number; minHeight: number; maxHeight: number }) {
+function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight, width = 4 }: { delay: number; theta: Animated.SharedValue<number>; index: number; minHeight: number; maxHeight: number; width?: number }) {
   const currentHeight = useSharedValue(minHeight);
 
   useEffect(() => {
@@ -278,10 +278,10 @@ function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight }: { de
     };
   });
 
-  return <Animated.View style={[{ width: 4, borderRadius: 2 }, style]} />;
+  return <Animated.View style={[{ width, borderRadius: width / 2 }, style]} />;
 }
 
-function AiActiveSpectrum() {
+function AiActiveSpectrum({ mini = false }: { mini?: boolean }) {
   const theta = useSharedValue(0);
 
   useEffect(() => {
@@ -294,11 +294,11 @@ function AiActiveSpectrum() {
   }, [theta]);
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 24, paddingRight: spacing[2] }}>
-      <AiActiveSpectrumBar delay={0} theta={theta} index={0} minHeight={4} maxHeight={12} />
-      <AiActiveSpectrumBar delay={150} theta={theta} index={1} minHeight={8} maxHeight={18} />
-      <AiActiveSpectrumBar delay={300} theta={theta} index={2} minHeight={6} maxHeight={14} />
-      <AiActiveSpectrumBar delay={450} theta={theta} index={3} minHeight={4} maxHeight={10} />
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: mini ? 3 : 4, height: mini ? 16 : 24, paddingRight: mini ? 0 : spacing[2], marginLeft: mini ? 8 : 0 }}>
+      <AiActiveSpectrumBar delay={0} theta={theta} index={0} minHeight={4} maxHeight={mini ? 10 : 12} width={mini ? 3 : 4} />
+      <AiActiveSpectrumBar delay={150} theta={theta} index={1} minHeight={mini ? 6 : 8} maxHeight={mini ? 14 : 18} width={mini ? 3 : 4} />
+      <AiActiveSpectrumBar delay={300} theta={theta} index={2} minHeight={mini ? 4 : 6} maxHeight={mini ? 12 : 14} width={mini ? 3 : 4} />
+      <AiActiveSpectrumBar delay={450} theta={theta} index={3} minHeight={mini ? 3 : 4} maxHeight={mini ? 8 : 10} width={mini ? 3 : 4} />
     </View>
   );
 }
@@ -343,14 +343,16 @@ interface SectionTitleProps {
   actionLabel?: string;
   title: string;
   onPress?: () => void;
+  showDecoration?: boolean;
 }
 
-function SectionTitle({ actionLabel, title, onPress }: SectionTitleProps) {
+function SectionTitle({ actionLabel, title, onPress, showDecoration }: SectionTitleProps) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleBlock}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <View style={styles.sectionUnderline} />
+        {showDecoration && <AiActiveSpectrum mini />}
+        {!showDecoration && <View style={styles.sectionUnderline} />}
       </View>
       {actionLabel && onPress ? (
         <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
