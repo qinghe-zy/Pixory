@@ -303,8 +303,8 @@ export function AiChatComposer({
                 barGap={4}
                 barWidth={3}
                 colors={MACARON_COLORS.slice(0, 4)}
-                maxBarHeight={spacing[8]}
-                minBarHeight={10}
+                maxBarHeight={22}
+                minBarHeight={6}
               />
             )}
           </View>
