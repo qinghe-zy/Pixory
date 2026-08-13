@@ -440,13 +440,21 @@ function AnimatedSparklineBar({ baseHeight, delay }: { baseHeight: number; delay
   const currentHeight = useSharedValue(baseHeight);
   
   useEffect(() => {
-    // 基础高度的 30% 到 100% 之间错落呼吸
+    const max = 13;
+    const min = 3;
+    const gen = () => Math.floor(Math.random() * (max - min + 1)) + min;
+    const dur = () => 400 + Math.random() * 400;
+
+    // 生成一系列随机高度，每次循环所有柱子都有机会达到最大高度 13 或最小高度 3
     currentHeight.value = withDelay(delay, withRepeat(
       withSequence(
-        withTiming(Math.max(3, baseHeight * 0.3), { duration: 600 }),
-        withTiming(baseHeight, { duration: 700 }),
-        withTiming(Math.max(4, baseHeight * 0.6), { duration: 500 }),
-        withTiming(baseHeight, { duration: 600 }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(gen(), { duration: dur() }),
+        withTiming(baseHeight, { duration: dur() }),
       ),
       -1, // infinite
       true // reverse
