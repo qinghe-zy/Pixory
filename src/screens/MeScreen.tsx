@@ -95,11 +95,11 @@ function ProfileMemoryCore() {
     <View style={styles.coreContainer}>
       <Reanimated.View style={[styles.coreDot, coreStyle]} />
       
-      {/* 静止的虚线轨道体系 - 注意先 rotateX 再 rotateZ，这样才和星星的一致！ */}
+      {/* 静止的虚线轨道体系 - 还原原始正确的旋转顺序 (先 rotateZ 再 rotateX) */}
       <View style={styles.orbit1} />
       <View style={[styles.orbit2, { transform: [{ rotateX: '70deg' }] }]} />
-      <View style={[styles.orbit3, { transform: [{ rotateX: '65deg' }, { rotateZ: '60deg' }] }]} />
-      <View style={[styles.orbit4, { transform: [{ rotateX: '75deg' }, { rotateZ: '-45deg' }] }]} />
+      <View style={[styles.orbit3, { transform: [{ rotateZ: '60deg' }, { rotateX: '65deg' }] }]} />
+      <View style={[styles.orbit4, { transform: [{ rotateZ: '-45deg' }, { rotateX: '75deg' }] }]} />
 
       {/* 运动的星球实体 (绝对居中，依靠 translateX/Y 实现运动) */}
       <Reanimated.View style={[styles.planet1, style1]} />
@@ -740,9 +740,9 @@ const styles = StyleSheet.create({
   },
   orbit1: {
     position: 'absolute',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 23,
+    height: 23,
+    borderRadius: 11.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
@@ -759,9 +759,9 @@ const styles = StyleSheet.create({
   },
   orbit2: {
     position: 'absolute',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 33,
+    height: 33,
+    borderRadius: 16.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
@@ -778,9 +778,9 @@ const styles = StyleSheet.create({
   },
   orbit3: {
     position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 43,
+    height: 43,
+    borderRadius: 21.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
@@ -797,9 +797,9 @@ const styles = StyleSheet.create({
   },
   orbit4: {
     position: 'absolute',
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 55,
+    height: 55,
+    borderRadius: 27.5,
     borderWidth: 1,
     borderColor: colors.text.tertiary,
     borderStyle: 'dashed',
