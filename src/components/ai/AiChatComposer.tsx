@@ -9,6 +9,7 @@ import { AiModelIcon } from './AiModelIcon';
 import { AiMessageTextSelectionModal } from './AiMessageTextSelectionModal';
 import { AiVoiceInputStatus, type AiVoiceInputState } from './AiVoiceInputStatus';
 import { RhythmBars, MACARON_COLORS } from '../RhythmBars';
+import { AiActiveSpectrum } from './AiActiveSpectrum';
 
 export interface AiComposerAttachment {
   id: string;
@@ -299,12 +300,11 @@ export function AiChatComposer({
               </Pressable>
             )}
             {generating && (
-              <RhythmBars
-                barGap={4}
-                barWidth={3}
-                colors={MACARON_COLORS.slice(0, 4)}
-                maxBarHeight={22}
-                minBarHeight={6}
+              <AiActiveSpectrum
+                alignItems="center"
+                barColors={MACARON_COLORS.slice(0, 4)}
+                maxHeightScale={1.4}
+                mini
               />
             )}
           </View>

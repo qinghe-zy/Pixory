@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { listRoleCards } from '../ai/aiRoleCardService';
 import type { AiRoleCardRecord } from '../ai/types';
 import { AiLightScaffold } from '../components/ai/AiLightScaffold';
+import { AiActiveSpectrum } from '../components/ai/AiActiveSpectrum';
 import { aiLightColors } from '../components/ai/aiLightTheme';
 import { SecureImage } from '../components/SecureImage';
 import { LiquidGlassBezel } from '../components/LiquidGlassBezel';
@@ -246,62 +247,7 @@ export function AiHomeScreen({
   );
 }
 
-function AiActiveSpectrumBar({ delay, theta, index, minHeight, maxHeight, width = 4 }: { delay: number; theta: SharedValue<number>; index: number; minHeight: number; maxHeight: number; width?: number }) {
-  const currentHeight = useSharedValue(minHeight);
 
-  useEffect(() => {
-    currentHeight.value = withDelay(delay, withRepeat(
-      withSequence(
-        withTiming(maxHeight, { duration: 600 + Math.random() * 200 }),
-        withTiming(minHeight, { duration: 600 + Math.random() * 200 })
-      ),
-      -1,
-      true
-    ));
-  }, [delay, minHeight, maxHeight, currentHeight]);
-
-  const style = useAnimatedStyle(() => {
-    // 错开相位：每个柱子错开 PI / 4
-    const phaseOffset = index * (Math.PI / 4);
-    const rawSine = Math.sin(theta.value + phaseOffset); // -1 到 1
-    const normalized = ((rawSine + 1) / 2) * 3; // 0 到 3 之间的平滑值
-
-    const bg = interpolateColor(
-      normalized,
-      [0, 1, 2, 3],
-      [colors.support.sky300, colors.support.lilac300, colors.support.coral400, colors.support.mint300]
-    );
-
-    return {
-      height: currentHeight.value,
-      backgroundColor: bg,
-    };
-  });
-
-  return <Animated.View style={[{ width, borderRadius: width / 2 }, style]} />;
-}
-
-function AiActiveSpectrum({ mini = false }: { mini?: boolean }) {
-  const theta = useSharedValue(0);
-
-  useEffect(() => {
-    // 0 到 2PI 的无限循环，周期 6 秒，使用线性动画保证顺畅旋转
-    theta.value = withRepeat(
-      withTiming(Math.PI * 2, { duration: 6000, easing: Easing.linear }),
-      -1,
-      false
-    );
-  }, [theta]);
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: mini ? 'flex-end' : 'center', gap: mini ? 3 : 4, height: mini ? 16 : 24, paddingRight: mini ? 0 : spacing[2], marginLeft: mini ? 8 : 0, paddingBottom: mini ? 4 : 0 }}>
-      <AiActiveSpectrumBar delay={0} theta={theta} index={0} minHeight={4} maxHeight={mini ? 10 : 12} width={mini ? 3 : 4} />
-      <AiActiveSpectrumBar delay={150} theta={theta} index={1} minHeight={mini ? 6 : 8} maxHeight={mini ? 14 : 18} width={mini ? 3 : 4} />
-      <AiActiveSpectrumBar delay={300} theta={theta} index={2} minHeight={mini ? 4 : 6} maxHeight={mini ? 12 : 14} width={mini ? 3 : 4} />
-      <AiActiveSpectrumBar delay={450} theta={theta} index={3} minHeight={mini ? 3 : 4} maxHeight={mini ? 8 : 10} width={mini ? 3 : 4} />
-    </View>
-  );
-}
 
 function buildRoleLibraryShortcuts(roleCards: AiRoleCardRecord[]): RoleShortcut[] {
   return roleCards
