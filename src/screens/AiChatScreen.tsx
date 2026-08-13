@@ -2641,7 +2641,6 @@ export function AiChatScreen({
           return;
         }
         void (async () => {
-          await reloadMessages(targetThreadId);
           await reloadContinuityMilestones(targetThreadId);
           await reloadMemoryCaptures(targetThreadId);
           if (isCurrentStream(targetThreadId, generation)) {
@@ -2653,8 +2652,7 @@ export function AiChatScreen({
         if (!isCurrentStream(targetThreadId, generation)) {
           return;
         }
-        void reloadMessages(targetThreadId);
-        void reloadContinuityMilestones(targetThreadId);
+        void reloadThreadTitle(targetThreadId);
       },
     };
   }

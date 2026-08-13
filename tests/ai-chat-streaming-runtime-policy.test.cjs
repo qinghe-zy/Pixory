@@ -132,6 +132,15 @@ test('stream scheduler drains queued chunks even when no later provider delta ar
   assert.match(service, /scheduleStreamingPatch\(\);\s*generationMetrics\.counters\.streamMergedDeltaCount/);
 });
 
+test('streaming publication flushes its pending chunks before counting them as published', () => {
+  const service = read('src/ai/aiChatService.ts');
+  assert.match(service, /const hasUnpublishedStreamingText = \(\) =>/);
+  assert.match(service, /flushStreamingTextChunks\(\);\s*lastUiPatchAt = now;\s*lastUiPatchAnswerChars = answerText\.length/);
+  assert.match(service, /lastUiPatchReasoningChars = reasoningText\.length/);
+  assert.match(service, /content: answerText/);
+  assert.match(service, /pendingUiPatchTimer = setTimeout\(\(\) => \{[\s\S]{0,180}hasUnpublishedStreamingText\(\)/);
+});
+
 test('streaming patches and created callbacks carry generationId for stale patch rejection', () => {
   const service = read('src/ai/aiChatService.ts');
   const manager = read('src/ai/aiGenerationManager.ts');
@@ -176,8 +185,9 @@ test('active streaming updates publish live text without replacing the full mess
   assert.match(bufferBody, /publishStreamingMessage\(/);
   assert.match(bufferBody, /return;/);
   assert.doesNotMatch(bufferBody, /applyStreamingMessagePatch\(patch\);\s*return;\s*\}/);
-  assert.match(settledBody, /await reloadMessages\(targetThreadId\)/);
+  assert.doesNotMatch(settledBody, /await reloadMessages\(targetThreadId\)/);
   assert.match(settledBody, /await reloadMemoryCaptures\(targetThreadId\)/);
+  assert.match(settledBody, /await reloadContinuityMilestones\(targetThreadId\)/);
   assert.match(settledBody, /clearActiveStreamingIdentity\(\)/);
   assert.doesNotMatch(settledBody, /clearActiveStreamingIdentity\(\);[\s\S]{0,120}await reloadMessages\(targetThreadId\)/);
   assert.match(bubble, /streamingIdentity\?: AiStreamingMessageIdentity \| null/);

@@ -4607,6 +4607,9 @@ async function streamAssistantReply(input: {
   let lastUiPatchAt = 0;
   let lastUiPatchAnswerChars = initialAnswerText.length;
   let lastUiPatchReasoningChars = reasoningText.length;
+  const hasUnpublishedStreamingText = () =>
+    answerText.length + pendingAnswerChars !== lastUiPatchAnswerChars
+    || reasoningText.length + pendingReasoningChars !== lastUiPatchReasoningChars;
   let pressureProbeExpectedAt = Date.now();
   let pressureProbeActive = true;
   const sampleStreamingDevicePressure = () => {
@@ -4684,9 +4687,10 @@ async function streamAssistantReply(input: {
       generationMetrics.counters.streamSkippedUiPatchCount += 1;
       return;
     }
+    flushStreamingTextChunks();
     lastUiPatchAt = now;
-    lastUiPatchAnswerChars = answerChars;
-    lastUiPatchReasoningChars = reasoningChars;
+    lastUiPatchAnswerChars = answerText.length;
+    lastUiPatchReasoningChars = reasoningText.length;
     generationMetrics.counters.streamUiPatchCount += 1;
     if (!generationMetrics.timestamps.firstUiPatchAt && answerText.length + reasoningText.length > 0) {
       markGenerationMetric(generationMetrics, 'firstUiPatchAt');
@@ -4714,7 +4718,7 @@ async function streamAssistantReply(input: {
     }
     pendingUiPatchTimer = setTimeout(() => {
       pendingUiPatchTimer = null;
-      if (!streamFailed && (pendingAnswerChunks.length > 0 || pendingReasoningChunks.length > 0)) {
+      if (!streamFailed && hasUnpublishedStreamingText()) {
         emitStreamingPatch(true);
       }
     }, intervalMs);
