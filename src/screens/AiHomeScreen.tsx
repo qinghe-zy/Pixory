@@ -294,7 +294,7 @@ function AiActiveSpectrum({ mini = false }: { mini?: boolean }) {
   }, [theta]);
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: mini ? 3 : 4, height: mini ? 16 : 24, paddingRight: mini ? 0 : spacing[2], marginLeft: mini ? 8 : 0 }}>
+    <View style={{ flexDirection: 'row', alignItems: mini ? 'flex-end' : 'center', gap: mini ? 3 : 4, height: mini ? 16 : 24, paddingRight: mini ? 0 : spacing[2], marginLeft: mini ? 8 : 0, paddingBottom: mini ? 4 : 0 }}>
       <AiActiveSpectrumBar delay={0} theta={theta} index={0} minHeight={4} maxHeight={mini ? 10 : 12} width={mini ? 3 : 4} />
       <AiActiveSpectrumBar delay={150} theta={theta} index={1} minHeight={mini ? 6 : 8} maxHeight={mini ? 14 : 18} width={mini ? 3 : 4} />
       <AiActiveSpectrumBar delay={300} theta={theta} index={2} minHeight={mini ? 4 : 6} maxHeight={mini ? 12 : 14} width={mini ? 3 : 4} />
@@ -350,8 +350,10 @@ function SectionTitle({ actionLabel, title, onPress, showDecoration }: SectionTi
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleBlock}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {showDecoration && <AiActiveSpectrum mini />}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {showDecoration && <AiActiveSpectrum mini />}
+        </View>
         {!showDecoration && <View style={styles.sectionUnderline} />}
       </View>
       {actionLabel && onPress ? (
