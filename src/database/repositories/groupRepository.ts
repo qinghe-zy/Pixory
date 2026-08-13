@@ -7,6 +7,7 @@ import type {
   GroupListItem,
   GroupListItemRow,
   GroupRecord,
+  PageResult,
   GroupRow,
   UpdateGroupInput,
 } from '../types';
@@ -169,6 +170,31 @@ export const groupRepository = {
       ipId
     );
     return rows.map(mapGroupListItemRow);
+  },
+
+  async findOverviewPreviewByIpId(db: SQLiteDatabase, ipId: number, limit = 4): Promise<GroupListItem[]> {
+    const rows = await db.getAllAsync<GroupListItemRow>(
+      `${GROUP_OVERVIEW_SELECT} WHERE groups.ipId = ? GROUP BY groups.id ORDER BY groups.isPinned DESC, imageCount DESC, groups.type ASC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC LIMIT ?`,
+      ipId,
+      Math.max(1, Math.min(20, Math.floor(limit)))
+    );
+    return rows.map(mapGroupListItemRow);
+  },
+
+  async findOverviewPage(db: SQLiteDatabase, input?: { ipId?: number; limit?: number; offset?: number }): Promise<PageResult<GlobalGroupListItem>> {
+    const limit = Math.max(1, Math.min(100, Math.floor(input?.limit ?? 30)));
+    const offset = Math.max(0, Math.floor(input?.offset ?? 0));
+    const where = input?.ipId == null ? 'ips.deletedAt IS NULL' : 'ips.deletedAt IS NULL AND groups.ipId = ?';
+    const rows = await db.getAllAsync<GlobalGroupListItemRow>(
+      `${GROUP_OVERVIEW_SELECT} WHERE ${where} GROUP BY groups.id ORDER BY groups.type ASC, groups.isPinned DESC, imageCount DESC, groups.sortOrder ASC, groups.updatedAt DESC, groups.id DESC LIMIT ? OFFSET ?`,
+      ...(input?.ipId == null ? [] : [input.ipId]),
+      limit + 1,
+      offset
+    );
+    return {
+      items: rows.slice(0, limit).map(mapGlobalGroupListItemRow),
+      hasMore: rows.length > limit,
+    };
   },
 
   async findOverview(db: SQLiteDatabase): Promise<GlobalGroupListItem[]> {

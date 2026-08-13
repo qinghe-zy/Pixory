@@ -58,7 +58,17 @@ export interface IpRow extends Omit<IpRecord, 'isFavorite' | 'coverBlurEnabled'>
 
 export type IpLibraryFilter = 'all' | 'recent' | 'favorite';
 
-export interface IpLibraryQuery {
+export interface PageRequest {
+  limit?: number;
+  offset?: number;
+}
+
+export interface PageResult<T> {
+  items: T[];
+  hasMore: boolean;
+}
+
+export interface IpLibraryQuery extends PageRequest {
   searchText?: string;
   filter?: IpLibraryFilter;
 }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { AppActionSheet } from '../components/AppActionSheet';
 import { AppDialog } from '../components/AppDialog';
@@ -32,6 +32,8 @@ interface GroupOverviewScreenProps {
   onOpenGroup: (groupId: number) => void;
 }
 
+const GROUP_PAGE_SIZE = 30;
+
 export function GroupOverviewScreen({
   ipId,
   space = 'normal',
@@ -46,14 +48,15 @@ export function GroupOverviewScreen({
   const [actionGroup, setActionGroup] = useState<GroupListItem | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<GroupListItem | null>(null);
   const [renameGroup, setRenameGroup] = useState<GroupListItem | null>(null);
-  const { data, isLoading, errorMessage, reload } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[] }>(
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const { data, isLoading, errorMessage, reload, setData } = useScreenLoad<{ ip: IpRecord | null; groups: GroupListItem[]; hasMore: boolean }>(
     async () => {
-      const [ip, groups] = await runWithDatabaseSpace(space, (db) => Promise.all([
+      const [ip, page] = await runWithDatabaseSpace(space, (db) => Promise.all([
         ipRepository.findById(db, ipId),
-        groupRepository.findOverviewByIpId(db, ipId),
+        groupRepository.findOverviewPage(db, { ipId, limit: GROUP_PAGE_SIZE }),
       ]));
 
-      return { ip, groups };
+      return { ip, groups: page.items, hasMore: page.hasMore };
     },
     [ipId, refreshToken, space],
     {
@@ -61,7 +64,7 @@ export function GroupOverviewScreen({
         const message = error instanceof Error ? error.message : '未知错误';
         return `读取分组失败：${message}`;
       },
-      initialData: { groups: [], ip: null },
+      initialData: { groups: [], hasMore: false, ip: null },
     }
   );
 
@@ -81,11 +84,38 @@ export function GroupOverviewScreen({
 
   const ip = data?.ip ?? null;
   const groups = data?.groups ?? [];
+  const hasMore = data?.hasMore ?? false;
   const groupCoverBlurRadius = space === 'personal' && (ip?.coverBlurEnabled ?? true) ? resolvePersonalCoverBlurRadius(ip?.coverBlurRadius) : undefined;
   const groupedSections = GROUP_TYPE_OPTIONS.map((option) => ({
     ...option,
-    items: groups.filter((group) => group.type === option.value),
-  })).filter((section) => section.items.length > 0);
+    data: groups.filter((group) => group.type === option.value),
+  })).filter((section) => section.data.length > 0);
+
+  function loadMore() {
+    if (isLoading || isLoadingMore || !hasMore) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+    void (async () => {
+      try {
+        const page = await runWithDatabaseSpace(space, (db) => groupRepository.findOverviewPage(db, {
+          ipId,
+          limit: GROUP_PAGE_SIZE,
+          offset: groups.length,
+        }));
+        setData((current) => current ? {
+          ...current,
+          groups: [...current.groups, ...page.items],
+          hasMore: page.hasMore,
+        } : current);
+      } catch (error) {
+        showToast(error instanceof Error ? `加载更多分组失败：${error.message}` : '加载更多分组失败');
+      } finally {
+        setIsLoadingMore(false);
+      }
+    })();
+  }
 
   function confirmDeleteGroup() {
     if (!deleteGroup) {
@@ -110,7 +140,7 @@ export function GroupOverviewScreen({
 
   return (
     <>
-    <ScreenScaffold backgroundVariant="archive" onBack={onBack} rightAction={rightSlot} scrollable title="分组">
+    <ScreenScaffold backgroundVariant="archive" onBack={onBack} rightAction={rightSlot} title="分组">
       {ip ? <Text style={styles.subhead}>{ip.name}</Text> : null}
 
       <PageStateBlock
@@ -126,51 +156,33 @@ export function GroupOverviewScreen({
         onEmptyAction={onCreateGroup}
         onRetry={reload}
       >
-        <View style={styles.list}>
-          {groupedSections.map((section) => (
-            <View key={section.value} style={styles.sectionBlock}>
-              <SectionHeader title={section.label} />
-              {section.items.map((group) => (
-                <View key={group.id} style={styles.groupCardWrapper}>
-                  <Pressable
-                    onLongPress={() => setActionGroup(group)}
-                    onPress={() => onOpenGroup(group.id)}
-                    style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}
-                  >
-                    <View style={styles.groupCardInner}>
-                      <View style={styles.coverWrap}>
-                        {group.coverThumbnailFileUri ? (
-                          <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} />
-                        ) : (
-                          <View style={styles.coverEmpty}>
-                            <Ionicons color={colors.primary.default} name="images-outline" size={26} />
-                            <Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      <View style={styles.groupBody}>
-                        <View style={styles.groupHeader}>
-                          <Text numberOfLines={1} style={styles.groupName}>
-                            {group.name}
-                          </Text>
-                          <Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text>
-                        </View>
-                        <Text numberOfLines={1} style={styles.groupDescription}>
-                          {group.description || '还没有分组说明'}
-                        </Text>
-                        <View style={styles.metaRow}>
-                          <Text style={styles.metaText}>{group.imageCount} 张图片</Text>
-                          <Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </Pressable>
+        <SectionList
+          contentContainerStyle={styles.list}
+          sections={groupedSections}
+          keyExtractor={(group) => String(group.id)}
+          ListFooterComponent={isLoadingMore ? <ActivityIndicator color={colors.primary.default} style={styles.loadingMore} /> : null}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          renderSectionHeader={({ section }) => <SectionHeader title={section.label} />}
+          renderItem={({ item: group }) => (
+            <View style={styles.groupCardWrapper}>
+              <Pressable onLongPress={() => setActionGroup(group)} onPress={() => onOpenGroup(group.id)} style={({ pressed }) => [styles.groupCardFloating, pressed && styles.pressed]}>
+                <View style={styles.groupCardInner}>
+                  <View style={styles.coverWrap}>
+                    {group.coverThumbnailFileUri ? <SecureImage blurRadius={groupCoverBlurRadius} contentFit="cover" space={space} style={styles.coverImage} uri={group.coverThumbnailFileUri} /> : <View style={styles.coverEmpty}><Ionicons color={colors.primary.default} name="images-outline" size={26} /><Text style={styles.coverLabel}>{getGroupTypeLabel(group.type)}</Text></View>}
+                  </View>
+                  <View style={styles.groupBody}>
+                    <View style={styles.groupHeader}><Text numberOfLines={1} style={styles.groupName}>{group.name}</Text><Text style={styles.groupType}>{getGroupTypeLabel(group.type)}</Text></View>
+                    <Text numberOfLines={1} style={styles.groupDescription}>{group.description || '还没有分组说明'}</Text>
+                    <View style={styles.metaRow}><Text style={styles.metaText}>{group.imageCount} 张图片</Text><Text style={styles.metaText}>{formatDate(group.recentUpdatedAt)}</Text></View>
+                  </View>
                 </View>
-              ))}
+              </Pressable>
             </View>
-          ))}
-        </View>
+          )}
+          showsVerticalScrollIndicator={false}
+          style={styles.listViewport}
+        />
       </PageStateBlock>
     </ScreenScaffold>
     <AppActionSheet
@@ -246,6 +258,14 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: rhythm.entryCardGap,
+    paddingBottom: spacing[6],
+    paddingTop: spacing[4],
+  },
+  listViewport: {
+    flex: 1,
+  },
+  loadingMore: {
+    marginVertical: spacing[4],
   },
   sectionBlock: {
     gap: rhythm.listCardGap,

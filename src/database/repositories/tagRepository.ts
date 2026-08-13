@@ -1,4 +1,4 @@
-import type { CountRow, CreateTagInput, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
+import type { CountRow, CreateTagInput, PageResult, TagRecord, TagUsageItem, TagUsageItemRow, UpdateTagInput } from '../types';
 import { buildUpdateStatement, createTimestamp, mapTagUsageItemRow, requireNonEmptyText } from '../utils';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -208,6 +208,51 @@ export const tagRepository = {
     return rows.map(mapTagUsageItemRow);
   },
 
+  async findUsageOverviewPage(db: SQLiteDatabase, input?: { searchText?: string; limit?: number; offset?: number }): Promise<PageResult<TagUsageItem>> {
+    const limit = Math.max(1, Math.min(100, Math.floor(input?.limit ?? 60)));
+    const offset = Math.max(0, Math.floor(input?.offset ?? 0));
+    const searchText = input?.searchText?.trim();
+    const where = searchText ? 'WHERE tags.name LIKE ? COLLATE NOCASE' : '';
+    const values: Array<number | string> = searchText ? [`%${searchText}%`] : [];
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt) END) AS lastUsedAt
+       FROM tags
+       LEFT JOIN image_tags ON image_tags.tagId = tags.id
+       LEFT JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       ${where}
+       GROUP BY tags.id
+       ORDER BY tags.name COLLATE NOCASE ASC, tags.id ASC
+       LIMIT ? OFFSET ?`,
+      ...values,
+      limit + 1,
+      offset
+    );
+    return {
+      items: rows.slice(0, limit).map(mapTagUsageItemRow),
+      hasMore: rows.length > limit,
+    };
+  },
+
+  async findPopular(db: SQLiteDatabase, limit = 6): Promise<TagUsageItem[]> {
+    const rows = await db.getAllAsync<TagUsageItemRow>(
+      `SELECT
+         tags.*,
+         COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt) END) AS lastUsedAt
+       FROM tags
+       LEFT JOIN image_tags ON image_tags.tagId = tags.id
+       LEFT JOIN image_assets ON image_assets.id = image_tags.imageAssetId
+       GROUP BY tags.id
+       ORDER BY imageCount DESC, tags.name COLLATE NOCASE ASC, tags.id ASC
+       LIMIT ?`,
+      Math.max(1, Math.min(20, Math.floor(limit)))
+    );
+    return rows.map(mapTagUsageItemRow);
+  },
+
   async findUsageOverviewByIpId(db: SQLiteDatabase, ipId: number): Promise<TagUsageItem[]> {
     const rows = await db.getAllAsync<TagUsageItemRow>(
       `SELECT
@@ -231,7 +276,7 @@ export const tagRepository = {
       `SELECT
          tags.*,
          COUNT(DISTINCT CASE WHEN image_assets.deletedAt IS NULL THEN image_tags.imageAssetId END) AS imageCount,
-         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.updatedAt, image_assets.createdAt) END) AS lastUsedAt
+         MAX(CASE WHEN image_assets.deletedAt IS NULL THEN COALESCE(image_assets.lastViewedAt, image_assets.updatedAt, image_assets.createdAt) END) AS lastUsedAt
        FROM tags
        INNER JOIN image_tags ON image_tags.tagId = tags.id
        INNER JOIN image_assets ON image_assets.id = image_tags.imageAssetId
