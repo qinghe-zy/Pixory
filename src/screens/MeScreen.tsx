@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Reanimated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withDelay, Easing as REasing } from 'react-native-reanimated';
 
 import { ContentCard } from '../components/ContentCard';
 import { ScreenScaffold } from '../components/ScreenScaffold';
@@ -51,8 +51,8 @@ function ProfileMemoryCore() {
   const pulse = useSharedValue(1);
 
   useEffect(() => {
-    rotation.value = withRepeat(withTiming(360, { duration: 8000, easing: Easing.linear }), -1, false);
-    pulse.value = withRepeat(withTiming(0.6, { duration: 3000, easing: Easing.inOut(Easing.ease) }), -1, true);
+    rotation.value = withRepeat(withTiming(360, { duration: 8000, easing: REasing.linear }), -1, false);
+    pulse.value = withRepeat(withTiming(0.6, { duration: 3000, easing: REasing.inOut(REasing.ease) }), -1, true);
   }, [rotation, pulse]);
 
   const orbitStyle = useAnimatedStyle(() => {
