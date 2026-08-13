@@ -373,17 +373,16 @@ function HomeBrandHeader() {
   const timeT = useSharedValue(0);
 
   useEffect(() => {
-    // 整个复杂轨道的完整周期为 8 秒
-    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 8000, easing: Easing.linear }), -1, false);
+    // 整个复杂轨道的完整周期为 20 秒，极其舒缓平滑
+    timeT.value = withRepeat(withTiming(Math.PI * 2, { duration: 20000, easing: Easing.linear }), -1, false);
 
     textShimmer.value = withRepeat(
       withSequence(
-        withTiming(0, { duration: 6000 }), 
-        withTiming(1, { duration: 1200 }),
-        withTiming(0, { duration: 1200 })
+        withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 2400, easing: Easing.inOut(Easing.sin) })
       ),
       -1,
-      false
+      true
     );
   }, [textShimmer, timeT]);
 
@@ -391,6 +390,7 @@ function HomeBrandHeader() {
     // 根据 timeT (0 -> 2PI) 的变化，映射出星星达到最大的时刻
     // Star 1 (mint300) peaks at PI/4 and 5PI/4
     // Star 2 (sky300) peaks at 0, 2PI/3, 4PI/3, 2PI
+    // Star 3 (lilac300)
     const color = interpolateColor(
       timeT.value,
       [0, Math.PI / 4, (Math.PI * 2) / 3, Math.PI, (Math.PI * 5) / 4, (Math.PI * 4) / 3, Math.PI * 2],
@@ -398,7 +398,7 @@ function HomeBrandHeader() {
         colors.support.sky300,
         colors.support.mint300,
         colors.support.sky300,
-        colors.text.title, // 回归主色调呼吸
+        colors.support.lilac300, // 回归紫色主调
         colors.support.mint300,
         colors.support.sky300,
         colors.support.sky300,
@@ -409,24 +409,24 @@ function HomeBrandHeader() {
 
   // 星星 1：8字形游走
   const star1Style = useAnimatedStyle(() => {
-    const x = Math.sin(timeT.value) * 6;
-    const y = Math.cos(timeT.value * 2) * 4;
+    const x = Math.sin(timeT.value) * 14;
+    const y = Math.cos(timeT.value * 2) * 8;
     const scale = 1.0 + 0.6 * Math.sin(timeT.value * 2);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
   // 星星 2：反向和错位的轨道
   const star2Style = useAnimatedStyle(() => {
-    const x = Math.cos(timeT.value * 2 + Math.PI / 2) * 5;
-    const y = Math.sin(timeT.value + Math.PI) * 6;
+    const x = Math.cos(timeT.value * 2 + Math.PI / 2) * 10;
+    const y = Math.sin(timeT.value + Math.PI) * 12;
     const scale = 1.0 + 0.6 * Math.cos(timeT.value * 3);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
 
   // 星星 3：高频小范围跳动
   const star3Style = useAnimatedStyle(() => {
-    const x = Math.sin(timeT.value * 3) * 4;
-    const y = Math.cos(timeT.value) * 5;
+    const x = Math.sin(timeT.value * 3) * 12;
+    const y = Math.cos(timeT.value) * 10;
     const scale = 1.0 + 0.6 * Math.sin(timeT.value * 1.5);
     return { transform: [{ translateX: x }, { translateY: y }, { scale }] };
   });
@@ -440,7 +440,7 @@ function HomeBrandHeader() {
         <View style={styles.binaryStarsContainer}>
           <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.mint300, zIndex: 3 }, star1Style]} />
           <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.sky300, zIndex: 2 }, star2Style]} />
-          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.mint100, zIndex: 1 }, star3Style]} />
+          <Animated.View style={[styles.binaryStar, { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.support.lilac300, zIndex: 1 }, star3Style]} />
         </View>
       </View>
       <Animated.Text style={[styles.brandSubtitleText, textStyle]}>
