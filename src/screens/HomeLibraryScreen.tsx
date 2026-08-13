@@ -9,6 +9,7 @@ import { AppDialog } from '../components/AppDialog';
 import { FilterChip } from '../components/FilterChip';
 import { IPCard } from '../components/IPCard';
 import { PageStateBlock } from '../components/PageStateBlock';
+import { RhythmBars } from '../components/RhythmBars';
 import { ScreenScaffold } from '../components/ScreenScaffold';
 import { SearchBar } from '../components/SearchBar';
 import { commonButtonCopy, commonEmptyStateCopy, commonErrorCopy } from '../constants/copy';
@@ -205,7 +206,16 @@ export function HomeLibraryScreen({
       titleVariant="brand"
     >
       <View style={styles.topArea}>
-        <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+        <View style={styles.searchWithDecor}>
+          <RhythmBars
+            barGap={5}
+            barWidth={3}
+            maxBarHeight={24}
+            minBarHeight={7}
+            style={styles.rhythmDecor}
+          />
+          <SearchBar onChangeText={() => undefined} onPress={onOpenGlobalSearch} placeholder="搜索 IP / 分组 / 标签 / 文件名 / 备注" value="" />
+        </View>
         {needsOrganizingCount > 0 ? (
           <Pressable onPress={onOpenNeedsOrganizing} style={({ pressed }) => [styles.needsPanel, pressed && styles.pressed]}>
             <View style={styles.needsIcon}>
@@ -522,6 +532,12 @@ const styles = StyleSheet.create({
   },
   topArea: {
     gap: spacing[3],
+  },
+  searchWithDecor: {
+    gap: 2, // tiny breathing room between bars and search bar
+  },
+  rhythmDecor: {
+    height: 24,
   },
   filterRow: {
     flexDirection: 'row',
