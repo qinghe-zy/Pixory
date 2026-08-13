@@ -27,6 +27,7 @@ const statFontFamily = Platform.select({
 });
 
 const monoFontFamily = 'JetBrainsMono_400Regular';
+const monoBoldFontFamily = 'JetBrainsMono_700Bold';
 
 const serifFontFamily = 'PlayfairDisplay_400Regular';
 const serifItalicFontFamily = 'PlayfairDisplay_400Regular_Italic';
@@ -59,6 +60,7 @@ export const typography = {
     brand: brandFontFamily,
     stat: statFontFamily,
     mono: monoFontFamily,
+    monoBold: monoBoldFontFamily,
     serif: serifFontFamily,
     serifItalic: serifItalicFontFamily,
   },

@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Updates from 'expo-updates';
 import { useFonts, PlayfairDisplay_400Regular, PlayfairDisplay_400Regular_Italic } from '@expo-google-fonts/playfair-display';
-import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono';
+import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono';
 import { MaShanZheng_400Regular } from '@expo-google-fonts/ma-shan-zheng';
 import { ZCOOLXiaoWei_400Regular } from '@expo-google-fonts/zcool-xiaowei';
 import { useEffect, useRef, useState } from 'react';
@@ -463,6 +463,7 @@ export default function App() {
     PlayfairDisplay_400Regular,
     PlayfairDisplay_400Regular_Italic,
     JetBrainsMono_400Regular,
+    JetBrainsMono_700Bold,
     DiaryHandwriting: MaShanZheng_400Regular,
     DiaryKai: ZCOOLXiaoWei_400Regular,
   });
